@@ -1,6 +1,18 @@
 syntax = "proto2";
 package raft;
 
+// A Raft message containing a specific RPC payload.
+message RaftMessage {
+  oneof payload {
+    AppendEntriesRequest append_entries_request = 1;
+    AppendEntriesResponse append_entries_response = 2;
+    VoteRequest vote_request = 3;
+    VoteResponse vote_response = 4;
+    InstallSnapshotRequest install_snapshot_request = 5;
+    InstallSnapshotResponse install_snapshot_response = 6;
+  }
+}
+
 // An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
 //
 // Receiver implementation:
@@ -74,10 +86,48 @@ message VoteRequest {
   required uint64 last_log_term = 4;
 }
 
-// An RPC invoked by candidates to gather votes (§5.2).
+// An RPC response to an `VoteResponse` message.
 message VoteResponse {
   // The current term of the responding node, for the candidate to update itself.
   required uint64 term = 1;
   // Will be true if the candidate received a vote from the responder.
   required bool vote_granted = 2;
+}
+
+// Invoked by leader to send chunks of a snapshot to a follower (§7).
+//
+// Leaders always send chunks in order.
+//
+// Receiver implementation:
+// 1. Reply immediately if `term` is less than receiver's current `term`.
+// 2. Create a new snapshot file if snapshot received is the first chunk
+//    of the sanpshot (offset is 0).
+// 3. Write data into snapshot file at given offset.
+// 4. Reply and wait for more data chunks if `done` is `false`.
+// 5. Save snapshot file, discard any existing or partial snapshot with a smaller index.
+// 6. If existing log entry has same index and term as snapshot’s last included entry,
+//    retain log entries following it and reply.
+// 7. Discard the entire log.
+// 8. Reset state machine using snapshot contents and load snapshot’s cluster configuration.
+message InstallSnapshotRequest {
+  // The leader's current term.
+  required uint64 term = 1;
+  // The leader's ID. Useful in redirecting clients.
+  required uint64 leader_id = 2;
+  // The snapshot replaces all log entries up through and including this index.
+  required uint64 last_included_index = 3;
+  // The term of the `last_included_index`.
+  required uint64 last_included_term = 4;
+  // The byte offset where chunk is positioned in the snapshot file.
+  required uint64 offset = 5;
+  // The raw bytes of the snapshot chunk, starting at `offset`.
+  required bytes data = 6;
+  // Will be `true` if this is the last chunk in the snapshot.
+  required bool done = 7;
+}
+
+// An RPC response to an `InstallSnapshotResponse` message.
+message InstallSnapshotResponse {
+  // The receiving node's current term, for leader to update itself.
+  required uint64 term = 1;
 }

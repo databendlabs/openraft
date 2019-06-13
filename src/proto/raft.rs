@@ -1,3 +1,26 @@
+/// A Raft message containing a specific RPC payload.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RaftMessage {
+    #[prost(oneof="raft_message::Payload", tags="1, 2, 3, 4, 5, 6")]
+    pub payload: ::std::option::Option<raft_message::Payload>,
+}
+pub mod raft_message {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Payload {
+        #[prost(message, tag="1")]
+        AppendEntriesRequest(super::AppendEntriesRequest),
+        #[prost(message, tag="2")]
+        AppendEntriesResponse(super::AppendEntriesResponse),
+        #[prost(message, tag="3")]
+        VoteRequest(super::VoteRequest),
+        #[prost(message, tag="4")]
+        VoteResponse(super::VoteResponse),
+        #[prost(message, tag="5")]
+        InstallSnapshotRequest(super::InstallSnapshotRequest),
+        #[prost(message, tag="6")]
+        InstallSnapshotResponse(super::InstallSnapshotResponse),
+    }
+}
 /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
 ///
 /// Receiver implementation:
@@ -79,7 +102,7 @@ pub struct VoteRequest {
     #[prost(uint64, required, tag="4")]
     pub last_log_term: u64,
 }
-/// An RPC invoked by candidates to gather votes (§5.2).
+/// An RPC response to an `VoteResponse` message.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct VoteResponse {
     /// The current term of the responding node, for the candidate to update itself.
@@ -88,6 +111,52 @@ pub struct VoteResponse {
     /// Will be true if the candidate received a vote from the responder.
     #[prost(bool, required, tag="2")]
     pub vote_granted: bool,
+}
+/// Invoked by leader to send chunks of a snapshot to a follower (§7).
+///
+/// Leaders always send chunks in order.
+///
+/// Receiver implementation:
+/// 1. Reply immediately if `term` is less than receiver's current `term`.
+/// 2. Create a new snapshot file if snapshot received is the first chunk
+///    of the sanpshot (offset is 0).
+/// 3. Write data into snapshot file at given offset.
+/// 4. Reply and wait for more data chunks if `done` is `false`.
+/// 5. Save snapshot file, discard any existing or partial snapshot with a smaller index.
+/// 6. If existing log entry has same index and term as snapshot’s last included entry,
+///    retain log entries following it and reply.
+/// 7. Discard the entire log.
+/// 8. Reset state machine using snapshot contents and load snapshot’s cluster configuration.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InstallSnapshotRequest {
+    /// The leader's current term.
+    #[prost(uint64, required, tag="1")]
+    pub term: u64,
+    /// The leader's ID. Useful in redirecting clients.
+    #[prost(uint64, required, tag="2")]
+    pub leader_id: u64,
+    /// The snapshot replaces all log entries up through and including this index.
+    #[prost(uint64, required, tag="3")]
+    pub last_included_index: u64,
+    /// The term of the `last_included_index`.
+    #[prost(uint64, required, tag="4")]
+    pub last_included_term: u64,
+    /// The byte offset where chunk is positioned in the snapshot file.
+    #[prost(uint64, required, tag="5")]
+    pub offset: u64,
+    /// The raw bytes of the snapshot chunk, starting at `offset`.
+    #[prost(bytes, required, tag="6")]
+    pub data: std::vec::Vec<u8>,
+    /// Will be `true` if this is the last chunk in the snapshot.
+    #[prost(bool, required, tag="7")]
+    pub done: bool,
+}
+/// An RPC response to an `InstallSnapshotResponse` message.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InstallSnapshotResponse {
+    /// The receiving node's current term, for leader to update itself.
+    #[prost(uint64, required, tag="1")]
+    pub term: u64,
 }
 /// The different types of Raft log entries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
