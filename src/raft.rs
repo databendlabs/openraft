@@ -4,11 +4,11 @@ use std::collections::BTreeMap;
 
 use actix::prelude::*;
 use futures::future;
-use log::{warn};
+use log::{error, warn};
 
 use crate::{
-    messages::RaftRequest,
     proto,
+    storage::{self, InitialState, RaftStorage},
 };
 
 /// A Raft cluster node's ID.
@@ -93,47 +93,134 @@ pub struct LeaderState {
 /// `actix::Adder<T> where T: actix::Handler<StorageMsg0> + actix::Handler<StorageMsg1> ...`.
 ///
 /// TODO: finish this interface up.
-pub struct Raft {
+pub struct Raft<S: RaftStorage> {
     /// This node's ID.
     id: NodeId,
     /// All currently known members of the Raft cluster.
     members: Vec<NodeId>,
-    /// The index of the highest log entry known to be committed.
-    ///
-    /// Is initialized to 0, and increases monotonically.
-    commit_index: u64,
-    /// The index of the highest log entry which has been applied to the state machine.
-    ///
-    /// Is initialized to 0, increases monotonically following the `commit_index`.
-    last_applied: u64,
     /// The current state of this Raft node.
     state: NodeState,
     /// An output channel for sending Raft request messages to peers.
     out: actix::Recipient<RaftRequest>,
+    /// The address of the actor responsible for implementing the `RaftStorage` interface.
+    storage: actix::Addr<S>,
+    /// The index of the highest log entry known to be committed.
+    ///
+    /// Is initialized to 0, and increases monotonically.
+    commit_index: u64,
+    /// The latest term this node has seen.
+    ///
+    /// Is initialized to 0 on first boot, and increases monotonically.
+    current_term: u64,
+    /// The ID of the candidate which received this node's vote for the current term.
+    ///
+    /// Each server will vote for at most one candidate in a given term, on a
+    /// first-come-first-served basis. See §5.4.1 for additional restriction on votes.
+    voted_for: Option<NodeId>,
+    /// The index of the highest log entry which has been applied to the state machine.
+    ///
+    /// Is initialized to 0, increases monotonically following the `commit_index` as logs are
+    /// applied to the state machine (via the storage interface).
+    last_applied: u64,
+    /// A value indicating if this actor has successfully completed its initialization routine.
+    is_initialized: bool,
 }
 
-impl Raft {
+impl<S> Raft<S> where S: RaftStorage {
     /// Create a new Raft instance.
     ///
     /// This actor will need to be started after instantiation, which must be done within a
     /// running actix system.
     ///
     /// TODO: add an example on how to create and start an instance.
-    pub fn new(id: NodeId, members: Vec<NodeId>, out: actix::Recipient<RaftRequest>) -> Self {
+    pub fn new(id: NodeId, members: Vec<NodeId>, out: actix::Recipient<RaftRequest>, storage: Addr<S>) -> Self {
         let state = NodeState::Follower;
-        Self{id, members, commit_index: 0, last_applied: 0, state, out}
+        Self{
+            id, members, state, out, storage,
+            commit_index: 0, current_term: 0, voted_for: None, last_applied: 0,
+            is_initialized: false,
+        }
+    }
+
+    /// Handle requests from peers to cast a vote for a new leader.
+    fn handle_vote_request(&mut self, _ctx: &mut Context<Self>, msg: proto::VoteRequest) -> proto::VoteResponse {
+        // If candidate's log is not as least as up-to-date as this node, then reject.
+        if msg.last_log_term < self.current_term || msg.last_log_index < self.commit_index {
+            return proto::VoteResponse{term: self.current_term, vote_granted: false};
+        }
+
+        // Candidate's log is as up-to-date, handle voting conditions.
+        match &self.voted_for {
+            // This node has already voted for the candidate.
+            Some(candidate_id) if candidate_id == &msg.candidate_id => {
+                proto::VoteResponse{term: self.current_term, vote_granted: true}
+            }
+            // This node has already voted for a different candidate.
+            Some(_) => proto::VoteResponse{term: self.current_term, vote_granted: false},
+            // This node has not already voted, so vote for the candidate.
+            None => {
+                self.voted_for = Some(msg.candidate_id);
+                proto::VoteResponse{term: self.current_term, vote_granted: true}
+            },
+        }
     }
 }
 
-impl Actor for Raft {
+impl<S: RaftStorage> Actor for Raft<S> {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        // TODO: Need to begin driving this actor.
+        // Fetch the node's initial state from the storage actor.
+        let f = fut::wrap_future(self.storage.send(storage::GetInitialState))
+            .map(|res: Result<InitialState, ()>, act: &mut Raft<S>, ctx| match res {
+                Ok(state) => {
+                    act.commit_index = state.log_index;
+                    act.current_term = state.log_term;
+                    act.voted_for = state.voted_for;
+                }
+                Err(_) => {
+                    error!("Error fetching initial state. Shutting down Raft actor.");
+                    ctx.stop()
+                }
+            })
+
+            // Fetch the node's last applied index from the storage actor.
+            .and_then(|_, act, _| {
+                fut::wrap_future(act.storage.send(storage::GetLastAppliedIndex))
+            })
+            .map(|res: Result<u64, ()>, act: &mut Raft<S>, ctx| match res {
+                Ok(last_applied) => {
+                    act.last_applied = last_applied;
+                }
+                Err(_) => {
+                    error!("Error fetching last applied index. Shutting down Raft actor.");
+                    ctx.stop()
+                }
+            })
+
+            // Finish initialization if everything checks out.
+            .map(|_, act, _| act.is_initialized = true)
+
+            // Stop this actor if any messaging errors took place.
+            .map_err(|_, _, ctx| {
+                error!("Error communicating with storage layer. Shutting down Raft actor.");
+                ctx.stop()
+            });
+        ctx.spawn(f);
     }
 }
 
-impl Handler<RaftRequest> for Raft {
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RaftRequest ///////////////////////////////////////////////////////////////////////////////////
+
+/// An actix::Message wrapping a protobuf RaftRequest.
+pub struct RaftRequest(pub proto::RaftRequest);
+
+impl Message for RaftRequest {
+    type Result = Result<proto::RaftResponse, ()>;
+}
+
+impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
     type Result = ResponseFuture<proto::RaftResponse, ()>;
 
     /// Handle inbound Raft request messages.
@@ -150,22 +237,45 @@ impl Handler<RaftRequest> for Raft {
     /// case.
     ///
     /// TODO: pin down error cases and update docs on how storage errors are handled.
-    fn handle(&mut self, msg: RaftRequest, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RaftRequest, ctx: &mut Self::Context) -> Self::Result {
         // Unpack the given message and pass to the appropriate handler.
         use proto::raft_request::Payload;
+        use proto::raft_response::Payload as ResponsePayload;
         match msg.0.payload {
-            Some(Payload::AppendEntries(_payload)) => (),
-            Some(Payload::Vote(_payload)) => (),
-            Some(Payload::InstallSnapshot(_payload)) => (),
-            None => warn!("RaftRequest received which had an empty or unknown payload."),
-        };
-
-        // TODO:
-        // - create client message protobuf, used to generically wrap any type of client request.
-        //   Put together docs on how applications should mitigate client retries which would
-        //   lead to duplicates (request serial number tracking).
-        // - implement handler for client requests.
-
-        Box::new(future::err(()))
+            Some(Payload::AppendEntries(_payload)) => {
+                // TODO: finish this up.
+                Box::new(future::err(()))
+            },
+            Some(Payload::Vote(payload)) => {
+                let res = self.handle_vote_request(ctx, payload);
+                Box::new(future::ok(proto::RaftResponse{
+                    payload: Some(ResponsePayload::Vote(res)),
+                }))
+            },
+            Some(Payload::InstallSnapshot(_payload)) => {
+                // TODO: finish this up.
+                Box::new(future::err(()))
+            },
+            None => {
+                warn!("RaftRequest received which had an empty or unknown payload.");
+                Box::new(future::err(()))
+            }
+        }
     }
 }
+
+// TODO:
+// ### clients
+// - create client message protobuf, used to generically wrap any type of client request.
+//   Put together docs on how applications should mitigate client retries which would
+//   lead to duplicates (request serial number tracking).
+// - implement handler for client requests.
+//
+// ### config
+// - build config struct. Needs:
+//   - election timeout min
+//   - election timeout max
+//
+// ### storage
+// - GetInitialState. Must return highest log index, highest log term, node voted for in highest term.
+// - GetLastAppliedIndex. Must return the index of the highest log entry applied to the state machine.
