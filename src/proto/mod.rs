@@ -1,7 +1,8 @@
 mod raft;
 
 pub use crate::proto::raft::{
-    RaftMessage,
+    RaftRequest, raft_request,
+    RaftResponse, raft_response,
     AppendEntriesRequest, AppendEntriesResponse,
     Entry, EntryType,
     VoteRequest, VoteResponse,

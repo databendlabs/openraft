@@ -4,9 +4,9 @@ use actix::prelude::*;
 
 use crate::proto;
 
-/// An actix::Message wrapping a protobuf RaftMessage.
-pub struct RaftMessage(pub proto::RaftMessage);
+/// An actix::Message wrapping a protobuf RaftRequest.
+pub struct RaftRequest(pub proto::RaftRequest);
 
-impl Message for RaftMessage {
-    type Result = Result<proto::RaftMessage, ()>;
+impl Message for RaftRequest {
+    type Result = Result<proto::RaftResponse, ()>;
 }

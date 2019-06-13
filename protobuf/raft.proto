@@ -1,15 +1,21 @@
 syntax = "proto2";
 package raft;
 
-// A Raft message containing a specific RPC payload.
-message RaftMessage {
+// A Raft request message containing a specific RPC request payload.
+message RaftRequest {
   oneof payload {
-    AppendEntriesRequest append_entries_request = 1;
-    AppendEntriesResponse append_entries_response = 2;
-    VoteRequest vote_request = 3;
-    VoteResponse vote_response = 4;
-    InstallSnapshotRequest install_snapshot_request = 5;
-    InstallSnapshotResponse install_snapshot_response = 6;
+    AppendEntriesRequest append_entries = 1;
+    VoteRequest vote = 2;
+    InstallSnapshotRequest install_snapshot = 3;
+  }
+}
+
+// A Raft response message containing a specific RPC response payload.
+message RaftResponse {
+  oneof payload {
+    AppendEntriesResponse append_entries = 1;
+    VoteResponse vote = 2;
+    InstallSnapshotResponse install_snapshot = 3;
   }
 }
 

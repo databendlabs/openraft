@@ -1,24 +1,35 @@
-/// A Raft message containing a specific RPC payload.
+/// A Raft request message containing a specific RPC request payload.
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RaftMessage {
-    #[prost(oneof="raft_message::Payload", tags="1, 2, 3, 4, 5, 6")]
-    pub payload: ::std::option::Option<raft_message::Payload>,
+pub struct RaftRequest {
+    #[prost(oneof="raft_request::Payload", tags="1, 2, 3")]
+    pub payload: ::std::option::Option<raft_request::Payload>,
 }
-pub mod raft_message {
+pub mod raft_request {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Payload {
         #[prost(message, tag="1")]
-        AppendEntriesRequest(super::AppendEntriesRequest),
+        AppendEntries(super::AppendEntriesRequest),
         #[prost(message, tag="2")]
-        AppendEntriesResponse(super::AppendEntriesResponse),
+        Vote(super::VoteRequest),
         #[prost(message, tag="3")]
-        VoteRequest(super::VoteRequest),
-        #[prost(message, tag="4")]
-        VoteResponse(super::VoteResponse),
-        #[prost(message, tag="5")]
-        InstallSnapshotRequest(super::InstallSnapshotRequest),
-        #[prost(message, tag="6")]
-        InstallSnapshotResponse(super::InstallSnapshotResponse),
+        InstallSnapshot(super::InstallSnapshotRequest),
+    }
+}
+/// A Raft response message containing a specific RPC response payload.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RaftResponse {
+    #[prost(oneof="raft_response::Payload", tags="1, 2, 3")]
+    pub payload: ::std::option::Option<raft_response::Payload>,
+}
+pub mod raft_response {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Payload {
+        #[prost(message, tag="1")]
+        AppendEntries(super::AppendEntriesResponse),
+        #[prost(message, tag="2")]
+        Vote(super::VoteResponse),
+        #[prost(message, tag="3")]
+        InstallSnapshot(super::InstallSnapshotResponse),
     }
 }
 /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).

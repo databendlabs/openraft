@@ -8,6 +8,7 @@ edition = "2018"
 actix = "0.8"
 bytes = "0.4"
 futures = "0.1"
+log = "0.4"
 prost = "0.5"
 prost-derive = "0.5"
 
