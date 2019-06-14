@@ -2,14 +2,24 @@
 
 use std::collections::BTreeMap;
 
-use actix::prelude::*;
+use actix::{
+    prelude::*,
+    fut::IntoActorFuture,
+};
 use futures::future;
 use log::{error, warn};
 
 use crate::{
+    config::Config,
     proto,
-    storage::{self, InitialState, RaftStorage},
+    storage::{self, AppendLogEntries, GetLogEntries, InitialState, RaftStorage},
 };
+
+/// An error message for communication errors while attempting to fetch log entries.
+const COMM_ERR_FETCH_LOG_ENTRIES: &str = "Error communicating with storage actor for fetching log entries.";
+
+/// An error message for communication errors while attempting to append log entries.
+const COMM_ERR_APPEND_LOG_ENTRIES: &str = "Error communicating with storage actor for appending log entries.";
 
 /// A Raft cluster node's ID.
 pub type NodeId = u64;
@@ -38,6 +48,17 @@ pub struct LeaderState {
     ///
     /// Each entry is initialized to leader's last log index + 1. Per the Raft protocol spec,
     /// this value may be decremented as new nodes enter the cluster and need to catch-up.
+    ///
+    /// When a leader first comes to power, it initializes all `next_index` values to the index
+    /// just after the last one in its log.
+    ///
+    /// If a follower’s log is inconsistent with the leader’s, the AppendEntries consistency check
+    /// will fail in the next AppendEntries RPC. After a rejection, the leader decrements
+    /// `next_index` and retries the AppendEntries RPC. Eventually `next_index` will reach a point
+    /// where the leader and follower logs match. When this happens, AppendEntries will succeed,
+    /// which removes any conflicting entries in the follower’s log and appends entries from the
+    /// leader’s log (if any). Once AppendEntries succeeds, the follower’s log is consistent with
+    /// the leader’s, and it will remain that way for the rest of the term.
     next_index: BTreeMap<NodeId, u64>,
     /// A mapping of node IDs to the highest log entry index known to be replicated thereof.
     ///
@@ -89,11 +110,12 @@ pub struct LeaderState {
 /// indefinitely, so that is how this actor is implemented.
 ///
 /// #### storage
-/// This interface is still in the works. Hopefully something like:
-/// `actix::Adder<T> where T: actix::Handler<StorageMsg0> + actix::Handler<StorageMsg1> ...`.
-///
-/// TODO: finish this interface up.
+/// The storage interface is typically going to be the most involved as this is where your <<< TODO: RESUME HERE IMMEDIATE
 pub struct Raft<S: RaftStorage> {
+    /// A value indicating if this actor has successfully completed its initialization routine.
+    is_initialized: bool,
+    /// This node's runtime config.
+    config: Config,
     /// This node's ID.
     id: NodeId,
     /// All currently known members of the Raft cluster.
@@ -104,26 +126,36 @@ pub struct Raft<S: RaftStorage> {
     out: actix::Recipient<RaftRequest>,
     /// The address of the actor responsible for implementing the `RaftStorage` interface.
     storage: actix::Addr<S>,
-    /// The index of the highest log entry known to be committed.
+
+    /// The index of the highest log entry known to be committed cluster-wide.
     ///
-    /// Is initialized to 0, and increases monotonically.
+    /// The definition of a committed log is that the leader which has created the log has
+    /// successfully replicated the log to a majority of the cluster.
+    ///
+    /// Is initialized to 0, and increases monotonically. This is always based on the leader's
+    /// commit index which is communicated to other members via the AppendEntries protocol.
     commit_index: u64,
-    /// The latest term this node has seen.
+    /// The index of the highest log entry which has been applied to the local state machine.
     ///
-    /// Is initialized to 0 on first boot, and increases monotonically.
+    /// Is initialized to 0, increases monotonically following the `commit_index` as logs are
+    /// applied to the state machine (via the storage interface).
+    last_applied: u64,
+    /// The current term.
+    ///
+    /// Is initialized to 0 on first boot, and increases monotonically. This is normally based on
+    /// the leader's term which is communicated to other members via the AppendEntries protocol,
+    /// but this may also be incremented when a follower becomes a candidate.
     current_term: u64,
     /// The ID of the candidate which received this node's vote for the current term.
     ///
     /// Each server will vote for at most one candidate in a given term, on a
     /// first-come-first-served basis. See §5.4.1 for additional restriction on votes.
     voted_for: Option<NodeId>,
-    /// The index of the highest log entry which has been applied to the state machine.
-    ///
-    /// Is initialized to 0, increases monotonically following the `commit_index` as logs are
-    /// applied to the state machine (via the storage interface).
-    last_applied: u64,
-    /// A value indicating if this actor has successfully completed its initialization routine.
-    is_initialized: bool,
+
+    /// The index of the last log to be appended.
+    last_log_index: u64,
+    /// The term of the last log to be appended.
+    last_log_term: u64,
 }
 
 impl<S> Raft<S> where S: RaftStorage {
@@ -133,19 +165,166 @@ impl<S> Raft<S> where S: RaftStorage {
     /// running actix system.
     ///
     /// TODO: add an example on how to create and start an instance.
-    pub fn new(id: NodeId, members: Vec<NodeId>, out: actix::Recipient<RaftRequest>, storage: Addr<S>) -> Self {
+    pub fn new(id: NodeId, config: Config, out: actix::Recipient<RaftRequest>, storage: Addr<S>) -> Self {
         let state = NodeState::Follower;
         Self{
-            id, members, state, out, storage,
-            commit_index: 0, current_term: 0, voted_for: None, last_applied: 0,
-            is_initialized: false,
+            is_initialized: false, config,
+            id, members: vec![], state, out, storage,
+            commit_index: 0, last_applied: 0,
+            current_term: 0, voted_for: None,
+            last_log_index: 0, last_log_term: 0,
         }
+    }
+
+    /// Perform the AppendEntries RPC consistency check.
+    ///
+    /// If the log entry at the specified index does not exist, the most recent entry in the log
+    /// will be used to build and return a `ConflictOpt` struct to be sent back to the leader.
+    ///
+    /// If The log entry at the specified index does exist, but the terms to no match up, this
+    /// implementation will fetch the last 50 entries from the given index, and will use the
+    /// earliest entry from the log which is still in the given term to build a `ConflictOpt`
+    /// struct to be sent back to the leader.
+    ///
+    /// If everyhing checks out, a `None` value will be returned and log replication may continue.
+    fn log_consistency_check(
+        &mut self, _: &mut Context<Self>, index: u64, term: u64,
+    ) -> impl ActorFuture<Actor=Self, Item=Option<proto::ConflictOpt>, Error=()> {
+        let storage = self.storage.clone();
+        fut::wrap_future(self.storage.send(GetLogEntries{start: index, stop: index}))
+            .map_err(|err, _: &mut Raft<S>, _| error!("{}{}", COMM_ERR_FETCH_LOG_ENTRIES, err))
+            .and_then(|res, _, _| fut::FutureResult::from(res))
+            .and_then(move |res, act, _| {
+                match res.last() {
+                    // The target entry was not found. This can only mean that we don't have the
+                    // specified index yet. Use the last known index & term.
+                    None => fut::Either::A(fut::FutureResult::from(Ok(Some(proto::ConflictOpt{
+                        term: act.last_log_term,
+                        index: act.last_log_index,
+                    })))),
+                    // The target entry was found. Compare its term with target term to ensure
+                    // everything is consistent.
+                    Some(entry) => {
+                        let entry_term = entry.term;
+                        if entry_term == term {
+                            // Everything checks out. We're g2g.
+                            fut::Either::A(fut::FutureResult::from(Ok(None)))
+                        } else {
+                            // Logs are inconsistent. Fetch the last 50 logs, and use the last
+                            // entry of that payload which is still in the target term for
+                            // conflict optimization.
+                            fut::Either::B(fut::wrap_future(storage.send(GetLogEntries{start: index, stop: index}))
+                                .map_err(|err, _: &mut Raft<S>, _| error!("{}{}", COMM_ERR_FETCH_LOG_ENTRIES, err))
+                                .and_then(|res, _, _| fut::FutureResult::from(res))
+                                .and_then(move |res, act, _| {
+                                    match res.into_iter().filter(|entry| entry.term == term).nth(0) {
+                                        Some(entry) => fut::FutureResult::from(Ok(Some(proto::ConflictOpt{
+                                            term: entry.term,
+                                            index: entry.index,
+                                        }))),
+                                        None => fut::FutureResult::from(Ok(Some(proto::ConflictOpt{
+                                            term: entry_term,
+                                            index: index,
+                                        }))),
+                                    }
+                                }))
+                        }
+                    }
+                }
+            })
+    }
+
+    /// Handle requests from Raft leader to append log entries.
+    ///
+    /// This method implements the append entries algorithm and upholds all of the safety checks
+    /// detailed in §5.3. There are a few very important notes to keep in mind while reviewing
+    /// this algorithm.
+    ///
+    /// The essential goal of this algorithm is that the receiver (the node on which this method
+    /// is being executed) must find the exact entry in its log specified by the RPC's last index
+    /// and last term fields, and then begin writing the new entries thereafter.
+    ///
+    /// When the receiver can not find the entry specified in the RPC's last index & last term
+    /// fields, it will respond with a failure to the leader. **This implementation of Raft
+    /// includes the _conflicting term_ optimization** which is intended to reduce the number of
+    /// rejected append entries RPCs from followers which are lagging behind, which is detailed in
+    /// §5.3. In such cases, if the Raft cluster is configured with a snapshot policy other than
+    /// `Disabled`, the leader will make a determination if an `InstallSnapshot` RPC should be
+    /// sent to this node.
+    ///
+    /// In Raft, the leader handles inconsistencies by forcing the followers’ logs to duplicate
+    /// its own. This means that conflicting entries in follower logs will be overwritten with
+    /// entries from the leader’s log. §5.4 details the safety of this protocol.
+    ///
+    /// #### inconsistency example
+    /// Followers may receive valid append entries requests from leaders, commit them, respond,
+    /// and before the leader is able to replicate the entries to a majority of nodes, the leader
+    /// may die, a new leader may be elected which does not have the same entries, as they were
+    /// not replicated to a majority of followers, and the new leader will proceeed to overwrite
+    /// the inconsistent entries.
+    fn handle_append_entries_request(
+        &mut self, ctx: &mut Context<Self>, msg: proto::AppendEntriesRequest,
+    ) -> impl ActorFuture<Actor=Self, Item=proto::AppendEntriesResponse, Error=()> {
+        // If message's term is less than most recent term, then we do not honor the request.
+        let term = self.current_term;
+        if msg.term < term {
+            return fut::Either::A(
+                fut::Either::A(fut::ok(proto::AppendEntriesResponse{term, success: false, conflict_opt: None}))
+            );
+        }
+
+        // Update current term as needed & ensure we are in the follower state.
+        if msg.term > self.current_term {
+            self.current_term = msg.term;
+            self.state = NodeState::Follower;
+        }
+
+        // TODO: kick off process of applying logs to state machine based on `msg.leader_commit`.
+
+        // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
+        // previous log info, then replication is g2g.
+        if msg.prev_log_index == 0 || (msg.prev_log_index == self.last_log_index && msg.prev_log_term == self.last_log_term) {
+            return fut::Either::A(fut::Either::B(
+                fut::wrap_future(self.storage.send(AppendLogEntries(msg.entries)))
+                    .map_err(|err, _: &mut Self, _| error!("{} {}", COMM_ERR_APPEND_LOG_ENTRIES, err))
+                    .and_then(|res, _, _| fut::FutureResult::from(res))
+                    .map(move |res, act, _| {
+                        act.last_log_index = res.index;
+                        act.last_log_term = res.term;
+                        proto::AppendEntriesResponse{term, success: true, conflict_opt: None}
+                    })));
+        }
+
+        // Previous log info doesn't immediately line up, so perform log consistency check and
+        // proceed based on its result.
+        let storage = self.storage.clone();
+        fut::Either::B(self.log_consistency_check(ctx, msg.prev_log_index, msg.prev_log_term)
+            .and_then(move |res, _, _| match res {
+                Some(conflict_opt) => fut::Either::A(fut::FutureResult::from(Ok(
+                    proto::AppendEntriesResponse{term, success: false, conflict_opt: Some(conflict_opt)}
+                ))),
+                None => fut::Either::B(fut::wrap_future(storage.send(AppendLogEntries(msg.entries)))
+                    .map_err(|err, _: &mut Self, _| error!("{} {}", COMM_ERR_APPEND_LOG_ENTRIES, err))
+                    .and_then(|res, _, _| fut::FutureResult::from(res))
+                    // At this point, we have successfully appended the new entries to the log.
+                    // We now need to update our `last_log_*` info and build a response.
+                    .and_then(move |res, act, _| {
+                        act.last_log_index = res.index;
+                        act.last_log_term = res.term;
+                        fut::FutureResult::from(Ok(proto::AppendEntriesResponse{term, success: true, conflict_opt: None}))
+                    })),
+            }))
     }
 
     /// Handle requests from peers to cast a vote for a new leader.
     fn handle_vote_request(&mut self, _ctx: &mut Context<Self>, msg: proto::VoteRequest) -> proto::VoteResponse {
-        // If candidate's log is not as least as up-to-date as this node, then reject.
-        if msg.last_log_term < self.current_term || msg.last_log_index < self.commit_index {
+        // If candidate's current term is less than this nodes current term, reject.
+        if msg.term < self.current_term {
+            return proto::VoteResponse{term: self.current_term, vote_granted: false};
+        }
+
+        // If candidate's log is not at least as up-to-date as this node, then reject.
+        if msg.last_log_term < self.last_log_term|| msg.last_log_index < self.last_log_index {
             return proto::VoteResponse{term: self.current_term, vote_granted: false};
         }
 
@@ -174,9 +353,11 @@ impl<S: RaftStorage> Actor for Raft<S> {
         let f = fut::wrap_future(self.storage.send(storage::GetInitialState))
             .map(|res: Result<InitialState, ()>, act: &mut Raft<S>, ctx| match res {
                 Ok(state) => {
-                    act.commit_index = state.log_index;
+                    act.last_log_index = state.log_index;
+                    act.last_log_term = state.log_term;
                     act.current_term = state.log_term;
                     act.voted_for = state.voted_for;
+                    act.members = state.members;
                 }
                 Err(_) => {
                     error!("Error fetching initial state. Shutting down Raft actor.");
@@ -221,7 +402,7 @@ impl Message for RaftRequest {
 }
 
 impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
-    type Result = ResponseFuture<proto::RaftResponse, ()>;
+    type Result = ResponseActFuture<Self, proto::RaftResponse, ()>;
 
     /// Handle inbound Raft request messages.
     ///
@@ -238,27 +419,35 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
     ///
     /// TODO: pin down error cases and update docs on how storage errors are handled.
     fn handle(&mut self, msg: RaftRequest, ctx: &mut Self::Context) -> Self::Result {
+        // Only handle requests if actor has finished initialization.
+        if !self.is_initialized {
+            warn!("Received RaftRequest before initialization was complete.");
+            return Box::new(fut::err(()));
+        }
+
         // Unpack the given message and pass to the appropriate handler.
         use proto::raft_request::Payload;
         use proto::raft_response::Payload as ResponsePayload;
         match msg.0.payload {
-            Some(Payload::AppendEntries(_payload)) => {
-                // TODO: finish this up.
-                Box::new(future::err(()))
+            Some(Payload::AppendEntries(payload)) => {
+                Box::new(self.handle_append_entries_request(ctx, payload)
+                    .map(|res, _, _| proto::RaftResponse{
+                        payload: Some(ResponsePayload::AppendEntries(res)),
+                    }))
             },
             Some(Payload::Vote(payload)) => {
                 let res = self.handle_vote_request(ctx, payload);
-                Box::new(future::ok(proto::RaftResponse{
+                Box::new(fut::ok(proto::RaftResponse{
                     payload: Some(ResponsePayload::Vote(res)),
                 }))
             },
             Some(Payload::InstallSnapshot(_payload)) => {
                 // TODO: finish this up.
-                Box::new(future::err(()))
+                Box::new(fut::err(()))
             },
             None => {
                 warn!("RaftRequest received which had an empty or unknown payload.");
-                Box::new(future::err(()))
+                Box::new(fut::err(()))
             }
         }
     }
@@ -271,11 +460,3 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
 //   lead to duplicates (request serial number tracking).
 // - implement handler for client requests.
 //
-// ### config
-// - build config struct. Needs:
-//   - election timeout min
-//   - election timeout max
-//
-// ### storage
-// - GetInitialState. Must return highest log index, highest log term, node voted for in highest term.
-// - GetLastAppliedIndex. Must return the index of the highest log entry applied to the state machine.

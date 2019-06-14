@@ -55,23 +55,60 @@ message AppendEntriesResponse {
   required uint64 term = 1;
   // Will be true if follower contained entry matching `prev_log_index` and `prev_log_term`.
   required bool success = 2;
+  // A value used to implement the _conflicting term_ optimization outlined in §5.3.
+  //
+  // This value will only be present, and should only be considered, when `success` is `false`.
+  optional ConflictOpt conflict_opt = 3;
 }
 
-// The different types of Raft log entries.
-enum EntryType {
-  // A normal Raft data entry.
-  EntryNormal = 0;
-  // An entry which represents a config change.
-  EntryConfigChange = 1;
+// A struct used to implement the _conflicting term_ optimization outlined in §5.3 for log replication.
+//
+// This value will only be present, and should only be considered, when an `AppendEntriesResponse`
+// object has a `success` value of `false`.
+//
+// This implementation of Raft uses this value to more quickly synchronize a leader with its
+// followers which may be some distance behind in replication, may have conflicting entries, or
+// which may be new to the cluster.
+message ConflictOpt {
+  // The term of the most recent entry which does not conflict with the received request.
+  required uint64 term = 1;
+  // The index of the most recent entry which does not conflict with the received request.
+  required uint64 index = 2;
 }
 
-// An entry to be committed to the Raft log.
 message Entry {
+  required uint64 term = 1;
+  required uint64 index = 2;
   // This entry's type.
-  required EntryType entry_type = 1;
-  required uint64 term = 2;
-  required uint64 index = 3;
-  required bytes data = 4;
+  oneof entry_type {
+    // A normal log entry.
+    EntryNormal normal = 3;
+    // A config change log entry.
+    EntryConfigChange config_change = 4;
+    // An entry which points to a snapshot.
+    EntrySnapshotPointer snapshot_pointer = 5;
+  }
+}
+
+// A normal log entry.
+message EntryNormal {
+  // The contents of this entry.
+  required bytes data = 1;
+}
+
+// A config change log entry.
+message EntryConfigChange {
+  // The contents of this entry.
+  required bytes data = 1;
+}
+
+// An entry which points to a snapshot.
+//
+// This will only be present when read from storage. An entry of this type will never be
+// transmitted from a leader, an `InstallSnapshotRequest` will be sent instead.
+message EntrySnapshotPointer {
+  // The location of the snapshot file on disk.
+  required string path = 1;
 }
 
 // An RPC invoked by candidates to gather votes (§5.2).
@@ -102,7 +139,9 @@ message VoteResponse {
 
 // Invoked by leader to send chunks of a snapshot to a follower (§7).
 //
-// Leaders always send chunks in order.
+// Leaders always send chunks in order. It is important to note that, according to the Raft spec,
+// a log may only have one snapshot at any time. As snapshot contents are application specific,
+// the Raft log will only store a pointer to the snapshot file along with the index & term.
 //
 // Receiver implementation:
 // 1. Reply immediately if `term` is less than receiver's current `term`.

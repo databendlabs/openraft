@@ -7,10 +7,12 @@ edition = "2018"
 [dependencies]
 actix = "0.8"
 bytes = "0.4"
+failure = "0.1"
 futures = "0.1"
 log = "0.4"
 prost = "0.5"
 prost-derive = "0.5"
+rand = "0.6"
 
 [build-dependencies]
 prost-build = "0.5"
