@@ -87,6 +87,9 @@ impl Message for AppendLogEntries {
     type Result = Result<AppendLogEntriesData, ()>;
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// CreateSnapshot ////////////////////////////////////////////////////////////////////////////////
+
 /// A request from the Raft node to have a new snapshot created which covers the current breadth
 /// of the log.
 ///
@@ -121,6 +124,9 @@ pub struct CreateSnapshot {
 impl Message for CreateSnapshot {
     type Result = Result<proto::Entry, ()>;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// InstallSnapshot ///////////////////////////////////////////////////////////////////////////////
 
 /// A request from the Raft node to have a new snapshot written to disk and installed.
 ///
@@ -170,6 +176,9 @@ pub struct InstallSnapshotChunk {
     done: bool,
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// GetCurrentSnapshot ////////////////////////////////////////////////////////////////////////////
+
 /// A request from the Raft node to get the location of the current snapshot on disk.
 ///
 /// ### implementation algorithm
@@ -189,6 +198,28 @@ pub struct GetCurrentSnapshot {
 impl Message for GetCurrentSnapshot {
     type Result = Result<Option<String>, ()>;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// GetCurrentSnapshot ////////////////////////////////////////////////////////////////////////////
+
+/// A request from the Raft node to apply the given log entries to the state machine.
+///
+/// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
+/// have been replicated to a majority of the cluster, will be applied to the state machine.
+pub struct ApplyEntriesToStateMachine(pub Vec<proto::Entry>);
+
+/// Details on the last log entry applied to the state machine as part of an `ApplyEntriesToStateMachine` operation.
+pub struct ApplyEntriesToStateMachineData {
+    pub index: u64,
+    pub term: u64,
+}
+
+impl Message for ApplyEntriesToStateMachine {
+    type Result = Result<ApplyEntriesToStateMachineData, ()>;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RaftStorage ///////////////////////////////////////////////////////////////////////////////////
 
 /// A trait defining the interface of a Raft storage actor.
 ///
@@ -222,4 +253,5 @@ pub trait RaftStorage
         Self: Handler<CreateSnapshot> + ToEnvelope<Self, CreateSnapshot>,
         Self: Handler<InstallSnapshot> + ToEnvelope<Self, InstallSnapshot>,
         Self: Handler<GetCurrentSnapshot> + ToEnvelope<Self, GetCurrentSnapshot>,
+        Self: Handler<ApplyEntriesToStateMachine> + ToEnvelope<Self, ApplyEntriesToStateMachine>,
 {}

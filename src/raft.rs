@@ -2,17 +2,13 @@
 
 use std::collections::BTreeMap;
 
-use actix::{
-    prelude::*,
-    fut::IntoActorFuture,
-};
-use futures::future;
+use actix::prelude::*;
 use log::{error, warn};
 
 use crate::{
     config::Config,
     proto,
-    storage::{self, AppendLogEntries, GetLogEntries, InitialState, RaftStorage},
+    storage::{self, AppendLogEntries, ApplyEntriesToStateMachine, GetLogEntries, InitialState, RaftStorage},
 };
 
 /// An error message for communication errors while attempting to fetch log entries.
@@ -110,7 +106,16 @@ pub struct LeaderState {
 /// indefinitely, so that is how this actor is implemented.
 ///
 /// #### storage
-/// The storage interface is typically going to be the most involved as this is where your <<< TODO: RESUME HERE IMMEDIATE
+/// The storage interface is typically going to be the most involved as this is where your
+/// application really exists. SQL, NoSQL, mutable, immutable, KV, append only ... whatever your
+/// application's data model, this is where it comes to life.
+///
+/// The storage interface is provided as an `actix::Addr<S: RaftStorage>`. The generic type `S`
+/// must implement the `RaftStorage` trait, which is composed of a series of actix message
+/// handling traits.
+///
+/// Depending on the data storage system being used, the actor my be sync or async. It just needs
+/// to implement handlers for the needed actix message types.
 pub struct Raft<S: RaftStorage> {
     /// A value indicating if this actor has successfully completed its initialization routine.
     is_initialized: bool,
@@ -130,7 +135,8 @@ pub struct Raft<S: RaftStorage> {
     /// The index of the highest log entry known to be committed cluster-wide.
     ///
     /// The definition of a committed log is that the leader which has created the log has
-    /// successfully replicated the log to a majority of the cluster.
+    /// successfully replicated the log to a majority of the cluster. This value is only ever
+    /// updated by way of an AppendEntries RPC from the leader.
     ///
     /// Is initialized to 0, and increases monotonically. This is always based on the leader's
     /// commit index which is communicated to other members via the AppendEntries protocol.
@@ -156,6 +162,11 @@ pub struct Raft<S: RaftStorage> {
     last_log_index: u64,
     /// The term of the last log to be appended.
     last_log_term: u64,
+
+    /// A flag to indicate if this system is currently appending logs.
+    is_appending_logs: bool,
+    /// A flag to indicate if this system is currently applying logs to the state machine.
+    is_applying_logs_to_state_machine: bool,
 }
 
 impl<S> Raft<S> where S: RaftStorage {
@@ -173,7 +184,32 @@ impl<S> Raft<S> where S: RaftStorage {
             commit_index: 0, last_applied: 0,
             current_term: 0, voted_for: None,
             last_log_index: 0, last_log_term: 0,
+            is_appending_logs: false, is_applying_logs_to_state_machine: false,
         }
+    }
+
+    /// Begin the process of applying logs to the state machine.
+    fn apply_logs_to_state_machine(&mut self, ctx: &mut Context<Self>) {
+        // Fetch the series of entries which must be applied to the state machine.
+        self.is_applying_logs_to_state_machine = true;
+        let f = fut::wrap_future(self.storage.send(GetLogEntries{start: self.last_applied, stop: self.commit_index + 1}))
+            .map_err(|err, _: &mut Raft<S>, _| error!("{}{}", COMM_ERR_FETCH_LOG_ENTRIES, err))
+            .and_then(|res, act, ctx| act.storage_engine_result(ctx, res))
+
+            // Send the entries over to the storage engine to be applied to the state machine.
+            .and_then(|entries, act, _| {
+                fut::wrap_future(act.storage.send(ApplyEntriesToStateMachine(entries)))
+                    .map_err(|err, _: &mut Raft<S>, _| error!("{}{}", COMM_ERR_FETCH_LOG_ENTRIES, err))
+                    .and_then(|res, act, ctx| act.storage_engine_result(ctx, res))
+            })
+
+            // Update self to reflect progress on applying logs to the state machine.
+            .and_then(|data, act, _| {
+                act.last_applied = data.index;
+                act.is_applying_logs_to_state_machine = false;
+                fut::FutureResult::from(Ok(()))
+            });
+        let _ = ctx.spawn(f);
     }
 
     /// Perform the AppendEntries RPC consistency check.
@@ -193,7 +229,7 @@ impl<S> Raft<S> where S: RaftStorage {
         let storage = self.storage.clone();
         fut::wrap_future(self.storage.send(GetLogEntries{start: index, stop: index}))
             .map_err(|err, _: &mut Raft<S>, _| error!("{}{}", COMM_ERR_FETCH_LOG_ENTRIES, err))
-            .and_then(|res, _, _| fut::FutureResult::from(res))
+            .and_then(|res, act, ctx| act.storage_engine_result(ctx, res))
             .and_then(move |res, act, _| {
                 match res.last() {
                     // The target entry was not found. This can only mean that we don't have the
@@ -215,8 +251,8 @@ impl<S> Raft<S> where S: RaftStorage {
                             // conflict optimization.
                             fut::Either::B(fut::wrap_future(storage.send(GetLogEntries{start: index, stop: index}))
                                 .map_err(|err, _: &mut Raft<S>, _| error!("{}{}", COMM_ERR_FETCH_LOG_ENTRIES, err))
-                                .and_then(|res, _, _| fut::FutureResult::from(res))
-                                .and_then(move |res, act, _| {
+                                .and_then(|res, act, ctx| act.storage_engine_result(ctx, res))
+                                .and_then(move |res, _, _| {
                                     match res.into_iter().filter(|entry| entry.term == term).nth(0) {
                                         Some(entry) => fut::FutureResult::from(Ok(Some(proto::ConflictOpt{
                                             term: entry.term,
@@ -237,14 +273,13 @@ impl<S> Raft<S> where S: RaftStorage {
     /// Handle requests from Raft leader to append log entries.
     ///
     /// This method implements the append entries algorithm and upholds all of the safety checks
-    /// detailed in §5.3. There are a few very important notes to keep in mind while reviewing
-    /// this algorithm.
+    /// detailed in §5.3.
     ///
     /// The essential goal of this algorithm is that the receiver (the node on which this method
     /// is being executed) must find the exact entry in its log specified by the RPC's last index
     /// and last term fields, and then begin writing the new entries thereafter.
     ///
-    /// When the receiver can not find the entry specified in the RPC's last index & last term
+    /// When the receiver can not find the entry specified in the RPC's prev index & prev term
     /// fields, it will respond with a failure to the leader. **This implementation of Raft
     /// includes the _conflicting term_ optimization** which is intended to reduce the number of
     /// rejected append entries RPCs from followers which are lagging behind, which is detailed in
@@ -254,10 +289,16 @@ impl<S> Raft<S> where S: RaftStorage {
     ///
     /// In Raft, the leader handles inconsistencies by forcing the followers’ logs to duplicate
     /// its own. This means that conflicting entries in follower logs will be overwritten with
-    /// entries from the leader’s log. §5.4 details the safety of this protocol.
+    /// entries from the leader’s log. §5.4 details the safety of this protocol. It is important
+    /// to note that logs which are _committed_ will not be overwritten. This is a critical
+    /// feature of Raft.
+    ///
+    /// Raft also gurantees that only logs which have been comitted may be applied to the state
+    /// machine, which ensures that there will never be a case where a log needs to be reverted
+    /// after being applied to the state machine.
     ///
     /// #### inconsistency example
-    /// Followers may receive valid append entries requests from leaders, commit them, respond,
+    /// Followers may receive valid append entries requests from leaders, append them, respond,
     /// and before the leader is able to replicate the entries to a majority of nodes, the leader
     /// may die, a new leader may be elected which does not have the same entries, as they were
     /// not replicated to a majority of followers, and the new leader will proceeed to overwrite
@@ -273,31 +314,48 @@ impl<S> Raft<S> where S: RaftStorage {
             );
         }
 
-        // Update current term as needed & ensure we are in the follower state.
+        // Update current term as needed & ensure we are in the follower state if needed.
         if msg.term > self.current_term {
             self.current_term = msg.term;
             self.state = NodeState::Follower;
         }
 
-        // TODO: kick off process of applying logs to state machine based on `msg.leader_commit`.
+        // Kick off process of applying logs to state machine based on `msg.leader_commit`.
+        self.commit_index = msg.leader_commit; // The value for `self.commit_index` is only updated here.
+        if self.commit_index > self.last_applied && !self.is_applying_logs_to_state_machine {
+            self.apply_logs_to_state_machine(ctx);
+        }
+
+        // If logs are already being appended, then just abort.
+        if self.is_appending_logs {
+            return fut::Either::A(
+                fut::Either::A(fut::ok(proto::AppendEntriesResponse{term, success: false, conflict_opt: None}))
+            );
+        }
 
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
         // previous log info, then replication is g2g.
         if msg.prev_log_index == 0 || (msg.prev_log_index == self.last_log_index && msg.prev_log_term == self.last_log_term) {
+            self.is_appending_logs = true;
             return fut::Either::A(fut::Either::B(
                 fut::wrap_future(self.storage.send(AppendLogEntries(msg.entries)))
                     .map_err(|err, _: &mut Self, _| error!("{} {}", COMM_ERR_APPEND_LOG_ENTRIES, err))
-                    .and_then(|res, _, _| fut::FutureResult::from(res))
+                    .and_then(|res, act, ctx| act.storage_engine_result(ctx, res))
                     .map(move |res, act, _| {
                         act.last_log_index = res.index;
                         act.last_log_term = res.term;
                         proto::AppendEntriesResponse{term, success: true, conflict_opt: None}
+                    })
+                    .then(|res, act, _| {
+                        act.is_appending_logs = false;
+                        fut::FutureResult::from(res)
                     })));
         }
 
         // Previous log info doesn't immediately line up, so perform log consistency check and
         // proceed based on its result.
         let storage = self.storage.clone();
+        self.is_appending_logs = true;
         fut::Either::B(self.log_consistency_check(ctx, msg.prev_log_index, msg.prev_log_term)
             .and_then(move |res, _, _| match res {
                 Some(conflict_opt) => fut::Either::A(fut::FutureResult::from(Ok(
@@ -305,7 +363,7 @@ impl<S> Raft<S> where S: RaftStorage {
                 ))),
                 None => fut::Either::B(fut::wrap_future(storage.send(AppendLogEntries(msg.entries)))
                     .map_err(|err, _: &mut Self, _| error!("{} {}", COMM_ERR_APPEND_LOG_ENTRIES, err))
-                    .and_then(|res, _, _| fut::FutureResult::from(res))
+                    .and_then(|res, act, ctx| act.storage_engine_result(ctx, res))
                     // At this point, we have successfully appended the new entries to the log.
                     // We now need to update our `last_log_*` info and build a response.
                     .and_then(move |res, act, _| {
@@ -313,6 +371,10 @@ impl<S> Raft<S> where S: RaftStorage {
                         act.last_log_term = res.term;
                         fut::FutureResult::from(Ok(proto::AppendEntriesResponse{term, success: true, conflict_opt: None}))
                     })),
+            })
+            .then(|res, act, _| {
+                act.is_appending_logs = false;
+                fut::FutureResult::from(res)
             }))
     }
 
@@ -324,7 +386,7 @@ impl<S> Raft<S> where S: RaftStorage {
         }
 
         // If candidate's log is not at least as up-to-date as this node, then reject.
-        if msg.last_log_term < self.last_log_term|| msg.last_log_index < self.last_log_index {
+        if msg.last_log_term < self.last_log_term || msg.last_log_index < self.last_log_index {
             return proto::VoteResponse{term: self.current_term, vote_granted: false};
         }
 
@@ -342,6 +404,17 @@ impl<S> Raft<S> where S: RaftStorage {
                 proto::VoteResponse{term: self.current_term, vote_granted: true}
             },
         }
+    }
+
+    /// Evaluate results coming from the storage engine and handle as needed.
+    ///
+    /// This routine is primarily used to simply stop this actor when an error has come up from
+    /// the storage engine layer.
+    fn storage_engine_result<T>(&mut self, ctx: &mut Context<Self>, res: Result<T, ()>) -> impl ActorFuture<Actor=Self, Item=T, Error=()> {
+        fut::FutureResult::from(res.map_err(|_| {
+            error!("Error from storage engine. Stopping Raft actor.");
+            ctx.stop()
+        }))
     }
 }
 
@@ -413,11 +486,15 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
     ///
     /// ### errors
     /// It is rare that an error will be returned from this handler. The most typical error
-    /// conditions are related to storage failures. In the case of a storage failure however,
-    /// this actor will typically shut down, so this interface may end up not having an error
-    /// case.
+    /// conditions are related to storage failures; however that is not the only error case. In
+    /// the case of a storage failure however, this actor will go into the stopping state and shut
+    /// down.
     ///
-    /// TODO: pin down error cases and update docs on how storage errors are handled.
+    /// On an application level, it would be prudent to fail the associated request when an error
+    /// takes place here and have the caller perform a retry.
+    ///
+    /// TODO: maybe cut this over to use an actual error type to give users more control over how
+    /// to handle errors. If we do so, shutting this actor down ourselves should not be required.
     fn handle(&mut self, msg: RaftRequest, ctx: &mut Self::Context) -> Self::Result {
         // Only handle requests if actor has finished initialization.
         if !self.is_initialized {
@@ -436,10 +513,10 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
                     }))
             },
             Some(Payload::Vote(payload)) => {
-                let res = self.handle_vote_request(ctx, payload);
-                Box::new(fut::ok(proto::RaftResponse{
-                    payload: Some(ResponsePayload::Vote(res)),
-                }))
+                Box::new(fut::ok(self.handle_vote_request(ctx, payload))
+                    .map(|res, _, _| proto::RaftResponse{
+                        payload: Some(ResponsePayload::Vote(res)),
+                    }))
             },
             Some(Payload::InstallSnapshot(_payload)) => {
                 // TODO: finish this up.
@@ -454,6 +531,12 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
 }
 
 // TODO:
+// ### state
+// - need to add GetInitialState.current_term. This means that initial state will mostly come from
+// a "hard state" record which holds current_term, voted_for, and members.
+// - need to persist hard state for things like current term (which may not be from most recent
+// logs, but from RPCs). Add message type to storage interface. Call from needed location, which
+// should pretty much always be due to an RPC.
 // ### clients
 // - create client message protobuf, used to generically wrap any type of client request.
 //   Put together docs on how applications should mitigate client retries which would
