@@ -1,24 +1,35 @@
-/// A Raft message containing a specific RPC payload.
+/// A Raft request message containing a specific RPC request payload.
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct RaftMessage {
-    #[prost(oneof="raft_message::Payload", tags="1, 2, 3, 4, 5, 6")]
-    pub payload: ::std::option::Option<raft_message::Payload>,
+pub struct RaftRequest {
+    #[prost(oneof="raft_request::Payload", tags="1, 2, 3")]
+    pub payload: ::std::option::Option<raft_request::Payload>,
 }
-pub mod raft_message {
+pub mod raft_request {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Payload {
         #[prost(message, tag="1")]
-        AppendEntriesRequest(super::AppendEntriesRequest),
+        AppendEntries(super::AppendEntriesRequest),
         #[prost(message, tag="2")]
-        AppendEntriesResponse(super::AppendEntriesResponse),
+        Vote(super::VoteRequest),
         #[prost(message, tag="3")]
-        VoteRequest(super::VoteRequest),
-        #[prost(message, tag="4")]
-        VoteResponse(super::VoteResponse),
-        #[prost(message, tag="5")]
-        InstallSnapshotRequest(super::InstallSnapshotRequest),
-        #[prost(message, tag="6")]
-        InstallSnapshotResponse(super::InstallSnapshotResponse),
+        InstallSnapshot(super::InstallSnapshotRequest),
+    }
+}
+/// A Raft response message containing a specific RPC response payload.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RaftResponse {
+    #[prost(oneof="raft_response::Payload", tags="1, 2, 3")]
+    pub payload: ::std::option::Option<raft_response::Payload>,
+}
+pub mod raft_response {
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Payload {
+        #[prost(message, tag="1")]
+        AppendEntries(super::AppendEntriesResponse),
+        #[prost(message, tag="2")]
+        Vote(super::VoteResponse),
+        #[prost(message, tag="3")]
+        InstallSnapshot(super::InstallSnapshotResponse),
     }
 }
 /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -66,19 +77,77 @@ pub struct AppendEntriesResponse {
     /// Will be true if follower contained entry matching `prev_log_index` and `prev_log_term`.
     #[prost(bool, required, tag="2")]
     pub success: bool,
+    /// A value used to implement the _conflicting term_ optimization outlined in §5.3.
+    ///
+    /// This value will only be present, and should only be considered, when `success` is `false`.
+    #[prost(message, optional, tag="3")]
+    pub conflict_opt: ::std::option::Option<ConflictOpt>,
 }
-/// An entry to be committed to the Raft log.
+/// A struct used to implement the _conflicting term_ optimization outlined in §5.3 for log replication.
+///
+/// This value will only be present, and should only be considered, when an `AppendEntriesResponse`
+/// object has a `success` value of `false`.
+///
+/// This implementation of Raft uses this value to more quickly synchronize a leader with its
+/// followers which may be some distance behind in replication, may have conflicting entries, or
+/// which may be new to the cluster.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConflictOpt {
+    /// The term of the most recent entry which does not conflict with the received request.
+    #[prost(uint64, required, tag="1")]
+    pub term: u64,
+    /// The index of the most recent entry which does not conflict with the received request.
+    #[prost(uint64, required, tag="2")]
+    pub index: u64,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Entry {
-    /// This entry's type.
-    #[prost(enumeration="EntryType", required, tag="1")]
-    pub entry_type: i32,
-    #[prost(uint64, required, tag="2")]
+    #[prost(uint64, required, tag="1")]
     pub term: u64,
-    #[prost(uint64, required, tag="3")]
+    #[prost(uint64, required, tag="2")]
     pub index: u64,
-    #[prost(bytes, required, tag="4")]
+    /// This entry's type.
+    #[prost(oneof="entry::EntryType", tags="3, 4, 5")]
+    pub entry_type: ::std::option::Option<entry::EntryType>,
+}
+pub mod entry {
+    /// This entry's type.
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum EntryType {
+        /// A normal log entry.
+        #[prost(message, tag="3")]
+        Normal(super::EntryNormal),
+        /// A config change log entry.
+        #[prost(message, tag="4")]
+        ConfigChange(super::EntryConfigChange),
+        /// An entry which points to a snapshot.
+        #[prost(message, tag="5")]
+        SnapshotPointer(super::EntrySnapshotPointer),
+    }
+}
+/// A normal log entry.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntryNormal {
+    /// The contents of this entry.
+    #[prost(bytes, required, tag="1")]
     pub data: std::vec::Vec<u8>,
+}
+/// A config change log entry.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntryConfigChange {
+    /// The contents of this entry.
+    #[prost(bytes, required, tag="1")]
+    pub data: std::vec::Vec<u8>,
+}
+/// An entry which points to a snapshot.
+///
+/// This will only be present when read from storage. An entry of this type will never be
+/// transmitted from a leader, an `InstallSnapshotRequest` will be sent instead.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EntrySnapshotPointer {
+    /// The location of the snapshot file on disk.
+    #[prost(string, required, tag="1")]
+    pub path: std::string::String,
 }
 /// An RPC invoked by candidates to gather votes (§5.2).
 ///
@@ -114,7 +183,9 @@ pub struct VoteResponse {
 }
 /// Invoked by leader to send chunks of a snapshot to a follower (§7).
 ///
-/// Leaders always send chunks in order.
+/// Leaders always send chunks in order. It is important to note that, according to the Raft spec,
+/// a log may only have one snapshot at any time. As snapshot contents are application specific,
+/// the Raft log will only store a pointer to the snapshot file along with the index & term.
 ///
 /// Receiver implementation:
 /// 1. Reply immediately if `term` is less than receiver's current `term`.
@@ -157,13 +228,4 @@ pub struct InstallSnapshotResponse {
     /// The receiving node's current term, for leader to update itself.
     #[prost(uint64, required, tag="1")]
     pub term: u64,
-}
-/// The different types of Raft log entries.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum EntryType {
-    /// A normal Raft data entry.
-    EntryNormal = 0,
-    /// An entry which represents a config change.
-    EntryConfigChange = 1,
 }
