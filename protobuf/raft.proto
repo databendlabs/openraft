@@ -98,8 +98,10 @@ message EntryNormal {
 
 // A config change log entry.
 message EntryConfigChange {
-  // The contents of this entry.
-  required bytes data = 1;
+  // The full list of node IDs to be considered cluster members as part of this config change.
+  repeated uint64 members = 1;
+  // Any application specific supplemental data asscoiated with this config change.
+  optional bytes supplemental = 2;
 }
 
 // An entry which points to a snapshot.

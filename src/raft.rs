@@ -1,6 +1,9 @@
 //! A module encapsulating the core `Raft` actor and its logic.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    time::Duration,
+};
 
 use actix::prelude::*;
 use failure::Fail;
@@ -28,7 +31,20 @@ const COMM_SAVE_HARD_STATE: &str = "Error communicating with storage actor for s
 pub type NodeId = u64;
 
 /// The state of the Raft node.
+#[derive(Eq, PartialEq)]
 pub enum NodeState {
+    /// A non-standard Raft state indicating that the node is initializing.
+    Initializing,
+    /// A non-standard Raft state indicating that the node is awaiting an admin command to begin.
+    ///
+    /// The Raft node will only be in this state when it comes online for the very first time
+    /// without any state recovered from disk. In such a state, the parent application may have
+    /// this new node added to an already running cluster, may have the node start as the leader
+    /// of a new standalone cluster, or have the node initialize with a specific config.
+    ///
+    /// This state gives control over Raft's initial cluster formation and node startup to the
+    /// application which is using this system.
+    Standby,
     /// The node is actively replicating logs from the leader.
     ///
     /// The node is passive when it is in this state. It issues no requests on its own but simply
@@ -46,6 +62,7 @@ pub enum NodeState {
 /// Volatile state specific to the Raft leader.
 ///
 /// This state is reinitialized after an election.
+#[derive(Eq, PartialEq)]
 pub struct LeaderState {
     /// A mapping of node IDs to the index of the next log entry to send.
     ///
@@ -128,12 +145,10 @@ pub struct LeaderState {
 /// The rest of the system may remain online as long as is needed, but this actor will stop in
 /// order to avoid data corruption or other such issues.
 pub struct Raft<S: RaftStorage> {
-    /// A value indicating if this actor has successfully completed its initialization routine.
-    is_initialized: bool,
-    /// This node's runtime config.
-    config: Config,
     /// This node's ID.
     id: NodeId,
+    /// This node's runtime config.
+    config: Config,
     /// All currently known members of the Raft cluster.
     members: Vec<NodeId>,
     /// The current state of this Raft node.
@@ -178,6 +193,9 @@ pub struct Raft<S: RaftStorage> {
     is_appending_logs: bool,
     /// A flag to indicate if this system is currently applying logs to the state machine.
     is_applying_logs_to_state_machine: bool,
+
+    /// A handle to the election timeout callback.
+    election_timeout: Option<actix::SpawnHandle>,
 }
 
 impl<S> Raft<S> where S: RaftStorage {
@@ -188,15 +206,22 @@ impl<S> Raft<S> where S: RaftStorage {
     ///
     /// TODO: add an example on how to create and start an instance.
     pub fn new(id: NodeId, config: Config, out: actix::Recipient<RaftRequest>, storage: Addr<S>) -> Self {
-        let state = NodeState::Follower;
+        let state = NodeState::Initializing;
         Self{
-            is_initialized: false, config,
-            id, members: vec![], state, out, storage,
+            id, config, members: vec![id], state, out, storage,
             commit_index: 0, last_applied: 0,
             current_term: 0, voted_for: None,
             last_log_index: 0, last_log_term: 0,
             is_appending_logs: false, is_applying_logs_to_state_machine: false,
+            election_timeout: None,
         }
+    }
+
+    /// Append the given entries to the log.
+    ///
+    /// This routine also encapsulates all logic which must be performed related to the process.
+    fn append_log_entries(&mut self, ctx: &mut Context<Self>, entries: Vec<proto::Entry>) {
+
     }
 
     /// Begin the process of applying logs to the state machine.
@@ -226,6 +251,216 @@ impl<S> Raft<S> where S: RaftStorage {
                 error!("{}", err)
             });
         let _ = ctx.spawn(f);
+    }
+
+    /// Handle requests from Raft leader to append log entries.
+    ///
+    /// This method implements the append entries algorithm and upholds all of the safety checks
+    /// detailed in §5.3.
+    ///
+    /// The essential goal of this algorithm is that the receiver (the node on which this method
+    /// is being executed) must find the exact entry in its log specified by the RPC's last index
+    /// and last term fields, and then begin writing the new entries thereafter.
+    ///
+    /// When the receiver can not find the entry specified in the RPC's prev index & prev term
+    /// fields, it will respond with a failure to the leader. **This implementation of Raft
+    /// includes the _conflicting term_ optimization** which is intended to reduce the number of
+    /// rejected append entries RPCs from followers which are lagging behind, which is detailed in
+    /// §5.3. In such cases, if the Raft cluster is configured with a snapshot policy other than
+    /// `Disabled`, the leader will make a determination if an `InstallSnapshot` RPC should be
+    /// sent to this node.
+    ///
+    /// In Raft, the leader handles inconsistencies by forcing the followers’ logs to duplicate
+    /// its own. This means that conflicting entries in follower logs will be overwritten with
+    /// entries from the leader’s log. §5.4 details the safety of this protocol. It is important
+    /// to note that logs which are _committed_ will not be overwritten. This is a critical
+    /// feature of Raft.
+    ///
+    /// Raft also gurantees that only logs which have been comitted may be applied to the state
+    /// machine, which ensures that there will never be a case where a log needs to be reverted
+    /// after being applied to the state machine.
+    ///
+    /// #### inconsistency example
+    /// Followers may receive valid append entries requests from leaders, append them, respond,
+    /// and before the leader is able to replicate the entries to a majority of nodes, the leader
+    /// may die, a new leader may be elected which does not have the same entries, as they were
+    /// not replicated to a majority of followers, and the new leader will proceeed to overwrite
+    /// the inconsistent entries.
+    fn handle_append_entries_request(
+        &mut self, ctx: &mut Context<Self>, msg: proto::AppendEntriesRequest,
+    ) -> impl ActorFuture<Actor=Self, Item=proto::AppendEntriesResponse, Error=RaftError> {
+        // Don't interact with non-cluster members.
+        if !self.members.contains(&msg.leader_id) {
+            return fut::Either::A(
+                fut::Either::A(fut::err(RaftError::RPCFromUnknownNode))
+            );
+        }
+
+        // If message's term is less than most recent term, then we do not honor the request.
+        if &msg.term < &self.current_term {
+            return fut::Either::A(
+                fut::Either::A(fut::ok(proto::AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None}))
+            );
+        }
+
+        // Update current term as needed & ensure we are in the follower state if needed.
+        if &msg.term > &self.current_term {
+            self.update_current_term(ctx, msg.term);
+        }
+
+        // Kick off process of applying logs to state machine based on `msg.leader_commit`.
+        self.commit_index = msg.leader_commit; // The value for `self.commit_index` is only updated here.
+        if &self.commit_index > &self.last_applied && !self.is_applying_logs_to_state_machine {
+            self.apply_logs_to_state_machine(ctx);
+        }
+
+        // If the AppendEntries RPC has no entries, then this was just a heartbeat.
+        if msg.entries.len() == 0 {
+            return fut::Either::A(
+                fut::Either::A(fut::ok(proto::AppendEntriesResponse{term: self.current_term, success: true, conflict_opt: None}))
+            );
+        }
+
+        // If logs are already being appended, then just abort.
+        if self.is_appending_logs {
+            return fut::Either::A(
+                fut::Either::A(fut::ok(proto::AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None}))
+            );
+        }
+
+        // TODO: update membership hardstate for append entries config RPCs. Probably encapsulate as new method.
+
+        // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
+        // previous log info, then replication is g2g.
+        let term = self.current_term;
+        if &msg.prev_log_index == &u64::min_value() || (&msg.prev_log_index == &self.last_log_index && &msg.prev_log_term == &self.last_log_term) {
+            self.is_appending_logs = true;
+            return fut::Either::A(fut::Either::B(
+                fut::wrap_future(self.storage.send(AppendLogEntries(msg.entries)))
+                    .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+                    .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
+                    .map(move |res, act, _| {
+                        act.last_log_index = res.index;
+                        act.last_log_term = res.term;
+                        proto::AppendEntriesResponse{term, success: true, conflict_opt: None}
+                    })
+                    .then(|res, act, _| {
+                        act.is_appending_logs = false;
+                        fut::FutureResult::from(res)
+                    })));
+        }
+
+        // Previous log info doesn't immediately line up, so perform log consistency check and
+        // proceed based on its result.
+        let storage = self.storage.clone();
+        self.is_appending_logs = true;
+        fut::Either::B(self.log_consistency_check(ctx, msg.prev_log_index, msg.prev_log_term)
+            .and_then(move |res, _, _| match res {
+                Some(conflict_opt) => fut::Either::A(fut::FutureResult::from(Ok(
+                    proto::AppendEntriesResponse{term, success: false, conflict_opt: Some(conflict_opt)}
+                ))),
+                None => fut::Either::B(fut::wrap_future(storage.send(AppendLogEntries(msg.entries)))
+                    .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+                    .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
+                    // At this point, we have successfully appended the new entries to the log.
+                    // We now need to update our `last_log_*` info and build a response.
+                    .and_then(move |res, act, _| {
+                        act.last_log_index = res.index;
+                        act.last_log_term = res.term;
+                        fut::FutureResult::from(Ok(proto::AppendEntriesResponse{term, success: true, conflict_opt: None}))
+                    })),
+            })
+            .then(|res, act, _| {
+                act.is_appending_logs = false;
+                fut::FutureResult::from(res)
+            }))
+    }
+
+    /// Handle requests from peers to cast a vote for a new leader.
+    fn handle_vote_request(&mut self, ctx: &mut Context<Self>, msg: proto::VoteRequest) -> Result<proto::VoteResponse, RaftError> {
+        // Don't interact with non-cluster members.
+        if !self.members.contains(&msg.candidate_id) {
+            return Err(RaftError::RPCFromUnknownNode);
+        }
+
+        // If candidate's current term is less than this nodes current term, reject.
+        if &msg.term < &self.current_term {
+            return Ok(proto::VoteResponse{term: self.current_term, vote_granted: false});
+        }
+
+        // If candidate's log is not at least as up-to-date as this node, then reject.
+        if &msg.last_log_term < &self.last_log_term || &msg.last_log_index < &self.last_log_index {
+            return Ok(proto::VoteResponse{term: self.current_term, vote_granted: false});
+        }
+
+        // Candidate's log is up-to-date so handle voting conditions.
+
+        // If term is newer than current term, cast vote.
+        if &msg.term > &self.current_term {
+            self.voted_for = Some(msg.candidate_id);
+            self.update_current_term(ctx, msg.term);
+            return Ok(proto::VoteResponse{term: self.current_term, vote_granted: true});
+        }
+
+        // Term is the same as current term. This will be rare, but could come about from some error conditions.
+        match &self.voted_for {
+            // This node has already voted for the candidate.
+            Some(candidate_id) if candidate_id == &msg.candidate_id => {
+                Ok(proto::VoteResponse{term: self.current_term, vote_granted: true})
+            }
+            // This node has already voted for a different candidate.
+            Some(_) => Ok(proto::VoteResponse{term: self.current_term, vote_granted: false}),
+            // This node has not already voted, so vote for the candidate.
+            None => {
+                self.voted_for = Some(msg.candidate_id);
+                self.save_hard_state(ctx);
+                Ok(proto::VoteResponse{term: self.current_term, vote_granted: true})
+            },
+        }
+    }
+
+    /// Perform the initialization routine for the Raft node.
+    ///
+    /// If this node has configuration present from being online previously, then this node will
+    /// begin a standard lifecycle as a follower. If this node is pristine, then it will wait in
+    /// standby mode.
+    ///
+    /// ### previous state | follower
+    /// If the node has previous state, then there are a few cases to account for.
+    ///
+    /// If the node has been offline for some time and was removed from the cluster, no problem.
+    /// Any RPCs sent from this node will be rejected until it is added to the cluster. Once it is
+    /// added to the cluster again, the standard Raft protocol will resume as normal.
+    ///
+    /// If the node went down only very briefly, then it should immediately start receiving
+    /// heartbeats and resume as normal, else it will start an election if it doesn't receive any
+    /// heartbeats from the leader per normal Raft protocol.
+    ///
+    /// If the node was running standalone, it will win the election and resume as a standalone.
+    ///
+    /// ### pristine state | standby
+    /// While in standby mode, the Raft leader of the current cluster may discover this node and
+    /// add it to the cluster. In such a case, it will begin receiving heartbeats from the leader
+    /// and business proceeds as usual.
+    ///
+    /// If there is no current cluster, while in standby mode, the node may receive an admin
+    /// command instructing it to campaign with a specific config, or to begin operating as the
+    /// leader of a standalone cluster.
+    fn initialize(&mut self, ctx: &mut Context<Self>, state: InitialState) {
+        self.last_log_index = state.last_log_index;
+        self.last_log_term = state.last_log_term;
+        self.current_term = state.hard_state.current_term;
+        self.voted_for = state.hard_state.voted_for;
+        self.members = state.hard_state.members;
+        self.last_applied = state.last_applied_log;
+
+        // Set initial state based on state recovered from disk.
+        if self.members.len() != 1 || &self.last_log_index != &u64::min_value() {
+            self.state = NodeState::Follower;
+            self.update_election_timeout(ctx);
+        } else {
+            self.state = NodeState::Standby;
+        }
     }
 
     /// Perform the AppendEntries RPC consistency check.
@@ -286,167 +521,6 @@ impl<S> Raft<S> where S: RaftStorage {
             })
     }
 
-    /// Handle requests from Raft leader to append log entries.
-    ///
-    /// This method implements the append entries algorithm and upholds all of the safety checks
-    /// detailed in §5.3.
-    ///
-    /// The essential goal of this algorithm is that the receiver (the node on which this method
-    /// is being executed) must find the exact entry in its log specified by the RPC's last index
-    /// and last term fields, and then begin writing the new entries thereafter.
-    ///
-    /// When the receiver can not find the entry specified in the RPC's prev index & prev term
-    /// fields, it will respond with a failure to the leader. **This implementation of Raft
-    /// includes the _conflicting term_ optimization** which is intended to reduce the number of
-    /// rejected append entries RPCs from followers which are lagging behind, which is detailed in
-    /// §5.3. In such cases, if the Raft cluster is configured with a snapshot policy other than
-    /// `Disabled`, the leader will make a determination if an `InstallSnapshot` RPC should be
-    /// sent to this node.
-    ///
-    /// In Raft, the leader handles inconsistencies by forcing the followers’ logs to duplicate
-    /// its own. This means that conflicting entries in follower logs will be overwritten with
-    /// entries from the leader’s log. §5.4 details the safety of this protocol. It is important
-    /// to note that logs which are _committed_ will not be overwritten. This is a critical
-    /// feature of Raft.
-    ///
-    /// Raft also gurantees that only logs which have been comitted may be applied to the state
-    /// machine, which ensures that there will never be a case where a log needs to be reverted
-    /// after being applied to the state machine.
-    ///
-    /// #### inconsistency example
-    /// Followers may receive valid append entries requests from leaders, append them, respond,
-    /// and before the leader is able to replicate the entries to a majority of nodes, the leader
-    /// may die, a new leader may be elected which does not have the same entries, as they were
-    /// not replicated to a majority of followers, and the new leader will proceeed to overwrite
-    /// the inconsistent entries.
-    fn handle_append_entries_request(
-        &mut self, ctx: &mut Context<Self>, msg: proto::AppendEntriesRequest,
-    ) -> impl ActorFuture<Actor=Self, Item=proto::AppendEntriesResponse, Error=RaftError> {
-        // If message's term is less than most recent term, then we do not honor the request.
-        let term = self.current_term;
-        if msg.term < term {
-            return fut::Either::A(
-                fut::Either::A(fut::ok(proto::AppendEntriesResponse{term, success: false, conflict_opt: None}))
-            );
-        }
-
-        // Update current term as needed & ensure we are in the follower state if needed.
-        if msg.term > self.current_term {
-            self.current_term = msg.term;
-            self.state = NodeState::Follower;
-            self.save_hard_state(ctx);
-        }
-
-        // Kick off process of applying logs to state machine based on `msg.leader_commit`.
-        self.commit_index = msg.leader_commit; // The value for `self.commit_index` is only updated here.
-        if self.commit_index > self.last_applied && !self.is_applying_logs_to_state_machine {
-            self.apply_logs_to_state_machine(ctx);
-        }
-
-        // If the AppendEntries RPC has no entries, then this was just a heartbeat.
-        if msg.entries.len() == 0 {
-            return fut::Either::A(
-                fut::Either::A(fut::ok(proto::AppendEntriesResponse{term, success: true, conflict_opt: None}))
-            );
-        }
-
-        // If logs are already being appended, then just abort.
-        if self.is_appending_logs {
-            return fut::Either::A(
-                fut::Either::A(fut::ok(proto::AppendEntriesResponse{term, success: false, conflict_opt: None}))
-            );
-        }
-
-        // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
-        // previous log info, then replication is g2g.
-        if msg.prev_log_index == 0 || (msg.prev_log_index == self.last_log_index && msg.prev_log_term == self.last_log_term) {
-            self.is_appending_logs = true;
-            return fut::Either::A(fut::Either::B(
-                fut::wrap_future(self.storage.send(AppendLogEntries(msg.entries)))
-                    .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
-                    .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
-                    .map(move |res, act, _| {
-                        act.last_log_index = res.index;
-                        act.last_log_term = res.term;
-                        proto::AppendEntriesResponse{term, success: true, conflict_opt: None}
-                    })
-                    .then(|res, act, _| {
-                        act.is_appending_logs = false;
-                        fut::FutureResult::from(res)
-                    })));
-        }
-
-        // Previous log info doesn't immediately line up, so perform log consistency check and
-        // proceed based on its result.
-        let storage = self.storage.clone();
-        self.is_appending_logs = true;
-        fut::Either::B(self.log_consistency_check(ctx, msg.prev_log_index, msg.prev_log_term)
-            .and_then(move |res, _, _| match res {
-                Some(conflict_opt) => fut::Either::A(fut::FutureResult::from(Ok(
-                    proto::AppendEntriesResponse{term, success: false, conflict_opt: Some(conflict_opt)}
-                ))),
-                None => fut::Either::B(fut::wrap_future(storage.send(AppendLogEntries(msg.entries)))
-                    .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
-                    .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
-                    // At this point, we have successfully appended the new entries to the log.
-                    // We now need to update our `last_log_*` info and build a response.
-                    .and_then(move |res, act, _| {
-                        act.last_log_index = res.index;
-                        act.last_log_term = res.term;
-                        fut::FutureResult::from(Ok(proto::AppendEntriesResponse{term, success: true, conflict_opt: None}))
-                    })),
-            })
-            .then(|res, act, _| {
-                act.is_appending_logs = false;
-                fut::FutureResult::from(res)
-            }))
-    }
-
-    /// Handle requests from peers to cast a vote for a new leader.
-    fn handle_vote_request(&mut self, ctx: &mut Context<Self>, msg: proto::VoteRequest) -> proto::VoteResponse {
-        // If candidate's current term is less than this nodes current term, reject.
-        if msg.term < self.current_term {
-            return proto::VoteResponse{term: self.current_term, vote_granted: false};
-        }
-
-        // If candidate's log is not at least as up-to-date as this node, then reject.
-        if msg.last_log_term < self.last_log_term || msg.last_log_index < self.last_log_index {
-            return proto::VoteResponse{term: self.current_term, vote_granted: false};
-        }
-
-        // Candidate's log is as up-to-date, handle voting conditions.
-        match &self.voted_for {
-            // This node has already voted for the candidate.
-            Some(candidate_id) if candidate_id == &msg.candidate_id => {
-                proto::VoteResponse{term: self.current_term, vote_granted: true}
-            }
-            // This node has already voted for a different candidate.
-            Some(_) => proto::VoteResponse{term: self.current_term, vote_granted: false},
-            // This node has not already voted, so vote for the candidate.
-            None => {
-                self.voted_for = Some(msg.candidate_id);
-                if msg.term > self.current_term {
-                    self.current_term = msg.term;
-                }
-                self.save_hard_state(ctx);
-                proto::VoteResponse{term: self.current_term, vote_granted: true}
-            },
-        }
-    }
-
-    /// Save the Raft node's current hard state to disk.
-    fn save_hard_state(&mut self, ctx: &mut Context<Self>) {
-        let hs = HardState{current_term: self.current_term, voted_for: self.voted_for, members: self.members.clone()};
-        let f = fut::wrap_future(self.storage.send(SaveHardState(hs)))
-            .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
-            .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
-            .map_err(|err, _, _| {
-                error!("{}", err)
-            });
-
-        ctx.spawn(f);
-    }
-
     /// A simple mapping function to log and transform an `actix::MailboxError`.
     fn map_messaging_error(err: actix::MailboxError) -> RaftError {
         error!("An internal actix messaging error was encountered. {}", err);
@@ -464,32 +538,83 @@ impl<S> Raft<S> where S: RaftStorage {
             RaftError::StorageError(err)
         })
     }
+
+    /// Save the Raft node's current hard state to disk.
+    fn save_hard_state(&mut self, ctx: &mut Context<Self>) {
+        let hs = HardState{current_term: self.current_term, voted_for: self.voted_for, members: self.members.clone()};
+        let f = fut::wrap_future(self.storage.send(SaveHardState(hs)))
+            .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+            .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
+            .map_err(|err, _, _| {
+                error!("{}", err)
+            });
+
+        ctx.spawn(f);
+    }
+
+    /// Update the node's current term.
+    ///
+    /// This routine will also perform any other logic which must take place as part of updating
+    /// the current term.
+    fn update_current_term(&mut self, ctx: &mut Context<Self>, term: u64) {
+        // Ensure this isn't a no-op.
+        if &self.current_term == &term {
+            return;
+        }
+
+        // Update current term and update node state if needed.
+        if let &NodeState::Leader(_) = &self.state {
+            self.update_election_timeout(ctx);
+        }
+        self.state = NodeState::Follower;
+        self.current_term = term;
+        self.save_hard_state(ctx);
+    }
+
+    /// Update the election timeout process.
+    ///
+    /// This will run the nodes election timeout mechanism to ensure that elections are held if
+    /// too much time passes before hearing from a leader or a candidate.
+    ///
+    /// The election timeout will be updated everytime this node receives an RPC from the leader
+    /// as well as any time a candidate node sends a RequestVote RPC. We reset on candidate RPCs
+    /// iff the RPC is a valid vote request.
+    fn update_election_timeout(&mut self, ctx: &mut Context<Self>) {
+        // Cancel any current election timeout before spawning a new one.
+        if let Some(handle) = self.election_timeout.take() {
+            ctx.cancel_future(handle);
+        }
+        let timeout = Duration::from_millis(self.config.election_timeout_millis);
+        self.election_timeout = Some(ctx.run_later(timeout, |act, ctx| act.start_campaign(ctx)));
+    }
+
+    /// Begin a new election campaign for this node.
+    ///
+    /// As part of an election campaign, a follower increments its current term and transitions to
+    /// candidate state, it then votes for itself (will then save its hard state) and issues
+    /// RequestVote RPCs in parallel to each of the other nodes in the cluster.
+    fn start_campaign(&mut self, ctx: &mut Context<Self>) {
+        self.state = NodeState::Candidate;
+        self.current_term += 1;
+        self.voted_for = Some(self.id);
+        self.save_hard_state(ctx);
+
+        // Send RPCs to all members in parallel.
+        // <<<<<<<< RESUME HERE IMMEDIATE
+    }
 }
 
 impl<S: RaftStorage> Actor for Raft<S> {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        // Fetch the node's initial state from the storage actor.
+        // Fetch the node's initial state from the storage actor & initialize.
         let f = fut::wrap_future(self.storage.send(storage::GetInitialState))
             .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
             .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
-            .and_then(|state: InitialState, act, _| {
-                act.last_log_index = state.last_log_index;
-                act.last_log_term = state.last_log_term;
-                act.current_term = state.hard_state.current_term;
-                act.voted_for = state.hard_state.voted_for;
-                act.members = state.hard_state.members;
-                act.last_applied = state.last_applied_log;
+            .map_err(|_, _, _| ())
+            .map(|state, act, ctx| act.initialize(ctx, state));
 
-                act.is_initialized = true;
-                fut::FutureResult::from(Ok(()))
-            })
-            .map_err(|_, _, ctx| {
-                // Stop this actor if any messaging errors took place.
-                error!("Error communicating with storage layer. Shutting down Raft actor.");
-                ctx.stop()
-            });
         ctx.spawn(f);
     }
 }
@@ -524,7 +649,7 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
     /// takes place here and have the caller perform a retry.
     fn handle(&mut self, msg: RaftRequest, ctx: &mut Self::Context) -> Self::Result {
         // Only handle requests if actor has finished initialization.
-        if !self.is_initialized {
+        if self.state == NodeState::Initializing {
             warn!("Received RaftRequest before initialization was complete.");
             return Box::new(fut::err(RaftError::Initializing));
         }
@@ -540,7 +665,7 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
                     }))
             },
             Some(Payload::Vote(payload)) => {
-                Box::new(fut::ok(self.handle_vote_request(ctx, payload))
+                Box::new(fut::FutureResult::from(self.handle_vote_request(ctx, payload))
                     .map(|res, _, _| proto::RaftResponse{
                         payload: Some(ResponsePayload::Vote(res)),
                     }))
@@ -561,23 +686,29 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
 #[derive(Debug, Fail)]
 pub enum RaftError {
     /// The Raft node is still initializing and couldn't handle the request.
-    #[fail(display="The Raft node is still initializing.")]
+    #[fail(display="Raft node is still initializing.")]
     Initializing,
-    /// An error coming from the storage layer.
-    #[fail(display="{}", _0)]
-    StorageError(StorageError),
-    /// The Raft node received an unknown request type.
-    #[fail(display="The received request type is unknown.")]
-    UnknownRequestReceived,
     /// The Raft node encountered an internal messaging error.
     ///
     /// This type of error is related to the underlying actix framework and will be quite rare to
     /// come by. **This should be considered a transient type of error.**
-    #[fail(display="The Raft node encountered an internal messaging error.")]
+    #[fail(display="Raft node encountered an internal messaging error.")]
     InternalMessagingError,
+    /// An RPC was received from a node which does not appear to be a member of the cluster.
+    #[fail(display="Raft node received an RPC frame from an unknown node.")]
+    RPCFromUnknownNode,
+    /// An error coming from the storage layer.
+    #[fail(display="{}", _0)]
+    StorageError(StorageError),
+    /// The Raft node received an unknown request type.
+    #[fail(display="Raft node received an unknown request type.")]
+    UnknownRequestReceived,
 }
 
 // TODO:
+// - handle config updates & saving new members with hard state as part of append entries config change.
+// ### admin commands
+// - get AdminCommands setup and implemented.
 // ### elections
 // - setup election timeout system. It will only reset when valid AppendEntries and valid RequestVote RPCs are received.
 // - when an election timeout is hit, a follower increments its current_term and transitions to
@@ -595,6 +726,10 @@ pub enum RaftError {
 //   Put together docs on how applications should mitigate client retries which would
 //   lead to duplicates (request serial number tracking).
 // - implement handler for client requests.
+//
+// ### observability
+// - ensure that internal state transitions and updates are emitted for host application use. Such
+// as NodeState changes, membershipt changes, errors from async ops.
 //
 // ### testing
 // - setup testing framework to assert accurate behavior of Raft implementation and adherence to

@@ -27,7 +27,7 @@ pub struct Config {
     /// The election timeout used for a Raft node when it is a follower.
     ///
     /// This value is randomly generated based on default confguration or a given min & max.
-    pub(crate) election_timeout: u16,
+    pub(crate) election_timeout_millis: u64,
     /// The directory where the log snapshots are to be kept for a Raft node.
     pub(crate) snapshot_dir: String,
     /// The snapshot policy to use for a Raft node.
@@ -92,11 +92,12 @@ impl ConfigBuilder {
         // Roll a random election time out based on the configured min & max or their respective defaults.
         let mut rng = thread_rng();
         let election_timeout: u16 = rng.gen_range(self.election_timeout_min.unwrap_or(10), self.election_timeout_max.unwrap_or(1000));
+        let election_timeout_millis = election_timeout as u64;
 
         // Get the snapshot policy or its default value.
         let snapshot_policy = self.snapshot_policy.unwrap_or_else(|| SnapshotPolicy::LogsSinceLast(5000));
 
-        Ok(Config{election_timeout, snapshot_dir: self.snapshot_dir, snapshot_policy})
+        Ok(Config{election_timeout_millis, snapshot_dir: self.snapshot_dir, snapshot_policy})
     }
 }
 
