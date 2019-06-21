@@ -5,11 +5,27 @@ use actix::{
     prelude::*,
 };
 use futures::sync::mpsc::UnboundedReceiver;
+use failure::Fail;
 
 use crate::{
     proto,
     raft::NodeId,
 };
+
+/// An error type which wraps a `dyn Fail` type coming from the storage layer.
+///
+/// This does require an allocation; however, the Raft node is currently configured to stop when
+/// it encounteres an error from the storage layer. The cost of this allocation then is quite low.
+///
+/// In order to avoid potential data corruption or other such issues, when an error is observed
+/// from the storage layer, the Raft node will stop. The parent application will still be able to
+/// perform cleanup or any other routines as needed before shutdown.
+#[derive(Debug, Fail)]
+#[fail(display="{}", _0)]
+pub struct StorageError(pub Box<dyn Fail>);
+
+/// The result type of all `RaftStorage` interfaces.
+pub type StorageResult<T> = Result<T, StorageError>;
 
 //////////////////////////////////////////////////////////////////////////////
 // GetInitialState ///////////////////////////////////////////////////////////
@@ -22,34 +38,28 @@ use crate::{
 ///
 /// ### pro tip
 /// The storage impl may need to look in a few different places to accurately respond to this
-/// request. That last entry in the log for `log_index` & `log_term`. The node's hard state record
-/// for `voted_for`. The node's cluster config record for `members`.
+/// request. That last entry in the log for `last_log_index` & `last_log_term`; the node's hard
+/// state record; and the index of the last log applied to the state machine.
 pub struct GetInitialState;
 
 impl Message for GetInitialState {
-    type Result = Result<InitialState, ()>;
+    type Result = StorageResult<InitialState>;
 }
 
 /// A struct used to represent the initial state which a Raft node needs when first starting.
 pub struct InitialState {
-    pub log_index: u64,
-    pub log_term: u64,
-    pub voted_for: Option<NodeId>,
-    pub members: Vec<u64>,
+    /// The index of the last entry.
+    pub last_log_index: u64,
+    /// The term of the last log entry.
+    pub last_log_term: u64,
+    /// The index of the last log applied to the state machine.
+    pub last_applied_log: u64,
+    /// The saved hard state of the node.
+    pub hard_state: HardState,
 }
 
-//////////////////////////////////////////////////////////////////////////////
-// GetLastAppliedIndex ///////////////////////////////////////////////////////
-
-/// An actix message type for requesting the index of the last log applied to the state machine.
-pub struct GetLastAppliedIndex;
-
-impl Message for GetLastAppliedIndex {
-    type Result = Result<u64, ()>;
-}
-
-//////////////////////////////////////////////////////////////////////////////
-// GetLogEntries /////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// GetLogEntries /////////////////////////////////////////////////////////////////////////////////
 
 /// An actix message type for requesting a series of log entries from storage.
 ///
@@ -61,11 +71,11 @@ pub struct GetLogEntries {
 }
 
 impl Message for GetLogEntries {
-    type Result = Result<Vec<proto::Entry>, ()>;
+    type Result = StorageResult<Vec<proto::Entry>>;
 }
 
-//////////////////////////////////////////////////////////////////////////////
-// AppendLogEntries ///////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// AppendLogEntries //////////////////////////////////////////////////////////////////////////////
 
 /// An actix message type for requesting a series of entries to be written to the log.
 ///
@@ -84,7 +94,7 @@ pub struct AppendLogEntriesData {
 }
 
 impl Message for AppendLogEntries {
-    type Result = Result<AppendLogEntriesData, ()>;
+    type Result = StorageResult<AppendLogEntriesData>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +132,7 @@ pub struct CreateSnapshot {
 }
 
 impl Message for CreateSnapshot {
-    type Result = Result<proto::Entry, ()>;
+    type Result = StorageResult<proto::Entry>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -163,7 +173,7 @@ pub struct InstallSnapshot {
 }
 
 impl Message for InstallSnapshot {
-    type Result = Result<(), ()>;
+    type Result = StorageResult<()>;
 }
 
 /// A chunk of snapshot data.
@@ -196,7 +206,7 @@ pub struct GetCurrentSnapshot {
 }
 
 impl Message for GetCurrentSnapshot {
-    type Result = Result<Option<String>, ()>;
+    type Result = StorageResult<Option<String>>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -215,13 +225,38 @@ pub struct ApplyEntriesToStateMachineData {
 }
 
 impl Message for ApplyEntriesToStateMachine {
-    type Result = Result<ApplyEntriesToStateMachineData, ()>;
+    type Result = StorageResult<ApplyEntriesToStateMachineData>;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// SaveHardState /////////////////////////////////////////////////////////////////////////////////
+
+/// A request from the Raft node to save its HardState.
+pub struct SaveHardState(pub HardState);
+
+/// A record holding the hard state of a Raft node.
+pub struct HardState {
+    /// The last recorded term observed by this system.
+    pub current_term: u64,
+    /// The ID of the node voted for in the `current_term`.
+    pub voted_for: Option<NodeId>,
+    /// The IDs of all known members of the cluster.
+    pub members: Vec<u64>,
+}
+
+impl Message for SaveHardState {
+    type Result = StorageResult<()>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RaftStorage ///////////////////////////////////////////////////////////////////////////////////
 
 /// A trait defining the interface of a Raft storage actor.
+///
+/// ### implementation notes
+/// Appending log entries should not be considered complete until the data has been flushed to
+/// disk. Some of Raft's safety guarantees are premised upon committed log entries being fully
+/// flushed to disk. If this invariant is not upheld, the system could incur data loss.
 ///
 /// ### snapshot
 /// See §7.
@@ -247,11 +282,11 @@ pub trait RaftStorage
     where
         Self: Actor<Context=Context<Self>>,
         Self: Handler<GetInitialState> + ToEnvelope<Self, GetInitialState>,
-        Self: Handler<GetLastAppliedIndex> + ToEnvelope<Self, GetLastAppliedIndex>,
         Self: Handler<GetLogEntries> + ToEnvelope<Self, GetLogEntries>,
         Self: Handler<AppendLogEntries> + ToEnvelope<Self, AppendLogEntries>,
+        Self: Handler<ApplyEntriesToStateMachine> + ToEnvelope<Self, ApplyEntriesToStateMachine>,
         Self: Handler<CreateSnapshot> + ToEnvelope<Self, CreateSnapshot>,
         Self: Handler<InstallSnapshot> + ToEnvelope<Self, InstallSnapshot>,
         Self: Handler<GetCurrentSnapshot> + ToEnvelope<Self, GetCurrentSnapshot>,
-        Self: Handler<ApplyEntriesToStateMachine> + ToEnvelope<Self, ApplyEntriesToStateMachine>,
+        Self: Handler<SaveHardState> + ToEnvelope<Self, SaveHardState>,
 {}
