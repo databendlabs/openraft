@@ -13,8 +13,9 @@ use crate::{
     config::Config,
     proto,
     storage::{
-        self, StorageError, StorageResult, AppendLogEntries, ApplyEntriesToStateMachine,
-        GetLogEntries, InitialState, SaveHardState, HardState, RaftStorage,
+        self, StorageError, StorageResult, AppendLogEntries, AppendLogEntriesData,
+        ApplyEntriesToStateMachine, GetLogEntries, InitialState, SaveHardState,
+        HardState, RaftStorage,
     },
 };
 
@@ -219,9 +220,37 @@ impl<S> Raft<S> where S: RaftStorage {
 
     /// Append the given entries to the log.
     ///
-    /// This routine also encapsulates all logic which must be performed related to the process.
-    fn append_log_entries(&mut self, ctx: &mut Context<Self>, entries: Vec<proto::Entry>) {
+    /// This routine also encapsulates all logic which must be performed related to appending log
+    /// entries.
+    ///
+    /// One important piece of logic to note here is the handling of config change entries. Per
+    /// the Raft spec in §6:
+    ///
+    /// > Once a given server adds the new configuration entry to its log, it uses that
+    /// > configuration for all future decisions (a server always uses the latest configuration in
+    /// > its log, regardless of whether the entry is committed).
+    ///
+    /// This routine will extract the most recent (the latter most) entry in the given payload of
+    /// entries which is a config change entry and will update the node's member state based on
+    /// that entry.
+    fn append_log_entries(
+        &mut self, ctx: &mut Context<Self>, entries: Vec<proto::Entry>,
+    ) -> impl ActorFuture<Actor=Self, Item=AppendLogEntriesData, Error=RaftError> {
+        // Check the given entries for any config changes and take the most recent.
+        use proto::entry::EntryType;
+        let last_conf_change = entries.iter().filter_map(|ent| match &ent.entry_type {
+            Some(EntryType::ConfigChange(conf)) => Some(conf),
+            _ => None,
+        }).last();
+        if let Some(conf) = last_conf_change {
+            // Update membership info & apply hard state.
+            self.members = conf.members.clone();
+            self.save_hard_state(ctx);
+        }
 
+        fut::wrap_future(self.storage.send(AppendLogEntries(entries)))
+            .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+            .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
     }
 
     /// Begin the process of applying logs to the state machine.
@@ -328,17 +357,13 @@ impl<S> Raft<S> where S: RaftStorage {
             );
         }
 
-        // TODO: update membership hardstate for append entries config RPCs. Probably encapsulate as new method.
-
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
         // previous log info, then replication is g2g.
         let term = self.current_term;
+        self.is_appending_logs = true;
         if &msg.prev_log_index == &u64::min_value() || (&msg.prev_log_index == &self.last_log_index && &msg.prev_log_term == &self.last_log_term) {
-            self.is_appending_logs = true;
             return fut::Either::A(fut::Either::B(
-                fut::wrap_future(self.storage.send(AppendLogEntries(msg.entries)))
-                    .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
-                    .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
+                self.append_log_entries(ctx, msg.entries)
                     .map(move |res, act, _| {
                         act.last_log_index = res.index;
                         act.last_log_term = res.term;
@@ -352,16 +377,12 @@ impl<S> Raft<S> where S: RaftStorage {
 
         // Previous log info doesn't immediately line up, so perform log consistency check and
         // proceed based on its result.
-        let storage = self.storage.clone();
-        self.is_appending_logs = true;
         fut::Either::B(self.log_consistency_check(ctx, msg.prev_log_index, msg.prev_log_term)
-            .and_then(move |res, _, _| match res {
+            .and_then(move |res, act, ctx| match res {
                 Some(conflict_opt) => fut::Either::A(fut::FutureResult::from(Ok(
                     proto::AppendEntriesResponse{term, success: false, conflict_opt: Some(conflict_opt)}
                 ))),
-                None => fut::Either::B(fut::wrap_future(storage.send(AppendLogEntries(msg.entries)))
-                    .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
-                    .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
+                None => fut::Either::B(act.append_log_entries(ctx, msg.entries)
                     // At this point, we have successfully appended the new entries to the log.
                     // We now need to update our `last_log_*` info and build a response.
                     .and_then(move |res, act, _| {
@@ -455,7 +476,8 @@ impl<S> Raft<S> where S: RaftStorage {
         self.last_applied = state.last_applied_log;
 
         // Set initial state based on state recovered from disk.
-        if self.members.len() != 1 || &self.last_log_index != &u64::min_value() {
+        let is_only_configured_member = self.members.len() == 1 && self.members.contains(&self.id);
+        if is_only_configured_member || &self.last_log_index != &u64::min_value() {
             self.state = NodeState::Follower;
             self.update_election_timeout(ctx);
         } else {
@@ -593,6 +615,14 @@ impl<S> Raft<S> where S: RaftStorage {
     /// As part of an election campaign, a follower increments its current term and transitions to
     /// candidate state, it then votes for itself (will then save its hard state) and issues
     /// RequestVote RPCs in parallel to each of the other nodes in the cluster.
+    ///
+    /// A candidate remains in the candidate state until one of three things happens:
+    ///
+    /// a. It wins the election.
+    /// b. Another server establishes itself as leader.
+    /// c. A period of time goes by with no winner.
+    /// - <<<<<<< TODO: FINISH THIS UP from here, see raft spec.
+    /// - call the SaveHardState storage interface from needed locations, which should pretty much always be due to an RPC.
     fn start_campaign(&mut self, ctx: &mut Context<Self>) {
         self.state = NodeState::Candidate;
         self.current_term += 1;
@@ -706,20 +736,11 @@ pub enum RaftError {
 }
 
 // TODO:
-// - handle config updates & saving new members with hard state as part of append entries config change.
 // ### admin commands
 // - get AdminCommands setup and implemented.
+//
 // ### elections
-// - setup election timeout system. It will only reset when valid AppendEntries and valid RequestVote RPCs are received.
-// - when an election timeout is hit, a follower increments its current_term and transitions to
-// candidate state, it then votes for itself (will then save its hard state) and issues RequestVote RPCs
-// in parallel to each of the other servers in the cluster.
-// - A candidate continues in this state until one of three things happens:
-// (a) it wins the election
-// (b) another server establishes itself as leader
-// (c) a period of time goes by with no winner
-// - <<<<<<< TODO: FINISH THIS UP from here, see raft spec.
-// - call the SaveHardState storage interface from needed locations, which should pretty much always be due to an RPC.
+// - Finish up election system.
 //
 // ### clients
 // - create client message protobuf, used to generically wrap any type of client request.
