@@ -6,27 +6,18 @@ use std::{
 };
 
 use actix::prelude::*;
-use failure::Fail;
 use log::{error, warn};
 
 use crate::{
     config::Config,
+    error::RaftError,
     proto,
     storage::{
-        self, StorageError, StorageResult, AppendLogEntries, AppendLogEntriesData,
+        self, StorageResult, AppendLogEntries, AppendLogEntriesData,
         ApplyEntriesToStateMachine, GetLogEntries, InitialState, SaveHardState,
         HardState, RaftStorage,
     },
 };
-
-/// An error message for communication errors while attempting to append log entries.
-const COMM_ERR_APPEND_LOG_ENTRIES: &str = "Error communicating with storage actor for appending log entries.";
-
-/// An error message for communication errors while attempting to fetch log entries.
-const COMM_ERR_FETCH_LOG_ENTRIES: &str = "Error communicating with storage actor for fetching log entries.";
-
-/// An error message for communication errors while attempting to save hard state.
-const COMM_SAVE_HARD_STATE: &str = "Error communicating with storage actor for saving hard state.";
 
 /// A Raft cluster node's ID.
 pub type NodeId = u64;
@@ -52,7 +43,10 @@ pub enum NodeState {
     /// responds to requests from leaders and candidates.
     Follower,
     /// The node has detected an election timeout so is requesting votes to become leader.
-    Candidate,
+    ///
+    /// This state wraps struct which tracks outstanding requests to peers for requesting votes
+    /// along with the number of votes granted.
+    Candidate(CandidateState),
     /// The node is actively functioning as the Raft cluster leader.
     ///
     /// The leader handles all client requests. If a client contacts a follower, the follower must
@@ -85,6 +79,17 @@ pub struct LeaderState {
     ///
     /// Each entry is initialized to 0, and increases per the Raft data replication protocol.
     match_index: BTreeMap<NodeId, u64>,
+}
+
+/// Volatile state specific to a Raft node in candidate state.
+#[derive(Eq, PartialEq)]
+pub struct CandidateState {
+    /// Current outstanding requests to peer nodes by node ID.
+    requests: BTreeMap<NodeId, SpawnHandle>,
+    /// The number of votes which have been granted by peer nodes.
+    votes_granted: u64,
+    /// The number of votes needed in order to become the Raft leader.
+    votes_needed: u64,
 }
 
 /// An actor which implements the Raft protocol's core business logic.
@@ -155,7 +160,7 @@ pub struct Raft<S: RaftStorage> {
     /// The current state of this Raft node.
     state: NodeState,
     /// An output channel for sending Raft request messages to peers.
-    out: actix::Recipient<RaftRequest>,
+    out: actix::Recipient<RaftRpcOut>,
     /// The address of the actor responsible for implementing the `RaftStorage` interface.
     storage: actix::Addr<S>,
 
@@ -206,7 +211,7 @@ impl<S> Raft<S> where S: RaftStorage {
     /// running actix system.
     ///
     /// TODO: add an example on how to create and start an instance.
-    pub fn new(id: NodeId, config: Config, out: actix::Recipient<RaftRequest>, storage: Addr<S>) -> Self {
+    pub fn new(id: NodeId, config: Config, out: actix::Recipient<RaftRpcOut>, storage: Addr<S>) -> Self {
         let state = NodeState::Initializing;
         Self{
             id, config, members: vec![id], state, out, storage,
@@ -236,6 +241,11 @@ impl<S> Raft<S> where S: RaftStorage {
     fn append_log_entries(
         &mut self, ctx: &mut Context<Self>, entries: Vec<proto::Entry>,
     ) -> impl ActorFuture<Actor=Self, Item=AppendLogEntriesData, Error=RaftError> {
+        // If we are already eppending entries, then abort this operation.
+        if self.is_appending_logs {
+            return fut::Either::A(fut::FutureResult::from(Err(RaftError::AppendEntriesAlreadyInProgress)));
+        }
+
         // Check the given entries for any config changes and take the most recent.
         use proto::entry::EntryType;
         let last_conf_change = entries.iter().filter_map(|ent| match &ent.entry_type {
@@ -248,9 +258,19 @@ impl<S> Raft<S> where S: RaftStorage {
             self.save_hard_state(ctx);
         }
 
-        fut::wrap_future(self.storage.send(AppendLogEntries(entries)))
+        self.is_appending_logs = true;
+        fut::Either::B(fut::wrap_future(self.storage.send(AppendLogEntries(entries)))
             .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
             .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
+            .map(|data, act, _| {
+                act.last_log_index = data.index;
+                act.last_log_term = data.term;
+                data
+            })
+            .then(|res, act, _| {
+                act.is_appending_logs = false;
+                fut::FutureResult::from(res)
+            }))
     }
 
     /// Begin the process of applying logs to the state machine.
@@ -280,6 +300,11 @@ impl<S> Raft<S> where S: RaftStorage {
                 error!("{}", err)
             });
         let _ = ctx.spawn(f);
+    }
+
+    /// Assume the leadership role of the Raft cluster.
+    fn become_leader(&mut self, ctx: &mut Context<Self>) {
+        // Clean up old state. Ensure we've cancelled the election timeout system.
     }
 
     /// Handle requests from Raft leader to append log entries.
@@ -350,28 +375,14 @@ impl<S> Raft<S> where S: RaftStorage {
             );
         }
 
-        // If logs are already being appended, then just abort.
-        if self.is_appending_logs {
-            return fut::Either::A(
-                fut::Either::A(fut::ok(proto::AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None}))
-            );
-        }
-
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
         // previous log info, then replication is g2g.
         let term = self.current_term;
-        self.is_appending_logs = true;
         if &msg.prev_log_index == &u64::min_value() || (&msg.prev_log_index == &self.last_log_index && &msg.prev_log_term == &self.last_log_term) {
             return fut::Either::A(fut::Either::B(
                 self.append_log_entries(ctx, msg.entries)
-                    .map(move |res, act, _| {
-                        act.last_log_index = res.index;
-                        act.last_log_term = res.term;
+                    .map(move |_, _, _| {
                         proto::AppendEntriesResponse{term, success: true, conflict_opt: None}
-                    })
-                    .then(|res, act, _| {
-                        act.is_appending_logs = false;
-                        fut::FutureResult::from(res)
                     })));
         }
 
@@ -383,17 +394,9 @@ impl<S> Raft<S> where S: RaftStorage {
                     proto::AppendEntriesResponse{term, success: false, conflict_opt: Some(conflict_opt)}
                 ))),
                 None => fut::Either::B(act.append_log_entries(ctx, msg.entries)
-                    // At this point, we have successfully appended the new entries to the log.
-                    // We now need to update our `last_log_*` info and build a response.
-                    .and_then(move |res, act, _| {
-                        act.last_log_index = res.index;
-                        act.last_log_term = res.term;
-                        fut::FutureResult::from(Ok(proto::AppendEntriesResponse{term, success: true, conflict_opt: None}))
+                    .map(move |_, _, _| {
+                        proto::AppendEntriesResponse{term, success: true, conflict_opt: None}
                     })),
-            })
-            .then(|res, act, _| {
-                act.is_appending_logs = false;
-                fut::FutureResult::from(res)
             }))
     }
 
@@ -561,6 +564,50 @@ impl<S> Raft<S> where S: RaftStorage {
         })
     }
 
+    /// Request a vote from the the target peer.
+    fn request_vote(
+        &mut self, _: &mut Context<Self>, peer: NodeId, term: u64, log_index: u64, log_term: u64,
+    ) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+        let rpc = RaftRpcOut{
+            peer,
+            request: proto::RaftRequest::new_vote(proto::VoteRequest::new(term, self.id, log_index, log_term)),
+        };
+        fut::wrap_future(self.out.send(rpc))
+            .map_err(|_, _: &mut Self, _| ())
+            .and_then(|res, _, _| match res {
+                Ok(inner) => match inner.payload {
+                    Some(proto::raft_response::Payload::Vote(res)) => fut::FutureResult::from(Ok(res)),
+                    _ => fut::FutureResult::from(Err(())),
+                }
+                Err(_) => fut::FutureResult::from(Err(())),
+            })
+            .and_then(|res, act, ctx| {
+                // Ensure the node is still in candidate state.
+                let state = match &mut act.state {
+                    NodeState::Candidate(state) => state,
+                    // If this node is not currently in candidate state, then this request is done.
+                    _ => return fut::FutureResult::from(Ok(())),
+                };
+
+                // If peer's term is greater than current term, revert to follower state.
+                if res.term > act.current_term {
+                    act.update_current_term(ctx, res.term);
+                    return fut::FutureResult::from(Ok(()));
+                }
+
+                // If peer granted vote, then update campaign state.
+                if res.vote_granted {
+                    state.votes_granted += 1;
+                    if state.votes_granted >= state.votes_needed {
+                        // If the campaign was successful, go into leader state.
+                        act.become_leader(ctx);
+                    }
+                }
+
+                fut::FutureResult::from(Ok(()))
+            })
+    }
+
     /// Save the Raft node's current hard state to disk.
     fn save_hard_state(&mut self, ctx: &mut Context<Self>) {
         let hs = HardState{current_term: self.current_term, voted_for: self.voted_for, members: self.members.clone()};
@@ -572,6 +619,68 @@ impl<S> Raft<S> where S: RaftStorage {
             });
 
         ctx.spawn(f);
+    }
+
+    /// Begin a new election campaign for this node, per §5.2.
+    ///
+    /// As part of an election campaign, a follower increments its current term and transitions to
+    /// candidate state, it then votes for itself (will then save its hard state) and issues
+    /// RequestVote RPCs in parallel to each of the other nodes in the cluster.
+    ///
+    /// A candidate remains in the candidate state until one of three things happens:
+    ///
+    /// 1. It wins the election.
+    /// 2. Another server establishes itself as leader.
+    /// 3. A period of time goes by with no winner.
+    ///
+    /// (1) a candidate wins an election if it receives votes from a majority of the servers
+    /// in the full cluster for the same term. Each server will vote for at most one candidate in
+    /// a given term, on a first-come-first-served basis (§5.4 adds an additional restriction on
+    /// votes). The majority rule ensures that at most one candidate can win the election for a
+    /// particular term. Once a candidate wins an election, it becomes leader. It then sends
+    /// heartbeat messages to all of the other servers to establish its authority and prevent new
+    /// elections.
+    ///
+    /// (2) While waiting for votes, a candidate may receive an AppendEntries RPC from another
+    /// server claiming to be leader. If the leader’s term in the RPC is at least as large as the
+    /// candidate’s current term, then the candidate recognizes the leader as legitimate and
+    /// returns to follower state. If the term in the RPC is smaller than the candidate’s current
+    /// term, then the candidate rejects the RPC and continues in candidate state.
+    ///
+    /// (3) The third possible outcome is that a candidate neither wins nor loses the election: if
+    /// many followers become candidates at the same time, votes could be split so that no
+    /// candidate obtains a majority. When this happens, each candidate will time out and start a
+    /// new election by incrementing its term and initiating another round of RequestVote RPCs.
+    /// The randomization of election timeouts per node helps to avoid this issue.
+    fn start_campaign(&mut self, ctx: &mut Context<Self>) {
+        // Cancel any old futures from a previous term.
+        if let NodeState::Candidate(state) = &mut self.state {
+            let keys = state.requests.keys().map(|k| *k).collect::<Vec<_>>();
+            for key in keys {
+                if let Some(f) = state.requests.remove(&key) {
+                    ctx.cancel_future(f);
+                }
+            }
+        }
+
+        // Setup new term.
+        self.current_term += 1;
+        self.voted_for = Some(self.id);
+        self.save_hard_state(ctx);
+
+        // Send RPCs to all members in parallel.
+        let mut requests = BTreeMap::new();
+        let peers = self.members.clone().into_iter().filter(|member| member != &self.id).collect::<Vec<_>>();
+        for member in peers {
+            let f = self.request_vote(ctx, member, self.id, self.last_log_index, self.last_log_term);
+            let handle = ctx.spawn(f);
+            requests.insert(member, handle);
+        }
+
+        // Update Raft state as candidate.
+        let votes_granted = 1; // We must vote for ourselves per the Raft spec.
+        let votes_needed = ((self.members.len() / 2) + 1) as u64; // Just need a majority.
+        self.state = NodeState::Candidate(CandidateState{requests, votes_granted, votes_needed});
     }
 
     /// Update the node's current term.
@@ -609,47 +718,6 @@ impl<S> Raft<S> where S: RaftStorage {
         let timeout = Duration::from_millis(self.config.election_timeout_millis);
         self.election_timeout = Some(ctx.run_later(timeout, |act, ctx| act.start_campaign(ctx)));
     }
-
-    /// Begin a new election campaign for this node. See §5.2.
-    ///
-    /// As part of an election campaign, a follower increments its current term and transitions to
-    /// candidate state, it then votes for itself (will then save its hard state) and issues
-    /// RequestVote RPCs in parallel to each of the other nodes in the cluster.
-    ///
-    /// A candidate remains in the candidate state until one of three things happens:
-    ///
-    /// 1. It wins the election.
-    /// 2. Another server establishes itself as leader.
-    /// 3. A period of time goes by with no winner.
-    ///
-    /// (1) a candidate wins an election if it receives votes from a majority of the servers
-    /// in the full cluster for the same term. Each server will vote for at most one candidate in
-    /// a given term, on a first-come-first-served basis (§5.4 adds an additional restriction on
-    /// votes). The majority rule ensures that at most one candidate can win the election for a
-    /// particular term. Once a candidate wins an election, it becomes leader. It then sends
-    /// heartbeat messages to all of the other servers to establish its authority and prevent new
-    /// elections.
-    ///
-    /// (2) While waiting for votes, a candidate may receive an AppendEntries RPC from another
-    /// server claiming to be leader. If the leader’s term in the RPC is at least as large as the
-    /// candidate’s current term, then the candidate recognizes the leader as legitimate and
-    /// returns to follower state. If the term in the RPC is smaller than the candidate’s current
-    /// term, then the candidate rejects the RPC and continues in candidate state.
-    ///
-    /// (3) The third possible outcome is that a candidate neither wins nor loses the election: if
-    /// many followers become candidates at the same time, votes could be split so that no
-    /// candidate obtains a majority. When this happens, each candidate will time out and start a
-    /// new election by incrementing its term and initiating another round of RequestVote RPCs.
-    /// The randomization of election timeouts per node helps to avoid this issue.
-    fn start_campaign(&mut self, ctx: &mut Context<Self>) {
-        self.state = NodeState::Candidate;
-        self.current_term += 1;
-        self.voted_for = Some(self.id);
-        self.save_hard_state(ctx);
-
-        // Send RPCs to all members in parallel.
-        // <<<<<<<< RESUME HERE IMMEDIATE
-    }
 }
 
 impl<S: RaftStorage> Actor for Raft<S> {
@@ -668,16 +736,29 @@ impl<S: RaftStorage> Actor for Raft<S> {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// RaftRequest ///////////////////////////////////////////////////////////////////////////////////
+// RaftRpcOut ////////////////////////////////////////////////////////////////////////////////////
+
+/// An actix message holding a Raft RPC frame to be sent outbound to a peer Raft node.
+pub struct RaftRpcOut {
+    peer: NodeId,
+    request: proto::RaftRequest,
+}
+
+impl Message for RaftRpcOut {
+    type Result = Result<proto::RaftResponse, ()>;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RaftRpcIn /////////////////////////////////////////////////////////////////////////////////////
 
 /// An actix::Message wrapping a protobuf RaftRequest.
-pub struct RaftRequest(pub proto::RaftRequest);
+pub struct RaftRpcIn(pub proto::RaftRequest);
 
-impl Message for RaftRequest {
+impl Message for RaftRpcIn {
     type Result = Result<proto::RaftResponse, RaftError>;
 }
 
-impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
+impl<S: RaftStorage> Handler<RaftRpcIn> for Raft<S> {
     type Result = ResponseActFuture<Self, proto::RaftResponse, RaftError>;
 
     /// Handle inbound Raft request messages.
@@ -695,7 +776,7 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
     ///
     /// On an application level, it would be prudent to fail the associated request when an error
     /// takes place here and have the caller perform a retry.
-    fn handle(&mut self, msg: RaftRequest, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RaftRpcIn, ctx: &mut Self::Context) -> Self::Result {
         // Only handle requests if actor has finished initialization.
         if self.state == NodeState::Initializing {
             warn!("Received RaftRequest before initialization was complete.");
@@ -730,27 +811,14 @@ impl<S: RaftStorage> Handler<RaftRequest> for Raft<S> {
     }
 }
 
-/// Error variants which may come from the Raft actor.
-#[derive(Debug, Fail)]
-pub enum RaftError {
-    /// The Raft node is still initializing and couldn't handle the request.
-    #[fail(display="Raft node is still initializing.")]
-    Initializing,
-    /// The Raft node encountered an internal messaging error.
-    ///
-    /// This type of error is related to the underlying actix framework and will be quite rare to
-    /// come by. **This should be considered a transient type of error.**
-    #[fail(display="Raft node encountered an internal messaging error.")]
-    InternalMessagingError,
-    /// An RPC was received from a node which does not appear to be a member of the cluster.
-    #[fail(display="Raft node received an RPC frame from an unknown node.")]
-    RPCFromUnknownNode,
-    /// An error coming from the storage layer.
-    #[fail(display="{}", _0)]
-    StorageError(StorageError),
-    /// The Raft node received an unknown request type.
-    #[fail(display="Raft node received an unknown request type.")]
-    UnknownRequestReceived,
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// ClientRpcOut //////////////////////////////////////////////////////////////////////////////////
+
+/// An actix message holding a Raft RPC frame to be sent outbound to a peer Raft node.
+pub struct ClientRpcOut;
+
+impl Message for ClientRpcOut {
+    type Result = Result<(), ()>;
 }
 
 // TODO:
