@@ -610,7 +610,7 @@ impl<S> Raft<S> where S: RaftStorage {
         self.election_timeout = Some(ctx.run_later(timeout, |act, ctx| act.start_campaign(ctx)));
     }
 
-    /// Begin a new election campaign for this node.
+    /// Begin a new election campaign for this node. See §5.2.
     ///
     /// As part of an election campaign, a follower increments its current term and transitions to
     /// candidate state, it then votes for itself (will then save its hard state) and issues
@@ -618,11 +618,29 @@ impl<S> Raft<S> where S: RaftStorage {
     ///
     /// A candidate remains in the candidate state until one of three things happens:
     ///
-    /// a. It wins the election.
-    /// b. Another server establishes itself as leader.
-    /// c. A period of time goes by with no winner.
-    /// - <<<<<<< TODO: FINISH THIS UP from here, see raft spec.
-    /// - call the SaveHardState storage interface from needed locations, which should pretty much always be due to an RPC.
+    /// 1. It wins the election.
+    /// 2. Another server establishes itself as leader.
+    /// 3. A period of time goes by with no winner.
+    ///
+    /// (1) a candidate wins an election if it receives votes from a majority of the servers
+    /// in the full cluster for the same term. Each server will vote for at most one candidate in
+    /// a given term, on a first-come-first-served basis (§5.4 adds an additional restriction on
+    /// votes). The majority rule ensures that at most one candidate can win the election for a
+    /// particular term. Once a candidate wins an election, it becomes leader. It then sends
+    /// heartbeat messages to all of the other servers to establish its authority and prevent new
+    /// elections.
+    ///
+    /// (2) While waiting for votes, a candidate may receive an AppendEntries RPC from another
+    /// server claiming to be leader. If the leader’s term in the RPC is at least as large as the
+    /// candidate’s current term, then the candidate recognizes the leader as legitimate and
+    /// returns to follower state. If the term in the RPC is smaller than the candidate’s current
+    /// term, then the candidate rejects the RPC and continues in candidate state.
+    ///
+    /// (3) The third possible outcome is that a candidate neither wins nor loses the election: if
+    /// many followers become candidates at the same time, votes could be split so that no
+    /// candidate obtains a majority. When this happens, each candidate will time out and start a
+    /// new election by incrementing its term and initiating another round of RequestVote RPCs.
+    /// The randomization of election timeouts per node helps to avoid this issue.
     fn start_campaign(&mut self, ctx: &mut Context<Self>) {
         self.state = NodeState::Candidate;
         self.current_term += 1;
