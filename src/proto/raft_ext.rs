@@ -1,4 +1,5 @@
 use super::raft::{
+    AppendEntriesRequest,
     entry, Entry, EntrySnapshotPointer,
     RaftRequest, raft_request,
     VoteRequest,
@@ -13,6 +14,13 @@ impl Entry {
 }
 
 impl RaftRequest {
+    /// Create a new instance holding an `AppendEntries` payload.
+    ///
+    /// This correspond's to the Raft spec's AppendEntries RPC.
+    pub fn new_append(payload: AppendEntriesRequest) -> Self {
+        Self{payload: Some(raft_request::Payload::AppendEntries(payload))}
+    }
+
     /// Create a new instance holding a `VoteRequest` payload.
     ///
     /// This correspond's to the Raft spec's RequestVote RPC.
