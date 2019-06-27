@@ -27,7 +27,9 @@ pub struct Config {
     /// The election timeout used for a Raft node when it is a follower.
     ///
     /// This value is randomly generated based on default confguration or a given min & max.
-    pub(crate) election_timeout: u16,
+    pub(crate) election_timeout_millis: u64,
+    /// The heartbeat interval at which leaders will send heartbeats to followers.
+    pub(crate) heartbeat_interval: u64,
     /// The directory where the log snapshots are to be kept for a Raft node.
     pub(crate) snapshot_dir: String,
     /// The snapshot policy to use for a Raft node.
@@ -43,6 +45,7 @@ impl Config {
         ConfigBuilder{
             election_timeout_min: None,
             election_timeout_max: None,
+            heartbeat_interval: None,
             snapshot_dir,
             snapshot_policy: None,
         }
@@ -50,12 +53,19 @@ impl Config {
 }
 
 /// A configuration builder to ensure that the Raft's runtime config is valid.
+///
+/// For election timeout config & heartbeat interval configuration, it is recommended that §5.6 of
+/// the Raft spec is considered in order to set the appropriate values.
 #[derive(Debug)]
 pub struct ConfigBuilder {
-    /// The minimum election timeout in milliseconds, defaults to 10 milliseconds.
+    /// The minimum election timeout in milliseconds, defaults to 500 milliseconds.
     pub election_timeout_min: Option<u16>,
     /// The maximum election timeout in milliseconds, defaults to 1000 milliseconds.
     pub election_timeout_max: Option<u16>,
+    /// The interval at which leaders will send heartbeats to followers to avoid election timeout.
+    ///
+    /// This value defaults to 200 milliseconds.
+    pub heartbeat_interval: Option<u16>,
     /// The directory where the log snapshots are to be kept for a Raft node.
     snapshot_dir: String,
     /// The snapshot policy, defaults to `LogsSinceLast(5000)`.
@@ -75,6 +85,12 @@ impl ConfigBuilder {
         self
     }
 
+    /// Set the desired value for `heartbeat_interval`.
+    pub fn heartbeat_interval(mut self, val: u16) -> Self {
+        self.heartbeat_interval = Some(val);
+        self
+    }
+
     /// Set the desired value for `snapshot_policy`.
     pub fn snapshot_policy(mut self, val: SnapshotPolicy) -> Self {
         self.snapshot_policy = Some(val);
@@ -91,12 +107,16 @@ impl ConfigBuilder {
 
         // Roll a random election time out based on the configured min & max or their respective defaults.
         let mut rng = thread_rng();
-        let election_timeout: u16 = rng.gen_range(self.election_timeout_min.unwrap_or(10), self.election_timeout_max.unwrap_or(1000));
+        let election_timeout: u16 = rng.gen_range(self.election_timeout_min.unwrap_or(500), self.election_timeout_max.unwrap_or(1000));
+        let election_timeout_millis = election_timeout as u64;
+
+        // Get the heartbat interval.
+        let heartbeat_interval = self.heartbeat_interval.unwrap_or(200) as u64;
 
         // Get the snapshot policy or its default value.
         let snapshot_policy = self.snapshot_policy.unwrap_or_else(|| SnapshotPolicy::LogsSinceLast(5000));
 
-        Ok(Config{election_timeout, snapshot_dir: self.snapshot_dir, snapshot_policy})
+        Ok(Config{election_timeout_millis, heartbeat_interval, snapshot_dir: self.snapshot_dir, snapshot_policy})
     }
 }
 

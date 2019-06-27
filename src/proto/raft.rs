@@ -135,9 +135,12 @@ pub struct EntryNormal {
 /// A config change log entry.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EntryConfigChange {
-    /// The contents of this entry.
-    #[prost(bytes, required, tag="1")]
-    pub data: std::vec::Vec<u8>,
+    /// The full list of node IDs to be considered cluster members as part of this config change.
+    #[prost(uint64, repeated, packed="false", tag="1")]
+    pub members: ::std::vec::Vec<u64>,
+    /// Any application specific supplemental data asscoiated with this config change.
+    #[prost(bytes, optional, tag="2")]
+    pub supplemental: ::std::option::Option<std::vec::Vec<u8>>,
 }
 /// An entry which points to a snapshot.
 ///
