@@ -6,6 +6,8 @@ use failure::Fail;
 use log::{error};
 use rand::{thread_rng, Rng};
 
+const DEFAULT_SNAPSHOT_CHUNKSIZE: u64 = 1024u64 * 1024u64 * 3;
+
 /// Raft log snapshot policy.
 ///
 /// This governs when periodic snapshots will be taken, and also governs the conditions which
@@ -27,13 +29,23 @@ pub struct Config {
     /// The election timeout used for a Raft node when it is a follower.
     ///
     /// This value is randomly generated based on default confguration or a given min & max.
-    pub(crate) election_timeout_millis: u64,
+    pub election_timeout_millis: u64,
     /// The heartbeat interval at which leaders will send heartbeats to followers.
-    pub(crate) heartbeat_interval: u64,
+    pub heartbeat_interval: u64,
+    /// The maximum number of entries per payload allowed to be transmitted during replication.
+    ///
+    /// When configuring this value, it is important to note that setting this value too low could
+    /// cause sub-optimal performance. This will primarily impact the speed at which slow nodes,
+    /// nodes which have been offline, or nodes which are new to the cluster, are brought
+    /// up-to-speed. If this is too low, it will take longer for the nodes to be brought up to
+    /// consistency with the rest of the cluster.
+    pub max_payload_entries: u64,
     /// The directory where the log snapshots are to be kept for a Raft node.
-    pub(crate) snapshot_dir: String,
+    pub snapshot_dir: String,
     /// The snapshot policy to use for a Raft node.
-    pub(crate) snapshot_policy: SnapshotPolicy,
+    pub snapshot_policy: SnapshotPolicy,
+    /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes).
+    pub snapshot_max_chunk_size: u64,
 }
 
 impl Config {
@@ -46,8 +58,10 @@ impl Config {
             election_timeout_min: None,
             election_timeout_max: None,
             heartbeat_interval: None,
+            max_payload_entries: None,
             snapshot_dir,
             snapshot_policy: None,
+            snapshot_max_chunk_size: None,
         }
     }
 }
@@ -66,10 +80,16 @@ pub struct ConfigBuilder {
     ///
     /// This value defaults to 200 milliseconds.
     pub heartbeat_interval: Option<u16>,
+    /// The maximum number of entries per payload allowed to be transmitted during replication.
+    ///
+    /// This value defaults to 300.
+    pub max_payload_entries: Option<u64>,
     /// The directory where the log snapshots are to be kept for a Raft node.
     snapshot_dir: String,
     /// The snapshot policy, defaults to `LogsSinceLast(5000)`.
     pub snapshot_policy: Option<SnapshotPolicy>,
+    /// The maximum snapshot chunk size, defaults to 3MiB.
+    pub snapshot_max_chunk_size: Option<u64>,
 }
 
 impl ConfigBuilder {
@@ -91,9 +111,21 @@ impl ConfigBuilder {
         self
     }
 
+    /// Set the desired value for `max_payload_entries`.
+    pub fn max_payload_entries(mut self, val: u64) -> Self {
+        self.max_payload_entries = Some(val);
+        self
+    }
+
     /// Set the desired value for `snapshot_policy`.
     pub fn snapshot_policy(mut self, val: SnapshotPolicy) -> Self {
         self.snapshot_policy = Some(val);
+        self
+    }
+
+    /// Set the desired value for `snapshot_max_chunk_size`.
+    pub fn snapshot_max_chunk_size(mut self, val: u64) -> Self {
+        self.snapshot_max_chunk_size = Some(val);
         self
     }
 
@@ -110,13 +142,18 @@ impl ConfigBuilder {
         let election_timeout: u16 = rng.gen_range(self.election_timeout_min.unwrap_or(500), self.election_timeout_max.unwrap_or(1000));
         let election_timeout_millis = election_timeout as u64;
 
-        // Get the heartbat interval.
+        // Get other values or their defaults.
         let heartbeat_interval = self.heartbeat_interval.unwrap_or(200) as u64;
-
-        // Get the snapshot policy or its default value.
+        let max_payload_entries = self.max_payload_entries.unwrap_or(300);
         let snapshot_policy = self.snapshot_policy.unwrap_or_else(|| SnapshotPolicy::LogsSinceLast(5000));
+        let snapshot_max_chunk_size = self.snapshot_max_chunk_size.unwrap_or(DEFAULT_SNAPSHOT_CHUNKSIZE);
 
-        Ok(Config{election_timeout_millis, heartbeat_interval, snapshot_dir: self.snapshot_dir, snapshot_policy})
+        Ok(Config{
+            election_timeout_millis,
+            heartbeat_interval,
+            max_payload_entries,
+            snapshot_dir: self.snapshot_dir, snapshot_policy, snapshot_max_chunk_size,
+        })
     }
 }
 

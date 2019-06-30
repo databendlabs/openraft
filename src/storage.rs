@@ -210,7 +210,7 @@ impl Message for GetCurrentSnapshot {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// GetCurrentSnapshot ////////////////////////////////////////////////////////////////////////////
+// ApplyEntriesToStateMachine ////////////////////////////////////////////////////////////////////
 
 /// A request from the Raft node to apply the given log entries to the state machine.
 ///
@@ -282,11 +282,11 @@ pub trait RaftStorage
     where
         Self: Actor<Context=Context<Self>>,
         Self: Handler<GetInitialState> + ToEnvelope<Self, GetInitialState>,
+        Self: Handler<SaveHardState> + ToEnvelope<Self, SaveHardState>,
         Self: Handler<GetLogEntries> + ToEnvelope<Self, GetLogEntries>,
         Self: Handler<AppendLogEntries> + ToEnvelope<Self, AppendLogEntries>,
         Self: Handler<ApplyEntriesToStateMachine> + ToEnvelope<Self, ApplyEntriesToStateMachine>,
         Self: Handler<CreateSnapshot> + ToEnvelope<Self, CreateSnapshot>,
         Self: Handler<InstallSnapshot> + ToEnvelope<Self, InstallSnapshot>,
         Self: Handler<GetCurrentSnapshot> + ToEnvelope<Self, GetCurrentSnapshot>,
-        Self: Handler<SaveHardState> + ToEnvelope<Self, SaveHardState>,
 {}

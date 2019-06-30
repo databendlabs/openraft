@@ -2,6 +2,7 @@
 
 use std::{
     collections::BTreeMap,
+    sync::Arc,
     time::Duration,
 };
 
@@ -12,6 +13,7 @@ use crate::{
     config::Config,
     error::RaftError,
     proto,
+    replication::{InstallSnapshot, InstallSnapshotResponse, RSEvent},
     storage::{
         self, StorageResult, AppendLogEntries, AppendLogEntriesData,
         ApplyEntriesToStateMachine, GetLogEntries, InitialState, SaveHardState,
@@ -162,7 +164,7 @@ pub struct Raft<S: RaftStorage> {
     /// This node's ID.
     id: NodeId,
     /// This node's runtime config.
-    config: Config,
+    config: Arc<Config>,
     /// All currently known members of the Raft cluster.
     members: Vec<NodeId>,
     /// The current state of this Raft node.
@@ -223,6 +225,7 @@ impl<S> Raft<S> where S: RaftStorage {
     /// TODO: add an example on how to create and start an instance.
     pub fn new(id: NodeId, config: Config, out: actix::Recipient<RaftRpcOut>, storage: Addr<S>) -> Self {
         let state = NodeState::Initializing;
+        let config = Arc::new(config);
         Self{
             id, config, members: vec![id], state, out, storage,
             commit_index: 0, last_applied: 0,
@@ -447,6 +450,8 @@ impl<S> Raft<S> where S: RaftStorage {
         // Start the heartbeat stream to followers.
 
         // Initialize new state as leader.
+
+        // TODO: finish this up.
     }
 
     /// Clean up the current Raft state.
@@ -816,6 +821,28 @@ impl<S: RaftStorage> Actor for Raft<S> {
             .map(|state, act, ctx| act.initialize(ctx, state));
 
         ctx.spawn(f);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// Replication Streams ///////////////////////////////////////////////////////////////////////////
+
+// RSEvent ///////////////////////////////////////////////////////////////////
+
+impl<S: RaftStorage> Handler<RSEvent> for Raft<S> {
+    type Result = ();
+
+    /// Handle events from replication streams.
+    fn handle(&mut self, msg: RSEvent, ctx: &mut Self::Context) {
+    }
+}
+
+impl <S: RaftStorage> Handler<InstallSnapshot> for Raft<S> {
+    type Result = ResponseActFuture<Self, InstallSnapshotResponse, ()>;
+
+    /// Handle events from replication streams for installing snapshots.
+    fn handle(&mut self, msg: InstallSnapshot, ctx: &mut Self::Context) -> Self::Result {
+        Box::new(fut::FutureResult::from(Err(())))
     }
 }
 
