@@ -13,7 +13,7 @@ use crate::{
     config::Config,
     error::RaftError,
     proto,
-    replication::{InstallSnapshot, InstallSnapshotResponse, RSEvent},
+    replication::{RSNeedsSnapshot, RSNeedsSnapshotResponse, RSRateUpdate, RSRevertToFollower},
     storage::{
         self, StorageResult, AppendLogEntries, AppendLogEntriesData,
         ApplyEntriesToStateMachine, GetLogEntries, InitialState, SaveHardState,
@@ -827,22 +827,34 @@ impl<S: RaftStorage> Actor for Raft<S> {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // Replication Streams ///////////////////////////////////////////////////////////////////////////
 
-// RSEvent ///////////////////////////////////////////////////////////////////
+// RSRateUpdate //////////////////////////////////////////////////////////////
 
-impl<S: RaftStorage> Handler<RSEvent> for Raft<S> {
+impl<S: RaftStorage> Handler<RSRateUpdate> for Raft<S> {
     type Result = ();
 
     /// Handle events from replication streams.
-    fn handle(&mut self, msg: RSEvent, ctx: &mut Self::Context) {
+    fn handle(&mut self, msg: RSRateUpdate, ctx: &mut Self::Context) {
     }
 }
 
-impl <S: RaftStorage> Handler<InstallSnapshot> for Raft<S> {
-    type Result = ResponseActFuture<Self, InstallSnapshotResponse, ()>;
+// RSNeedsSnapshot ///////////////////////////////////////////////////////////
 
-    /// Handle events from replication streams for installing snapshots.
-    fn handle(&mut self, msg: InstallSnapshot, ctx: &mut Self::Context) -> Self::Result {
+impl <S: RaftStorage> Handler<RSNeedsSnapshot> for Raft<S> {
+    type Result = ResponseActFuture<Self, RSNeedsSnapshotResponse, ()>;
+
+    /// Handle events from replication streams requesting for snapshot info.
+    fn handle(&mut self, msg: RSNeedsSnapshot, ctx: &mut Self::Context) -> Self::Result {
         Box::new(fut::FutureResult::from(Err(())))
+    }
+}
+
+// RSRevertToFollower ////////////////////////////////////////////////////////
+
+impl <S: RaftStorage> Handler<RSRevertToFollower> for Raft<S> {
+    type Result = ();
+
+    /// Handle events from replication streams for when this node needs to revert to follower state.
+    fn handle(&mut self, msg: RSRevertToFollower, ctx: &mut Self::Context) {
     }
 }
 

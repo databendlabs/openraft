@@ -3,7 +3,6 @@
 //! This module encapsulates the `ReplicationStream` actor which is used for maintaining a
 //! replication stream from a Raft leader node to a target follower node.
 
-
 use std::sync::Arc;
 
 use actix::prelude::*;
@@ -17,10 +16,53 @@ use crate::{
     config::{Config, SnapshotPolicy},
     proto,
     raft::{NodeId, Raft, RaftRpcOut},
-    storage::RaftStorage,
+    storage::{RaftStorage, GetLogEntries},
 };
 
-const MAILBOX_ERR_MESSAGE: &str = "Error communicating from ReplicationStream to Raft node.";
+const MAILBOX_ERR_MESSAGE: &str = "Actix messaging error while communicating from ReplicationStream to Raft actor.";
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSState ///////////////////////////////////////////////////////////////////////////////////////
+
+/// The state of the replication stream.
+#[derive(PartialEq)]
+enum RSState {
+    /// The replication stream is running at line rate.
+    LineRate(LineRateState),
+    /// The replication stream is lagging behind due to the target node.
+    Lagging(LaggingState),
+    /// The replication stream is streaming a snapshot over to the target node.
+    Snapshotting(SnapshottingState),
+}
+
+/// LineRate specific state.
+#[derive(Default, PartialEq)]
+struct LineRateState {
+    /// An optional buffered payload of data to replicate to the target follower.
+    ///
+    /// The buffered payload here will be expanded as more replication commands come in from the
+    /// Raft node while there is a buffered instance here.
+    buffered_outbound_payload: Option<RSReplicate>,
+}
+
+/// Lagging specific state.
+#[derive(Default, PartialEq)]
+struct LaggingState {
+    /// A flag indicating if the stream is ready to transition over to line rate.
+    is_ready_for_line_rate: bool,
+    /// An optional buffered payload of data to replicate to the target follower.
+    ///
+    /// This is identical to `LineRateState`'s buffer, and will be trasferred over to its buffer
+    /// during state transition.
+    buffered_outbound_payload: Option<RSReplicate>,
+}
+
+/// Snapshotting specific state.
+#[derive(Default, PartialEq)]
+struct SnapshottingState;
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// ReplicationStream /////////////////////////////////////////////////////////////////////////////
 
 /// An actor responsible for sending replication events to a target follower in the Raft cluster.
 ///
@@ -86,6 +128,8 @@ pub(crate) struct ReplicationStream<S: RaftStorage> {
     raftnode: Addr<Raft<S>>,
     /// The output channel used for sending RPCs to the transport/network layer.
     out: Recipient<RaftRpcOut>,
+    /// The storage interface.
+    storage: Recipient<GetLogEntries>,
     /// The Raft's runtime config.
     config: Arc<Config>,
 
@@ -94,13 +138,16 @@ pub(crate) struct ReplicationStream<S: RaftStorage> {
 
     /// The state of this replication stream, primarily corresponding to replication performance.
     state: RSState,
+    /// A flag indicating if the state loop is currently being driven forward.
+    is_driving_state: bool,
     /// The index of the log entry to most recently be appended to the log by the leader.
     line_index: u64,
     /// The index of the highest log entry which is known to be committed in the cluster.
     line_commit: u64,
+
     /// The index of the next log to send.
     ///
-    /// Each entry is initialized to leader's last log index + 1. Per the Raft protocol spec,
+    /// This is initialized to leader's last log index + 1. Per the Raft protocol spec,
     /// this value may be decremented as new nodes enter the cluster and need to catch-up.
     ///
     /// If a follower’s log is inconsistent with the leader’s, the AppendEntries consistency check
@@ -115,83 +162,197 @@ pub(crate) struct ReplicationStream<S: RaftStorage> {
     /// number of RPCs which need to be sent back and forth between a peer which is lagging
     /// behind. This is defined in §5.3.
     next_index: u64,
-    /// An optional handle to the current outbound request to the target node.
-    current_request: Option<SpawnHandle>,
+    /// The last know index to be successfully replicated on the target.
+    ///
+    /// This will be initialized to the leader's last_log_index, and will be updated as
+    /// replication proceeds.
+    match_index: u64,
+    /// The term of the last know index to be successfully replicated on the target.
+    ///
+    /// This will be initialized to the leader's last_log_term, and will be updated as
+    /// replication proceeds.
+    match_term: u64,
+
     /// An optional handle to the current heartbeat timeout operation.
     ///
     /// This does not represent the heartbeat request itself, it represents the timer which will
     /// trigger a heartbeat in the future.
     heartbeat: Option<SpawnHandle>,
-    /// An optional buffered payload of data to replicate to the target follower.
-    ///
-    /// The buffered payload here will be expanded as more replication commands come in from the
-    /// Raft node while there is a buffered instance here.
-    buffered_outbound_payload: Option<RSReplicate>,
 }
 
 impl<S: RaftStorage> ReplicationStream<S> {
-    /// Drive the replication process forward.
+    /// Drive the replication stream forward.
     ///
-    /// This method is usually called when a replication request is received or when a request to
-    /// the target node is finished. This will perform a check to see if there is a buffered
-    /// payload which needs to be sent to the target. If there is a buffered payload and no
-    /// outstanding request, then the payload will be sent immediately; else, replication will be
-    /// driven forward after the current request resolves.
-    fn drive_replication(&mut self, ctx: &mut Context<Self>) {
-        // If there is an outstanding request, or we are not runing at line rate, do nothing.
-        if self.current_request.is_some() || &self.state != &RSState::LineRate {
+    /// This method will take into account the current state of the replication stream and will
+    /// drive forward the next actions it needs to take based on the state.
+    fn drive_state(&mut self, ctx: &mut Context<Self>) {
+        // If task already in progress, do nothing.
+        if self.is_driving_state {
             return;
         }
 
-        // There is no outstanding request; if there is a buffered payload, send it, else return.
-        let buffered = match self.buffered_outbound_payload.take() {
-            None => return, // Nothing to do, so return.
-            Some(payload) => payload,
+        match &self.state {
+            RSState::LineRate(_) => self.drive_state_line_rate(ctx),
+            RSState::Lagging(_) => self.drive_state_lagging(ctx),
+            RSState::Snapshotting(_) => self.drive_state_snapshotting(ctx),
+        }
+    }
+
+    /// Drive the replication stream forward when it is in state `LineRate`.
+    fn drive_state_line_rate(&mut self, ctx: &mut Context<Self>) {
+        let state = match &mut self.state {
+            RSState::LineRate(state) => state,
+            _ => return,
         };
-        let payload = proto::AppendEntriesRequest{
-            term: self.term,
-            leader_id: self.id,
-            prev_log_index: self.line_index,
-            prev_log_term: self.term,
-            entries: buffered.entries,
-            leader_commit: self.line_commit,
+
+        // If there is a buffered payload, send it, else nothing to do.
+        if let Some(buffered) = state.buffered_outbound_payload.take() {
+            let payload = proto::AppendEntriesRequest{
+                term: self.term, leader_id: self.id,
+                prev_log_index: self.match_index,
+                prev_log_term: self.match_term,
+                // entries: buffered.entries.into_iter().filter(|elem| elem.index < self.next_index).collect(), // TODO: might be able to remove this. Re-evaluate.
+                entries: buffered.entries,
+                leader_commit: self.line_commit,
+            };
+            // Send the payload.
+            let last_index_and_term = Some((self.match_index, self.match_term));
+            let f = self.send_append_entries(ctx, payload)
+                // Process the response.
+                .and_then(move |res, act, ctx| act.handle_append_entries_response(ctx, res, last_index_and_term))
+                // Drive state forward regardless of outcome.
+                .then(|res, act, ctx| {
+                    act.is_driving_state = false;
+                    act.drive_state(ctx);
+                    fut::FutureResult::from(res)
+                });
+            ctx.spawn(f);
+        }
+    }
+
+    /// Drive the replication stream forward when it is in state `Lagging`.
+    fn drive_state_lagging(&mut self, ctx: &mut Context<Self>) {
+        let state = match &mut self.state {
+            RSState::Lagging(state) => state,
+            _ => return,
         };
-        self.send_payload(ctx, payload);
+
+        // A few values to be moved into future closures.
+        let (prev_log_index, prev_log_term) = (self.match_index, self.match_term);
+        let start = self.next_index;
+        let batch_will_reach_line = (self.next_index > self.line_index) || ((self.line_index - self.next_index) < self.config.max_payload_entries);
+
+        // Determine an appropriate stop index for the storage fetch operation. Avoid underflow.
+        ctx.spawn(
+            (if batch_will_reach_line {
+                // If we have caught up to the line index, then that means we will be running at
+                // line rate after this payload is successfully replicated.
+                let stop_idx = self.line_index + 1; // Fetch operation is non-inclusive on the stop value, so ensure it is included.
+                state.is_ready_for_line_rate = true;
+
+                // Update Raft actor with replication rate change.
+                let event = RSRateUpdate{target: self.target, is_line_rate: true};
+                fut::Either::A(fut::wrap_future(self.raftnode.send(event))
+                    .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+                    .map(move |_, _, _| stop_idx))
+            } else {
+                fut::Either::B(fut::FutureResult::from(Ok(self.next_index + self.config.max_payload_entries)))
+            })
+
+            // Bringing the target up-to-date by fetching the largest possible payload of entries
+            // from storage within permitted configuration.
+            .and_then(move |stop, act: &mut Self, _| {
+                fut::wrap_future(act.storage.send(GetLogEntries{start, stop}))
+                    .map_err(|err, _: &mut Self, _| error!("Actix messaging error while attempting to communicate with storage system. {}", err))
+            })
+            .and_then(|res, _, _| fut::FutureResult::from(
+                res.map_err(|_| error!("Error while fetching entries from storage for replication."))
+            ))
+            // We have a successful payload of entries, send it to the target.
+            .and_then(move |entries, act, ctx| {
+                let last_log_and_index = entries.last().map(|elem| (elem.index, elem.term));
+                let payload = proto::AppendEntriesRequest{
+                    term: act.term, leader_id: act.id,
+                    prev_log_index, prev_log_term,
+                    entries, leader_commit: act.line_commit,
+                };
+                act.send_append_entries(ctx, payload)
+                    .and_then(move |res, act, ctx| act.handle_append_entries_response(ctx, res, last_log_and_index))
+            })
+            // Transition to line rate if needed.
+            .and_then(|_, act, ctx| {
+                match &act.state {
+                    RSState::Lagging(inner) if inner.is_ready_for_line_rate => {
+                        fut::Either::A(act.transition_to_line_rate(ctx))
+                    }
+                    _ => fut::Either::B(fut::FutureResult::from(Ok(()))),
+                }
+            })
+            // Drive state forward regardless of outcome.
+            .then(|res, act, ctx| {
+                act.is_driving_state = false;
+                act.drive_state(ctx);
+                fut::FutureResult::from(res)
+            }));
+    }
+
+    /// Drive the replication stream forward when it is in state `Snapshotting`.
+    fn drive_state_snapshotting(&mut self, ctx: &mut Context<Self>) {
+        let _state = match &mut self.state {
+            RSState::Snapshotting(state) => state,
+            _ => return,
+        };
+
+        ctx.spawn(fut::wrap_future(self.raftnode.send(RSNeedsSnapshot))
+            // Log actix messaging errors.
+            .map_err(|err, act: &mut Self, _| error!("{} {} {}", MAILBOX_ERR_MESSAGE, act.target, err))
+            // Flatten inner result.
+            .and_then(|res, _, _| fut::FutureResult::from(res))
+            // Handle response from Raft node and start streaming over the snapshot.
+            .and_then(|res, act, ctx| act.send_snapshot(ctx, res))
+            // Transition over to lagging state after snapshot has been sent.
+            .and_then(|_, act, ctx| act.transition_to_lagging(ctx))
+            // Drive state forward regardless of outcome.
+            .then(|res, act, ctx| {
+                act.is_driving_state = false;
+                act.drive_state(ctx);
+                fut::FutureResult::from(res)
+            }));
     }
 
     /// Handle AppendEntries RPC responses from the target node.
-    fn handle_append_entries_response(&mut self, ctx: &mut Context<Self>, res: proto::RaftResponse, payload_last_index: Option<u64>) {
+    fn handle_append_entries_response(
+        &mut self, ctx: &mut Context<Self>, res: proto::RaftResponse, last_index_and_term: Option<(u64, u64)>,
+    ) -> Box<dyn ActorFuture<Actor=Self, Item=(), Error=()> + 'static> {
+        // TODO: remove the allocations here once async/await lands on stable.
+
         // Unpack the inner payload.
         let payload = match res.payload {
             Some(proto::raft_response::Payload::AppendEntries(inner)) => inner,
             _ => {
                 warn!("Unexpected RPC response from {} after send an AppendEntries request. {:?}", self.target, &res.payload);
-                return;
+                return Box::new(fut::FutureResult::from(Ok(())));
             }
         };
 
         // If the response indicates a success, then we are done here.
         if payload.success {
-            // If this was a proper replication event, notify Raft node.
-            if let Some(idx) = payload_last_index {
-                self.next_index = idx + 1; // This should always be the next expected index.
-                let event = RSEvent::Replication(RSEventReplication{
-                    target: self.target,
-                    state: self.state.clone(),
-                    last_log_index: Some(idx),
-                });
-                ctx.spawn(fut::wrap_future(self.raftnode.send(event))
-                    .map_err(|err, act: &mut Self, _| error!("{} {} {}", MAILBOX_ERR_MESSAGE, act.target, err)));
+            // If this was a proper replication event (last index & term were provided), then update state.
+            if let Some((index, term)) = last_index_and_term {
+                self.next_index = index + 1; // This should always be the next expected index.
+                self.match_index = index;
+                self.match_term = term;
             }
 
             // Else, this was just a heartbeat. Do nothing.
-            return;
+            return Box::new(fut::FutureResult::from(Ok(())));
         }
 
         // Replication was not successful, if a newer term has been returned, revert to follower.
         if &payload.term > &self.term {
-            ctx.spawn(fut::wrap_future(self.raftnode.send(RSEvent::RevertToFollower(self.target, payload.term)))
-                .map_err(|err, act: &mut Self, _| error!("{} {} {}", MAILBOX_ERR_MESSAGE, act.target, err)));
+            return Box::new(
+                fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: payload.term}))
+                    .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err)));
         }
 
         // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
@@ -199,151 +360,35 @@ impl<S: RaftStorage> ReplicationStream<S> {
             // If the returned conflict opt index is greater than line index, then this is a
             // logical error, and no action should be taken.
             if &conflict.index > &self.line_index {
-                return;
+                return Box::new(fut::FutureResult::from(Ok(())));
             }
 
             // Check snapshot policy and handle conflict as needed.
             match &self.config.snapshot_policy {
                 SnapshotPolicy::Disabled => {
-                    self.next_index = conflict.index;
-                    self.transition_to_lagging(ctx);
+                    self.next_index = conflict.index + 1;
+                    self.match_index = conflict.index;
+                    self.match_term = conflict.term;
+                    return Box::new(self.transition_to_lagging(ctx));
                 }
                 SnapshotPolicy::LogsSinceLast(threshold) => {
                     let diff = &self.line_index - &conflict.index;
                     if &diff >= threshold {
                         // Follower is far behind and needs to receive an InstallSnapshot RPC.
-                        self.transition_to_installing_snapshot(ctx);
+                        return Box::new(self.transition_to_snapshotting(ctx));
                     } else {
                         // Follower is behind, but not too far behind to receive an InstallSnapshot RPC.
-                        self.next_index = conflict.index;
-                        self.transition_to_lagging(ctx);
+                        self.next_index = conflict.index + 1;
+                        self.match_index = conflict.index;
+                        self.match_term = conflict.term;
+                        return Box::new(self.transition_to_lagging(ctx));
                     }
                 }
             }
         } else {
-            self.next_index -= 1;
-            self.transition_to_lagging(ctx);
+            self.next_index = if self.next_index > 0 { self.next_index - 1} else { 0 }; // Guard against underflow.
+            return Box::new(self.transition_to_lagging(ctx));
         }
-    }
-
-    /// Handle a request to replicate the given payload of entries.
-    ///
-    /// If there is already an outbound request, this payload will be buffered. If there is
-    /// already a buffered payload, the payloads will be combined. This helps to keep throughput
-    /// as high as possible when dealing with high write load conditions.
-    fn handle_rsreplicate_message(&mut self, ctx: &mut Context<Self>, mut msg: RSReplicate) {
-        // Always update line commit & index info first so that this value can be used in all AppendEntries RPCs.
-        self.line_commit = msg.line_commit;
-        self.line_index = msg.line_index;
-
-        // If there is a buffered replication payload, update it and finish this up.
-        if let Some(payload) = &mut self.buffered_outbound_payload {
-            payload.line_commit = msg.line_commit;
-            payload.line_index = msg.line_index;
-            payload.entries.append(&mut msg.entries);
-        } else {
-            self.buffered_outbound_payload = Some(msg);
-        }
-
-        self.drive_replication(ctx);
-    }
-
-    /// Send a heartbeat frame to the target node.
-    fn send_heartbeat(&mut self, ctx: &mut Context<Self>) {
-        // Don't do anything if there is already a request sent to the target.
-        if self.current_request.is_some() {
-            return;
-        }
-
-        // Prioritize sending entries if we have a buffered payload.
-        if self.buffered_outbound_payload.is_some() {
-            self.drive_replication(ctx);
-            return;
-        }
-
-        // Build the heartbeat frame to be sent to the follower.
-        let payload = proto::AppendEntriesRequest{
-            term: self.term,
-            leader_id: self.id,
-            prev_log_index: self.line_index,
-            prev_log_term: self.term,
-            entries: Vec::with_capacity(0),
-            leader_commit: self.line_commit,
-        };
-        self.send_payload(ctx, payload);
-    }
-
-    /// Unconditionally send the given payload to the target.
-    ///
-    /// This will spawn a new future for the operation of sending the payload to the target peer.
-    /// The spawn handle from that future will be bound to `current_request`. The request will
-    /// timeout after `heartbeat_rate`.
-    ///
-    /// After the request resolves, the spawn handle in `current_request` will be dropped (not
-    /// cancelled), `update_heartbeat` will be called, and `drive_replication` will be called to
-    /// ensure that any buffered payload ready to be sent will immediately be sent.
-    fn send_payload(&mut self, ctx: &mut Context<Self>, request: proto::AppendEntriesRequest) {
-        let payload_last_index = request.entries.last().map(|val| val.index);
-        let payload = RaftRpcOut{
-            target: self.target,
-            request: proto::RaftRequest::new_append(request),
-        };
-
-        // Send the payload.
-        let timeout = std::time::Duration::from_millis(self.config.heartbeat_interval);
-        let handle = ctx.spawn(fut::wrap_future(self.out.send(payload))
-            // Setup timeout.
-            .timeout(timeout, MailboxError::Timeout)
-            // Handle initial error conditions.
-            .map_err(|err, act: &mut Self, _| match err {
-                MailboxError::Closed => error!("Error while sending replication frames to {}. {:?}", act.target, err),
-                MailboxError::Timeout => warn!("Replication request to node {} timedout. Timeout config {:?}ms. {:?}", act.id, act.config.heartbeat_interval, err),
-            })
-            // Flatten inner result.
-            .and_then(|res, _, _| fut::FutureResult::from(res))
-            // Process the response.
-            .map(move |res, act, ctx| act.handle_append_entries_response(ctx, res, payload_last_index))
-            // Remove the retained spawn handle, update heartbeat & drive the replication process forward.
-            .then(|res, act, ctx| {
-                act.current_request.take();
-                act.update_heartbeat(ctx);
-                act.drive_replication(ctx);
-                fut::FutureResult::from(res)
-            }));
-        self.current_request = Some(handle);
-    }
-
-    /// Send the specified snapshot over to the target node.
-    fn send_snapshot(&mut self, _: &mut Context<Self>, snap: InstallSnapshotResponse) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
-        // Ensure state is still `RSState::InstallingSnapshot`.
-        if &self.state != &RSState::InstallingSnapshot {
-            return fut::Either::A(fut::FutureResult::from(Ok(())));
-        }
-
-        // Look up the snapshot on disk.
-        fut::Either::B(fut::wrap_future(tokio::fs::File::open(snap.pointer.path.clone()))
-            .map_err(|err, _, _| error!("Error opening snapshot file. {}", err))
-            // We've got a successful file handle, start streaming the chunks over to the target.
-            .and_then(move |file, act: &mut Self, _| {
-                // Create a snapshot stream from the file and stream it over to the target.
-                let snap_stream = SnapshotStream::new(file, act.config.snapshot_max_chunk_size as usize, act.term, act.id, snap.index, snap.term);
-                fut::wrap_stream(snap_stream)
-                    .map_err(|err, act: &mut Self, _| error!("Error while streaming snapshot to target {}: {}", &act.target, err))
-                    .and_then(|rpc, act: &mut Self, _| {
-                        // Send snapshot RPC frame over to target.
-                        fut::wrap_future(act.out.send(RaftRpcOut{
-                            target: act.target,
-                            request: proto::RaftRequest{payload: Some(proto::raft_request::Payload::InstallSnapshot(rpc))},
-                        }))
-                        .map_err(|err, _: &mut Self, _| error!("Error while sending outbound InstallSnapshot RPC: {}", err))
-                        .and_then(|res, _, _| fut::FutureResult::from(res))
-                        // Handle response from target.
-                        .and_then(|res, act, ctx| act.handle_install_snapshot_response(ctx, res))
-                    })
-                    .finish()
-            })
-            // If we've run into an error during the above process, we restart the process.
-            .map_err(|_, act, ctx| act.transition_to_installing_snapshot(ctx)))
     }
 
     /// Handle frames from the target node which are in response to an InstallSnapshot RPC request.
@@ -353,49 +398,20 @@ impl<S: RaftStorage> ReplicationStream<S> {
         match res.payload {
             // Check the response term. As long as everything still matches, then we are good to resume.
             Some(Payload::InstallSnapshot(inner)) => if &inner.term == &self.term {
-                fut::FutureResult::from(Ok(()))
+                fut::Either::A(fut::FutureResult::from(Ok(())))
             } else {
                 info!("Response from InstallSnapshot RPC sent to {} indicates a newer term {} is in session, reverting to follower.", &self.target, &inner.term);
-                self.raftnode.do_send(RSEvent::RevertToFollower(self.target, inner.term));
-                fut::FutureResult::from(Err(()))
+                fut::Either::B(fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: inner.term}))
+                    .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+                    // Ensure an error is returned here, as this was not a successful response.
+                    .and_then(|_, _, _| fut::FutureResult::from(Err(()))))
+
             },
             _ => {
                 warn!("Unexpected RPC response type from {} after sending InstallSnapshot RPC.", self.target);
-                fut::FutureResult::from(Err(()))
+                fut::Either::A(fut::FutureResult::from(Err(())))
             }
         }
-    }
-
-    /// Transition this actor to the state `RSState::Lagging` & notify Raft node.
-    fn transition_to_lagging(&mut self, ctx: &mut Context<Self>) {
-        self.state = RSState::Lagging;
-        self.buffered_outbound_payload.take(); // Remove any buffered payload.
-        let event = RSEventReplication{target: self.target, state: self.state.clone(), last_log_index: None};
-        ctx.spawn(fut::wrap_future(self.raftnode.send(RSEvent::Replication(event)))
-            .map_err(|err, act: &mut Self, _| error!("{} {} {}", MAILBOX_ERR_MESSAGE, act.target, err)));
-
-        // TODO: RESUME HERE IMMEDIATE <<<<<<<<
-    }
-
-    /// Transition this actor to the state `RSState::InstallingSnapshot` & notify Raft node.
-    fn transition_to_installing_snapshot(&mut self, ctx: &mut Context<Self>) {
-        self.state = RSState::InstallingSnapshot;
-        self.buffered_outbound_payload.take(); // Remove any buffered payload.
-        let event = InstallSnapshot{target: self.target};
-        let f = fut::wrap_future(self.raftnode.send(event))
-            // Log actix messaging errors.
-            .map_err(|err, act: &mut Self, _| error!("{} {} {}", MAILBOX_ERR_MESSAGE, act.target, err))
-            // Flatten inner result.
-            .and_then(|res, _, _| fut::FutureResult::from(res))
-            // Handle response from Raft node and start streaming over the snapshot.
-            .and_then(|res, act, ctx| act.send_snapshot(ctx, res))
-            // If an error has come up, and we are still in snapshot state, simply retry the operation.
-            .map_err(|_, act, ctx| {
-                if &act.state == &RSState::InstallingSnapshot {
-                    act.transition_to_installing_snapshot(ctx);
-                }
-            });
-        ctx.spawn(f);
     }
 
     /// Update the heartbeat mechanism.
@@ -404,7 +420,7 @@ impl<S: RaftStorage> ReplicationStream<S> {
     /// based on the configured `heartbeat_rate`. Once a request is successfully returned from the
     /// target, this method should be called to ensure a timeout isn't hit, and also to ensure
     /// this system is not sending more network requests than is needed.
-    fn update_heartbeat(&mut self, ctx: &mut Context<Self>) {
+    fn heartbeat_update(&mut self, ctx: &mut Context<Self>) {
         // Remove pending heartbeat if present.
         if let Some(hb) = self.heartbeat.take() {
             ctx.cancel_future(hb);
@@ -412,8 +428,136 @@ impl<S: RaftStorage> ReplicationStream<S> {
 
         // Setup a new heartbeat to be sent after the `heartbeat_rate` duration.
         let later = std::time::Duration::from_millis(self.config.heartbeat_interval);
-        let handle = ctx.run_later(later, |act, ctx| act.send_heartbeat(ctx));
+        let handle = ctx.run_later(later, |act, ctx| act.heartbeat_send(ctx));
         self.heartbeat = Some(handle);
+    }
+
+    /// Send a heartbeat frame to the target node.
+    fn heartbeat_send(&mut self, ctx: &mut Context<Self>) {
+        // Build the heartbeat frame to be sent to the follower.
+        let payload = proto::AppendEntriesRequest{
+            term: self.term,
+            leader_id: self.id,
+            prev_log_index: self.line_index,
+            prev_log_term: self.term,
+            entries: Vec::with_capacity(0),
+            leader_commit: self.line_commit,
+        };
+        let f = self.send_append_entries(ctx, payload)
+            // Handle heartbeat response.
+            .and_then(|res, act, ctx| act.handle_append_entries_response(ctx, res, None))
+            // Ensure next heartbeat is scheduled.
+            .then(|res, act, ctx| {
+                act.heartbeat_update(ctx);
+                // NOTE: this will drive the state after the first heartbeat, otherwise this will
+                // be a no-op.
+                act.drive_state(ctx);
+                fut::FutureResult::from(res)
+            });
+        ctx.spawn(f);
+    }
+
+    /// Send the given AppendEntries RPC to the target & await the response.
+    ///
+    /// The request will timeout after `heartbeat_rate`. If a response successfully comes back
+    /// from the target, the heartbeat timer will be updated.
+    fn send_append_entries(
+        &mut self, _: &mut Context<Self>, request: proto::AppendEntriesRequest,
+    ) -> impl ActorFuture<Actor=Self, Item=proto::RaftResponse, Error=()> {
+        let payload = RaftRpcOut{
+            target: self.target,
+            request: proto::RaftRequest::new_append(request),
+        };
+
+        // Send the payload.
+        let timeout = std::time::Duration::from_millis(self.config.heartbeat_interval);
+        fut::wrap_future(self.out.send(payload))
+            // Setup timeout.
+            .timeout(timeout, MailboxError::Timeout)
+            // Handle initial error conditions.
+            .map_err(|err, act: &mut Self, _| match err {
+                MailboxError::Closed => error!("Error while sending replication frames to {}. {:?}", act.target, err),
+                MailboxError::Timeout => warn!("Replication request to node {} timedout. Timeout config {}ms. {:?}", act.id, act.config.heartbeat_interval, err),
+            })
+            // Flatten inner result. If we got a response from the target node, update heartbeat.
+            .and_then(|res, act, ctx| {
+                if res.is_ok() {
+                    act.heartbeat_update(ctx);
+                }
+                fut::FutureResult::from(res)
+            })
+    }
+
+    /// Send the specified snapshot over to the target node.
+    fn send_snapshot(&mut self, _: &mut Context<Self>, snap: RSNeedsSnapshotResponse) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+        // Look up the snapshot on disk.
+        let (snap_index, snap_term) = (snap.index, snap.term);
+        fut::wrap_future(tokio::fs::File::open(snap.pointer.path.clone()))
+            .map_err(|err, _, _| error!("Error opening snapshot file. {}", err))
+
+            // We've got a successful file handle, start streaming the chunks over to the target.
+            .and_then(move |file, act: &mut Self, _| {
+                // Create a snapshot stream from the file and stream it over to the target.
+                let snap_stream = SnapshotStream::new(file, act.config.snapshot_max_chunk_size as usize, act.term, act.id, snap_index, snap_term);
+                fut::wrap_stream(snap_stream)
+                    .map_err(|err, act: &mut Self, _| error!("Error while streaming snapshot to target {}: {}", &act.target, err))
+
+                    // Send snapshot RPC frame over to target.
+                    .and_then(|rpc, act: &mut Self, _| {
+                        fut::wrap_future(act.out.send(RaftRpcOut{
+                            target: act.target,
+                            request: proto::RaftRequest{payload: Some(proto::raft_request::Payload::InstallSnapshot(rpc))},
+                        }))
+                        .map_err(|err, _: &mut Self, _| error!("Error while sending outbound InstallSnapshot RPC: {}", err))
+                        // Flatten inner result.
+                        .and_then(|res, _, _| fut::FutureResult::from(res))
+                        // Handle response from target.
+                        .and_then(|res, act, ctx| act.handle_install_snapshot_response(ctx, res))
+                    })
+                    .finish()
+            })
+            // Snapshot installation was successful. Update target to track last index of snapshot.
+            .map(move |_, act, _| {
+                act.next_index = snap_index + 1;
+            })
+    }
+
+    /// Transition this actor to the state `RSState::Lagging` & notify Raft node.
+    ///
+    /// NOTE WELL: this will not drive the state forward. That must be called from business logic.
+    fn transition_to_lagging(&mut self, _: &mut Context<Self>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+        self.state = RSState::Lagging(LaggingState::default());
+        let event = RSRateUpdate{target: self.target, is_line_rate: false};
+        fut::wrap_future(self.raftnode.send(event))
+            .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+    }
+
+    /// Transition this actor to the state `RSState::LineRate` & notify Raft node.
+    ///
+    /// NOTE WELL: this will not drive the state forward. That must be called from business logic.
+    fn transition_to_line_rate(&mut self, _: &mut Context<Self>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+        // Transition pertinent state from lagging to line rate.
+        let mut new_state = LineRateState::default();
+        match &mut self.state {
+            RSState::Lagging(inner) => {
+                new_state.buffered_outbound_payload = inner.buffered_outbound_payload.take();
+            }
+            _ => (),
+        }
+        self.state = RSState::LineRate(new_state);
+        let event = RSRateUpdate{target: self.target, is_line_rate: true};
+        fut::wrap_future(self.raftnode.send(event))
+            .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+    }
+
+    /// Transition this actor to the state `RSState::InstallingSnapshot` & notify Raft node.
+    ///
+    /// NOTE WELL: this will not drive the state forward. That must be called from business logic.
+    fn transition_to_snapshotting(&mut self, _: &mut Context<Self>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+        self.state = RSState::Snapshotting(SnapshottingState::default());
+        let event = RSRateUpdate{target: self.target, is_line_rate: false};
+        fut::wrap_future(self.raftnode.send(event))
+            .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
     }
 }
 
@@ -427,7 +571,7 @@ impl<S: RaftStorage> Actor for ReplicationStream<S> {
     /// Raft node.
     fn started(&mut self, ctx: &mut Self::Context) {
         // Send initial heartbeat.
-        self.send_heartbeat(ctx);
+        self.heartbeat_send(ctx);
     }
 }
 
@@ -435,7 +579,7 @@ impl<S: RaftStorage> Actor for ReplicationStream<S> {
 // RSReplicate ///////////////////////////////////////////////////////////////////////////////////
 
 /// A replication stream message indicating a new payload of entries to be replicated.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub(crate) struct RSReplicate {
     /// The payload of entries to be replicated.
     ///
@@ -458,68 +602,80 @@ impl Message for RSReplicate {
 impl<S: RaftStorage> Handler<RSReplicate> for ReplicationStream<S> {
     type Result = Result<(), ()>;
 
-    /// Handle replication requests from the Raft node.
-    fn handle(&mut self, msg: RSReplicate, ctx: &mut Self::Context) -> Self::Result {
-        self.handle_rsreplicate_message(ctx, msg);
+    /// Handle a request to replicate the given payload of entries.
+    ///
+    /// If there is already an outbound request, this payload will be buffered. If there is
+    /// already a buffered payload, the payloads will be combined. This helps to keep throughput
+    /// as high as possible when dealing with high write load conditions.
+    fn handle(&mut self, mut msg: RSReplicate, ctx: &mut Self::Context) -> Self::Result {
+        // Always update line commit & index info first so that this value can be used in all AppendEntries RPCs.
+        self.line_commit = msg.line_commit;
+        self.line_index = msg.line_index;
+
+        // Get a mutable reference to an inner buffer if permitted by current state, else return.
+        let opt = match &mut self.state {
+            RSState::LineRate(inner) => &mut inner.buffered_outbound_payload,
+            RSState::Lagging(inner) if inner.is_ready_for_line_rate =>  &mut inner.buffered_outbound_payload,
+            _ => return Ok(()),
+        };
+
+        // Update current buffer, or insert payload into buffer as is.
+        match opt {
+            Some(payload) => {
+                payload.line_commit = msg.line_commit;
+                payload.line_index = msg.line_index;
+                payload.entries.append(&mut msg.entries);
+            }
+            None => {
+                *opt = Some(msg);
+            }
+        }
+
+        self.drive_state(ctx);
         Ok(())
     }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// RSEvent ///////////////////////////////////////////////////////////////////////////////////////
+// RSRateUpdate //////////////////////////////////////////////////////////////////////////////////
 
-/// A replication stream message indicating an event coming from a replication stream.
+/// An event representing an update to the replication rate of a replication stream.
 #[derive(Message)]
-pub(crate) enum RSEvent {
-    /// An event representing some replication stream update.
-    Replication(RSEventReplication),
-    /// A newer term was observed in a response from a replication request, become a follower.
-    ///
-    /// This variant simply wraps the ID of the node from which the newer term was observed along
-    /// with the value of the new term.
-    RevertToFollower(NodeId, u64),
-}
-
-/// An event representing some replication stream update.
-pub(crate) struct RSEventReplication {
-    /// The ID of the Raft node which this RSEvent relates to.
+pub(crate) struct RSRateUpdate {
+    /// The ID of the Raft node which this event relates to.
     target: NodeId,
-    /// The state of the replication stream.
-    state: RSState,
-    /// The index of the last log which was successfully replicated as part of this event.
+    /// A flag indicating if the corresponding target node is replicating at line rate.
     ///
-    /// This value may be `None` due to some state changes related to conflicts or snapshots. If
-    /// this value is `None`, then the information here is indicative of the replication stream
-    /// transitioning to the specified state.
-    last_log_index: Option<u64>,
-}
-
-/// The rate of a replication stream.
-#[derive(Clone, Eq, PartialEq)]
-pub(crate) enum RSState {
-    /// The replication stream is running at line rate.
-    LineRate,
-    /// The replication stream is lagging behind due to the target node.
-    Lagging,
-    /// The replication stream is streaming a snapshot over to the target node.
-    InstallingSnapshot,
+    /// When replicating at line rate, the replication stream will receive log entires to
+    /// replicate as soon as they are ready. When not running at line rate, the Raft node will
+    /// only send over metadata without entries to replicate.
+    is_line_rate: bool,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// InstallSnapshot ///////////////////////////////////////////////////////////////////////////////
+// RSRevertToFollower ////////////////////////////////////////////////////////////////////////////
 
-/// An event from a replication stream requesting a snapshot to be installed on the target.
-pub(crate) struct InstallSnapshot {
-    /// The ID of the Raft node which this RSEvent relates to.
+/// An event indicating that the Raft node needs to rever to follower state.
+#[derive(Message)]
+pub(crate) struct RSRevertToFollower {
+    /// The ID of the target node from which the new term was observed.
     target: NodeId,
+    /// The new term observed.
+    term: u64,
 }
 
-impl Message for InstallSnapshot {
-    type Result = Result<InstallSnapshotResponse, ()>;
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSNeedsSnapshot ///////////////////////////////////////////////////////////////////////////////
+
+/// An event from a replication stream requesting snapshot info.
+pub(crate) struct RSNeedsSnapshot;
+
+impl Message for RSNeedsSnapshot {
+    type Result = Result<RSNeedsSnapshotResponse, ()>;
 }
 
-/// A resonse from the Raft node for requesting to install a snapshot on a target.
-pub(crate) struct InstallSnapshotResponse {
+/// A resonse from the Raft actor with information on the current snapshot.
+pub(crate) struct RSNeedsSnapshotResponse {
     pub index: u64,
     pub term: u64,
     pub pointer: proto::EntrySnapshotPointer,
