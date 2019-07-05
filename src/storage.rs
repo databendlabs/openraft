@@ -126,9 +126,9 @@ impl Message for AppendLogEntries {
 pub struct CreateSnapshot {
     /// The new snapshot should start from entry `0` and should cover all entries through the
     /// index specified here, inclusive.
-    through: u64,
+    pub through: u64,
     /// The directory where the new snapshot is to be written.
-    snapshot_dir: String,
+    pub snapshot_dir: String,
 }
 
 impl Message for CreateSnapshot {
@@ -146,8 +146,8 @@ impl Message for CreateSnapshot {
 /// ### implementation algorithm
 /// - Upon receiving the request, a new snapshot file should be created on disk.
 /// - Every new chunk of data received should be written to the new snapshot file starting at the
-/// `offset` specified in the chunk. Due to transient communications issues, chunks may be
-/// redelivered.
+/// `offset` specified in the chunk. The Raft actor will ensure that redelivered chunks are not
+/// sent through multiple times.
 /// - If the receiver is dropped, the snapshot which was being created should be removed from
 /// disk.
 ///
@@ -163,13 +163,13 @@ impl Message for CreateSnapshot {
 /// recreated from the new snapshot. Return once the state machine has been brought up-to-date.
 pub struct InstallSnapshot {
     /// The term which the final entry of this snapshot covers.
-    term: u64,
+    pub term: u64,
     /// The index of the final entry which this snapshot covers.
-    index: u64,
+    pub index: u64,
     /// The directory where the new snapshot is to be written.
-    snapshot_dir: String,
+    pub snapshot_dir: String,
     /// A stream of data chunks for this snapshot.
-    stream: UnboundedReceiver<InstallSnapshotChunk>,
+    pub stream: UnboundedReceiver<InstallSnapshotChunk>,
 }
 
 impl Message for InstallSnapshot {
@@ -179,11 +179,11 @@ impl Message for InstallSnapshot {
 /// A chunk of snapshot data.
 pub struct InstallSnapshotChunk {
     /// The byte offset where chunk is positioned in the snapshot file.
-    offset: u64,
+    pub offset: u64,
     /// The raw bytes of the snapshot chunk, starting at `offset`.
-    data: Vec<u8>,
+    pub data: Vec<u8>,
     /// Will be `true` if this is the last chunk in the snapshot.
-    done: bool,
+    pub done: bool,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -202,7 +202,7 @@ pub struct InstallSnapshotChunk {
 /// If there is no active snapshot file, then `None` should be returned.
 pub struct GetCurrentSnapshot {
     /// The directory where the system has been configured to store snapshots.
-    snapshot_dir: String,
+    pub snapshot_dir: String,
 }
 
 impl Message for GetCurrentSnapshot {
