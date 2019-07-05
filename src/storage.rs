@@ -119,16 +119,17 @@ impl Message for AppendLogEntries {
 /// old snapshot first, and resume processing from its last entry.
 /// - The newly generated snapshot should be written to the directory specified by `snapshot_dir`.
 /// - All previous entries in the log should be deleted up to the entry specified at index
-/// `through`. The entry at index `through` should be replaced with a new entry created from
-/// calling `actix_raft::proto::Entry::new_snapshot_pointer(...)`.
+/// `through`.
+/// - The entry at index `through` should be replaced with a new entry created from calling
+/// `actix_raft::proto::Entry::new_snapshot_pointer(...)`.
 /// - Any old snapshot will no longer have representation in the log, and should be deleted.
 /// - Return a copy of the snapshot pointer entry created earlier.
 pub struct CreateSnapshot {
     /// The new snapshot should start from entry `0` and should cover all entries through the
     /// index specified here, inclusive.
-    through: u64,
+    pub through: u64,
     /// The directory where the new snapshot is to be written.
-    snapshot_dir: String,
+    pub snapshot_dir: String,
 }
 
 impl Message for CreateSnapshot {
@@ -146,8 +147,8 @@ impl Message for CreateSnapshot {
 /// ### implementation algorithm
 /// - Upon receiving the request, a new snapshot file should be created on disk.
 /// - Every new chunk of data received should be written to the new snapshot file starting at the
-/// `offset` specified in the chunk. Due to transient communications issues, chunks may be
-/// redelivered.
+/// `offset` specified in the chunk. The Raft actor will ensure that redelivered chunks are not
+/// sent through multiple times.
 /// - If the receiver is dropped, the snapshot which was being created should be removed from
 /// disk.
 ///
@@ -163,13 +164,13 @@ impl Message for CreateSnapshot {
 /// recreated from the new snapshot. Return once the state machine has been brought up-to-date.
 pub struct InstallSnapshot {
     /// The term which the final entry of this snapshot covers.
-    term: u64,
+    pub term: u64,
     /// The index of the final entry which this snapshot covers.
-    index: u64,
+    pub index: u64,
     /// The directory where the new snapshot is to be written.
-    snapshot_dir: String,
+    pub snapshot_dir: String,
     /// A stream of data chunks for this snapshot.
-    stream: UnboundedReceiver<InstallSnapshotChunk>,
+    pub stream: UnboundedReceiver<InstallSnapshotChunk>,
 }
 
 impl Message for InstallSnapshot {
@@ -179,11 +180,11 @@ impl Message for InstallSnapshot {
 /// A chunk of snapshot data.
 pub struct InstallSnapshotChunk {
     /// The byte offset where chunk is positioned in the snapshot file.
-    offset: u64,
+    pub offset: u64,
     /// The raw bytes of the snapshot chunk, starting at `offset`.
-    data: Vec<u8>,
+    pub data: Vec<u8>,
     /// Will be `true` if this is the last chunk in the snapshot.
-    done: bool,
+    pub done: bool,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -202,7 +203,7 @@ pub struct InstallSnapshotChunk {
 /// If there is no active snapshot file, then `None` should be returned.
 pub struct GetCurrentSnapshot {
     /// The directory where the system has been configured to store snapshots.
-    snapshot_dir: String,
+    pub snapshot_dir: String,
 }
 
 impl Message for GetCurrentSnapshot {
@@ -210,7 +211,7 @@ impl Message for GetCurrentSnapshot {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// GetCurrentSnapshot ////////////////////////////////////////////////////////////////////////////
+// ApplyEntriesToStateMachine ////////////////////////////////////////////////////////////////////
 
 /// A request from the Raft node to apply the given log entries to the state machine.
 ///
@@ -268,9 +269,10 @@ impl Message for SaveHardState {
 /// `Config` value. The Raft node will send a message to this `RaftStorage` interface when a
 /// periodic snapshot is to be generated based on its configuration.
 ///
-/// Log compaction, which is what taking a snapshot is for, is an application specific process.
-/// The essential idea is that superfluous records in the log will be removed. See §7 for more
-/// details. There are a few snapshot related messages which the `RaftStorage` actor must handle.
+/// Log compaction, which is part of what taking a snapshot is for, is an application specific
+/// process. The essential idea is that superfluous records in the log will be removed. See §7 for
+/// more details. There are a few snapshot related messages which the `RaftStorage` actor must
+/// handle:
 ///
 /// - `CreateSnapshot`: a request to create a new snapshot of the current log.
 /// - `InstallSnapshot`: the Raft leader is streaming over a snapshot, install it.
@@ -282,11 +284,11 @@ pub trait RaftStorage
     where
         Self: Actor<Context=Context<Self>>,
         Self: Handler<GetInitialState> + ToEnvelope<Self, GetInitialState>,
+        Self: Handler<SaveHardState> + ToEnvelope<Self, SaveHardState>,
         Self: Handler<GetLogEntries> + ToEnvelope<Self, GetLogEntries>,
         Self: Handler<AppendLogEntries> + ToEnvelope<Self, AppendLogEntries>,
         Self: Handler<ApplyEntriesToStateMachine> + ToEnvelope<Self, ApplyEntriesToStateMachine>,
         Self: Handler<CreateSnapshot> + ToEnvelope<Self, CreateSnapshot>,
         Self: Handler<InstallSnapshot> + ToEnvelope<Self, InstallSnapshot>,
         Self: Handler<GetCurrentSnapshot> + ToEnvelope<Self, GetCurrentSnapshot>,
-        Self: Handler<SaveHardState> + ToEnvelope<Self, SaveHardState>,
 {}

@@ -2,6 +2,7 @@
 
 use std::{
     collections::BTreeMap,
+    sync::Arc,
     time::Duration,
 };
 
@@ -12,6 +13,11 @@ use crate::{
     config::Config,
     error::RaftError,
     proto,
+    replication::{
+        ReplicationStream, RSReplicate,
+        RSNeedsSnapshot, RSNeedsSnapshotResponse,
+        RSRateUpdate, RSRevertToFollower, RSUpdateMatchIndex,
+    },
     storage::{
         self, StorageResult, AppendLogEntries, AppendLogEntriesData,
         ApplyEntriesToStateMachine, GetLogEntries, InitialState, SaveHardState,
@@ -27,7 +33,7 @@ pub type NodeId = u64;
 
 /// The state of the Raft node.
 #[derive(Eq, PartialEq)]
-pub(crate) enum NodeState {
+enum NodeState {
     /// A non-standard Raft state indicating that the node is initializing.
     Initializing,
     /// A non-standard Raft state indicating that the node is awaiting an admin command to begin.
@@ -60,21 +66,23 @@ pub(crate) enum NodeState {
 /// Volatile state specific to the Raft leader.
 ///
 /// This state is reinitialized after an election.
+#[derive(Default, Eq, PartialEq)]
+struct LeaderState {
+    /// A mapping of node IDs the replication state of the target node.
+    pub nodes: BTreeMap<NodeId, ReplicationState>,
+}
+
+/// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 #[derive(Eq, PartialEq)]
-pub(crate) struct LeaderState {
-    /// A mapping of node IDs to the index of the next log entry to send.
-    // next_index: BTreeMap<NodeId, u64>,
-    // TODO: ^^^ replace this with a better tracking mechanism for replication rate, addr of
-    // replication stream, and subsume match index as well.
-    /// A mapping of node IDs to the highest log entry index known to be replicated thereof.
-    ///
-    /// Each entry is initialized to 0, and increases per the Raft data replication protocol.
-    match_index: BTreeMap<NodeId, u64>,
+struct ReplicationState {
+    pub match_index: u64,
+    pub is_at_line_rate: bool,
+    pub addr: Recipient<RSReplicate>,
 }
 
 /// Volatile state specific to a Raft node in candidate state.
 #[derive(Eq, PartialEq)]
-pub(crate) struct CandidateState {
+struct CandidateState {
     /// Current outstanding requests to peer nodes by node ID.
     requests: BTreeMap<NodeId, SpawnHandle>,
     /// The number of votes which have been granted by peer nodes.
@@ -162,7 +170,7 @@ pub struct Raft<S: RaftStorage> {
     /// This node's ID.
     id: NodeId,
     /// This node's runtime config.
-    config: Config,
+    config: Arc<Config>,
     /// All currently known members of the Raft cluster.
     members: Vec<NodeId>,
     /// The current state of this Raft node.
@@ -223,6 +231,7 @@ impl<S> Raft<S> where S: RaftStorage {
     /// TODO: add an example on how to create and start an instance.
     pub fn new(id: NodeId, config: Config, out: actix::Recipient<RaftRpcOut>, storage: Addr<S>) -> Self {
         let state = NodeState::Initializing;
+        let config = Arc::new(config);
         Self{
             id, config, members: vec![id], state, out, storage,
             commit_index: 0, last_applied: 0,
@@ -393,48 +402,15 @@ impl<S> Raft<S> where S: RaftStorage {
 
     /// Transition to the Raft leader state.
     ///
-    /// Once a node becomes the Raft cluster leader, its behavior will be a bit different:
+    /// Once a node becomes the Raft cluster leader, its behavior will be a bit different. Upon
+    /// election:
     ///
-    /// - Upon election, send initial empty AppendEntries RPCs (heartbeats) to each server; repeat
-    /// during idle periods to prevent election timeouts, per §5.2.
-    /// - If command received from client, append entry to local log, replicate to other nodes,
-    /// and then apply to state machine. This implementation allows clients to specify when they
-    /// want to receive a response. Options are Committed, or Applied. Committed means the client
-    /// will receive a response once the command has been appended to the leader's log and a
-    /// majority of the logs in the cluster, which aligns with Raft's definition of a committed
-    /// log. Applied means that the committed log has been successfully applied to the state
-    /// machine and flushed to disk, per Raft's definition.
-    /// TODO: impl this ^^^
-    /// -
+    /// - Each cluster member gets a `ReplicationStream` actor spawned. Addr is retained.
+    /// - Initial AppendEntries RPCs (heartbeats) are sent to each cluster member, and is repeated
+    /// during idle periods to prevent election timeouts, per §5.2. This is handled by the
+    /// `ReplicationStream` actors.
     ///
-    /// - each member gets a `ReplicationStream` actor spawned. Addr is retained.
-    /// - leader state calls add_stream (retaining the handle) on an mpsc receiver. The sender will
-    /// be retained and used for sending client write requests. Client write operations will clone the
-    /// sender, and enqueue themselves in order to enter the processing queue.
-    /// - client writes are queued. Oneshot msg receiver will be returned as future, sender will
-    /// be enqueued along with request data. This is sent along on the retained sender from above.
-    /// - as client requests are processed, they are immediately appended to the log. Once an event
-    /// is appended to the log, the updated index is sent over to all replication streams along with
-    /// the Raft's committed index and a copy of the logs which were written as part of that update.
-    /// This optimizes replication speed for replication streams which are running at line rate.
-    /// - replication streams will request entries from the Raft if they are not running at line
-    /// rate. After every successful AppendEntries RPC sent to a follower from the replication
-    /// stream, it will send an event to the Raft of the last index sent & whether it is at line rate or not.
-    /// The Raft will also update its committed_index based on these replication event messages.
-    /// - if a replication stream needs to snapshot a follower, it will send a message to the Raft
-    /// indicating that such is needed. The Raft node will perform the snapshot & will send the snapshot
-    /// info back to the replication stream.
-    ///
-    /// For the client path:
-    /// - the client's response channel can be persisted based on whether it needs Committed or
-    /// Applied state for messages.
-    /// - Every time the committed index is updated based on replication events, the BTreeMap storing
-    /// the channels will be checked for any keys which are <= new committed index. For anything which matches,
-    /// they will be removed and their response will be sent.
-    /// - As part of updating the committed index, after client responses have been sent, the logs
-    /// which need to be applied will be sent over to the storage engine to be applied.
-    /// - Once the committed logs have been applied to the state machine, the client requests which
-    /// are awaiting Applied state for their requests will be evaluated and responded to.
+    /// See the `ClientRequest` handler for more details on the write path for client requests.
     fn become_leader(&mut self, ctx: &mut Context<Self>) {
         // Cleanup previous state & ensure we've cancelled the election timeout system.
         self.cleanup_state(ctx);
@@ -442,11 +418,26 @@ impl<S> Raft<S> where S: RaftStorage {
             ctx.cancel_future(handle);
         }
 
-        // Send initial set of heartbeats to followers to establish leadership.
+        // Prep new leader state.
+        let mut new_state = LeaderState::default();
 
-        // Start the heartbeat stream to followers.
+        // Spawn new replication stream actors.
+        for target in self.members.iter().filter(|elem| *elem != &self.id) {
+            // Build the replication stream for the target member.
+            let rs = ReplicationStream::new(
+                self.id, *target, self.current_term, self.config.clone(),
+                self.last_log_index, self.last_log_term, self.commit_index,
+                ctx.address(), self.out.clone(), self.storage.clone().recipient(),
+            );
+            let addr = rs.start(); // Start the actor on the same thread.
+
+            // Retain the addr of the replication stream.
+            let state = ReplicationState{match_index: self.last_log_index, is_at_line_rate: true, addr: addr.recipient()};
+            new_state.nodes.insert(*target, state);
+        }
 
         // Initialize new state as leader.
+        self.state = NodeState::Leader(new_state);
     }
 
     /// Clean up the current Raft state.
@@ -820,6 +811,50 @@ impl<S: RaftStorage> Actor for Raft<S> {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
+// Replication Streams ///////////////////////////////////////////////////////////////////////////
+
+// RSRateUpdate //////////////////////////////////////////////////////////////
+
+impl<S: RaftStorage> Handler<RSRateUpdate> for Raft<S> {
+    type Result = ();
+
+    /// Handle events from replication streams.
+    fn handle(&mut self, _msg: RSRateUpdate, _ctx: &mut Self::Context) {
+    }
+}
+
+// RSNeedsSnapshot ///////////////////////////////////////////////////////////
+
+impl <S: RaftStorage> Handler<RSNeedsSnapshot> for Raft<S> {
+    type Result = ResponseActFuture<Self, RSNeedsSnapshotResponse, ()>;
+
+    /// Handle events from replication streams requesting for snapshot info.
+    fn handle(&mut self, _msg: RSNeedsSnapshot, _ctx: &mut Self::Context) -> Self::Result {
+        Box::new(fut::FutureResult::from(Err(())))
+    }
+}
+
+// RSRevertToFollower ////////////////////////////////////////////////////////
+
+impl <S: RaftStorage> Handler<RSRevertToFollower> for Raft<S> {
+    type Result = ();
+
+    /// Handle events from replication streams for when this node needs to revert to follower state.
+    fn handle(&mut self, _msg: RSRevertToFollower, _ctx: &mut Self::Context) {
+    }
+}
+
+// RSUpdateMatchIndex ////////////////////////////////////////////////////////
+
+impl <S: RaftStorage> Handler<RSUpdateMatchIndex> for Raft<S> {
+    type Result = ();
+
+    /// Handle events from a replication stream which updates the target node's match index.
+    fn handle(&mut self, _msg: RSUpdateMatchIndex, _ctx: &mut Self::Context) {
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
 // RaftRpcOut ////////////////////////////////////////////////////////////////////////////////////
 
 /// An actix message holding a Raft RPC frame to be sent outbound to a target Raft node.
@@ -896,24 +931,58 @@ impl<S: RaftStorage> Handler<RaftRpcIn> for Raft<S> {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// ClientRpcOut //////////////////////////////////////////////////////////////////////////////////
+// ClientRequest /////////////////////////////////////////////////////////////////////////////////
 
-/// An actix message holding a Raft RPC frame to be sent outbound to a peer Raft node.
-pub struct ClientRpcOut;
+/// An actix message representing a client request to mutate the data of this Raft cluster.
+pub struct ClientRequest;
 
-impl Message for ClientRpcOut {
+impl Message for ClientRequest{
     type Result = Result<(), ()>;
+}
+
+impl<S: RaftStorage> Handler<ClientRequest> for Raft<S> {
+    type Result = actix::ResponseActFuture<Self, (), ()>;
+
+    /// Handle a client request to mutate the data of the Raft cluster.
+    ///
+    ///  - If command received from client, append entry to local log, replicate to other nodes,
+    /// and then apply to state machine. This implementation allows clients to specify when they
+    /// want to receive a response. Options are Committed, or Applied. Committed means the client
+    /// will receive a response once the command has been appended to the leader's log and a
+    /// majority of the logs in the cluster, which aligns with Raft's definition of a committed
+    /// log. Applied means that the committed log has been successfully applied to the state
+    /// machine and flushed to disk, per Raft's definition.
+    /// TODO: impl this ^^^
+    ///
+    /// ----
+    ///
+    /// - Client writes are immediately processed, but their response channel is queued. Oneshot
+    /// msg receiver will be returned as future, sender will be enqueued for response condition
+    /// to be met.
+    /// - As client requests are processed, they are immediately appended to the log. Once an event
+    /// is appended to the log, the updated index is sent over to all replication streams along with
+    /// the Raft's committed index and a copy of the logs which were written as part of that update.
+    /// This optimizes replication speed for replication streams which are running at line rate.
+    ///
+    /// For the client path:
+    /// - Client's response channel can be persisted based on whether it needs Committed or
+    /// Applied state for messages.
+    /// - Every time the committed index is updated based on replication events, the BTreeMap storing
+    /// the channels will be checked for any keys which are <= new committed index. For anything which matches,
+    /// they will be removed and their response will be sent.
+    /// - As part of updating the committed index, after client responses have been sent, the logs
+    /// which need to be applied will be sent over to the storage engine to be applied.
+    /// - Once the committed logs have been applied to the state machine, the client requests which
+    /// are awaiting Applied state for their requests will be evaluated and responded to.
+    fn handle(&mut self, _msg: ClientRequest, _ctx: &mut Self::Context) -> Self::Result {
+        // TODO: implement this & finish up client request handling.
+        Box::new(fut::FutureResult::from(Ok(())))
+    }
 }
 
 // TODO:
 // ### admin commands
 // - get AdminCommands setup and implemented.
-//
-// ### clients
-// - create client message protobuf, used to generically wrap any type of client request.
-//   Put together docs on how applications should mitigate client retries which would
-//   lead to duplicates (request serial number tracking).
-// - implement handler for client requests.
 //
 // ### observability
 // - ensure that internal state transitions and updates are emitted for host application use. Such
