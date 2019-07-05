@@ -191,6 +191,8 @@ impl<S: RaftStorage> ReplicationStream<S> {
             return;
         }
 
+        // Begin the next state pass.
+        self.is_driving_state = true;
         match &self.state {
             RSState::LineRate(_) => self.drive_state_line_rate(ctx),
             RSState::Lagging(_) => self.drive_state_lagging(ctx),
@@ -202,7 +204,10 @@ impl<S: RaftStorage> ReplicationStream<S> {
     fn drive_state_line_rate(&mut self, ctx: &mut Context<Self>) {
         let state = match &mut self.state {
             RSState::LineRate(state) => state,
-            _ => return,
+            _ => {
+                self.is_driving_state = false;
+                return self.drive_state(ctx);
+            },
         };
 
         // If there is a buffered payload, send it, else nothing to do.
@@ -211,7 +216,6 @@ impl<S: RaftStorage> ReplicationStream<S> {
                 term: self.term, leader_id: self.id,
                 prev_log_index: self.match_index,
                 prev_log_term: self.match_term,
-                // entries: buffered.entries.into_iter().filter(|elem| elem.index < self.next_index).collect(), // TODO: might be able to remove this. Re-evaluate.
                 entries: buffered.entries,
                 leader_commit: self.line_commit,
             };
@@ -234,7 +238,10 @@ impl<S: RaftStorage> ReplicationStream<S> {
     fn drive_state_lagging(&mut self, ctx: &mut Context<Self>) {
         let state = match &mut self.state {
             RSState::Lagging(state) => state,
-            _ => return,
+            _ => {
+                self.is_driving_state = false;
+                return self.drive_state(ctx);
+            },
         };
 
         // A few values to be moved into future closures.
@@ -273,7 +280,7 @@ impl<S: RaftStorage> ReplicationStream<S> {
                 let last_log_and_index = entries.last().map(|elem| (elem.index, elem.term));
                 let payload = proto::AppendEntriesRequest{
                     term: act.term, leader_id: act.id,
-                    prev_log_index, prev_log_term,
+                    prev_log_index, prev_log_term, // NOTE: these are moved in from above.
                     entries, leader_commit: act.line_commit,
                 };
                 act.send_append_entries(ctx, payload)
@@ -300,7 +307,10 @@ impl<S: RaftStorage> ReplicationStream<S> {
     fn drive_state_snapshotting(&mut self, ctx: &mut Context<Self>) {
         let _state = match &mut self.state {
             RSState::Snapshotting(state) => state,
-            _ => return,
+            _ => {
+                self.is_driving_state = false;
+                return self.drive_state(ctx);
+            },
         };
 
         ctx.spawn(fut::wrap_future(self.raftnode.send(RSNeedsSnapshot))
@@ -335,13 +345,14 @@ impl<S: RaftStorage> ReplicationStream<S> {
             }
         };
 
-        // If the response indicates a success, then we are done here.
+        // Handle success conditions.
         if payload.success {
             // If this was a proper replication event (last index & term were provided), then update state.
             if let Some((index, term)) = last_index_and_term {
                 self.next_index = index + 1; // This should always be the next expected index.
                 self.match_index = index;
                 self.match_term = term;
+                self.raftnode.do_send(RSUpdateMatchIndex{target: self.target, match_index: index});
             }
 
             // Else, this was just a heartbeat. Do nothing.
@@ -352,15 +363,17 @@ impl<S: RaftStorage> ReplicationStream<S> {
         if &payload.term > &self.term {
             return Box::new(
                 fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: payload.term}))
-                    .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err)));
+                    .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+                    // This condition represents a replication failure, so return an error condition.
+                    .and_then(|_, _, _| fut::FutureResult::from(Err(()))));
         }
 
         // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
         if let Some(conflict) = payload.conflict_opt {
             // If the returned conflict opt index is greater than line index, then this is a
-            // logical error, and no action should be taken.
+            // logical error, and no action should be taken. This represents a replication failure.
             if &conflict.index > &self.line_index {
-                return Box::new(fut::FutureResult::from(Ok(())));
+                return Box::new(fut::FutureResult::from(Err(())));
             }
 
             // Check snapshot policy and handle conflict as needed.
@@ -372,7 +385,7 @@ impl<S: RaftStorage> ReplicationStream<S> {
                     return Box::new(self.transition_to_lagging(ctx));
                 }
                 SnapshotPolicy::LogsSinceLast(threshold) => {
-                    let diff = &self.line_index - &conflict.index;
+                    let diff = &self.line_index - &conflict.index; // NOTE WELL: underflow is guarded against above.
                     if &diff >= threshold {
                         // Follower is far behind and needs to receive an InstallSnapshot RPC.
                         return Box::new(self.transition_to_snapshotting(ctx));
@@ -397,15 +410,14 @@ impl<S: RaftStorage> ReplicationStream<S> {
         use proto::raft_response::Payload;
         match res.payload {
             // Check the response term. As long as everything still matches, then we are good to resume.
-            Some(Payload::InstallSnapshot(inner)) => if &inner.term == &self.term {
-                fut::Either::A(fut::FutureResult::from(Ok(())))
-            } else {
-                info!("Response from InstallSnapshot RPC sent to {} indicates a newer term {} is in session, reverting to follower.", &self.target, &inner.term);
-                fut::Either::B(fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: inner.term}))
+            Some(Payload::InstallSnapshot(payload)) => if &payload.term > &self.term {
+                info!("Response from InstallSnapshot RPC sent to {} indicates a newer term {} is in session, reverting to follower.", &self.target, &payload.term);
+                fut::Either::B(fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: payload.term}))
                     .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
                     // Ensure an error is returned here, as this was not a successful response.
                     .and_then(|_, _, _| fut::FutureResult::from(Err(()))))
-
+            } else {
+                fut::Either::A(fut::FutureResult::from(Ok(())))
             },
             _ => {
                 warn!("Unexpected RPC response type from {} after sending InstallSnapshot RPC.", self.target);
@@ -428,39 +440,39 @@ impl<S: RaftStorage> ReplicationStream<S> {
 
         // Setup a new heartbeat to be sent after the `heartbeat_rate` duration.
         let later = std::time::Duration::from_millis(self.config.heartbeat_interval);
-        let handle = ctx.run_later(later, |act, ctx| act.heartbeat_send(ctx));
+        let handle = ctx.run_later(later, |act, ctx| {
+            let f = act.heartbeat_send(ctx);
+            ctx.spawn(f);
+        });
         self.heartbeat = Some(handle);
     }
 
     /// Send a heartbeat frame to the target node.
-    fn heartbeat_send(&mut self, ctx: &mut Context<Self>) {
+    fn heartbeat_send(&mut self, ctx: &mut Context<Self>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
         // Build the heartbeat frame to be sent to the follower.
         let payload = proto::AppendEntriesRequest{
             term: self.term,
             leader_id: self.id,
-            prev_log_index: self.line_index,
-            prev_log_term: self.term,
+            prev_log_index: self.match_index,
+            prev_log_term: self.match_term,
             entries: Vec::with_capacity(0),
             leader_commit: self.line_commit,
         };
-        let f = self.send_append_entries(ctx, payload)
+        self.send_append_entries(ctx, payload)
             // Handle heartbeat response.
             .and_then(|res, act, ctx| act.handle_append_entries_response(ctx, res, None))
             // Ensure next heartbeat is scheduled.
             .then(|res, act, ctx| {
                 act.heartbeat_update(ctx);
-                // NOTE: this will drive the state after the first heartbeat, otherwise this will
-                // be a no-op.
-                act.drive_state(ctx);
                 fut::FutureResult::from(res)
-            });
-        ctx.spawn(f);
+            })
     }
 
     /// Send the given AppendEntries RPC to the target & await the response.
     ///
-    /// The request will timeout after `heartbeat_rate`. If a response successfully comes back
-    /// from the target, the heartbeat timer will be updated.
+    /// If a response successfully comes back from the target, the heartbeat timer will be
+    /// updated. This routine does not perform any timeout logic. That is up to the parent
+    /// application's networking layer.
     fn send_append_entries(
         &mut self, _: &mut Context<Self>, request: proto::AppendEntriesRequest,
     ) -> impl ActorFuture<Actor=Self, Item=proto::RaftResponse, Error=()> {
@@ -470,15 +482,9 @@ impl<S: RaftStorage> ReplicationStream<S> {
         };
 
         // Send the payload.
-        let timeout = std::time::Duration::from_millis(self.config.heartbeat_interval);
         fut::wrap_future(self.out.send(payload))
-            // Setup timeout.
-            .timeout(timeout, MailboxError::Timeout)
             // Handle initial error conditions.
-            .map_err(|err, act: &mut Self, _| match err {
-                MailboxError::Closed => error!("Error while sending replication frames to {}. {:?}", act.target, err),
-                MailboxError::Timeout => warn!("Replication request to node {} timedout. Timeout config {}ms. {:?}", act.id, act.config.heartbeat_interval, err),
-            })
+            .map_err(|err, act: &mut Self, _| error!("Error while sending replication frames to {}. {:?}", act.target, err))
             // Flatten inner result. If we got a response from the target node, update heartbeat.
             .and_then(|res, act, ctx| {
                 if res.is_ok() {
@@ -519,6 +525,9 @@ impl<S: RaftStorage> ReplicationStream<S> {
             // Snapshot installation was successful. Update target to track last index of snapshot.
             .map(move |_, act, _| {
                 act.next_index = snap_index + 1;
+                act.match_index = snap_index;
+                act.match_term = snap_term;
+                act.raftnode.do_send(RSUpdateMatchIndex{target: act.target, match_index: snap_index});
             })
     }
 
@@ -550,7 +559,7 @@ impl<S: RaftStorage> ReplicationStream<S> {
             .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
     }
 
-    /// Transition this actor to the state `RSState::InstallingSnapshot` & notify Raft node.
+    /// Transition this actor to the state `RSState::Snapshotting` & notify Raft node.
     ///
     /// NOTE WELL: this will not drive the state forward. That must be called from business logic.
     fn transition_to_snapshotting(&mut self, _: &mut Context<Self>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
@@ -570,8 +579,12 @@ impl<S: RaftStorage> Actor for ReplicationStream<S> {
     /// to its target to ensure that the target node is aware of the leadership state of this
     /// Raft node.
     fn started(&mut self, ctx: &mut Self::Context) {
-        // Send initial heartbeat.
-        self.heartbeat_send(ctx);
+        // Send initial heartbeat & perform first call to `drive_state`.
+        let f = self.heartbeat_send(ctx).then(|res, act, ctx| {
+            act.drive_state(ctx);
+            fut::FutureResult::from(res)
+        });
+        ctx.spawn(f);
     }
 }
 
@@ -643,13 +656,13 @@ impl<S: RaftStorage> Handler<RSReplicate> for ReplicationStream<S> {
 #[derive(Message)]
 pub(crate) struct RSRateUpdate {
     /// The ID of the Raft node which this event relates to.
-    target: NodeId,
+    pub target: NodeId,
     /// A flag indicating if the corresponding target node is replicating at line rate.
     ///
     /// When replicating at line rate, the replication stream will receive log entires to
     /// replicate as soon as they are ready. When not running at line rate, the Raft node will
     /// only send over metadata without entries to replicate.
-    is_line_rate: bool,
+    pub is_line_rate: bool,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -659,9 +672,9 @@ pub(crate) struct RSRateUpdate {
 #[derive(Message)]
 pub(crate) struct RSRevertToFollower {
     /// The ID of the target node from which the new term was observed.
-    target: NodeId,
+    pub target: NodeId,
     /// The new term observed.
-    term: u64,
+    pub term: u64,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -679,6 +692,18 @@ pub(crate) struct RSNeedsSnapshotResponse {
     pub index: u64,
     pub term: u64,
     pub pointer: proto::EntrySnapshotPointer,
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSUpdateMatchIndex ////////////////////////////////////////////////////////////////////////////
+
+/// An event from a replication stream which updates the target node's match index.
+#[derive(Message)]
+pub(crate) struct RSUpdateMatchIndex {
+    /// The ID of the target node for which the match index is to be updated.
+    pub target: NodeId,
+    /// The index of the most recent log known to have been successfully replicated on the target.
+    pub match_index: u64,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -712,10 +737,10 @@ impl futures::Stream for SnapshotStream {
     type Error = tokio::io::Error;
 
     fn poll(&mut self) -> futures::Poll<Option<Self::Item>, Self::Error> {
-        self.file.read_buf(&mut self.buffer).map(move |pollres| match pollres {
+        self.file.read_buf(&mut self.buffer).map(|poll_res| match poll_res {
             Async::NotReady => Async::NotReady,
             Async::Ready(bytes_read) => {
-                // The stream is ready to yield the next item.
+                // If bytes were successfully read, the stream is ready to yield the next item.
                 if bytes_read > 0 {
                     self.offset += bytes_read as u64;
                     let data = self.buffer.split_off(0); // Allocates a new buf only when we have successfully read bytes.

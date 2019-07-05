@@ -31,6 +31,11 @@ pub struct Config {
     /// This value is randomly generated based on default confguration or a given min & max.
     pub election_timeout_millis: u64,
     /// The heartbeat interval at which leaders will send heartbeats to followers.
+    ///
+    /// **NOTE WELL:** it is very important that this value be greater than the amount if time
+    /// it will take on average for heartbeat frames to be sent between nodes. No data processing
+    /// is performed for heartbeats, so the main item of concern here is network latency. This
+    /// value is also used as the default timeout for sending heartbeats.
     pub heartbeat_interval: u64,
     /// The maximum number of entries per payload allowed to be transmitted during replication.
     ///

@@ -13,7 +13,7 @@ use crate::{
     config::Config,
     error::RaftError,
     proto,
-    replication::{RSNeedsSnapshot, RSNeedsSnapshotResponse, RSRateUpdate, RSRevertToFollower},
+    replication::{RSNeedsSnapshot, RSNeedsSnapshotResponse, RSRateUpdate, RSRevertToFollower, RSUpdateMatchIndex},
     storage::{
         self, StorageResult, AppendLogEntries, AppendLogEntriesData,
         ApplyEntriesToStateMachine, GetLogEntries, InitialState, SaveHardState,
@@ -855,6 +855,16 @@ impl <S: RaftStorage> Handler<RSRevertToFollower> for Raft<S> {
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
     fn handle(&mut self, msg: RSRevertToFollower, ctx: &mut Self::Context) {
+    }
+}
+
+// RSUpdateMatchIndex ////////////////////////////////////////////////////////
+
+impl <S: RaftStorage> Handler<RSUpdateMatchIndex> for Raft<S> {
+    type Result = ();
+
+    /// Handle events from a replication stream which updates the target node's match index.
+    fn handle(&mut self, msg: RSUpdateMatchIndex, ctx: &mut Self::Context) {
     }
 }
 
