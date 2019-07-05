@@ -7,7 +7,7 @@ pub mod storage;
 
 pub use crate::{
     raft::{
-        ClientRpcOut,
+        ClientRequest,
         NodeId,
         Raft, RaftRpcIn, RaftRpcOut,
     },

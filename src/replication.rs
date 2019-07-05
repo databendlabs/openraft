@@ -1,4 +1,4 @@
-//! Replication stream actors.
+//! Replication stream actor.
 //!
 //! This module encapsulates the `ReplicationStream` actor which is used for maintaining a
 //! replication stream from a Raft leader node to a target follower node.
@@ -82,7 +82,7 @@ struct SnapshottingState;
 /// ### lagging replication
 /// When a replication request fails (typically due to target being new to the cluster, the target
 /// having been offline for some time, or any such reason), the replication stream will enter the
-/// `RSState::Lagging` state, indicating that the target needs to be brought up-to-speed and that
+/// state `RSState::Lagging`, indicating that the target needs to be brought up-to-speed and that
 /// it is no longer running at line rate. When such an event takes place, any buffered replication
 /// payload will be purged, and the replication stream will begin the process of bringing the
 /// target up-to-speed. The replication stream will notify the Raft node that it is no longer
@@ -98,14 +98,14 @@ struct SnapshottingState;
 ///
 /// If the node is far enough behind, based on the Raft's configuration, the target may need to be
 /// sent an InstallSnapshot RPC. When this needs to take place, the replication stream will
-/// transition to the state `RSState::InstallingSnapshot`, and will then proceed to stream a
+/// transition to the state `RSState::Snapshotting`, and will then proceed to stream a
 /// snapshot over to the target node.
 ///
 /// #### back to line rate
 /// When the replication stream has finished with the snapshot process and/or has fetched a
-/// payload of entries to send to the target — before the payload is sent — the replication stream
-/// will transition back to state `RSState::LineRate`. This allows the replication stream to
-/// safely recover back to line rate even under heavy write load.
+/// payload of entries which brings that node back up to line rate, before the payload is sent,
+/// the replication stream will transition back to state `RSState::LineRate`. This allows the
+/// replication stream to safely recover back to line rate even under heavy write load.
 ///
 /// ----
 ///
@@ -181,6 +181,21 @@ pub(crate) struct ReplicationStream<S: RaftStorage> {
 }
 
 impl<S: RaftStorage> ReplicationStream<S> {
+    /// Create a new instance.
+    pub fn new(
+        id: NodeId, target: NodeId, term: u64, config: Arc<Config>,
+        line_index: u64, line_term: u64, line_commit: u64,
+        raftnode: Addr<Raft<S>>, out: Recipient<RaftRpcOut>, storage: Recipient<GetLogEntries>,
+    ) -> Self {
+        Self{
+            id, target, term, raftnode, out, storage, config,
+            state: RSState::LineRate(Default::default()), is_driving_state: false,
+            line_index, line_commit,
+            next_index: line_index + 1, match_index: line_index, match_term: line_term,
+            heartbeat: None,
+        }
+    }
+
     /// Drive the replication stream forward.
     ///
     /// This method will take into account the current state of the replication stream and will

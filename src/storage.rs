@@ -119,8 +119,9 @@ impl Message for AppendLogEntries {
 /// old snapshot first, and resume processing from its last entry.
 /// - The newly generated snapshot should be written to the directory specified by `snapshot_dir`.
 /// - All previous entries in the log should be deleted up to the entry specified at index
-/// `through`. The entry at index `through` should be replaced with a new entry created from
-/// calling `actix_raft::proto::Entry::new_snapshot_pointer(...)`.
+/// `through`.
+/// - The entry at index `through` should be replaced with a new entry created from calling
+/// `actix_raft::proto::Entry::new_snapshot_pointer(...)`.
 /// - Any old snapshot will no longer have representation in the log, and should be deleted.
 /// - Return a copy of the snapshot pointer entry created earlier.
 pub struct CreateSnapshot {
@@ -268,9 +269,10 @@ impl Message for SaveHardState {
 /// `Config` value. The Raft node will send a message to this `RaftStorage` interface when a
 /// periodic snapshot is to be generated based on its configuration.
 ///
-/// Log compaction, which is what taking a snapshot is for, is an application specific process.
-/// The essential idea is that superfluous records in the log will be removed. See §7 for more
-/// details. There are a few snapshot related messages which the `RaftStorage` actor must handle.
+/// Log compaction, which is part of what taking a snapshot is for, is an application specific
+/// process. The essential idea is that superfluous records in the log will be removed. See §7 for
+/// more details. There are a few snapshot related messages which the `RaftStorage` actor must
+/// handle:
 ///
 /// - `CreateSnapshot`: a request to create a new snapshot of the current log.
 /// - `InstallSnapshot`: the Raft leader is streaming over a snapshot, install it.
