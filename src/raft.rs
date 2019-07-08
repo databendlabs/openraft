@@ -7,11 +7,13 @@ use std::{
 };
 
 use actix::prelude::*;
+use futures::sync::{mpsc, oneshot};
 use log::{error, warn};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     config::Config,
-    error::RaftError,
+    error::{ClientRpcError, RaftRpcError, StorageResult},
     proto,
     replication::{
         ReplicationStream, RSReplicate,
@@ -19,11 +21,15 @@ use crate::{
         RSRateUpdate, RSRevertToFollower, RSUpdateMatchIndex,
     },
     storage::{
-        self, StorageResult, AppendLogEntries, AppendLogEntriesData,
-        ApplyEntriesToStateMachine, GetLogEntries, InitialState, SaveHardState,
-        HardState, RaftStorage,
+        self, AppendLogEntries, AppendLogEntriesData, ApplyEntriesToStateMachine,
+        ApplyEntriesToStateMachineData, CreateSnapshot, GetCurrentSnapshot,
+        GetInitialState, GetLogEntries, HardState, InitialState, InstallSnapshot,
+        InstallSnapshotChunk, RaftStorage, SaveHardState,
     },
 };
+
+const ACTIX_MESSAGING_ERR: &str = "An internal actix messaging error was encountered.";
+const CLIENT_RPC_CHAN_ERR: &str = "Client RPC channel was unexpectedly closed.";
 
 /// A Raft cluster node's ID.
 pub type NodeId = u64;
@@ -32,7 +38,6 @@ pub type NodeId = u64;
 // NodeState /////////////////////////////////////////////////////////////////////////////////////
 
 /// The state of the Raft node.
-#[derive(Eq, PartialEq)]
 enum NodeState {
     /// A non-standard Raft state indicating that the node is initializing.
     Initializing,
@@ -66,14 +71,23 @@ enum NodeState {
 /// Volatile state specific to the Raft leader.
 ///
 /// This state is reinitialized after an election.
-#[derive(Default, Eq, PartialEq)]
 struct LeaderState {
     /// A mapping of node IDs the replication state of the target node.
     pub nodes: BTreeMap<NodeId, ReplicationState>,
+    /// A queue of client requests to be processed.
+    pub client_request_queue: mpsc::UnboundedSender<ClientRpcInWithTx>,
+    /// The current client RPC which is awaiting to be comitted.
+    pub awaiting_committed: Option<AwaitingCommitted>,
+}
+
+impl LeaderState {
+    /// Create a new instance.
+    pub fn new(tx: mpsc::UnboundedSender<ClientRpcInWithTx>) -> Self {
+        Self{nodes: Default::default(), client_request_queue: tx, awaiting_committed: None}
+    }
 }
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-#[derive(Eq, PartialEq)]
 struct ReplicationState {
     pub match_index: u64,
     pub is_at_line_rate: bool,
@@ -81,7 +95,6 @@ struct ReplicationState {
 }
 
 /// Volatile state specific to a Raft node in candidate state.
-#[derive(Eq, PartialEq)]
 struct CandidateState {
     /// Current outstanding requests to peer nodes by node ID.
     requests: BTreeMap<NodeId, SpawnHandle>,
@@ -166,7 +179,7 @@ impl CandidateState {
 /// Note that currently, when this actor encounters an error from the storage layer, it will stop.
 /// The rest of the system may remain online as long as is needed, but this actor will stop in
 /// order to avoid data corruption or other such issues.
-pub struct Raft<S: RaftStorage> {
+pub struct Raft<S: RaftStorage>  {
     /// This node's ID.
     id: NodeId,
     /// This node's runtime config.
@@ -177,8 +190,10 @@ pub struct Raft<S: RaftStorage> {
     state: NodeState,
     /// An output channel for sending Raft request messages to peers.
     out: actix::Recipient<RaftRpcOut>,
+    /// An output channel for forwarding client requests to the leader.
+    forward: actix::Recipient<ClientRpcOut>,
     /// The address of the actor responsible for implementing the `RaftStorage` interface.
-    storage: actix::Addr<S>,
+    storage: Addr<S>,
 
     /// The index of the highest log entry known to be committed cluster-wide.
     ///
@@ -202,6 +217,14 @@ pub struct Raft<S: RaftStorage> {
     /// the leader's term which is communicated to other members via the AppendEntries protocol,
     /// but this may also be incremented when a follower becomes a candidate.
     current_term: u64,
+    /// The ID of the current leader of the Raft cluster.
+    ///
+    /// This value is kept up-to-date based on a very simple algorithm, which is the only way to
+    /// do so reasonably using only the canonical Raft RPCs described in the spec. When a new
+    /// leader comes to power, it will send AppendEntries RPCs to establish its leadership. When
+    /// such an RPC is observed with a newer term, this value will be updated. This value will be
+    /// set to `None` when a newer term is observed in any other way.
+    current_leader: Option<NodeId>,
     /// The ID of the candidate which received this node's vote for the current term.
     ///
     /// Each server will vote for at most one candidate in a given term, on a
@@ -220,25 +243,28 @@ pub struct Raft<S: RaftStorage> {
 
     /// A handle to the election timeout callback.
     election_timeout: Option<actix::SpawnHandle>,
+
+    /// A buffer of client RPC requests to be forwarded to the Raft leader once it is known.
+    forwarding: Vec<ClientRpcInWithTx>,
 }
 
-impl<S> Raft<S> where S: RaftStorage {
+impl<S: RaftStorage> Raft<S> {
     /// Create a new Raft instance.
     ///
     /// This actor will need to be started after instantiation, which must be done within a
     /// running actix system.
     ///
     /// TODO: add an example on how to create and start an instance.
-    pub fn new(id: NodeId, config: Config, out: actix::Recipient<RaftRpcOut>, storage: Addr<S>) -> Self {
+    pub fn new(id: NodeId, config: Config, out: actix::Recipient<RaftRpcOut>, forward: actix::Recipient<ClientRpcOut>, storage: Addr<S>) -> Self {
         let state = NodeState::Initializing;
         let config = Arc::new(config);
         Self{
-            id, config, members: vec![id], state, out, storage,
+            id, config, members: vec![id], state, out, forward, storage,
             commit_index: 0, last_applied: 0,
-            current_term: 0, voted_for: None,
+            current_term: 0, current_leader: None, voted_for: None,
             last_log_index: 0, last_log_term: 0,
             is_appending_logs: false, is_applying_logs_to_state_machine: false,
-            election_timeout: None,
+            election_timeout: None, forwarding: vec![],
         }
     }
 
@@ -259,10 +285,10 @@ impl<S> Raft<S> where S: RaftStorage {
     /// that entry.
     fn append_log_entries(
         &mut self, ctx: &mut Context<Self>, entries: Vec<proto::Entry>,
-    ) -> impl ActorFuture<Actor=Self, Item=AppendLogEntriesData, Error=RaftError> {
+    ) -> impl ActorFuture<Actor=Self, Item=AppendLogEntriesData, Error=RaftRpcError> {
         // If we are already eppending entries, then abort this operation.
         if self.is_appending_logs {
-            return fut::Either::A(fut::FutureResult::from(Err(RaftError::AppendEntriesAlreadyInProgress)));
+            return fut::Either::A(fut::FutureResult::from(Err(RaftRpcError::AppendEntriesAlreadyInProgress)));
         }
 
         // Check the given entries for any config changes and take the most recent.
@@ -279,7 +305,7 @@ impl<S> Raft<S> where S: RaftStorage {
 
         self.is_appending_logs = true;
         fut::Either::B(fut::wrap_future(self.storage.send(AppendLogEntries(entries)))
-            .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+            .map_err(|err, _: &mut Self, _| Self::map_messaging_error_raft_rpc(err))
             .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
             .map(|data, act, _| {
                 act.last_log_index = data.index;
@@ -302,13 +328,13 @@ impl<S> Raft<S> where S: RaftStorage {
         // Fetch the series of entries which must be applied to the state machine.
         self.is_applying_logs_to_state_machine = true;
         let f = fut::wrap_future(self.storage.send(GetLogEntries{start: self.last_applied, stop: self.commit_index + 1}))
-            .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+            .map_err(|err, _: &mut Self, _| Self::map_messaging_error_raft_rpc(err))
             .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
 
             // Send the entries over to the storage engine to be applied to the state machine.
             .and_then(|entries, act, _| {
                 fut::wrap_future(act.storage.send(ApplyEntriesToStateMachine(entries)))
-                    .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+                    .map_err(|err, _: &mut Self, _| Self::map_messaging_error_raft_rpc(err))
                     .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
             })
 
@@ -329,7 +355,7 @@ impl<S> Raft<S> where S: RaftStorage {
     /// Transition to the Raft follower state.
     fn become_follower(&mut self, ctx: &mut Context<Self>) {
         // No-op if we were already in follower state.
-        if &self.state == &NodeState::Follower {
+        if let &NodeState::Follower = &self.state {
             return;
         }
 
@@ -410,7 +436,7 @@ impl<S> Raft<S> where S: RaftStorage {
     /// during idle periods to prevent election timeouts, per §5.2. This is handled by the
     /// `ReplicationStream` actors.
     ///
-    /// See the `ClientRequest` handler for more details on the write path for client requests.
+    /// See the `ClientRpcIn` handler for more details on the write path for client requests.
     fn become_leader(&mut self, ctx: &mut Context<Self>) {
         // Cleanup previous state & ensure we've cancelled the election timeout system.
         self.cleanup_state(ctx);
@@ -419,7 +445,14 @@ impl<S> Raft<S> where S: RaftStorage {
         }
 
         // Prep new leader state.
-        let mut new_state = LeaderState::default();
+        let (tx, rx) = mpsc::unbounded();
+        let tx0 = tx.clone();
+        let mut new_state = LeaderState::new(tx);
+
+        // Spawn stream which consumes client RPCs.
+        ctx.spawn(fut::wrap_stream(rx)
+            .and_then(|msg, act: &mut Self, ctx| act.process_client_rpc(ctx, msg))
+            .finish());
 
         // Spawn new replication stream actors.
         for target in self.members.iter().filter(|elem| *elem != &self.id) {
@@ -438,6 +471,7 @@ impl<S> Raft<S> where S: RaftStorage {
 
         // Initialize new state as leader.
         self.state = NodeState::Leader(new_state);
+        self.update_current_leader(ctx, UpdateCurrentLeader::ThisNode(tx0));
     }
 
     /// Clean up the current Raft state.
@@ -451,6 +485,29 @@ impl<S> Raft<S> where S: RaftStorage {
                 }
             }
             _ => (),
+        }
+    }
+
+    /// Forward the given client request to the last known leader of the cluster.
+    fn forward_request_to_leader(&mut self, ctx: &mut Context<Self>, msg: ClientRpcInWithTx) {
+        // If we have a currently known leader, then forward the request to it.
+        if let Some(target) = &self.current_leader {
+            let ClientRpcInWithTx{tx, rpc} = msg;
+            let rpc_out = ClientRpcOut{target: *target, rpc};
+            let f = fut::wrap_future(self.forward.send(rpc_out))
+                .map_err(|err, _, _| {
+                    error!("Error forwarding client request to leader. {:?}", err);
+                    ClientRpcError::ForwardingError
+                })
+                .and_then(|res, _, _| fut::FutureResult::from(res))
+                .then(move |res, _, _| {
+                    let _ = tx.send(res).map_err(|_| ());
+                    fut::FutureResult::from(Ok(()))
+                });
+            ctx.spawn(f);
+        } else {
+            // We don't know the ID of the current leader, or one has not been elected yet. Buffer the request.
+            self.forwarding.push(msg);
         }
     }
 
@@ -489,11 +546,11 @@ impl<S> Raft<S> where S: RaftStorage {
     /// the inconsistent entries.
     fn handle_append_entries_request(
         &mut self, ctx: &mut Context<Self>, msg: proto::AppendEntriesRequest,
-    ) -> impl ActorFuture<Actor=Self, Item=proto::AppendEntriesResponse, Error=RaftError> {
+    ) -> impl ActorFuture<Actor=Self, Item=proto::AppendEntriesResponse, Error=RaftRpcError> {
         // Don't interact with non-cluster members.
         if !self.members.contains(&msg.leader_id) {
             return fut::Either::A(
-                fut::Either::A(fut::err(RaftError::RPCFromUnknownNode))
+                fut::Either::A(fut::err(RaftRpcError::RPCFromUnknownNode))
             );
         }
 
@@ -506,9 +563,10 @@ impl<S> Raft<S> where S: RaftStorage {
 
         // Update election timeout & ensure we are in the follower state. Update current term if needed.
         self.update_election_timeout(ctx);
-        self.become_follower(ctx);
         if &msg.term > &self.current_term {
+            self.become_follower(ctx);
             self.current_term = msg.term;
+            self.update_current_leader(ctx, UpdateCurrentLeader::OtherNode(msg.leader_id));
             self.save_hard_state(ctx);
         }
 
@@ -551,10 +609,10 @@ impl<S> Raft<S> where S: RaftStorage {
     }
 
     /// Handle requests from peers to cast a vote for a new leader.
-    fn handle_vote_request(&mut self, ctx: &mut Context<Self>, msg: proto::VoteRequest) -> Result<proto::VoteResponse, RaftError> {
+    fn handle_vote_request(&mut self, ctx: &mut Context<Self>, msg: proto::VoteRequest) -> Result<proto::VoteResponse, RaftRpcError> {
         // Don't interact with non-cluster members.
         if !self.members.contains(&msg.candidate_id) {
-            return Err(RaftError::RPCFromUnknownNode);
+            return Err(RaftRpcError::RPCFromUnknownNode);
         }
 
         // If candidate's current term is less than this nodes current term, reject.
@@ -655,10 +713,10 @@ impl<S> Raft<S> where S: RaftStorage {
     /// If everyhing checks out, a `None` value will be returned and log replication may continue.
     fn log_consistency_check(
         &mut self, _: &mut Context<Self>, index: u64, term: u64,
-    ) -> impl ActorFuture<Actor=Self, Item=Option<proto::ConflictOpt>, Error=RaftError> {
+    ) -> impl ActorFuture<Actor=Self, Item=Option<proto::ConflictOpt>, Error=RaftRpcError> {
         let storage = self.storage.clone();
         fut::wrap_future(self.storage.send(GetLogEntries{start: index, stop: index}))
-            .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+            .map_err(|err, _: &mut Self, _| Self::map_messaging_error_raft_rpc(err))
             .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
             .and_then(move |res, act, _| {
                 match res.last() {
@@ -680,7 +738,7 @@ impl<S> Raft<S> where S: RaftStorage {
                             // entry of that payload which is still in the target term for
                             // conflict optimization.
                             fut::Either::B(fut::wrap_future(storage.send(GetLogEntries{start: index, stop: index}))
-                                .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+                                .map_err(|err, _: &mut Self, _| Self::map_messaging_error_raft_rpc(err))
                                 .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
                                 .and_then(move |res, _, _| {
                                     match res.into_iter().filter(|entry| entry.term == term).nth(0) {
@@ -700,22 +758,165 @@ impl<S> Raft<S> where S: RaftStorage {
             })
     }
 
-    /// A simple mapping function to log and transform an `actix::MailboxError`.
-    fn map_messaging_error(err: actix::MailboxError) -> RaftError {
-        error!("An internal actix messaging error was encountered. {}", err);
-        RaftError::InternalMessagingError
+    /// A simple mapping function to log and transform an `actix::MailboxError` for client RPCs.
+    fn map_messaging_error_client_rpc(err: actix::MailboxError) -> ClientRpcError {
+        error!("{} {}", ACTIX_MESSAGING_ERR, err);
+        ClientRpcError::InternalMessagingError
+    }
+
+    /// A simple mapping function to log and transform an `actix::MailboxError` for Raft RPCs.
+    fn map_messaging_error_raft_rpc(err: actix::MailboxError) -> RaftRpcError {
+        error!("{} {}", ACTIX_MESSAGING_ERR, err);
+        RaftRpcError::InternalMessagingError
+    }
+
+    /// Map an `actix::MailboxError` from a call to the storage engine.
+    ///
+    /// This will stop the Raft node, as communication with the storage engine is required for
+    /// proper functionality.
+    fn map_messaging_error_storage_engine(&mut self, ctx: &mut Context<Self>, err: actix::MailboxError) {
+        error!("Failed to communicate with RaftStorage. Stopping Raft. {:?}", err);
+        ctx.stop();
     }
 
     /// A simple mapping function to transform a `StorageResult` from the storage layer.
     ///
-    /// NOTE WELL: currently, this routine will also stop the Raft node, as storage errors are
-    /// seen as non-recoverable.
-    fn map_storage_result<T>(&mut self, ctx: &mut Context<Self>, res: StorageResult<T>) -> Result<T, RaftError> {
+    /// **NOTE WELL:** This method assumes that a storage error observed here is non-recoverable.
+    /// As such, the Raft node will be instructed to stop. If such behavior is not needed, then
+    /// don't use this interface.
+    fn map_storage_result<T>(&mut self, ctx: &mut Context<Self>, res: StorageResult<T>) -> Result<T, RaftRpcError> {
         res.map_err(|err| {
-            error!("Storage error encountered. Stopping Raft node.");
+            error!("Storage error encountered which can not be recovered from. Stopping Raft node.");
             ctx.stop();
-            RaftError::StorageError(err)
+            RaftRpcError::StorageError(err)
         })
+    }
+
+    /// Process the given client RPC, appending it to the log and issuing the needed response.
+    ///
+    /// This function takes the given RPC, appends its entries to the log, sends the entries out
+    /// to the replication streams to be replicated to the cluster followers, after half of the
+    /// cluster members have successfully replicated the entries this routine will proceed with
+    /// applying the entries to the state machine. Then the next RPC is processed.
+    ///
+    /// TODO: there is an optimization to be had here:
+    /// - after half of the nodes have replicated the entries of the RPC, we can technically begin
+    /// processing the next RPC.
+    /// - applying entries to the state machine must still be done in order, but we can create a
+    /// buffer of entries which will ensure entries are applied in serial order.
+    /// - if we use this approach, the RPC along with its entries could be buffered together so
+    /// that after the RPC's segment of entries have been applied, responses can be issued for the
+    /// RPCs which were submitted with `ResponseMode::Applied`.
+    fn process_client_rpc(&mut self, ctx: &mut Context<Self>, msg: ClientRpcInWithTx) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+        match &self.state {
+            // If node is still leader, continue.
+            NodeState::Leader(_) => (),
+            // If node is in any other state, then forward the message to the leader.
+            _ => {
+                self.forward_request_to_leader(ctx, msg);
+                return fut::Either::A(fut::FutureResult::from(Ok(())));
+            }
+        };
+
+        // Transform the entries of the RPC into log entries.
+        let mut line_index = self.last_log_index;
+        let entries: Vec<_> = msg.rpc.entries.clone().into_iter().map(|data| {
+            line_index += 1;
+            proto::Entry{
+                index: line_index,
+                term: self.current_term,
+                entry_type: Some(proto::entry::EntryType::Normal(proto::EntryNormal{data})),
+            }
+        }).collect();
+
+        // Send the entries over to the storage engine.
+        self.is_appending_logs = true;
+        let f = fut::wrap_future(self.storage.send(AppendLogEntries(entries.clone())))
+            .map_err(|err, _: &mut Self, _| Self::map_messaging_error_client_rpc(err))
+            .and_then(|res, _, _| fut::FutureResult::from(res.map_err(|err| ClientRpcError::StorageError(err))))
+            // Handle results from storage engine.
+            .then(move |res, act, _| match res {
+                Ok(_) => {
+                    act.last_log_index = line_index;
+                    act.is_appending_logs = false;
+                    fut::FutureResult::from(Ok((msg, entries)))
+                }
+                Err(err) => {
+                    let _ = msg.tx.send(Err(err)).map_err(|err| error!("{} {:?}", CLIENT_RPC_CHAN_ERR, err));
+                    fut::FutureResult::from(Err(()))
+                }
+            })
+
+            // Send logs over for replication.
+            .and_then(move |(rpc, entries), act, ctx| {
+                // Get a reference to the leader's state, else forward to leader.
+                let (state, rx) = match &mut act.state {
+                    NodeState::Leader(state) => {
+                        let (tx, rx) = oneshot::channel();
+                        state.awaiting_committed = Some(AwaitingCommitted{index: line_index, rpc, chan: tx});
+                        (state, rx)
+                    },
+                    _ => {
+                        act.forward_request_to_leader(ctx, rpc);
+                        return fut::Either::A(fut::FutureResult::from(Err(())));
+                    }
+                };
+
+                // Send payload over to each replication stream as needed.
+                for rs in state.nodes.values() {
+                    // Only send full payload over if the target stream is running at line rate.
+                    let payload = if rs.is_at_line_rate { entries.clone() } else { Vec::with_capacity(0) };
+                    let _ = rs.addr.do_send(RSReplicate{entries: payload, line_index, line_commit: act.commit_index});
+                }
+
+                // Resolve this step in the pipeline once the RPC's entries have been comitted accross the cluster.
+                fut::Either::B(fut::wrap_future(rx
+                    .map(|val| (val, entries))
+                    .map_err(|_| ())))
+            })
+            // The RPC's entries have been committed, handle client response & applying to state machine locally.
+            .and_then(move |(rpc, entries), act, _| {
+                // If this RPC is configured to wait only for log committed, then respond to client now.
+                let tx = if let &ResponseMode::Committed = &rpc.rpc.response_mode {
+                    let _ = rpc.tx.send(Ok(())).map_err(|err| error!("{} {:?}", CLIENT_RPC_CHAN_ERR, err));
+                    None
+                } else {
+                    Some(rpc.tx)
+                };
+
+                // Apply entries to state machine.
+                act.is_applying_logs_to_state_machine = true;
+                fut::wrap_future(act.storage.send(ApplyEntriesToStateMachine(entries)))
+                    .map_err(|err, act: &mut Self, ctx| act.map_messaging_error_storage_engine(ctx, err))
+                    .and_then(move |res, act, ctx| {
+                        let res = res.map_err(|err| {
+                            error!("Storage error encountered which can not be recovered from. Stopping Raft node.");
+                            ctx.stop();
+                            ClientRpcError::StorageError(err)
+                        });
+
+                        match res {
+                            Ok(_data) => {
+                                // Update state after a success operation on the state machine.
+                                act.is_applying_logs_to_state_machine = false;
+                                act.last_applied = line_index;
+
+                                // If this RPC is configured to wait for applied, then respond to client now.
+                                if let Some(tx) = tx {
+                                    let _ = tx.send(Ok(())).map_err(|err| error!("{} {:?}", CLIENT_RPC_CHAN_ERR, err));
+                                }
+                                fut::FutureResult::from(Ok(()))
+                            }
+                            Err(err) => {
+                                if let Some(tx) = tx {
+                                    let _ = tx.send(Err(err)).map_err(|err| error!("{} {:?}", CLIENT_RPC_CHAN_ERR, err));
+                                }
+                                fut::FutureResult::from(Err(()))
+                            }
+                        }
+                    })
+            });
+        fut::Either::B(f)
     }
 
     /// Request a vote from the the target peer.
@@ -747,6 +948,7 @@ impl<S> Raft<S> where S: RaftStorage {
                 if res.term > act.current_term {
                     act.become_follower(ctx);
                     act.current_term = res.term;
+                    act.current_leader = None;
                     act.save_hard_state(ctx);
                     return fut::FutureResult::from(Ok(()));
                 }
@@ -768,13 +970,59 @@ impl<S> Raft<S> where S: RaftStorage {
     fn save_hard_state(&mut self, ctx: &mut Context<Self>) {
         let hs = HardState{current_term: self.current_term, voted_for: self.voted_for, members: self.members.clone()};
         let f = fut::wrap_future(self.storage.send(SaveHardState(hs)))
-            .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+            .map_err(|err, _: &mut Self, _| Self::map_messaging_error_raft_rpc(err))
             .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
             .map_err(|err, _, _| {
                 error!("{}", err)
             });
 
         ctx.spawn(f);
+    }
+
+    /// Update the value of the `current_leader` property.
+    ///
+    /// Depending on the update type, any buffered client requests will be processed on this node
+    /// if it is the new leader, or they will be sent to the target node by ID, or nothing will
+    /// happen if the leader is unknown.
+    fn update_current_leader(&mut self, ctx: &mut Context<Self>, update: UpdateCurrentLeader) {
+        match update {
+            // Handle condition where client requests were buffered & this node has become the leader.
+            UpdateCurrentLeader::ThisNode(tx) => {
+                self.current_leader = Some(self.id);
+                let outbound: Vec<_> = self.forwarding.drain(..).collect();
+                for buffered in outbound {
+                    // Queue the buffered client request for processing on this node.
+                    let _ = tx.unbounded_send(buffered).map_err(|err| {
+                        // If the channel is closed for some reason, respond with a forwarding error.
+                        // Practically speaking, this should never take place as the unbounded sender
+                        // provided in `UpdateCurrentLeader::ThisNode(_)` should be freshly allocated.
+                        let _ = err.into_inner().tx.send(Err(ClientRpcError::ForwardingError));
+                    });
+                }
+            }
+            // Handle condition where client requests were buffered & a different node has become leader.
+            UpdateCurrentLeader::OtherNode(target) => {
+                self.current_leader = Some(target);
+                for buffered in self.forwarding.drain(..) {
+                    let ClientRpcInWithTx{tx, rpc} = buffered;
+                    let outbound = ClientRpcOut{target, rpc};
+                    let f = fut::wrap_future(self.forward.send(outbound))
+                        .map_err(|err, _, _| {
+                            error!("Error forwarding client request. {:?}", err);
+                            ClientRpcError::ForwardingError
+                        })
+                        .and_then(|res, _, _| fut::FutureResult::from(res))
+                        .then(move |res, _, _| {
+                            let _ = tx.send(res).map_err(|_| ());
+                            fut::FutureResult::from(Ok(()))
+                        });
+                    ctx.spawn(f);
+                }
+            }
+            UpdateCurrentLeader::Unknown => {
+                self.current_leader = None;
+            },
+        }
     }
 
     /// Update the election timeout process.
@@ -800,8 +1048,8 @@ impl<S: RaftStorage> Actor for Raft<S> {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         // Fetch the node's initial state from the storage actor & initialize.
-        let f = fut::wrap_future(self.storage.send(storage::GetInitialState))
-            .map_err(|err, _: &mut Self, _| Self::map_messaging_error(err))
+        let f = fut::wrap_future(self.storage.send(GetInitialState))
+            .map_err(|err, _: &mut Self, _| Self::map_messaging_error_raft_rpc(err))
             .and_then(|res, act, ctx| fut::FutureResult::from(act.map_storage_result(ctx, res)))
             .map_err(|_, _, _| ())
             .map(|state, act, ctx| act.initialize(ctx, state));
@@ -819,16 +1067,20 @@ impl<S: RaftStorage> Handler<RSRateUpdate> for Raft<S> {
     type Result = ();
 
     /// Handle events from replication streams.
+    ///
+    /// TODO: finish this up.
     fn handle(&mut self, _msg: RSRateUpdate, _ctx: &mut Self::Context) {
     }
 }
 
 // RSNeedsSnapshot ///////////////////////////////////////////////////////////
 
-impl <S: RaftStorage> Handler<RSNeedsSnapshot> for Raft<S> {
+impl<S: RaftStorage> Handler<RSNeedsSnapshot> for Raft<S> {
     type Result = ResponseActFuture<Self, RSNeedsSnapshotResponse, ()>;
 
     /// Handle events from replication streams requesting for snapshot info.
+    ///
+    /// TODO: finish this up.
     fn handle(&mut self, _msg: RSNeedsSnapshot, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(fut::FutureResult::from(Err(())))
     }
@@ -836,20 +1088,26 @@ impl <S: RaftStorage> Handler<RSNeedsSnapshot> for Raft<S> {
 
 // RSRevertToFollower ////////////////////////////////////////////////////////
 
-impl <S: RaftStorage> Handler<RSRevertToFollower> for Raft<S> {
+impl<S: RaftStorage> Handler<RSRevertToFollower> for Raft<S> {
     type Result = ();
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
-    fn handle(&mut self, _msg: RSRevertToFollower, _ctx: &mut Self::Context) {
+    ///
+    /// TODO: finish this up.
+    fn handle(&mut self, _msg: RSRevertToFollower, ctx: &mut Self::Context) {
+        self.update_current_leader(ctx, UpdateCurrentLeader::Unknown);
+        self.become_follower(ctx);
     }
 }
 
 // RSUpdateMatchIndex ////////////////////////////////////////////////////////
 
-impl <S: RaftStorage> Handler<RSUpdateMatchIndex> for Raft<S> {
+impl<S: RaftStorage> Handler<RSUpdateMatchIndex> for Raft<S> {
     type Result = ();
 
     /// Handle events from a replication stream which updates the target node's match index.
+    ///
+    /// TODO: finish this up.
     fn handle(&mut self, _msg: RSUpdateMatchIndex, _ctx: &mut Self::Context) {
     }
 }
@@ -874,11 +1132,11 @@ impl Message for RaftRpcOut {
 pub struct RaftRpcIn(pub proto::RaftRequest);
 
 impl Message for RaftRpcIn {
-    type Result = Result<proto::RaftResponse, RaftError>;
+    type Result = Result<proto::RaftResponse, RaftRpcError>;
 }
 
 impl<S: RaftStorage> Handler<RaftRpcIn> for Raft<S> {
-    type Result = ResponseActFuture<Self, proto::RaftResponse, RaftError>;
+    type Result = ResponseActFuture<Self, proto::RaftResponse, RaftRpcError>;
 
     /// Handle inbound Raft request messages.
     ///
@@ -897,9 +1155,9 @@ impl<S: RaftStorage> Handler<RaftRpcIn> for Raft<S> {
     /// takes place here and have the caller perform a retry.
     fn handle(&mut self, msg: RaftRpcIn, ctx: &mut Self::Context) -> Self::Result {
         // Only handle requests if actor has finished initialization.
-        if self.state == NodeState::Initializing {
+        if let &NodeState::Initializing = &self.state {
             warn!("Received RaftRequest before initialization was complete.");
-            return Box::new(fut::err(RaftError::Initializing));
+            return Box::new(fut::err(RaftRpcError::Initializing));
         }
 
         // Unpack the given message and pass to the appropriate handler.
@@ -920,73 +1178,142 @@ impl<S: RaftStorage> Handler<RaftRpcIn> for Raft<S> {
             },
             Some(Payload::InstallSnapshot(_payload)) => {
                 // TODO: finish this up.
-                Box::new(fut::err(RaftError::Initializing))
+                Box::new(fut::err(RaftRpcError::Initializing))
             },
             None => {
                 warn!("RaftRequest received which had an empty or unknown payload.");
-                Box::new(fut::err(RaftError::UnknownRequestReceived))
+                Box::new(fut::err(RaftRpcError::UnknownRequestReceived))
             }
         }
     }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// ClientRequest /////////////////////////////////////////////////////////////////////////////////
+// ClientRpcOut //////////////////////////////////////////////////////////////////////////////////
 
-/// An actix message representing a client request to mutate the data of this Raft cluster.
-pub struct ClientRequest;
-
-impl Message for ClientRequest{
-    type Result = Result<(), ()>;
+/// A struct representing a client request which must be sent to a target node.
+///
+/// This typically only comes out from the Raft actor due to needing to forward a client request
+/// to the cluster leader.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ClientRpcOut {
+    pub target: NodeId,
+    pub rpc: ClientRpcIn,
 }
 
-impl<S: RaftStorage> Handler<ClientRequest> for Raft<S> {
-    type Result = actix::ResponseActFuture<Self, (), ()>;
+impl Message for ClientRpcOut {
+    type Result = Result<(), ClientRpcError>;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// ClientRpcIn ///////////////////////////////////////////////////////////////////////////////////
+
+/// An actix message representing a client request to mutate the data of this Raft cluster.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ClientRpcIn {
+    /// A vector of entries to be appended to the log.
+    ///
+    /// Each element is vector of bytes corresponding to a standard client request. These will
+    /// be appended to the log as normal entries.
+    pub entries: Vec<Vec<u8>>,
+    /// The response mode for this RPC's corresponding request.
+    pub response_mode: ResponseMode,
+}
+
+impl Message for ClientRpcIn {
+    type Result = Result<(), ClientRpcError>;
+}
+
+/// The desired response mode for a client request.
+///
+/// This value specifies when a client request desires to receive its response from Raft. When
+/// `Comitted` is chosen, the client request will receive a response after the request has been
+/// successfully replicated to at least half of the nodes in the cluster. This is what the Raft
+/// protocol refers to as being comitted.
+///
+/// When `Applied` is chosen, the client request will receive a response after the request has
+/// been successfully committed and successfully applied to the state machine.
+///
+/// The choice between these two options depends on the requirements related to the request. If
+/// the data of the client request payload will need to be read immediately after the response is
+/// received, then `Applied` must be used. If there is no requirement that the data must be
+/// immediately read after receiving a response, then `Committed` may be used to speed up response
+/// times for data mutating requests.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum ResponseMode {
+    /// A response will be returned after the request has been committed to the cluster.
+    Committed,
+    /// A response will be returned  after the request has been applied to the state machine.
+    Applied,
+}
+
+impl<S: RaftStorage> Handler<ClientRpcIn> for Raft<S> {
+    type Result = actix::ResponseActFuture<Self, (), ClientRpcError>;
 
     /// Handle a client request to mutate the data of the Raft cluster.
-    ///
-    ///  - If command received from client, append entry to local log, replicate to other nodes,
-    /// and then apply to state machine. This implementation allows clients to specify when they
-    /// want to receive a response. Options are Committed, or Applied. Committed means the client
-    /// will receive a response once the command has been appended to the leader's log and a
-    /// majority of the logs in the cluster, which aligns with Raft's definition of a committed
-    /// log. Applied means that the committed log has been successfully applied to the state
-    /// machine and flushed to disk, per Raft's definition.
-    /// TODO: impl this ^^^
-    ///
-    /// ----
-    ///
-    /// - Client writes are immediately processed, but their response channel is queued. Oneshot
-    /// msg receiver will be returned as future, sender will be enqueued for response condition
-    /// to be met.
-    /// - As client requests are processed, they are immediately appended to the log. Once an event
-    /// is appended to the log, the updated index is sent over to all replication streams along with
-    /// the Raft's committed index and a copy of the logs which were written as part of that update.
-    /// This optimizes replication speed for replication streams which are running at line rate.
-    ///
-    /// For the client path:
-    /// - Client's response channel can be persisted based on whether it needs Committed or
-    /// Applied state for messages.
-    /// - Every time the committed index is updated based on replication events, the BTreeMap storing
-    /// the channels will be checked for any keys which are <= new committed index. For anything which matches,
-    /// they will be removed and their response will be sent.
-    /// - As part of updating the committed index, after client responses have been sent, the logs
-    /// which need to be applied will be sent over to the storage engine to be applied.
-    /// - Once the committed logs have been applied to the state machine, the client requests which
-    /// are awaiting Applied state for their requests will be evaluated and responded to.
-    fn handle(&mut self, _msg: ClientRequest, _ctx: &mut Self::Context) -> Self::Result {
-        // TODO: implement this & finish up client request handling.
-        Box::new(fut::FutureResult::from(Ok(())))
+    fn handle(&mut self, msg: ClientRpcIn, ctx: &mut Self::Context) -> Self::Result {
+        // Wrap the given message for async processing.
+        let (tx, rx) = oneshot::channel();
+        let with_tx = ClientRpcInWithTx{tx, rpc: msg};
+
+        // Queue the message for processing or forward it along to the leader.
+        match &mut self.state {
+            NodeState::Leader(state) => {
+                let _ = state.client_request_queue.unbounded_send(with_tx).map_err(|_| {
+                    error!("Unexpected error while queueing client request for processing.")
+                });
+            },
+            _ => self.forward_request_to_leader(ctx, with_tx),
+        };
+
+        // Build a response from the message's channel.
+        Box::new(fut::wrap_future(rx)
+            .map_err(|err, _, _| {
+                error!("Internal client response channel was unexpectedly dropped.");
+                ClientRpcError::InternalMessagingError
+            })
+            .and_then(|res, _, _| fut::FutureResult::from(res)))
     }
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// ClientRpcInWithTx /////////////////////////////////////////////////////////////////////////////
+
+struct ClientRpcInWithTx {
+    pub tx: oneshot::Sender<Result<(), ClientRpcError>>,
+    pub rpc: ClientRpcIn,
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// UpdateCurrentLeader ///////////////////////////////////////////////////////////////////////////
+
+/// An enum describing the way the current leader property is to be updated.
+enum UpdateCurrentLeader {
+    Unknown,
+    OtherNode(NodeId),
+    ThisNode(mpsc::UnboundedSender<ClientRpcInWithTx>),
+}
+
+/// A struct encapsulating an RPC which is awaiting to be committed.
+struct AwaitingCommitted {
+    /// The index which needs to be comitted for this value to resolve.
+    pub index: u64,
+    /// The buffered RPC.
+    pub rpc: ClientRpcInWithTx,
+    /// The chan to be used for resolution once the RPC's index has been comitted.
+    pub chan: oneshot::Sender<ClientRpcInWithTx>,
+}
+
 // TODO:
+// - actix messaging errors from messaging the RaftStorage should cause Raft to stop. This
+// functionality is fundamentally required for the system to work.
+//
 // ### admin commands
 // - get AdminCommands setup and implemented.
 //
 // ### observability
 // - ensure that internal state transitions and updates are emitted for host application use. Such
-// as NodeState changes, membershipt changes, errors from async ops.
+// as NodeState changes, membership changes, errors from async ops.
 //
 // ### testing
 // - setup testing framework to assert accurate behavior of Raft implementation and adherence to

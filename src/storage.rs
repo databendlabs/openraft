@@ -5,27 +5,12 @@ use actix::{
     prelude::*,
 };
 use futures::sync::mpsc::UnboundedReceiver;
-use failure::Fail;
 
 use crate::{
+    error::StorageResult,
     proto,
     raft::NodeId,
 };
-
-/// An error type which wraps a `dyn Fail` type coming from the storage layer.
-///
-/// This does require an allocation; however, the Raft node is currently configured to stop when
-/// it encounteres an error from the storage layer. The cost of this allocation then is quite low.
-///
-/// In order to avoid potential data corruption or other such issues, when an error is observed
-/// from the storage layer, the Raft node will stop. The parent application will still be able to
-/// perform cleanup or any other routines as needed before shutdown.
-#[derive(Debug, Fail)]
-#[fail(display="{}", _0)]
-pub struct StorageError(pub Box<dyn Fail>);
-
-/// The result type of all `RaftStorage` interfaces.
-pub type StorageResult<T> = Result<T, StorageError>;
 
 //////////////////////////////////////////////////////////////////////////////
 // GetInitialState ///////////////////////////////////////////////////////////
@@ -283,12 +268,28 @@ impl Message for SaveHardState {
 pub trait RaftStorage
     where
         Self: Actor<Context=Context<Self>>,
-        Self: Handler<GetInitialState> + ToEnvelope<Self, GetInitialState>,
-        Self: Handler<SaveHardState> + ToEnvelope<Self, SaveHardState>,
-        Self: Handler<GetLogEntries> + ToEnvelope<Self, GetLogEntries>,
-        Self: Handler<AppendLogEntries> + ToEnvelope<Self, AppendLogEntries>,
-        Self: Handler<ApplyEntriesToStateMachine> + ToEnvelope<Self, ApplyEntriesToStateMachine>,
-        Self: Handler<CreateSnapshot> + ToEnvelope<Self, CreateSnapshot>,
-        Self: Handler<InstallSnapshot> + ToEnvelope<Self, InstallSnapshot>,
-        Self: Handler<GetCurrentSnapshot> + ToEnvelope<Self, GetCurrentSnapshot>,
+
+        Self: Handler<GetInitialState>,
+        Self::Context: ToEnvelope<Self, GetInitialState>,
+
+        Self: Handler<SaveHardState>,
+        Self::Context: ToEnvelope<Self, SaveHardState>,
+
+        Self: Handler<GetLogEntries>,
+        Self::Context: ToEnvelope<Self, GetLogEntries>,
+
+        Self: Handler<AppendLogEntries>,
+        Self::Context: ToEnvelope<Self, AppendLogEntries>,
+
+        Self: Handler<ApplyEntriesToStateMachine>,
+        Self::Context: ToEnvelope<Self, ApplyEntriesToStateMachine>,
+
+        Self: Handler<CreateSnapshot>,
+        Self::Context: ToEnvelope<Self, CreateSnapshot>,
+
+        Self: Handler<InstallSnapshot>,
+        Self::Context: ToEnvelope<Self, InstallSnapshot>,
+
+        Self: Handler<GetCurrentSnapshot>,
+        Self::Context: ToEnvelope<Self, GetCurrentSnapshot>,
 {}

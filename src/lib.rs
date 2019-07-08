@@ -4,12 +4,14 @@ pub mod proto;
 pub mod raft;
 mod replication;
 pub mod storage;
+pub mod memory_storage;
 
 pub use crate::{
+    error::{ClientRpcError, RaftRpcError, StorageError},
     raft::{
-        ClientRequest,
-        NodeId,
-        Raft, RaftRpcIn, RaftRpcOut,
+        ClientRpcIn, ClientRpcOut,
+        NodeId, Raft,
+        RaftRpcIn, RaftRpcOut,
     },
     storage::{RaftStorage},
 };

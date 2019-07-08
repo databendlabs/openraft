@@ -613,14 +613,14 @@ pub(crate) struct RSReplicate {
     ///
     /// The payload will only be empty if the Raft node detects that this replication stream is
     /// not running at line rate, as buffering too many entries could cause memory issues.
-    entries: Vec<proto::Entry>,
+    pub entries: Vec<proto::Entry>,
     /// The index of the log entry to most recently be appended to the log by the leader.
     ///
     /// This will always be the index of the last element in the entries payload if values are
     /// given in the payload.
-    line_index: u64,
+    pub line_index: u64,
     /// The index of the highest log entry which is known to be committed in the cluster.
-    line_commit: u64,
+    pub line_commit: u64,
 }
 
 impl Message for RSReplicate {
