@@ -1,4 +1,6 @@
-//! A module encapsulating the Raft storage interface.
+//! The RaftStorage interface and message types.
+
+use std::sync::Arc;
 
 use actix::{
     dev::ToEnvelope,
@@ -7,9 +9,8 @@ use actix::{
 use futures::sync::mpsc::UnboundedReceiver;
 
 use crate::{
-    error::StorageResult,
-    proto,
-    raft::NodeId,
+    NodeId, AppError,
+    messages,
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -25,10 +26,19 @@ use crate::{
 /// The storage impl may need to look in a few different places to accurately respond to this
 /// request. That last entry in the log for `last_log_index` & `last_log_term`; the node's hard
 /// state record; and the index of the last log applied to the state machine.
-pub struct GetInitialState;
+pub struct GetInitialState<E: AppError> {
+    marker: std::marker::PhantomData<E>,
+}
 
-impl Message for GetInitialState {
-    type Result = StorageResult<InitialState>;
+impl<E: AppError> GetInitialState<E> {
+    // Create a new instance.
+    pub fn new() -> Self {
+        Self{marker: std::marker::PhantomData}
+    }
+}
+
+impl<E: AppError> Message for GetInitialState<E> {
+    type Result = Result<InitialState, E>;
 }
 
 /// A struct used to represent the initial state which a Raft node needs when first starting.
@@ -50,13 +60,21 @@ pub struct InitialState {
 ///
 /// The start value is inclusive in the search and the stop value is non-inclusive:
 /// `[start, stop)`.
-pub struct GetLogEntries {
+pub struct GetLogEntries<E: AppError> {
     pub start: u64,
     pub stop: u64,
+    marker: std::marker::PhantomData<E>,
 }
 
-impl Message for GetLogEntries {
-    type Result = StorageResult<Vec<proto::Entry>>;
+impl<E: AppError> GetLogEntries<E> {
+    // Create a new instance.
+    pub fn new(start: u64, stop: u64) -> Self {
+        Self{start, stop, marker: std::marker::PhantomData}
+    }
+}
+
+impl<E: AppError> Message for GetLogEntries<E> {
+    type Result = Result<Vec<messages::Entry>, E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -70,16 +88,43 @@ impl Message for GetLogEntries {
 ///
 /// The result of a successful append entries call must contain the details on that last log entry
 /// appended to the log.
-pub struct AppendLogEntries(pub Vec<proto::Entry>);
-
-/// Details on the last log entry appended to the log as part of an `AppendLogEntries` operation.
-pub struct AppendLogEntriesData {
-    pub index: u64,
-    pub term: u64,
+pub struct AppendLogEntries<E: AppError> {
+    pub entries: Arc<Vec<messages::Entry>>,
+    marker: std::marker::PhantomData<E>,
 }
 
-impl Message for AppendLogEntries {
-    type Result = StorageResult<AppendLogEntriesData>;
+impl<E: AppError> AppendLogEntries<E> {
+    // Create a new instance.
+    pub fn new(entries: Arc<Vec<messages::Entry>>) -> Self {
+        Self{entries, marker: std::marker::PhantomData}
+    }
+}
+
+impl<E: AppError> Message for AppendLogEntries<E> {
+    type Result = Result<(), E>;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// ApplyEntriesToStateMachine ////////////////////////////////////////////////////////////////////
+
+/// A request from the Raft node to apply the given log entries to the state machine.
+///
+/// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
+/// have been replicated to a majority of the cluster, will be applied to the state machine.
+pub struct ApplyEntriesToStateMachine<E: AppError> {
+    pub entries: Arc<Vec<messages::Entry>>,
+    marker: std::marker::PhantomData<E>,
+}
+
+impl<E: AppError> ApplyEntriesToStateMachine<E> {
+    // Create a new instance.
+    pub fn new(entries: Arc<Vec<messages::Entry>>) -> Self {
+        Self{entries, marker: std::marker::PhantomData}
+    }
+}
+
+impl<E: AppError> Message for ApplyEntriesToStateMachine<E> {
+    type Result = Result<(), E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -106,19 +151,27 @@ impl Message for AppendLogEntries {
 /// - All previous entries in the log should be deleted up to the entry specified at index
 /// `through`.
 /// - The entry at index `through` should be replaced with a new entry created from calling
-/// `actix_raft::proto::Entry::new_snapshot_pointer(...)`.
+/// `actix_raft::messages::Entry::new_snapshot_pointer(...)`.
 /// - Any old snapshot will no longer have representation in the log, and should be deleted.
 /// - Return a copy of the snapshot pointer entry created earlier.
-pub struct CreateSnapshot {
+pub struct CreateSnapshot<E: AppError> {
     /// The new snapshot should start from entry `0` and should cover all entries through the
     /// index specified here, inclusive.
     pub through: u64,
     /// The directory where the new snapshot is to be written.
     pub snapshot_dir: String,
+    marker: std::marker::PhantomData<E>,
 }
 
-impl Message for CreateSnapshot {
-    type Result = StorageResult<proto::Entry>;
+impl<E: AppError> CreateSnapshot<E> {
+    // Create a new instance.
+    pub fn new(through: u64, snapshot_dir: String) -> Self {
+        Self{through, snapshot_dir, marker: std::marker::PhantomData}
+    }
+}
+
+impl<E: AppError> Message for CreateSnapshot<E> {
+    type Result = Result<messages::Entry, E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -140,14 +193,14 @@ impl Message for CreateSnapshot {
 /// Once a chunk is received which is the final chunk of the snapshot, after writing the data,
 /// there are a few important steps to take:
 ///
-/// - Create a new entry in the log via the `actix_raft::proto::Entry::new_snapshot_pointer(...)`
+/// - Create a new entry in the log via the `actix_raft::messages::Entry::new_snapshot_pointer(...)`
 /// constructor. Insert the new entry into the log at the specified `index` of this payload.
 /// - If there are any logs older than `index`, remove them.
 /// - If there are any other snapshots in `snapshot_dir`, remove them.
 /// - If there are any logs newer than `index`, then return.
 /// - If there are no logs newer than `index`, then the state machine should be reset, and
 /// recreated from the new snapshot. Return once the state machine has been brought up-to-date.
-pub struct InstallSnapshot {
+pub struct InstallSnapshot<E: AppError> {
     /// The term which the final entry of this snapshot covers.
     pub term: u64,
     /// The index of the final entry which this snapshot covers.
@@ -156,10 +209,18 @@ pub struct InstallSnapshot {
     pub snapshot_dir: String,
     /// A stream of data chunks for this snapshot.
     pub stream: UnboundedReceiver<InstallSnapshotChunk>,
+    marker: std::marker::PhantomData<E>,
 }
 
-impl Message for InstallSnapshot {
-    type Result = StorageResult<()>;
+impl<E: AppError> InstallSnapshot<E> {
+    // Create a new instance.
+    pub fn new(term: u64, index: u64, snapshot_dir: String, stream: UnboundedReceiver<InstallSnapshotChunk>) -> Self {
+        Self{term, index, snapshot_dir, stream, marker: std::marker::PhantomData}
+    }
+}
+
+impl<E: AppError> Message for InstallSnapshot<E> {
+    type Result = Result<(), E>;
 }
 
 /// A chunk of snapshot data.
@@ -186,39 +247,42 @@ pub struct InstallSnapshotChunk {
 ///
 /// Once the current snapshot has been located, the absolute path to the file should be returned.
 /// If there is no active snapshot file, then `None` should be returned.
-pub struct GetCurrentSnapshot {
+pub struct GetCurrentSnapshot<E: AppError> {
     /// The directory where the system has been configured to store snapshots.
     pub snapshot_dir: String,
+    marker: std::marker::PhantomData<E>,
 }
 
-impl Message for GetCurrentSnapshot {
-    type Result = StorageResult<Option<String>>;
+impl<E: AppError> GetCurrentSnapshot<E> {
+    // Create a new instance.
+    pub fn new(snapshot_dir: String) -> Self {
+        Self{snapshot_dir, marker: std::marker::PhantomData}
+    }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-// ApplyEntriesToStateMachine ////////////////////////////////////////////////////////////////////
-
-/// A request from the Raft node to apply the given log entries to the state machine.
-///
-/// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
-/// have been replicated to a majority of the cluster, will be applied to the state machine.
-pub struct ApplyEntriesToStateMachine(pub Vec<proto::Entry>);
-
-/// Details on the last log entry applied to the state machine as part of an `ApplyEntriesToStateMachine` operation.
-pub struct ApplyEntriesToStateMachineData {
-    pub index: u64,
-    pub term: u64,
-}
-
-impl Message for ApplyEntriesToStateMachine {
-    type Result = StorageResult<ApplyEntriesToStateMachineData>;
+impl<E: AppError> Message for GetCurrentSnapshot<E> {
+    type Result = Result<Option<String>, E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // SaveHardState /////////////////////////////////////////////////////////////////////////////////
 
 /// A request from the Raft node to save its HardState.
-pub struct SaveHardState(pub HardState);
+pub struct SaveHardState<E: AppError>{
+    pub hs: HardState,
+    marker: std::marker::PhantomData<E>,
+}
+
+impl<E: AppError> SaveHardState<E> {
+    // Create a new instance.
+    pub fn new(hs: HardState) -> Self {
+        Self{hs, marker: std::marker::PhantomData}
+    }
+}
+
+impl<E: AppError> Message for SaveHardState<E> {
+    type Result = Result<(), E>;
+}
 
 /// A record holding the hard state of a Raft node.
 pub struct HardState {
@@ -228,10 +292,6 @@ pub struct HardState {
     pub voted_for: Option<NodeId>,
     /// The IDs of all known members of the cluster.
     pub members: Vec<u64>,
-}
-
-impl Message for SaveHardState {
-    type Result = StorageResult<()>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -265,31 +325,32 @@ impl Message for SaveHardState {
 ///
 /// See each message type for more details on the message and how to properly implement their
 /// behaviors.
-pub trait RaftStorage
+pub trait RaftStorage<E>
     where
+        E: AppError,
         Self: Actor<Context=Context<Self>>,
 
-        Self: Handler<GetInitialState>,
-        Self::Context: ToEnvelope<Self, GetInitialState>,
+        Self: Handler<GetInitialState<E>>,
+        Self::Context: ToEnvelope<Self, GetInitialState<E>>,
 
-        Self: Handler<SaveHardState>,
-        Self::Context: ToEnvelope<Self, SaveHardState>,
+        Self: Handler<SaveHardState<E>>,
+        Self::Context: ToEnvelope<Self, SaveHardState<E>>,
 
-        Self: Handler<GetLogEntries>,
-        Self::Context: ToEnvelope<Self, GetLogEntries>,
+        Self: Handler<GetLogEntries<E>>,
+        Self::Context: ToEnvelope<Self, GetLogEntries<E>>,
 
-        Self: Handler<AppendLogEntries>,
-        Self::Context: ToEnvelope<Self, AppendLogEntries>,
+        Self: Handler<AppendLogEntries<E>>,
+        Self::Context: ToEnvelope<Self, AppendLogEntries<E>>,
 
-        Self: Handler<ApplyEntriesToStateMachine>,
-        Self::Context: ToEnvelope<Self, ApplyEntriesToStateMachine>,
+        Self: Handler<ApplyEntriesToStateMachine<E>>,
+        Self::Context: ToEnvelope<Self, ApplyEntriesToStateMachine<E>>,
 
-        Self: Handler<CreateSnapshot>,
-        Self::Context: ToEnvelope<Self, CreateSnapshot>,
+        Self: Handler<CreateSnapshot<E>>,
+        Self::Context: ToEnvelope<Self, CreateSnapshot<E>>,
 
-        Self: Handler<InstallSnapshot>,
-        Self::Context: ToEnvelope<Self, InstallSnapshot>,
+        Self: Handler<InstallSnapshot<E>>,
+        Self::Context: ToEnvelope<Self, InstallSnapshot<E>>,
 
-        Self: Handler<GetCurrentSnapshot>,
-        Self::Context: ToEnvelope<Self, GetCurrentSnapshot>,
+        Self: Handler<GetCurrentSnapshot<E>>,
+        Self::Context: ToEnvelope<Self, GetCurrentSnapshot<E>>,
 {}
