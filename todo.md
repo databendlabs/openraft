@@ -22,8 +22,8 @@ todo
 - [x] update the replication protocol & the client request handling protocol to simply `Arc` the vector of entries which need to be applied and such. The storage layer will no longer need to return anything as a response when appending entries to the log or applying entries to the state machine.
 - [x] replication streams can be sent an arc of the entries as well. When entries need to be buffered, the arcs themselves can be buffered and then the entries can be transformed into a larger payload when ready to be sent.
 - ~~create an `EntriesPayload` type which wraps the `Arc<Vec<Entries>>` so that we have a more concise interface into knowing the first & last index of the entries, the term of the last entry &c.~~
-- [ ] `storage::AppendLogEntries` should have a field indicating if the request is from replication requests (node is follower) or from client requests (node is leader). Update docs to indicate when it is acceptable to return a custom error.
-- [ ] `storage::AppendLogEntries` docs need to indicate that appending a batch of entries when the node is the leader must be atomic. The whole batch must either succeed or all must fail. For replication, failure is not allowed.
+- [x] `storage::AppendLogEntries` should have a field indicating if the request is from replication requests (node is follower) or from client requests (node is leader). Update docs to indicate when it is acceptable to return a custom error.
+- [x] `storage::AppendLogEntries` docs need to indicate that appending a batch of entries when the node is the leader must be atomic. The whole batch must either succeed or all must fail. For replication, failure is not allowed.
 
 ----
 

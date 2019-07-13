@@ -192,10 +192,9 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// The index of the highest log entry known to be committed cluster-wide.
     ///
     /// The definition of a committed log is that the leader which has created the log has
-    /// successfully replicated the log to a majority of the cluster. This value is only ever
-    /// updated by way of an AppendEntries RPC from the leader. If a node is the leader, it will
-    /// update this value as new entries have been successfully replicated to a majority of the
-    /// cluster.
+    /// successfully replicated the log to a majority of the cluster. This value is updated via
+    /// AppendEntries RPC from the leader, or if a node is the leader, it will update this value
+    /// as new entries have been successfully replicated to a majority of the cluster.
     ///
     /// Is initialized to 0, and increases monotonically. This is always based on the leader's
     /// commit index which is communicated to other members via the AppendEntries protocol.

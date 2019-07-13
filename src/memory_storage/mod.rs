@@ -9,12 +9,11 @@ use crate::{
         ApplyEntriesToStateMachine,
         CreateSnapshot,
         GetCurrentSnapshot,
+        GetCurrentSnapshotData,
         GetInitialState,
         GetLogEntries,
-        // HardState,
         InitialState,
         InstallSnapshot,
-        // InstallSnapshotChunk,
         RaftStorage,
         SaveHardState,
     },
@@ -30,9 +29,16 @@ impl AppError for MemoryStorageError {}
 ///
 /// This is primarity for testing and demo purposes. In a real application, storing Raft's data
 /// on a stable storage medium is expected.
-pub struct MemoryStorage; // TODO: finish this up.
+pub struct MemoryStorage {
+    #[allow(dead_code)] // TODO: remove this after impl.
+    snapshot_dir: String,
+}
 
-impl RaftStorage<MemoryStorageError> for MemoryStorage {}
+impl RaftStorage<MemoryStorageError> for MemoryStorage {
+    fn new(snapshot_dir: String) -> Self {
+        Self{snapshot_dir}
+    }
+}
 
 impl Actor for MemoryStorage {
     type Context = Context<Self>;
@@ -92,7 +98,7 @@ impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
 }
 
 impl Handler<GetCurrentSnapshot<MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, Option<String>, MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Option<GetCurrentSnapshotData>, MemoryStorageError>;
     fn handle(&mut self, _msg: GetCurrentSnapshot<MemoryStorageError>, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(fut::err(MemoryStorageError))
     }

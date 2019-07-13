@@ -13,7 +13,7 @@ use crate::{
     },
     raft::{RaftState, Raft, common::{AwaitingCommitted, ClientPayloadWithTx, DependencyAddr}},
     replication::RSReplicate,
-    storage::{AppendLogEntries, ApplyEntriesToStateMachine, RaftStorage},
+    storage::{AppendLogEntries, AppendLogEntriesMode, ApplyEntriesToStateMachine, RaftStorage},
 };
 
 const CLIENT_RPC_CHAN_ERR: &str = "Client RPC channel was unexpectedly closed.";
@@ -122,7 +122,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         // Send the entries over to the storage engine.
         self.is_appending_logs = true;
-        let f = fut::wrap_future(self.storage.send(AppendLogEntries::new(entries.clone())))
+        let f = fut::wrap_future(self.storage.send(AppendLogEntries::new(AppendLogEntriesMode::Leader, entries.clone())))
             .map_err(|err, act: &mut Self, ctx| {
                 act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage);
                 ClientError::Internal

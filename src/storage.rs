@@ -86,22 +86,46 @@ impl<E: AppError> Message for GetLogEntries<E> {
 /// determining its location to be written in the log, as logs may need to be overwritten under
 /// some circumstances.
 ///
-/// The result of a successful append entries call must contain the details on that last log entry
-/// appended to the log.
+/// It is critical that `RaftStorage` implementations honor the value of `mode`. The
+/// `AppendLogEntries` interface is the only interface which is allowed to return errors without
+/// causing Raft to immediately shutdown to preserve data integrity. However, this is only allowed
+/// for mode `Leader`, but is never allowed for mode `Follower`.
+///
+/// It is also important to note that implementations must ensure that all entries in the payload
+/// are successfully applied, or if in mode `Leader`, and an error needs to be returned, that none
+/// of the entries are applied. This will only practically take place if the application using
+/// Raft supports batch client payloads, as that is the only case where a client request will
+/// be presented with multiple entries in a single `AppendLogEntries` call to `RaftStorage`.
 pub struct AppendLogEntries<E: AppError> {
+    pub mode: AppendLogEntriesMode,
     pub entries: Arc<Vec<messages::Entry>>,
     marker: std::marker::PhantomData<E>,
 }
 
 impl<E: AppError> AppendLogEntries<E> {
     // Create a new instance.
-    pub fn new(entries: Arc<Vec<messages::Entry>>) -> Self {
-        Self{entries, marker: std::marker::PhantomData}
+    pub fn new(mode: AppendLogEntriesMode, entries: Arc<Vec<messages::Entry>>) -> Self {
+        Self{mode, entries, marker: std::marker::PhantomData}
     }
 }
 
 impl<E: AppError> Message for AppendLogEntries<E> {
     type Result = Result<(), E>;
+}
+
+/// A mode indicating if the associated storage command is from replication or a client write to the leader.
+///
+/// When in mode `Leader`, the associated `AppendLogEntries` is coming about due to a client
+/// command on the leader. If application specific business logic needs to be performed,
+/// potentially returning an error, it is permitted to do so in this mode. If errors are returned
+/// when in this mode, they will be propagated back to the caller as is.
+///
+/// When in mode `Follower`, the associated `AppendLogEntries` is coming about by way
+/// of replication commands from the cluster leader. This must never fail. If an error is returned
+/// when in this mode, the Raft node will shut down in order to preserve data inntegrity.
+pub enum AppendLogEntriesMode {
+    Leader,
+    Follower,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -236,7 +260,7 @@ pub struct InstallSnapshotChunk {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // GetCurrentSnapshot ////////////////////////////////////////////////////////////////////////////
 
-/// A request from the Raft node to get the location of the current snapshot on disk.
+/// A request from the Raft node to get metadata of the current snapshot.
 ///
 /// ### implementation algorithm
 /// Implementation for this type's handler should be quite simple. Check the directory specified
@@ -244,24 +268,29 @@ pub struct InstallSnapshotChunk {
 /// active snapshot, though another may exist while it is being created. As such, it is
 /// recommended to use a file naming pattern which will allow for easily distinguishing betweeen
 /// the current live snapshot, and any new snapshot which is being created.
-///
-/// Once the current snapshot has been located, the absolute path to the file should be returned.
-/// If there is no active snapshot file, then `None` should be returned.
 pub struct GetCurrentSnapshot<E: AppError> {
-    /// The directory where the system has been configured to store snapshots.
-    pub snapshot_dir: String,
     marker: std::marker::PhantomData<E>,
 }
 
 impl<E: AppError> GetCurrentSnapshot<E> {
     // Create a new instance.
-    pub fn new(snapshot_dir: String) -> Self {
-        Self{snapshot_dir, marker: std::marker::PhantomData}
+    pub fn new() -> Self {
+        Self{marker: std::marker::PhantomData}
     }
 }
 
 impl<E: AppError> Message for GetCurrentSnapshot<E> {
-    type Result = Result<Option<String>, E>;
+    type Result = Result<Option<GetCurrentSnapshotData>, E>;
+}
+
+/// The data associated with the current snapshot.
+pub struct GetCurrentSnapshotData {
+    /// The snapshot entry's term.
+    pub term: u64,
+    /// The snapshot entry's index.
+    pub index: u64,
+    /// The snapshot entry's pointer to the snapshot file.
+    pub pointer: messages::EntrySnapshotPointer,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -353,4 +382,7 @@ pub trait RaftStorage<E>
 
         Self: Handler<GetCurrentSnapshot<E>>,
         Self::Context: ToEnvelope<Self, GetCurrentSnapshot<E>>,
-{}
+{
+    /// Create a new instance which will store its snapshots in the given directory.
+    fn new(snapshot_dir: String) -> Self;
+}

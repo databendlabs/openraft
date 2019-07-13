@@ -8,7 +8,7 @@ use crate::{
     network::RaftNetwork,
     messages::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryType},
     raft::{RaftState, Raft, common::{DependencyAddr, UpdateCurrentLeader}},
-    storage::{AppendLogEntries, ApplyEntriesToStateMachine, GetLogEntries, RaftStorage},
+    storage::{AppendLogEntries, AppendLogEntriesMode, ApplyEntriesToStateMachine, GetLogEntries, RaftStorage},
 };
 
 impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesRequest> for Raft<E, N, S> {
@@ -186,7 +186,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         }
 
         self.is_appending_logs = true;
-        fut::Either::B(fut::wrap_future(self.storage.send(AppendLogEntries::new(entries.clone())))
+        fut::Either::B(fut::wrap_future(self.storage.send(AppendLogEntries::new(AppendLogEntriesMode::Follower, entries.clone())))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
             .map(move |_, act, _| {
