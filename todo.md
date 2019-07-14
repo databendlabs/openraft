@@ -25,22 +25,34 @@ todo
 - [x] `storage::AppendLogEntries` should have a field indicating if the request is from replication requests (node is follower) or from client requests (node is leader). Update docs to indicate when it is acceptable to return a custom error.
 - [x] `storage::AppendLogEntries` docs need to indicate that appending a batch of entries when the node is the leader must be atomic. The whole batch must either succeed or all must fail. For replication, failure is not allowed.
 
+##### algorithm optimizations
+- [ ] update the AppendEntries RPC receiver to pipeline all requests. This will potentially remove the need for having to use boolean flags to mark if the Raft is currently appending logs or not.
+- [ ] in the client request handling logic, after logs have been appended locally and have been queued for replication on the streams, the pipeline can immediately begin processing the next payload of entries. **This optimization will greatly increse the throughput of this Raft implementation.**
+    - this will mean that the process of waiting for the logs to be committed to the cluster and responding to the client will happen outside of the main pipeline.
+    - multiple payloads of enntries will be queued and delivered at the same time from replication streams to followers, so batches of requests may become ready for further processing/response when under heavy write load.
+    - applying the logs to the state machine will also happen outside of the pipeline. It must be ensured that entries are not sent to the state machine to be applied out-of-order. It is absolutely critical that they are sent to be applied in index order.
+    - the pipeline for applying logs to the statemachine should also perform batching whenever possible.
+
 ----
 
 ## impl
 - [x] actix messaging errors from messaging the RaftStorage should cause Raft to stop. This functionality is fundamentally required for the system to work.
-- finish up handlers of the replication stream messages.
+- [ ] finish up handlers of the replication stream messages.
+
+#### snapshots
+- [ ] get the system in place for periodic snapshot creation.
 
 #### admin commands
-- get AdminCommands setup and implemented.
+- [ ] get AdminCommands setup and implemented.
 
 #### observability
-- ensure that internal state transitions and updates are emitted for host application use. Such as RaftState changes, membership changes, errors from async ops.
+- [ ] ensure that internal state transitions and updates are emitted for host application use. Such as RaftState changes, membership changes, errors from async ops.
+- [ ] add mechanism for custom metrics gathering. Should be generic enough that applications should be able to expose the metrics for any metrics gathering platform (prometheus, influx, graphite &c).
 
 #### testing
+- [ ] finish implement MemoryStroage for testing (and general demo usage).
 - setup testing framework to assert accurate behavior of Raft implementation and adherence to Raft's safety protocols.
 - all actor based. Transport layer can be a simple message passing mechanism.
-- will probably need to implement MemoryStroage for testing.
 
 ----
 
