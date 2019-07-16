@@ -14,7 +14,7 @@ const DEFAULT_SNAPSHOT_CHUNKSIZE: u64 = 1024u64 * 1024u64 * 3;
 /// would cause a leader to send an `InstallSnapshot` RPC to a follower based on replication lag.
 ///
 /// Additional policies may become available in the future.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum SnapshotPolicy {
     /// Snaphots are disabled for this Raft cluster.
     Disabled,
