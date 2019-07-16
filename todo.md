@@ -37,7 +37,7 @@ todo
 
 ## impl
 - [x] actix messaging errors from messaging the RaftStorage should cause Raft to stop. This functionality is fundamentally required for the system to work.
-- [ ] finish up handlers of the replication stream messages.
+- [x] finish up handlers of the replication stream messages.
 
 #### snapshots
 - [ ] get the system in place for periodic snapshot creation.

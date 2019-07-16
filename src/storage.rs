@@ -171,31 +171,29 @@ impl<E: AppError> Message for ApplyEntriesToStateMachine<E> {
 /// the index specified by `through`. This will include any snapshot which may already exist. If
 /// a snapshot does already exist, the new log compaction process should be able to just load the
 /// old snapshot first, and resume processing from its last entry.
-/// - The newly generated snapshot should be written to the directory specified by `snapshot_dir`.
+/// - The newly generated snapshot should be written to the configured snapshot directory.
 /// - All previous entries in the log should be deleted up to the entry specified at index
 /// `through`.
 /// - The entry at index `through` should be replaced with a new entry created from calling
 /// `actix_raft::messages::Entry::new_snapshot_pointer(...)`.
 /// - Any old snapshot will no longer have representation in the log, and should be deleted.
-/// - Return a copy of the snapshot pointer entry created earlier.
+/// - Return a `CurrentSnapshotData` struct which contains all metadata pertinent to the snapshot.
 pub struct CreateSnapshot<E: AppError> {
     /// The new snapshot should start from entry `0` and should cover all entries through the
     /// index specified here, inclusive.
     pub through: u64,
-    /// The directory where the new snapshot is to be written.
-    pub snapshot_dir: String,
     marker: std::marker::PhantomData<E>,
 }
 
 impl<E: AppError> CreateSnapshot<E> {
     // Create a new instance.
-    pub fn new(through: u64, snapshot_dir: String) -> Self {
-        Self{through, snapshot_dir, marker: std::marker::PhantomData}
+    pub fn new(through: u64) -> Self {
+        Self{through, marker: std::marker::PhantomData}
     }
 }
 
 impl<E: AppError> Message for CreateSnapshot<E> {
-    type Result = Result<messages::Entry, E>;
+    type Result = Result<CurrentSnapshotData, E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -220,7 +218,7 @@ impl<E: AppError> Message for CreateSnapshot<E> {
 /// - Create a new entry in the log via the `actix_raft::messages::Entry::new_snapshot_pointer(...)`
 /// constructor. Insert the new entry into the log at the specified `index` of this payload.
 /// - If there are any logs older than `index`, remove them.
-/// - If there are any other snapshots in `snapshot_dir`, remove them.
+/// - If there are any other snapshots in the connfigured snapshot dir, remove them.
 /// - If there are any logs newer than `index`, then return.
 /// - If there are no logs newer than `index`, then the state machine should be reset, and
 /// recreated from the new snapshot. Return once the state machine has been brought up-to-date.
@@ -229,8 +227,6 @@ pub struct InstallSnapshot<E: AppError> {
     pub term: u64,
     /// The index of the final entry which this snapshot covers.
     pub index: u64,
-    /// The directory where the new snapshot is to be written.
-    pub snapshot_dir: String,
     /// A stream of data chunks for this snapshot.
     pub stream: UnboundedReceiver<InstallSnapshotChunk>,
     marker: std::marker::PhantomData<E>,
@@ -238,8 +234,8 @@ pub struct InstallSnapshot<E: AppError> {
 
 impl<E: AppError> InstallSnapshot<E> {
     // Create a new instance.
-    pub fn new(term: u64, index: u64, snapshot_dir: String, stream: UnboundedReceiver<InstallSnapshotChunk>) -> Self {
-        Self{term, index, snapshot_dir, stream, marker: std::marker::PhantomData}
+    pub fn new(term: u64, index: u64, stream: UnboundedReceiver<InstallSnapshotChunk>) -> Self {
+        Self{term, index, stream, marker: std::marker::PhantomData}
     }
 }
 
@@ -263,8 +259,8 @@ pub struct InstallSnapshotChunk {
 /// A request from the Raft node to get metadata of the current snapshot.
 ///
 /// ### implementation algorithm
-/// Implementation for this type's handler should be quite simple. Check the directory specified
-/// by `snapshot_dir` for any snapshot files. A proper implementation will only ever have one
+/// Implementation for this type's handler should be quite simple. Check the configured snapshot
+/// directory for any snapshot files. A proper implementation will only ever have one
 /// active snapshot, though another may exist while it is being created. As such, it is
 /// recommended to use a file naming pattern which will allow for easily distinguishing betweeen
 /// the current live snapshot, and any new snapshot which is being created.
@@ -280,15 +276,17 @@ impl<E: AppError> GetCurrentSnapshot<E> {
 }
 
 impl<E: AppError> Message for GetCurrentSnapshot<E> {
-    type Result = Result<Option<GetCurrentSnapshotData>, E>;
+    type Result = Result<Option<CurrentSnapshotData>, E>;
 }
 
 /// The data associated with the current snapshot.
-pub struct GetCurrentSnapshotData {
+pub struct CurrentSnapshotData {
     /// The snapshot entry's term.
     pub term: u64,
     /// The snapshot entry's index.
     pub index: u64,
+    /// The latest configuration covered by the snapshot.
+    pub config: Vec<NodeId>,
     /// The snapshot entry's pointer to the snapshot file.
     pub pointer: messages::EntrySnapshotPointer,
 }

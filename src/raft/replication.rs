@@ -10,7 +10,7 @@ use crate::{
         RSNeedsSnapshot, RSNeedsSnapshotResponse,
         RSRateUpdate, RSRevertToFollower, RSUpdateMatchIndex,
     },
-    storage::{GetCurrentSnapshot, GetCurrentSnapshotData, RaftStorage},
+    storage::{CreateSnapshot, GetCurrentSnapshot, CurrentSnapshotData, RaftStorage},
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -61,30 +61,28 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSNeedsSnapshot>
         };
 
         // Check for existence of current snapshot.
-        let _ = fut::wrap_future(self.storage.send(GetCurrentSnapshot::new()))
+        Box::new(fut::wrap_future(self.storage.send(GetCurrentSnapshot::new()))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
-            .and_then(move |res, act, _| match res {
-                // If snapshot exists, ensure its distance from the leader's last log index is <= half
-                // of the configured snapshot threshold, else create a new snapshot.
-                Some(meta) => if snapshot_is_within_half_of_threshold(meta, act.last_log_index, threshold) {
-                    fut::ok(())
-                } else {
-                    fut::ok(())
+            .and_then(move |res, act, _| {
+                if let Some(meta) = res {
+                    // If snapshot exists, ensure its distance from the leader's last log index is <= half
+                    // of the configured snapshot threshold, else create a new snapshot.
+                    if snapshot_is_within_half_of_threshold(&meta, act.last_log_index, threshold) {
+                        let CurrentSnapshotData{index, term, config, pointer} = meta;
+                        return fut::Either::A(fut::ok(RSNeedsSnapshotResponse{index, term, config, pointer}));
+                    }
                 }
-                // If snapshot does not exist, create a new snapshot.
-                None => {
-                    fut::ok(())
-                }
-            });
-
-        // Box::new(fut::ok(RSNeedsSnapshotResponse {
-        //     index: 0,
-        //     term: 0,
-        //     pointer: EntrySnapshotPointer,
-        // }))
-
-        Box::new(fut::err(()))
+                // If snapshot is not within half of threshold, or if snapshot does not exist, create a new snapshot.
+                // Create a new snapshot up through the committed index (to avoid jitter).
+                fut::Either::B(fut::wrap_future(act.storage.send(CreateSnapshot::new(act.commit_index)))
+                    .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
+                    .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
+                    .and_then(|res, _, _| {
+                        let CurrentSnapshotData{index, term, config, pointer} = res;
+                        fut::ok(RSNeedsSnapshotResponse{index, term, config, pointer})
+                    }))
+            }))
     }
 }
 
@@ -95,9 +93,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRevertToFollow
     type Result = ();
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
-    fn handle(&mut self, _msg: RSRevertToFollower, ctx: &mut Self::Context) {
-        self.update_current_leader(ctx, UpdateCurrentLeader::Unknown);
-        self.become_follower(ctx);
+    fn handle(&mut self, msg: RSRevertToFollower, ctx: &mut Self::Context) {
+        if msg.term > self.current_term {
+            self.update_current_leader(ctx, UpdateCurrentLeader::Unknown);
+            self.become_follower(ctx);
+        }
     }
 }
 
@@ -163,7 +163,7 @@ fn calculate_new_commit_index(mut entries: Vec<u64>, current_commit: u64) -> u64
 }
 
 /// Check if the given snapshot data is within half of the configured threshold.
-fn snapshot_is_within_half_of_threshold(data: GetCurrentSnapshotData, last_log_index: u64, threshold: u64) -> bool {
+fn snapshot_is_within_half_of_threshold(data: &CurrentSnapshotData, last_log_index: u64, threshold: u64) -> bool {
     // Calculate distance from actor's last log index.
     let distance_from_line = if data.index > last_log_index { 0u64 } else { last_log_index - data.index }; // Guard against underflow.
     let half_of_threshold = threshold / 2;
@@ -196,19 +196,19 @@ mod tests {
 
         test_snapshot_is_within_half_of_threshold!({
             test=>happy_path_true_when_within_half_threshold,
-            data=>GetCurrentSnapshotData{term: 1, index: 50, pointer: EntrySnapshotPointer{path: String::new()}},
+            data=>&CurrentSnapshotData{term: 1, index: 50, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
             last_log_index=>100, threshold=>500, expected=>true
         });
 
         test_snapshot_is_within_half_of_threshold!({
             test=>happy_path_false_when_above_half_threshold,
-            data=>GetCurrentSnapshotData{term: 1, index: 1, pointer: EntrySnapshotPointer{path: String::new()}},
+            data=>&CurrentSnapshotData{term: 1, index: 1, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
             last_log_index=>500, threshold=>100, expected=>false
         });
 
         test_snapshot_is_within_half_of_threshold!({
             test=>guards_against_underflow,
-            data=>GetCurrentSnapshotData{term: 1, index: 200, pointer: EntrySnapshotPointer{path: String::new()}},
+            data=>&CurrentSnapshotData{term: 1, index: 200, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
             last_log_index=>100, threshold=>500, expected=>true
         });
     }

@@ -676,6 +676,7 @@ impl Message for RSNeedsSnapshot {
 pub(crate) struct RSNeedsSnapshotResponse {
     pub index: u64,
     pub term: u64,
+    pub config: Vec<NodeId>,
     pub pointer: EntrySnapshotPointer,
 }
 

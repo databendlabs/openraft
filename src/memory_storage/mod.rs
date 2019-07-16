@@ -8,8 +8,8 @@ use crate::{
         AppendLogEntries,
         ApplyEntriesToStateMachine,
         CreateSnapshot,
+        CurrentSnapshotData,
         GetCurrentSnapshot,
-        GetCurrentSnapshotData,
         GetInitialState,
         GetLogEntries,
         InitialState,
@@ -84,7 +84,7 @@ impl Handler<ApplyEntriesToStateMachine<MemoryStorageError>> for MemoryStorage {
 }
 
 impl Handler<CreateSnapshot<MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, messages::Entry, MemoryStorageError>;
+    type Result = ResponseActFuture<Self, CurrentSnapshotData, MemoryStorageError>;
     fn handle(&mut self, _msg: CreateSnapshot<MemoryStorageError>, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(fut::err(MemoryStorageError))
     }
@@ -98,7 +98,7 @@ impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
 }
 
 impl Handler<GetCurrentSnapshot<MemoryStorageError>> for MemoryStorage {
-    type Result = ResponseActFuture<Self, Option<GetCurrentSnapshotData>, MemoryStorageError>;
+    type Result = ResponseActFuture<Self, Option<CurrentSnapshotData>, MemoryStorageError>;
     fn handle(&mut self, _msg: GetCurrentSnapshot<MemoryStorageError>, _ctx: &mut Self::Context) -> Self::Result {
         Box::new(fut::err(MemoryStorageError))
     }
