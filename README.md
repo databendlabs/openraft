@@ -13,7 +13,7 @@ This implementation strictly adheres to the [Raft spec](https://raft.github.io/r
 ### admin commands
 Actix-raft nodes may be controlled in various ways outside of the normal flow of the Raft protocol using the `admin` message types. This allows the parent application — within which the Raft node is running — to influence the Raft node's behavior based on application level needs. An admin command which probably every application using this Raft implementation will need to use is `ProposeConfigChange`. See the API documentation for more details. Here are a few of the admin commands available.
 
-See the [adminn commands docs](./docs/admin-commands.md) for more details.
+See the [admin commands docs](./docs/admin-commands.md) for more details.
 
 ### snapshots
 The snapshot capabilities defined in the Raft spec are fully supported by this implementation. The storage layer is left to the application which uses this Raft implementation, but all snapshot behavior defined in the Raft spec is supported, including:
