@@ -81,7 +81,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     ) -> impl ActorFuture<Actor=Self, Item=AppendEntriesResponse, Error=()> {
         // Don't interact with non-cluster members.
         if !self.members.contains(&msg.leader_id) {
-            debug!("Rejecting AppendEntries RPC from non-cluster member '{}'.", &msg.leader_id);
+            debug!("Node {}: Rejecting AppendEntries RPC from non-cluster member '{}'.", &self.id, &msg.leader_id);
             return fut::Either::A(
                 fut::Either::A(fut::err(()))
             );
@@ -89,7 +89,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         // If message's term is less than most recent term, then we do not honor the request.
         if &msg.term < &self.current_term {
-            debug!("Rejecting AppendEntries RPC due to old term in message '{}'. Current term is '{}'.", &msg.term, &self.current_term);
+            debug!("Node {}: Rejecting AppendEntries RPC due to old term in message '{}'. Current term is '{}'.", &self.id, &msg.term, &self.current_term);
             return fut::Either::A(
                 fut::Either::A(fut::ok(AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None}))
             );
@@ -98,7 +98,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         // Update election timeout & ensure we are in the follower state. Update current term if needed.
         self.update_election_timeout(ctx);
         if &msg.term > &self.current_term {
-            debug!("New term '{}' observed with leader '{}'. Ensuring follower state.", &msg.term, &msg.leader_id);
+            debug!("Node {}: New term '{}' observed with leader '{}'. Ensuring follower state.", &self.id, &msg.term, &msg.leader_id);
             self.become_follower(ctx);
             self.current_term = msg.term;
             self.update_current_leader(ctx, UpdateCurrentLeader::OtherNode(msg.leader_id));
@@ -123,7 +123,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         let (term, msg_prev_index, msg_prev_term) = (self.current_term, msg.prev_log_index, msg.prev_log_term);
         let entries = Arc::new(msg.entries);
         if &msg.prev_log_index == &u64::min_value() || (&msg_prev_index == &self.last_log_index && &msg_prev_term == &self.last_log_term) {
-            debug!("Accepting AppendEntries RPC with matching prev_log_index '{}' and prev_log_term '{}'.", &msg_prev_index, &msg_prev_term);
+            debug!("Node {}: Accepting AppendEntries RPC with matching prev_log_index '{}' and prev_log_term '{}'.", &self.id, &msg_prev_index, &msg_prev_term);
             return fut::Either::A(fut::Either::B(
                 self.append_log_entries(ctx, entries)
                     .map(move |_, _, _| {
@@ -136,13 +136,13 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         fut::Either::B(self.log_consistency_check(ctx, msg_prev_index, msg_prev_term)
             .and_then(move |res, act, ctx| match res {
                 Some(conflict_opt) => {
-                    debug!("Rejecting AppendEntries RPC with conflict_opt '{:?}'; prev_log_index '{}' and prev_log_term '{}'.", &conflict_opt, &msg_prev_index, &msg_prev_term);
+                    debug!("Node {}: Rejecting AppendEntries RPC with conflict_opt '{:?}'; prev_log_index '{}' and prev_log_term '{}'.", &act.id, &conflict_opt, &msg_prev_index, &msg_prev_term);
                     fut::Either::A(fut::ok(
                         AppendEntriesResponse{term, success: false, conflict_opt: Some(conflict_opt)}
                     ))
                 }
                 None => {
-                    debug!("Accepting AppendEntries RPC after log consistency check: prev_log_index '{}' and prev_log_term '{}'.", &msg_prev_index, &msg_prev_term);
+                    debug!("Node {}: Accepting AppendEntries RPC after log consistency check: prev_log_index '{}' and prev_log_term '{}'.", &act.id, &msg_prev_index, &msg_prev_term);
                     fut::Either::B(act.append_log_entries(ctx, entries)
                         .map(move |_, _, _| {
                             AppendEntriesResponse{term, success: true, conflict_opt: None}

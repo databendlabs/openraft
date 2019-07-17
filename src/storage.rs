@@ -42,6 +42,7 @@ impl<E: AppError> Message for GetInitialState<E> {
 }
 
 /// A struct used to represent the initial state which a Raft node needs when first starting.
+#[derive(Clone, Debug)]
 pub struct InitialState {
     /// The index of the last entry.
     pub last_log_index: u64,
@@ -123,6 +124,7 @@ impl<E: AppError> Message for AppendLogEntries<E> {
 /// When in mode `Follower`, the associated `AppendLogEntries` is coming about by way
 /// of replication commands from the cluster leader. This must never fail. If an error is returned
 /// when in this mode, the Raft node will shut down in order to preserve data inntegrity.
+#[derive(Debug)]
 pub enum AppendLogEntriesMode {
     Leader,
     Follower,
@@ -280,6 +282,7 @@ impl<E: AppError> Message for GetCurrentSnapshot<E> {
 }
 
 /// The data associated with the current snapshot.
+#[derive(Clone, Debug)]
 pub struct CurrentSnapshotData {
     /// The snapshot entry's term.
     pub term: u64,
@@ -312,6 +315,7 @@ impl<E: AppError> Message for SaveHardState<E> {
 }
 
 /// A record holding the hard state of a Raft node.
+#[derive(Clone, Debug)]
 pub struct HardState {
     /// The last recorded term observed by this system.
     pub current_term: u64,
@@ -382,5 +386,11 @@ pub trait RaftStorage<E>
         Self::Context: ToEnvelope<Self, GetCurrentSnapshot<E>>,
 {
     /// Create a new instance which will store its snapshots in the given directory.
-    fn new(snapshot_dir: String) -> Self;
+    ///
+    /// The values given to this constructor should only be used when the node is coming online
+    /// for the first time. Otherwise the persistent storage should always take precedence.
+    ///
+    /// The value given for `members` is used as the initial cluster config when the node comes
+    /// online for the first time.
+    fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self;
 }

@@ -144,11 +144,11 @@ impl ConfigBuilder {
 
         // Roll a random election time out based on the configured min & max or their respective defaults.
         let mut rng = thread_rng();
-        let election_timeout: u16 = rng.gen_range(self.election_timeout_min.unwrap_or(500), self.election_timeout_max.unwrap_or(1000));
+        let election_timeout: u16 = rng.gen_range(self.election_timeout_min.unwrap_or(200), self.election_timeout_max.unwrap_or(700));
         let election_timeout_millis = election_timeout as u64;
 
         // Get other values or their defaults.
-        let heartbeat_interval = self.heartbeat_interval.unwrap_or(200) as u64;
+        let heartbeat_interval = self.heartbeat_interval.unwrap_or(50) as u64;
         let max_payload_entries = self.max_payload_entries.unwrap_or(300);
         let snapshot_policy = self.snapshot_policy.unwrap_or_else(|| SnapshotPolicy::LogsSinceLast(5000));
         let snapshot_max_chunk_size = self.snapshot_max_chunk_size.unwrap_or(DEFAULT_SNAPSHOT_CHUNKSIZE);
@@ -168,4 +168,96 @@ pub enum ConfigError {
     /// The specified value for `snapshot_dir` does not exist on disk or could not be accessed.
     #[fail(display="The specified value for `snapshot_dir` does not exist on disk or could not be accessed.")]
     InvalidSnapshotDir,
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// Unit Tests ////////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // //////////////////////////////////////////////////////////////////////////
+    // // snapshot_is_within_half_of_threshold //////////////////////////////////
+
+    // mod snapshot_is_within_half_of_threshold {
+    //     use super::*;
+
+    //     macro_rules! test_snapshot_is_within_half_of_threshold {
+    //         ({test=>$name:ident, data=>$data:expr, last_log_index=>$last_log:literal, threshold=>$thresh:literal, expected=>$exp:literal}) => {
+    //             #[test]
+    //             fn $name() {
+    //                 let res = snapshot_is_within_half_of_threshold($data, $last_log, $thresh);
+    //                 assert_eq!(res, $exp)
+    //             }
+    //         }
+    //     }
+
+    //     test_snapshot_is_within_half_of_threshold!({
+    //         test=>happy_path_true_when_within_half_threshold,
+    //         data=>&CurrentSnapshotData{term: 1, index: 50, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
+    //         last_log_index=>100, threshold=>500, expected=>true
+    //     });
+
+    //     test_snapshot_is_within_half_of_threshold!({
+    //         test=>happy_path_false_when_above_half_threshold,
+    //         data=>&CurrentSnapshotData{term: 1, index: 1, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
+    //         last_log_index=>500, threshold=>100, expected=>false
+    //     });
+
+    //     test_snapshot_is_within_half_of_threshold!({
+    //         test=>guards_against_underflow,
+    //         data=>&CurrentSnapshotData{term: 1, index: 200, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
+    //         last_log_index=>100, threshold=>500, expected=>true
+    //     });
+    // }
+
+    // //////////////////////////////////////////////////////////////////////////
+    // // calculate_new_commit_index ////////////////////////////////////////////
+
+    // mod calculate_new_commit_index {
+    //     use super::*;
+
+    //     macro_rules! test_calculate_new_commit_index {
+    //         ($name:ident, $expected:literal, $current:literal, $entries:expr) => {
+    //             #[test]
+    //             fn $name() {
+    //                 let mut entries = $entries;
+    //                 let output = calculate_new_commit_index(entries.clone(), $current);
+    //                 entries.sort();
+    //                 assert_eq!(output, $expected, "Sorted values: {:?}", entries);
+    //             }
+    //         }
+    //     }
+
+    //     test_calculate_new_commit_index!(
+    //         basic_values,
+    //         10, 5, vec![20, 5, 0, 15, 10]
+    //     );
+
+    //     test_calculate_new_commit_index!(
+    //         len_zero_should_return_current_commit,
+    //         20, 20, vec![]
+    //     );
+
+    //     test_calculate_new_commit_index!(
+    //         len_one_where_greater_than_current,
+    //         100, 0, vec![100]
+    //     );
+
+    //     test_calculate_new_commit_index!(
+    //         len_one_where_less_than_current,
+    //         100, 100, vec![50]
+    //     );
+
+    //     test_calculate_new_commit_index!(
+    //         even_number_of_nodes,
+    //         0, 0, vec![0, 100, 0, 100, 0, 100]
+    //     );
+
+    //     test_calculate_new_commit_index!(
+    //         majority_wins,
+    //         100, 0, vec![0, 100, 0, 100, 0, 100, 100]
+    //     );
+    // }
 }

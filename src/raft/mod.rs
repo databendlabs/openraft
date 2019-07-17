@@ -15,7 +15,7 @@ use std::{
 
 use actix::prelude::*;
 use futures::sync::{mpsc};
-use log::{error};
+use log::{debug, error};
 
 use crate::{
     NodeId, AppError,
@@ -265,6 +265,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         if let &RaftState::Follower = &self.state {
             return;
         }
+        debug!("Raft {} is transitioning to follower state.", &self.id);
 
         // Cleanup previous state.
         self.cleanup_state(ctx);
@@ -276,6 +277,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         // Perform the transition.
         self.state = RaftState::Follower;
+        debug!("Raft {} has finished transition to follower state.", &self.id);
     }
 
     /// Transition to the Raft candidate state and start a new election campaign, per §5.2.
@@ -310,6 +312,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// new election by incrementing its term and initiating another round of RequestVote RPCs.
     /// The randomization of election timeouts per node helps to avoid this issue.
     fn become_candidate(&mut self, ctx: &mut Context<Self>) {
+        debug!("Raft {} is transitioning to candidate state.", &self.id);
         // Cleanup previous state.
         self.cleanup_state(ctx);
 
@@ -331,6 +334,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         let votes_granted = 1; // We must vote for ourselves per the Raft spec.
         let votes_needed = ((self.members.len() / 2) + 1) as u64; // Just need a majority.
         self.state = RaftState::Candidate(CandidateState{requests, votes_granted, votes_needed});
+        debug!("Raft {} has finished transition to candidate state.", &self.id);
     }
 
     /// Transition to the Raft leader state.
@@ -345,6 +349,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     ///
     /// See the `ClientRpcIn` handler for more details on the write path for client requests.
     fn become_leader(&mut self, ctx: &mut Context<Self>) {
+        debug!("Raft {} is transitioning to leader state.", &self.id);
         // Cleanup previous state & ensure we've cancelled the election timeout system.
         self.cleanup_state(ctx);
         if let Some(handle) = self.election_timeout {
@@ -379,6 +384,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         // Initialize new state as leader.
         self.state = RaftState::Leader(new_state);
         self.update_current_leader(ctx, UpdateCurrentLeader::ThisNode(tx0));
+        debug!("Raft {} has finished transition to leader state.", &self.id);
     }
 
     /// Clean up the current Raft state.
@@ -423,6 +429,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// command instructing it to campaign with a specific config, or to begin operating as the
     /// leader of a standalone cluster.
     fn initialize(&mut self, ctx: &mut Context<Self>, state: InitialState) {
+        debug!("Raft {} initialized with state {:?}.", &self.id, &state);
         self.last_log_index = state.last_log_index;
         self.last_log_term = state.last_log_term;
         self.current_term = state.hard_state.current_term;
@@ -432,10 +439,12 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         // Set initial state based on state recovered from disk.
         let is_only_configured_member = self.members.len() == 1 && self.members.contains(&self.id);
-        if is_only_configured_member || &self.last_log_index != &u64::min_value() {
+        if !is_only_configured_member || &self.last_log_index != &u64::min_value() {
+            debug!("Raft {} initialized as follower.", &self.id);
             self.state = RaftState::Follower;
             self.update_election_timeout(ctx);
         } else {
+            debug!("Raft {} initialized to standby state.", &self.id);
             self.state = RaftState::Standby;
         }
     }
@@ -543,6 +552,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Actor for Raft<E, N, S> 
 
     /// The initialization routine for this actor.
     fn started(&mut self, ctx: &mut Self::Context) {
+        debug!("Starting Raft node with ID {}.", &self.id);
         // Fetch the node's initial state from the storage actor & initialize.
         let f = fut::wrap_future(self.storage.send(GetInitialState::new()))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))

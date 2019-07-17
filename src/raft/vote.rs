@@ -1,5 +1,5 @@
 use actix::prelude::*;
-use log::{warn};
+use log::{debug, warn};
 
 use crate::{
     AppError, NodeId,
@@ -37,6 +37,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         if !self.members.contains(&msg.candidate_id) {
             return Err(());
         }
+        debug!("Handling vote request on node {} from node {} for term {}.", &self.id, &msg.candidate_id, &msg.term);
 
         // If candidate's current term is less than this nodes current term, reject.
         if &msg.term < &self.current_term {

@@ -7,6 +7,7 @@ todo
     - multiple payloads of enntries will be queued and delivered at the same time from replication streams to followers, so batches of requests may become ready for further processing/response when under heavy write load.
     - applying the logs to the state machine will also happen outside of the pipeline. It must be ensured that entries are not sent to the state machine to be applied out-of-order. It is absolutely critical that they are sent to be applied in index order.
     - the pipeline for applying logs to the statemachine should also perform batching whenever possible.
+- [ ] maybe: update the append entries algorithm for followers so that recent entries are buffered up to a specific threshold so that the `apply_logs_to_statemachine` won't need to fetch from storage first.
 
 ### testing
 - [ ] finish implement MemoryStroage for testing (and general demo usage).
