@@ -11,6 +11,7 @@ use actix_raft::{
     },
     network::RaftNetwork,
     memory_storage::{MemoryStorageError},
+    metrics::{RaftMetrics},
 };
 
 use crate::fixtures::MemRaft;
@@ -20,18 +21,22 @@ const ERR_ROUTING_FAILURE: &str = "Routing failures are not allowed in tests.";
 /// An actor which emulates a network transport and implements the `RaftNetwork` trait.
 pub struct RaftRouter {
     routing_table: BTreeMap<NodeId, Addr<MemRaft>>,
+    metrics: BTreeMap<NodeId, RaftMetrics>,
 }
 
 impl RaftRouter {
     /// Create a new instance.
     pub fn new() -> Self {
-        Self{routing_table: Default::default()}
+        Self{routing_table: Default::default(), metrics: Default::default()}
     }
 }
 
 impl Actor for RaftRouter {
     type Context = Context<Self>;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RaftNetwork ///////////////////////////////////////////////////////////////////////////////////
 
 impl RaftNetwork<MemoryStorageError> for RaftRouter {}
 
@@ -80,6 +85,17 @@ impl Handler<ClientPayload<MemoryStorageError>> for RaftRouter {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
+// RaftMetrics ///////////////////////////////////////////////////////////////////////////////////
+
+impl Handler<RaftMetrics> for RaftRouter {
+    type Result = ();
+
+    fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
+        self.metrics.insert(msg.id, msg);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
 // Test Commands /////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Message)]
@@ -93,5 +109,16 @@ impl Handler<Register> for RaftRouter {
 
     fn handle(&mut self, msg: Register, _: &mut Self::Context) -> Self::Result {
         self.routing_table.insert(msg.id, msg.addr);
+    }
+}
+
+#[derive(Message)]
+pub struct AssertAgainstMetrics(pub Box<FnOnce(BTreeMap<NodeId, RaftMetrics>) + Send + 'static>);
+
+impl Handler<AssertAgainstMetrics> for RaftRouter {
+    type Result = ();
+
+    fn handle(&mut self, msg: AssertAgainstMetrics, _: &mut Self::Context) -> Self::Result {
+        msg.0(self.metrics.clone());
     }
 }

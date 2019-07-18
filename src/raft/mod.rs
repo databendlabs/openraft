@@ -21,6 +21,7 @@ use crate::{
     NodeId, AppError,
     config::Config,
     messages::{ClientError},
+    metrics::{RaftMetrics, State},
     network::RaftNetwork,
     raft::common::{AwaitingCommitted, ClientPayloadWithTx, DependencyAddr, UpdateCurrentLeader},
     replication::{ReplicationStream, RSReplicate},
@@ -188,6 +189,8 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     network: Addr<N>,
     /// The address of the actor responsible for implementing the `RaftStorage` interface.
     storage: Addr<S>,
+    /// The address of the actor responsible for recieving metrics output from this Node.
+    metrics: Recipient<RaftMetrics>,
 
     /// The index of the highest log entry known to be committed cluster-wide.
     ///
@@ -246,11 +249,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     ///
     /// This actor will need to be started after instantiation, which must be done within a
     /// running actix system.
-    pub fn new(id: NodeId, config: Config, network: Addr<N>, storage: Addr<S>) -> Self {
+    pub fn new(id: NodeId, config: Config, network: Addr<N>, storage: Addr<S>, metrics: Recipient<RaftMetrics>) -> Self {
         let state = RaftState::Initializing;
         let config = Arc::new(config);
         Self{
-            id, config, members: vec![id], state, network, storage,
+            id, config, members: vec![id], state, network, storage, metrics,
             commit_index: 0, last_applied: 0,
             current_term: 0, current_leader: None, voted_for: None,
             last_log_index: 0, last_log_term: 0,
@@ -447,6 +450,25 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             debug!("Raft {} initialized to standby state.", &self.id);
             self.state = RaftState::Standby;
         }
+
+        // Begin reporting metrics.
+        ctx.run_interval(self.config.metrics_rate.clone(), |act, _| {
+            let state = match &act.state {
+                RaftState::Standby => State::Standby,
+                RaftState::Follower => State::Follower,
+                RaftState::Candidate(_) => State::Candidate,
+                RaftState::Leader(_) => State::Leader,
+                _ => return,
+            };
+            let _ = act.metrics.do_send(RaftMetrics{
+                id: act.id, state, current_term: act.current_term,
+                last_log_index: act.last_log_index,
+                last_applied: act.last_applied,
+                current_leader: act.current_leader,
+            }).map_err(|err| {
+                error!("Error reporting metrics. {}", err);
+            });
+        });
     }
 
     /// Transform and log an actix MailboxError.

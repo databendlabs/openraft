@@ -1,11 +1,27 @@
 //! The Raft configuration module.
 
-use std::fs;
+use std::{
+    fs,
+    time::Duration,
+};
 
 use failure::Fail;
 use log::{error};
 use rand::{thread_rng, Rng};
 
+/// Default election timeout minimum.
+const DEFAULT_ELECTION_TIMEOUT_MIN: u16 = 200;
+/// Default election timeout maximum.
+const DEFAULT_ELECTION_TIMEOUT_MAX: u16 = 700;
+/// Default heartbeat interval.
+const DEFAULT_HEARTBEAT_INTERVAL: u16 = 50;
+/// Default threshold for when to trigger a snapshot.
+const DEFAULT_LOGS_SINCE_LAST: u64 = 5000;
+/// Default maximum number of entries per replication payload.
+const DEFAULT_MAX_PAYLOAD_ENTRIES: u64 = 300;
+/// Default metrics rate.
+const DEFAULT_METRICS_RATE: Duration = Duration::from_millis(10000);
+/// Default snapshot chunksize.
 const DEFAULT_SNAPSHOT_CHUNKSIZE: u64 = 1024u64 * 1024u64 * 3;
 
 /// Raft log snapshot policy.
@@ -14,7 +30,7 @@ const DEFAULT_SNAPSHOT_CHUNKSIZE: u64 = 1024u64 * 1024u64 * 3;
 /// would cause a leader to send an `InstallSnapshot` RPC to a follower based on replication lag.
 ///
 /// Additional policies may become available in the future.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SnapshotPolicy {
     /// Snaphots are disabled for this Raft cluster.
     Disabled,
@@ -28,9 +44,12 @@ pub enum SnapshotPolicy {
 pub struct Config {
     /// The election timeout used for a Raft node when it is a follower.
     ///
-    /// This value is randomly generated based on default confguration or a given min & max.
+    /// This value is randomly generated based on default confguration or a given min & max. The
+    /// default value will be between 200-700 milliseconds.
     pub election_timeout_millis: u64,
     /// The heartbeat interval at which leaders will send heartbeats to followers.
+    ///
+    /// Defaults to 50 milliseconds.
     ///
     /// **NOTE WELL:** it is very important that this value be greater than the amount if time
     /// it will take on average for heartbeat frames to be sent between nodes. No data processing
@@ -39,12 +58,18 @@ pub struct Config {
     pub heartbeat_interval: u64,
     /// The maximum number of entries per payload allowed to be transmitted during replication.
     ///
+    /// Defaults to 300.
+    ///
     /// When configuring this value, it is important to note that setting this value too low could
     /// cause sub-optimal performance. This will primarily impact the speed at which slow nodes,
     /// nodes which have been offline, or nodes which are new to the cluster, are brought
     /// up-to-speed. If this is too low, it will take longer for the nodes to be brought up to
     /// consistency with the rest of the cluster.
     pub max_payload_entries: u64,
+    /// The rate at which metrics will be pumped out from the Raft node.
+    ///
+    /// Defaults to 10 seconds.
+    pub metrics_rate: Duration,
     /// The directory where the log snapshots are to be kept for a Raft node.
     pub snapshot_dir: String,
     /// The snapshot policy to use for a Raft node.
@@ -64,6 +89,7 @@ impl Config {
             election_timeout_max: None,
             heartbeat_interval: None,
             max_payload_entries: None,
+            metrics_rate: None,
             snapshot_dir,
             snapshot_policy: None,
             snapshot_max_chunk_size: None,
@@ -77,23 +103,21 @@ impl Config {
 /// the Raft spec is considered in order to set the appropriate values.
 #[derive(Debug)]
 pub struct ConfigBuilder {
-    /// The minimum election timeout in milliseconds, defaults to 500 milliseconds.
+    /// The minimum election timeout in milliseconds.
     pub election_timeout_min: Option<u16>,
-    /// The maximum election timeout in milliseconds, defaults to 1000 milliseconds.
+    /// The maximum election timeout in milliseconds.
     pub election_timeout_max: Option<u16>,
     /// The interval at which leaders will send heartbeats to followers to avoid election timeout.
-    ///
-    /// This value defaults to 200 milliseconds.
     pub heartbeat_interval: Option<u16>,
     /// The maximum number of entries per payload allowed to be transmitted during replication.
-    ///
-    /// This value defaults to 300.
     pub max_payload_entries: Option<u64>,
+    /// The rate at which metrics will be pumped out from the Raft node.
+    pub metrics_rate: Option<Duration>,
     /// The directory where the log snapshots are to be kept for a Raft node.
     snapshot_dir: String,
-    /// The snapshot policy, defaults to `LogsSinceLast(5000)`.
+    /// The snapshot policy.
     pub snapshot_policy: Option<SnapshotPolicy>,
-    /// The maximum snapshot chunk size, defaults to 3MiB.
+    /// The maximum snapshot chunk size.
     pub snapshot_max_chunk_size: Option<u64>,
 }
 
@@ -122,6 +146,12 @@ impl ConfigBuilder {
         self
     }
 
+    /// Set the desired value for `metrics_rate`.
+    pub fn metrics_rate(mut self, val: Duration) -> Self {
+        self.metrics_rate = Some(val);
+        self
+    }
+
     /// Set the desired value for `snapshot_policy`.
     pub fn snapshot_policy(mut self, val: SnapshotPolicy) -> Self {
         self.snapshot_policy = Some(val);
@@ -144,19 +174,24 @@ impl ConfigBuilder {
 
         // Roll a random election time out based on the configured min & max or their respective defaults.
         let mut rng = thread_rng();
-        let election_timeout: u16 = rng.gen_range(self.election_timeout_min.unwrap_or(200), self.election_timeout_max.unwrap_or(700));
+        let election_timeout: u16 = rng.gen_range(
+            self.election_timeout_min.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MIN),
+            self.election_timeout_max.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MAX),
+        );
         let election_timeout_millis = election_timeout as u64;
 
         // Get other values or their defaults.
-        let heartbeat_interval = self.heartbeat_interval.unwrap_or(50) as u64;
-        let max_payload_entries = self.max_payload_entries.unwrap_or(300);
-        let snapshot_policy = self.snapshot_policy.unwrap_or_else(|| SnapshotPolicy::LogsSinceLast(5000));
+        let heartbeat_interval = self.heartbeat_interval.unwrap_or(DEFAULT_HEARTBEAT_INTERVAL) as u64;
+        let max_payload_entries = self.max_payload_entries.unwrap_or(DEFAULT_MAX_PAYLOAD_ENTRIES);
+        let metrics_rate = self.metrics_rate.unwrap_or(DEFAULT_METRICS_RATE);
+        let snapshot_policy = self.snapshot_policy.unwrap_or_else(|| SnapshotPolicy::LogsSinceLast(DEFAULT_LOGS_SINCE_LAST));
         let snapshot_max_chunk_size = self.snapshot_max_chunk_size.unwrap_or(DEFAULT_SNAPSHOT_CHUNKSIZE);
 
         Ok(Config{
             election_timeout_millis,
             heartbeat_interval,
             max_payload_entries,
+            metrics_rate,
             snapshot_dir: self.snapshot_dir, snapshot_policy, snapshot_max_chunk_size,
         })
     }
@@ -176,88 +211,46 @@ pub enum ConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir_in;
 
-    // //////////////////////////////////////////////////////////////////////////
-    // // snapshot_is_within_half_of_threshold //////////////////////////////////
+    #[test]
+    fn test_config_defaults() {
+        let dir = tempdir_in("/tmp").unwrap();
+        let dirstring = dir.path().to_string_lossy().to_string();
+        let cfg = Config::build(dirstring.clone()).validate().unwrap();
 
-    // mod snapshot_is_within_half_of_threshold {
-    //     use super::*;
+        assert!(cfg.election_timeout_millis >= DEFAULT_ELECTION_TIMEOUT_MIN as u64);
+        assert!(cfg.election_timeout_millis <= DEFAULT_ELECTION_TIMEOUT_MAX as u64);
+        assert!(cfg.heartbeat_interval == DEFAULT_HEARTBEAT_INTERVAL as u64);
+        assert!(cfg.max_payload_entries == DEFAULT_MAX_PAYLOAD_ENTRIES);
+        assert!(cfg.metrics_rate == DEFAULT_METRICS_RATE);
+        assert!(cfg.snapshot_dir == dirstring);
+        assert!(cfg.snapshot_max_chunk_size == DEFAULT_SNAPSHOT_CHUNKSIZE);
+        assert!(cfg.snapshot_policy == SnapshotPolicy::LogsSinceLast(DEFAULT_LOGS_SINCE_LAST));
+    }
 
-    //     macro_rules! test_snapshot_is_within_half_of_threshold {
-    //         ({test=>$name:ident, data=>$data:expr, last_log_index=>$last_log:literal, threshold=>$thresh:literal, expected=>$exp:literal}) => {
-    //             #[test]
-    //             fn $name() {
-    //                 let res = snapshot_is_within_half_of_threshold($data, $last_log, $thresh);
-    //                 assert_eq!(res, $exp)
-    //             }
-    //         }
-    //     }
+    #[test]
+    fn test_config_with_specified_values() {
+        let dir = tempdir_in("/tmp").unwrap();
+        let dirstring = dir.path().to_string_lossy().to_string();
+        let cfg = Config::build(dirstring.clone())
+            .election_timeout_max(200)
+            .election_timeout_min(100)
+            .heartbeat_interval(10)
+            .max_payload_entries(100)
+            .metrics_rate(Duration::from_millis(20000))
+            .snapshot_max_chunk_size(200)
+            .snapshot_policy(SnapshotPolicy::Disabled)
+            .validate().unwrap();
 
-    //     test_snapshot_is_within_half_of_threshold!({
-    //         test=>happy_path_true_when_within_half_threshold,
-    //         data=>&CurrentSnapshotData{term: 1, index: 50, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
-    //         last_log_index=>100, threshold=>500, expected=>true
-    //     });
-
-    //     test_snapshot_is_within_half_of_threshold!({
-    //         test=>happy_path_false_when_above_half_threshold,
-    //         data=>&CurrentSnapshotData{term: 1, index: 1, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
-    //         last_log_index=>500, threshold=>100, expected=>false
-    //     });
-
-    //     test_snapshot_is_within_half_of_threshold!({
-    //         test=>guards_against_underflow,
-    //         data=>&CurrentSnapshotData{term: 1, index: 200, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
-    //         last_log_index=>100, threshold=>500, expected=>true
-    //     });
-    // }
-
-    // //////////////////////////////////////////////////////////////////////////
-    // // calculate_new_commit_index ////////////////////////////////////////////
-
-    // mod calculate_new_commit_index {
-    //     use super::*;
-
-    //     macro_rules! test_calculate_new_commit_index {
-    //         ($name:ident, $expected:literal, $current:literal, $entries:expr) => {
-    //             #[test]
-    //             fn $name() {
-    //                 let mut entries = $entries;
-    //                 let output = calculate_new_commit_index(entries.clone(), $current);
-    //                 entries.sort();
-    //                 assert_eq!(output, $expected, "Sorted values: {:?}", entries);
-    //             }
-    //         }
-    //     }
-
-    //     test_calculate_new_commit_index!(
-    //         basic_values,
-    //         10, 5, vec![20, 5, 0, 15, 10]
-    //     );
-
-    //     test_calculate_new_commit_index!(
-    //         len_zero_should_return_current_commit,
-    //         20, 20, vec![]
-    //     );
-
-    //     test_calculate_new_commit_index!(
-    //         len_one_where_greater_than_current,
-    //         100, 0, vec![100]
-    //     );
-
-    //     test_calculate_new_commit_index!(
-    //         len_one_where_less_than_current,
-    //         100, 100, vec![50]
-    //     );
-
-    //     test_calculate_new_commit_index!(
-    //         even_number_of_nodes,
-    //         0, 0, vec![0, 100, 0, 100, 0, 100]
-    //     );
-
-    //     test_calculate_new_commit_index!(
-    //         majority_wins,
-    //         100, 0, vec![0, 100, 0, 100, 0, 100, 100]
-    //     );
-    // }
+        assert!(cfg.election_timeout_millis >= 100);
+        assert!(cfg.election_timeout_millis <= 200);
+        assert!(cfg.heartbeat_interval == 10);
+        assert!(cfg.max_payload_entries == 100);
+        assert!(cfg.max_payload_entries == 100);
+        assert!(cfg.metrics_rate == Duration::from_millis(20000));
+        assert!(cfg.snapshot_dir == dirstring);
+        assert!(cfg.snapshot_max_chunk_size == 200);
+        assert!(cfg.snapshot_policy == SnapshotPolicy::Disabled);
+    }
 }

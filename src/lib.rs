@@ -4,6 +4,7 @@ mod replication;
 pub mod storage;
 pub mod memory_storage;
 pub mod messages;
+pub mod metrics;
 pub mod network;
 
 use std::fmt::Debug;

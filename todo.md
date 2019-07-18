@@ -21,11 +21,12 @@ todo
 - [ ] get AdminCommands setup and implemented.
 
 ### observability
-- [ ] ensure that internal state transitions and updates are emitted for host application use. Such as RaftState changes, membership changes, errors from async ops.
-- [ ] add mechanism for custom metrics gathering. Should be generic enough that applications should be able to expose the metrics for any metrics gathering platform (prometheus, influx, graphite &c).
+- [x] ensure that internal state transitions and updates are emitted for host application use. Such as RaftState changes, membership changes, errors from async ops.
+- [x] add mechanism for custom metrics gathering. Should be generic enough that applications should be able to expose the metrics for any metrics gathering platform (prometheus, influx, graphite &c).
 
 ### docs
 - [ ] add a simple graphic to an `overview` section of the main README to visually demonstrate the layout of this system.
 - [ ] put together a networking guide on how to get started with building a networking layer.
 - [ ] put together a storage guide on how to implement an application's RaftStorage layer.
 - [ ] add docs examples on how to instantiate and start the various actix actor components (Raft, RaftStorage, RaftNetwork &c).
+- [ ] add docs on how metrics system works. Pumps out regular metrics configured interval. State changes to the node are always immediately published.
