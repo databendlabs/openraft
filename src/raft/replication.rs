@@ -7,11 +7,37 @@ use crate::{
     network::RaftNetwork,
     raft::{Raft, RaftState, common::{DependencyAddr, UpdateCurrentLeader}},
     replication::{
+        RSFatalActixMessagingError, RSFatalStorageError,
         RSNeedsSnapshot, RSNeedsSnapshotResponse,
         RSRateUpdate, RSRevertToFollower, RSUpdateMatchIndex,
     },
     storage::{CreateSnapshot, GetCurrentSnapshot, CurrentSnapshotData, RaftStorage},
 };
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSFatalActixMessagingError ////////////////////////////////////////////////////////////////////
+
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSFatalActixMessagingError> for Raft<E, N, S> {
+    type Result = ();
+
+    /// Handle events from replication streams reporting errors.
+    fn handle(&mut self, msg: RSFatalActixMessagingError, ctx: &mut Self::Context) {
+        self.map_fatal_actix_messaging_error(ctx, msg.err, msg.dependency);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSFatalStorageError ///////////////////////////////////////////////////////////////////////////
+
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSFatalStorageError<E>> for Raft<E, N, S> {
+    type Result = ();
+
+    /// Handle events from replication streams reporting errors.
+    fn handle(&mut self, msg: RSFatalStorageError<E>, ctx: &mut Self::Context) {
+        let err: Result<(), E> = Err(msg.err);
+        let _ = self.map_fatal_storage_result(ctx, err);
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSRateUpdate //////////////////////////////////////////////////////////////////////////////////

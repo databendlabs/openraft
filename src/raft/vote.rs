@@ -80,10 +80,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     }
 
     /// Request a vote from the the target peer.
-    pub(super) fn request_vote(
-        &mut self, _: &mut Context<Self>, target: NodeId, term: u64, last_log_index: u64, last_log_term: u64,
-    ) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
-        let rpc = VoteRequest::new(target, term, self.id, last_log_index, last_log_term);
+    pub(super) fn request_vote(&mut self, _: &mut Context<Self>, target: NodeId) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+        let rpc = VoteRequest::new(target, self.current_term, self.id, self.last_log_index, self.last_log_term);
         fut::wrap_future(self.network.send(rpc))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftNetwork))
             .and_then(|res, _, _| fut::result(res))

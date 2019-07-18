@@ -329,7 +329,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         let mut requests = BTreeMap::new();
         let peers = self.members.clone().into_iter().filter(|member| member != &self.id).collect::<Vec<_>>();
         for member in peers {
-            let f = self.request_vote(ctx, member, self.id, self.last_log_index, self.last_log_term);
+            let f = self.request_vote(ctx, member);
             let handle = ctx.spawn(f);
             requests.insert(member, handle);
         }

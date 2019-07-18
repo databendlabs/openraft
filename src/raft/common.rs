@@ -18,9 +18,14 @@ pub(crate) struct ClientPayloadWithTx<E: AppError> {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // DependencyAddr /////////////////////////////////////////////////////////////////////////////////
 
+/// The set of dependency addr types used for tracking and reporting messaging errors.
 #[derive(Debug)]
 pub(crate) enum DependencyAddr {
+    /// An addr of an internal actor which is not exposed to anything outside of this crate.
+    RaftInternal,
+    /// The `RaftNetwork` impl supplied to the Raft node.
     RaftNetwork,
+    /// The `RaftStorage` impl supplied to the Raft node.
     RaftStorage,
 }
 

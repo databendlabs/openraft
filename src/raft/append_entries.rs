@@ -97,7 +97,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         // Update election timeout & ensure we are in the follower state. Update current term if needed.
         self.update_election_timeout(ctx);
-        if &msg.term > &self.current_term {
+        if &msg.term > &self.current_term || self.current_leader.is_none() {
             debug!("Node {}: New term '{}' observed with leader '{}'. Ensuring follower state.", &self.id, &msg.term, &msg.leader_id);
             self.become_follower(ctx);
             self.current_term = msg.term;
