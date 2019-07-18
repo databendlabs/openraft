@@ -1,5 +1,7 @@
 todo
 ====
+- [ ] introduce a series of new zero-size struct types which wrap `u64`. These will be used to ensure that subtle bugs don't crop up where a node's term is passed as the node's ID, or the node's last_log_index is passed as the node's last_log_term.
+
 ### algorithm optimizations
 - [ ] update the AppendEntries RPC receiver to pipeline all requests. This will potentially remove the need for having to use boolean flags to mark if the Raft is currently appending logs or not.
 - [ ] in the client request handling logic, after logs have been appended locally and have been queued for replication on the streams, the pipeline can immediately begin processing the next payload of entries. **This optimization will greatly increse the throughput of this Raft implementation.**

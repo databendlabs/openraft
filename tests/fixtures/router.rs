@@ -115,7 +115,7 @@ impl Handler<Register> for RaftRouter {
 }
 
 #[derive(Message)]
-pub struct AssertAgainstMetrics(pub Box<FnOnce(BTreeMap<NodeId, RaftMetrics>) + Send + 'static>);
+pub struct AssertAgainstMetrics(pub Box<dyn FnOnce(BTreeMap<NodeId, RaftMetrics>) + Send + 'static>);
 
 impl Handler<AssertAgainstMetrics> for RaftRouter {
     type Result = ();
