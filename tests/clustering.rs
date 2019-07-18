@@ -15,6 +15,8 @@
 
 mod fixtures;
 
+use std::time::Duration;
+
 use actix::prelude::*;
 use actix_raft::{
     NodeId, Raft,
@@ -45,7 +47,7 @@ impl Actor for TestController {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        ctx.run_later(std::time::Duration::from_secs(15), |act, _| {
+        ctx.run_later(std::time::Duration::from_secs(5), |act, _| {
             act.network.do_send(AssertAgainstMetrics(Box::new(|metrics| {
                 let node0: &RaftMetrics = metrics.get(&0).unwrap();
                 let node1: &RaftMetrics = metrics.get(&1).unwrap();
@@ -56,7 +58,8 @@ impl Actor for TestController {
                 assert!(leader.is_some(), "Expect leader to exist."); // Assert that we have a leader.
                 let leader_id = leader.unwrap().id;
                 assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "Expect all nodes have the same leader.");
-                assert!(data.iter().all(|e| e.current_term == 1), "Expect all nodes are at term '1'.");
+                let term = data.first().unwrap().current_term;
+                assert!(data.iter().all(|e| e.current_term == term), "Expect all nodes to be at the same term.");
                 assert!(data.iter().all(|e| e.last_log_index == 0), "Expect all nodes have last log index '0'.");
                 assert!(data.iter().all(|e| e.last_applied == 0), "Expect all nodes have last applied '0'.");
             })));
@@ -68,7 +71,7 @@ impl Actor for TestController {
 fn new_raft_node(id: NodeId, network: Addr<RaftRouter>, members: Vec<NodeId>) -> (Addr<MemRaft>, TempDir) {
     let temp_dir = tempdir_in("/tmp").unwrap();
     let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
-    let config = Config::build(snapshot_dir.clone()).validate().unwrap();
+    let config = Config::build(snapshot_dir.clone()).metrics_rate(Duration::from_secs(1)).validate().unwrap();
 
     let memstore = MemoryStorage::new(members, snapshot_dir);
     let storage = memstore.start();

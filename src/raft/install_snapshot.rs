@@ -43,6 +43,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InstallSnapshotR
 
         // Unpack the given message and pass to the appropriate handler.
         // TODO: this needs to be implemented.
+        // TODO: update election timeout.
         Box::new(fut::err(()))
     }
 }

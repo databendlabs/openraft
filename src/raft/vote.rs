@@ -94,6 +94,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                     // If this node is not currently in candidate state, then this request is done.
                     _ => return fut::ok(()),
                 };
+                debug!("Node {} received request vote response. {:?}", &act.id, &res);
 
                 // If peer's term is greater than current term, revert to follower state.
                 if res.term > act.current_term {

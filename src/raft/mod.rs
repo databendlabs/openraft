@@ -280,6 +280,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         // Perform the transition.
         self.state = RaftState::Follower;
+        self.report_metrics(ctx);
         debug!("Raft {} has finished transition to follower state.", &self.id);
     }
 
@@ -337,6 +338,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         let votes_granted = 1; // We must vote for ourselves per the Raft spec.
         let votes_needed = ((self.members.len() / 2) + 1) as u64; // Just need a majority.
         self.state = RaftState::Candidate(CandidateState{requests, votes_granted, votes_needed});
+        self.report_metrics(ctx);
         debug!("Raft {} has finished transition to candidate state.", &self.id);
     }
 
@@ -387,6 +389,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         // Initialize new state as leader.
         self.state = RaftState::Leader(new_state);
         self.update_current_leader(ctx, UpdateCurrentLeader::ThisNode(tx0));
+        self.report_metrics(ctx);
         debug!("Raft {} has finished transition to leader state.", &self.id);
     }
 
@@ -452,23 +455,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         }
 
         // Begin reporting metrics.
-        ctx.run_interval(self.config.metrics_rate.clone(), |act, _| {
-            let state = match &act.state {
-                RaftState::Standby => State::Standby,
-                RaftState::Follower => State::Follower,
-                RaftState::Candidate(_) => State::Candidate,
-                RaftState::Leader(_) => State::Leader,
-                _ => return,
-            };
-            let _ = act.metrics.do_send(RaftMetrics{
-                id: act.id, state, current_term: act.current_term,
-                last_log_index: act.last_log_index,
-                last_applied: act.last_applied,
-                current_leader: act.current_leader,
-            }).map_err(|err| {
-                error!("Error reporting metrics. {}", err);
-            });
-        });
+        ctx.run_interval(self.config.metrics_rate.clone(), |act, ctx| act.report_metrics(ctx));
     }
 
     /// Transform and log an actix MailboxError.
@@ -493,6 +480,25 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             ctx.stop();
         });
         fut::result(res)
+    }
+
+    /// Report a metrics payload on the current state of the Raft node.
+    fn report_metrics(&mut self, _: &mut Context<Self>) {
+        let state = match &self.state {
+            RaftState::Standby => State::Standby,
+            RaftState::Follower => State::Follower,
+            RaftState::Candidate(_) => State::Candidate,
+            RaftState::Leader(_) => State::Leader,
+            _ => return,
+        };
+        let _ = self.metrics.do_send(RaftMetrics{
+            id: self.id, state, current_term: self.current_term,
+            last_log_index: self.last_log_index,
+            last_applied: self.last_applied,
+            current_leader: self.current_leader,
+        }).map_err(|err| {
+            error!("Error reporting metrics. {}", err);
+        });
     }
 
     /// Save the Raft node's current hard state to disk.
@@ -564,8 +570,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         if let Some(handle) = self.election_timeout.take() {
             ctx.cancel_future(handle);
         }
-        let timeout = Duration::from_millis(self.config.election_timeout_millis);
-        self.election_timeout = Some(ctx.run_later(timeout, |act, ctx| act.become_candidate(ctx)));
+        let interval = Duration::from_millis(self.config.election_timeout_millis);
+        self.election_timeout = Some(ctx.run_interval(interval, |act, ctx| act.become_candidate(ctx)));
     }
 }
 

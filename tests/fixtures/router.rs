@@ -13,6 +13,7 @@ use actix_raft::{
     memory_storage::{MemoryStorageError},
     metrics::{RaftMetrics},
 };
+use log::{debug};
 
 use crate::fixtures::MemRaft;
 
@@ -91,6 +92,7 @@ impl Handler<RaftMetrics> for RaftRouter {
     type Result = ();
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
+        debug!("Metrics received: {:?}", &msg);
         self.metrics.insert(msg.id, msg);
     }
 }
