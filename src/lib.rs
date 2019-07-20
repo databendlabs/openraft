@@ -1,4 +1,5 @@
 pub mod config;
+pub mod dev;
 mod raft;
 mod replication;
 pub mod storage;

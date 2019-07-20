@@ -1,7 +1,5 @@
 //! Test clustering behavior.
 
-mod fixtures;
-
 use std::{
     collections::BTreeMap,
     time::Duration,
@@ -11,17 +9,14 @@ use actix::prelude::*;
 use actix_raft::{
     NodeId, Raft,
     config::Config,
+    dev::{MemRaft, ExecuteInRaftRouter, RaftRouter, Register},
     memory_storage::{MemoryStorage},
     metrics::{RaftMetrics, State},
     storage::RaftStorage,
 };
 use env_logger;
+use futures::sync::oneshot;
 use tempfile::{tempdir_in, TempDir};
-
-use fixtures::{
-    MemRaft,
-    router::{AssertAgainstMetrics, RaftRouter, Register},
-};
 
 struct RaftTestController {
     network: Addr<RaftRouter>,
@@ -73,9 +68,22 @@ fn new_raft_node(id: NodeId, network: Addr<RaftRouter>, members: Vec<NodeId>) ->
     (node0, temp_dir)
 }
 
+/// Basic lifecycle tests for a three node cluster.
+///
+/// What does this test cover?
+///
+/// - The formation of a new cluster where a leader is elected and agreed upon.
+/// - When that leader dies, and remains dead until an election timeout, a new leader will be
+/// elected by the remaininng nodes.
+/// - The new cluster should all agree upon the new leader, and should have a new term.
+/// - When the old leader comes back online, it will realize that it is no longer leader, new
+/// cluster nodes will reject its heartbeats, and the old leader will become a follower of the
+/// new leader.
+///
+/// Run with `RUST_LOG=actix_raft,clustering=debug cargo test` to see detailed logs.
 #[test]
-fn three_node_cluster_should_immediately_elect_leader() {
-    env_logger::init();
+fn basic_three_node_cluster_lifecycle() {
+    let _ = env_logger::try_init();
     let sys = System::builder().stop_on_panic(true).name("test").build();
 
     // Setup test dependencies.
@@ -92,23 +100,85 @@ fn three_node_cluster_should_immediately_elect_leader() {
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
     ctl.register(0, node0).register(1, node1).register(2, node2);
-    ctl.start_with_test(5,  Box::new(|act, _| {
-        act.network.do_send(AssertAgainstMetrics(Box::new(|metrics| {
-            let node0: &RaftMetrics = metrics.get(&0).unwrap();
-            let node1: &RaftMetrics = metrics.get(&1).unwrap();
-            let node2: &RaftMetrics = metrics.get(&2).unwrap();
+    ctl.start_with_test(2,  Box::new(|act, ctx| {
+        let (tx0, rx0) = oneshot::channel();
+        act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| {
+            let node0: &RaftMetrics = act.metrics.get(&0).unwrap();
+            let node1: &RaftMetrics = act.metrics.get(&1).unwrap();
+            let node2: &RaftMetrics = act.metrics.get(&2).unwrap();
             let data = vec![node0, node1, node2];
 
+            // General assertions.
             let leader = data.iter().find(|e| &e.state == &State::Leader);
-            assert!(leader.is_some(), "Expect leader to exist."); // Assert that we have a leader.
+            assert!(leader.is_some(), "Leader exists.");
             let leader_id = leader.unwrap().id;
-            assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "Expect all nodes have the same leader.");
+            assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "All nodes have the same leader.");
             let term = data.first().unwrap().current_term;
-            assert!(data.iter().all(|e| e.current_term == term), "Expect all nodes to be at the same term.");
-            assert!(data.iter().all(|e| e.last_log_index == 0), "Expect all nodes have last log index '0'.");
-            assert!(data.iter().all(|e| e.last_applied == 0), "Expect all nodes have last applied '0'.");
+            assert!(data.iter().all(|e| e.current_term == term), "All nodes to be at the same term.");
+            assert!(data.iter().all(|e| e.last_log_index == 0), "All nodes have last log index '0'.");
+            assert!(data.iter().all(|e| e.last_applied == 0), "All nodes have last applied '0'.");
+
+            // Isolate the current leader on the network.
+            act.isolate_node(leader_id);
+            let _ = tx0.send((leader_id, term)).unwrap();
         })));
-        System::current().stop();
+
+        // Give the cluster some time to elect a new leader. Old leader will remain isolated.
+        // Then assert that a new leader has been elected as part of a new term.
+        let (tx1, rx1) = oneshot::channel();
+        ctx.spawn(fut::wrap_future(rx0).map_err(|err, _: &mut RaftTestController, _| panic!(err))
+            .and_then(|old_leader_and_term, _, ctx: &mut Context<RaftTestController>| {
+                ctx.run_later(Duration::from_secs(2), move |act, _| {
+                    act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| {
+                        act.restore_node(old_leader_and_term.0);
+                        let node0: &RaftMetrics = act.metrics.get(&0).unwrap();
+                        let node1: &RaftMetrics = act.metrics.get(&1).unwrap();
+                        let node2: &RaftMetrics = act.metrics.get(&2).unwrap();
+                        let data = vec![node0, node1, node2];
+                        let new_cluster: Vec<_> = data.iter().filter(|e| e.id != old_leader_and_term.0).collect();
+                        let old_leader = data.iter().filter(|e| e.id == old_leader_and_term.0).nth(0).unwrap();
+
+                        // Assertions on new cluster.
+                        let leader = new_cluster.iter().find(|e| &e.state == &State::Leader);
+                        assert!(leader.is_some(), "Leader exists for new cluster.");
+                        let leader_id = leader.unwrap().id;
+                        assert!(new_cluster.iter().all(|e| e.current_leader == Some(leader_id)), "All new cluster nodes have the same leader.");
+                        let term = new_cluster.first().unwrap().current_term;
+                        assert!(new_cluster.iter().all(|e| e.current_term == term), "All nodes to be at the same term.");
+                        assert!(term != old_leader_and_term.1, "New cluster has a new term.");
+
+                        // Assertions on old cluster.
+                        assert_eq!(old_leader.current_term, old_leader_and_term.1, "Old terms match.");
+                        assert_eq!(old_leader.current_leader, Some(old_leader_and_term.0), "Old leader still thinks it is leader.");
+
+                        let _ = tx1.send((leader_id, term)).unwrap();
+                    })));
+                });
+                fut::ok(())
+            }));
+
+        // Give the old node some time to rejoin, then assert that the new leader remains, new
+        // term remains, and the old node is a follower of the new leader.
+        ctx.spawn(fut::wrap_future(rx1).map_err(|err, _: &mut RaftTestController, _| panic!(err))
+            .and_then(|new_leader_and_term, _, ctx: &mut Context<RaftTestController>| {
+                ctx.run_later(Duration::from_secs(2), move |act, _| {
+                    act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| {
+                        let node0: &RaftMetrics = act.metrics.get(&0).unwrap();
+                        let node1: &RaftMetrics = act.metrics.get(&1).unwrap();
+                        let node2: &RaftMetrics = act.metrics.get(&2).unwrap();
+                        let data = vec![node0, node1, node2];
+
+                        // General assertions.
+                        let leader_id = data.iter().find(|e| &e.state == &State::Leader)
+                            .expect("New leader remains the same after old node re-joins.").id;
+                        assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "All nodes have the same leader.");
+                        assert!(data.iter().all(|e| e.current_term == new_leader_and_term.1), "All nodes have same term since last election.");
+
+                        System::current().stop();
+                    })));
+                });
+                fut::ok(())
+            }));
     }));
     let _ = sys.run();
 }

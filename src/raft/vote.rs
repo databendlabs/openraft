@@ -116,3 +116,67 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             })
     }
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// Unit Tests ////////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use actix::prelude::*;
+    use tempfile::tempdir_in;
+
+    use crate::{
+        Raft,
+        config::Config, dev::*,
+        memory_storage::{MemoryStorage},
+        storage::RaftStorage,
+    };
+
+    #[test]
+    fn test_request_vote() {
+        // TODO:NOTE: not sure if we will keep these style of tests here.
+
+        // Assemble //////////////////////////////////////////////////////////
+        let sys = System::builder().stop_on_panic(true).name("test").build();
+        let net = RaftRecorder::new().start();
+
+        let dir = tempdir_in("/tmp").unwrap();
+        let snapshot_dir = dir.path().to_string_lossy().to_string();
+
+        let config = Config::build(snapshot_dir.clone()).metrics_rate(Duration::from_secs(1)).validate().unwrap();
+        let memstore = MemoryStorage::new(vec![0], snapshot_dir).start();
+
+        // Assert ////////////////////////////////////////////////////////////
+        let test = Assert(Box::new(|act: &mut RaftRecorder, _| {
+            let len = act.vote_requests().count();
+            let first_req = act.vote_requests().nth(0).expect("Expected one vote request to be sent.");
+            assert_eq!(len, 1, "Vote RPC count mismatch.");
+            assert_eq!(first_req.target, 99, "Vote RPC target mismatch.");
+            assert_eq!(first_req.term, 0, "Vote RPC term mismatch.");
+            assert_eq!(first_req.candidate_id, 1000, "Vote RPC candidate_id mismatch.");
+            assert_eq!(first_req.last_log_index, 0, "Vote RPC last_log_index mismatch.");
+            assert_eq!(first_req.last_log_term, 0, "Vote RPC last_log_term mismatch.");
+
+            System::current().stop();
+            // TODO:NOTE: if this style of test needs to be explored more, we will need to assert
+            // against the state of the Raft as it moves from state to state and handles events.
+        }));
+
+        // Action ////////////////////////////////////////////////////////////
+        let _node_addr = Raft::create(move |ctx| {
+            let mut inst = Raft::new(1000, config, net.clone(), memstore, net.clone().recipient());
+            let f = inst.request_vote(ctx, 99)
+                .then(move |_, _, _| {
+                    net.do_send(test);
+                    let res: Result<(), ()> = Ok(());
+                    fut::result(res)
+                });
+            ctx.spawn(f);
+            inst
+        });
+
+        let _ = sys.run();
+    }
+}

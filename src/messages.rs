@@ -82,9 +82,7 @@ pub struct ConflictOpt {
     pub index: u64,
 }
 
-// TODO: remove all of these clone derivations as we are going to use Arc<_> instead for
-// passing the data around.
-
+/// A Raft log entry.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Entry {
     /// This entry's term.
