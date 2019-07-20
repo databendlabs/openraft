@@ -376,7 +376,10 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: res.term}))
                     .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
                     // This condition represents a replication failure, so return an error condition.
-                    .and_then(|_, _, _| fut::err(())));
+                    .and_then(|_, _, ctx| {
+                        ctx.terminate(); // Terminate this replication stream.
+                        fut::err(())
+                    }));
         }
 
         // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
@@ -646,6 +649,22 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for
 
         self.drive_state(ctx);
         Ok(())
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSTerminate ///////////////////////////////////////////////////////////////////////////////////
+
+/// A replication stream message indicating a new payload of entries to be replicated.
+#[derive(Message)]
+pub(crate) struct RSTerminate;
+
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSTerminate> for ReplicationStream<E, N, S> {
+    type Result = ();
+
+    /// Handle a request to terminate this replication stream.
+    fn handle(&mut self, _: RSTerminate, ctx: &mut Self::Context) -> Self::Result {
+        ctx.terminate();
     }
 }
 

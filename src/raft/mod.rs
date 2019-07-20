@@ -24,7 +24,7 @@ use crate::{
     metrics::{RaftMetrics, State},
     network::RaftNetwork,
     raft::common::{AwaitingCommitted, ClientPayloadWithTx, DependencyAddr, UpdateCurrentLeader},
-    replication::{ReplicationStream, RSReplicate},
+    replication::{ReplicationStream, RSTerminate},
     storage::{GetInitialState, HardState, InitialState, RaftStorage, SaveHardState},
 };
 
@@ -35,7 +35,7 @@ const FATAL_STORAGE_ERR: &str = "Fatal storage error encountered which can not b
 // RaftState /////////////////////////////////////////////////////////////////////////////////////
 
 /// The state of the Raft node.
-enum RaftState<E: AppError> {
+enum RaftState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// A non-standard Raft state indicating that the node is initializing.
     Initializing,
     /// A non-standard Raft state indicating that the node is awaiting an admin command to begin.
@@ -62,22 +62,22 @@ enum RaftState<E: AppError> {
     ///
     /// The leader handles all client requests. If a client contacts a follower, the follower must
     /// redirects it to the leader.
-    Leader(LeaderState<E>),
+    Leader(LeaderState<E, N, S>),
 }
 
 /// Volatile state specific to the Raft leader.
 ///
 /// This state is reinitialized after an election.
-struct LeaderState<E: AppError> {
+struct LeaderState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// A mapping of node IDs the replication state of the target node.
-    pub nodes: BTreeMap<NodeId, ReplicationState>,
+    pub nodes: BTreeMap<NodeId, ReplicationState<E, N, S>>,
     /// A queue of client requests to be processed.
     pub client_request_queue: mpsc::UnboundedSender<ClientPayloadWithTx<E>>,
     /// The current client RPC which is awaiting to be comitted.
     pub awaiting_committed: Option<AwaitingCommitted<E>>,
 }
 
-impl<E: AppError> LeaderState<E> {
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> LeaderState<E, N, S> {
     /// Create a new instance.
     pub fn new(tx: mpsc::UnboundedSender<ClientPayloadWithTx<E>>) -> Self {
         Self{nodes: Default::default(), client_request_queue: tx, awaiting_committed: None}
@@ -85,10 +85,10 @@ impl<E: AppError> LeaderState<E> {
 }
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-struct ReplicationState {
+struct ReplicationState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     pub match_index: u64,
     pub is_at_line_rate: bool,
-    pub addr: Recipient<RSReplicate>,
+    pub addr: Addr<ReplicationStream<E, N, S>>,
 }
 
 /// Volatile state specific to a Raft node in candidate state.
@@ -184,7 +184,7 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// All currently known members of the Raft cluster.
     members: Vec<NodeId>,
     /// The current state of this Raft node.
-    state: RaftState<E>,
+    state: RaftState<E, N, S>,
     /// The address of the actor responsible for implementing the `RaftNetwork` interface.
     network: Addr<N>,
     /// The address of the actor responsible for implementing the `RaftStorage` interface.
@@ -382,7 +382,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             let addr = rs.start(); // Start the actor on the same thread.
 
             // Retain the addr of the replication stream.
-            let state = ReplicationState{match_index: self.last_log_index, is_at_line_rate: true, addr: addr.recipient()};
+            let state = ReplicationState{match_index: self.last_log_index, is_at_line_rate: true, addr};
             new_state.nodes.insert(*target, state);
         }
 
@@ -402,6 +402,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                 for handle in inner.cleanup() {
                     ctx.cancel_future(handle);
                 }
+            }
+            RaftState::Leader(inner) => {
+                inner.nodes.values().for_each(|rsstate| {
+                    let _ = rsstate.addr.do_send(RSTerminate);
+                });
             }
             _ => (),
         }
@@ -570,8 +575,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         if let Some(handle) = self.election_timeout.take() {
             ctx.cancel_future(handle);
         }
-        let interval = Duration::from_millis(self.config.election_timeout_millis);
-        self.election_timeout = Some(ctx.run_interval(interval, |act, ctx| act.become_candidate(ctx)));
+        let timeout = Duration::from_millis(self.config.election_timeout_millis);
+        self.election_timeout = Some(ctx.run_later(timeout, |act, ctx| act.become_candidate(ctx)));
     }
 }
 
