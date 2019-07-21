@@ -1,15 +1,16 @@
 use actix::prelude::*;
-use log::{warn};
+use log::{debug, warn};
 
 use crate::{
     AppError,
+    common::{DependencyAddr, UpdateCurrentLeader},
     config::SnapshotPolicy,
     network::RaftNetwork,
-    raft::{Raft, RaftState, common::{DependencyAddr, UpdateCurrentLeader}},
+    raft::{Raft, RaftState},
     replication::{
         RSFatalActixMessagingError, RSFatalStorageError,
         RSNeedsSnapshot, RSNeedsSnapshotResponse,
-        RSRateUpdate, RSRevertToFollower, RSUpdateMatchIndex,
+        RSRateUpdate, RSUpdateLineCommit, RSRevertToFollower, RSUpdateMatchIndex,
     },
     storage::{CreateSnapshot, GetCurrentSnapshot, CurrentSnapshotData, RaftStorage},
 };
@@ -120,9 +121,10 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRevertToFollow
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
     fn handle(&mut self, msg: RSRevertToFollower, ctx: &mut Self::Context) {
-        if msg.term > self.current_term {
+        if &msg.term > &self.current_term {
             self.update_current_leader(ctx, UpdateCurrentLeader::Unknown);
             self.become_follower(ctx);
+            self.current_term = msg.term;
         }
     }
 }
@@ -134,7 +136,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchInd
     type Result = ();
 
     /// Handle events from a replication stream which updates the target node's match index.
-    fn handle(&mut self, msg: RSUpdateMatchIndex, _ctx: &mut Self::Context) {
+    fn handle(&mut self, msg: RSUpdateMatchIndex, ctx: &mut Self::Context) {
         // Extract leader state, else do nothing.
         let state = match &mut self.state {
             RaftState::Leader(state) => state,
@@ -154,7 +156,30 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchInd
         // including the leader which created the entry.
         let mut indices: Vec<_> = state.nodes.values().map(|elem| elem.match_index).collect();
         indices.push(self.last_log_index);
-        self.commit_index = calculate_new_commit_index(indices, self.commit_index);
+        let new_commit_index = calculate_new_commit_index(indices, self.commit_index);
+        let has_new_commit_index = new_commit_index > self.commit_index;
+
+        // If a new commit index has been determined, update a few needed elements.
+        if has_new_commit_index {
+            self.commit_index = new_commit_index;
+
+            // Update all replication streams based on new commit index.
+            for node in state.nodes.iter() {
+                let _ = node.1.addr.do_send(RSUpdateLineCommit(self.commit_index));
+            }
+
+            // Process pending requests based on new `commit_index`.
+            let filter = state.awaiting_committed.iter().enumerate()
+                .take_while(|(_idx, elem)| elem.last_index <= new_commit_index).last()
+                .map(|(idx, _)| idx);
+            if let Some(offset) = filter {
+                let requests: Vec<_> = state.awaiting_committed.drain(..=offset).collect();
+                for payload in requests {
+                    let f = self.process_committed_client_request(ctx, payload);
+                    ctx.spawn(f);
+                }
+            }
+        }
     }
 }
 
@@ -168,6 +193,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchInd
 /// NOTE: there are a few edge cases accounted for in this routine which will never practically
 /// be hit, but they are accounted for in the name of good measure.
 fn calculate_new_commit_index(mut entries: Vec<u64>, current_commit: u64) -> u64 {
+    debug!("Calculating match index for {:?} and current term {}", &entries, &current_commit);
     // Handle cases where len < 2.
     let len = entries.len();
     if len == 0 {

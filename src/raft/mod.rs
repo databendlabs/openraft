@@ -1,8 +1,8 @@
 //! The Raft actor's module and its associated logic.
 
 mod append_entries;
+mod apply_logs;
 mod client;
-pub mod common;
 mod install_snapshot;
 mod replication;
 mod vote;
@@ -19,11 +19,14 @@ use log::{debug, error};
 
 use crate::{
     NodeId, AppError,
+    common::{
+        ApplyLogsTask, ClientPayloadUpgraded, ClientPayloadWithTx,
+        DependencyAddr, UpdateCurrentLeader,
+    },
     config::Config,
-    messages::{ClientError},
+    messages::{ClientError, ClientPayloadForwarded},
     metrics::{RaftMetrics, State},
     network::RaftNetwork,
-    raft::common::{AwaitingCommitted, ClientPayloadWithTx, DependencyAddr, UpdateCurrentLeader},
     replication::{ReplicationStream, RSTerminate},
     storage::{GetInitialState, HardState, InitialState, RaftStorage, SaveHardState},
 };
@@ -73,14 +76,14 @@ struct LeaderState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     pub nodes: BTreeMap<NodeId, ReplicationState<E, N, S>>,
     /// A queue of client requests to be processed.
     pub client_request_queue: mpsc::UnboundedSender<ClientPayloadWithTx<E>>,
-    /// The current client RPC which is awaiting to be comitted.
-    pub awaiting_committed: Option<AwaitingCommitted<E>>,
+    /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
+    pub awaiting_committed: Vec<ClientPayloadUpgraded<E>>,
 }
 
 impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> LeaderState<E, N, S> {
     /// Create a new instance.
     pub fn new(tx: mpsc::UnboundedSender<ClientPayloadWithTx<E>>) -> Self {
-        Self{nodes: Default::default(), client_request_queue: tx, awaiting_committed: None}
+        Self{nodes: Default::default(), client_request_queue: tx, awaiting_committed: vec![]}
     }
 }
 
@@ -234,8 +237,10 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
 
     /// A flag to indicate if this system is currently appending logs.
     is_appending_logs: bool,
-    /// A flag to indicate if this system is currently applying logs to the state machine.
-    is_applying_logs_to_state_machine: bool,
+    /// The entrypoint to the pipeline of logs which need to be applied to the state machine.
+    apply_logs_pipeline: mpsc::UnboundedSender<ApplyLogsTask<E>>,
+    /// The receiving end of the pipeline for applying logs. This is moved out and spawned when Raft starts.
+    _apply_logs_pipeline_receiver: Option<mpsc::UnboundedReceiver<ApplyLogsTask<E>>>,
 
     /// A handle to the election timeout callback.
     election_timeout: Option<actix::SpawnHandle>,
@@ -252,12 +257,14 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     pub fn new(id: NodeId, config: Config, network: Addr<N>, storage: Addr<S>, metrics: Recipient<RaftMetrics>) -> Self {
         let state = RaftState::Initializing;
         let config = Arc::new(config);
+        let (tx, rx) = mpsc::unbounded();
         Self{
             id, config, members: vec![id], state, network, storage, metrics,
             commit_index: 0, last_applied: 0,
             current_term: 0, current_leader: None, voted_for: None,
             last_log_index: 0, last_log_term: 0,
-            is_appending_logs: false, is_applying_logs_to_state_machine: false,
+            is_appending_logs: false,
+            apply_logs_pipeline: tx, _apply_logs_pipeline_receiver: Some(rx),
             election_timeout: None, forwarding: vec![],
         }
     }
@@ -395,7 +402,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
     /// Clean up the current Raft state.
     ///
-    /// This will typically be called before a state transition is to take place.
+    /// This will typically be called before a state transition takes place.
     fn cleanup_state(&mut self, ctx: &mut Context<Self>) {
         match &mut self.state {
             RaftState::Candidate(inner) => {
@@ -447,6 +454,17 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         self.voted_for = state.hard_state.voted_for;
         self.members = state.hard_state.members;
         self.last_applied = state.last_applied_log;
+        // NOTE: this is repeated here for clarity. It is unsafe to initialize the node's commit
+        // index to any other value. The commit index must be determined by a leader after
+        // successfully committing a new log to the cluster.
+        self.commit_index = 0;
+
+        // Spawn the stream for applying logs to the state machine. This will always be `Some` here, never after.
+        if let Some(rx) = self._apply_logs_pipeline_receiver.take() {
+            ctx.spawn(fut::wrap_stream(rx)
+                .and_then(|msg, act: &mut Self, ctx| act.process_apply_logs_task(ctx, msg))
+                .finish());
+        }
 
         // Set initial state based on state recovered from disk.
         let is_only_configured_member = self.members.len() == 1 && self.members.contains(&self.id);
@@ -541,8 +559,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             UpdateCurrentLeader::OtherNode(target) => {
                 self.current_leader = Some(target);
                 for buffered in self.forwarding.drain(..) {
-                    let ClientPayloadWithTx{tx, rpc: mut outbound} = buffered;
-                    outbound.target = target;
+                    let ClientPayloadWithTx{tx, rpc: payload} = buffered;
+                    let outbound = ClientPayloadForwarded{target, from: self.id, payload};
                     let f = fut::wrap_future(self.network.send(outbound))
                         .map_err(|err, _, _| {
                             error!("Error forwarding client request. {:?}", err);

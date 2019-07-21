@@ -9,7 +9,7 @@ use crate::{
     AppError,
     messages::{
         AppendEntriesRequest,
-        ClientPayload,
+        ClientPayloadForwarded,
         InstallSnapshotRequest,
         VoteRequest,
     }
@@ -50,6 +50,6 @@ pub trait RaftNetwork<E>
         Self: Handler<VoteRequest>,
         Self::Context: ToEnvelope<Self, VoteRequest>,
 
-        Self: Handler<ClientPayload<E>>,
-        Self::Context: ToEnvelope<Self, ClientPayload<E>>,
+        Self: Handler<ClientPayloadForwarded<E>>,
+        Self::Context: ToEnvelope<Self, ClientPayloadForwarded<E>>,
 {}

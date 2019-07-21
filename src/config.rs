@@ -40,6 +40,24 @@ pub enum SnapshotPolicy {
 }
 
 /// The runtime configuration for a Raft node.
+///
+/// When building the Raft configuration for your application, remember this inequality from the
+/// Raft spec: `broadcastTime ≪ electionTimeout ≪ MTBF`.
+///
+/// > In this inequality `broadcastTime` is the average time it takes a server to send RPCs in
+/// > parallel to every server in the cluster and receive their responses; `electionTimeout` is the
+/// > election timeout described in Section 5.2; and `MTBF` is the average time between failures for
+/// > a single server. The broadcast time should be an order of magnitude less than the election
+/// > timeout so that leaders can reliably send the heartbeat messages required to keep followers
+/// > from starting elections; given the randomized approach used for election timeouts, this
+/// > inequality also makes split votes unlikely. The election timeout should be a few orders of
+/// > magnitude less than `MTBF` so that the system makes steady progress. When the leader crashes,
+/// > the system will be unavailable for roughly the election timeout; we would like this to
+/// > represent only a small fraction of overall time.
+///
+/// What does all of this mean simply? Keep your election timeout settings high enough that the
+/// performance of your network will not cause election timeouts, but don't keep it so high that
+/// a real leader crash would cause prolonged downtime. See the Raft spec §5.6 for more details.
 #[derive(Debug)]
 pub struct Config {
     /// The election timeout used for a Raft node when it is a follower.
@@ -173,11 +191,13 @@ impl ConfigBuilder {
         })?;
 
         // Roll a random election time out based on the configured min & max or their respective defaults.
+        let election_min = self.election_timeout_min.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MIN);
+        let election_max = self.election_timeout_max.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MAX);
+        if election_min >= election_max {
+            return Err(ConfigError::InvalidElectionTimeoutMinMax);
+        }
         let mut rng = thread_rng();
-        let election_timeout: u16 = rng.gen_range(
-            self.election_timeout_min.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MIN),
-            self.election_timeout_max.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MAX),
-        );
+        let election_timeout: u16 = rng.gen_range(election_min, election_max);
         let election_timeout_millis = election_timeout as u64;
 
         // Get other values or their defaults.
@@ -198,11 +218,14 @@ impl ConfigBuilder {
 }
 
 /// A configuration error.
-#[derive(Debug, Fail)]
+#[derive(Debug, Fail, PartialEq)]
 pub enum ConfigError {
     /// The specified value for `snapshot_dir` does not exist on disk or could not be accessed.
     #[fail(display="The specified value for `snapshot_dir` does not exist on disk or could not be accessed.")]
     InvalidSnapshotDir,
+    /// The given values for election timeout min & max are invalid. Max must be greater than min.
+    #[fail(display="The given values for election timeout min & max are invalid. Max must be greater than min.")]
+    InvalidElectionTimeoutMinMax,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -252,5 +275,24 @@ mod tests {
         assert!(cfg.snapshot_dir == dirstring);
         assert!(cfg.snapshot_max_chunk_size == 200);
         assert!(cfg.snapshot_policy == SnapshotPolicy::Disabled);
+    }
+
+    #[test]
+    fn test_invalid_path_returns_expected_error() {
+        let res = Config::build("/dev/someinvalidpath/definitely/doesn't/exist".to_string()).validate();
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert_eq!(err, ConfigError::InvalidSnapshotDir);
+    }
+
+    #[test]
+    fn test_invalid_election_timeout_config_produces_expected_error() {
+        let dir = tempdir_in("/tmp").unwrap();
+        let dirstring = dir.path().to_string_lossy().to_string();
+        let res = Config::build(dirstring.clone())
+            .election_timeout_min(1000).election_timeout_max(700).validate();
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert_eq!(err, ConfigError::InvalidElectionTimeoutMinMax);
     }
 }

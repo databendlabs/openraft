@@ -83,7 +83,7 @@ pub struct ConflictOpt {
 }
 
 /// A Raft log entry.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     /// This entry's term.
     pub term: u64,
@@ -94,7 +94,7 @@ pub struct Entry {
 }
 
 /// Log entry type variants.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EntryType {
     /// A normal log entry.
     Normal(EntryNormal),
@@ -105,14 +105,14 @@ pub enum EntryType {
 }
 
 /// A normal log entry.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EntryNormal {
     /// The contents of this entry.
     pub data: Vec<u8>,
 }
 
 /// A config change log entry.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EntryConfigChange {
     /// The full list of node IDs to be considered cluster members as part of this config change.
     pub members: Vec<u64>,
@@ -125,7 +125,7 @@ pub struct EntryConfigChange {
 /// This will only be present when read from storage. An entry of this type will never be
 /// transmitted from a leader during replication, an `InstallSnapshotRequest`
 /// RPC will be sent instead.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EntrySnapshotPointer {
     /// The location of the snapshot file on disk.
     pub path: String,
@@ -256,12 +256,6 @@ pub struct InstallSnapshotResponse {
 /// needed.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientPayload<E: AppError> {
-    /// The ID of the intended Raft node recipient of this RPC.
-    ///
-    /// This is especially required when a Raft node needs to forward a client request
-    /// to the Raft leader. This value is not checked by Raft, it is intended for use in the
-    /// application's `RaftNetwork` implementation for forwarding.
-    pub target: u64,
     /// The entries associated with the client request.
     pub entries: Vec<EntryNormal>,
     /// The response mode needed by this request.
@@ -269,7 +263,41 @@ pub struct ClientPayload<E: AppError> {
     marker: std::marker::PhantomData<E>,
 }
 
+impl<E: AppError> ClientPayload<E> {
+    /// Create a new instance.
+    pub fn new(entries: Vec<EntryNormal>, response_mode: ResponseMode) -> Self {
+        Self{entries, response_mode, marker: std::marker::PhantomData}
+    }
+}
+
 impl<E: AppError> Message for ClientPayload<E> {
+    /// The result type of this message.
+    type Result = Result<ClientPayloadResponse, ClientError<E>>;
+}
+
+/// A forwarded client payload.
+///
+/// This type should be treated as a normal client payload, it is simply being forwarded
+/// to the leader of the Raft cluster.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClientPayloadForwarded<E: AppError> {
+    /// The ID of the Raft node this message is being forwarded to.
+    pub target: u64,
+    /// The node which this message is being forwarded from.
+    pub from: u64,
+    /// The original client payload being forwarded.
+    #[serde(bound="E: AppError")]
+    pub payload: ClientPayload<E>,
+}
+
+impl<E: AppError> ClientPayloadForwarded<E> {
+    /// Create a new instance.
+    pub fn new(target: u64, from: u64, payload: ClientPayload<E>) -> Self {
+        Self{target, from, payload}
+    }
+}
+
+impl<E: AppError> Message for ClientPayloadForwarded<E> {
     /// The result type of this message.
     type Result = Result<ClientPayloadResponse, ClientError<E>>;
 }

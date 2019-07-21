@@ -8,7 +8,7 @@ use std::{
 use actix::prelude::*;
 use actix_raft::{
     NodeId, Raft,
-    config::Config,
+    config::{Config, SnapshotPolicy},
     dev::{MemRaft, RaftRouter},
     memory_storage::{MemoryStorage},
     storage::RaftStorage,
@@ -53,15 +53,27 @@ impl Actor for RaftTestController {
 }
 
 /// Create a new Raft node for testing purposes.
-pub fn new_raft_node(id: NodeId, network: Addr<RaftRouter>, members: Vec<NodeId>, metrics_rate: u64) -> (Addr<MemRaft>, TempDir) {
+pub fn new_raft_node(id: NodeId, network: Addr<RaftRouter>, members: Vec<NodeId>, metrics_rate: u64) -> Node {
     let temp_dir = tempdir_in("/tmp").expect("Tempdir to be created without error.");
     let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
-    let config = Config::build(snapshot_dir.clone()).metrics_rate(Duration::from_secs(metrics_rate))
+    let config = Config::build(snapshot_dir.clone())
+        .metrics_rate(Duration::from_secs(metrics_rate))
+        .snapshot_policy(SnapshotPolicy::Disabled)
         .validate().expect("Raft config to be created without error.");
 
-    let memstore = MemoryStorage::new(members, snapshot_dir);
-    let storage = memstore.start();
+    let arb = Arbiter::new();
+    let storage = MemoryStorage::start_in_arbiter(&arb, |_| MemoryStorage::new(members, snapshot_dir));
+    let storage_addr = storage.clone();
+    let addr = Raft::start_in_arbiter(&arb, move |_| {
+        Raft::new(id, config, network.clone(), storage.clone(), network.recipient())
+    });
+    Node{addr, snapshot_dir: temp_dir, arb, storage: storage_addr}
+}
 
-    let node0 = Raft::new(id, config, network.clone(), storage, network.recipient()).start();
-    (node0, temp_dir)
+/// All objects related to a started Raft node.
+pub struct Node {
+    pub addr: Addr<MemRaft>,
+    pub snapshot_dir: TempDir,
+    pub arb: Arbiter,
+    pub storage: Addr<MemoryStorage>,
 }

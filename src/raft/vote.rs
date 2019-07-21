@@ -3,9 +3,10 @@ use log::{debug, warn};
 
 use crate::{
     AppError, NodeId,
+    common::{DependencyAddr, UpdateCurrentLeader},
     messages::{VoteRequest, VoteResponse},
     network::RaftNetwork,
-    raft::{RaftState, Raft, common::{DependencyAddr, UpdateCurrentLeader}},
+    raft::{RaftState, Raft},
     storage::RaftStorage,
 };
 

@@ -36,16 +36,16 @@ fn basic_three_node_cluster_lifecycle() {
     let net = RaftRouter::new();
     let network = net.start();
     let members = vec![0, 1, 2];
-    let (node0, _f0) = new_raft_node(0, network.clone(), members.clone(), 1);
-    network.do_send(Register{id: 0, addr: node0.clone()});
-    let (node1, _f1) = new_raft_node(1, network.clone(), members.clone(), 1);
-    network.do_send(Register{id: 1, addr: node1.clone()});
-    let (node2, _f2) = new_raft_node(2, network.clone(), members.clone(), 1);
-    network.do_send(Register{id: 2, addr: node2.clone()});
+    let node0 = new_raft_node(0, network.clone(), members.clone(), 1);
+    network.do_send(Register{id: 0, addr: node0.addr.clone()});
+    let node1 = new_raft_node(1, network.clone(), members.clone(), 1);
+    network.do_send(Register{id: 1, addr: node1.addr.clone()});
+    let node2 = new_raft_node(2, network.clone(), members.clone(), 1);
+    network.do_send(Register{id: 2, addr: node2.addr.clone()});
 
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
-    ctl.register(0, node0).register(1, node1).register(2, node2);
+    ctl.register(0, node0.addr.clone()).register(1, node1.addr.clone()).register(2, node2.addr.clone());
     ctl.start_with_test(2,  Box::new(|act, ctx| {
         let (tx0, rx0) = oneshot::channel();
         act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| {
@@ -56,13 +56,13 @@ fn basic_three_node_cluster_lifecycle() {
 
             // General assertions.
             let leader = data.iter().find(|e| &e.state == &State::Leader);
-            assert!(leader.is_some(), "Leader exists.");
+            assert!(leader.is_some(), "Expected leader to exist.");
             let leader_id = leader.unwrap().id;
-            assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "All nodes have the same leader.");
+            assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "Expected all nodes have the same leader.");
             let term = data.first().unwrap().current_term;
-            assert!(data.iter().all(|e| e.current_term == term), "All nodes to be at the same term.");
-            assert!(data.iter().all(|e| e.last_log_index == 0), "All nodes have last log index '0'.");
-            assert!(data.iter().all(|e| e.last_applied == 0), "All nodes have last applied '0'.");
+            assert!(data.iter().all(|e| e.current_term == term), "Expected all nodes to be at the same term.");
+            assert!(data.iter().all(|e| e.last_log_index == 0), "Expected all nodes have last log index '0'.");
+            assert!(data.iter().all(|e| e.last_applied == 0), "Expected all nodes have last applied '0'.");
 
             // Isolate the current leader on the network.
             act.isolate_node(leader_id);
@@ -86,16 +86,16 @@ fn basic_three_node_cluster_lifecycle() {
 
                         // Assertions on new cluster.
                         let leader = new_cluster.iter().find(|e| &e.state == &State::Leader);
-                        assert!(leader.is_some(), "Leader exists for new cluster.");
+                        assert!(leader.is_some(), "Expected leader to exist for new cluster.");
                         let leader_id = leader.unwrap().id;
-                        assert!(new_cluster.iter().all(|e| e.current_leader == Some(leader_id)), "All new cluster nodes have the same leader.");
+                        assert!(new_cluster.iter().all(|e| e.current_leader == Some(leader_id)), "Expected all new cluster nodes have the same leader.");
                         let term = new_cluster.first().unwrap().current_term;
-                        assert!(new_cluster.iter().all(|e| e.current_term == term), "All nodes to be at the same term.");
-                        assert!(term != old_leader_and_term.1, "New cluster has a new term.");
+                        assert!(new_cluster.iter().all(|e| e.current_term == term), "Expected all nodes to be at the same term.");
+                        assert!(term != old_leader_and_term.1, "Expected new cluster to have a new term.");
 
                         // Assertions on old cluster.
-                        assert_eq!(old_leader.current_term, old_leader_and_term.1, "Old terms match.");
-                        assert_eq!(old_leader.current_leader, Some(old_leader_and_term.0), "Old leader still thinks it is leader.");
+                        assert_eq!(old_leader.current_term, old_leader_and_term.1, "Expected old terms match.");
+                        assert_eq!(old_leader.current_leader, Some(old_leader_and_term.0), "Expected old leader to still thinks it is leader.");
 
                         let _ = tx1.send((leader_id, term)).unwrap();
                     })));
@@ -116,15 +116,17 @@ fn basic_three_node_cluster_lifecycle() {
 
                         // General assertions.
                         let leader_id = data.iter().find(|e| &e.state == &State::Leader)
-                            .expect("New leader remains the same after old node re-joins.").id;
-                        assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "All nodes have the same leader.");
-                        assert!(data.iter().all(|e| e.current_term == new_leader_and_term.1), "All nodes have same term since last election.");
+                            .expect("Expected new leader to remain the same after old node re-joins.").id;
+                        assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "Expected all nodes to have the same leader.");
+                        assert!(data.iter().all(|e| e.current_term == new_leader_and_term.1), "Expected all nodes to have same term since last election.");
 
-                        System::current().stop();
                     })));
                 });
+                System::current().stop();
                 fut::ok(())
             }));
     }));
-    let _ = sys.run();
+
+    // Run the test.
+    assert!(sys.run().is_ok(), "Error during test.");
 }

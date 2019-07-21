@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use actix::prelude::*;
-use log::{error, info};
+use log::{debug, error, info};
 use tokio::{
     prelude::*,
     fs::File,
@@ -14,6 +14,7 @@ use tokio::{
 
 use crate::{
     AppError, NodeId,
+    common::DependencyAddr,
     config::{Config, SnapshotPolicy},
     messages::{
         AppendEntriesRequest, AppendEntriesResponse,
@@ -21,7 +22,7 @@ use crate::{
         InstallSnapshotRequest, InstallSnapshotResponse,
     },
     network::RaftNetwork,
-    raft::{Raft, common::DependencyAddr},
+    raft::{Raft},
     storage::{RaftStorage, GetLogEntries},
 };
 
@@ -236,6 +237,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 }
                 acc
             });
+            let last_index_and_term = entries.last().map(|e| (e.index, e.term));
             let payload = AppendEntriesRequest{
                 target: self.target, term: self.term, leader_id: self.id,
                 prev_log_index: self.match_index,
@@ -243,17 +245,29 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 entries, leader_commit: self.line_commit,
             };
             // Send the payload.
-            let last_index_and_term = Some((self.match_index, self.match_term));
             let f = self.send_append_entries(ctx, payload)
                 // Process the response.
                 .and_then(move |res, act, ctx| act.handle_append_entries_response(ctx, res, last_index_and_term))
                 // Drive state forward regardless of outcome.
                 .then(|res, act, ctx| {
                     act.is_driving_state = false;
-                    act.drive_state(ctx);
-                    fut::result(res)
+                    match res {
+                        Ok(_) => {
+                            act.drive_state(ctx);
+                            fut::Either::A(fut::result(res))
+                        }
+                        Err(_) => {
+                            fut::Either::B(act.transition_to_lagging(ctx)
+                                .then(|res, act, ctx| {
+                                    act.drive_state(ctx);
+                                    fut::result(res)
+                                }))
+                        }
+                    }
                 });
             ctx.spawn(f);
+        } else {
+            self.is_driving_state = false;
         }
     }
 
@@ -351,6 +365,10 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
     }
 
     /// Handle AppendEntries RPC responses from the target node.
+    ///
+    /// ### last_index_and_term
+    /// An optional tuple of the index and term of the last entry to be appended per the
+    /// corresponding request.
     fn handle_append_entries_response(
         &mut self, ctx: &mut Context<Self>, res: AppendEntriesResponse, last_index_and_term: Option<(u64, u64)>,
     ) -> Box<dyn ActorFuture<Actor=Self, Item=(), Error=()> + 'static> {
@@ -364,6 +382,15 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 self.match_index = index;
                 self.match_term = term;
                 self.raftnode.do_send(RSUpdateMatchIndex{target: self.target, match_index: index});
+            }
+
+            // If running at line rate, and our buffered outbound requests have accumulated too
+            // much, we need to purge and transition to a lagging state. The target is not able to
+            // replicate data fast enough.
+            if let RSState::LineRate(inner) = &self.state {
+                if inner.buffered_outbound.len() > (self.config.max_payload_entries as usize) {
+                    return Box::new(self.transition_to_lagging(ctx));
+                }
             }
 
             // Else, this was just a heartbeat. Do nothing.
@@ -400,16 +427,17 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 }
                 SnapshotPolicy::LogsSinceLast(threshold) => {
                     let diff = &self.line_index - &conflict.index; // NOTE WELL: underflow is guarded against above.
-                    if &diff >= threshold {
+                    let needs_snpshot = &diff >= threshold;
+                    self.next_index = conflict.index + 1;
+                    self.match_index = conflict.index;
+                    self.match_term = conflict.term;
+
+                    if needs_snpshot {
                         // Follower is far behind and needs to receive an InstallSnapshot RPC.
                         return Box::new(self.transition_to_snapshotting(ctx));
-                    } else {
-                        // Follower is behind, but not too far behind to receive an InstallSnapshot RPC.
-                        self.next_index = conflict.index + 1;
-                        self.match_index = conflict.index;
-                        self.match_term = conflict.term;
-                        return Box::new(self.transition_to_lagging(ctx));
                     }
+                    // Follower is behind, but not too far behind to receive an InstallSnapshot RPC.
+                    return Box::new(self.transition_to_lagging(ctx));
                 }
             }
         } else {
@@ -464,10 +492,10 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         self.send_append_entries(ctx, payload)
             // Handle heartbeat response.
             .and_then(|res, act, ctx| act.handle_append_entries_response(ctx, res, None))
-            // Ensure next heartbeat is scheduled.
-            .then(|res, act, ctx| {
+            // Ensure next heartbeat is scheduled even for error conditions, as
+            // `send_append_entries` only updates heartbeat on success.
+            .map_err(|_, act, ctx| {
                 act.heartbeat_update(ctx);
-                fut::result(res)
             })
     }
 
@@ -642,6 +670,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for
 
         // Get a mutable reference to an inner buffer if permitted by current state, else return.
         match &mut self.state {
+            // NOTE: exceeding line rate buffer size is accounted for in the `handle_append_entries_response` handler.
             RSState::LineRate(inner) => inner.buffered_outbound.push(msg.entries),
             RSState::Lagging(inner) => inner.buffered_outbound.push(msg.entries),
             _ => return Ok(()),
@@ -649,6 +678,22 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for
 
         self.drive_state(ctx);
         Ok(())
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSUpdateLineCommit ////////////////////////////////////////////////////////////////////////////
+
+/// A replication stream message indicating a new payload of entries to be replicated.
+#[derive(Clone, Message)]
+pub(crate) struct RSUpdateLineCommit(pub u64);
+
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateLineCommit> for ReplicationStream<E, N, S> {
+    type Result = ();
+
+    /// Handle a request to update the current line commit of the leader.
+    fn handle(&mut self, msg: RSUpdateLineCommit, _: &mut Self::Context) -> Self::Result {
+        self.line_commit = msg.0;
     }
 }
 

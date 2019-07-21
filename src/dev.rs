@@ -7,7 +7,7 @@ use crate::{
     Raft, NodeId,
     messages::{
         AppendEntriesRequest, AppendEntriesResponse,
-        ClientPayload, ClientPayloadResponse, ClientError,
+        ClientPayload, ClientPayloadForwarded, ClientPayloadResponse, ClientError,
         InstallSnapshotRequest, InstallSnapshotResponse,
         VoteRequest, VoteResponse,
     },
@@ -42,12 +42,14 @@ impl RaftRouter {
 
     /// Isolate the network of the specified node.
     pub fn isolate_node(&mut self, id: NodeId) {
+        debug!("Isolating network for node {}.", &id);
         self.isolated_nodes.push(id);
     }
 
     /// Restore the network of the specified node.
     pub fn restore_node(&mut self, id: NodeId) {
         if let Some((idx, _)) = self.isolated_nodes.iter().enumerate().find(|(_, e)| *e == &id) {
+            debug!("Restoring network for node {}.", &id);
             self.isolated_nodes.remove(idx);
         }
     }
@@ -104,12 +106,15 @@ impl Handler<InstallSnapshotRequest> for RaftRouter {
     }
 }
 
-impl Handler<ClientPayload<MemoryStorageError>> for RaftRouter {
+impl Handler<ClientPayloadForwarded<MemoryStorageError>> for RaftRouter {
     type Result = ResponseActFuture<Self, ClientPayloadResponse, ClientError<MemoryStorageError>>;
 
-    fn handle(&mut self, msg: ClientPayload<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ClientPayloadForwarded<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
         let addr = self.routing_table.get(&msg.target).unwrap();
-        Box::new(fut::wrap_future(addr.send(msg))
+        if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.from) {
+            return Box::new(fut::err(ClientError::Internal));
+        }
+        Box::new(fut::wrap_future(addr.send(msg.payload))
             .map_err(|_, _, _| panic!(ERR_ROUTING_FAILURE))
             .and_then(|res, _, _| fut::result(res)))
     }
@@ -279,11 +284,11 @@ impl Handler<InstallSnapshotRequest> for RaftRecorder {
     }
 }
 
-impl Handler<ClientPayload<MemoryStorageError>> for RaftRecorder {
+impl Handler<ClientPayloadForwarded<MemoryStorageError>> for RaftRecorder {
     type Result = ResponseActFuture<Self, ClientPayloadResponse, ClientError<MemoryStorageError>>;
 
-    fn handle(&mut self, msg: ClientPayload<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
-        self.client_requests.push(msg);
+    fn handle(&mut self, msg: ClientPayloadForwarded<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+        self.client_requests.push(msg.payload);
         let res = self.client_responses
             .pop()
             .ok_or_else(|| ClientError::Internal)

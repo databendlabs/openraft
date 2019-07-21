@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use actix::prelude::*;
-use log::{debug};
+use log::{error};
 use serde::{Serialize, Deserialize};
 
 use crate::{
@@ -108,10 +108,14 @@ impl Handler<ApplyEntriesToStateMachine<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, (), MemoryStorageError>;
 
     fn handle(&mut self, msg: ApplyEntriesToStateMachine<MemoryStorageError>, _ctx: &mut Self::Context) -> Self::Result {
-        msg.entries.iter().for_each(|e| {
-            self.state_machine.insert(e.index, e.clone());
+        let res = msg.entries.iter().try_for_each(|e| {
+            if let Some(old) = self.state_machine.insert(e.index, e.clone()) {
+                error!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
+                return Err(MemoryStorageError)
+            }
+            Ok(())
         });
-        Box::new(fut::ok(()))
+        Box::new(fut::result(res))
     }
 }
 
@@ -119,7 +123,7 @@ impl Handler<CreateSnapshot<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, CurrentSnapshotData, MemoryStorageError>;
 
     fn handle(&mut self, _msg: CreateSnapshot<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
-        debug!("Creating new snapshot in directory: {}", &self.snapshot_dir);
+        error!("Error received request to create snapshot, and snapshots have not been implemented yet.");
         Box::new(fut::err(MemoryStorageError))
     }
 }
@@ -128,6 +132,7 @@ impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, (), MemoryStorageError>;
 
     fn handle(&mut self, _msg: InstallSnapshot<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+        error!("Error received request to install snapshot, and snapshots have not been implemented yet.");
         Box::new(fut::err(MemoryStorageError))
     }
 }
@@ -136,6 +141,40 @@ impl Handler<GetCurrentSnapshot<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, Option<CurrentSnapshotData>, MemoryStorageError>;
 
     fn handle(&mut self, _: GetCurrentSnapshot<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+        error!("Error received request to get current snapshot, and snapshots have not been implemented yet.");
         Box::new(fut::ok(self.snapshot_data.clone()))
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// Other Message Types & Handlers ////////////////////////////////////////////////////////////////
+
+/// Get the current state of the storage engine.
+pub struct GetCurrentState;
+
+impl Message for GetCurrentState {
+    type Result = Result<CurrentStateData, ()>;
+}
+
+/// The current state of the storage engine.
+pub struct CurrentStateData {
+    pub hs: HardState,
+    pub log: BTreeMap<u64, messages::Entry>,
+    pub snapshot_data: Option<CurrentSnapshotData>,
+    pub snapshot_dir: String,
+    pub state_machine: BTreeMap<u64, messages::Entry>,
+}
+
+impl Handler<GetCurrentState> for MemoryStorage {
+    type Result = Result<CurrentStateData, ()>;
+
+    fn handle(&mut self, _: GetCurrentState, _: &mut Self::Context) -> Self::Result {
+        Ok(CurrentStateData{
+            hs: self.hs.clone(),
+            log: self.log.clone(),
+            snapshot_data: self.snapshot_data.clone(),
+            snapshot_dir: self.snapshot_dir.clone(),
+            state_machine: self.state_machine.clone(),
+        })
     }
 }

@@ -282,7 +282,7 @@ impl<E: AppError> Message for GetCurrentSnapshot<E> {
 }
 
 /// The data associated with the current snapshot.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CurrentSnapshotData {
     /// The snapshot entry's term.
     pub term: u64,
