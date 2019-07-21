@@ -11,11 +11,15 @@ todo
 
 ### testing
 - [ ] finish implement MemoryStroage for testing (and general demo usage).
-- [ ] setup testing framework to assert accurate behavior of Raft implementation and adherence to Raft's safety protocols.
-- [x] all actor based. Transport layer can be a simple message passing mechanism.
-- [x] explore unit testing specific methods of the various actors by creating an idle instance from within a call to https://docs.rs/actix/0.8.3/actix/trait.Actor.html#method.create ; this provides a context which can be used for calling various methods. The RaftRouter can be used to record the call and then make assertions about the calls themselves.
-    - NOTE: got the first test in place which uses this pattern. Not sure how valuable it will be. May have to explore some other patterns here.
-    - might look into creating a set of functions which operate on opaque `impl Trait` types. The traits may get complex, but for state transitions, this will be quite nice for testing. Needs more thought.
+- [ ] test client writes.
+    - cover case where requests are forwarded to leader.
+    - cover case where leader dies during write load.
+    - cover case where leader is connected to during writes, leader dies, and writes should not make progress. Client should timeout the request and try on a new node.
+    - ensure data in storage is exactly as needed and in order.
+- [ ] test snapshots.
+    - cover case where cluster is making progress, and then a new node joins, but is not snapshotted because it is not too far behind.
+    - cover case where new node node joins after cluster has make a lot of progress, and then new node should receive snapshot.
+
 
 ### snapshots
 - [ ] get the system in place for periodic snapshot creation.
@@ -24,8 +28,6 @@ todo
 - [ ] get AdminCommands setup and implemented.
 
 ### observability
-- [x] ensure that internal state transitions and updates are emitted for host application use. Such as RaftState changes, membership changes, errors from async ops.
-- [x] add mechanism for custom metrics gathering. Should be generic enough that applications should be able to expose the metrics for any metrics gathering platform (prometheus, influx, graphite &c).
 - [ ] instrument code with tokio trace: https://docs.rs/tokio-trace/0.1.0/tokio_trace/
 
 ### docs

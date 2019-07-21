@@ -1,72 +1,18 @@
 //! Test clustering behavior.
 
-use std::{
-    collections::BTreeMap,
-    time::Duration,
-};
+mod fixtures;
+
+use std::time::Duration;
 
 use actix::prelude::*;
 use actix_raft::{
-    NodeId, Raft,
-    config::Config,
-    dev::{MemRaft, ExecuteInRaftRouter, RaftRouter, Register},
-    memory_storage::{MemoryStorage},
+    dev::{ExecuteInRaftRouter, RaftRouter, Register},
     metrics::{RaftMetrics, State},
-    storage::RaftStorage,
 };
 use env_logger;
 use futures::sync::oneshot;
-use tempfile::{tempdir_in, TempDir};
 
-struct RaftTestController {
-    network: Addr<RaftRouter>,
-    nodes: BTreeMap<NodeId, Addr<MemRaft>>,
-    initial_test_delay: Option<Duration>,
-    test_func: Option<Box<dyn FnOnce(&mut RaftTestController, &mut Context<RaftTestController>) + 'static>>,
-}
-
-impl RaftTestController {
-    /// Create a new instance.
-    pub fn new(network: Addr<RaftRouter>) -> Self {
-        Self{network, nodes: Default::default(), initial_test_delay: None, test_func: None}
-    }
-
-    /// Register a node on the test controller.
-    pub fn register(&mut self, id: NodeId, node: Addr<MemRaft>) -> &mut Self {
-        self.nodes.insert(id, node);
-        self
-    }
-
-    /// Start this test controller with the given delay and test function.
-    pub fn start_with_test(mut self, delay: u64, test: Box<dyn FnOnce(&mut RaftTestController, &mut Context<RaftTestController>) + 'static>) -> Addr<Self> {
-        self.initial_test_delay = Some(Duration::from_secs(delay));
-        self.test_func = Some(test);
-        self.start()
-    }
-}
-
-impl Actor for RaftTestController {
-    type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        if self.initial_test_delay.is_none() || self.test_func.is_none() {
-            panic!("Test is misconfigured. Missing initial test delay or test function. Use `start_with_test`.");
-        }
-        ctx.run_later(self.initial_test_delay.take().unwrap(), self.test_func.take().unwrap());
-    }
-}
-
-fn new_raft_node(id: NodeId, network: Addr<RaftRouter>, members: Vec<NodeId>) -> (Addr<MemRaft>, TempDir) {
-    let temp_dir = tempdir_in("/tmp").unwrap();
-    let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
-    let config = Config::build(snapshot_dir.clone()).metrics_rate(Duration::from_secs(1)).validate().unwrap();
-
-    let memstore = MemoryStorage::new(members, snapshot_dir);
-    let storage = memstore.start();
-
-    let node0 = Raft::new(id, config, network.clone(), storage, network.recipient()).start();
-    (node0, temp_dir)
-}
+use fixtures::{RaftTestController, new_raft_node};
 
 /// Basic lifecycle tests for a three node cluster.
 ///
@@ -90,11 +36,11 @@ fn basic_three_node_cluster_lifecycle() {
     let net = RaftRouter::new();
     let network = net.start();
     let members = vec![0, 1, 2];
-    let (node0, _f0) = new_raft_node(0, network.clone(), members.clone());
+    let (node0, _f0) = new_raft_node(0, network.clone(), members.clone(), 1);
     network.do_send(Register{id: 0, addr: node0.clone()});
-    let (node1, _f1) = new_raft_node(1, network.clone(), members.clone());
+    let (node1, _f1) = new_raft_node(1, network.clone(), members.clone(), 1);
     network.do_send(Register{id: 1, addr: node1.clone()});
-    let (node2, _f2) = new_raft_node(2, network.clone(), members.clone());
+    let (node2, _f2) = new_raft_node(2, network.clone(), members.clone(), 1);
     network.do_send(Register{id: 2, addr: node2.clone()});
 
     // Setup test controller and actions.

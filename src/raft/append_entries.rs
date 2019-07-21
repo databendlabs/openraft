@@ -111,18 +111,19 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             self.apply_logs_to_state_machine(ctx);
         }
 
-        // If the AppendEntries RPC has no entries, then this was just a heartbeat.
-        if msg.entries.len() == 0 {
+        // If previous log info matchs & the AppendEntries RPC has no entries, then this is just a heartbeat.
+        let (term, msg_prev_index, msg_prev_term) = (self.current_term, msg.prev_log_index, msg.prev_log_term);
+        let has_prev_log_match = &msg.prev_log_index == &u64::min_value() || (&msg_prev_index == &self.last_log_index && &msg_prev_term == &self.last_log_term);
+        if has_prev_log_match && msg.entries.len() == 0 {
             return fut::Either::A(
-                fut::Either::A(fut::ok(AppendEntriesResponse{term: self.current_term, success: true, conflict_opt: None}))
+                fut::Either::A(fut::ok(AppendEntriesResponse{term, success: true, conflict_opt: None}))
             );
         }
 
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
         // previous log info, then replication is g2g.
-        let (term, msg_prev_index, msg_prev_term) = (self.current_term, msg.prev_log_index, msg.prev_log_term);
         let entries = Arc::new(msg.entries);
-        if &msg.prev_log_index == &u64::min_value() || (&msg_prev_index == &self.last_log_index && &msg_prev_term == &self.last_log_term) {
+        if has_prev_log_match {
             debug!("Node {}: Accepting AppendEntries RPC with matching prev_log_index '{}' and prev_log_term '{}'.", &self.id, &msg_prev_index, &msg_prev_term);
             return fut::Either::A(fut::Either::B(
                 self.append_log_entries(ctx, entries)
