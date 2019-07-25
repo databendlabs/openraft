@@ -1,9 +1,12 @@
+mod common;
 pub mod config;
+pub mod dev;
 mod raft;
 mod replication;
 pub mod storage;
 pub mod memory_storage;
 pub mod messages;
+pub mod metrics;
 pub mod network;
 
 use std::fmt::Debug;

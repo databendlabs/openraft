@@ -1,11 +1,12 @@
 use actix::prelude::*;
-use log::{warn};
+use log::{debug, warn};
 
 use crate::{
     AppError, NodeId,
+    common::{DependencyAddr, UpdateCurrentLeader},
     messages::{VoteRequest, VoteResponse},
     network::RaftNetwork,
-    raft::{RaftState, Raft, common::{DependencyAddr, UpdateCurrentLeader}},
+    raft::{RaftState, Raft},
     storage::RaftStorage,
 };
 
@@ -37,6 +38,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         if !self.members.contains(&msg.candidate_id) {
             return Err(());
         }
+        debug!("Handling vote request on node {} from node {} for term {}.", &self.id, &msg.candidate_id, &msg.term);
 
         // If candidate's current term is less than this nodes current term, reject.
         if &msg.term < &self.current_term {
@@ -79,10 +81,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     }
 
     /// Request a vote from the the target peer.
-    pub(super) fn request_vote(
-        &mut self, _: &mut Context<Self>, target: NodeId, term: u64, last_log_index: u64, last_log_term: u64,
-    ) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
-        let rpc = VoteRequest::new(target, term, self.id, last_log_index, last_log_term);
+    pub(super) fn request_vote(&mut self, _: &mut Context<Self>, target: NodeId) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+        let rpc = VoteRequest::new(target, self.current_term, self.id, self.last_log_index, self.last_log_term);
         fut::wrap_future(self.network.send(rpc))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftNetwork))
             .and_then(|res, _, _| fut::result(res))
@@ -93,6 +93,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                     // If this node is not currently in candidate state, then this request is done.
                     _ => return fut::ok(()),
                 };
+                debug!("Node {} received request vote response. {:?}", &act.id, &res);
 
                 // If peer's term is greater than current term, revert to follower state.
                 if res.term > act.current_term {
@@ -114,5 +115,69 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
                 fut::ok(())
             })
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// Unit Tests ////////////////////////////////////////////////////////////////////////////////////
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use actix::prelude::*;
+    use tempfile::tempdir_in;
+
+    use crate::{
+        Raft,
+        config::Config, dev::*,
+        memory_storage::{MemoryStorage},
+        storage::RaftStorage,
+    };
+
+    #[test]
+    fn test_request_vote() {
+        // TODO:NOTE: not sure if we will keep these style of tests here.
+
+        // Assemble //////////////////////////////////////////////////////////
+        let sys = System::builder().stop_on_panic(true).name("test").build();
+        let net = RaftRecorder::new().start();
+
+        let dir = tempdir_in("/tmp").unwrap();
+        let snapshot_dir = dir.path().to_string_lossy().to_string();
+
+        let config = Config::build(snapshot_dir.clone()).metrics_rate(Duration::from_secs(1)).validate().unwrap();
+        let memstore = MemoryStorage::new(vec![0], snapshot_dir).start();
+
+        // Assert ////////////////////////////////////////////////////////////
+        let test = Assert(Box::new(|act: &mut RaftRecorder, _| {
+            let len = act.vote_requests().count();
+            let first_req = act.vote_requests().nth(0).expect("Expected one vote request to be sent.");
+            assert_eq!(len, 1, "Vote RPC count mismatch.");
+            assert_eq!(first_req.target, 99, "Vote RPC target mismatch.");
+            assert_eq!(first_req.term, 0, "Vote RPC term mismatch.");
+            assert_eq!(first_req.candidate_id, 1000, "Vote RPC candidate_id mismatch.");
+            assert_eq!(first_req.last_log_index, 0, "Vote RPC last_log_index mismatch.");
+            assert_eq!(first_req.last_log_term, 0, "Vote RPC last_log_term mismatch.");
+
+            System::current().stop();
+            // TODO:NOTE: if this style of test needs to be explored more, we will need to assert
+            // against the state of the Raft as it moves from state to state and handles events.
+        }));
+
+        // Action ////////////////////////////////////////////////////////////
+        let _node_addr = Raft::create(move |ctx| {
+            let mut inst = Raft::new(1000, config, net.clone(), memstore, net.clone().recipient());
+            let f = inst.request_vote(ctx, 99)
+                .then(move |_, _, _| {
+                    net.do_send(test);
+                    let res: Result<(), ()> = Ok(());
+                    fut::result(res)
+                });
+            ctx.spawn(f);
+            inst
+        });
+
+        let _ = sys.run();
     }
 }

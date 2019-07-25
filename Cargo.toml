@@ -18,3 +18,7 @@ serde = { version="1", features=["derive"] }
 
 [build-dependencies]
 prost-build = "0.5"
+
+[dev-dependencies]
+tempfile = "3"
+env_logger = "0.6"

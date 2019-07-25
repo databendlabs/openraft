@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use actix::prelude::*;
-use log::{error, info};
+use log::{debug, error, info};
 use tokio::{
     prelude::*,
     fs::File,
@@ -14,6 +14,7 @@ use tokio::{
 
 use crate::{
     AppError, NodeId,
+    common::DependencyAddr,
     config::{Config, SnapshotPolicy},
     messages::{
         AppendEntriesRequest, AppendEntriesResponse,
@@ -24,8 +25,6 @@ use crate::{
     raft::{Raft},
     storage::{RaftStorage, GetLogEntries},
 };
-
-const MAILBOX_ERR_MESSAGE: &str = "Actix messaging error while communicating from ReplicationStream to Raft actor.";
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSState ///////////////////////////////////////////////////////////////////////////////////////
@@ -238,6 +237,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 }
                 acc
             });
+            let last_index_and_term = entries.last().map(|e| (e.index, e.term));
             let payload = AppendEntriesRequest{
                 target: self.target, term: self.term, leader_id: self.id,
                 prev_log_index: self.match_index,
@@ -245,17 +245,29 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 entries, leader_commit: self.line_commit,
             };
             // Send the payload.
-            let last_index_and_term = Some((self.match_index, self.match_term));
             let f = self.send_append_entries(ctx, payload)
                 // Process the response.
                 .and_then(move |res, act, ctx| act.handle_append_entries_response(ctx, res, last_index_and_term))
                 // Drive state forward regardless of outcome.
                 .then(|res, act, ctx| {
                     act.is_driving_state = false;
-                    act.drive_state(ctx);
-                    fut::result(res)
+                    match res {
+                        Ok(_) => {
+                            act.drive_state(ctx);
+                            fut::Either::A(fut::result(res))
+                        }
+                        Err(_) => {
+                            fut::Either::B(act.transition_to_lagging(ctx)
+                                .then(|res, act, ctx| {
+                                    act.drive_state(ctx);
+                                    fut::result(res)
+                                }))
+                        }
+                    }
                 });
             ctx.spawn(f);
+        } else {
+            self.is_driving_state = false;
         }
     }
 
@@ -285,7 +297,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 // Update Raft actor with replication rate change.
                 let event = RSRateUpdate{target: self.target, is_line_rate: true};
                 fut::Either::A(fut::wrap_future(self.raftnode.send(event))
-                    .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+                    .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
                     .map(move |_, _, _| stop_idx))
             } else {
                 fut::Either::B(fut::ok(self.next_index + self.config.max_payload_entries))
@@ -295,11 +307,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
             // from storage within permitted configuration.
             .and_then(move |stop, act: &mut Self, _| {
                 fut::wrap_future(act.storage.send(GetLogEntries::new(start, stop)))
-                    .map_err(|err, _: &mut Self, _| error!("Actix messaging error while attempting to communicate with storage system. {}", err))
+                    .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             })
-            .and_then(|res, _, _| fut::result(
-                res.map_err(|_| error!("Error while fetching entries from storage for replication."))
-            ))
+            .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
             // We have a successful payload of entries, send it to the target.
             .and_then(move |entries, act, ctx| {
                 let last_log_and_index = entries.last().map(|elem| (elem.index, elem.term));
@@ -339,8 +349,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         };
 
         ctx.spawn(fut::wrap_future(self.raftnode.send(RSNeedsSnapshot))
-            // Log actix messaging errors.
-            .map_err(|err, act: &mut Self, _| error!("{} {} {}", MAILBOX_ERR_MESSAGE, act.target, err))
+            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
             // Flatten inner result.
             .and_then(|res, _, _| fut::result(res))
             // Handle response from Raft node and start streaming over the snapshot.
@@ -356,6 +365,10 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
     }
 
     /// Handle AppendEntries RPC responses from the target node.
+    ///
+    /// ### last_index_and_term
+    /// An optional tuple of the index and term of the last entry to be appended per the
+    /// corresponding request.
     fn handle_append_entries_response(
         &mut self, ctx: &mut Context<Self>, res: AppendEntriesResponse, last_index_and_term: Option<(u64, u64)>,
     ) -> Box<dyn ActorFuture<Actor=Self, Item=(), Error=()> + 'static> {
@@ -371,6 +384,15 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 self.raftnode.do_send(RSUpdateMatchIndex{target: self.target, match_index: index});
             }
 
+            // If running at line rate, and our buffered outbound requests have accumulated too
+            // much, we need to purge and transition to a lagging state. The target is not able to
+            // replicate data fast enough.
+            if let RSState::LineRate(inner) = &self.state {
+                if inner.buffered_outbound.len() > (self.config.max_payload_entries as usize) {
+                    return Box::new(self.transition_to_lagging(ctx));
+                }
+            }
+
             // Else, this was just a heartbeat. Do nothing.
             return Box::new(fut::ok(()));
         }
@@ -379,9 +401,12 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         if &res.term > &self.term {
             return Box::new(
                 fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: res.term}))
-                    .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+                    .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
                     // This condition represents a replication failure, so return an error condition.
-                    .and_then(|_, _, _| fut::err(())));
+                    .and_then(|_, _, ctx| {
+                        ctx.terminate(); // Terminate this replication stream.
+                        fut::err(())
+                    }));
         }
 
         // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
@@ -402,16 +427,17 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 }
                 SnapshotPolicy::LogsSinceLast(threshold) => {
                     let diff = &self.line_index - &conflict.index; // NOTE WELL: underflow is guarded against above.
-                    if &diff >= threshold {
+                    let needs_snpshot = &diff >= threshold;
+                    self.next_index = conflict.index + 1;
+                    self.match_index = conflict.index;
+                    self.match_term = conflict.term;
+
+                    if needs_snpshot {
                         // Follower is far behind and needs to receive an InstallSnapshot RPC.
                         return Box::new(self.transition_to_snapshotting(ctx));
-                    } else {
-                        // Follower is behind, but not too far behind to receive an InstallSnapshot RPC.
-                        self.next_index = conflict.index + 1;
-                        self.match_index = conflict.index;
-                        self.match_term = conflict.term;
-                        return Box::new(self.transition_to_lagging(ctx));
                     }
+                    // Follower is behind, but not too far behind to receive an InstallSnapshot RPC.
+                    return Box::new(self.transition_to_lagging(ctx));
                 }
             }
         } else {
@@ -426,7 +452,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         if &res.term > &self.term {
             info!("Response from InstallSnapshot RPC sent to {} indicates a newer term {} is in session, reverting to follower.", &self.target, &res.term);
             fut::Either::B(fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: res.term}))
-                .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+                .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
                 // Ensure an error is returned here, as this was not a successful response.
                 .and_then(|_, _, _| fut::err(())))
         } else {
@@ -447,8 +473,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         }
 
         // Setup a new heartbeat to be sent after the `heartbeat_rate` duration.
-        let later = std::time::Duration::from_millis(self.config.heartbeat_interval);
-        let handle = ctx.run_later(later, |act, ctx| {
+        let duration = std::time::Duration::from_millis(self.config.heartbeat_interval);
+        let handle = ctx.run_later(duration, |act, ctx| {
             let f = act.heartbeat_send(ctx);
             ctx.spawn(f);
         });
@@ -466,11 +492,32 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         self.send_append_entries(ctx, payload)
             // Handle heartbeat response.
             .and_then(|res, act, ctx| act.handle_append_entries_response(ctx, res, None))
-            // Ensure next heartbeat is scheduled.
-            .then(|res, act, ctx| {
+            // Ensure next heartbeat is scheduled even for error conditions, as
+            // `send_append_entries` only updates heartbeat on success.
+            .map_err(|_, act, ctx| {
                 act.heartbeat_update(ctx);
-                fut::result(res)
             })
+    }
+
+    /// Transform and log an actix MailboxError.
+    ///
+    /// This method treats the error as being fatal, as Raft can not function properly if the
+    /// `RaftNetowrk` & `RaftStorage` interfaces are returning mailbox errors. This method will
+    /// shutdown the Raft actor.
+    fn map_fatal_actix_messaging_error(&mut self, _: &mut Context<Self>, err: actix::MailboxError, dep: DependencyAddr) {
+        self.raftnode.do_send(RSFatalActixMessagingError{target: self.target, err, dependency: dep})
+    }
+
+    /// Transform an log the result of a `RaftStorage` interaction.
+    ///
+    /// This method assumes that a storage error observed here is non-recoverable. As such, the
+    /// Raft node will be instructed to stop. If such behavior is not needed, then don't use this
+    /// interface.
+    fn map_fatal_storage_result<T>(&mut self, _: &mut Context<Self>, res: Result<T, E>) -> impl ActorFuture<Actor=Self, Item=T, Error=()> {
+        let res = res.map_err(|err| {
+            self.raftnode.do_send(RSFatalStorageError{target: self.target, err});
+        });
+        fut::result(res)
     }
 
     /// Send the given AppendEntries RPC to the target & await the response.
@@ -483,8 +530,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
     ) -> impl ActorFuture<Actor=Self, Item=AppendEntriesResponse, Error=()> {
         // Send the payload.
         fut::wrap_future(self.network.send(request))
-            // Handle initial error conditions.
-            .map_err(|err, act: &mut Self, _| error!("Error while sending replication frames to {}. {:?}", act.target, err))
+            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftNetwork))
             // Flatten inner result. If we got a response from the target node, update heartbeat.
             .and_then(|res, act, ctx| {
                 if res.is_ok() {
@@ -511,11 +557,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                     // Send snapshot RPC frame over to target.
                     .and_then(|rpc, act: &mut Self, _| {
                         fut::wrap_future(act.network.send(rpc))
-                        .map_err(|err, _: &mut Self, _| error!("Error while sending outbound InstallSnapshot RPC: {}", err))
-                        // Flatten inner result.
-                        .and_then(|res, _, _| fut::result(res))
-                        // Handle response from target.
-                        .and_then(|res, act, ctx| act.handle_install_snapshot_response(ctx, res))
+                            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftNetwork))
+                            // Flatten inner result.
+                            .and_then(|res, _, _| fut::result(res))
+                            // Handle response from target.
+                            .and_then(|res, act, ctx| act.handle_install_snapshot_response(ctx, res))
                     })
                     .finish()
             })
@@ -535,7 +581,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         self.state = RSState::Lagging(LaggingState::default());
         let event = RSRateUpdate{target: self.target, is_line_rate: false};
         fut::wrap_future(self.raftnode.send(event))
-            .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
     }
 
     /// Transition this actor to the state `RSState::LineRate` & notify Raft node.
@@ -553,7 +599,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         self.state = RSState::LineRate(new_state);
         let event = RSRateUpdate{target: self.target, is_line_rate: true};
         fut::wrap_future(self.raftnode.send(event))
-            .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
     }
 
     /// Transition this actor to the state `RSState::Snapshotting` & notify Raft node.
@@ -563,7 +609,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         self.state = RSState::Snapshotting(SnapshottingState::default());
         let event = RSRateUpdate{target: self.target, is_line_rate: false};
         fut::wrap_future(self.raftnode.send(event))
-            .map_err(|err, _, _| error!("{} {:?}", MAILBOX_ERR_MESSAGE, err))
+            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
     }
 }
 
@@ -624,6 +670,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for
 
         // Get a mutable reference to an inner buffer if permitted by current state, else return.
         match &mut self.state {
+            // NOTE: exceeding line rate buffer size is accounted for in the `handle_append_entries_response` handler.
             RSState::LineRate(inner) => inner.buffered_outbound.push(msg.entries),
             RSState::Lagging(inner) => inner.buffered_outbound.push(msg.entries),
             _ => return Ok(()),
@@ -632,6 +679,64 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for
         self.drive_state(ctx);
         Ok(())
     }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSUpdateLineCommit ////////////////////////////////////////////////////////////////////////////
+
+/// A replication stream message indicating a new payload of entries to be replicated.
+#[derive(Clone, Message)]
+pub(crate) struct RSUpdateLineCommit(pub u64);
+
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateLineCommit> for ReplicationStream<E, N, S> {
+    type Result = ();
+
+    /// Handle a request to update the current line commit of the leader.
+    fn handle(&mut self, msg: RSUpdateLineCommit, _: &mut Self::Context) -> Self::Result {
+        self.line_commit = msg.0;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSTerminate ///////////////////////////////////////////////////////////////////////////////////
+
+/// A replication stream message indicating a new payload of entries to be replicated.
+#[derive(Message)]
+pub(crate) struct RSTerminate;
+
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSTerminate> for ReplicationStream<E, N, S> {
+    type Result = ();
+
+    /// Handle a request to terminate this replication stream.
+    fn handle(&mut self, _: RSTerminate, ctx: &mut Self::Context) -> Self::Result {
+        ctx.terminate();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSFatalStorageError ///////////////////////////////////////////////////////////////////////////
+
+/// An event representing a fatal storage error.
+#[derive(Message)]
+pub(crate) struct RSFatalStorageError<E: AppError> {
+    /// The ID of the Raft node which this event relates to.
+    pub target: NodeId,
+    /// The storage error which produced this event.
+    pub err: E,
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// RSFatalActixMessagingError ////////////////////////////////////////////////////////////////////
+
+/// An event representing a fatal actix messaging error.
+#[derive(Message)]
+pub(crate) struct RSFatalActixMessagingError {
+    /// The ID of the Raft node which this event relates to.
+    pub target: NodeId,
+    /// The actix mailbox error which produced this event.
+    pub err: MailboxError,
+    /// The dependency responsible for producing the error.
+    pub dependency: DependencyAddr,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

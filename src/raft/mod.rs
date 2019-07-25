@@ -1,8 +1,8 @@
 //! The Raft actor's module and its associated logic.
 
 mod append_entries;
+mod apply_logs;
 mod client;
-pub mod common;
 mod install_snapshot;
 mod replication;
 mod vote;
@@ -15,15 +15,19 @@ use std::{
 
 use actix::prelude::*;
 use futures::sync::{mpsc};
-use log::{error};
+use log::{debug, error};
 
 use crate::{
     NodeId, AppError,
+    common::{
+        ApplyLogsTask, ClientPayloadUpgraded, ClientPayloadWithTx,
+        DependencyAddr, UpdateCurrentLeader,
+    },
     config::Config,
-    messages::{ClientError},
+    messages::{ClientError, ClientPayloadForwarded},
+    metrics::{RaftMetrics, State},
     network::RaftNetwork,
-    raft::common::{AwaitingCommitted, ClientPayloadWithTx, DependencyAddr, UpdateCurrentLeader},
-    replication::{ReplicationStream, RSReplicate},
+    replication::{ReplicationStream, RSTerminate},
     storage::{GetInitialState, HardState, InitialState, RaftStorage, SaveHardState},
 };
 
@@ -34,7 +38,7 @@ const FATAL_STORAGE_ERR: &str = "Fatal storage error encountered which can not b
 // RaftState /////////////////////////////////////////////////////////////////////////////////////
 
 /// The state of the Raft node.
-enum RaftState<E: AppError> {
+enum RaftState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// A non-standard Raft state indicating that the node is initializing.
     Initializing,
     /// A non-standard Raft state indicating that the node is awaiting an admin command to begin.
@@ -61,33 +65,33 @@ enum RaftState<E: AppError> {
     ///
     /// The leader handles all client requests. If a client contacts a follower, the follower must
     /// redirects it to the leader.
-    Leader(LeaderState<E>),
+    Leader(LeaderState<E, N, S>),
 }
 
 /// Volatile state specific to the Raft leader.
 ///
 /// This state is reinitialized after an election.
-struct LeaderState<E: AppError> {
+struct LeaderState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// A mapping of node IDs the replication state of the target node.
-    pub nodes: BTreeMap<NodeId, ReplicationState>,
+    pub nodes: BTreeMap<NodeId, ReplicationState<E, N, S>>,
     /// A queue of client requests to be processed.
     pub client_request_queue: mpsc::UnboundedSender<ClientPayloadWithTx<E>>,
-    /// The current client RPC which is awaiting to be comitted.
-    pub awaiting_committed: Option<AwaitingCommitted<E>>,
+    /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
+    pub awaiting_committed: Vec<ClientPayloadUpgraded<E>>,
 }
 
-impl<E: AppError> LeaderState<E> {
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> LeaderState<E, N, S> {
     /// Create a new instance.
     pub fn new(tx: mpsc::UnboundedSender<ClientPayloadWithTx<E>>) -> Self {
-        Self{nodes: Default::default(), client_request_queue: tx, awaiting_committed: None}
+        Self{nodes: Default::default(), client_request_queue: tx, awaiting_committed: vec![]}
     }
 }
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-struct ReplicationState {
+struct ReplicationState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     pub match_index: u64,
     pub is_at_line_rate: bool,
-    pub addr: Recipient<RSReplicate>,
+    pub addr: Addr<ReplicationStream<E, N, S>>,
 }
 
 /// Volatile state specific to a Raft node in candidate state.
@@ -183,11 +187,13 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// All currently known members of the Raft cluster.
     members: Vec<NodeId>,
     /// The current state of this Raft node.
-    state: RaftState<E>,
+    state: RaftState<E, N, S>,
     /// The address of the actor responsible for implementing the `RaftNetwork` interface.
     network: Addr<N>,
     /// The address of the actor responsible for implementing the `RaftStorage` interface.
     storage: Addr<S>,
+    /// The address of the actor responsible for recieving metrics output from this Node.
+    metrics: Recipient<RaftMetrics>,
 
     /// The index of the highest log entry known to be committed cluster-wide.
     ///
@@ -231,8 +237,10 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
 
     /// A flag to indicate if this system is currently appending logs.
     is_appending_logs: bool,
-    /// A flag to indicate if this system is currently applying logs to the state machine.
-    is_applying_logs_to_state_machine: bool,
+    /// The entrypoint to the pipeline of logs which need to be applied to the state machine.
+    apply_logs_pipeline: mpsc::UnboundedSender<ApplyLogsTask<E>>,
+    /// The receiving end of the pipeline for applying logs. This is moved out and spawned when Raft starts.
+    _apply_logs_pipeline_receiver: Option<mpsc::UnboundedReceiver<ApplyLogsTask<E>>>,
 
     /// A handle to the election timeout callback.
     election_timeout: Option<actix::SpawnHandle>,
@@ -246,15 +254,17 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     ///
     /// This actor will need to be started after instantiation, which must be done within a
     /// running actix system.
-    pub fn new(id: NodeId, config: Config, network: Addr<N>, storage: Addr<S>) -> Self {
+    pub fn new(id: NodeId, config: Config, network: Addr<N>, storage: Addr<S>, metrics: Recipient<RaftMetrics>) -> Self {
         let state = RaftState::Initializing;
         let config = Arc::new(config);
+        let (tx, rx) = mpsc::unbounded();
         Self{
-            id, config, members: vec![id], state, network, storage,
+            id, config, members: vec![id], state, network, storage, metrics,
             commit_index: 0, last_applied: 0,
             current_term: 0, current_leader: None, voted_for: None,
             last_log_index: 0, last_log_term: 0,
-            is_appending_logs: false, is_applying_logs_to_state_machine: false,
+            is_appending_logs: false,
+            apply_logs_pipeline: tx, _apply_logs_pipeline_receiver: Some(rx),
             election_timeout: None, forwarding: vec![],
         }
     }
@@ -265,6 +275,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         if let &RaftState::Follower = &self.state {
             return;
         }
+        debug!("Raft {} is transitioning to follower state.", &self.id);
 
         // Cleanup previous state.
         self.cleanup_state(ctx);
@@ -276,6 +287,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         // Perform the transition.
         self.state = RaftState::Follower;
+        self.report_metrics(ctx);
+        debug!("Raft {} has finished transition to follower state.", &self.id);
     }
 
     /// Transition to the Raft candidate state and start a new election campaign, per §5.2.
@@ -310,6 +323,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// new election by incrementing its term and initiating another round of RequestVote RPCs.
     /// The randomization of election timeouts per node helps to avoid this issue.
     fn become_candidate(&mut self, ctx: &mut Context<Self>) {
+        debug!("Raft {} is transitioning to candidate state.", &self.id);
         // Cleanup previous state.
         self.cleanup_state(ctx);
 
@@ -322,7 +336,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         let mut requests = BTreeMap::new();
         let peers = self.members.clone().into_iter().filter(|member| member != &self.id).collect::<Vec<_>>();
         for member in peers {
-            let f = self.request_vote(ctx, member, self.id, self.last_log_index, self.last_log_term);
+            let f = self.request_vote(ctx, member);
             let handle = ctx.spawn(f);
             requests.insert(member, handle);
         }
@@ -331,6 +345,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         let votes_granted = 1; // We must vote for ourselves per the Raft spec.
         let votes_needed = ((self.members.len() / 2) + 1) as u64; // Just need a majority.
         self.state = RaftState::Candidate(CandidateState{requests, votes_granted, votes_needed});
+        self.report_metrics(ctx);
+        debug!("Raft {} has finished transition to candidate state.", &self.id);
     }
 
     /// Transition to the Raft leader state.
@@ -345,6 +361,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     ///
     /// See the `ClientRpcIn` handler for more details on the write path for client requests.
     fn become_leader(&mut self, ctx: &mut Context<Self>) {
+        debug!("Raft {} is transitioning to leader state.", &self.id);
         // Cleanup previous state & ensure we've cancelled the election timeout system.
         self.cleanup_state(ctx);
         if let Some(handle) = self.election_timeout {
@@ -372,24 +389,31 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             let addr = rs.start(); // Start the actor on the same thread.
 
             // Retain the addr of the replication stream.
-            let state = ReplicationState{match_index: self.last_log_index, is_at_line_rate: true, addr: addr.recipient()};
+            let state = ReplicationState{match_index: self.last_log_index, is_at_line_rate: true, addr};
             new_state.nodes.insert(*target, state);
         }
 
         // Initialize new state as leader.
         self.state = RaftState::Leader(new_state);
         self.update_current_leader(ctx, UpdateCurrentLeader::ThisNode(tx0));
+        self.report_metrics(ctx);
+        debug!("Raft {} has finished transition to leader state.", &self.id);
     }
 
     /// Clean up the current Raft state.
     ///
-    /// This will typically be called before a state transition is to take place.
+    /// This will typically be called before a state transition takes place.
     fn cleanup_state(&mut self, ctx: &mut Context<Self>) {
         match &mut self.state {
             RaftState::Candidate(inner) => {
                 for handle in inner.cleanup() {
                     ctx.cancel_future(handle);
                 }
+            }
+            RaftState::Leader(inner) => {
+                inner.nodes.values().for_each(|rsstate| {
+                    let _ = rsstate.addr.do_send(RSTerminate);
+                });
             }
             _ => (),
         }
@@ -423,21 +447,38 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// command instructing it to campaign with a specific config, or to begin operating as the
     /// leader of a standalone cluster.
     fn initialize(&mut self, ctx: &mut Context<Self>, state: InitialState) {
+        debug!("Raft {} initialized with state {:?}.", &self.id, &state);
         self.last_log_index = state.last_log_index;
         self.last_log_term = state.last_log_term;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
         self.members = state.hard_state.members;
         self.last_applied = state.last_applied_log;
+        // NOTE: this is repeated here for clarity. It is unsafe to initialize the node's commit
+        // index to any other value. The commit index must be determined by a leader after
+        // successfully committing a new log to the cluster.
+        self.commit_index = 0;
+
+        // Spawn the stream for applying logs to the state machine. This will always be `Some` here, never after.
+        if let Some(rx) = self._apply_logs_pipeline_receiver.take() {
+            ctx.spawn(fut::wrap_stream(rx)
+                .and_then(|msg, act: &mut Self, ctx| act.process_apply_logs_task(ctx, msg))
+                .finish());
+        }
 
         // Set initial state based on state recovered from disk.
         let is_only_configured_member = self.members.len() == 1 && self.members.contains(&self.id);
-        if is_only_configured_member || &self.last_log_index != &u64::min_value() {
+        if !is_only_configured_member || &self.last_log_index != &u64::min_value() {
+            debug!("Raft {} initialized as follower.", &self.id);
             self.state = RaftState::Follower;
             self.update_election_timeout(ctx);
         } else {
+            debug!("Raft {} initialized to standby state.", &self.id);
             self.state = RaftState::Standby;
         }
+
+        // Begin reporting metrics.
+        ctx.run_interval(self.config.metrics_rate.clone(), |act, ctx| act.report_metrics(ctx));
     }
 
     /// Transform and log an actix MailboxError.
@@ -462,6 +503,25 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             ctx.stop();
         });
         fut::result(res)
+    }
+
+    /// Report a metrics payload on the current state of the Raft node.
+    fn report_metrics(&mut self, _: &mut Context<Self>) {
+        let state = match &self.state {
+            RaftState::Standby => State::Standby,
+            RaftState::Follower => State::Follower,
+            RaftState::Candidate(_) => State::Candidate,
+            RaftState::Leader(_) => State::Leader,
+            _ => return,
+        };
+        let _ = self.metrics.do_send(RaftMetrics{
+            id: self.id, state, current_term: self.current_term,
+            last_log_index: self.last_log_index,
+            last_applied: self.last_applied,
+            current_leader: self.current_leader,
+        }).map_err(|err| {
+            error!("Error reporting metrics. {}", err);
+        });
     }
 
     /// Save the Raft node's current hard state to disk.
@@ -499,8 +559,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             UpdateCurrentLeader::OtherNode(target) => {
                 self.current_leader = Some(target);
                 for buffered in self.forwarding.drain(..) {
-                    let ClientPayloadWithTx{tx, rpc: mut outbound} = buffered;
-                    outbound.target = target;
+                    let ClientPayloadWithTx{tx, rpc: payload} = buffered;
+                    let outbound = ClientPayloadForwarded{target, from: self.id, payload};
                     let f = fut::wrap_future(self.network.send(outbound))
                         .map_err(|err, _, _| {
                             error!("Error forwarding client request. {:?}", err);
@@ -543,6 +603,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Actor for Raft<E, N, S> 
 
     /// The initialization routine for this actor.
     fn started(&mut self, ctx: &mut Self::Context) {
+        debug!("Starting Raft node with ID {}.", &self.id);
         // Fetch the node's initial state from the storage actor & initialize.
         let f = fut::wrap_future(self.storage.send(GetInitialState::new()))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
