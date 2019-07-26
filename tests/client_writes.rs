@@ -8,7 +8,7 @@ use actix::prelude::*;
 use actix_raft::{
     dev::{ExecuteInRaftRouter, RaftRouter, Register},
     memory_storage::{GetCurrentState, MemoryStorageError},
-    messages::{ClientPayload, ClientError, EntryNormal, ResponseMode},
+    messages::{ClientPayload, EntryNormal, ResponseMode},
     metrics::{RaftMetrics, State},
 };
 use env_logger;
@@ -115,24 +115,18 @@ fn client_data_writing() {
                         assert_eq!(s0.hs.members, s1.hs.members, "Expected hs for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.hs.members, s2.hs.members, "Expected hs for nodes 0 and 2 to be equal.");
                         // Log.
-                        let _ = std::fs::write("./log-s0.txt", format!("{:?}", s0.log)).expect("Expected to be able to dump storage file.");
-                        let _ = std::fs::write("./log-s1.txt", format!("{:?}", s1.log)).expect("Expected to be able to dump storage file.");
-                        let _ = std::fs::write("./log-s2.txt", format!("{:?}", s2.log)).expect("Expected to be able to dump storage file.");
                         assert_eq!(s0.log, s1.log, "Expected log for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.log, s2.log, "Expected log for nodes 0 and 2 to be equal.");
                         // Snapshot data.
                         assert_eq!(s0.snapshot_data, s1.snapshot_data, "Expected snapshot_data for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.snapshot_data, s2.snapshot_data, "Expected snapshot_data for nodes 0 and 2 to be equal.");
                         // State machinen data.
-                        let _ = std::fs::write("./sm-s0.txt", format!("{:?}", s0.state_machine)).expect("Expected to be able to dump storage file.");
-                        let _ = std::fs::write("./sm-s1.txt", format!("{:?}", s1.state_machine)).expect("Expected to be able to dump storage file.");
-                        let _ = std::fs::write("./sm-s2.txt", format!("{:?}", s2.state_machine)).expect("Expected to be able to dump storage file.");
                         assert_eq!(s0.state_machine, s1.state_machine, "Expected state machines for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.state_machine, s2.state_machine, "Expected state machines for nodes 0 and 2 to be equal.");
                         fut::ok(())
                     })
-                    .and_then(|_, _, _| {
-                        System::current().stop();
+                    .and_then(|_, _, ctx| {
+                        ctx.run_later(Duration::from_secs(2), |_, _| System::current().stop());
                         fut::ok(())
                     })
             }));
@@ -156,38 +150,27 @@ impl RaftTestController {
         let (id, addr) = self.nodes.iter().find(|(k, _)| *k != &leader)
             .map(|(id, addr)| (*id, addr.clone())).expect("Expected to find non-leader node.");
         debug!("Sending client requests to node {}.", &id);
-        fut::wrap_stream(iter_ok::<_, ()>(0u64..20_000u64)).and_then(move |elem, act: &mut Self, _| {
+        fut::wrap_stream(iter_ok::<_, ()>(0u64..200u64)).and_then(move |elem, act: &mut Self, _| {
             // Bring down leader after some time.
-            if elem == 1000 {
+            if elem == 50 {
                 act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| act.isolate_node(leader))));
             }
             // Restore old leader after some time.
-            if elem == 15_000 {
+            if elem == 100 {
                 act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| act.restore_node(leader))));
             }
 
             let entry = EntryNormal{data: elem.to_string().into_bytes()};
             let payload = Payload::new(vec![entry], ResponseMode::Applied);
             fut::wrap_future(addr.send(payload))
-                .timeout(Duration::from_millis(100), MailboxError::Timeout)
+                .timeout(Duration::from_millis(10), MailboxError::Timeout)
                 .map_err(|err, _, _| match err {
                     MailboxError::Closed => panic!("Error sending client request to node. {}", err),
-                    MailboxError::Timeout => {
-                        error!("Client request timed out.");
-                        ClientError::Internal
-                    }
-                })
-                .and_then(|res, _, _| match res {
-                    Ok(val) => fut::Either::A(fut::ok(val)),
-                    Err(err) => {
-                        fut::Either::B(fut::wrap_future(Delay::new(Instant::now() + Duration::from_millis(10))).map_err(|_, _, _| ())
-                            .then(move |_, _, _| fut::err(err)))
-                    }
+                    MailboxError::Timeout => error!("Client request timed out."),
                 })
                 .map(|_res, _, _| ())
                 .then(move |_, _, _| {
-                    debug!("Entry sent for elem: {}", elem);
-                    fut::ok(())
+                    fut::wrap_future(Delay::new(Instant::now() + Duration::from_millis(10))).map_err(|_, _, _| ())
                 })
         })
         .finish().then(|_, _, _| {

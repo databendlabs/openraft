@@ -24,7 +24,7 @@ use crate::{
         DependencyAddr, UpdateCurrentLeader,
     },
     config::Config,
-    messages::{ClientError, ClientPayloadForwarded},
+    messages::{ClientError, ClientPayload, ClientPayloadForwarded},
     metrics::{RaftMetrics, State},
     network::RaftNetwork,
     replication::{ReplicationStream, RSTerminate},
@@ -358,6 +358,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// - Initial AppendEntries RPCs (heartbeats) are sent to each cluster member, and is repeated
     /// during idle periods to prevent election timeouts, per §5.2. This is handled by the
     /// `ReplicationStream` actors.
+    /// - A new blank log entry is generated and committed to the cluster in order to ensure that
+    /// there are no unapplied entries from the last term, per the end of §8.
     ///
     /// See the `ClientRpcIn` handler for more details on the write path for client requests.
     fn become_leader(&mut self, ctx: &mut Context<Self>) {
@@ -392,6 +394,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             let state = ReplicationState{match_index: self.last_log_index, is_at_line_rate: true, addr};
             new_state.nodes.insert(*target, state);
         }
+
+        // Commit a new blank entry to the cluster to guard against stale-reads, per §8.
+        ctx.notify(ClientPayload::new_blank_payload());
 
         // Initialize new state as leader.
         self.state = RaftState::Leader(new_state);

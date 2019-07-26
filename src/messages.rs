@@ -268,6 +268,13 @@ impl<E: AppError> ClientPayload<E> {
     pub fn new(entries: Vec<EntryNormal>, response_mode: ResponseMode) -> Self {
         Self{entries, response_mode, marker: std::marker::PhantomData}
     }
+
+    /// Generate a new blank payload.
+    ///
+    /// This is primarily used by new leaders when first coming to power.
+    pub(crate) fn new_blank_payload() -> Self {
+        Self::new(vec![EntryNormal{data: vec![]}], ResponseMode::Applied)
+    }
 }
 
 impl<E: AppError> Message for ClientPayload<E> {

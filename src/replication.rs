@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use actix::prelude::*;
-use log::{debug, error, info};
+use log::{error, info};
 use tokio::{
     prelude::*,
     fs::File,
