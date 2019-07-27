@@ -25,8 +25,10 @@ use fixtures::{RaftTestController, new_raft_node};
 /// - When the old leader comes back online, it will realize that it is no longer leader, new
 /// cluster nodes will reject its heartbeats, and the old leader will become a follower of the
 /// new leader.
+/// - The new leader generates and commits a new blank log entry to guard against stale writes for
+/// when a previous leader had uncommitted entries replicated on some nodes. See end of §8.
 ///
-/// Run with `RUST_LOG=actix_raft,clustering=debug cargo test` to see detailed logs.
+/// `RUST_LOG=actix_raft,clustering=debug cargo test basic_three_node_cluster_lifecycle`
 #[test]
 fn basic_three_node_cluster_lifecycle() {
     let _ = env_logger::try_init();

@@ -7,7 +7,7 @@
 use actix::prelude::*;
 use serde::{Serialize, Deserialize};
 
-use crate::AppError;
+use crate::{AppError, NodeId};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // AppendEntriesRequest //////////////////////////////////////////////////////////////////////////
@@ -256,8 +256,8 @@ pub struct InstallSnapshotResponse {
 /// needed.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientPayload<E: AppError> {
-    /// The entries associated with the client request.
-    pub entries: Vec<EntryNormal>,
+    /// The application specific contents of this client request.
+    pub entry: EntryNormal,
     /// The response mode needed by this request.
     pub response_mode: ResponseMode,
     marker: std::marker::PhantomData<E>,
@@ -265,46 +265,19 @@ pub struct ClientPayload<E: AppError> {
 
 impl<E: AppError> ClientPayload<E> {
     /// Create a new instance.
-    pub fn new(entries: Vec<EntryNormal>, response_mode: ResponseMode) -> Self {
-        Self{entries, response_mode, marker: std::marker::PhantomData}
+    pub fn new(entry: EntryNormal, response_mode: ResponseMode) -> Self {
+        Self{entry, response_mode, marker: std::marker::PhantomData}
     }
 
     /// Generate a new blank payload.
     ///
     /// This is primarily used by new leaders when first coming to power.
     pub(crate) fn new_blank_payload() -> Self {
-        Self::new(vec![EntryNormal{data: vec![]}], ResponseMode::Applied)
+        Self::new(EntryNormal{data: vec![]}, ResponseMode::Applied)
     }
 }
 
 impl<E: AppError> Message for ClientPayload<E> {
-    /// The result type of this message.
-    type Result = Result<ClientPayloadResponse, ClientError<E>>;
-}
-
-/// A forwarded client payload.
-///
-/// This type should be treated as a normal client payload, it is simply being forwarded
-/// to the leader of the Raft cluster.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClientPayloadForwarded<E: AppError> {
-    /// The ID of the Raft node this message is being forwarded to.
-    pub target: u64,
-    /// The node which this message is being forwarded from.
-    pub from: u64,
-    /// The original client payload being forwarded.
-    #[serde(bound="E: AppError")]
-    pub payload: ClientPayload<E>,
-}
-
-impl<E: AppError> ClientPayloadForwarded<E> {
-    /// Create a new instance.
-    pub fn new(target: u64, from: u64, payload: ClientPayload<E>) -> Self {
-        Self{target, from, payload}
-    }
-}
-
-impl<E: AppError> Message for ClientPayloadForwarded<E> {
     /// The result type of this message.
     type Result = Result<ClientPayloadResponse, ClientError<E>>;
 }
@@ -335,8 +308,8 @@ pub enum ResponseMode {
 /// A response to a client payload proposed to the Raft system.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientPayloadResponse {
-    /// The indices of each of the entries which was appended to the log per the client payload.
-    pub indices: Vec<u64>,
+    /// The log index of the successfully process client request.
+    pub index: u64,
 }
 
 /// Error variants which may arise while handling client requests.
@@ -348,4 +321,33 @@ pub enum ClientError<E: AppError> {
     /// An application specific error.
     #[serde(bound="E: AppError")]
     Application(E),
+    /// The Raft node returning this error is not the Raft leader.
+    ///
+    /// Forward the payload to the specified leader. If the leader is unknown, it is up to the
+    /// application to determine how to handle. The payload can be buffered in the app until the
+    /// new leader is known, or it can be returned to the client as an error and the client can be
+    /// instructed to send to a new random node until the leader is known.
+    ///
+    /// The process of electing a new leader is usually a very fast process in Raft, so buffering
+    /// the client payload until the new leader is known should not cause a lot of overhead.
+    #[serde(bound="E: AppError")]
+    ForwardToLeader {
+        /// The original payload which this error is associated with.
+        payload: ClientPayload<E>,
+        /// The ID of the current Raft leader, if known.
+        leader: Option<NodeId>,
+    },
 }
+
+impl<E: AppError> std::fmt::Display for ClientError<E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientError::Internal => write!(f, "An internal error was encountered in Raft."),
+            ClientError::Application(err) => write!(f, "{}", &err),
+            ClientError::ForwardToLeader{..} => write!(f, "The client payload must be forwarded to the Raft leader for processing."),
+        }
+    }
+}
+
+impl<E: AppError> std::error::Error for ClientError<E> {}
+

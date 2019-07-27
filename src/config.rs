@@ -5,7 +5,6 @@ use std::{
     time::Duration,
 };
 
-use failure::Fail;
 use log::{error};
 use rand::{thread_rng, Rng};
 
@@ -218,14 +217,21 @@ impl ConfigBuilder {
 }
 
 /// A configuration error.
-#[derive(Debug, Fail, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ConfigError {
     /// The specified value for `snapshot_dir` does not exist on disk or could not be accessed.
-    #[fail(display="The specified value for `snapshot_dir` does not exist on disk or could not be accessed.")]
     InvalidSnapshotDir,
     /// The given values for election timeout min & max are invalid. Max must be greater than min.
-    #[fail(display="The given values for election timeout min & max are invalid. Max must be greater than min.")]
     InvalidElectionTimeoutMinMax,
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::InvalidSnapshotDir => write!(f, "The specified value for `snapshot_dir` does not exist on disk or could not be accessed."),
+            ConfigError::InvalidElectionTimeoutMinMax => write!(f, "The given values for election timeout min & max are invalid. Max must be greater than min."),
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

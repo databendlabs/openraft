@@ -16,7 +16,7 @@ use crate::{
 //////////////////////////////////////////////////////////////////////////////
 // GetInitialState ///////////////////////////////////////////////////////////
 
-/// An actix message type for requesting Raft state information from the storage layer.
+/// A request from Raft to get Raft's state information from storage.
 ///
 /// When the Raft actor is first started, it will call this interface on the storage system to
 /// fetch the last known state from stable storage. If no such entry exists due to being the
@@ -57,7 +57,7 @@ pub struct InitialState {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // GetLogEntries /////////////////////////////////////////////////////////////////////////////////
 
-/// An actix message type for requesting a series of log entries from storage.
+/// A request from Raft to get a series of log entries from storage.
 ///
 /// The start value is inclusive in the search and the stop value is non-inclusive:
 /// `[start, stop)`.
@@ -79,84 +79,99 @@ impl<E: AppError> Message for GetLogEntries<E> {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// AppendLogEntries //////////////////////////////////////////////////////////////////////////////
+// AppendLogEntry ////////////////////////////////////////////////////////////////////////////////
 
-/// An actix message type for requesting a series of entries to be written to the log.
+/// A request from Raft to append a new entry to the log.
 ///
-/// Though the entries will always be presented in order, each entry's index should be used for
-/// determining its location to be written in the log, as logs may need to be overwritten under
-/// some circumstances.
+/// These requests come about via client requests, and as such, this is the only RaftStorage
+/// interface which is allowed to return errors which will not cause Raft to shutdown. Application
+/// errors coming from this interface will be sent back as-is to the call point where your
+/// application originally presented the client request to Raft.
 ///
-/// It is critical that `RaftStorage` implementations honor the value of `mode`. The
-/// `AppendLogEntries` interface is the only interface which is allowed to return errors without
-/// causing Raft to immediately shutdown to preserve data integrity. However, this is only allowed
-/// for mode `Leader`, but is never allowed for mode `Follower`.
-///
-/// It is also important to note that implementations must ensure that all entries in the payload
-/// are successfully applied, or if in mode `Leader`, and an error needs to be returned, that none
-/// of the entries are applied. This will only practically take place if the application using
-/// Raft supports batch client payloads, as that is the only case where a client request will
-/// be presented with multiple entries in a single `AppendLogEntries` call to `RaftStorage`.
-pub struct AppendLogEntries<E: AppError> {
-    pub mode: AppendLogEntriesMode,
-    pub entries: Arc<Vec<messages::Entry>>,
+/// This property of error handling allows you to keep your application logic as close to the
+/// storage layer as needed.
+pub struct AppendLogEntry<E: AppError> {
+    pub entry: Arc<messages::Entry>,
     marker: std::marker::PhantomData<E>,
 }
 
-impl<E: AppError> AppendLogEntries<E> {
+impl<E: AppError> AppendLogEntry<E> {
     // Create a new instance.
-    pub fn new(mode: AppendLogEntriesMode, entries: Arc<Vec<messages::Entry>>) -> Self {
-        Self{mode, entries, marker: std::marker::PhantomData}
+    pub fn new(entry: Arc<messages::Entry>) -> Self {
+        Self{entry, marker: std::marker::PhantomData}
     }
 }
 
-impl<E: AppError> Message for AppendLogEntries<E> {
+impl<E: AppError> Message for AppendLogEntry<E> {
     type Result = Result<(), E>;
 }
 
-/// A mode indicating if the associated storage command is from replication or a client write to the leader.
-///
-/// When in mode `Leader`, the associated `AppendLogEntries` is coming about due to a client
-/// command on the leader. If application specific business logic needs to be performed,
-/// potentially returning an error, it is permitted to do so in this mode. If errors are returned
-/// when in this mode, they will be propagated back to the caller as is.
-///
-/// When in mode `Follower`, the associated `AppendLogEntries` is coming about by way
-/// of replication commands from the cluster leader. This must never fail. If an error is returned
-/// when in this mode, the Raft node will shut down in order to preserve data inntegrity.
-#[derive(Debug)]
-pub enum AppendLogEntriesMode {
-    Leader,
-    Follower,
-}
-
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// ApplyEntriesToStateMachine ////////////////////////////////////////////////////////////////////
+// ReplicateLogEntries ///////////////////////////////////////////////////////////////////////////
 
-/// A request from the Raft node to apply the given log entries to the state machine.
+/// A request from Raft to replicate the payload of entries to the log.
 ///
-/// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
-/// have been replicated to a majority of the cluster, will be applied to the state machine.
-pub struct ApplyEntriesToStateMachine<E: AppError> {
+/// These requests come about via the Raft leader's replication process. An error coming from this
+/// interface will cause Raft to shutdown, as this is not where application logic should be
+/// returning application specific errors. Application specific constraints may only be enforced
+/// in the `AppendLogEntry` handler.
+///
+/// Though the entries will always be presented in order, each entry's index should be used to
+/// determine its location to be written in the log, as logs may need to be overwritten under
+/// some circumstances.
+pub struct ReplicateLogEntries<E: AppError> {
     pub entries: Arc<Vec<messages::Entry>>,
     marker: std::marker::PhantomData<E>,
 }
 
-impl<E: AppError> ApplyEntriesToStateMachine<E> {
+impl<E: AppError> ReplicateLogEntries<E> {
     // Create a new instance.
     pub fn new(entries: Arc<Vec<messages::Entry>>) -> Self {
         Self{entries, marker: std::marker::PhantomData}
     }
 }
 
-impl<E: AppError> Message for ApplyEntriesToStateMachine<E> {
+impl<E: AppError> Message for ReplicateLogEntries<E> {
+    type Result = Result<(), E>;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// ApplyToStateMachine ///////////////////////////////////////////////////////////////////////////
+
+/// A request from Raft to apply the given log entries to the state machine.
+///
+/// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
+/// have been replicated to a majority of the cluster, will be applied to the state machine.
+///
+/// NOTE WELL: once the futures ecosystem settles a bit and we can pass around references in
+/// futures and message types, this interface will solidify and payload will always just be a
+/// `&[Entry]` or the like. For now, the payload variants help to keep allocations lower.
+pub struct ApplyToStateMachine<E: AppError> {
+    pub payload: ApplyToStateMachinePayload,
+    marker: std::marker::PhantomData<E>,
+}
+
+impl<E: AppError> ApplyToStateMachine<E> {
+    // Create a new instance.
+    pub fn new(payload: ApplyToStateMachinePayload) -> Self {
+        Self{payload, marker: std::marker::PhantomData}
+    }
+}
+
+/// The type of payload which needs to be applied to the state machine.
+pub enum ApplyToStateMachinePayload {
+    Multi(Vec<messages::Entry>),
+    Single(Arc<messages::Entry>),
+}
+
+impl<E: AppError> Message for ApplyToStateMachine<E> {
     type Result = Result<(), E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // CreateSnapshot ////////////////////////////////////////////////////////////////////////////////
 
-/// A request from the Raft node to have a new snapshot created which covers the current breadth
+/// A request from Raft to have a new snapshot created which covers the current breadth
 /// of the log.
 ///
 /// The Raft node guarantees that this interface will never be called multiple overlapping times
@@ -201,7 +216,7 @@ impl<E: AppError> Message for CreateSnapshot<E> {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // InstallSnapshot ///////////////////////////////////////////////////////////////////////////////
 
-/// A request from the Raft node to have a new snapshot written to disk and installed.
+/// A request from Raft to have a new snapshot written to disk and installed.
 ///
 /// This message holds an `UnboundedReceiver` which will stream in new chunks of data as they are
 /// received from the Raft leader.
@@ -258,7 +273,7 @@ pub struct InstallSnapshotChunk {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // GetCurrentSnapshot ////////////////////////////////////////////////////////////////////////////
 
-/// A request from the Raft node to get metadata of the current snapshot.
+/// A request from Raft to get metadata of the current snapshot.
 ///
 /// ### implementation algorithm
 /// Implementation for this type's handler should be quite simple. Check the configured snapshot
@@ -297,7 +312,7 @@ pub struct CurrentSnapshotData {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // SaveHardState /////////////////////////////////////////////////////////////////////////////////
 
-/// A request from the Raft node to save its HardState.
+/// A request from Raft to save its HardState.
 pub struct SaveHardState<E: AppError>{
     pub hs: HardState,
     marker: std::marker::PhantomData<E>,
@@ -370,11 +385,14 @@ pub trait RaftStorage<E>
         Self: Handler<GetLogEntries<E>>,
         Self::Context: ToEnvelope<Self, GetLogEntries<E>>,
 
-        Self: Handler<AppendLogEntries<E>>,
-        Self::Context: ToEnvelope<Self, AppendLogEntries<E>>,
+        Self: Handler<AppendLogEntry<E>>,
+        Self::Context: ToEnvelope<Self, AppendLogEntry<E>>,
 
-        Self: Handler<ApplyEntriesToStateMachine<E>>,
-        Self::Context: ToEnvelope<Self, ApplyEntriesToStateMachine<E>>,
+        Self: Handler<ReplicateLogEntries<E>>,
+        Self::Context: ToEnvelope<Self, ReplicateLogEntries<E>>,
+
+        Self: Handler<ApplyToStateMachine<E>>,
+        Self::Context: ToEnvelope<Self, ApplyToStateMachine<E>>,
 
         Self: Handler<CreateSnapshot<E>>,
         Self::Context: ToEnvelope<Self, CreateSnapshot<E>>,

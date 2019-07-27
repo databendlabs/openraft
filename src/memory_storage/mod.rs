@@ -8,8 +8,10 @@ use crate::{
     AppError, NodeId,
     messages,
     storage::{
-        AppendLogEntries,
-        ApplyEntriesToStateMachine,
+        AppendLogEntry,
+        ReplicateLogEntries,
+        ApplyToStateMachine,
+        ApplyToStateMachinePayload,
         CreateSnapshot,
         CurrentSnapshotData,
         GetCurrentSnapshot,
@@ -26,6 +28,15 @@ use crate::{
 /// The concrete error type used by the `MemoryStorage` system.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MemoryStorageError;
+
+impl std::fmt::Display for MemoryStorageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO: give this something a bit more meaningful.
+        write!(f, "MemoryStorageError")
+    }
+}
+
+impl std::error::Error for MemoryStorageError {}
 
 impl AppError for MemoryStorageError {}
 
@@ -93,10 +104,19 @@ impl Handler<GetLogEntries<MemoryStorageError>> for MemoryStorage {
     }
 }
 
-impl Handler<AppendLogEntries<MemoryStorageError>> for MemoryStorage {
+impl Handler<AppendLogEntry<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, (), MemoryStorageError>;
 
-    fn handle(&mut self, msg: AppendLogEntries<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AppendLogEntry<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+        self.log.insert(msg.entry.index, (*msg.entry).clone());
+        Box::new(fut::ok(()))
+    }
+}
+
+impl Handler<ReplicateLogEntries<MemoryStorageError>> for MemoryStorage {
+    type Result = ResponseActFuture<Self, (), MemoryStorageError>;
+
+    fn handle(&mut self, msg: ReplicateLogEntries<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
         msg.entries.iter().for_each(|e| {
             self.log.insert(e.index, e.clone());
         });
@@ -104,17 +124,29 @@ impl Handler<AppendLogEntries<MemoryStorageError>> for MemoryStorage {
     }
 }
 
-impl Handler<ApplyEntriesToStateMachine<MemoryStorageError>> for MemoryStorage {
+impl Handler<ApplyToStateMachine<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, (), MemoryStorageError>;
 
-    fn handle(&mut self, msg: ApplyEntriesToStateMachine<MemoryStorageError>, _ctx: &mut Self::Context) -> Self::Result {
-        let res = msg.entries.iter().try_for_each(|e| {
-            if let Some(old) = self.state_machine.insert(e.index, e.clone()) {
-                error!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
-                return Err(MemoryStorageError)
+    fn handle(&mut self, msg: ApplyToStateMachine<MemoryStorageError>, _ctx: &mut Self::Context) -> Self::Result {
+        let res = match msg.payload {
+            ApplyToStateMachinePayload::Multi(entries) => {
+                entries.iter().try_for_each(|e| {
+                    if let Some(old) = self.state_machine.insert(e.index, e.clone()) {
+                        error!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
+                        return Err(MemoryStorageError)
+                    }
+                    Ok(())
+                })
             }
-            Ok(())
-        });
+            ApplyToStateMachinePayload::Single(entry) => {
+                if let Some(old) = self.state_machine.insert(entry.index, (*entry).clone()) {
+                    error!("Critical error. State machine entires are not allowed to be overwritten. Entry: {:?}", old);
+                    Err(MemoryStorageError)
+                } else {
+                    Ok(())
+                }
+            }
+        };
         Box::new(fut::result(res))
     }
 }

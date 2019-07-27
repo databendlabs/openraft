@@ -1,12 +1,9 @@
 todo
 ====
-- when a leader comes to power, it should generate a new blank entry and immediately replicate it. This ensures that there is no stale data due to a recent leader election where there was uncommitted data.
-- need to update ClientPayload to take only a single entry.
-- storage engine will need to be updated to have a different handler for appending client requests and replicating from the leader. This provides a more clean semantic difference for when errors can and can not be returned. Only the handler for client requests will be allowed to return errors. This will also reduce the number of allocations needed, and removes ambiguity as to the correct pattern for performing batch writes and the like.
-
 ### algorithm optimizations
-- [ ] maybe: update the append entries algorithm for followers so that recent entries are buffered up to a specific threshold so that the `apply_logs_to_statemachine` won't need to fetch from storage first.
+- [ ] Cache AppendEntries RPC entries on follower state so that pipeline for applying entries to SM can be more performant.
 - [ ] may need to have `save_hard_state` finish before responding to RPCs in all conditions. Might be good to experiment with async/await here to help aid in the added complexity this would bring.
+- [ ] maybe: update the append entries algorithm for followers so that recent entries are buffered up to a specific threshold so that the `apply_logs_to_statemachine` won't need to fetch from storage first.
 
 ### testing
 - [ ] finish implement MemoryStroage for testing (and general demo usage).

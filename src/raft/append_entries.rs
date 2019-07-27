@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use actix::prelude::*;
-use log::{debug, warn};
+use log::{warn};
 
 use crate::{
     AppError,
@@ -9,7 +9,7 @@ use crate::{
     network::RaftNetwork,
     messages::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryType},
     raft::{RaftState, Raft},
-    storage::{AppendLogEntries, AppendLogEntriesMode, GetLogEntries, RaftStorage},
+    storage::{GetLogEntries, RaftStorage, ReplicateLogEntries},
 };
 
 impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesRequest> for Raft<E, N, S> {
@@ -82,7 +82,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     ) -> impl ActorFuture<Actor=Self, Item=AppendEntriesResponse, Error=()> {
         // Don't interact with non-cluster members.
         if !self.members.contains(&msg.leader_id) {
-            debug!("Node {}: Rejecting AppendEntries RPC from non-cluster member '{}'.", &self.id, &msg.leader_id);
+            warn!("Node {} is rejecting AppendEntries RPC from non-cluster member '{}'.", &self.id, &msg.leader_id);
             return fut::Either::A(
                 fut::Either::A(fut::err(()))
             );
@@ -90,7 +90,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         // If message's term is less than most recent term, then we do not honor the request.
         if &msg.term < &self.current_term {
-            debug!("Node {}: Rejecting AppendEntries RPC due to old term in message '{}'. Current term is '{}'.", &self.id, &msg.term, &self.current_term);
             return fut::Either::A(
                 fut::Either::A(fut::ok(AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None}))
             );
@@ -99,9 +98,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         // Update election timeout & ensure we are in the follower state. Update current term if needed.
         self.update_election_timeout(ctx);
         if &msg.term > &self.current_term || self.current_leader.as_ref() != Some(&msg.leader_id) {
-            debug!("Node {}: New term '{}' observed with leader '{}'. Ensuring follower state.", &self.id, &msg.term, &msg.leader_id);
-            self.become_follower(ctx);
             self.current_term = msg.term;
+            self.become_follower(ctx);
             self.update_current_leader(ctx, UpdateCurrentLeader::OtherNode(msg.leader_id));
             self.save_hard_state(ctx);
         }
@@ -124,7 +122,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
         // previous log info, then replication is g2g.
         if has_prev_log_match {
-            debug!("Node {}: Accepting AppendEntries RPC with matching prev_log_index '{}' and prev_log_term '{}'.", &self.id, &msg_prev_index, &msg_prev_term);
             return fut::Either::A(fut::Either::B(
                 self.append_log_entries(ctx, Arc::new(msg.entries))
                     .map(move |_, _, _| {
@@ -137,13 +134,12 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         fut::Either::B(self.log_consistency_check(ctx, msg_prev_index, msg_prev_term)
             .and_then(move |res, act, ctx| match res {
                 Some(conflict_opt) => {
-                    debug!("Node {}: Rejecting AppendEntries RPC with conflict_opt '{:?}'; prev_log_index '{}' and prev_log_term '{}'.", &act.id, &conflict_opt, &msg_prev_index, &msg_prev_term);
+                    warn!("Node {}: Rejecting AppendEntries RPC with conflict_opt '{:?}'; prev_log_index '{}' and prev_log_term '{}'.", &act.id, &conflict_opt, &msg_prev_index, &msg_prev_term);
                     fut::Either::A(fut::ok(
                         AppendEntriesResponse{term, success: false, conflict_opt: Some(conflict_opt)}
                     ))
                 }
                 None => {
-                    debug!("Node {}: Accepting AppendEntries RPC after log consistency check: prev_log_index '{}' and prev_log_term '{}'.", &act.id, &msg_prev_index, &msg_prev_term);
                     fut::Either::B(act.append_log_entries(ctx, Arc::new(msg.entries))
                         .map(move |_, _, _| {
                             AppendEntriesResponse{term, success: true, conflict_opt: None}
@@ -187,8 +183,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         }
 
         self.is_appending_logs = true;
-        debug!("Node {} is sending logs to storage engine for replication.", &self.id);
-        fut::Either::B(fut::wrap_future(self.storage.send(AppendLogEntries::new(AppendLogEntriesMode::Follower, entries.clone())))
+        fut::Either::B(fut::wrap_future(self.storage.send(ReplicateLogEntries::new(entries.clone())))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
             .map(move |_, act, _| {
@@ -217,7 +212,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     fn log_consistency_check(
         &mut self, _: &mut Context<Self>, index: u64, term: u64,
     ) -> impl ActorFuture<Actor=Self, Item=Option<ConflictOpt>, Error=()> {
-        debug!("Node {} log consistency check: starting for index {} term {}.", &self.id, &index, &term);
         let storage = self.storage.clone();
         fut::wrap_future(self.storage.send(GetLogEntries::new(index, index)))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
@@ -227,7 +221,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                     // The target entry was not found. This can only mean that we don't have the
                     // specified index yet. Use the last known index & term.
                     None => {
-                        debug!("Node {} log consistency check: could not find specified index. Returning opt with last log info.", &act.id);
                         fut::Either::A(fut::ok(Some(ConflictOpt{term: act.last_log_term, index: act.last_log_index})))
                     }
                     // The target entry was found. Compare its term with target term to ensure
@@ -236,7 +229,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                         let (target_entry_index, target_entry_term) = (target_entry.index, target_entry.term);
                         if &target_entry_index == &index && &target_entry_term == &term {
                             // Everything checks out. We're g2g.
-                            debug!("Node {} log consistency check: no conflict. Index & term found.", &act.id);
                             fut::Either::A(fut::ok(None))
                         } else {
                             // Logs are inconsistent. Fetch the last 50 logs, and use the last
@@ -247,17 +239,14 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                                 .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
                                 .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
                                 .and_then(move |res, act, _| {
-                                    debug!("Node {} log consistency check: found entries {:?}", &act.id, &res);
                                     match res.iter().find(|entry| entry.term == term) {
                                         Some(entry) => {
-                                            debug!("Node {} log consistency check: earlier entry found in same term.", &act.id);
                                             fut::ok(Some(ConflictOpt{
                                                 term: entry.term,
                                                 index: entry.index,
                                             }))
                                         }
                                         None => {
-                                            debug!("Node {} log consistency check: no entry found in same term.", &act.id);
                                             fut::ok(Some(ConflictOpt{
                                                 term: act.last_log_term,
                                                 index: act.last_log_index,

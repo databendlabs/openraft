@@ -1,5 +1,5 @@
 use actix::prelude::*;
-use log::{debug, warn};
+use log::{warn};
 
 use crate::{
     AppError, NodeId,
@@ -38,7 +38,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         if !self.members.contains(&msg.candidate_id) {
             return Err(());
         }
-        debug!("Handling vote request on node {} from node {} for term {}.", &self.id, &msg.candidate_id, &msg.term);
 
         // If candidate's current term is less than this nodes current term, reject.
         if &msg.term < &self.current_term {
@@ -93,13 +92,12 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                     // If this node is not currently in candidate state, then this request is done.
                     _ => return fut::ok(()),
                 };
-                debug!("Node {} received request vote response. {:?}", &act.id, &res);
 
                 // If peer's term is greater than current term, revert to follower state.
                 if res.term > act.current_term {
-                    act.become_follower(ctx);
                     act.current_term = res.term;
                     act.update_current_leader(ctx, UpdateCurrentLeader::Unknown);
+                    act.become_follower(ctx);
                     act.save_hard_state(ctx);
                     return fut::ok(());
                 }

@@ -7,13 +7,13 @@ use crate::{
     Raft, NodeId,
     messages::{
         AppendEntriesRequest, AppendEntriesResponse,
-        ClientPayload, ClientPayloadForwarded, ClientPayloadResponse, ClientError,
+        ClientPayload, ClientPayloadResponse, ClientError,
         InstallSnapshotRequest, InstallSnapshotResponse,
         VoteRequest, VoteResponse,
     },
     network::RaftNetwork,
     memory_storage::{MemoryStorage, MemoryStorageError},
-    metrics::{RaftMetrics},
+    metrics::{RaftMetrics, State},
 };
 use log::{debug};
 
@@ -106,20 +106,6 @@ impl Handler<InstallSnapshotRequest> for RaftRouter {
     }
 }
 
-impl Handler<ClientPayloadForwarded<MemoryStorageError>> for RaftRouter {
-    type Result = ResponseActFuture<Self, ClientPayloadResponse, ClientError<MemoryStorageError>>;
-
-    fn handle(&mut self, msg: ClientPayloadForwarded<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
-        let addr = self.routing_table.get(&msg.target).unwrap();
-        if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.from) {
-            return Box::new(fut::err(ClientError::Internal));
-        }
-        Box::new(fut::wrap_future(addr.send(msg.payload))
-            .map_err(|_, _, _| panic!(ERR_ROUTING_FAILURE))
-            .and_then(|res, _, _| fut::result(res)))
-    }
-}
-
 //////////////////////////////////////////////////////////////////////////////
 // RaftMetrics ///////////////////////////////////////////////////////////////
 
@@ -134,6 +120,32 @@ impl Handler<RaftMetrics> for RaftRouter {
 
 //////////////////////////////////////////////////////////////////////////////
 // Test Commands /////////////////////////////////////////////////////////////
+
+/// Get the current leader of the cluster from the perspective of the Raft metrics.
+///
+/// A return value of Ok(None) indicates that the current leader is unknown or the cluster hasn't
+/// come to consensus on the leader yet.
+pub struct GetCurrentLeader;
+
+impl Message for GetCurrentLeader {
+    type Result = Result<Option<NodeId>, ()>;
+}
+
+impl Handler<GetCurrentLeader> for RaftRouter {
+    type Result = Result<Option<NodeId>, ()>;
+
+    fn handle(&mut self, _: GetCurrentLeader, _: &mut Self::Context) -> Self::Result {
+        if let Some(val) = self.metrics.values().find(|e| &e.state == &State::Leader) {
+            if self.metrics.values().all(|e| e.current_leader == Some(val.id) && e.current_term == val.current_term) {
+                Ok(Some(val.id))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
 
 #[derive(Message)]
 pub struct Register {
@@ -280,19 +292,6 @@ impl Handler<InstallSnapshotRequest> for RaftRecorder {
     fn handle(&mut self, msg: InstallSnapshotRequest, _: &mut Self::Context) -> Self::Result {
         self.install_snapshot_requests.push(msg);
         let res = self.install_snapshot_responses.pop().ok_or_else(|| ());
-        Box::new(fut::result(res))
-    }
-}
-
-impl Handler<ClientPayloadForwarded<MemoryStorageError>> for RaftRecorder {
-    type Result = ResponseActFuture<Self, ClientPayloadResponse, ClientError<MemoryStorageError>>;
-
-    fn handle(&mut self, msg: ClientPayloadForwarded<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
-        self.client_requests.push(msg.payload);
-        let res = self.client_responses
-            .pop()
-            .ok_or_else(|| ClientError::Internal)
-            .and_then(|res| res); // Flatten inner result.
         Box::new(fut::result(res))
     }
 }

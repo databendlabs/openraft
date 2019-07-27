@@ -9,7 +9,7 @@ pub mod messages;
 pub mod metrics;
 pub mod network;
 
-use std::fmt::Debug;
+use std::{error::Error, fmt::Debug};
 use serde::{Serialize, de::DeserializeOwned};
 
 pub use crate::raft::Raft;
@@ -41,4 +41,4 @@ pub type NodeId = u64;
 /// application is responsible for serializing and deserializing thier `AppError` type.** This
 /// will need to be handled in the `RaftNetwork` implementation. The serde traits are here to
 /// help with that.
-pub trait AppError: Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}
+pub trait AppError: Error + Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}

@@ -46,7 +46,7 @@ struct LineRateState {
     ///
     /// The buffered payload here will be expanded as more replication commands come in from the
     /// Raft node while there is a buffered instance here.
-    buffered_outbound: Vec<Arc<Vec<Entry>>>,
+    buffered_outbound: Vec<Arc<Entry>>,
 }
 
 /// Lagging specific state.
@@ -58,7 +58,7 @@ struct LaggingState {
     ///
     /// This is identical to `LineRateState`'s buffer, and will be trasferred over to its buffer
     /// during state transition.
-    buffered_outbound: Vec<Arc<Vec<Entry>>>,
+    buffered_outbound: Vec<Arc<Entry>>,
 }
 
 /// Snapshotting specific state.
@@ -231,12 +231,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
 
         // If there is a buffered payload, send it, else nothing to do.
         if state.buffered_outbound.len() > 0 {
-            let entries = state.buffered_outbound.drain(..).fold(vec![], |mut acc, elem| {
-                for entry in elem.iter() {
-                    acc.push(entry.clone());
-                }
-                acc
-            });
+            let entries: Vec<_> = state.buffered_outbound.drain(..).map(|elem| (*elem).clone()).collect();
             let last_index_and_term = entries.last().map(|e| (e.index, e.term));
             let payload = AppendEntriesRequest{
                 target: self.target, term: self.term, leader_id: self.id,
@@ -637,16 +632,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Actor for ReplicationStr
 /// A replication stream message indicating a new payload of entries to be replicated.
 #[derive(Clone)]
 pub(crate) struct RSReplicate {
-    /// The payload of entries to be replicated.
+    /// The new entry which needs to be replicated.
     ///
-    /// The payload will only be empty if the Raft node detects that this replication stream is
-    /// not running at line rate, as buffering too many entries could cause memory issues.
-    pub entries: Arc<Vec<Entry>>,
-    /// The index of the log entry to most recently be appended to the log by the leader.
-    ///
-    /// This will always be the index of the last element in the entries payload if values are
-    /// given in the payload.
-    pub line_index: u64,
+    /// This entry will always be the most recent entry to have been appended to the log, so its
+    /// index is the new line index value.
+    pub entry: Arc<Entry>,
     /// The index of the highest log entry which is known to be committed in the cluster.
     pub line_commit: u64,
 }
@@ -666,13 +656,13 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for
     fn handle(&mut self, msg: RSReplicate, ctx: &mut Self::Context) -> Self::Result {
         // Always update line commit & index info first so that this value can be used in all AppendEntries RPCs.
         self.line_commit = msg.line_commit;
-        self.line_index = msg.line_index;
+        self.line_index = msg.entry.index;
 
         // Get a mutable reference to an inner buffer if permitted by current state, else return.
         match &mut self.state {
             // NOTE: exceeding line rate buffer size is accounted for in the `handle_append_entries_response` handler.
-            RSState::LineRate(inner) => inner.buffered_outbound.push(msg.entries),
-            RSState::Lagging(inner) => inner.buffered_outbound.push(msg.entries),
+            RSState::LineRate(inner) => inner.buffered_outbound.push(msg.entry),
+            RSState::Lagging(inner) => inner.buffered_outbound.push(msg.entry),
             _ => return Ok(()),
         };
 
