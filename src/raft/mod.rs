@@ -28,7 +28,7 @@ use crate::{
     metrics::{RaftMetrics, State},
     network::RaftNetwork,
     replication::{ReplicationStream, RSTerminate},
-    storage::{GetInitialState, HardState, InitialState, RaftStorage, SaveHardState},
+    storage::{GetInitialState, HardState, InitialState, InstallSnapshotChunk, RaftStorage, SaveHardState},
 };
 
 const FATAL_ACTIX_MAILBOX_ERR: &str = "Fatal actix MailboxError while communicating with Raft dependency. Raft is shutting down.";
@@ -55,7 +55,7 @@ enum RaftState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     ///
     /// The node is passive when it is in this state. It issues no requests on its own but simply
     /// responds to requests from leaders and candidates.
-    Follower,
+    Follower(FollowerState),
     /// The node has detected an election timeout so is requesting votes to become leader.
     ///
     /// This state wraps struct which tracks outstanding requests to peers for requesting votes
@@ -116,6 +116,25 @@ impl CandidateState {
         }
         handles
     }
+}
+
+/// Volatile state specific to a Raft node in follower state.
+struct FollowerState {
+    pub snapshot_state: SnapshotState,
+}
+
+impl Default for FollowerState {
+    fn default() -> Self {
+        Self{snapshot_state: SnapshotState::Idle}
+    }
+}
+
+/// The current snapshot state of the Raft node.
+enum SnapshotState {
+    /// No snapshot operations are taking place.
+    Idle,
+    /// The Raft node is streaming in a snapshot from the leader.
+    Streaming(mpsc::UnboundedSender<InstallSnapshotChunk>),
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -269,7 +288,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// Transition to the Raft follower state.
     fn become_follower(&mut self, ctx: &mut Context<Self>) {
         // No-op if we were already in follower state.
-        if let &RaftState::Follower = &self.state {
+        if let &RaftState::Follower(_) = &self.state {
             return;
         }
 
@@ -282,7 +301,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         }
 
         // Perform the transition.
-        self.state = RaftState::Follower;
+        self.state = RaftState::Follower(FollowerState::default());
         self.report_metrics(ctx);
     }
 
@@ -463,7 +482,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         // Set initial state based on state recovered from disk.
         let is_only_configured_member = self.members.len() == 1 && self.members.contains(&self.id);
         if !is_only_configured_member || &self.last_log_index != &u64::min_value() {
-            self.state = RaftState::Follower;
+            self.state = RaftState::Follower(FollowerState::default());
             self.update_election_timeout(ctx);
         } else {
             self.state = RaftState::Standby;
@@ -501,7 +520,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     fn report_metrics(&mut self, _: &mut Context<Self>) {
         let state = match &self.state {
             RaftState::Standby => State::Standby,
-            RaftState::Follower => State::Follower,
+            RaftState::Follower(_) => State::Follower,
             RaftState::Candidate(_) => State::Candidate,
             RaftState::Leader(_) => State::Leader,
             _ => return,

@@ -12,8 +12,9 @@ log = "0.4"
 prost = "0.5"
 prost-derive = "0.5"
 rand = "0.6"
-tokio = "0.1"
+rmp-serde = "0.13"
 serde = { version="1", features=["derive"] }
+tokio = "0.1"
 
 [build-dependencies]
 prost-build = "0.5"

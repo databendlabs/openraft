@@ -93,6 +93,13 @@ pub struct Entry {
     pub entry_type: EntryType,
 }
 
+impl Entry {
+    /// Create a new snapshot pointer from the given data.
+    pub fn new_snapshot_pointer(pointer: EntrySnapshotPointer, index: u64, term: u64) -> Self {
+        Entry{term, index, entry_type: EntryType::SnapshotPointer(pointer)}
+    }
+}
+
 /// Log entry type variants.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EntryType {
@@ -199,7 +206,7 @@ pub struct VoteResponse {
 /// `Result<InstallSnapshotResponse, ()>`. The Raft spec assigns no significance to failures during
 /// the handling or sending of RPCs and all RPCs are handled in an idempotent fashion, so Raft will
 /// almost always retry sending a failed RPC, depending on the state of the Raft.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InstallSnapshotRequest {
     /// A non-standard field, this is the ID of the intended recipient of this RPC.
     pub target: u64,
@@ -223,7 +230,7 @@ impl Message for InstallSnapshotRequest {
     /// The result type of this message.
     ///
     /// The `Result::Err` type is `()` as Raft assigns no significance to RPC failures, they will
-    /// be retried almost always as long as permitted by the current state of the Raft.
+    /// almost always be retried as long as permitted by the current state of the Raft.
     type Result = Result<InstallSnapshotResponse, ()>;
 }
 

@@ -548,15 +548,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 let snap_stream = SnapshotStream::new(act.target, file, act.config.snapshot_max_chunk_size as usize, act.term, act.id, snap_index, snap_term);
                 fut::wrap_stream(snap_stream)
                     .map_err(|err, act: &mut Self, _| error!("Error while streaming snapshot to target {}: {}", &act.target, err))
-
                     // Send snapshot RPC frame over to target.
-                    .and_then(|rpc, act: &mut Self, _| {
-                        fut::wrap_future(act.network.send(rpc))
-                            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftNetwork))
-                            // Flatten inner result.
-                            .and_then(|res, _, _| fut::result(res))
-                            // Handle response from target.
-                            .and_then(|res, act, ctx| act.handle_install_snapshot_response(ctx, res))
+                    .and_then(|rpc, _, ctx| {
+                        // Ensure it is delivered to the target before proceeding to the next chunk.
+                        fut::wrap_future(ctx.address().send(SendInstallSnapshotRpc(rpc)))
+                            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
                     })
                     .finish()
             })
@@ -785,6 +781,38 @@ pub(crate) struct RSUpdateMatchIndex {
     pub target: NodeId,
     /// The index of the most recent log known to have been successfully replicated on the target.
     pub match_index: u64,
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// SendInstallSnapshotRpc /////////////////////////////////////////////////////////////////////////////
+
+/// A message type for ensuring that an InstallSnapshotRequest is properly delivered before the next chunk.
+struct SendInstallSnapshotRpc(InstallSnapshotRequest);
+
+impl Message for SendInstallSnapshotRpc {
+    type Result = Result<(), ()>;
+}
+
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<SendInstallSnapshotRpc> for ReplicationStream<E, N, S> {
+    type Result = ResponseActFuture<Self, (), ()>;
+
+    fn handle(&mut self, msg: SendInstallSnapshotRpc, _: &mut Self::Context) -> Self::Result {
+        let task = fut::wrap_future(self.network.send(msg.0.clone()))
+            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftNetwork))
+            // Flatten inner result.
+            .and_then(|res, _, _| fut::result(res))
+            // Handle response from target.
+            .and_then(|res, act, ctx| {
+                act.handle_install_snapshot_response(ctx, res)
+                    .then(move |res, _, ctx| match res {
+                        Err(_) => fut::Either::A(fut::wrap_future(ctx.address().send(msg))
+                            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
+                            .and_then(|res, _, _| fut::result(res))),
+                        Ok(_) => fut::Either::B(fut::ok(()))
+                    })
+            });
+        Box::new(task)
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

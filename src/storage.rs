@@ -224,8 +224,7 @@ impl<E: AppError> Message for CreateSnapshot<E> {
 /// ### implementation algorithm
 /// - Upon receiving the request, a new snapshot file should be created on disk.
 /// - Every new chunk of data received should be written to the new snapshot file starting at the
-/// `offset` specified in the chunk. The Raft actor will ensure that redelivered chunks are not
-/// sent through multiple times.
+/// `offset` specified in the chunk.
 /// - If the receiver is dropped, the snapshot which was being created should be removed from
 /// disk.
 ///
@@ -236,9 +235,10 @@ impl<E: AppError> Message for CreateSnapshot<E> {
 /// constructor. Insert the new entry into the log at the specified `index` of this payload.
 /// - If there are any logs older than `index`, remove them.
 /// - If there are any other snapshots in the connfigured snapshot dir, remove them.
-/// - If there are any logs newer than `index`, then return.
-/// - If there are no logs newer than `index`, then the state machine should be reset, and
-/// recreated from the new snapshot. Return once the state machine has been brought up-to-date.
+/// - If existing log entry has same index and term as snapshot's last included entry, retain log
+/// entries following it, then return.
+/// - Else, discard the entire log leaving only the new snapshot pointer. The state machine must
+/// be rebuilt from the new snapshot. Return once the state machine has been brought up-to-date.
 pub struct InstallSnapshot<E: AppError> {
     /// The term which the final entry of this snapshot covers.
     pub term: u64,
