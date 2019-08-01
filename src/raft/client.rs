@@ -4,9 +4,9 @@ use futures::sync::oneshot;
 
 use crate::{
     AppError,
-    common::{CLIENT_RPC_CHAN_ERR, ClientPayloadWithChan, DependencyAddr},
+    common::{CLIENT_RPC_RX_ERR, CLIENT_RPC_TX_ERR, ApplyLogsTask, ClientPayloadWithChan, DependencyAddr},
     network::RaftNetwork,
-    messages::{ClientError, ClientPayload, ClientPayloadResponse},
+    messages::{ClientError, ClientPayload, ClientPayloadResponse, ResponseMode},
     raft::{RaftState, Raft},
     replication::RSReplicate,
     storage::{AppendLogEntry, RaftStorage},
@@ -36,7 +36,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<ClientPayload<E>
         // Build a response from the message's channel.
         Box::new(fut::wrap_future(response_chan)
             .map_err(|_, _: &mut Self, _| {
-                error!("{}", CLIENT_RPC_CHAN_ERR);
+                error!("{}", CLIENT_RPC_RX_ERR);
                 ClientError::Internal
             })
             .and_then(|res, _, _| fut::result(res)))
@@ -57,7 +57,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             // If node is in any other state, then forward the message to the leader.
             _ => {
                 let _ = msg.tx.send(Err(ClientError::ForwardToLeader{payload: msg.rpc, leader: self.current_leader}))
-                    .map_err(|_| error!("{}", CLIENT_RPC_CHAN_ERR));
+                    .map_err(|_| error!("{} Error while forwarding to leader at the start of process_client_rpc.", CLIENT_RPC_TX_ERR));
                 return fut::Either::A(fut::ok(()));
             }
         };
@@ -85,7 +85,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                     }
                     Err(err) => {
                         error!("Node {} received an error from the storage engine.", &act.id);
-                        let _ = payload.tx.send(Err(err)).map_err(|err| error!("{} {:?}", CLIENT_RPC_CHAN_ERR, err));
+                        let _ = payload.tx.send(Err(err)).map_err(|err| error!("{} {:?}", CLIENT_RPC_RX_ERR, err));
                         fut::err(())
                     }
                 }
@@ -93,21 +93,36 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
             // Send logs over for replication.
             .and_then(move |payload, act, _| {
+                let peer_count = act.members.iter().filter(|e| *e == &act.id).count();
                 match &mut act.state {
                     RaftState::Leader(state) => {
-                        // Setup the request to await for being committed to the cluster.
-                        let entry = payload.entry();
-                        state.awaiting_committed.push(payload);
-
-                        // Send payload over to each replication stream as needed.
-                        for rs in state.nodes.values() {
-                            let _ = rs.addr.do_send(RSReplicate{entry: entry.clone(), line_commit: act.commit_index});
+                        // If there are peers to replicate to, then setup the request to await
+                        // being comitted to the cluster & send payload over to each replication
+                        // stream as needed.
+                        if peer_count > 0 {
+                            let entry = payload.entry();
+                            state.awaiting_committed.push(payload);
+                            for rs in state.nodes.values() {
+                                let _ = rs.addr.do_send(RSReplicate{entry: entry.clone(), line_commit: act.commit_index});
+                            }
+                        } else {
+                            // Else, the payload is committed. Send it over for application to state machine.
+                            act.commit_index = payload.index;
+                            if let &ResponseMode::Committed = &payload.response_mode {
+                                // If this RPC is configured to wait only for log committed, then respond to client now.
+                                let entry = payload.entry();
+                                let _ = payload.tx.send(Ok(ClientPayloadResponse{index: payload.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_RX_ERR, err));
+                                let _ = act.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry, chan: None});
+                            } else {
+                                // Else, send it through the pipeline and it will be responded to afterwords.
+                                let _ = act.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry: payload.entry(), chan: Some(payload.tx)});
+                            }
                         }
                     },
                     _ => {
                         let msg = payload.downgrade();
                         let _ = msg.tx.send(Err(ClientError::ForwardToLeader{payload: msg.rpc, leader: act.current_leader}))
-                            .map_err(|_| error!("{}", CLIENT_RPC_CHAN_ERR));
+                            .map_err(|_| error!("{} Error while forwarding to leader at the end of process_client_rpc.", CLIENT_RPC_RX_ERR));
                     }
                 }
                 fut::ok(())

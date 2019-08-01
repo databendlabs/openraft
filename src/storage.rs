@@ -6,7 +6,7 @@ use actix::{
     dev::ToEnvelope,
     prelude::*,
 };
-use futures::sync::mpsc::UnboundedReceiver;
+use futures::sync::{mpsc::UnboundedReceiver, oneshot::Sender};
 
 use crate::{
     NodeId, AppError,
@@ -268,6 +268,8 @@ pub struct InstallSnapshotChunk {
     pub data: Vec<u8>,
     /// Will be `true` if this is the last chunk in the snapshot.
     pub done: bool,
+    /// A callback channel to indicate when the chunk has been successfully written.
+    pub cb: Sender<()>,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use actix::prelude::*;
-use log::{warn};
 
 use crate::{
     AppError,
@@ -17,6 +16,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesReq
 
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
     ///
+    /// This method implements the append entries algorithm and upholds all of the safety checks
+    /// detailed in §5.3.
+    ///
     /// Implementation overview from spec:
     ///
     /// 1. Reply `false` if `term` is less than node's current `term` (§5.1).
@@ -27,23 +29,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesReq
     /// 4. Append any new entries not already in the log.
     /// 5. If `leader_commit` is greater than node's commit index, set nodes commit index to
     ///    `min(leader_commit, index of last new entry)`.
-    fn handle(&mut self, msg: AppendEntriesRequest, ctx: &mut Self::Context) -> Self::Result {
-        // Only handle requests if actor has finished initialization.
-        if let &RaftState::Initializing = &self.state {
-            warn!("Received Raft RPC before initialization was complete.");
-            return Box::new(fut::err(()));
-        }
-
-        // Begin processing the request.
-        Box::new(self._handle_append_entries_request(ctx, msg))
-    }
-}
-
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
-    /// Handle requests from Raft leader to append log entries.
-    ///
-    /// This method implements the append entries algorithm and upholds all of the safety checks
-    /// detailed in §5.3.
     ///
     /// The essential goal of this algorithm is that the receiver (the node on which this method
     /// is being executed) must find the exact entry in its log specified by the RPC's last index
@@ -73,35 +58,39 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// may die, a new leader may be elected which does not have the same entries, as they were
     /// not replicated to a majority of followers, and the new leader will proceeed to overwrite
     /// the inconsistent entries.
-    ///
-    /// TODO: this entire algorithm should be pipelined to be based off of an unbounded receiver
-    /// stream consuming pipeline which will only exist when RaftState::Follower. Stream will be
-    /// terminated when leaving follower state.
-    fn _handle_append_entries_request(
-        &mut self, ctx: &mut Context<Self>, msg: AppendEntriesRequest,
-    ) -> impl ActorFuture<Actor=Self, Item=AppendEntriesResponse, Error=()> {
+    fn handle(&mut self, msg: AppendEntriesRequest, ctx: &mut Self::Context) -> Self::Result {
+        // Only handle requests if actor has finished initialization.
+        if let &RaftState::Initializing = &self.state {
+            return Box::new(fut::err(()));
+        }
+
         // Don't interact with non-cluster members.
         if !self.members.contains(&msg.leader_id) {
-            warn!("Node {} is rejecting AppendEntries RPC from non-cluster member '{}'.", &self.id, &msg.leader_id);
-            return fut::Either::A(
-                fut::Either::A(fut::err(()))
-            );
+            return Box::new(fut::err(()));
         }
 
         // If message's term is less than most recent term, then we do not honor the request.
         if &msg.term < &self.current_term {
-            return fut::Either::A(
-                fut::Either::A(fut::ok(AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None}))
-            );
+            return Box::new(fut::ok(AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None}));
         }
 
-        // Update election timeout & ensure we are in the follower state. Update current term if needed.
+        // Update election timeout.
         self.update_election_timeout(ctx);
-        if &msg.term > &self.current_term || self.current_leader.as_ref() != Some(&msg.leader_id) {
-            self.current_term = msg.term;
-            self.become_follower(ctx);
-            self.update_current_leader(ctx, UpdateCurrentLeader::OtherNode(msg.leader_id));
+
+        // Update current term if needed.
+        if self.current_term != msg.term {
+            self.update_current_term(msg.term, None);
             self.save_hard_state(ctx);
+        }
+
+        // Update current leader if needed.
+        if self.current_leader != Some(msg.leader_id) {
+            self.update_current_leader(ctx, UpdateCurrentLeader::OtherNode(msg.leader_id));
+        }
+
+        // If not follower, become follower.
+        if !self.state.is_follower() {
+            self.become_follower(ctx);
         }
 
         // Kick off process of applying logs to state machine based on `msg.leader_commit`.
@@ -110,31 +99,27 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             let _ = self.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Outstanding);
         }
 
-        // If previous log info matchs & the AppendEntries RPC has no entries, then this is just a heartbeat.
-        let (term, msg_prev_index, msg_prev_term) = (self.current_term, msg.prev_log_index, msg.prev_log_term);
-        let has_prev_log_match = &msg.prev_log_index == &u64::min_value() || (&msg_prev_index == &self.last_log_index && &msg_prev_term == &self.last_log_term);
-        if has_prev_log_match && msg.entries.len() == 0 {
-            return fut::Either::A(
-                fut::Either::A(fut::ok(AppendEntriesResponse{term, success: true, conflict_opt: None}))
-            );
+        // If this is just a heartbeat, then respond.
+        if msg.entries.len() == 0 {
+            return Box::new(fut::ok(AppendEntriesResponse{term: self.current_term, success: true, conflict_opt: None}));
         }
 
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
-        // previous log info, then replication is g2g.
+        // log info, then replication is g2g.
+        let (term, msg_prev_index, msg_prev_term) = (self.current_term, msg.prev_log_index, msg.prev_log_term);
+        let has_prev_log_match = &msg.prev_log_index == &u64::min_value() || (&msg_prev_index == &self.last_log_index && &msg_prev_term == &self.last_log_term);
         if has_prev_log_match {
-            return fut::Either::A(fut::Either::B(
-                self.append_log_entries(ctx, Arc::new(msg.entries))
-                    .map(move |_, _, _| {
-                        AppendEntriesResponse{term, success: true, conflict_opt: None}
-                    })));
+            return Box::new(self.append_log_entries(ctx, Arc::new(msg.entries))
+                .map(move |_, _, _| {
+                    AppendEntriesResponse{term, success: true, conflict_opt: None}
+                }));
         }
 
         // Previous log info doesn't immediately line up, so perform log consistency check and
         // proceed based on its result.
-        fut::Either::B(self.log_consistency_check(ctx, msg_prev_index, msg_prev_term)
+        Box::new(self.log_consistency_check(ctx, msg_prev_index, msg_prev_term)
             .and_then(move |res, act, ctx| match res {
                 Some(conflict_opt) => {
-                    warn!("Node {}: Rejecting AppendEntries RPC with conflict_opt '{:?}'; prev_log_index '{}' and prev_log_term '{}'.", &act.id, &conflict_opt, &msg_prev_index, &msg_prev_term);
                     fut::Either::A(fut::ok(
                         AppendEntriesResponse{term, success: false, conflict_opt: Some(conflict_opt)}
                     ))
@@ -147,7 +132,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                 }
             }))
     }
+}
 
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// Append the given entries to the log.
     ///
     /// This routine also encapsulates all logic which must be performed related to appending log

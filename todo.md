@@ -1,19 +1,21 @@
 todo
 ====
+- [ ] audit tests/fixtures/memory_storage, replication/snapshot,
+- [ ] need to review snapshot system. A few errors coming up unexpectedly, ultimately succeeds though.
+- [ ] check all location's where Raft.stop() or ReplicationStream.terminate() is used. Make sure cleanup is good. May need to use terminate on raft too.
+- [ ] snapshot creation needs to be triggered based on configuration & distance from last snapshot.
+- [ ] guard against sending snapshot pointers during replication.
+
 ### algorithm optimizations
 - [ ] Cache AppendEntries RPC entries on follower state so that pipeline for applying entries to SM can be more performant.
 - [ ] may need to have `save_hard_state` finish before responding to RPCs in all conditions. Might be good to experiment with async/await here to help aid in the added complexity this would bring.
 - [ ] maybe: update the append entries algorithm for followers so that recent entries are buffered up to a specific threshold so that the `apply_logs_to_statemachine` won't need to fetch from storage first.
 
 ### testing
-- [ ] finish implement MemoryStroage for testing (and general demo usage).
 - [ ] test snapshots.
     - cover case where cluster is making progress, and then a new node joins, but is not snapshotted because it is not too far behind.
     - cover case where new node node joins after cluster has make a lot of progress, and then new node should receive snapshot.
-
-### snapshots
-- [ ] get the system in place for periodic snapshot creation.
-- [ ] guard against sending snapshot pointers during replication.
+- [ ] test single node setup once admin commands are setup.
 
 ### observability
 - [ ] instrument code with tokio trace: https://docs.rs/tokio-trace/0.1.0/tokio_trace/

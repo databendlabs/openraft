@@ -12,7 +12,8 @@ use crate::{
     },
 };
 
-pub(crate) const CLIENT_RPC_CHAN_ERR: &str = "Client RPC channel was unexpectedly closed.";
+pub(crate) const CLIENT_RPC_RX_ERR: &str = "Client RPC channel receiver was unexpectedly closed.";
+pub(crate) const CLIENT_RPC_TX_ERR: &str = "Client RPC channel sender was unexpectedly closed.";
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // ApplyLogsTask /////////////////////////////////////////////////////////////////////////////////

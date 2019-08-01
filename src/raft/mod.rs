@@ -10,12 +10,12 @@ mod vote;
 use std::{
     collections::BTreeMap,
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use actix::prelude::*;
-use futures::sync::{mpsc};
-use log::{error};
+use futures::sync::{mpsc, oneshot};
+use log::{debug, error};
 
 use crate::{
     NodeId, AppError,
@@ -66,6 +66,16 @@ enum RaftState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// The leader handles all client requests. If a client contacts a follower, the follower must
     /// redirects it to the leader.
     Leader(LeaderState<E, N, S>),
+}
+
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> RaftState<E, N, S> {
+    /// Check if currently in follower state.
+    pub fn is_follower(&self) -> bool {
+        match self {
+            RaftState::Follower(_) => true,
+            _ => false,
+        }
+    }
 }
 
 /// Volatile state specific to the Raft leader.
@@ -134,7 +144,7 @@ enum SnapshotState {
     /// No snapshot operations are taking place.
     Idle,
     /// The Raft node is streaming in a snapshot from the leader.
-    Streaming(mpsc::UnboundedSender<InstallSnapshotChunk>),
+    Streaming(Option<mpsc::UnboundedSender<InstallSnapshotChunk>>, Option<oneshot::Receiver<()>>),
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -263,6 +273,8 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
 
     /// A handle to the election timeout callback.
     election_timeout: Option<actix::SpawnHandle>,
+    /// The currently scheduled timeout timestamp in millis.
+    election_timeout_stamp: Option<u128>,
 }
 
 impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
@@ -281,17 +293,12 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             last_log_index: 0, last_log_term: 0,
             is_appending_logs: false,
             apply_logs_pipeline: tx, _apply_logs_pipeline_receiver: Some(rx),
-            election_timeout: None,
+            election_timeout: None, election_timeout_stamp: None,
         }
     }
 
     /// Transition to the Raft follower state.
     fn become_follower(&mut self, ctx: &mut Context<Self>) {
-        // No-op if we were already in follower state.
-        if let &RaftState::Follower(_) = &self.state {
-            return;
-        }
-
         // Cleanup previous state.
         self.cleanup_state(ctx);
 
@@ -353,6 +360,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             let handle = ctx.spawn(f);
             requests.insert(member, handle);
         }
+
+        // Update the election timeout.
+        self.update_election_timeout(ctx);
 
         // Update Raft state as candidate.
         let votes_granted = 1; // We must vote for ourselves per the Raft spec.
@@ -419,6 +429,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// This will typically be called before a state transition takes place.
     fn cleanup_state(&mut self, ctx: &mut Context<Self>) {
         match &mut self.state {
+            RaftState::Follower(inner) => {
+                inner.snapshot_state = SnapshotState::Idle;
+            }
             RaftState::Candidate(inner) => {
                 for handle in inner.cleanup() {
                     ctx.cancel_future(handle);
@@ -566,6 +579,14 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         }
     }
 
+    /// Encapsulate the process of updating the current term, as updating the `voted_for` state must also be updated.
+    fn update_current_term(&mut self, new_term: u64, voted_for: Option<NodeId>) {
+        if new_term > self.current_term {
+            self.current_term = new_term;
+            self.voted_for = voted_for;
+        }
+    }
+
     /// Update the election timeout process.
     ///
     /// This will run the nodes election timeout mechanism to ensure that elections are held if
@@ -578,9 +599,25 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         // Cancel any current election timeout before spawning a new one.
         if let Some(handle) = self.election_timeout.take() {
             ctx.cancel_future(handle);
+            self.election_timeout_stamp = None;
         }
+
         let timeout = Duration::from_millis(self.config.election_timeout_millis);
-        self.election_timeout = Some(ctx.run_later(timeout, |act, ctx| act.become_candidate(ctx)));
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+        self.election_timeout_stamp = Some(now.as_millis() + self.config.election_timeout_millis as u128);
+        self.election_timeout = Some(ctx.run_later(timeout, |act, ctx| {
+            match act.election_timeout_stamp.take() {
+                Some(stamp) if stamp <= SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() => {
+                    act.become_candidate(ctx)
+                }
+                Some(stamp) => {
+                    debug!("{} invoked election timeout prematurely.", act.id);
+                    // If the scheduled timeout is still in the future, put it back.
+                    act.election_timeout_stamp = Some(stamp);
+                }
+                None => return,
+            }
+        }));
     }
 }
 

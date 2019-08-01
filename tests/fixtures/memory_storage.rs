@@ -1,12 +1,16 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    io::{Seek, SeekFrom, Write},
+    fs::{self, File},
+    path::PathBuf,
+};
 
 use actix::prelude::*;
 use log::{debug, error};
-use rmp_serde as rmps;
 use serde::{Serialize, Deserialize};
-use tokio::{self, io::{AsyncWrite}};
+use serde_json;
 
-use crate::{
+use actix_raft::{
     AppError, NodeId,
     messages::{Entry, EntrySnapshotPointer},
     storage::{
@@ -55,16 +59,19 @@ pub struct MemoryStorage {
     snapshot_data: Option<CurrentSnapshotData>,
     snapshot_dir: String,
     state_machine: BTreeMap<u64, Entry>,
+    snapshot_actor: Addr<SnapshotActor>,
 }
 
 impl RaftStorage<MemoryStorageError> for MemoryStorage {
     /// Create a new instance.
     fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self {
+        let snapshot_dir_pathbuf = std::path::PathBuf::from(snapshot_dir.clone());
         Self{
             hs: HardState{current_term: 0, voted_for: None, members},
             log: Default::default(),
             snapshot_data: None, snapshot_dir,
             state_machine: Default::default(),
+            snapshot_actor: SyncArbiter::start(1, move || SnapshotActor(snapshot_dir_pathbuf.clone())),
         }
     }
 }
@@ -157,12 +164,13 @@ impl Handler<CreateSnapshot<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, CurrentSnapshotData, MemoryStorageError>;
 
     fn handle(&mut self, msg: CreateSnapshot<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
-        debug!("Creating new snapshot.");
+        debug!("Creating new snapshot under '{}' through index {}.", &self.snapshot_dir, &msg.through);
         // Serialize snapshot data.
         let through = msg.through;
-        let entries = &self.log.range(0u64..=through).map(|(_, v)| v).collect::<Vec<_>>();
+        let entries = self.log.range(0u64..=through).map(|(_, v)| v.clone()).collect::<Vec<_>>();
+        debug!("Creating snapshot with {} entries.", entries.len());
         let (index, term) = entries.last().map(|e| (e.index, e.term)).unwrap_or((0, 0));
-        let snapdata = match rmps::to_vec(entries) {
+        let snapdata = match serde_json::to_vec(&entries) {
             Ok(snapdata) => snapdata,
             Err(err) => {
                 error!("Error serializing log for creating a snapshot. {}", err);
@@ -173,19 +181,23 @@ impl Handler<CreateSnapshot<MemoryStorageError>> for MemoryStorage {
         // Create snapshot file and write snapshot data to it.
         let filename = format!("{}", msg.through);
         let filepath = std::path::PathBuf::from(self.snapshot_dir.clone()).join(filename);
-        Box::new(fut::wrap_future(tokio::fs::write(filepath.clone(), snapdata)
-            .map(|_| ())
-            .map_err(|err| {
-                error!("Error writing snapshot file. {}", err);
-                MemoryStorageError
-            }))
+        Box::new(fut::wrap_future(self.snapshot_actor.send(CreateSnapshotWithData(filepath.clone(), snapdata)))
+            .map_err(|err, _, _| panic!("Error communicating with snapshot actor. {}", err))
+            .and_then(|res, _, _| fut::result(res))
             // Clean up old log entries which are now part of the new snapshot.
             .and_then(move |_, act: &mut Self, _| {
+                let path = filepath.to_string_lossy().to_string();
+                debug!("Finished creating snapshot file at {}", &path);
                 act.log = act.log.split_off(&through);
-                let pointer = EntrySnapshotPointer{path: filepath.to_string_lossy().to_string()};
+                let pointer = EntrySnapshotPointer{path};
                 let entry = Entry::new_snapshot_pointer(pointer.clone(), index, term);
                 act.log.insert(through, entry);
-                fut::ok(CurrentSnapshotData{term, index, config: act.hs.members.clone(), pointer})
+
+                // Cache the most recent snapshot data.
+                let current_snap_data = CurrentSnapshotData{term, index, config: act.hs.members.clone(), pointer};
+                act.snapshot_data = Some(current_snap_data.clone());
+
+                fut::ok(current_snap_data)
             }))
     }
 }
@@ -194,54 +206,20 @@ impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, (), MemoryStorageError>;
 
     fn handle(&mut self, msg: InstallSnapshot<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
-        debug!("Streaming in snapshot to install new snapshot.");
-        let (index, term, chunk_stream) = (msg.index, msg.term, msg.stream);
-        let filename = format!("{}", &index);
-        let filepath = std::path::PathBuf::from(self.snapshot_dir.clone()).join(filename);
-        let filepath0 = filepath.clone();
-        let task = fut::wrap_future(tokio::fs::File::create(filepath.clone())
-            .map_err(|err| {
-                error!("Error creating new snapshot file. {}", err);
-                MemoryStorageError
-            })
-            // File is open, start streaming in the chunks and write them to the file as needed.
-            .and_then(move |_| {
-                chunk_stream
-                    .map_err(|_| MemoryStorageError)
-                    .for_each(move |chunk| {
-                        let offset = chunk.offset;
-                        tokio::fs::OpenOptions::new().append(true).open(filepath.clone()).map_err(|err| {
-                            error!("Error opening snapshot file. {}", err);
-                            MemoryStorageError
-                        })
-                        .and_then(move |file| {
-                            file.seek(std::io::SeekFrom::Start(offset))
-                                .map_err(|err| {
-                                    error!("Error seeking to file location for writing snapshot chunk. {}", err);
-                                    MemoryStorageError
-                                })
-                                .and_then(|(mut file, _)| {
-                                    futures::future::poll_fn(move || file.poll_write(&chunk.data))
-                                        .map(|_| ())
-                                        .map_err(|err| {
-                                            error!("Error writing snapshot chunk bytes to snapshot file. {}", err);
-                                            MemoryStorageError
-                                        })
-                                })
-                        })
-                    })
-            }))
-            // Snapshot file has been created. Perform final steps of this algorithm.
-            .and_then(move |_, act: &mut Self, ctx| {
-                let pathbuf = filepath0.clone();
-                let path = pathbuf.clone().to_string_lossy().to_string();
+        debug!("Streaming in new snapshot for installation.");
+        let (index, term) = (msg.index, msg.term);
+        Box::new(fut::wrap_future(self.snapshot_actor.send(SyncInstallSnapshot(msg)))
+            .map_err(|err, _, _| panic!("Error communicating with snapshot actor. {}", err))
+            .and_then(|res, _, _| fut::result(res))
 
+            // Snapshot file has been created. Perform final steps of this algorithm.
+            .and_then(move |pointer, act: &mut Self, ctx| {
+                debug!("Snapshot finished streaming in and installed. Final steps.");
                 // Cache the most recent snapshot data.
-                let pointer = EntrySnapshotPointer{path: path.clone()};
                 act.snapshot_data = Some(CurrentSnapshotData{index, term, config: act.hs.members.clone(), pointer: pointer.clone()});
 
                 // Update target index with the new snapshot pointer.
-                let entry = Entry::new_snapshot_pointer(pointer, index, term);
+                let entry = Entry::new_snapshot_pointer(pointer.clone(), index, term);
                 act.log = act.log.split_off(&index);
                 let previous = act.log.insert(index, entry);
 
@@ -254,11 +232,11 @@ impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
                     // There are no newer entries in the log, which means that we need to rebuild
                     // the state machine. Open the snapshot file read out its entries.
                     _ => {
+                        let pathbuf = PathBuf::from(pointer.path);
                         fut::Either::B(act.rebuild_state_machine_from_snapshot(ctx, pathbuf))
                     }
                 }
-            });
-        Box::new(task)
+            }))
     }
 }
 
@@ -266,6 +244,7 @@ impl Handler<GetCurrentSnapshot<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, Option<CurrentSnapshotData>, MemoryStorageError>;
 
     fn handle(&mut self, _: GetCurrentSnapshot<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+        debug!("Checking for current snapshot.");
         Box::new(fut::ok(self.snapshot_data.clone()))
     }
 }
@@ -274,26 +253,127 @@ impl MemoryStorage {
     /// Rebuild the state machine from the specified snapshot.
     fn rebuild_state_machine_from_snapshot(&mut self, _: &mut Context<Self>, path: std::path::PathBuf) -> impl ActorFuture<Actor=Self, Item=(), Error=MemoryStorageError> {
         // Read full contents of the snapshot file.
-        fut::wrap_future(tokio::fs::read(path)
-            .map_err(|err| {
-                error!("Error reading contents of snapshot file. {}", err);
-                MemoryStorageError
-            }))
-            // Deserialize the data of the snapshot file.
-            .and_then(|snapdata, _, _| {
-                let entries: Result<Vec<Entry>, MemoryStorageError> = rmps::from_slice(snapdata.as_slice())
-                    .map_err(|err| {
-                        error!("Error deserializing snapshot contents. {}", err);
-                        MemoryStorageError
-                    });
-                fut::result(entries)
-            })
+        fut::wrap_future(self.snapshot_actor.send(DeserializeSnapshot(path)))
+            .map_err(|err, _, _| panic!("Error communicating with snapshot actor. {}", err))
+            .and_then(|res, _, _| fut::result(res))
             // Rebuild state machine from the deserialized data.
             .and_then(|entries, act: &mut Self, _| {
                 act.state_machine.clear();
                 act.state_machine.extend(entries.into_iter().map(|e| (e.index, e)));
                 fut::ok(())
             })
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// SnapshotActor /////////////////////////////////////////////////////////////////////////////////
+
+/// A simple synchronous actor for interfacing with the filesystem for snapshots.
+struct SnapshotActor(std::path::PathBuf);
+
+impl Actor for SnapshotActor {
+    type Context = SyncContext<Self>;
+}
+
+struct SyncInstallSnapshot(InstallSnapshot<MemoryStorageError>);
+
+//////////////////////////////////////////////////////////////////////////////
+// CreateSnapshotWithData ////////////////////////////////////////////////////
+
+struct CreateSnapshotWithData(PathBuf, Vec<u8>);
+
+impl Message for CreateSnapshotWithData {
+    type Result = Result<(), MemoryStorageError>;
+}
+
+impl Handler<CreateSnapshotWithData> for SnapshotActor {
+    type Result = Result<(), MemoryStorageError>;
+
+    fn handle(&mut self, msg: CreateSnapshotWithData, _: &mut Self::Context) -> Self::Result {
+        fs::write(msg.0.clone(), msg.1).map_err(|err| {
+            error!("Error writing snapshot file. {}", err);
+            MemoryStorageError
+        })
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// DeserializeSnapshot ///////////////////////////////////////////////////////
+
+struct DeserializeSnapshot(PathBuf);
+
+impl Message for DeserializeSnapshot {
+    type Result = Result<Vec<Entry>, MemoryStorageError>;
+}
+
+impl Handler<DeserializeSnapshot> for SnapshotActor {
+    type Result = Result<Vec<Entry>, MemoryStorageError>;
+
+    fn handle(&mut self, msg: DeserializeSnapshot, _: &mut Self::Context) -> Self::Result {
+        debug!("Deserializing snapshot from {:?}", &msg.0);
+        std::thread::sleep(std::time::Duration::from_secs(15));
+        fs::read(msg.0)
+            .map_err(|err| {
+                error!("Error reading contents of snapshot file. {}", err);
+                MemoryStorageError
+            })
+            // Deserialize the data of the snapshot file.
+            .and_then(|snapdata| {
+                serde_json::from_slice::<Vec<Entry>>(snapdata.as_slice()).map_err(|err| {
+                    error!("Error deserializing snapshot contents. {}", err);
+                    MemoryStorageError
+                })
+            })
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// SyncInstallSnapshot ///////////////////////////////////////////////////////
+
+impl Message for SyncInstallSnapshot {
+    type Result = Result<EntrySnapshotPointer, MemoryStorageError>;
+}
+
+impl Handler<SyncInstallSnapshot> for SnapshotActor {
+    type Result = Result<EntrySnapshotPointer, MemoryStorageError>;
+
+    fn handle(&mut self, msg: SyncInstallSnapshot, _: &mut Self::Context) -> Self::Result {
+        let filename = format!("{}", &msg.0.index);
+        let filepath = std::path::PathBuf::from(self.0.clone()).join(filename);
+
+        // Create the new snapshot file.
+        let mut snapfile = File::create(&filepath).map_err(|err| {
+            error!("Error creating new snapshot file. {}", err);
+            MemoryStorageError
+        })?;
+
+        let chunk_stream = msg.0.stream.map_err(|_| {
+            error!("Snapshot chunk stream hit an error in the memory_storage system.");
+            MemoryStorageError
+        }).wait();
+        let mut did_process_final_chunk = false;
+        for chunk in chunk_stream {
+            let chunk = chunk?;
+            snapfile.seek(SeekFrom::Start(chunk.offset)).map_err(|err| {
+                error!("Error seeking to file location for writing snapshot chunk. {}", err);
+                MemoryStorageError
+            })?;
+            snapfile.write_all(&chunk.data).map_err(|err| {
+                error!("Error writing snapshot chunk to snapshot file. {}", err);
+                MemoryStorageError
+            })?;
+            if chunk.done {
+                did_process_final_chunk = true;
+            }
+            let _ = chunk.cb.send(());
+        }
+
+        if !did_process_final_chunk {
+            error!("Prematurely exiting snapshot chunk stream. Never hit final chunk.");
+            Err(MemoryStorageError)
+        } else {
+            Ok(EntrySnapshotPointer{path: filepath.to_string_lossy().to_string()})
+        }
     }
 }
 

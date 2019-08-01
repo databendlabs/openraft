@@ -1,4 +1,8 @@
+#![allow(dead_code)]
 //! Fixtures for testing Raft.
+
+pub mod dev;
+pub mod memory_storage;
 
 use std::{
     collections::BTreeMap,
@@ -9,11 +13,28 @@ use actix::prelude::*;
 use actix_raft::{
     NodeId, Raft,
     config::{Config, SnapshotPolicy},
-    dev::{MemRaft, RaftRouter},
-    memory_storage::{MemoryStorage},
+    messages::{ClientPayload, ClientError, EntryNormal, ResponseMode},
     storage::RaftStorage,
 };
+use async_log;
+use env_logger;
+use futures::sync::oneshot;
+use log::{debug};
 use tempfile::{tempdir_in, TempDir};
+
+use crate::fixtures::{
+    dev::{GetCurrentLeader, MemRaft, RaftRouter},
+    memory_storage::{MemoryStorage, MemoryStorageError},
+};
+
+pub type Payload = ClientPayload<MemoryStorageError>;
+
+pub fn setup_logger() {
+    let logger = env_logger::Builder::from_default_env().build();
+    async_log::Logger::wrap(logger, || 12)
+        .start(log::LevelFilter::Trace)
+        .expect("Expected to be able to start async logger.");
+}
 
 pub struct RaftTestController {
     pub network: Addr<RaftRouter>,
@@ -52,28 +73,150 @@ impl Actor for RaftTestController {
     }
 }
 
+/// Send a client request to the Raft cluster, ensuring it is resent on failures.
+#[derive(Message)]
+pub struct ClientRequest {
+    pub payload: u64,
+    pub current_leader: Option<NodeId>,
+    pub cb: Option<oneshot::Sender<()>>,
+}
+
+impl Handler<ClientRequest> for RaftTestController {
+    type Result = ();
+
+    fn handle(&mut self, mut msg: ClientRequest, ctx: &mut Self::Context) {
+        if let Some(leader) = &msg.current_leader {
+            let entry = EntryNormal{data: msg.payload.to_string().into_bytes()};
+            let payload = Payload::new(entry, ResponseMode::Applied);
+            let node = self.nodes.get(leader).expect("Expected leader to be present it RaftTestController's nodes map.");
+            let f = fut::wrap_future(node.send(payload))
+                .map_err(|_, _, _| ClientError::Internal).and_then(|res, _, _| fut::result(res))
+                .then(move |res, _, ctx: &mut Context<Self>| match res {
+                    Ok(_) => {
+                        if let Some(tx) = msg.cb {
+                            let _ = tx.send(()).expect("Failed to send callback message on test's ClientRequest.");
+                        }
+                        fut::ok(())
+                    },
+                    Err(err) => match err {
+                        ClientError::Internal => {
+                            debug!("TEST: resending client request.");
+                            ctx.notify(msg);
+                            fut::ok(())
+                        }
+                        ClientError::Application(err) => {
+                            panic!("Unexpected application error from client request: {:?}", err)
+                        }
+                        ClientError::ForwardToLeader{leader, ..} => {
+                            debug!("TEST: received ForwardToLeader error. Updating leader and forwarding.");
+                            msg.current_leader = leader;
+                            ctx.notify(msg);
+                            fut::ok(())
+                        }
+                    }
+                });
+            ctx.spawn(f);
+        } else {
+            debug!("TEST: client request has no known leader. Waiting for 100ms before checking again.");
+            ctx.run_later(Duration::from_secs(2), move |act, ctx| {
+                let f = fut::wrap_future(act.network.send(GetCurrentLeader))
+                    .map_err(|err, _, _| panic!("{}", err))
+                    .and_then(|res, _, _| fut::result(res))
+                    .then(move |res, _, ctx: &mut Context<Self>| match res {
+                        Ok(current_leader) => {
+                            msg.current_leader = current_leader;
+                            ctx.notify(msg);
+                            fut::ok(())
+                        }
+                        Err(_) => {
+                            ctx.notify(msg);
+                            fut::ok(())
+                        }
+                    });
+                ctx.spawn(f);
+            });
+        }
+    }
+}
+
+/// All objects related to a started Raft node.
+pub struct Node {
+    pub raft_arb: Arbiter,
+    pub storage_arb: Arbiter,
+    pub addr: Addr<MemRaft>,
+    pub snapshot_dir: TempDir,
+    pub storage: Addr<MemoryStorage>,
+}
+
+impl Node {
+    /// Start building a new node.
+    pub fn builder(id: NodeId, network: Addr<RaftRouter>, members: Vec<NodeId>) -> NodeBuilder {
+        NodeBuilder{id, network, members, metrics_rate: None, snapshot_policy: None}
+    }
+}
+
+pub struct NodeBuilder {
+    id: NodeId,
+    network: Addr<RaftRouter>,
+    members: Vec<NodeId>,
+    metrics_rate: Option<u64>,
+    snapshot_policy: Option<SnapshotPolicy>,
+}
+
+impl NodeBuilder {
+    /// Build the new node.
+    pub fn build(self) -> Node {
+        let metrics_rate = self.metrics_rate.unwrap_or(1);
+        let snapshot_policy = self.snapshot_policy.unwrap_or(SnapshotPolicy::default());
+        let id = self.id;
+        let members = self.members;
+        let network = self.network;
+
+        let temp_dir = tempdir_in("/tmp").expect("Tempdir to be created without error.");
+        let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
+        let config = Config::build(snapshot_dir.clone())
+            .election_timeout_min(800).election_timeout_max(1000).heartbeat_interval(300)
+            .metrics_rate(Duration::from_secs(metrics_rate))
+            .snapshot_policy(snapshot_policy)
+            .validate().expect("Raft config to be created without error.");
+
+        let (storage_arb, raft_arb) = (Arbiter::new(), Arbiter::new());
+        let storage = MemoryStorage::start_in_arbiter(&storage_arb, |_| MemoryStorage::new(members, snapshot_dir));
+        let storage_addr = storage.clone();
+        let addr = Raft::start_in_arbiter(&raft_arb, move |_| {
+            Raft::new(id, config, network.clone(), storage.clone(), network.recipient())
+        });
+        Node{addr, snapshot_dir: temp_dir, storage_arb, raft_arb, storage: storage_addr}
+    }
+
+    /// Configure the metrics rate for this node, defaults to 1 second.
+    pub fn metrics_rate(mut self, val: u64) -> Self {
+        self.metrics_rate = Some(val);
+        self
+    }
+
+    /// Configure the node's snapshot policy, defaults to `SnapshotPolicy::default()`.
+    pub fn snapshot_policy(mut self, val: SnapshotPolicy) -> Self {
+        self.snapshot_policy = Some(val);
+        self
+    }
+}
+
 /// Create a new Raft node for testing purposes.
 pub fn new_raft_node(id: NodeId, network: Addr<RaftRouter>, members: Vec<NodeId>, metrics_rate: u64) -> Node {
     let temp_dir = tempdir_in("/tmp").expect("Tempdir to be created without error.");
     let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
     let config = Config::build(snapshot_dir.clone())
+        .election_timeout_min(800).election_timeout_max(1000).heartbeat_interval(300)
         .metrics_rate(Duration::from_secs(metrics_rate))
         .snapshot_policy(SnapshotPolicy::Disabled)
         .validate().expect("Raft config to be created without error.");
 
-    let arb = Arbiter::new();
-    let storage = MemoryStorage::start_in_arbiter(&arb, |_| MemoryStorage::new(members, snapshot_dir));
+    let (storage_arb, raft_arb) = (Arbiter::new(), Arbiter::new());
+    let storage = MemoryStorage::start_in_arbiter(&storage_arb, |_| MemoryStorage::new(members, snapshot_dir));
     let storage_addr = storage.clone();
-    let addr = Raft::start_in_arbiter(&arb, move |_| {
+    let addr = Raft::start_in_arbiter(&raft_arb, move |_| {
         Raft::new(id, config, network.clone(), storage.clone(), network.recipient())
     });
-    Node{addr, snapshot_dir: temp_dir, arb, storage: storage_addr}
-}
-
-/// All objects related to a started Raft node.
-pub struct Node {
-    pub addr: Addr<MemRaft>,
-    pub snapshot_dir: TempDir,
-    pub arb: Arbiter,
-    pub storage: Addr<MemoryStorage>,
+    Node{addr, snapshot_dir: temp_dir, storage_arb, raft_arb, storage: storage_addr}
 }

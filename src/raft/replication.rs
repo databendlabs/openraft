@@ -3,7 +3,7 @@ use log::{error, warn};
 
 use crate::{
     AppError,
-    common::{CLIENT_RPC_CHAN_ERR, ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
+    common::{CLIENT_RPC_TX_ERR, ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     config::SnapshotPolicy,
     messages::{ClientPayloadResponse, ResponseMode},
     network::RaftNetwork,
@@ -83,7 +83,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSNeedsSnapshot>
         let threshold = match &self.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => *threshold,
             SnapshotPolicy::Disabled => {
-                warn!("Received an RSNeedsSnapshot request from a replication stream, but snapshotting is disabled. This is a bug.");
+                warn!("Received an RSNeedsSnapshot request from a replication stream, but snapshotting is disabled. Cluster is misconfigured.");
                 return Box::new(fut::err(()));
             }
         };
@@ -123,7 +123,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRevertToFollow
     /// Handle events from replication streams for when this node needs to revert to follower state.
     fn handle(&mut self, msg: RSRevertToFollower, ctx: &mut Self::Context) {
         if &msg.term > &self.current_term {
-            self.current_term = msg.term;
+            self.update_current_term(msg.term, None);
             self.update_current_leader(ctx, UpdateCurrentLeader::Unknown);
             self.become_follower(ctx);
         }
@@ -179,7 +179,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchInd
                     if let &ResponseMode::Committed = &request.response_mode {
                         // If this RPC is configured to wait only for log committed, then respond to client now.
                         let entry = request.entry();
-                        let _ = request.tx.send(Ok(ClientPayloadResponse{index: request.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_CHAN_ERR, err));
+                        let _ = request.tx.send(Ok(ClientPayloadResponse{index: request.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_TX_ERR, err));
                         let _ = self.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry, chan: None});
                     } else {
                         // Else, send it through the pipeline and it will be responded to afterwords.

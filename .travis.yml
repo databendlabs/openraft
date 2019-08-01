@@ -10,4 +10,7 @@ matrix:
   fast_finish: true
 
 script:
-  - cargo test --release --all
+  - cargo test --lib
+  - RUST_LOG=actix_raft,clustering=debug cargo test clustering
+  - RUST_LOG=actix_raft,client_writes=debug cargo test client_writes
+  # - RUST_LOG=actix_raft,snapshotting=debug cargo test snapshotting

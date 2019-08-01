@@ -5,20 +5,14 @@ mod fixtures;
 use std::time::{Duration, Instant};
 
 use actix::prelude::*;
-use actix_raft::{
-    NodeId,
+use actix_raft::metrics::{RaftMetrics, State};
+use tokio_timer::Delay;
+
+use fixtures::{
+    ClientRequest, RaftTestController, Node, setup_logger,
     dev::{ExecuteInRaftRouter, GetCurrentLeader, RaftRouter, Register},
-    memory_storage::{GetCurrentState, MemoryStorageError},
-    messages::{ClientPayload, ClientError, EntryNormal, ResponseMode},
-    metrics::{RaftMetrics, State},
+    memory_storage::{GetCurrentState},
 };
-use env_logger;
-use log::{error};
-use tokio::timer::Delay;
-
-use fixtures::{RaftTestController, new_raft_node};
-
-type Payload = ClientPayload<MemoryStorageError>;
 
 /// Basic lifecycle tests for a three node cluster.
 ///
@@ -32,28 +26,28 @@ type Payload = ClientPayload<MemoryStorageError>;
 /// and the new leader should be able to handle client requests as normal.
 /// - after all data has been written, all nodes should have identical logs & state machines.
 ///
-/// `RUST_LOG=actix_raft,client_writes=debug cargo test client_data_writing`
+/// `RUST_LOG=actix_raft,client_writes=debug cargo test client_writes`
 #[test]
-fn client_data_writing() {
-    let _ = env_logger::try_init();
+fn client_writes() {
+    setup_logger();
     let sys = System::builder().stop_on_panic(true).name("test").build();
 
     // Setup test dependencies.
     let netarb = Arbiter::new();
     let network = RaftRouter::start_in_arbiter(&netarb, |_| RaftRouter::new());
     let members = vec![0, 1, 2];
-    let node0 = new_raft_node(0, network.clone(), members.clone(), 1);
+    let node0 = Node::builder(0, network.clone(), members.clone()).build();
     network.do_send(Register{id: 0, addr: node0.addr.clone()});
-    let node1 = new_raft_node(1, network.clone(), members.clone(), 1);
+    let node1 = Node::builder(1, network.clone(), members.clone()).build();
     network.do_send(Register{id: 1, addr: node1.addr.clone()});
-    let node2 = new_raft_node(2, network.clone(), members.clone(), 1);
+    let node2 = Node::builder(2, network.clone(), members.clone()).build();
     network.do_send(Register{id: 2, addr: node2.addr.clone()});
     let (storage0, storage1, storage2) = (node0.storage.clone(), node1.storage.clone(), node2.storage.clone());
 
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
     ctl.register(0, node0.addr.clone()).register(1, node1.addr.clone()).register(2, node2.addr.clone());
-    ctl.start_with_test(2,  Box::new(|act, ctx| {
+    ctl.start_with_test(4,  Box::new(|act, ctx| {
         // Get the current leader.
         ctx.spawn(fut::wrap_future(act.network.send(GetCurrentLeader))
             .map_err(|_, _: &mut RaftTestController, _| panic!("Failed to get current leader."))
@@ -64,16 +58,16 @@ fn client_data_writing() {
             // Send 100 requests as fast as possible to the current leader & give the cluster 1 second to do work.
             .and_then(|leader, _, ctx| {
                 for idx in 0..100 {
-                    ctx.notify(ClientRequest{payload: idx, current_leader: Some(leader)});
+                    ctx.notify(ClientRequest{payload: idx, current_leader: Some(leader), cb: None});
                 }
                 fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(1))).map_err(|_, _, _| ())
                     .map(move |_, _, _| leader)
             })
 
-            // Bring down the current leader & wait for the default maximum election timeout duration.
+            // Bring down the current leader.
             .and_then(|leader, act, _| {
                 act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| act.isolate_node(leader))));
-                fut::wrap_future(Delay::new(Instant::now() + Duration::from_millis(700))).map_err(|_, _, _| ())
+                fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(2))).map_err(|_, _, _| ())
                     .map(move |_, _, _| leader)
             })
 
@@ -89,7 +83,7 @@ fn client_data_writing() {
             .and_then(|(current_leader, old_leader), act, ctx| {
                 act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| act.restore_node(old_leader))));
                 for idx in 0..100 {
-                    ctx.notify(ClientRequest{payload: idx, current_leader});
+                    ctx.notify(ClientRequest{payload: idx, current_leader, cb: None});
                 }
                 fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(3))).map_err(|_, _, _| ())
             })
@@ -150,60 +144,4 @@ fn client_data_writing() {
 
     // Run the test.
     assert!(sys.run().is_ok(), "Error during test.");
-}
-
-#[derive(Message)]
-struct ClientRequest {
-    payload: u64,
-    current_leader: Option<NodeId>,
-}
-
-impl Handler<ClientRequest> for RaftTestController {
-    type Result = ();
-
-    fn handle(&mut self, mut msg: ClientRequest, ctx: &mut Self::Context) {
-        if let Some(leader) = &msg.current_leader {
-            let entry = EntryNormal{data: msg.payload.to_string().into_bytes()};
-            let payload = Payload::new(entry, ResponseMode::Applied);
-            let node = self.nodes.get(leader).expect("Expected leader to be present it RaftTestController's nodes map.");
-            let f = fut::wrap_future(node.send(payload))
-                .map_err(|_, _, _| ClientError::Internal).and_then(|res, _, _| fut::result(res))
-                .then(move |res, _, ctx: &mut Context<Self>| match res {
-                    Ok(_) => fut::ok(()),
-                    Err(err) => match err {
-                        ClientError::Internal => {
-                            ctx.notify(msg);
-                            fut::ok(())
-                        }
-                        ClientError::Application(err) => {
-                            error!("Unexpected application error from client request: {:?}", err);
-                            fut::ok(())
-                        }
-                        ClientError::ForwardToLeader{leader, ..} => {
-                            msg.current_leader = leader;
-                            ctx.notify(msg);
-                            fut::ok(())
-                        }
-                    }
-                });
-            ctx.spawn(f);
-        } else {
-            ctx.run_later(Duration::from_millis(100), move |act, ctx| {
-                let f = fut::wrap_future(act.network.send(GetCurrentLeader)).map_err(|_, _, _| ())
-                    .and_then(|res, _, _| fut::result(res))
-                    .then(move |res, _, ctx: &mut Context<Self>| match res {
-                        Ok(current_leader) => {
-                            msg.current_leader = current_leader;
-                            ctx.notify(msg);
-                            fut::ok(())
-                        }
-                        Err(_) => {
-                            ctx.notify(msg);
-                            fut::ok(())
-                        }
-                    });
-                ctx.spawn(f);
-            });
-        }
-    }
 }

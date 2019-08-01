@@ -6,7 +6,7 @@ use log::{error};
 
 use crate::{
     AppError,
-    common::{CLIENT_RPC_CHAN_ERR, ApplyLogsTask, DependencyAddr},
+    common::{CLIENT_RPC_TX_ERR, ApplyLogsTask, DependencyAddr},
     messages::{ClientPayloadResponse, ClientError, Entry},
     network::RaftNetwork,
     raft::Raft,
@@ -79,13 +79,13 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                     act.last_applied = line_index;
 
                     if let Some(tx) = chan {
-                        let _ = tx.send(Ok(ClientPayloadResponse{index: line_index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_CHAN_ERR, err));
+                        let _ = tx.send(Ok(ClientPayloadResponse{index: line_index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_TX_ERR, err));
                     }
                     fut::ok(())
                 }
                 Err(err) => {
                     if let Some(tx) = chan {
-                        let _ = tx.send(Err(err)).map_err(|err| error!("{} {:?}", CLIENT_RPC_CHAN_ERR, err));
+                        let _ = tx.send(Err(err)).map_err(|err| error!("{} {:?}", CLIENT_RPC_TX_ERR, err));
                     }
                     fut::err(())
                 }

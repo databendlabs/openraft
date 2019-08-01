@@ -5,14 +5,13 @@ mod fixtures;
 use std::time::Duration;
 
 use actix::prelude::*;
-use actix_raft::{
-    dev::{ExecuteInRaftRouter, RaftRouter, Register},
-    metrics::{RaftMetrics, State},
-};
-use env_logger;
+use actix_raft::metrics::{RaftMetrics, State};
 use futures::sync::oneshot;
 
-use fixtures::{RaftTestController, new_raft_node};
+use fixtures::{
+    RaftTestController, Node, setup_logger,
+    dev::{ExecuteInRaftRouter, RaftRouter, Register},
+};
 
 /// Basic lifecycle tests for a three node cluster.
 ///
@@ -28,27 +27,27 @@ use fixtures::{RaftTestController, new_raft_node};
 /// - The new leader generates and commits a new blank log entry to guard against stale writes for
 /// when a previous leader had uncommitted entries replicated on some nodes. See end of §8.
 ///
-/// `RUST_LOG=actix_raft,clustering=debug cargo test basic_three_node_cluster_lifecycle`
+/// `RUST_LOG=actix_raft,clustering=debug cargo test clustering`
 #[test]
-fn basic_three_node_cluster_lifecycle() {
-    let _ = env_logger::try_init();
+fn clustering() {
+    setup_logger();
     let sys = System::builder().stop_on_panic(true).name("test").build();
 
     // Setup test dependencies.
     let net = RaftRouter::new();
     let network = net.start();
     let members = vec![0, 1, 2];
-    let node0 = new_raft_node(0, network.clone(), members.clone(), 1);
+    let node0 = Node::builder(0, network.clone(), members.clone()).build();
     network.do_send(Register{id: 0, addr: node0.addr.clone()});
-    let node1 = new_raft_node(1, network.clone(), members.clone(), 1);
+    let node1 = Node::builder(1, network.clone(), members.clone()).build();
     network.do_send(Register{id: 1, addr: node1.addr.clone()});
-    let node2 = new_raft_node(2, network.clone(), members.clone(), 1);
+    let node2 = Node::builder(2, network.clone(), members.clone()).build();
     network.do_send(Register{id: 2, addr: node2.addr.clone()});
 
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
     ctl.register(0, node0.addr.clone()).register(1, node1.addr.clone()).register(2, node2.addr.clone());
-    ctl.start_with_test(5,  Box::new(|act, ctx| {
+    ctl.start_with_test(5, Box::new(|act, ctx| {
         let (tx0, rx0) = oneshot::channel();
         act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| {
             let node0: &RaftMetrics = act.metrics.get(&0).unwrap();
