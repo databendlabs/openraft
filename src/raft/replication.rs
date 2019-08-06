@@ -7,7 +7,7 @@ use crate::{
     config::SnapshotPolicy,
     messages::{ClientPayloadResponse, ResponseMode},
     network::RaftNetwork,
-    raft::{Raft, RaftState},
+    raft::{ConsensusState, Raft, RaftState},
     replication::{
         RSFatalActixMessagingError, RSFatalStorageError,
         RSNeedsSnapshot, RSNeedsSnapshotResponse,
@@ -48,7 +48,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRateUpdate> fo
     type Result = ();
 
     /// Handle events from replication streams updating their replication rate tracker.
-    fn handle(&mut self, msg: RSRateUpdate, _ctx: &mut Self::Context) {
+    fn handle(&mut self, msg: RSRateUpdate, ctx: &mut Self::Context) {
         // Extract leader state, else do nothing.
         let state = match &mut self.state {
             RaftState::Leader(state) => state,
@@ -59,6 +59,16 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRateUpdate> fo
         match state.nodes.get_mut(&msg.target) {
             Some(repl_state) => {
                 repl_state.is_at_line_rate = msg.is_line_rate;
+                // If in joint consensus, and the target node was one of the new nodes, update
+                // the joint consensus state to indicate that the target is up-to-date.
+                if let ConsensusState::Joint{new_nodes, is_committed} = &mut state.consensus_state {
+                    if let Some((idx, _)) = new_nodes.iter().enumerate().find(|(_, e)| *e == &msg.target) {
+                        new_nodes.remove(idx);
+                    }
+                    if *is_committed && new_nodes.len() == 0 {
+                        self.finalize_joint_consensus(ctx);
+                    }
+                }
             },
             _ => (),
         }
@@ -97,8 +107,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSNeedsSnapshot>
                     // If snapshot exists, ensure its distance from the leader's last log index is <= half
                     // of the configured snapshot threshold, else create a new snapshot.
                     if snapshot_is_within_half_of_threshold(&meta, act.last_log_index, threshold) {
-                        let CurrentSnapshotData{index, term, config, pointer} = meta;
-                        return fut::Either::A(fut::ok(RSNeedsSnapshotResponse{index, term, config, pointer}));
+                        let CurrentSnapshotData{index, term, membership, pointer} = meta;
+                        return fut::Either::A(fut::ok(RSNeedsSnapshotResponse{index, term, membership, pointer}));
                     }
                 }
                 // If snapshot is not within half of threshold, or if snapshot does not exist, create a new snapshot.
@@ -107,8 +117,8 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSNeedsSnapshot>
                     .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
                     .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
                     .and_then(|res, _, _| {
-                        let CurrentSnapshotData{index, term, config, pointer} = res;
-                        fut::ok(RSNeedsSnapshotResponse{index, term, config, pointer})
+                        let CurrentSnapshotData{index, term, membership, pointer} = res;
+                        fut::ok(RSNeedsSnapshotResponse{index, term, membership, pointer})
                     }))
             }))
     }
@@ -145,12 +155,22 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchInd
             _ => return,
         };
 
-        // Update target's match index.
+        // Update target's match index & check if it is awaiting removal.
+        let mut needs_removal = false;
         match state.nodes.get_mut(&msg.target) {
             Some(repl_state) => {
                 repl_state.match_index = msg.match_index;
+                if let Some(threshold) = &repl_state.remove_after_commit {
+                    if &msg.match_index >= threshold {
+                        needs_removal = true;
+                    }
+                }
             },
             _ => return,
+        }
+        // Drop replication stream if needed.
+        if needs_removal {
+            state.nodes.remove(&msg.target);
         }
 
         // Parse through each targets' match index, and update the value of `commit_index` based
@@ -236,7 +256,7 @@ fn snapshot_is_within_half_of_threshold(data: &CurrentSnapshotData, last_log_ind
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::EntrySnapshotPointer;
+    use crate::messages::{EntrySnapshotPointer, MembershipConfig};
 
     //////////////////////////////////////////////////////////////////////////
     // snapshot_is_within_half_of_threshold //////////////////////////////////
@@ -256,19 +276,28 @@ mod tests {
 
         test_snapshot_is_within_half_of_threshold!({
             test=>happy_path_true_when_within_half_threshold,
-            data=>&CurrentSnapshotData{term: 1, index: 50, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
+            data=>&CurrentSnapshotData{
+                term: 1, index: 50, membership: MembershipConfig{members: vec![], non_voters: vec![], removing: vec![], is_in_joint_consensus: false},
+                pointer: EntrySnapshotPointer{path: String::new()},
+            },
             last_log_index=>100, threshold=>500, expected=>true
         });
 
         test_snapshot_is_within_half_of_threshold!({
             test=>happy_path_false_when_above_half_threshold,
-            data=>&CurrentSnapshotData{term: 1, index: 1, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
+            data=>&CurrentSnapshotData{
+                term: 1, index: 1, membership: MembershipConfig{members: vec![], non_voters: vec![], removing: vec![], is_in_joint_consensus: false},
+                pointer: EntrySnapshotPointer{path: String::new()},
+            },
             last_log_index=>500, threshold=>100, expected=>false
         });
 
         test_snapshot_is_within_half_of_threshold!({
             test=>guards_against_underflow,
-            data=>&CurrentSnapshotData{term: 1, index: 200, config: vec![], pointer: EntrySnapshotPointer{path: String::new()}},
+            data=>&CurrentSnapshotData{
+                term: 1, index: 200, membership: MembershipConfig{members: vec![], non_voters: vec![], removing: vec![], is_in_joint_consensus: false},
+                pointer: EntrySnapshotPointer{path: String::new()},
+            },
             last_log_index=>100, threshold=>500, expected=>true
         });
     }

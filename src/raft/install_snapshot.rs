@@ -28,7 +28,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InstallSnapshotR
         }
 
         // Don't interact with non-cluster members.
-        if !self.members.contains(&msg.leader_id) {
+        if !self.membership.contains(&msg.leader_id) {
             return Box::new(fut::err(()));
         }
 
@@ -52,7 +52,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InstallSnapshotR
         }
 
         // If not follower, become follower.
-        if !self.state.is_follower() {
+        if !self.state.is_follower() && !self.state.is_non_voter() {
             self.become_follower(ctx);
         }
 

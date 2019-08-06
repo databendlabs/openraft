@@ -8,7 +8,7 @@ use crate::{
     NodeId, AppError,
     messages::{
         ClientError, ClientPayload, ClientPayloadResponse,
-        Entry, EntryNormal, EntryType, ResponseMode,
+        Entry, ResponseMode,
     },
 };
 
@@ -56,8 +56,6 @@ impl<E: AppError> ClientPayloadWithChan<E> {
 pub(crate) struct ClientPayloadWithIndex<E: AppError> {
     /// The channel of the original client request.
     pub tx: oneshot::Sender<Result<ClientPayloadResponse, ClientError<E>>>,
-    /// The original entry of this payload.
-    orig_entry: EntryNormal,
     /// The entry of the original request with an assigned index & term, ready for storage.
     entry: Arc<Entry>,
     /// The response mode of the original client request.
@@ -71,13 +69,17 @@ pub(crate) struct ClientPayloadWithIndex<E: AppError> {
 impl<E: AppError> ClientPayloadWithIndex<E> {
     /// Create a new instance.
     pub(self) fn new(payload: ClientPayloadWithChan<E>, index: u64, term: u64) -> Self {
-        let entry = Arc::new(Entry{index: index, term: term, entry_type: EntryType::Normal(payload.rpc.entry.clone())});
-        Self{tx: payload.tx, orig_entry: payload.rpc.entry, entry, response_mode: payload.rpc.response_mode, index, term}
+        let entry = Arc::new(Entry{index: index, term: term, entry_type: payload.rpc.entry.clone()});
+        Self{tx: payload.tx, entry, response_mode: payload.rpc.response_mode, index, term}
     }
 
     /// Downgrade the payload, typically for forwarding purposes.
     pub(crate) fn downgrade(self) -> ClientPayloadWithChan<E> {
-        ClientPayloadWithChan{tx: self.tx, rpc: ClientPayload::new(self.orig_entry, self.response_mode)}
+        let entry = match Arc::try_unwrap(self.entry) {
+            Ok(entry) => entry.entry_type,
+            Err(arc) => arc.entry_type.clone(),
+        };
+        ClientPayloadWithChan{tx: self.tx, rpc: ClientPayload::new_base(entry, self.response_mode)}
     }
 
     /// Get a reference to the entry encapsulated by this payload.

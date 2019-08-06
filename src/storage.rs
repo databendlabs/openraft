@@ -7,6 +7,7 @@ use actix::{
     prelude::*,
 };
 use futures::sync::{mpsc::UnboundedReceiver, oneshot::Sender};
+use serde::{Serialize, Deserialize};
 
 use crate::{
     NodeId, AppError,
@@ -305,8 +306,8 @@ pub struct CurrentSnapshotData {
     pub term: u64,
     /// The snapshot entry's index.
     pub index: u64,
-    /// The latest configuration covered by the snapshot.
-    pub config: Vec<NodeId>,
+    /// The latest membership configuration covered by the snapshot.
+    pub membership: messages::MembershipConfig,
     /// The snapshot entry's pointer to the snapshot file.
     pub pointer: messages::EntrySnapshotPointer,
 }
@@ -332,14 +333,17 @@ impl<E: AppError> Message for SaveHardState<E> {
 }
 
 /// A record holding the hard state of a Raft node.
-#[derive(Clone, Debug)]
+///
+/// This model derives serde's traits for easily (de)serializing this
+/// model for storage & retrieval.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HardState {
     /// The last recorded term observed by this system.
     pub current_term: u64,
     /// The ID of the node voted for in the `current_term`.
     pub voted_for: Option<NodeId>,
-    /// The IDs of all known members of the cluster.
-    pub members: Vec<u64>,
+    /// The cluster membership configuration.
+    pub membership: messages::MembershipConfig,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

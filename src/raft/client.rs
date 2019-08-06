@@ -93,20 +93,29 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
             // Send logs over for replication.
             .and_then(move |payload, act, _| {
-                let peer_count = act.members.iter().filter(|e| *e == &act.id).count();
+                let voting_peer_count = act.membership.members.iter().filter(|e| *e == &act.id).count();
                 match &mut act.state {
                     RaftState::Leader(state) => {
-                        // If there are peers to replicate to, then setup the request to await
-                        // being comitted to the cluster & send payload over to each replication
-                        // stream as needed.
-                        if peer_count > 0 {
+                        // If there are peer voting members to replicate to, then setup the
+                        // request to await being comitted to the cluster & send payload over to
+                        // each replication stream as needed.
+                        if voting_peer_count > 0 {
                             let entry = payload.entry();
                             state.awaiting_committed.push(payload);
                             for rs in state.nodes.values() {
                                 let _ = rs.addr.do_send(RSReplicate{entry: entry.clone(), line_commit: act.commit_index});
                             }
                         } else {
-                            // Else, the payload is committed. Send it over for application to state machine.
+                            // If there are any non-voting members, replicate to them.
+                            if act.membership.non_voters.len() > 0 {
+                                let entry = payload.entry();
+                                let non_voters = &act.membership.non_voters;
+                                for rs in state.nodes.iter().filter(|e| non_voters.contains(&e.0)).map(|e| e.1) {
+                                    let _ = rs.addr.do_send(RSReplicate{entry: entry.clone(), line_commit: act.commit_index});
+                                }
+                            }
+
+                            // The payload is committed. Send it over to be applied to state machine.
                             act.commit_index = payload.index;
                             if let &ResponseMode::Committed = &payload.response_mode {
                                 // If this RPC is configured to wait only for log committed, then respond to client now.

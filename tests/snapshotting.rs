@@ -101,8 +101,8 @@ fn snapshotting() {
                         // Hard state.
                         assert_eq!(s0.hs.current_term, s1.hs.current_term, "Expected hs current term for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.hs.current_term, s2.hs.current_term, "Expected hs current term for nodes 0 and 2 to be equal.");
-                        assert_eq!(s0.hs.members, s1.hs.members, "Expected hs members for nodes 0 and 1 to be equal.");
-                        assert_eq!(s0.hs.members, s2.hs.members, "Expected hs members for nodes 0 and 2 to be equal.");
+                        assert_eq!(s0.hs.membership, s1.hs.membership, "Expected hs membership for nodes 0 and 1 to be equal.");
+                        assert_eq!(s0.hs.membership, s2.hs.membership, "Expected hs membership for nodes 0 and 2 to be equal.");
                         // State machinen data.
                         assert_eq!(s0.state_machine, s1.state_machine, "Expected state machines for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.state_machine, s2.state_machine, "Expected state machines for nodes 0 and 2 to be equal.");

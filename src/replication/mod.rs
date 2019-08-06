@@ -18,7 +18,7 @@ use crate::{
     config::{Config, SnapshotPolicy},
     messages::{
         AppendEntriesRequest, AppendEntriesResponse,
-        Entry, EntrySnapshotPointer,
+        Entry, EntrySnapshotPointer, MembershipConfig,
     },
     network::RaftNetwork,
     raft::{Raft},
@@ -539,7 +539,7 @@ impl Message for RSNeedsSnapshot {
 pub(crate) struct RSNeedsSnapshotResponse {
     pub index: u64,
     pub term: u64,
-    pub config: Vec<NodeId>,
+    pub membership: MembershipConfig,
     pub pointer: EntrySnapshotPointer,
 }
 

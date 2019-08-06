@@ -122,9 +122,7 @@ pub struct EntryNormal {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EntryConfigChange {
     /// The full list of node IDs to be considered cluster members as part of this config change.
-    pub members: Vec<u64>,
-    /// Any application specific supplemental data asscoiated with this config change.
-    pub supplemental: Option<Vec<u8>>,
+    pub membership: MembershipConfig,
 }
 
 /// An entry which points to a snapshot.
@@ -136,6 +134,43 @@ pub struct EntryConfigChange {
 pub struct EntrySnapshotPointer {
     /// The location of the snapshot file on disk.
     pub path: String,
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// MembershipConfig //////////////////////////////////////////////////////////////////////////////
+
+/// A model of the membership configuration of the cluster.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MembershipConfig {
+    /// A flag indicating if the system is currently in a joint consensus state.
+    pub is_in_joint_consensus: bool,
+    /// Voting members of the Raft cluster.
+    pub members: Vec<NodeId>,
+    /// Non-voting members of the cluster.
+    ///
+    /// These nodes are being brought up-to-speed by the leader and will be transitioned over to
+    /// being standard members once they are up-to-date.
+    pub non_voters: Vec<NodeId>,
+    /// The set of nodes which are to be removed after joint consensus is complete.
+    pub removing: Vec<NodeId>,
+}
+
+impl MembershipConfig {
+    /// Check if the given NodeId exists in this membership config.
+    ///
+    /// This checks only the contents of `members` & `non_voters`.
+    pub fn contains(&self, x: &NodeId) -> bool {
+        self.members.contains(x) || self.non_voters.contains(x)
+    }
+
+    /// Get an iterator over all nodes in the current config.
+    pub fn all_nodes(&self) -> impl Iterator<Item=&NodeId> {
+        self.members.iter().chain(self.non_voters.iter())
+    }
+
+    pub fn len(&self) -> usize {
+        self.members.len() + self.non_voters.len()
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -189,6 +224,11 @@ pub struct VoteResponse {
     pub term: u64,
     /// Will be true if the candidate received a vote from the responder.
     pub vote_granted: bool,
+    /// Will be true if the candidate is unknown to the responding node's config.
+    ///
+    /// If this field is true, and the sender's (the candidate's) index is greater than 0, then it
+    /// should revert to the NonVoter state; if the sender's index is 0, then resume campaigning.
+    pub is_candidate_unknown: bool,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -240,10 +280,11 @@ pub struct InstallSnapshotResponse {
     /// The receiving node's current term, for leader to update itself.
     pub term: u64,
 }
+
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // ClientPayload /////////////////////////////////////////////////////////////////////////////////
 
-/// A payload of entries coming from a client request.
+/// A payload with an entry coming from a client request.
 ///
 /// The entries of this payload will be appended to the Raft log and then applied to the Raft state
 /// machine according to the Raft protocol.
@@ -264,16 +305,27 @@ pub struct InstallSnapshotResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientPayload<E: AppError> {
     /// The application specific contents of this client request.
-    pub entry: EntryNormal,
+    pub(crate) entry: EntryType,
     /// The response mode needed by this request.
-    pub response_mode: ResponseMode,
+    pub(crate) response_mode: ResponseMode,
+    #[serde(skip)]
     marker: std::marker::PhantomData<E>,
 }
 
 impl<E: AppError> ClientPayload<E> {
-    /// Create a new instance.
+    /// Create a new client payload instance with a normal entry type.
     pub fn new(entry: EntryNormal, response_mode: ResponseMode) -> Self {
+        Self::new_base(EntryType::Normal(entry), response_mode)
+    }
+
+    /// Create a new instance.
+    pub fn new_base(entry: EntryType, response_mode: ResponseMode) -> Self {
         Self{entry, response_mode, marker: std::marker::PhantomData}
+    }
+
+    /// Generate a new payload holding a config change.
+    pub(crate) fn new_config(membership: MembershipConfig) -> Self {
+        Self::new_base(EntryType::ConfigChange(EntryConfigChange{membership}), ResponseMode::Committed)
     }
 
     /// Generate a new blank payload.

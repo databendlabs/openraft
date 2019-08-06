@@ -12,7 +12,7 @@ use rmp_serde as rmps;
 
 use actix_raft::{
     AppError, NodeId,
-    messages::{Entry, EntrySnapshotPointer},
+    messages::{Entry, EntrySnapshotPointer, MembershipConfig},
     storage::{
         AppendLogEntry,
         ReplicateLogEntries,
@@ -66,8 +66,9 @@ impl RaftStorage<MemoryStorageError> for MemoryStorage {
     /// Create a new instance.
     fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self {
         let snapshot_dir_pathbuf = std::path::PathBuf::from(snapshot_dir.clone());
+        let membership = MembershipConfig{members, non_voters: vec![], removing: vec![], is_in_joint_consensus: false};
         Self{
-            hs: HardState{current_term: 0, voted_for: None, members},
+            hs: HardState{current_term: 0, voted_for: None, membership},
             log: Default::default(),
             snapshot_data: None, snapshot_dir,
             state_machine: Default::default(),
@@ -194,7 +195,7 @@ impl Handler<CreateSnapshot<MemoryStorageError>> for MemoryStorage {
                 act.log.insert(through, entry);
 
                 // Cache the most recent snapshot data.
-                let current_snap_data = CurrentSnapshotData{term, index, config: act.hs.members.clone(), pointer};
+                let current_snap_data = CurrentSnapshotData{term, index, membership: act.hs.membership.clone(), pointer};
                 act.snapshot_data = Some(current_snap_data.clone());
 
                 fut::ok(current_snap_data)
@@ -214,7 +215,7 @@ impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
             // Snapshot file has been created. Perform final steps of this algorithm.
             .and_then(move |pointer, act: &mut Self, ctx| {
                 // Cache the most recent snapshot data.
-                act.snapshot_data = Some(CurrentSnapshotData{index, term, config: act.hs.members.clone(), pointer: pointer.clone()});
+                act.snapshot_data = Some(CurrentSnapshotData{index, term, membership: act.hs.membership.clone(), pointer: pointer.clone()});
 
                 // Update target index with the new snapshot pointer.
                 let entry = Entry::new_snapshot_pointer(pointer.clone(), index, term);
