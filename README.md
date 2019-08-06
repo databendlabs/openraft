@@ -24,3 +24,6 @@ The snapshot and log compaction capabilities defined in the Raft spec are fully 
 - Leader based `InstallSnapshot` RPC support. This allows the Raft leader to make determinations on when a new member (or a slow member) should receive a snapshot in order to come up-to-date faster.
 
 The API documentation is comprehensive and includes implementation tips and references to the Raft spec for further guidance.
+
+### license
+actix-raft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.
