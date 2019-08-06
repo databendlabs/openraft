@@ -1,15 +1,21 @@
-//! Test client data writing behavior.
+//! Test snapshotting behavior.
 
 mod fixtures;
 
 use std::time::{Duration, Instant};
 
 use actix::prelude::*;
-use actix_raft::metrics::{RaftMetrics, State};
+use actix_raft::{
+    NodeId,
+    config::DEFAULT_LOGS_SINCE_LAST,
+    messages::{ClientError, EntryNormal, ResponseMode},
+    metrics::{RaftMetrics, State},
+};
+use log::{error};
 use tokio_timer::Delay;
 
 use fixtures::{
-    ClientRequest, RaftTestController, Node, setup_logger,
+    Node, RaftTestController, Payload, setup_logger,
     dev::{ExecuteInRaftRouter, GetCurrentLeader, RaftRouter, Register},
     memory_storage::{GetCurrentState},
 };
@@ -18,23 +24,17 @@ use fixtures::{
 ///
 /// What does this test cover?
 ///
-/// - The client request path. Client data should be appended to the log, replicated & then
-/// applied to the state machine.
-/// - Client requests should be processed by the leader, and if the node
-/// is not the leader, it will return a forwarding error with the information on the leader.
-/// - If the leader dies during client write load, the clients should receive forwarding info,
-/// and the new leader should be able to handle client requests as normal.
-/// - after all data has been written, all nodes should have identical logs & state machines.
+/// TODO: update this.
 ///
-/// `RUST_LOG=actix_raft,client_writes=debug cargo test client_writes`
+/// `RUST_LOG=actix_raft,snapshotting=debug cargo test snapshotting`
 #[test]
-fn client_writes() {
+fn snapshotting() {
     setup_logger();
     let sys = System::builder().stop_on_panic(true).name("test").build();
 
     // Setup test dependencies.
-    let netarb = Arbiter::new();
-    let network = RaftRouter::start_in_arbiter(&netarb, |_| RaftRouter::new());
+    let net = RaftRouter::new();
+    let network = net.start();
     let members = vec![0, 1, 2];
     let node0 = Node::builder(0, network.clone(), members.clone()).build();
     network.do_send(Register{id: 0, addr: node0.addr.clone()});
@@ -47,46 +47,25 @@ fn client_writes() {
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
     ctl.register(0, node0.addr.clone()).register(1, node1.addr.clone()).register(2, node2.addr.clone());
-    ctl.start_with_test(4,  Box::new(|act, ctx| {
-        // Get the current leader.
-        ctx.spawn(fut::wrap_future(act.network.send(GetCurrentLeader))
-            .map_err(|_, _: &mut RaftTestController, _| panic!("Failed to get current leader."))
-            .and_then(|res, _, _| fut::result(res)).and_then(|leader_opt, _, _| {
-                let leader = leader_opt.expect("Expected the cluster to have elected a leader.");
-                fut::ok(leader)
+    ctl.start_with_test(5, Box::new(|act, ctx| {
+        // Isolate the current leader.
+        let task = act.isolate_leader(ctx)
+            // Wait for new leader to be elected.
+            .and_then(|old_leader, _, _| {
+                fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(5))).map_err(|_, _, _| ())
+                    .map(move |_, _, _| old_leader)
             })
-            // Send 100 requests as fast as possible to the current leader & give the cluster 1 second to do work.
-            .and_then(|leader, _, ctx| {
-                for idx in 0..100 {
-                    ctx.notify(ClientRequest{payload: idx, current_leader: Some(leader), cb: None});
-                }
-                fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(1))).map_err(|_, _, _| ())
-                    .map(move |_, _, _| leader)
-            })
-
-            // Bring down the current leader.
-            .and_then(|leader, act, _| {
-                act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| act.isolate_node(leader))));
-                fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(2))).map_err(|_, _, _| ())
-                    .map(move |_, _, _| leader)
-            })
-
-            // Get new leader ID.
+            // Write enough data to trigger a snapshot. Won't proceed until data is finished writing.
+            .and_then(|old_leader, act, ctx| act.write_above_snapshot_threshold(ctx).map(move |_, _, _| old_leader))
+            // Restore old node.
             .and_then(|old_leader, act, _| {
-                fut::wrap_future(act.network.send(GetCurrentLeader))
-                .map_err(|_, _: &mut RaftTestController, _| panic!("Failed to get current leader."))
-                .and_then(|res, _, _| fut::result(res))
-                .map(move |current_leader, _, _| (current_leader, old_leader))
-            })
-
-            // Restore old node, send 100 more requests & wait for 3 second for the system to process.
-            .and_then(|(current_leader, old_leader), act, ctx| {
                 act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| act.restore_node(old_leader))));
-                for idx in 0..100 {
-                    ctx.notify(ClientRequest{payload: idx, current_leader, cb: None});
-                }
-                fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(3))).map_err(|_, _, _| ())
+                fut::ok(())
             })
+            // Wait for old leader to be brought up-to-speed with a snapshot. This can take some
+            // time depending on the system. 15 seconds should be way more than enough. Keep it
+            // high to reduce transient test failures.
+            .and_then(|_, _, _| fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(15))).map_err(|_, _, _| ()))
 
             // Assert that all nodes are up, same leader, same final state from the standpoint of the metrics.
             .and_then(|_, act, _| {
@@ -124,12 +103,6 @@ fn client_writes() {
                         assert_eq!(s0.hs.current_term, s2.hs.current_term, "Expected hs current term for nodes 0 and 2 to be equal.");
                         assert_eq!(s0.hs.members, s1.hs.members, "Expected hs members for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.hs.members, s2.hs.members, "Expected hs members for nodes 0 and 2 to be equal.");
-                        // Log.
-                        assert_eq!(s0.log, s1.log, "Expected log for nodes 0 and 1 to be equal.");
-                        assert_eq!(s0.log, s2.log, "Expected log for nodes 0 and 2 to be equal.");
-                        // Snapshot data.
-                        assert_eq!(s0.snapshot_data, s1.snapshot_data, "Expected snapshot_data for nodes 0 and 1 to be equal.");
-                        assert_eq!(s0.snapshot_data, s2.snapshot_data, "Expected snapshot_data for nodes 0 and 2 to be equal.");
                         // State machinen data.
                         assert_eq!(s0.state_machine, s1.state_machine, "Expected state machines for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.state_machine, s2.state_machine, "Expected state machines for nodes 0 and 2 to be equal.");
@@ -140,9 +113,52 @@ fn client_writes() {
                         fut::ok(())
                     })
             })
-            .map_err(|err, _, _| panic!("Failure during test. {:?}", err)));
+            .map_err(|err, _, _| panic!("Failure during test. {:?}", err));
+        ctx.spawn(task);
     }));
 
     // Run the test.
     assert!(sys.run().is_ok(), "Error during test.");
+}
+
+impl RaftTestController {
+    fn isolate_leader(&mut self, _: &mut Context<Self>) -> impl ActorFuture<Actor=Self, Item=NodeId, Error=()> {
+        fut::wrap_future(self.network.send(GetCurrentLeader))
+            .map_err(|_, _: &mut Self, _| panic!("Failed to get current leader."))
+            .and_then(|res, _, _| fut::result(res))
+            .and_then(|current_leader, act, _| {
+                let leader = current_leader.expect("Expected a leader to have been elected.");
+                act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| act.isolate_node(leader))));
+                fut::ok(leader)
+            })
+    }
+
+    fn write_above_snapshot_threshold(&mut self, _: &mut Context<Self>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+        fut::wrap_future(self.network.send(GetCurrentLeader))
+            .map_err(|_, _: &mut Self, _| panic!("Failed to get current leader."))
+            .and_then(|res, _, _| fut::result(res))
+            .and_then(|current_leader, act, _| {
+                let num_requests = DEFAULT_LOGS_SINCE_LAST + 10;
+                let leader_id = current_leader.expect("Expected to find a current cluster leader for writing client requests.");
+                let addr = act.nodes.get(&leader_id).expect("Expected leader to be present it RaftTestController's nodes map.");
+                let leader = addr.clone();
+
+                fut::wrap_stream(futures::stream::iter_ok(0..num_requests))
+                    .and_then(move |data, _, _| {
+                        let entry = EntryNormal{data: data.to_string().into_bytes()};
+                        let payload = Payload::new(entry, ResponseMode::Applied);
+                        fut::wrap_future(leader.clone().send(payload))
+                            .map_err(|_, _, _| ClientError::Internal)
+                            .and_then(|res, _, _| fut::result(res))
+                            .then(move |res, _, _| match res {
+                                Ok(_) => fut::ok(()),
+                                Err(err) => {
+                                    error!("TEST: Error during client request. {}", err);
+                                    fut::err(())
+                                }
+                            })
+                    })
+                    .finish()
+            })
+    }
 }

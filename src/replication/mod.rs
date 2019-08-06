@@ -3,14 +3,14 @@
 //! This module encapsulates the `ReplicationStream` actor which is used for maintaining a
 //! replication stream from a Raft leader node to a target follower node.
 
+mod heartbeat;
+mod lagging;
+mod linerate;
+mod snapshot;
+
 use std::sync::Arc;
 
 use actix::prelude::*;
-use log::{debug, error, info};
-use tokio::{
-    prelude::*,
-    fs::File,
-};
 
 use crate::{
     AppError, NodeId,
@@ -19,7 +19,6 @@ use crate::{
     messages::{
         AppendEntriesRequest, AppendEntriesResponse,
         Entry, EntrySnapshotPointer,
-        InstallSnapshotRequest, InstallSnapshotResponse,
     },
     network::RaftNetwork,
     raft::{Raft},
@@ -46,7 +45,7 @@ struct LineRateState {
     ///
     /// The buffered payload here will be expanded as more replication commands come in from the
     /// Raft node while there is a buffered instance here.
-    buffered_outbound: Vec<Arc<Vec<Entry>>>,
+    buffered_outbound: Vec<Arc<Entry>>,
 }
 
 /// Lagging specific state.
@@ -58,7 +57,7 @@ struct LaggingState {
     ///
     /// This is identical to `LineRateState`'s buffer, and will be trasferred over to its buffer
     /// during state transition.
-    buffered_outbound: Vec<Arc<Vec<Entry>>>,
+    buffered_outbound: Vec<Arc<Entry>>,
 }
 
 /// Snapshotting specific state.
@@ -176,12 +175,6 @@ pub(crate) struct ReplicationStream<E: AppError, N: RaftNetwork<E>, S: RaftStora
     /// This will be initialized to the leader's last_log_term, and will be updated as
     /// replication proceeds.
     match_term: u64,
-
-    /// An optional handle to the current heartbeat timeout operation.
-    ///
-    /// This does not represent the heartbeat request itself, it represents the timer which will
-    /// trigger a heartbeat in the future.
-    heartbeat: Option<SpawnHandle>,
 }
 
 impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, S> {
@@ -196,7 +189,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
             state: RSState::LineRate(Default::default()), is_driving_state: false,
             line_index, line_commit,
             next_index: line_index + 1, match_index: line_index, match_term: line_term,
-            heartbeat: None,
         }
     }
 
@@ -204,7 +196,15 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
     ///
     /// This method will take into account the current state of the replication stream and will
     /// drive forward the next actions it needs to take based on the state.
+    ///
+    /// NOTE WELL: we can not attempt to make a determination about what state this stream
+    /// "should" be in from here, as the individual drive_* methods will cause state changes based
+    /// on error conditions and the like.
     fn drive_state(&mut self, ctx: &mut Context<Self>) {
+        // TODO: once async/await lands and we have better async looping functionality,
+        // turn this into an async function and call the other drive_* methods in a loop, instead
+        // of having to juggle the `is_driving_state` bool so carefully.
+
         // If task already in progress, do nothing.
         if self.is_driving_state {
             return;
@@ -217,151 +217,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
             RSState::Lagging(_) => self.drive_state_lagging(ctx),
             RSState::Snapshotting(_) => self.drive_state_snapshotting(ctx),
         }
-    }
-
-    /// Drive the replication stream forward when it is in state `LineRate`.
-    fn drive_state_line_rate(&mut self, ctx: &mut Context<Self>) {
-        let state = match &mut self.state {
-            RSState::LineRate(state) => state,
-            _ => {
-                self.is_driving_state = false;
-                return self.drive_state(ctx);
-            },
-        };
-
-        // If there is a buffered payload, send it, else nothing to do.
-        if state.buffered_outbound.len() > 0 {
-            let entries = state.buffered_outbound.drain(..).fold(vec![], |mut acc, elem| {
-                for entry in elem.iter() {
-                    acc.push(entry.clone());
-                }
-                acc
-            });
-            let last_index_and_term = entries.last().map(|e| (e.index, e.term));
-            let payload = AppendEntriesRequest{
-                target: self.target, term: self.term, leader_id: self.id,
-                prev_log_index: self.match_index,
-                prev_log_term: self.match_term,
-                entries, leader_commit: self.line_commit,
-            };
-            // Send the payload.
-            let f = self.send_append_entries(ctx, payload)
-                // Process the response.
-                .and_then(move |res, act, ctx| act.handle_append_entries_response(ctx, res, last_index_and_term))
-                // Drive state forward regardless of outcome.
-                .then(|res, act, ctx| {
-                    act.is_driving_state = false;
-                    match res {
-                        Ok(_) => {
-                            act.drive_state(ctx);
-                            fut::Either::A(fut::result(res))
-                        }
-                        Err(_) => {
-                            fut::Either::B(act.transition_to_lagging(ctx)
-                                .then(|res, act, ctx| {
-                                    act.drive_state(ctx);
-                                    fut::result(res)
-                                }))
-                        }
-                    }
-                });
-            ctx.spawn(f);
-        } else {
-            self.is_driving_state = false;
-        }
-    }
-
-    /// Drive the replication stream forward when it is in state `Lagging`.
-    fn drive_state_lagging(&mut self, ctx: &mut Context<Self>) {
-        let state = match &mut self.state {
-            RSState::Lagging(state) => state,
-            _ => {
-                self.is_driving_state = false;
-                return self.drive_state(ctx);
-            },
-        };
-
-        // A few values to be moved into future closures.
-        let (prev_log_index, prev_log_term) = (self.match_index, self.match_term);
-        let start = self.next_index;
-        let batch_will_reach_line = (self.next_index > self.line_index) || ((self.line_index - self.next_index) < self.config.max_payload_entries);
-
-        // Determine an appropriate stop index for the storage fetch operation. Avoid underflow.
-        ctx.spawn(
-            (if batch_will_reach_line {
-                // If we have caught up to the line index, then that means we will be running at
-                // line rate after this payload is successfully replicated.
-                let stop_idx = self.line_index + 1; // Fetch operation is non-inclusive on the stop value, so ensure it is included.
-                state.is_ready_for_line_rate = true;
-
-                // Update Raft actor with replication rate change.
-                let event = RSRateUpdate{target: self.target, is_line_rate: true};
-                fut::Either::A(fut::wrap_future(self.raftnode.send(event))
-                    .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
-                    .map(move |_, _, _| stop_idx))
-            } else {
-                fut::Either::B(fut::ok(self.next_index + self.config.max_payload_entries))
-            })
-
-            // Bringing the target up-to-date by fetching the largest possible payload of entries
-            // from storage within permitted configuration.
-            .and_then(move |stop, act: &mut Self, _| {
-                fut::wrap_future(act.storage.send(GetLogEntries::new(start, stop)))
-                    .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
-            })
-            .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
-            // We have a successful payload of entries, send it to the target.
-            .and_then(move |entries, act, ctx| {
-                let last_log_and_index = entries.last().map(|elem| (elem.index, elem.term));
-                let payload = AppendEntriesRequest{
-                    target: act.target, term: act.term, leader_id: act.id,
-                    prev_log_index, prev_log_term, // NOTE: these are moved in from above.
-                    entries, leader_commit: act.line_commit,
-                };
-                act.send_append_entries(ctx, payload)
-                    .and_then(move |res, act, ctx| act.handle_append_entries_response(ctx, res, last_log_and_index))
-            })
-            // Transition to line rate if needed.
-            .and_then(|_, act, ctx| {
-                match &act.state {
-                    RSState::Lagging(inner) if inner.is_ready_for_line_rate => {
-                        fut::Either::A(act.transition_to_line_rate(ctx))
-                    }
-                    _ => fut::Either::B(fut::ok(())),
-                }
-            })
-            // Drive state forward regardless of outcome.
-            .then(|res, act, ctx| {
-                act.is_driving_state = false;
-                act.drive_state(ctx);
-                fut::result(res)
-            }));
-    }
-
-    /// Drive the replication stream forward when it is in state `Snapshotting`.
-    fn drive_state_snapshotting(&mut self, ctx: &mut Context<Self>) {
-        let _state = match &mut self.state {
-            RSState::Snapshotting(state) => state,
-            _ => {
-                self.is_driving_state = false;
-                return self.drive_state(ctx);
-            },
-        };
-
-        ctx.spawn(fut::wrap_future(self.raftnode.send(RSNeedsSnapshot))
-            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
-            // Flatten inner result.
-            .and_then(|res, _, _| fut::result(res))
-            // Handle response from Raft node and start streaming over the snapshot.
-            .and_then(|res, act, ctx| act.send_snapshot(ctx, res))
-            // Transition over to lagging state after snapshot has been sent.
-            .and_then(|_, act, ctx| act.transition_to_lagging(ctx))
-            // Drive state forward regardless of outcome.
-            .then(|res, act, ctx| {
-                act.is_driving_state = false;
-                act.drive_state(ctx);
-                fut::result(res)
-            }));
     }
 
     /// Handle AppendEntries RPC responses from the target node.
@@ -446,59 +301,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         }
     }
 
-    /// Handle frames from the target node which are in response to an InstallSnapshot RPC request.
-    fn handle_install_snapshot_response(&mut self, _: &mut Context<Self>, res: InstallSnapshotResponse) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
-        // Check the response term. As long as everything still matches, then we are good to resume.
-        if &res.term > &self.term {
-            info!("Response from InstallSnapshot RPC sent to {} indicates a newer term {} is in session, reverting to follower.", &self.target, &res.term);
-            fut::Either::B(fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: res.term}))
-                .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
-                // Ensure an error is returned here, as this was not a successful response.
-                .and_then(|_, _, _| fut::err(())))
-        } else {
-            fut::Either::A(fut::ok(()))
-        }
-    }
-
-    /// Update the heartbeat mechanism.
-    ///
-    /// When called, this method will cancel any pending heartbeat and will schedule a new one
-    /// based on the configured `heartbeat_rate`. Once a request is successfully returned from the
-    /// target, this method should be called to ensure a timeout isn't hit, and also to ensure
-    /// this system is not sending more network requests than is needed.
-    fn heartbeat_update(&mut self, ctx: &mut Context<Self>) {
-        // Remove pending heartbeat if present.
-        if let Some(hb) = self.heartbeat.take() {
-            ctx.cancel_future(hb);
-        }
-
-        // Setup a new heartbeat to be sent after the `heartbeat_rate` duration.
-        let duration = std::time::Duration::from_millis(self.config.heartbeat_interval);
-        let handle = ctx.run_later(duration, |act, ctx| {
-            let f = act.heartbeat_send(ctx);
-            ctx.spawn(f);
-        });
-        self.heartbeat = Some(handle);
-    }
-
-    /// Send a heartbeat frame to the target node.
-    fn heartbeat_send(&mut self, ctx: &mut Context<Self>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
-        // Build the heartbeat frame to be sent to the follower.
-        let payload = AppendEntriesRequest{
-            target: self.target, term: self.term, leader_id: self.id,
-            prev_log_index: self.match_index, prev_log_term: self.match_term,
-            entries: Vec::with_capacity(0), leader_commit: self.line_commit,
-        };
-        self.send_append_entries(ctx, payload)
-            // Handle heartbeat response.
-            .and_then(|res, act, ctx| act.handle_append_entries_response(ctx, res, None))
-            // Ensure next heartbeat is scheduled even for error conditions, as
-            // `send_append_entries` only updates heartbeat on success.
-            .map_err(|_, act, ctx| {
-                act.heartbeat_update(ctx);
-            })
-    }
-
     /// Transform and log an actix MailboxError.
     ///
     /// This method treats the error as being fatal, as Raft can not function properly if the
@@ -531,47 +333,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         // Send the payload.
         fut::wrap_future(self.network.send(request))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftNetwork))
-            // Flatten inner result. If we got a response from the target node, update heartbeat.
-            .and_then(|res, act, ctx| {
-                if res.is_ok() {
-                    act.heartbeat_update(ctx);
-                }
-                fut::result(res)
-            })
-    }
-
-    /// Send the specified snapshot over to the target node.
-    fn send_snapshot(&mut self, _: &mut Context<Self>, snap: RSNeedsSnapshotResponse) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
-        // Look up the snapshot on disk.
-        let (snap_index, snap_term) = (snap.index, snap.term);
-        fut::wrap_future(tokio::fs::File::open(snap.pointer.path.clone()))
-            .map_err(|err, _, _| error!("Error opening snapshot file. {}", err))
-
-            // We've got a successful file handle, start streaming the chunks over to the target.
-            .and_then(move |file, act: &mut Self, _| {
-                // Create a snapshot stream from the file and stream it over to the target.
-                let snap_stream = SnapshotStream::new(act.target, file, act.config.snapshot_max_chunk_size as usize, act.term, act.id, snap_index, snap_term);
-                fut::wrap_stream(snap_stream)
-                    .map_err(|err, act: &mut Self, _| error!("Error while streaming snapshot to target {}: {}", &act.target, err))
-
-                    // Send snapshot RPC frame over to target.
-                    .and_then(|rpc, act: &mut Self, _| {
-                        fut::wrap_future(act.network.send(rpc))
-                            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftNetwork))
-                            // Flatten inner result.
-                            .and_then(|res, _, _| fut::result(res))
-                            // Handle response from target.
-                            .and_then(|res, act, ctx| act.handle_install_snapshot_response(ctx, res))
-                    })
-                    .finish()
-            })
-            // Snapshot installation was successful. Update target to track last index of snapshot.
-            .map(move |_, act, _| {
-                act.next_index = snap_index + 1;
-                act.match_index = snap_index;
-                act.match_term = snap_term;
-                act.raftnode.do_send(RSUpdateMatchIndex{target: act.target, match_index: snap_index});
-            })
+            .and_then(|res, _, _| fut::result(res))
     }
 
     /// Transition this actor to the state `RSState::Lagging` & notify Raft node.
@@ -628,6 +390,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Actor for ReplicationStr
             fut::result(res)
         });
         ctx.spawn(f);
+        self.setup_heartbeat(ctx);
     }
 }
 
@@ -637,16 +400,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Actor for ReplicationStr
 /// A replication stream message indicating a new payload of entries to be replicated.
 #[derive(Clone)]
 pub(crate) struct RSReplicate {
-    /// The payload of entries to be replicated.
+    /// The new entry which needs to be replicated.
     ///
-    /// The payload will only be empty if the Raft node detects that this replication stream is
-    /// not running at line rate, as buffering too many entries could cause memory issues.
-    pub entries: Arc<Vec<Entry>>,
-    /// The index of the log entry to most recently be appended to the log by the leader.
-    ///
-    /// This will always be the index of the last element in the entries payload if values are
-    /// given in the payload.
-    pub line_index: u64,
+    /// This entry will always be the most recent entry to have been appended to the log, so its
+    /// index is the new line index value.
+    pub entry: Arc<Entry>,
     /// The index of the highest log entry which is known to be committed in the cluster.
     pub line_commit: u64,
 }
@@ -666,13 +424,13 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for
     fn handle(&mut self, msg: RSReplicate, ctx: &mut Self::Context) -> Self::Result {
         // Always update line commit & index info first so that this value can be used in all AppendEntries RPCs.
         self.line_commit = msg.line_commit;
-        self.line_index = msg.line_index;
+        self.line_index = msg.entry.index;
 
         // Get a mutable reference to an inner buffer if permitted by current state, else return.
         match &mut self.state {
             // NOTE: exceeding line rate buffer size is accounted for in the `handle_append_entries_response` handler.
-            RSState::LineRate(inner) => inner.buffered_outbound.push(msg.entries),
-            RSState::Lagging(inner) => inner.buffered_outbound.push(msg.entries),
+            RSState::LineRate(inner) => inner.buffered_outbound.push(msg.entry),
+            RSState::Lagging(inner) => inner.buffered_outbound.push(msg.entry),
             _ => return Ok(()),
         };
 
@@ -795,74 +553,4 @@ pub(crate) struct RSUpdateMatchIndex {
     pub target: NodeId,
     /// The index of the most recent log known to have been successfully replicated on the target.
     pub match_index: u64,
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-// SnapshotStream ////////////////////////////////////////////////////////////////////////////////
-
-/// An async stream of the chunks of a given file.
-struct SnapshotStream {
-    target: NodeId,
-    file: File,
-    offset: u64,
-    buffer: Vec<u8>,
-    term: u64,
-    leader_id: NodeId,
-    last_included_index: u64,
-    last_included_term: u64,
-    has_sent_terminal_frame: bool,
-}
-
-impl SnapshotStream {
-    /// Create a new instance.
-    pub fn new(target: NodeId, file: File, bufsize: usize, term: u64, leader_id: NodeId, last_included_index: u64, last_included_term: u64) -> Self {
-        Self{
-            target, file, offset: 0, buffer: Vec::with_capacity(bufsize),
-            term, leader_id, last_included_index, last_included_term,
-            has_sent_terminal_frame: false,
-        }
-    }
-}
-
-impl futures::Stream for SnapshotStream {
-    type Item = InstallSnapshotRequest;
-    type Error = tokio::io::Error;
-
-    fn poll(&mut self) -> futures::Poll<Option<Self::Item>, Self::Error> {
-        self.file.read_buf(&mut self.buffer).map(|poll_res| match poll_res {
-            Async::NotReady => Async::NotReady,
-            Async::Ready(bytes_read) => {
-                // If bytes were successfully read, the stream is ready to yield the next item.
-                if bytes_read > 0 {
-                    self.offset += bytes_read as u64;
-                    let data = self.buffer.split_off(0); // Allocates a new buf only when we have successfully read bytes.
-                    let frame = InstallSnapshotRequest{
-                        target: self.target, term: self.term, leader_id: self.leader_id,
-                        last_included_index: self.last_included_index,
-                        last_included_term: self.last_included_term,
-                        offset: self.offset, data, done: false,
-                    };
-                    Async::Ready(Some(frame))
-                }
-
-                // There are no bytes left in the file, but we need to send the terminal RPC frame,
-                // so mark the stream as being complete and send the terminal frame.
-                else if !self.has_sent_terminal_frame {
-                    self.has_sent_terminal_frame = true;
-                    let frame = InstallSnapshotRequest{
-                        target: self.target, term: self.term, leader_id: self.leader_id,
-                        last_included_index: self.last_included_index,
-                        last_included_term: self.last_included_term,
-                        offset: self.offset, data: Vec::with_capacity(0), done: true,
-                    };
-                    Async::Ready(Some(frame))
-                }
-
-                // There are no bytes left in the file, and we've already sent the terminal frame. We're done.
-                else {
-                    Async::Ready(None)
-                }
-            }
-        })
-    }
 }

@@ -9,7 +9,6 @@ use crate::{
     AppError,
     messages::{
         AppendEntriesRequest,
-        ClientPayloadForwarded,
         InstallSnapshotRequest,
         VoteRequest,
     }
@@ -35,7 +34,7 @@ use crate::{
 /// flexibility here. To provide the maximum level of flexibility for data serialization, all
 /// types derive serde's `Serialize` & `DeserializeOwned` traits. Using other serialization
 /// schemes like protobuf, capnproto or flatbuffers is simple to manage and can be done entirly
-/// using the Rust's standard `From/Into` traits.
+/// using Rust's standard `From/Into` traits.
 pub trait RaftNetwork<E>
     where
         E: AppError,
@@ -49,7 +48,4 @@ pub trait RaftNetwork<E>
 
         Self: Handler<VoteRequest>,
         Self::Context: ToEnvelope<Self, VoteRequest>,
-
-        Self: Handler<ClientPayloadForwarded<E>>,
-        Self::Context: ToEnvelope<Self, ClientPayloadForwarded<E>>,
 {}

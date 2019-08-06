@@ -1,10 +1,11 @@
 use actix::prelude::*;
-use log::{debug, warn};
+use log::{error, warn};
 
 use crate::{
     AppError,
-    common::{DependencyAddr, UpdateCurrentLeader},
+    common::{CLIENT_RPC_TX_ERR, ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     config::SnapshotPolicy,
+    messages::{ClientPayloadResponse, ResponseMode},
     network::RaftNetwork,
     raft::{Raft, RaftState},
     replication::{
@@ -82,7 +83,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSNeedsSnapshot>
         let threshold = match &self.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => *threshold,
             SnapshotPolicy::Disabled => {
-                warn!("Received an RSNeedsSnapshot request from a replication stream, but snapshotting is disabled. This is a bug.");
+                warn!("Received an RSNeedsSnapshot request from a replication stream, but snapshotting is disabled. Cluster is misconfigured.");
                 return Box::new(fut::err(()));
             }
         };
@@ -122,9 +123,10 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRevertToFollow
     /// Handle events from replication streams for when this node needs to revert to follower state.
     fn handle(&mut self, msg: RSRevertToFollower, ctx: &mut Self::Context) {
         if &msg.term > &self.current_term {
+            self.update_current_term(msg.term, None);
+            self.save_hard_state(ctx);
             self.update_current_leader(ctx, UpdateCurrentLeader::Unknown);
             self.become_follower(ctx);
-            self.current_term = msg.term;
         }
     }
 }
@@ -136,7 +138,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchInd
     type Result = ();
 
     /// Handle events from a replication stream which updates the target node's match index.
-    fn handle(&mut self, msg: RSUpdateMatchIndex, ctx: &mut Self::Context) {
+    fn handle(&mut self, msg: RSUpdateMatchIndex, _: &mut Self::Context) {
         // Extract leader state, else do nothing.
         let state = match &mut self.state {
             RaftState::Leader(state) => state,
@@ -168,15 +170,22 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchInd
                 let _ = node.1.addr.do_send(RSUpdateLineCommit(self.commit_index));
             }
 
-            // Process pending requests based on new `commit_index`.
+            // Check if there are any pending requests which need to be processed.
             let filter = state.awaiting_committed.iter().enumerate()
-                .take_while(|(_idx, elem)| elem.last_index <= new_commit_index).last()
+                .take_while(|(_idx, elem)| &elem.index <= &new_commit_index).last()
                 .map(|(idx, _)| idx);
             if let Some(offset) = filter {
-                let requests: Vec<_> = state.awaiting_committed.drain(..=offset).collect();
-                for payload in requests {
-                    let f = self.process_committed_client_request(ctx, payload);
-                    ctx.spawn(f);
+                // Build a new ApplyLogsTask from each of the given client requests.
+                for request in state.awaiting_committed.drain(..=offset) {
+                    if let &ResponseMode::Committed = &request.response_mode {
+                        // If this RPC is configured to wait only for log committed, then respond to client now.
+                        let entry = request.entry();
+                        let _ = request.tx.send(Ok(ClientPayloadResponse{index: request.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_TX_ERR, err));
+                        let _ = self.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry, chan: None});
+                    } else {
+                        // Else, send it through the pipeline and it will be responded to afterwords.
+                        let _ = self.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry: request.entry(), chan: Some(request.tx)});
+                    }
                 }
             }
         }
@@ -193,7 +202,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchInd
 /// NOTE: there are a few edge cases accounted for in this routine which will never practically
 /// be hit, but they are accounted for in the name of good measure.
 fn calculate_new_commit_index(mut entries: Vec<u64>, current_commit: u64) -> u64 {
-    debug!("Calculating match index for {:?} and current term {}", &entries, &current_commit);
     // Handle cases where len < 2.
     let len = entries.len();
     if len == 0 {

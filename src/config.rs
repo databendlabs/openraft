@@ -5,24 +5,23 @@ use std::{
     time::Duration,
 };
 
-use failure::Fail;
 use log::{error};
 use rand::{thread_rng, Rng};
 
 /// Default election timeout minimum.
-const DEFAULT_ELECTION_TIMEOUT_MIN: u16 = 200;
+pub const DEFAULT_ELECTION_TIMEOUT_MIN: u16 = 200;
 /// Default election timeout maximum.
-const DEFAULT_ELECTION_TIMEOUT_MAX: u16 = 700;
+pub const DEFAULT_ELECTION_TIMEOUT_MAX: u16 = 300;
 /// Default heartbeat interval.
-const DEFAULT_HEARTBEAT_INTERVAL: u16 = 50;
+pub const DEFAULT_HEARTBEAT_INTERVAL: u16 = 50;
 /// Default threshold for when to trigger a snapshot.
-const DEFAULT_LOGS_SINCE_LAST: u64 = 5000;
+pub const DEFAULT_LOGS_SINCE_LAST: u64 = 5000;
 /// Default maximum number of entries per replication payload.
-const DEFAULT_MAX_PAYLOAD_ENTRIES: u64 = 300;
+pub const DEFAULT_MAX_PAYLOAD_ENTRIES: u64 = 300;
 /// Default metrics rate.
-const DEFAULT_METRICS_RATE: Duration = Duration::from_millis(10000);
+pub const DEFAULT_METRICS_RATE: Duration = Duration::from_millis(5000);
 /// Default snapshot chunksize.
-const DEFAULT_SNAPSHOT_CHUNKSIZE: u64 = 1024u64 * 1024u64 * 3;
+pub const DEFAULT_SNAPSHOT_CHUNKSIZE: u64 = 1024 * 1024 * 3;
 
 /// Raft log snapshot policy.
 ///
@@ -37,6 +36,12 @@ pub enum SnapshotPolicy {
     /// A snapshot will be generated once the log has grown the specified number of logs since
     /// the last snapshot.
     LogsSinceLast(u64),
+}
+
+impl Default for SnapshotPolicy {
+    fn default() -> Self {
+        SnapshotPolicy::LogsSinceLast(DEFAULT_LOGS_SINCE_LAST)
+    }
 }
 
 /// The runtime configuration for a Raft node.
@@ -63,7 +68,7 @@ pub struct Config {
     /// The election timeout used for a Raft node when it is a follower.
     ///
     /// This value is randomly generated based on default confguration or a given min & max. The
-    /// default value will be between 200-700 milliseconds.
+    /// default value will be between 200-300 milliseconds.
     pub election_timeout_millis: u64,
     /// The heartbeat interval at which leaders will send heartbeats to followers.
     ///
@@ -86,13 +91,15 @@ pub struct Config {
     pub max_payload_entries: u64,
     /// The rate at which metrics will be pumped out from the Raft node.
     ///
-    /// Defaults to 10 seconds.
+    /// Defaults to 5 seconds.
     pub metrics_rate: Duration,
     /// The directory where the log snapshots are to be kept for a Raft node.
     pub snapshot_dir: String,
     /// The snapshot policy to use for a Raft node.
     pub snapshot_policy: SnapshotPolicy,
     /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes).
+    ///
+    /// Defaults to 3Mib.
     pub snapshot_max_chunk_size: u64,
 }
 
@@ -204,7 +211,7 @@ impl ConfigBuilder {
         let heartbeat_interval = self.heartbeat_interval.unwrap_or(DEFAULT_HEARTBEAT_INTERVAL) as u64;
         let max_payload_entries = self.max_payload_entries.unwrap_or(DEFAULT_MAX_PAYLOAD_ENTRIES);
         let metrics_rate = self.metrics_rate.unwrap_or(DEFAULT_METRICS_RATE);
-        let snapshot_policy = self.snapshot_policy.unwrap_or_else(|| SnapshotPolicy::LogsSinceLast(DEFAULT_LOGS_SINCE_LAST));
+        let snapshot_policy = self.snapshot_policy.unwrap_or_else(|| SnapshotPolicy::default());
         let snapshot_max_chunk_size = self.snapshot_max_chunk_size.unwrap_or(DEFAULT_SNAPSHOT_CHUNKSIZE);
 
         Ok(Config{
@@ -218,14 +225,21 @@ impl ConfigBuilder {
 }
 
 /// A configuration error.
-#[derive(Debug, Fail, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ConfigError {
     /// The specified value for `snapshot_dir` does not exist on disk or could not be accessed.
-    #[fail(display="The specified value for `snapshot_dir` does not exist on disk or could not be accessed.")]
     InvalidSnapshotDir,
     /// The given values for election timeout min & max are invalid. Max must be greater than min.
-    #[fail(display="The given values for election timeout min & max are invalid. Max must be greater than min.")]
     InvalidElectionTimeoutMinMax,
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::InvalidSnapshotDir => write!(f, "The specified value for `snapshot_dir` does not exist on disk or could not be accessed."),
+            ConfigError::InvalidElectionTimeoutMinMax => write!(f, "The given values for election timeout min & max are invalid. Max must be greater than min."),
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

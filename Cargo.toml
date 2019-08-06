@@ -7,18 +7,18 @@ edition = "2018"
 [dependencies]
 actix = "0.8"
 bytes = "0.4"
-failure = "0.1"
 futures = "0.1"
 log = "0.4"
-prost = "0.5"
-prost-derive = "0.5"
 rand = "0.6"
-tokio = "0.1"
 serde = { version="1", features=["derive"] }
+tokio-timer = "0.2"
 
 [build-dependencies]
 prost-build = "0.5"
 
 [dev-dependencies]
-tempfile = "3"
+async-log = "1"
 env_logger = "0.6"
+rmp = "0.8"
+rmp-serde = "0.13"
+tempfile = "3"

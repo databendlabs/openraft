@@ -1,22 +1,14 @@
 todo
 ====
-- when a leader comes to power, it should generate a new blank entry and immediately replicate it. This ensures that there is no stale data due to a recent leader election where there was uncommitted data.
-- need to update ClientPayload to take only a single entry.
-- storage engine will need to be updated to have a different handler for appending client requests and replicating from the leader. This provides a more clean semantic difference for when errors can and can not be returned. Only the handler for client requests will be allowed to return errors. This will also reduce the number of allocations needed, and removes ambiguity as to the correct pattern for performing batch writes and the like.
+- [ ] check all location's where Raft.stop() or ReplicationStream.terminate() is used. Make sure cleanup is good. May need to use terminate on raft too.
+- [ ] guard against sending snapshot pointers during replication.
+- [ ] snapshot creation needs to be triggered based on configuration & distance from last snapshot.
 
-### algorithm optimizations
+- [ ] maybe: may need to have `save_hard_state` finish before responding to RPCs in all conditions. Might be good to experiment with async/await here to help aid in the added complexity this would bring.
 - [ ] maybe: update the append entries algorithm for followers so that recent entries are buffered up to a specific threshold so that the `apply_logs_to_statemachine` won't need to fetch from storage first.
-- [ ] may need to have `save_hard_state` finish before responding to RPCs in all conditions. Might be good to experiment with async/await here to help aid in the added complexity this would bring.
 
 ### testing
-- [ ] finish implement MemoryStroage for testing (and general demo usage).
-- [ ] test snapshots.
-    - cover case where cluster is making progress, and then a new node joins, but is not snapshotted because it is not too far behind.
-    - cover case where new node node joins after cluster has make a lot of progress, and then new node should receive snapshot.
-
-### snapshots
-- [ ] get the system in place for periodic snapshot creation.
-- [ ] guard against sending snapshot pointers during replication.
+- [ ] test single node setup once admin commands are setup.
 
 ### observability
 - [ ] instrument code with tokio trace: https://docs.rs/tokio-trace/0.1.0/tokio_trace/

@@ -5,14 +5,13 @@ mod fixtures;
 use std::time::Duration;
 
 use actix::prelude::*;
-use actix_raft::{
-    dev::{ExecuteInRaftRouter, RaftRouter, Register},
-    metrics::{RaftMetrics, State},
-};
-use env_logger;
+use actix_raft::metrics::{RaftMetrics, State};
 use futures::sync::oneshot;
 
-use fixtures::{RaftTestController, new_raft_node};
+use fixtures::{
+    RaftTestController, Node, setup_logger,
+    dev::{ExecuteInRaftRouter, RaftRouter, Register},
+};
 
 /// Basic lifecycle tests for a three node cluster.
 ///
@@ -25,28 +24,30 @@ use fixtures::{RaftTestController, new_raft_node};
 /// - When the old leader comes back online, it will realize that it is no longer leader, new
 /// cluster nodes will reject its heartbeats, and the old leader will become a follower of the
 /// new leader.
+/// - The new leader generates and commits a new blank log entry to guard against stale writes for
+/// when a previous leader had uncommitted entries replicated on some nodes. See end of §8.
 ///
-/// Run with `RUST_LOG=actix_raft,clustering=debug cargo test` to see detailed logs.
+/// `RUST_LOG=actix_raft,clustering=debug cargo test clustering`
 #[test]
-fn basic_three_node_cluster_lifecycle() {
-    let _ = env_logger::try_init();
+fn clustering() {
+    setup_logger();
     let sys = System::builder().stop_on_panic(true).name("test").build();
 
     // Setup test dependencies.
     let net = RaftRouter::new();
     let network = net.start();
     let members = vec![0, 1, 2];
-    let node0 = new_raft_node(0, network.clone(), members.clone(), 1);
+    let node0 = Node::builder(0, network.clone(), members.clone()).build();
     network.do_send(Register{id: 0, addr: node0.addr.clone()});
-    let node1 = new_raft_node(1, network.clone(), members.clone(), 1);
+    let node1 = Node::builder(1, network.clone(), members.clone()).build();
     network.do_send(Register{id: 1, addr: node1.addr.clone()});
-    let node2 = new_raft_node(2, network.clone(), members.clone(), 1);
+    let node2 = Node::builder(2, network.clone(), members.clone()).build();
     network.do_send(Register{id: 2, addr: node2.addr.clone()});
 
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
     ctl.register(0, node0.addr.clone()).register(1, node1.addr.clone()).register(2, node2.addr.clone());
-    ctl.start_with_test(2,  Box::new(|act, ctx| {
+    ctl.start_with_test(5, Box::new(|act, ctx| {
         let (tx0, rx0) = oneshot::channel();
         act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| {
             let node0: &RaftMetrics = act.metrics.get(&0).unwrap();
@@ -61,8 +62,9 @@ fn basic_three_node_cluster_lifecycle() {
             assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "Expected all nodes have the same leader.");
             let term = data.first().unwrap().current_term;
             assert!(data.iter().all(|e| e.current_term == term), "Expected all nodes to be at the same term.");
-            assert!(data.iter().all(|e| e.last_log_index == 0), "Expected all nodes have last log index '0'.");
-            assert!(data.iter().all(|e| e.last_applied == 0), "Expected all nodes have last applied '0'.");
+            // Index of 1 is asserted against here as new leader committ a blank entry.
+            assert!(data.iter().all(|e| e.last_log_index == 1), "Expected all nodes have last log index '1'.");
+            assert!(data.iter().all(|e| e.last_applied == 1), "Expected all nodes have last applied '1'.");
 
             // Isolate the current leader on the network.
             act.isolate_node(leader_id);
@@ -74,7 +76,7 @@ fn basic_three_node_cluster_lifecycle() {
         let (tx1, rx1) = oneshot::channel();
         ctx.spawn(fut::wrap_future(rx0).map_err(|err, _: &mut RaftTestController, _| panic!(err))
             .and_then(|old_leader_and_term, _, ctx: &mut Context<RaftTestController>| {
-                ctx.run_later(Duration::from_secs(2), move |act, _| {
+                ctx.run_later(Duration::from_secs(5), move |act, _| {
                     act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| {
                         act.restore_node(old_leader_and_term.0);
                         let node0: &RaftMetrics = act.metrics.get(&0).unwrap();
@@ -107,7 +109,7 @@ fn basic_three_node_cluster_lifecycle() {
         // term remains, and the old node is a follower of the new leader.
         ctx.spawn(fut::wrap_future(rx1).map_err(|err, _: &mut RaftTestController, _| panic!(err))
             .and_then(|new_leader_and_term, _, ctx: &mut Context<RaftTestController>| {
-                ctx.run_later(Duration::from_secs(2), move |act, _| {
+                ctx.run_later(Duration::from_secs(5), move |act, _| {
                     act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| {
                         let node0: &RaftMetrics = act.metrics.get(&0).unwrap();
                         let node1: &RaftMetrics = act.metrics.get(&1).unwrap();
@@ -122,7 +124,7 @@ fn basic_three_node_cluster_lifecycle() {
 
                     })));
                 });
-                System::current().stop();
+                ctx.run_later(Duration::from_secs(2), |_, _| System::current().stop());
                 fut::ok(())
             }));
     }));
