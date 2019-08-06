@@ -124,6 +124,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRevertToFollow
     fn handle(&mut self, msg: RSRevertToFollower, ctx: &mut Self::Context) {
         if &msg.term > &self.current_term {
             self.update_current_term(msg.term, None);
+            self.save_hard_state(ctx);
             self.update_current_leader(ctx, UpdateCurrentLeader::Unknown);
             self.become_follower(ctx);
         }

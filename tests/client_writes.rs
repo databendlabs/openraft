@@ -120,10 +120,10 @@ fn client_writes() {
                     // We've got our storage data, assert against it.
                     .and_then(|(s0, s1, s2), _, _| {
                         // Hard state.
-                        assert_eq!(s0.hs.current_term, s1.hs.current_term, "Expected hs for nodes 0 and 1 to be equal.");
-                        assert_eq!(s0.hs.current_term, s2.hs.current_term, "Expected hs for nodes 0 and 2 to be equal.");
-                        assert_eq!(s0.hs.members, s1.hs.members, "Expected hs for nodes 0 and 1 to be equal.");
-                        assert_eq!(s0.hs.members, s2.hs.members, "Expected hs for nodes 0 and 2 to be equal.");
+                        assert_eq!(s0.hs.current_term, s1.hs.current_term, "Expected hs current term for nodes 0 and 1 to be equal.");
+                        assert_eq!(s0.hs.current_term, s2.hs.current_term, "Expected hs current term for nodes 0 and 2 to be equal.");
+                        assert_eq!(s0.hs.members, s1.hs.members, "Expected hs members for nodes 0 and 1 to be equal.");
+                        assert_eq!(s0.hs.members, s2.hs.members, "Expected hs members for nodes 0 and 2 to be equal.");
                         // Log.
                         assert_eq!(s0.log, s1.log, "Expected log for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.log, s2.log, "Expected log for nodes 0 and 2 to be equal.");
@@ -139,7 +139,8 @@ fn client_writes() {
                         ctx.run_later(Duration::from_secs(2), |_, _| System::current().stop());
                         fut::ok(())
                     })
-            }));
+            })
+            .map_err(|err, _, _| panic!("Failure during test. {:?}", err)));
     }));
 
     // Run the test.

@@ -1,7 +1,7 @@
 use std::{io::Read, fs::File, path::PathBuf, time::{Duration, Instant}};
 
 use actix::prelude::*;
-use log::{debug, error, info};
+use log::{error};
 use futures::{
     sink::{Sink},
     sync::{mpsc},
@@ -42,7 +42,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
             .and_then(|_, act, ctx| act.transition_to_lagging(ctx))
             // Drive state forward regardless of outcome.
             .then(|res, act, ctx| {
-                debug!("{} to target {} finished snapshot iteration with res.is_err={}", act.id, act.target, res.is_err());
                 act.is_driving_state = false;
                 act.drive_state(ctx);
                 fut::result(res)
@@ -53,7 +52,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
     fn handle_install_snapshot_response(&mut self, _: &mut Context<Self>, res: InstallSnapshotResponse) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
         // Check the response term. As long as everything still matches, then we are good to resume.
         if &res.term > &self.term {
-            info!("Response from InstallSnapshot RPC sent to {} indicates a newer term {} is in session, reverting to follower.", &self.target, &res.term);
             fut::Either::B(fut::wrap_future(self.raftnode.send(RSRevertToFollower{target: self.target, term: res.term}))
                 .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftInternal))
                 // Ensure an error is returned here, as this was not a successful response.
@@ -68,14 +66,12 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
         // Look up the snapshot on disk.
         let (snap_index, snap_term) = (snap.index, snap.term);
         let pathbuf = PathBuf::from(snap.pointer.path);
-        // let snap_stream = SnapshotStream::new(self.target, pathbuf, self.config.snapshot_max_chunk_size, self.term, self.id, snap_index, snap_term);
-        let snap_stream = SnapshotStream::new(self.target, pathbuf, 5000, self.term, self.id, snap_index, snap_term); // TODO: update this.
+        let snap_stream = SnapshotStream::new(self.target, pathbuf, self.config.snapshot_max_chunk_size, self.term, self.id, snap_index, snap_term);
 
         fut::wrap_stream(snap_stream)
             .and_then(|res, _, _| fut::result(res))
             // Send snapshot RPC frame over to target.
             .and_then(move |rpc, act: &mut Self, _| {
-                debug!("Sending install RPC chunk.");
                 // Send the RPC. If an error is encountered, cancell the stream.
                 fut::wrap_future(act.network.send(rpc))
                     .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftNetwork))
@@ -97,7 +93,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
                 }
                 // If an error was encountered for any reason, delay sending the next snapshot for a few seconds.
                 Err(_) => {
-                    debug!("Snapshot stream finished with an error. Delaying before next iteration.");
+                    error!("Snapshot stream finished with an error. Delaying before next iteration.");
                     let delay = Instant::now() + Duration::from_secs(5);
                     fut::Either::B(fut::wrap_future(
                         Delay::new(delay).map_err(|_| ()).then(|res| match res {
@@ -144,7 +140,6 @@ impl SnapshotStream {
     fn run(mut self) {
         // Open the target snapshot file & get a read on its length.
         let mut chan = self.chan.wait();
-        debug!("Streaming snapshot file: {:?}; bufize being used: {}", &self.file, &self.bufsize);
         let file_and_len = File::open(&self.file)
             .and_then(|file| {
                 file.metadata()
@@ -171,7 +166,6 @@ impl SnapshotStream {
             }
 
             // Build a new frame for the bytes read.
-            debug!("Snapshot: size of chunk read {}.", data.len());
             let mut frame = InstallSnapshotRequest{
                 target: self.target, term: self.term, leader_id: self.leader_id,
                 last_included_index: self.last_included_index,
@@ -189,7 +183,6 @@ impl SnapshotStream {
 
             match chan.send(Ok(frame)) {
                 Ok(_) if is_done => {
-                    debug!("Snapshot stream chunks have all been read and sent.");
                     let _ = chan.close();
                     return;
                 }

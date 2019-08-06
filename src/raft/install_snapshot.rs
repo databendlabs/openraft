@@ -37,14 +37,23 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InstallSnapshotR
             return Box::new(fut::err(()));
         }
 
-        // Update election timeout & ensure we are in the follower state. Update current term if needed.
+        // Update election timeout.
         self.update_election_timeout(ctx);
-        if &msg.term > &self.current_term || self.current_leader.as_ref() != Some(&msg.leader_id) {
-            self.current_term = msg.term;
+
+        // Update current term if needed.
+        if self.current_term != msg.term {
             self.update_current_term(msg.term, None);
-            self.become_follower(ctx);
-            self.update_current_leader(ctx, UpdateCurrentLeader::OtherNode(msg.leader_id));
             self.save_hard_state(ctx);
+        }
+
+        // Update current leader if needed.
+        if self.current_leader != Some(msg.leader_id) {
+            self.update_current_leader(ctx, UpdateCurrentLeader::OtherNode(msg.leader_id));
+        }
+
+        // If not follower, become follower.
+        if !self.state.is_follower() {
+            self.become_follower(ctx);
         }
 
         // Extract follower specific state.
@@ -52,8 +61,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InstallSnapshotR
             RaftState::Follower(state) => state,
             _ => return Box::new(fut::err(())),
         };
-
-        debug!("Node {} handling InstallSnapshot RPC from {}.", &self.id, &msg.leader_id);
 
         // Compare current snapshot state with received RPC and handle as needed.
         match &mut state.snapshot_state {
@@ -85,7 +92,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InstallSnapshotR
 impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     // Install a new snapshot which was small enough to fit into a single frame.
     fn handle_mini_snapshot(&mut self, ctx: &mut Context<Self>, msg: InstallSnapshotRequest) -> Box<dyn ActorFuture<Actor=Self, Item=InstallSnapshotResponse, Error=()>> {
-        debug!("Single frame snapshot received.");
         let (tx, rx) = mpsc::unbounded();
         let (chunktx, chunkrx) = oneshot::channel();
         let (finaltx, finalrx) = oneshot::channel();
@@ -96,7 +102,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
             .map(move |_, _, _| {
-                debug!("Received final response from storage engine for snapshot stream.");
                 // This will be called after all snapshot chunks have been streamed in and
                 // we've received the final response from the storage engine.
                 let _ = finaltx.send(());
@@ -121,8 +126,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                     RaftState::Follower(state) => {
                         debug!("Finished installing snapshot. Update index & term to {} & {}.", snap_index, snap_term);
                         state.snapshot_state = SnapshotState::Idle;
-                        act.last_log_index = snap_index;
-                        act.last_log_term = snap_term;
+                        if act.last_log_index < snap_index {
+                            act.last_log_index = snap_index;
+                            act.last_log_term = snap_term;
+                            act.last_applied = snap_index;
+                        }
                         fut::ok(InstallSnapshotResponse{term: act.current_term})
                     }
                     _ => fut::err(()),
@@ -135,7 +143,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     }
 
     fn handle_snapshot_stream(&mut self, ctx: &mut Context<Self>, msg: InstallSnapshotRequest) -> Box<dyn ActorFuture<Actor=Self, Item=InstallSnapshotResponse, Error=()>> {
-        debug!("Initial snapshot chunk received.");
         let (tx, rx) = mpsc::unbounded();
         let (chunktx, chunkrx) = oneshot::channel();
         let (finaltx, finalrx) = oneshot::channel();
@@ -181,7 +188,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     fn handle_final_snapshot_chunk(
         &mut self, _: &mut Context<Self>, msg: InstallSnapshotRequest, tx: mpsc::UnboundedSender<InstallSnapshotChunk>, finalrx: oneshot::Receiver<()>,
     ) -> Box<dyn ActorFuture<Actor=Self, Item=InstallSnapshotResponse, Error=()>> {
-        debug!("Final snapshot chunk received.");
         let (chunktx, chunkrx) = oneshot::channel();
         let (snap_index, snap_term) = (msg.last_included_index, msg.last_included_term);
         match tx.unbounded_send(InstallSnapshotChunk{offset: msg.offset, data: msg.data, done: msg.done, cb: chunktx}) {
@@ -201,8 +207,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                     RaftState::Follower(state) => {
                         debug!("Finished installing snapshot. Update index & term to {} & {}.", snap_index, snap_term);
                         state.snapshot_state = SnapshotState::Idle;
-                        act.last_log_index = snap_index;
-                        act.last_log_term = snap_term;
+                        if act.last_log_index < snap_index {
+                            act.last_log_index = snap_index;
+                            act.last_log_term = snap_term;
+                            act.last_applied = snap_index;
+                        }
                         fut::ok(InstallSnapshotResponse{term: act.current_term})
                     }
                     _ => fut::err(()),

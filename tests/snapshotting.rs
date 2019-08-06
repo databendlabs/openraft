@@ -9,6 +9,7 @@ use actix_raft::{
     NodeId,
     config::DEFAULT_LOGS_SINCE_LAST,
     messages::{ClientError, EntryNormal, ResponseMode},
+    metrics::{RaftMetrics, State},
 };
 use log::{error};
 use tokio_timer::Delay;
@@ -16,6 +17,7 @@ use tokio_timer::Delay;
 use fixtures::{
     Node, RaftTestController, Payload, setup_logger,
     dev::{ExecuteInRaftRouter, GetCurrentLeader, RaftRouter, Register},
+    memory_storage::{GetCurrentState},
 };
 
 /// Basic lifecycle tests for a three node cluster.
@@ -40,6 +42,7 @@ fn snapshotting() {
     network.do_send(Register{id: 1, addr: node1.addr.clone()});
     let node2 = Node::builder(2, network.clone(), members.clone()).build();
     network.do_send(Register{id: 2, addr: node2.addr.clone()});
+    let (storage0, storage1, storage2) = (node0.storage.clone(), node1.storage.clone(), node2.storage.clone());
 
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
@@ -59,18 +62,58 @@ fn snapshotting() {
                 act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| act.restore_node(old_leader))));
                 fut::ok(())
             })
-            // Wait for old leader to be brought up-to-speed with a snapshot.
-            .and_then(|_, _, _| fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(3))).map_err(|_, _, _| ()))
-            // // TODO: make state assertions & exit test.
-            // .then(|res, _, _| match res {
-            //     Ok(ok) => {
-            //         System::current().stop();
-            //         fut::ok(ok)
-            //     }
-            //     Err(err) => panic!("{:?}", err),
-            // })
-            .map(|_, _, _| ())
-            ;
+            // Wait for old leader to be brought up-to-speed with a snapshot. This can take some
+            // time depending on the system. 15 seconds should be way more than enough. Keep it
+            // high to reduce transient test failures.
+            .and_then(|_, _, _| fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(15))).map_err(|_, _, _| ()))
+
+            // Assert that all nodes are up, same leader, same final state from the standpoint of the metrics.
+            .and_then(|_, act, _| {
+                act.network.do_send(ExecuteInRaftRouter(Box::new(|act, _| {
+                    let node0: &RaftMetrics = act.metrics.get(&0).unwrap();
+                    let node1: &RaftMetrics = act.metrics.get(&1).unwrap();
+                    let node2: &RaftMetrics = act.metrics.get(&2).unwrap();
+                    let data = vec![node0, node1, node2];
+                    let leader = data.iter().find(|e| &e.state == &State::Leader).expect("Expected leader to exist.");
+                    assert!(data.iter().all(|e| e.current_leader == Some(leader.id)), "Expected all nodes have the same leader.");
+                    assert!(data.iter().all(|e| e.current_term == leader.current_term), "Expected all nodes to be at the same term.");
+                    assert!(data.iter().all(|e| e.last_log_index == leader.last_log_index), "Expected all nodes have last log index.");
+                    assert!(data.iter().all(|e| e.last_applied == leader.last_applied), "Expected all nodes have the same last applied value.");
+                })));
+                fut::ok(())
+            })
+
+            // Assert that the state of all Raft node storage engines are the same.
+            .and_then(move |_, _, _| {
+                // Callback pyramid of death to fetch storage data.
+                fut::wrap_future(storage0.send(GetCurrentState)).map_err(|err, _: &mut RaftTestController, _| panic!(err))
+                    .and_then(|res, _, _| fut::result(res)).and_then(move |s0, _, _| {
+                        fut::wrap_future(storage1.send(GetCurrentState)).map_err(|err, _, _| panic!(err))
+                            .and_then(|res, _, _| fut::result(res)).and_then(move |s1, _, _| {
+                                fut::wrap_future(storage2.send(GetCurrentState)).map_err(|err, _, _| panic!(err))
+                                    .and_then(|res, _, _| fut::result(res)).and_then(move |s2, _, _| {
+                                        fut::ok((s0, s1, s2))
+                                    })
+                            })
+                    })
+                    // We've got our storage data, assert against it.
+                    .and_then(|(s0, s1, s2), _, _| {
+                        // Hard state.
+                        assert_eq!(s0.hs.current_term, s1.hs.current_term, "Expected hs current term for nodes 0 and 1 to be equal.");
+                        assert_eq!(s0.hs.current_term, s2.hs.current_term, "Expected hs current term for nodes 0 and 2 to be equal.");
+                        assert_eq!(s0.hs.members, s1.hs.members, "Expected hs members for nodes 0 and 1 to be equal.");
+                        assert_eq!(s0.hs.members, s2.hs.members, "Expected hs members for nodes 0 and 2 to be equal.");
+                        // State machinen data.
+                        assert_eq!(s0.state_machine, s1.state_machine, "Expected state machines for nodes 0 and 1 to be equal.");
+                        assert_eq!(s0.state_machine, s2.state_machine, "Expected state machines for nodes 0 and 2 to be equal.");
+                        fut::ok(())
+                    })
+                    .and_then(|_, _, ctx| {
+                        ctx.run_later(Duration::from_secs(2), |_, _| System::current().stop());
+                        fut::ok(())
+                    })
+            })
+            .map_err(|err, _, _| panic!("Failure during test. {:?}", err));
         ctx.spawn(task);
     }));
 

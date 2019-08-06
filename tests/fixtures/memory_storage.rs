@@ -8,7 +8,7 @@ use std::{
 use actix::prelude::*;
 use log::{debug, error};
 use serde::{Serialize, Deserialize};
-use serde_json;
+use rmp_serde as rmps;
 
 use actix_raft::{
     AppError, NodeId,
@@ -170,7 +170,7 @@ impl Handler<CreateSnapshot<MemoryStorageError>> for MemoryStorage {
         let entries = self.log.range(0u64..=through).map(|(_, v)| v.clone()).collect::<Vec<_>>();
         debug!("Creating snapshot with {} entries.", entries.len());
         let (index, term) = entries.last().map(|e| (e.index, e.term)).unwrap_or((0, 0));
-        let snapdata = match serde_json::to_vec(&entries) {
+        let snapdata = match rmps::to_vec(&entries) {
             Ok(snapdata) => snapdata,
             Err(err) => {
                 error!("Error serializing log for creating a snapshot. {}", err);
@@ -206,7 +206,6 @@ impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, (), MemoryStorageError>;
 
     fn handle(&mut self, msg: InstallSnapshot<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
-        debug!("Streaming in new snapshot for installation.");
         let (index, term) = (msg.index, msg.term);
         Box::new(fut::wrap_future(self.snapshot_actor.send(SyncInstallSnapshot(msg)))
             .map_err(|err, _, _| panic!("Error communicating with snapshot actor. {}", err))
@@ -214,7 +213,6 @@ impl Handler<InstallSnapshot<MemoryStorageError>> for MemoryStorage {
 
             // Snapshot file has been created. Perform final steps of this algorithm.
             .and_then(move |pointer, act: &mut Self, ctx| {
-                debug!("Snapshot finished streaming in and installed. Final steps.");
                 // Cache the most recent snapshot data.
                 act.snapshot_data = Some(CurrentSnapshotData{index, term, config: act.hs.members.clone(), pointer: pointer.clone()});
 
@@ -262,6 +260,7 @@ impl MemoryStorage {
                 act.state_machine.extend(entries.into_iter().map(|e| (e.index, e)));
                 fut::ok(())
             })
+            .map(|_, _, _| debug!("Finished rebuilding statemachine from snapshot successfully."))
     }
 }
 
@@ -310,8 +309,6 @@ impl Handler<DeserializeSnapshot> for SnapshotActor {
     type Result = Result<Vec<Entry>, MemoryStorageError>;
 
     fn handle(&mut self, msg: DeserializeSnapshot, _: &mut Self::Context) -> Self::Result {
-        debug!("Deserializing snapshot from {:?}", &msg.0);
-        std::thread::sleep(std::time::Duration::from_secs(15));
         fs::read(msg.0)
             .map_err(|err| {
                 error!("Error reading contents of snapshot file. {}", err);
@@ -319,7 +316,7 @@ impl Handler<DeserializeSnapshot> for SnapshotActor {
             })
             // Deserialize the data of the snapshot file.
             .and_then(|snapdata| {
-                serde_json::from_slice::<Vec<Entry>>(snapdata.as_slice()).map_err(|err| {
+                rmps::from_slice::<Vec<Entry>>(snapdata.as_slice()).map_err(|err| {
                     error!("Error deserializing snapshot contents. {}", err);
                     MemoryStorageError
                 })

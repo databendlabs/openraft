@@ -177,7 +177,7 @@ impl NodeBuilder {
         let config = Config::build(snapshot_dir.clone())
             .election_timeout_min(800).election_timeout_max(1000).heartbeat_interval(300)
             .metrics_rate(Duration::from_secs(metrics_rate))
-            .snapshot_policy(snapshot_policy)
+            .snapshot_policy(snapshot_policy).snapshot_max_chunk_size(10000)
             .validate().expect("Raft config to be created without error.");
 
         let (storage_arb, raft_arb) = (Arbiter::new(), Arbiter::new());
@@ -209,7 +209,7 @@ pub fn new_raft_node(id: NodeId, network: Addr<RaftRouter>, members: Vec<NodeId>
     let config = Config::build(snapshot_dir.clone())
         .election_timeout_min(800).election_timeout_max(1000).heartbeat_interval(300)
         .metrics_rate(Duration::from_secs(metrics_rate))
-        .snapshot_policy(SnapshotPolicy::Disabled)
+        .snapshot_policy(SnapshotPolicy::Disabled).snapshot_max_chunk_size(10000)
         .validate().expect("Raft config to be created without error.");
 
     let (storage_arb, raft_arb) = (Arbiter::new(), Arbiter::new());

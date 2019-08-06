@@ -234,7 +234,7 @@ impl<E: AppError> Message for CreateSnapshot<E> {
 /// - Create a new entry in the log via the `actix_raft::messages::Entry::new_snapshot_pointer(...)`
 /// constructor. Insert the new entry into the log at the specified `index` of this payload.
 /// - If there are any logs older than `index`, remove them.
-/// - If there are any other snapshots in the connfigured snapshot dir, remove them.
+/// - If there are any other snapshots in the configured snapshot dir, remove them.
 /// - If existing log entry has same index and term as snapshot's last included entry, retain log
 /// entries following it, then return.
 /// - Else, discard the entire log leaving only the new snapshot pointer. The state machine must

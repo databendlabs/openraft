@@ -7,7 +7,7 @@ use crate::{
     common::{ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     network::RaftNetwork,
     messages::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryType},
-    raft::{RaftState, Raft},
+    raft::{RaftState, Raft, SnapshotState},
     storage::{GetLogEntries, RaftStorage, ReplicateLogEntries},
 };
 
@@ -89,8 +89,13 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesReq
         }
 
         // If not follower, become follower.
-        if !self.state.is_follower() {
-            self.become_follower(ctx);
+        match &mut self.state {
+            // Ensure we are not in a snapshotting state.
+            RaftState::Follower(inner) => match inner.snapshot_state {
+                SnapshotState::Idle => (),
+                _ => inner.snapshot_state = SnapshotState::Idle,
+            }
+            _ => self.become_follower(ctx),
         }
 
         // Kick off process of applying logs to state machine based on `msg.leader_commit`.
