@@ -1,5 +1,5 @@
 use actix::prelude::*;
-use log::{error, warn};
+use log::{debug, error, warn};
 
 use crate::{
     AppError,
@@ -65,7 +65,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRateUpdate> fo
                     if let Some((idx, _)) = new_nodes.iter().enumerate().find(|(_, e)| *e == &msg.target) {
                         new_nodes.remove(idx);
                     }
-                    if *is_committed && new_nodes.len() == 0 {
+                    if *is_committed && new_nodes.len() == 0 && self.membership.is_in_joint_consensus {
                         self.finalize_joint_consensus(ctx);
                     }
                 }
@@ -170,6 +170,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchInd
         }
         // Drop replication stream if needed.
         if needs_removal {
+            debug!("Node {} is dropping replication stream to node {}.", self.id, msg.target);
             state.nodes.remove(&msg.target);
         }
 

@@ -1,8 +1,10 @@
 use actix::prelude::*;
+use log::{error, info};
 
 use crate::{
     AppError,
     admin::{ProposeConfigChange, ProposeConfigChangeError},
+    common::UpdateCurrentLeader,
     messages::{ClientPayload, ClientPayloadResponse, MembershipConfig},
     network::RaftNetwork,
     raft::{ConsensusState, RaftState, Raft, ReplicationState},
@@ -39,10 +41,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<ProposeConfigCha
             }
         }
 
-        // Add new nodes to current connfig.
+        // Update current config.
+        self.membership.is_in_joint_consensus = true;
         self.membership.non_voters.extend_from_slice(msg.add_members.as_slice());
-
-        // Register nodes being removed.
         self.membership.removing.extend_from_slice(msg.remove_members.as_slice());
 
         // Spawn new replication streams for new members. Track state as non voters so that they
@@ -111,13 +112,13 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// membership config is in a joint consensus state.
     pub(super) fn finalize_joint_consensus(&mut self, ctx: &mut Context<Self>) {
         // It is only safe to call this routine as leader & when in a joint consensus state.
-        match &mut self.state {
+        let leader_state = match &mut self.state {
             RaftState::Leader(state) => match &state.consensus_state {
-                ConsensusState::Joint{..} => (),
+                ConsensusState::Joint{..} => state,
                 _ => return,
             }
             _ => return,
-        }
+        };
 
         // Update current config to prepare for exiting joint consensus.
         for node in self.membership.non_voters.drain(..) {
@@ -129,6 +130,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             }
         }
         self.membership.is_in_joint_consensus = false;
+        leader_state.consensus_state = ConsensusState::Uniform;
 
         // Committ new config to cluster.
         //
@@ -140,8 +142,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         // leadership state, in which case, another node will pick up the responsibility of
         // committing the updated config.
         ctx.spawn(fut::wrap_future(ctx.address().send(ClientPayload::new_config(self.membership.clone())))
-            .map_err(|_, _, _| ())
-            .and_then(|res, _, _| fut::result(res.map_err(|_| ())))
+            .map_err(|err, _, _| error!("Messaging error submitting client payload to finalize joint consensus. {:?}", err))
+            .and_then(|res, _, _| fut::result(res
+                .map_err(|err| error!("Error from submitting client payload to finalize joint consensus. {:?}", err))))
             .and_then(|res, act: &mut Self, ctx| act.handle_joint_consensus_finalization(ctx, res))
         );
     }
@@ -158,7 +161,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         // Step down if needed.
         if !self.membership.contains(&self.id) {
+            info!("Node {} is stepping down.", self.id);
             self.become_non_voter(ctx);
+            self.update_current_leader(ctx, UpdateCurrentLeader::Unknown);
             return fut::ok(());
         }
 

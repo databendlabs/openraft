@@ -36,6 +36,7 @@ impl<E: AppError> Message for ProposeConfigChange<E> {
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
+#[derive(Debug)]
 pub enum ProposeConfigChangeError<E: AppError> {
     /// An error related to the processing of the config change request.
     ///

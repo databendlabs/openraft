@@ -122,9 +122,9 @@ fn clustering() {
                         assert!(data.iter().all(|e| e.current_leader == Some(leader_id)), "Expected all nodes to have the same leader.");
                         assert!(data.iter().all(|e| e.current_term == new_leader_and_term.1), "Expected all nodes to have same term since last election.");
 
+                        System::current().stop();
                     })));
                 });
-                ctx.run_later(Duration::from_secs(2), |_, _| System::current().stop());
                 fut::ok(())
             }));
     }));

@@ -93,45 +93,46 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
             // Send logs over for replication.
             .and_then(move |payload, act, _| {
-                let voting_peer_count = act.membership.members.iter().filter(|e| *e == &act.id).count();
-                match &mut act.state {
-                    RaftState::Leader(state) => {
-                        // If there are peer voting members to replicate to, then setup the
-                        // request to await being comitted to the cluster & send payload over to
-                        // each replication stream as needed.
-                        if voting_peer_count > 0 {
-                            let entry = payload.entry();
-                            state.awaiting_committed.push(payload);
-                            for rs in state.nodes.values() {
-                                let _ = rs.addr.do_send(RSReplicate{entry: entry.clone(), line_commit: act.commit_index});
-                            }
-                        } else {
-                            // If there are any non-voting members, replicate to them.
-                            if act.membership.non_voters.len() > 0 {
-                                let entry = payload.entry();
-                                let non_voters = &act.membership.non_voters;
-                                for rs in state.nodes.iter().filter(|e| non_voters.contains(&e.0)).map(|e| e.1) {
-                                    let _ = rs.addr.do_send(RSReplicate{entry: entry.clone(), line_commit: act.commit_index});
-                                }
-                            }
-
-                            // The payload is committed. Send it over to be applied to state machine.
-                            act.commit_index = payload.index;
-                            if let &ResponseMode::Committed = &payload.response_mode {
-                                // If this RPC is configured to wait only for log committed, then respond to client now.
-                                let entry = payload.entry();
-                                let _ = payload.tx.send(Ok(ClientPayloadResponse{index: payload.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_RX_ERR, err));
-                                let _ = act.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry, chan: None});
-                            } else {
-                                // Else, send it through the pipeline and it will be responded to afterwords.
-                                let _ = act.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry: payload.entry(), chan: Some(payload.tx)});
-                            }
-                        }
-                    },
+                let state = match &mut act.state {
+                    RaftState::Leader(state) => state,
                     _ => {
                         let msg = payload.downgrade();
                         let _ = msg.tx.send(Err(ClientError::ForwardToLeader{payload: msg.rpc, leader: act.current_leader}))
                             .map_err(|_| error!("{} Error while forwarding to leader at the end of process_client_rpc.", CLIENT_RPC_RX_ERR));
+                        return fut::ok(());
+                    }
+                };
+
+                // If there are peer voting members to replicate to, then setup the
+                // request to await being comitted to the cluster & send payload over to
+                // each replication stream as needed.
+                let nodeid = &act.id;
+                let voting_peer_count = act.membership.members.iter().filter(|e| *e != nodeid).count();
+                if voting_peer_count > 0 {
+                    let entry = payload.entry();
+                    state.awaiting_committed.push(payload);
+                    for rs in state.nodes.values() {
+                        let _ = rs.addr.do_send(RSReplicate{entry: entry.clone(), line_commit: act.commit_index});
+                    }
+                } else {
+                    // If there are any non-voting members, replicate to them.
+                    if act.membership.non_voters.len() > 0 {
+                        let entry = payload.entry();
+                        for rs in state.nodes.values() {
+                            let _ = rs.addr.do_send(RSReplicate{entry: entry.clone(), line_commit: act.commit_index});
+                        }
+                    }
+
+                    // The payload is committed. Send it over to be applied to state machine.
+                    act.commit_index = payload.index;
+                    if let &ResponseMode::Committed = &payload.response_mode {
+                        // If this RPC is configured to wait only for log committed, then respond to client now.
+                        let entry = payload.entry();
+                        let _ = payload.tx.send(Ok(ClientPayloadResponse{index: payload.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_RX_ERR, err));
+                        let _ = act.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry, chan: None});
+                    } else {
+                        // Else, send it through the pipeline and it will be responded to afterwords.
+                        let _ = act.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry: payload.entry(), chan: Some(payload.tx)});
                     }
                 }
                 fut::ok(())

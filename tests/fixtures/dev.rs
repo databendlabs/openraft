@@ -128,7 +128,11 @@ impl Handler<RaftMetrics> for RaftRouter {
 
     fn handle(&mut self, msg: RaftMetrics, _: &mut Context<Self>) -> Self::Result {
         self.routed.3 += 1;
-        debug!("{:?}", &msg);
+        debug!("Metrics: node={} state={:?} leader={:?} term={} index={} applied={} cfg={{join={} members={:?} non_voters={:?} removing={:?}}}",
+            msg.id, msg.state, msg.current_leader, msg.current_term, msg.last_log_index, msg.last_applied,
+            msg.membership_config.is_in_joint_consensus, msg.membership_config.members,
+            msg.membership_config.non_voters, msg.membership_config.removing,
+        );
         self.metrics.insert(msg.id, msg);
     }
 }
@@ -157,7 +161,7 @@ impl Handler<GetCurrentLeader> for RaftRouter {
 
         if let Some(leader) = leader_opt {
             let has_consensus = self.metrics.values()
-                .filter(|e| !self.isolated_nodes.contains(&e.id))
+                .filter(|e| !self.isolated_nodes.contains(&e.id) && leader.membership_config.contains(&e.id))
                 .all(|e| e.current_leader == Some(leader.id) && e.current_term == leader.current_term);
 
             if has_consensus {
@@ -170,6 +174,8 @@ impl Handler<GetCurrentLeader> for RaftRouter {
         }
     }
 }
+
+// Register //////////////////////////////////////////////////////////////////
 
 #[derive(Message)]
 pub struct Register {
@@ -185,6 +191,49 @@ impl Handler<Register> for RaftRouter {
         self.routing_table.insert(msg.id, msg.addr);
     }
 }
+
+// RemoveNodeFromCluster /////////////////////////////////////////////////////
+
+/// Remove the specified node from the cluster.
+///
+/// This operation will only succeed if the target node is in NonVoter state, and does not appear
+/// in the config of the current leader.
+pub struct RemoveNodeFromCluster {
+    pub id: NodeId,
+}
+
+impl Message for RemoveNodeFromCluster {
+    type Result = Result<(), String>;
+}
+
+impl Handler<RemoveNodeFromCluster> for RaftRouter {
+    type Result = Result<(), String>;
+
+    fn handle(&mut self, msg: RemoveNodeFromCluster, _: &mut Self::Context) -> Self::Result {
+        self.routed.3 += 1;
+        let leader_opt = self.metrics.values()
+            .filter(|e| !self.isolated_nodes.contains(&e.id))
+            .find(|e| &e.state == &State::Leader);
+
+        if let Some(leader) = leader_opt {
+            let leader_knows_target = leader.membership_config.contains(&msg.id);
+            if !leader_knows_target {
+                self.routing_table.remove(&msg.id);
+                if let Some((idx, _)) = self.isolated_nodes.iter().enumerate().find(|(_, e)| *e == &msg.id) {
+                    self.isolated_nodes.remove(idx);
+                }
+                self.metrics.remove(&msg.id);
+                Ok(())
+            } else {
+                Err(String::from("Cluster leader has the target node in its current config."))
+            }
+        } else {
+            Err(String::from("Cluster has no current leader, can not verify that it is safe to remove node."))
+        }
+    }
+}
+
+// ExecuteInRaftRouter ///////////////////////////////////////////////////////
 
 #[derive(Message)]
 pub struct ExecuteInRaftRouter(pub Box<dyn FnOnce(&mut RaftRouter, &mut Context<RaftRouter>) + Send + 'static>);

@@ -169,9 +169,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         let f = match last_conf_change {
             Some(conf) => {
                 // Update membership info & apply hard state.
-                // self.membership = conf.membership.clone();
                 fut::Either::A(self.update_membership(ctx, conf.membership.clone()))
-                // self.save_hard_state(ctx);
             }
             None => fut::Either::B(fut::ok(())),
         };
