@@ -235,14 +235,18 @@ impl Handler<RemoveNodeFromCluster> for RaftRouter {
 
 // ExecuteInRaftRouter ///////////////////////////////////////////////////////
 
-#[derive(Message)]
 pub struct ExecuteInRaftRouter(pub Box<dyn FnOnce(&mut RaftRouter, &mut Context<RaftRouter>) + Send + 'static>);
 
+impl Message for ExecuteInRaftRouter {
+    type Result = Result<(), ()>;
+}
+
 impl Handler<ExecuteInRaftRouter> for RaftRouter {
-    type Result = ();
+    type Result = Result<(), ()>;
 
     fn handle(&mut self, msg: ExecuteInRaftRouter, ctx: &mut Self::Context) -> Self::Result {
         self.routed.3 += 1;
         msg.0(self, ctx);
+        Ok(())
     }
 }

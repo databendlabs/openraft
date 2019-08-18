@@ -1,16 +1,70 @@
 use actix::prelude::*;
-use log::{error, info};
+use log::{error, info, warn};
 
 use crate::{
     AppError,
-    admin::{ProposeConfigChange, ProposeConfigChangeError},
+    admin::{InitWithConfig, InitWithConfigError, ProposeConfigChange, ProposeConfigChangeError},
     common::UpdateCurrentLeader,
     messages::{ClientPayload, ClientPayloadResponse, MembershipConfig},
     network::RaftNetwork,
-    raft::{ConsensusState, RaftState, Raft, ReplicationState},
+    raft::{RaftState, Raft, ReplicationState, state::ConsensusState},
     replication::{ReplicationStream},
     storage::RaftStorage,
 };
+
+
+impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InitWithConfig> for Raft<E, N, S> {
+    type Result = ResponseActFuture<Self, (), InitWithConfigError>;
+
+    /// An admin message handler invoked exclusively for cluster formation.
+    ///
+    /// This command will work for single-node or multi-node cluster formation. This command
+    /// should be called with all discovered nodes which need to be part of cluster.
+    ///
+    /// This command will be rejected if the node is not at index 0 & in the NonVoter state, as
+    /// either of those constraints being false indicates that the cluster is already formed
+    /// and in motion.
+    ///
+    /// This routine will set the given config as the active config, only in memory, and will
+    /// start an election.
+    ///
+    /// All nodes must issue this command at startup, as they will not be able to vote for other
+    /// nodes until they appear in their config. This handler will ensure that it is safe to
+    /// execute this command.
+    ///
+    /// Once a node becomes leader and detects that its index is 0, it will commit a new config
+    /// entry (instead of the normal blank entry created by new leaders).
+    ///
+    /// If a race condition takes place where two nodes persists an initial config and start an
+    /// election, whichever node becomes leader will end up committing its entries to the cluster.
+    fn handle(&mut self, mut msg: InitWithConfig, ctx: &mut Self::Context) -> Self::Result {
+        let is_pristine = self.last_log_index == 0 && self.state.is_non_voter();
+        if !is_pristine {
+            warn!("Raft received an InitWithConfig command, but the node is in state {} with index {}.", self.state, self.last_log_index);
+            return Box::new(fut::err(InitWithConfigError::NotAllowed));
+        }
+
+        // Ensure given config is normalized and ready for use in the cluster.
+        msg = normalize_init_config(msg);
+        if !msg.members.contains(&self.id) {
+            msg.members.push(self.id.clone());
+        }
+
+        // Build a new membership config from given init data & assign it as the new cluster
+        // membership config in memory only.
+        self.membership = MembershipConfig{is_in_joint_consensus: false, members: msg.members, non_voters: vec![], removing: vec![]};
+
+        // Become a candidate and start campaigning for leadership. If this node is the only node
+        // in the cluster, then become leader without holding an election.
+        self.become_candidate(ctx);
+
+        Box::new(fut::ok(()))
+    }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// ProposeConfigChange ///////////////////////////////////////////////////////////////////////////
 
 impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<ProposeConfigChange<E>> for Raft<E, N, S> {
     type Result = ResponseActFuture<Self, (), ProposeConfigChangeError<E>>;
@@ -187,6 +241,21 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
         fut::ok(())
     }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// Utilities /////////////////////////////////////////////////////////////////////////////////////
+
+// Ensure given config is normalized and ready for use in the cluster.
+fn normalize_init_config(msg: InitWithConfig) -> InitWithConfig {
+    let mut nodes = vec![];
+    for node in msg.members {
+        if !nodes.contains(&node) {
+            nodes.push(node);
+        }
+    }
+
+    InitWithConfig{members: nodes}
 }
 
 /// Check the proposed config changes with the current config to ensure changes are valid.

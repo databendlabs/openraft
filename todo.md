@@ -1,34 +1,16 @@
 todo
 ====
-### admin commands
-##### InitWithConfig
-This should be the only initialization command needed.
-
-- pertains to cluster formation.
-- works for single-node or multi-node cluster formation.
-- recommennded pattern is for applications to have an `initial_cluster_formation_delay`-like config param. Application nodes should wait for that amount of time and then issue the `InitWithConfig` command.
-- command should be called with all discovered nodes, including the calling node's ID. Command will be rejected if the node is not at index 0 & in the NonVoter state, as if either of those constraints are false, then the cluster has already formed and started.
-- will set the given config as the active config, and will start an election.
-- all nodes must do this at startup, as they will not be able to vote for other nodes until they appear in their config. The command will ensure that it will not go through if it is not safe to do so.
-- once a node becomes leader and detects that its index is 0, it will commit a new config entry (instead of the normal blank entry created by new leaders).
-- if a race condition takes place where two nodes persists an initial config and start an election, whichever node becomes leader will end up committing its entries to the cluster. When a node becomes leader and sees that its index is 0, it will generate a new initial commit with the current config, which will be replicated to the cluster.
-- If a node ends up getting pushed back into non-voter state during initial cluster formation, but it is supposed to end up being a normal follower, the application will end up discovering the node, and will add it to the config via `ProposeConfigChange` and it will proceed as normal.
-
-**todo:**
+- [ ] add test for single node cluster formation.
 - [ ] update docs on admin commands.
-
-----
-
-- [ ] probably: make the Raft, RaftStorage, RaftNetwork & ReplicationStream types generic over a type `T` which will be the contents of the `EntryType::Normal`.
+- [ ] probably: make the Raft, RaftStorage, RaftNetwork & ReplicationStream types generic over a type `T` which will be the contents of the `EntryType::Normal`. Looks like RaftNetwork no longer needs generic constraints. Check.
 - [ ] check all location's where Raft.stop() or ReplicationStream.terminate() is used. Make sure cleanup is good. May need to use terminate on raft too.
 - [ ] guard against sending snapshot pointers during replication.
-- [ ] open ticket for: snapshot creation needs to be triggered based on configuration & distance from last snapshot.
-- [ ] open ticket for: update the append entries algorithm for followers so that recent entries are buffered up to a specific threshold so that the `apply_logs_to_statemachine` won't need to fetch from storage first.
 
 ----
 
-### observability
-- [ ] instrument code with tokio trace: https://docs.rs/tokio-trace/0.1.0/tokio_trace/
+- [ ] open ticket for: snapshot creation needs to be triggered based on configuration & distance from last snapshot.
+- [ ] open ticket for: update the append entries algorithm for followers so that recent entries are buffered up to a specific threshold so that the `apply_logs_to_statemachine` won't need to fetch from storage first.
+- [ ] open ticket for: instrument code with tokio trace: https://docs.rs/tokio-trace/0.1.0/tokio_trace/
 
 ----
 

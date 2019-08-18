@@ -7,7 +7,7 @@ use crate::{
     config::SnapshotPolicy,
     messages::{ClientPayloadResponse, ResponseMode},
     network::RaftNetwork,
-    raft::{ConsensusState, Raft, RaftState},
+    raft::{Raft, RaftState, state::ConsensusState},
     replication::{
         RSFatalActixMessagingError, RSFatalStorageError,
         RSNeedsSnapshot, RSNeedsSnapshotResponse,

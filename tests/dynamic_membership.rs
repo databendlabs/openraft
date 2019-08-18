@@ -46,12 +46,6 @@ fn dynamic_membership() {
     network.do_send(Register{id: 1, addr: node1.addr.clone()});
     let node2 = Node::builder(2, network.clone(), members.clone()).build();
     network.do_send(Register{id: 2, addr: node2.addr.clone()});
-    // let (storage0, storage1, storage2) = (node0.storage.clone(), node1.storage.clone(), node2.storage.clone());
-
-    // // Prep an additional node to be added to the cluster later.
-    // let node3 = Node::builder(3, network.clone(), vec![3]).build();
-    // let node3addr = node3.addr.clone();
-    // let storage3 = node3.storage.clone();
 
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);

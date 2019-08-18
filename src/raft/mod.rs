@@ -6,6 +6,7 @@ mod apply_logs;
 mod client;
 mod install_snapshot;
 mod replication;
+mod state;
 mod vote;
 
 use std::{
@@ -15,185 +16,23 @@ use std::{
 };
 
 use actix::prelude::*;
-use futures::sync::{mpsc, oneshot};
+use futures::sync::{mpsc};
 use log::{debug, error};
 
 use crate::{
     NodeId, AppError,
-    common::{
-        ApplyLogsTask, ClientPayloadWithIndex, ClientPayloadWithChan,
-        DependencyAddr, UpdateCurrentLeader,
-    },
+    common::{ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     config::Config,
     messages::{ClientPayload, MembershipConfig},
     metrics::{RaftMetrics, State},
     network::RaftNetwork,
+    raft::state::{CandidateState, FollowerState, LeaderState, RaftState, ReplicationState, SnapshotState},
     replication::{ReplicationStream, RSTerminate},
-    storage::{GetInitialState, HardState, InitialState, InstallSnapshotChunk, RaftStorage, SaveHardState},
+    storage::{GetInitialState, HardState, InitialState, RaftStorage, SaveHardState},
 };
 
 const FATAL_ACTIX_MAILBOX_ERR: &str = "Fatal actix MailboxError while communicating with Raft dependency. Raft is shutting down.";
 const FATAL_STORAGE_ERR: &str = "Fatal storage error encountered which can not be recovered from. Stopping Raft node.";
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-// RaftState /////////////////////////////////////////////////////////////////////////////////////
-
-/// The state of the Raft node.
-enum RaftState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
-    /// A non-standard Raft state indicating that the node is initializing.
-    Initializing,
-    /// The node is completely passive; replicating entries, but not voting or timing out.
-    ///
-    /// When a node is a `NonVoter`, its behavior is the same as a follower with the added
-    /// restrictions that it does not have an election timeout, it does not count when
-    /// calculating replication majority, and it is not solicited for votes.
-    ///
-    /// A node will only be in this state when it first comes online without any existing config
-    /// on disk, or when it has been removed from an existing cluster.
-    ///
-    /// In such a state, the parent application may have this new node added to an already running
-    /// cluster, may have the node start as the leader of a new standalone cluster, may have the
-    /// node initialize with a specific config, or may bring the node offline for the case where
-    /// the node was removed from an existing cluster.
-    NonVoter,
-    /// The node is actively replicating logs from the leader.
-    ///
-    /// The node is passive when it is in this state. It issues no requests on its own but simply
-    /// responds to requests from leaders and candidates.
-    Follower(FollowerState),
-    /// The node has detected an election timeout so is requesting votes to become leader.
-    ///
-    /// This state wraps struct which tracks outstanding requests to peers for requesting votes
-    /// along with the number of votes granted.
-    Candidate(CandidateState),
-    /// The node is actively functioning as the Raft cluster leader.
-    ///
-    /// The leader handles all client requests. If a client contacts a follower, the follower must
-    /// redirects it to the leader.
-    Leader(LeaderState<E, N, S>),
-}
-
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> RaftState<E, N, S> {
-    /// Check if currently in follower state.
-    pub fn is_follower(&self) -> bool {
-        match self {
-            RaftState::Follower(_) => true,
-            _ => false,
-        }
-    }
-
-    /// Check if currently in leader state.
-    #[allow(dead_code)]
-    pub fn is_leader(&self) -> bool {
-        match self {
-            RaftState::Leader(_) => true,
-            _ => false,
-        }
-    }
-
-    /// Check if currently in non-voter state.
-    pub fn is_non_voter(&self) -> bool {
-        match self {
-            RaftState::NonVoter => true,
-            _ => false,
-        }
-    }
-}
-
-/// Volatile state specific to the Raft leader.
-///
-/// This state is reinitialized after an election.
-struct LeaderState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
-    /// A mapping of node IDs the replication state of the target node.
-    pub nodes: BTreeMap<NodeId, ReplicationState<E, N, S>>,
-    /// A queue of client requests to be processed.
-    pub client_request_queue: mpsc::UnboundedSender<ClientPayloadWithChan<E>>,
-    /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
-    pub awaiting_committed: Vec<ClientPayloadWithIndex<E>>,
-    /// A field tracking the cluster's current consensus state, which is used for dynamic membership.
-    pub consensus_state: ConsensusState,
-}
-
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> LeaderState<E, N, S> {
-    /// Create a new instance.
-    pub fn new(tx: mpsc::UnboundedSender<ClientPayloadWithChan<E>>, membership: &MembershipConfig) -> Self {
-        let consensus_state = if membership.is_in_joint_consensus {
-            ConsensusState::Joint{
-                new_nodes: membership.non_voters.clone(),
-                is_committed: false,
-            }
-        } else {
-            ConsensusState::Uniform
-        };
-        Self{nodes: Default::default(), client_request_queue: tx, awaiting_committed: vec![], consensus_state}
-    }
-}
-
-/// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-struct ReplicationState<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
-    pub match_index: u64,
-    pub is_at_line_rate: bool,
-    pub remove_after_commit: Option<u64>,
-    pub addr: Addr<ReplicationStream<E, N, S>>,
-}
-
-enum ConsensusState {
-    /// The cluster consensus is uniform; not in a joint consensus state.
-    Uniform,
-    /// The cluster is in a joint consensus state and is syncing new nodes.
-    Joint {
-        /// The new nodes which are being synced.
-        new_nodes: Vec<NodeId>,
-        /// A bool indicating if the associated config has been comitted yet.
-        ///
-        /// NOTE: when a new leader is elected, it will initialize this value to false, and then
-        /// update this value to true once the new leader's blank payload has been committed.
-        is_committed: bool,
-    }
-}
-
-/// Volatile state specific to a Raft node in candidate state.
-struct CandidateState {
-    /// Current outstanding requests to peer nodes by node ID.
-    requests: BTreeMap<NodeId, SpawnHandle>,
-    /// The number of votes which have been granted by peer nodes.
-    votes_granted: u64,
-    /// The number of votes needed in order to become the Raft leader.
-    votes_needed: u64,
-}
-
-impl CandidateState {
-    /// Cleanup state resources.
-    pub(self) fn cleanup(&mut self) -> Vec<SpawnHandle> {
-        let keys = self.requests.keys().map(|k| *k).collect::<Vec<_>>();
-        let mut handles = Vec::with_capacity(keys.len());
-        for key in keys {
-            if let Some(f) = self.requests.remove(&key) {
-                handles.push(f);
-            }
-        }
-        handles
-    }
-}
-
-/// Volatile state specific to a Raft node in follower state.
-struct FollowerState {
-    pub snapshot_state: SnapshotState,
-}
-
-impl Default for FollowerState {
-    fn default() -> Self {
-        Self{snapshot_state: SnapshotState::Idle}
-    }
-}
-
-/// The current snapshot state of the Raft node.
-enum SnapshotState {
-    /// No snapshot operations are taking place.
-    Idle,
-    /// The Raft node is streaming in a snapshot from the leader.
-    Streaming(Option<mpsc::UnboundedSender<InstallSnapshotChunk>>, Option<oneshot::Receiver<()>>),
-}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // Raft //////////////////////////////////////////////////////////////////////////////////////////
@@ -495,7 +334,13 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         self.report_metrics(ctx);
 
         // Commit a new blank entry to the cluster to guard against stale-reads, per §8.
-        ctx.spawn(fut::wrap_future(ctx.address().send(ClientPayload::new_blank_payload()))
+        // If the cluster has just formed, and the current index is 0, then commit the current config.
+        let payload = if self.last_log_index == 0 {
+            ClientPayload::new_config(self.membership.clone())
+        } else {
+            ClientPayload::new_blank_payload()
+        };
+        ctx.spawn(fut::wrap_future(ctx.address().send(payload))
             .map_err(|_, _, _| ())
             .and_then(|res, _, _| fut::result(res.map_err(|_| ())))
             // In the case that there was a stale record and it was a joint consensus

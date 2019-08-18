@@ -8,7 +8,36 @@ use crate::{
 };
 
 /// Initialize a pristine Raft node with the given config & start a campaign to become leader.
-pub struct InitWithConfig;
+pub struct InitWithConfig {
+    /// All currently known members to initialize the new cluster with.
+    ///
+    /// If the ID of the node this command is being submitted to is not present it will be added.
+    /// If there are duplicates, they will be filtered out to ensure config is proper.
+    pub members: Vec<NodeId>,
+}
+
+impl InitWithConfig {
+    /// Construct a new instance.
+    pub fn new(members: Vec<NodeId>) -> Self {
+        Self{members}
+    }
+}
+
+impl Message for InitWithConfig {
+    type Result = Result<(), InitWithConfigError>;
+}
+
+/// The set of errors which may take place when requesting to propose a config change.
+#[derive(Debug)]
+pub enum InitWithConfigError {
+    /// An internal error has taken place.
+    Internal,
+    /// Submission of this command to this node is not allowed due to the state of the node.
+    NotAllowed,
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// ProposeConfigChange ///////////////////////////////////////////////////////////////////////////
 
 /// Propose a new config change to a running cluster.
 ///
@@ -26,6 +55,9 @@ pub struct ProposeConfigChange<E: AppError> {
 
 impl<E: AppError> ProposeConfigChange<E> {
     /// Create a new instance.
+    ///
+    /// If there are duplicates in either of the givenn vectors, they will be filtered out to
+    /// ensure config is proper.
     pub fn new(add_members: Vec<NodeId>, remove_members: Vec<NodeId>) -> Self {
         Self{add_members, remove_members, marker: std::marker::PhantomData}
     }
