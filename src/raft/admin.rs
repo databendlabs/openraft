@@ -56,7 +56,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InitWithConfig> 
 
         // Become a candidate and start campaigning for leadership. If this node is the only node
         // in the cluster, then become leader without holding an election.
-        self.become_candidate(ctx);
+        if self.membership.members.len() == 1 && &self.membership.members[0] == &self.id {
+            self.become_leader(ctx);
+        } else {
+            self.become_candidate(ctx);
+        }
 
         Box::new(fut::ok(()))
     }
