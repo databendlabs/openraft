@@ -64,11 +64,6 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesReq
             return Box::new(fut::err(()));
         }
 
-        // Don't interact with non-cluster members.
-        if !self.members.contains(&msg.leader_id) {
-            return Box::new(fut::err(()));
-        }
-
         // If message's term is less than most recent term, then we do not honor the request.
         if &msg.term < &self.current_term {
             return Box::new(fut::ok(AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None}));
@@ -88,13 +83,16 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesReq
             self.update_current_leader(ctx, UpdateCurrentLeader::OtherNode(msg.leader_id));
         }
 
-        // If not follower, become follower.
+        // Transition to follower state if needed.
         match &mut self.state {
             // Ensure we are not in a snapshotting state.
             RaftState::Follower(inner) => match inner.snapshot_state {
                 SnapshotState::Idle => (),
                 _ => inner.snapshot_state = SnapshotState::Idle,
             }
+            // NonVoters stay in this state until a config change is received which changes its state.
+            RaftState::NonVoter => (),
+            // Any other state needs to transition to follower.
             _ => self.become_follower(ctx),
         }
 
@@ -168,26 +166,30 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
             EntryType::ConfigChange(conf) => Some(conf),
             _ => None,
         }).last();
-        if let Some(conf) = last_conf_change {
-            // Update membership info & apply hard state.
-            self.members = conf.members.clone();
-            self.save_hard_state(ctx);
-        }
+        let f = match last_conf_change {
+            Some(conf) => {
+                // Update membership info & apply hard state.
+                fut::Either::A(self.update_membership(ctx, conf.membership.clone()))
+            }
+            None => fut::Either::B(fut::ok(())),
+        };
 
-        self.is_appending_logs = true;
-        fut::Either::B(fut::wrap_future(self.storage.send(ReplicateLogEntries::new(entries.clone())))
-            .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
-            .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
-            .map(move |_, act, _| {
-                if let Some((idx, term)) = entries.last().map(|elem| (elem.index, elem.term)) {
-                    act.last_log_index = idx;
-                    act.last_log_term = term;
-                }
-            })
-            .then(|res, act, _| {
-                act.is_appending_logs = false;
-                fut::result(res)
-            }))
+        fut::Either::B(f.and_then(move |_, act, _| {
+            act.is_appending_logs = true;
+            fut::wrap_future(act.storage.send(ReplicateLogEntries::new(entries.clone())))
+                .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
+                .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
+                .map(move |_, act, _| {
+                    if let Some((idx, term)) = entries.last().map(|elem| (elem.index, elem.term)) {
+                        act.last_log_index = idx;
+                        act.last_log_term = term;
+                    }
+                })
+                .then(|res, act, _| {
+                    act.is_appending_logs = false;
+                    fut::result(res)
+                })
+        }))
     }
 
     /// Perform the AppendEntries RPC consistency check.

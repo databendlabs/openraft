@@ -1,17 +1,14 @@
 todo
 ====
+- [ ] probably: make the Raft, RaftStorage, RaftNetwork & ReplicationStream types generic over a type `T` which will be the contents of the `EntryType::Normal`. Looks like RaftNetwork no longer needs generic constraints. Check.
 - [ ] check all location's where Raft.stop() or ReplicationStream.terminate() is used. Make sure cleanup is good. May need to use terminate on raft too.
 - [ ] guard against sending snapshot pointers during replication.
-- [ ] snapshot creation needs to be triggered based on configuration & distance from last snapshot.
 
-- [ ] maybe: may need to have `save_hard_state` finish before responding to RPCs in all conditions. Might be good to experiment with async/await here to help aid in the added complexity this would bring.
-- [ ] maybe: update the append entries algorithm for followers so that recent entries are buffered up to a specific threshold so that the `apply_logs_to_statemachine` won't need to fetch from storage first.
+----
 
-### testing
-- [ ] test single node setup once admin commands are setup.
-
-### observability
-- [ ] instrument code with tokio trace: https://docs.rs/tokio-trace/0.1.0/tokio_trace/
+- [ ] open ticket for: snapshot creation needs to be triggered based on configuration & distance from last snapshot.
+- [ ] open ticket for: update the append entries algorithm for followers so that recent entries are buffered up to a specific threshold so that the `apply_logs_to_statemachine` won't need to fetch from storage first.
+- [ ] open ticket for: instrument code with tokio trace: https://docs.rs/tokio-trace/0.1.0/tokio_trace/
 
 ----
 
@@ -28,24 +25,3 @@ todo
     - if this happens, that node will simply commit the terminal config change which removes it from the cluster and step down.
     - such conditions would be extremely rare, and are easily accounted for without any additional complexity in implementation.
 - [ ] add docs to general application building section about client interactions. Per the Raft spec in §8, to ensure that client interactions are not applied > 1 due to a failure scenario and the client issuing a retry, applications must track client IDs and use serial numbers on each request. The RaftStorage implementaion may use this information in the client request log and reject the request from within the RaftStorage handler using an application specific error. The application's client may observe this error and treat it as an overall success. This is an application level responsibility, Raft simply provides the mechanism to be able to implement it.
-
-----
-
-### admin commands
-##### ProposeConfigChange §6 | config change
-- need admin command for initiating a new reconfig. This begins a JoinConsensus throughout the cluster.
-- need to introduce the `NonVoter` Raft state type. NonVoter nodes do not have election timeouts and are not considered for majority in the commit process and are not solicited for votes. Add this variant to metrics enum as well.
-- need to update the `EntryConfigChange` model to include a field for `NonVoters` being added in the config & a new boolean field `is_joint` which indicates if the cluster is in a join consensus phase or not.
-- when a new config is presented to the leader, or received by a follower from the leader, it will cause Raft to enter into the JointConsensus phase.
-    - new cluster members will always be added as followers, this implementation will take care of making sure that they are brought up-to-speed before moving forward with reconfiguration. Replication stream must come up to line rate. Once all new nodes are line rate, the config will proceed, and the leader will generate the new `EntryConfigChange` and will commit it as the end of the joint consensus.
-    - add an optional leader state field which indicates that the leader needs to step down after a specific offset has been committed. This is for when a node which is being phased out of cluster membership is the leader and is committing its terminal config change to end the joint consensus.
-    - if a node is elected during a joint consensus phase, it must be cognizent of whether it will be phased out when the current joint consensus is committed.
-
-**Notes:**
-> For the configuration change mechanism to be safe,there must be no point during the transition where itis possible for two leaders to be elected for the sameterm. Unfortunately, any approach where servers switchdirectly from the old configuration to the new configuration is unsafe. It isn’t possible to atomically switch all ofthe servers at once, so the cluster can potentially split intotwo independent majorities during the transition.
-
-> In Raft the clusterfirst switches to a transitional configuration we calljointconsensus; once the joint consensus has been committed,the system then transitions to the new configuration. The joint consensus combines both the old and new configurations.
-
-- Log entries are replicated to all servers in both configurations.
-- Any server from either configuration may serve asleader.
-- Agreement (for elections and entry commitment) requires separate majorities from both the old and new configurations.

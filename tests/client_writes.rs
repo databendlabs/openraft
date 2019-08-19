@@ -122,8 +122,8 @@ fn client_writes() {
                         // Hard state.
                         assert_eq!(s0.hs.current_term, s1.hs.current_term, "Expected hs current term for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.hs.current_term, s2.hs.current_term, "Expected hs current term for nodes 0 and 2 to be equal.");
-                        assert_eq!(s0.hs.members, s1.hs.members, "Expected hs members for nodes 0 and 1 to be equal.");
-                        assert_eq!(s0.hs.members, s2.hs.members, "Expected hs members for nodes 0 and 2 to be equal.");
+                        assert_eq!(s0.hs.membership, s1.hs.membership, "Expected hs membership for nodes 0 and 1 to be equal.");
+                        assert_eq!(s0.hs.membership, s2.hs.membership, "Expected hs membership for nodes 0 and 2 to be equal.");
                         // Log.
                         assert_eq!(s0.log, s1.log, "Expected log for nodes 0 and 1 to be equal.");
                         assert_eq!(s0.log, s2.log, "Expected log for nodes 0 and 2 to be equal.");

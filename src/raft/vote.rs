@@ -33,13 +33,13 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// Business logic of handling a `VoteRequest` RPC.
     fn handle_vote_request(&mut self, ctx: &mut Context<Self>, msg: VoteRequest) -> Result<VoteResponse, ()> {
         // Don't interact with non-cluster members.
-        if !self.members.contains(&msg.candidate_id) {
-            return Err(());
+        if !self.membership.contains(&msg.candidate_id) {
+            return Ok(VoteResponse{term: self.current_term, vote_granted: false, is_candidate_unknown: true});
         }
 
         // If candidate's current term is less than this nodes current term, reject.
         if &msg.term < &self.current_term {
-            return Ok(VoteResponse{term: self.current_term, vote_granted: false});
+            return Ok(VoteResponse{term: self.current_term, vote_granted: false, is_candidate_unknown: false});
         }
 
         // Per spec, if we observe a term greater than our own, we must update
@@ -53,24 +53,24 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
         // If candidate's log is not at least as up-to-date as this node, then reject.
         let client_is_uptodate = (&msg.last_log_term >= &self.last_log_term) && (&msg.last_log_index >= &self.last_log_index);
         if !client_is_uptodate {
-            return Ok(VoteResponse{term: self.current_term, vote_granted: false});
+            return Ok(VoteResponse{term: self.current_term, vote_granted: false, is_candidate_unknown: false});
         }
 
         // Candidate's log is up-to-date so handle voting conditions.
         match &self.voted_for {
             // This node has already voted for the candidate.
             Some(candidate_id) if candidate_id == &msg.candidate_id => {
-                Ok(VoteResponse{term: self.current_term, vote_granted: true})
+                Ok(VoteResponse{term: self.current_term, vote_granted: true, is_candidate_unknown: false})
             }
             // This node has already voted for a different candidate.
-            Some(_) => Ok(VoteResponse{term: self.current_term, vote_granted: false}),
+            Some(_) => Ok(VoteResponse{term: self.current_term, vote_granted: false, is_candidate_unknown: false}),
             // This node has not already voted, so vote for the candidate.
             None => {
                 self.voted_for = Some(msg.candidate_id);
                 self.save_hard_state(ctx);
                 self.update_election_timeout(ctx);
                 self.become_follower(ctx);
-                Ok(VoteResponse{term: self.current_term, vote_granted: true})
+                Ok(VoteResponse{term: self.current_term, vote_granted: true, is_candidate_unknown: false})
             },
         }
     }
@@ -85,11 +85,18 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                 // Ensure the node is still in candidate state.
                 let state = match &mut act.state {
                     RaftState::Candidate(state) => state,
-                    RaftState::Leader(_) => return fut::ok(()),
                     _ => {
                         return fut::ok(());
                     }
                 };
+
+                // If responding node sees this node as being unknown to the cluster, and this
+                // node has been active, then go into NonVoter state, as this typically means this
+                // node is being removed from the cluster.
+                if res.is_candidate_unknown && act.last_log_index > 0 {
+                    act.become_non_voter(ctx);
+                    return fut::ok(());
+                }
 
                 // If peer's term is greater than current term, revert to follower state.
                 if res.term > act.current_term {

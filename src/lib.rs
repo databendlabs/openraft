@@ -1,3 +1,4 @@
+pub mod admin;
 mod common;
 pub mod config;
 mod raft;
