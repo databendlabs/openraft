@@ -5,7 +5,7 @@ use futures::sync::oneshot;
 use log::{error};
 
 use crate::{
-    AppError,
+    AppData, AppError,
     common::{CLIENT_RPC_TX_ERR, ApplyLogsTask, DependencyAddr},
     messages::{ClientPayloadResponse, ClientError, Entry},
     network::RaftNetwork,
@@ -13,12 +13,12 @@ use crate::{
     storage::{ApplyToStateMachine, ApplyToStateMachinePayload, GetLogEntries, RaftStorage},
 };
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
     /// Process tasks for applying logs to the state machine.
     ///
     /// **NOTE WELL:** these operations are strictly pipelined to ensure that these operations
     /// happen in strict order for guaranteed linearizability.
-    pub(super) fn process_apply_logs_task(&mut self, ctx: &mut Context<Self>, msg: ApplyLogsTask<E>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+    pub(super) fn process_apply_logs_task(&mut self, ctx: &mut Context<Self>, msg: ApplyLogsTask<D, E>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
         match msg {
             ApplyLogsTask::Entry{entry, chan} => fut::Either::A(self.process_apply_logs_task_with_entries(ctx, entry, chan)),
             ApplyLogsTask::Outstanding => fut::Either::B(self.process_apply_logs_task_outstanding(ctx)),
@@ -27,7 +27,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
 
     /// Apply the given payload of log entries to the state machine.
     fn process_apply_logs_task_with_entries(
-        &mut self, _: &mut Context<Self>, entry: Arc<Entry>, chan: Option<oneshot::Sender<Result<ClientPayloadResponse, ClientError<E>>>>,
+        &mut self, _: &mut Context<Self>, entry: Arc<Entry<D>>, chan: Option<oneshot::Sender<Result<ClientPayloadResponse, ClientError<D, E>>>>,
     ) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
         // PREVIOUS TERM UNCOMMITTED LOGS CHECK:
         // Here we are checking to see if there are any logs from the previous term which were
@@ -58,7 +58,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
                         })
                 }))
         } else {
-            let res: Result<(), ClientError<E>> = Ok(());
+            let res: Result<(), ClientError<D, E>> = Ok(());
             fut::Either::B(fut::result(res))
         };
 

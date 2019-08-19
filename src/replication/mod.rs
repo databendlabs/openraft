@@ -13,7 +13,7 @@ use std::sync::Arc;
 use actix::prelude::*;
 
 use crate::{
-    AppError, NodeId,
+    AppData, AppError, NodeId,
     common::DependencyAddr,
     config::{Config, SnapshotPolicy},
     messages::{
@@ -29,35 +29,45 @@ use crate::{
 // RSState ///////////////////////////////////////////////////////////////////////////////////////
 
 /// The state of the replication stream.
-enum RSState {
+enum RSState<D: AppData> {
     /// The replication stream is running at line rate.
-    LineRate(LineRateState),
+    LineRate(LineRateState<D>),
     /// The replication stream is lagging behind due to the target node.
-    Lagging(LaggingState),
+    Lagging(LaggingState<D>),
     /// The replication stream is streaming a snapshot over to the target node.
     Snapshotting(SnapshottingState),
 }
 
 /// LineRate specific state.
-#[derive(Default)]
-struct LineRateState {
+struct LineRateState<D: AppData> {
     /// A buffer of data to replicate to the target follower.
     ///
     /// The buffered payload here will be expanded as more replication commands come in from the
     /// Raft node while there is a buffered instance here.
-    buffered_outbound: Vec<Arc<Entry>>,
+    buffered_outbound: Vec<Arc<Entry<D>>>,
+}
+
+impl<D: AppData> Default for LineRateState<D> {
+    fn default() -> Self {
+        Self{buffered_outbound: vec![]}
+    }
 }
 
 /// Lagging specific state.
-#[derive(Default)]
-struct LaggingState {
+struct LaggingState<D: AppData> {
     /// A flag indicating if the stream is ready to transition over to line rate.
     is_ready_for_line_rate: bool,
     /// A buffer of data to replicate to the target follower.
     ///
     /// This is identical to `LineRateState`'s buffer, and will be trasferred over to its buffer
     /// during state transition.
-    buffered_outbound: Vec<Arc<Entry>>,
+    buffered_outbound: Vec<Arc<Entry<D>>>,
+}
+
+impl<D: AppData> Default for LaggingState<D> {
+    fn default() -> Self {
+        Self{is_ready_for_line_rate: false, buffered_outbound: vec![]}
+    }
 }
 
 /// Snapshotting specific state.
@@ -114,7 +124,7 @@ struct SnapshottingState;
 ///
 /// NOTE: we do not stack replication requests to targets because this could result in
 /// out-of-order delivery.
-pub(crate) struct ReplicationStream<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
+pub(crate) struct ReplicationStream<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> {
     //////////////////////////////////////////////////////////////////////////
     // Static Fields /////////////////////////////////////////////////////////
 
@@ -128,11 +138,11 @@ pub(crate) struct ReplicationStream<E: AppError, N: RaftNetwork<E>, S: RaftStora
     /// will be brought down as part of a state transition to becoming a follower.
     term: u64,
     /// A channel for communicating with the Raft node which spawned this actor.
-    raftnode: Addr<Raft<E, N, S>>,
+    raftnode: Addr<Raft<D, E, N, S>>,
     /// The address of the actor responsible for implementing the `RaftNetwork` interface.
     network: Addr<N>,
     /// The storage interface.
-    storage: Recipient<GetLogEntries<E>>,
+    storage: Recipient<GetLogEntries<D, E>>,
     /// The Raft's runtime config.
     config: Arc<Config>,
 
@@ -140,7 +150,7 @@ pub(crate) struct ReplicationStream<E: AppError, N: RaftNetwork<E>, S: RaftStora
     // Dynamic Fields ////////////////////////////////////////////////////////
 
     /// The state of this replication stream, primarily corresponding to replication performance.
-    state: RSState,
+    state: RSState<D>,
     /// A flag indicating if the state loop is currently being driven forward.
     is_driving_state: bool,
     /// The index of the log entry to most recently be appended to the log by the leader.
@@ -177,12 +187,12 @@ pub(crate) struct ReplicationStream<E: AppError, N: RaftNetwork<E>, S: RaftStora
     match_term: u64,
 }
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> ReplicationStream<D, E, N, S> {
     /// Create a new instance.
     pub fn new(
         id: NodeId, target: NodeId, term: u64, config: Arc<Config>,
         line_index: u64, line_term: u64, line_commit: u64,
-        raftnode: Addr<Raft<E, N, S>>, network: Addr<N>, storage: Recipient<GetLogEntries<E>>,
+        raftnode: Addr<Raft<D, E, N, S>>, network: Addr<N>, storage: Recipient<GetLogEntries<D, E>>,
     ) -> Self {
         Self{
             id, target, term, raftnode, network, storage, config,
@@ -328,7 +338,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
     /// updated. This routine does not perform any timeout logic. That is up to the parent
     /// application's networking layer.
     fn send_append_entries(
-        &mut self, _: &mut Context<Self>, request: AppendEntriesRequest,
+        &mut self, _: &mut Context<Self>, request: AppendEntriesRequest<D>,
     ) -> impl ActorFuture<Actor=Self, Item=AppendEntriesResponse, Error=()> {
         // Send the payload.
         fut::wrap_future(self.network.send(request))
@@ -375,7 +385,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, 
     }
 }
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Actor for ReplicationStream<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Actor for ReplicationStream<D, E, N, S> {
     type Context = Context<Self>;
 
     /// Perform actors startup routine.
@@ -399,21 +409,21 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Actor for ReplicationStr
 
 /// A replication stream message indicating a new payload of entries to be replicated.
 #[derive(Clone)]
-pub(crate) struct RSReplicate {
+pub(crate) struct RSReplicate<D: AppData> {
     /// The new entry which needs to be replicated.
     ///
     /// This entry will always be the most recent entry to have been appended to the log, so its
     /// index is the new line index value.
-    pub entry: Arc<Entry>,
+    pub entry: Arc<Entry<D>>,
     /// The index of the highest log entry which is known to be committed in the cluster.
     pub line_commit: u64,
 }
 
-impl Message for RSReplicate {
+impl<D: AppData> Message for RSReplicate<D> {
     type Result = Result<(), ()>;
 }
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for ReplicationStream<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSReplicate<D>> for ReplicationStream<D, E, N, S> {
     type Result = Result<(), ()>;
 
     /// Handle a request to replicate the given payload of entries.
@@ -421,7 +431,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for
     /// If there is already an outbound request, this payload will be buffered. If there is
     /// already a buffered payload, the payloads will be combined. This helps to keep throughput
     /// as high as possible when dealing with high write load conditions.
-    fn handle(&mut self, msg: RSReplicate, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RSReplicate<D>, ctx: &mut Self::Context) -> Self::Result {
         // Always update line commit & index info first so that this value can be used in all AppendEntries RPCs.
         self.line_commit = msg.line_commit;
         self.line_index = msg.entry.index;
@@ -446,7 +456,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSReplicate> for
 #[derive(Clone, Message)]
 pub(crate) struct RSUpdateLineCommit(pub u64);
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateLineCommit> for ReplicationStream<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSUpdateLineCommit> for ReplicationStream<D, E, N, S> {
     type Result = ();
 
     /// Handle a request to update the current line commit of the leader.
@@ -462,7 +472,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateLineComm
 #[derive(Message)]
 pub(crate) struct RSTerminate;
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSTerminate> for ReplicationStream<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSTerminate> for ReplicationStream<D, E, N, S> {
     type Result = ();
 
     /// Handle a request to terminate this replication stream.

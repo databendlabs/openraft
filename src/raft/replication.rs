@@ -2,7 +2,7 @@ use actix::prelude::*;
 use log::{debug, error, warn};
 
 use crate::{
-    AppError,
+    AppData, AppError,
     common::{CLIENT_RPC_TX_ERR, ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     config::SnapshotPolicy,
     messages::{ClientPayloadResponse, ResponseMode},
@@ -19,7 +19,7 @@ use crate::{
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSFatalActixMessagingError ////////////////////////////////////////////////////////////////////
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSFatalActixMessagingError> for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSFatalActixMessagingError> for Raft<D, E, N, S> {
     type Result = ();
 
     /// Handle events from replication streams reporting errors.
@@ -31,7 +31,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSFatalActixMess
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSFatalStorageError ///////////////////////////////////////////////////////////////////////////
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSFatalStorageError<E>> for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSFatalStorageError<E>> for Raft<D, E, N, S> {
     type Result = ();
 
     /// Handle events from replication streams reporting errors.
@@ -44,7 +44,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSFatalStorageEr
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSRateUpdate //////////////////////////////////////////////////////////////////////////////////
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRateUpdate> for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSRateUpdate> for Raft<D, E, N, S> {
     type Result = ();
 
     /// Handle events from replication streams updating their replication rate tracker.
@@ -78,7 +78,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRateUpdate> fo
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSNeedsSnapshot ///////////////////////////////////////////////////////////////////////////////
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSNeedsSnapshot> for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSNeedsSnapshot> for Raft<D, E, N, S> {
     type Result = ResponseActFuture<Self, RSNeedsSnapshotResponse, ()>;
 
     /// Handle events from replication streams requesting for snapshot info.
@@ -127,7 +127,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSNeedsSnapshot>
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSRevertToFollower ////////////////////////////////////////////////////////////////////////////
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRevertToFollower> for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSRevertToFollower> for Raft<D, E, N, S> {
     type Result = ();
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
@@ -144,7 +144,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSRevertToFollow
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSUpdateMatchIndex ////////////////////////////////////////////////////////////////////////////
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<RSUpdateMatchIndex> for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSUpdateMatchIndex> for Raft<D, E, N, S> {
     type Result = ();
 
     /// Handle events from a replication stream which updates the target node's match index.

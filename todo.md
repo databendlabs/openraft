@@ -1,6 +1,5 @@
 todo
 ====
-- [ ] probably: make the Raft, RaftStorage, RaftNetwork & ReplicationStream types generic over a type `T` which will be the contents of the `EntryType::Normal`. Looks like RaftNetwork no longer needs generic constraints. Check.
 - [ ] check all location's where Raft.stop() or ReplicationStream.terminate() is used. Make sure cleanup is good. May need to use terminate on raft too.
 - [ ] guard against sending snapshot pointers during replication.
 

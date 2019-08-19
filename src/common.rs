@@ -5,7 +5,7 @@ use std::sync::Arc;
 use futures::sync::oneshot;
 
 use crate::{
-    NodeId, AppError,
+    AppData, AppError, NodeId,
     messages::{
         ClientError, ClientPayload, ClientPayloadResponse,
         Entry, ResponseMode,
@@ -19,32 +19,32 @@ pub(crate) const CLIENT_RPC_TX_ERR: &str = "Client RPC channel sender was unexpe
 // ApplyLogsTask /////////////////////////////////////////////////////////////////////////////////
 
 /// A task declaring some set of logs which need to be applied to the state machine.
-pub(crate) enum ApplyLogsTask<E: AppError> {
+pub(crate) enum ApplyLogsTask<D: AppData, E: AppError> {
     /// Check for & apply any logs which have been committed but which have not yet been applied.
     Outstanding,
     /// Logs which need to be applied are supplied for immediate use.
     Entry {
         /// The payload of logs to be applied.
-        entry: Arc<Entry>,
+        entry: Arc<Entry<D>>,
         /// The optional response channel for when this task is complete.
-        chan: Option<oneshot::Sender<Result<ClientPayloadResponse, ClientError<E>>>>,
+        chan: Option<oneshot::Sender<Result<ClientPayloadResponse, ClientError<D, E>>>>,
     },
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // ClientPayloadWithChan /////////////////////////////////////////////////////////////////////////
 
-pub(crate) struct ClientPayloadWithChan<E: AppError> {
-    pub tx: oneshot::Sender<Result<ClientPayloadResponse, ClientError<E>>>,
-    pub rpc: ClientPayload<E>,
+pub(crate) struct ClientPayloadWithChan<D: AppData, E: AppError> {
+    pub tx: oneshot::Sender<Result<ClientPayloadResponse, ClientError<D, E>>>,
+    pub rpc: ClientPayload<D, E>,
 }
 
-impl<E: AppError> ClientPayloadWithChan<E> {
+impl<D: AppData, E: AppError> ClientPayloadWithChan<D, E> {
     /// Upgrade a client payload with an assigned index & term.
     ///
     /// - `index`: the index to assign to this payload.
     /// - `term`: the term to assign to this payload.
-    pub(crate) fn upgrade(self, index: u64, term: u64) -> ClientPayloadWithIndex<E> {
+    pub(crate) fn upgrade(self, index: u64, term: u64) -> ClientPayloadWithIndex<D, E> {
         ClientPayloadWithIndex::new(self, index, term)
     }
 }
@@ -53,11 +53,11 @@ impl<E: AppError> ClientPayloadWithChan<E> {
 // ClientPayloadWithIndex /////////////////////////////////////////////////////////////////////////
 
 /// A client payload which has made its way into the processing pipeline.
-pub(crate) struct ClientPayloadWithIndex<E: AppError> {
+pub(crate) struct ClientPayloadWithIndex<D: AppData, E: AppError> {
     /// The channel of the original client request.
-    pub tx: oneshot::Sender<Result<ClientPayloadResponse, ClientError<E>>>,
+    pub tx: oneshot::Sender<Result<ClientPayloadResponse, ClientError<D, E>>>,
     /// The entry of the original request with an assigned index & term, ready for storage.
-    entry: Arc<Entry>,
+    entry: Arc<Entry<D>>,
     /// The response mode of the original client request.
     pub response_mode: ResponseMode,
     /// The assigned log index of this payload.
@@ -66,15 +66,15 @@ pub(crate) struct ClientPayloadWithIndex<E: AppError> {
     pub term: u64,
 }
 
-impl<E: AppError> ClientPayloadWithIndex<E> {
+impl<D: AppData, E: AppError> ClientPayloadWithIndex<D, E> {
     /// Create a new instance.
-    pub(self) fn new(payload: ClientPayloadWithChan<E>, index: u64, term: u64) -> Self {
+    pub(self) fn new(payload: ClientPayloadWithChan<D, E>, index: u64, term: u64) -> Self {
         let entry = Arc::new(Entry{index: index, term: term, entry_type: payload.rpc.entry.clone()});
         Self{tx: payload.tx, entry, response_mode: payload.rpc.response_mode, index, term}
     }
 
     /// Downgrade the payload, typically for forwarding purposes.
-    pub(crate) fn downgrade(self) -> ClientPayloadWithChan<E> {
+    pub(crate) fn downgrade(self) -> ClientPayloadWithChan<D, E> {
         let entry = match Arc::try_unwrap(self.entry) {
             Ok(entry) => entry.entry_type,
             Err(arc) => arc.entry_type.clone(),
@@ -83,7 +83,7 @@ impl<E: AppError> ClientPayloadWithIndex<E> {
     }
 
     /// Get a reference to the entry encapsulated by this payload.
-    pub(crate) fn entry(&self) -> Arc<Entry> {
+    pub(crate) fn entry(&self) -> Arc<Entry<D>> {
         self.entry.clone()
     }
 }

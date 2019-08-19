@@ -17,7 +17,7 @@ use tokio_timer::Delay;
 use fixtures::{
     Node, RaftTestController, Payload, setup_logger,
     dev::{ExecuteInRaftRouter, GetCurrentLeader, RaftRouter, Register},
-    memory_storage::{GetCurrentState},
+    memory_storage::{GetCurrentState, MemoryStorageData},
 };
 
 /// Basic lifecycle tests for a three node cluster.
@@ -145,7 +145,7 @@ impl RaftTestController {
 
                 fut::wrap_stream(futures::stream::iter_ok(0..num_requests))
                     .and_then(move |data, _, _| {
-                        let entry = EntryNormal{data: data.to_string().into_bytes()};
+                        let entry = EntryNormal{data: Some(MemoryStorageData{data: data.to_string().into_bytes()})};
                         let payload = Payload::new(entry, ResponseMode::Applied);
                         fut::wrap_future(leader.clone().send(payload))
                             .map_err(|_, _, _| ClientError::Internal)

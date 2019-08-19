@@ -3,7 +3,7 @@ use std::sync::Arc;
 use actix::prelude::*;
 
 use crate::{
-    AppError,
+    AppData, AppError,
     common::{ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     network::RaftNetwork,
     messages::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryType},
@@ -11,7 +11,7 @@ use crate::{
     storage::{GetLogEntries, RaftStorage, ReplicateLogEntries},
 };
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesRequest> for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<AppendEntriesRequest<D>> for Raft<D, E, N, S> {
     type Result = ResponseActFuture<Self, AppendEntriesResponse, ()>;
 
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -58,7 +58,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesReq
     /// may die, a new leader may be elected which does not have the same entries, as they were
     /// not replicated to a majority of followers, and the new leader will proceeed to overwrite
     /// the inconsistent entries.
-    fn handle(&mut self, msg: AppendEntriesRequest, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AppendEntriesRequest<D>, ctx: &mut Self::Context) -> Self::Result {
         // Only handle requests if actor has finished initialization.
         if let &RaftState::Initializing = &self.state {
             return Box::new(fut::err(()));
@@ -137,7 +137,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<AppendEntriesReq
     }
 }
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
     /// Append the given entries to the log.
     ///
     /// This routine also encapsulates all logic which must be performed related to appending log
@@ -154,7 +154,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     /// entries which is a config change entry and will update the node's member state based on
     /// that entry.
     fn append_log_entries(
-        &mut self, ctx: &mut Context<Self>, entries: Arc<Vec<Entry>>,
+        &mut self, ctx: &mut Context<Self>, entries: Arc<Vec<Entry<D>>>,
     ) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
         // If we are already eppending entries, then abort this operation.
         if self.is_appending_logs {

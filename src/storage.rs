@@ -10,7 +10,7 @@ use futures::sync::{mpsc::UnboundedReceiver, oneshot::Sender};
 use serde::{Serialize, Deserialize};
 
 use crate::{
-    NodeId, AppError,
+    AppData, AppError, NodeId,
     messages,
 };
 
@@ -62,21 +62,22 @@ pub struct InitialState {
 ///
 /// The start value is inclusive in the search and the stop value is non-inclusive:
 /// `[start, stop)`.
-pub struct GetLogEntries<E: AppError> {
+pub struct GetLogEntries<D: AppData, E: AppError> {
     pub start: u64,
     pub stop: u64,
-    marker: std::marker::PhantomData<E>,
+    marker_data: std::marker::PhantomData<D>,
+    marker_error: std::marker::PhantomData<E>,
 }
 
-impl<E: AppError> GetLogEntries<E> {
+impl<D: AppData, E: AppError> GetLogEntries<D, E> {
     // Create a new instance.
     pub fn new(start: u64, stop: u64) -> Self {
-        Self{start, stop, marker: std::marker::PhantomData}
+        Self{start, stop, marker_data: std::marker::PhantomData, marker_error: std::marker::PhantomData}
     }
 }
 
-impl<E: AppError> Message for GetLogEntries<E> {
-    type Result = Result<Vec<messages::Entry>, E>;
+impl<D: AppData, E: AppError> Message for GetLogEntries<D, E> {
+    type Result = Result<Vec<messages::Entry<D>>, E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -91,26 +92,26 @@ impl<E: AppError> Message for GetLogEntries<E> {
 ///
 /// This property of error handling allows you to keep your application logic as close to the
 /// storage layer as needed.
-pub struct AppendLogEntry<E: AppError> {
-    pub entry: Arc<messages::Entry>,
+pub struct AppendLogEntry<D: AppData, E: AppError> {
+    pub entry: Arc<messages::Entry<D>>,
     marker: std::marker::PhantomData<E>,
 }
 
-impl<E: AppError> AppendLogEntry<E> {
+impl<D: AppData, E: AppError> AppendLogEntry<D, E> {
     // Create a new instance.
-    pub fn new(entry: Arc<messages::Entry>) -> Self {
+    pub fn new(entry: Arc<messages::Entry<D>>) -> Self {
         Self{entry, marker: std::marker::PhantomData}
     }
 }
 
-impl<E: AppError> Message for AppendLogEntry<E> {
+impl<D: AppData, E: AppError> Message for AppendLogEntry<D, E> {
     type Result = Result<(), E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // ReplicateLogEntries ///////////////////////////////////////////////////////////////////////////
 
-/// A request from Raft to replicate the payload of entries to the log.
+/// A request from Raft to replicate a payload of entries to the log.
 ///
 /// These requests come about via the Raft leader's replication process. An error coming from this
 /// interface will cause Raft to shutdown, as this is not where application logic should be
@@ -120,19 +121,19 @@ impl<E: AppError> Message for AppendLogEntry<E> {
 /// Though the entries will always be presented in order, each entry's index should be used to
 /// determine its location to be written in the log, as logs may need to be overwritten under
 /// some circumstances.
-pub struct ReplicateLogEntries<E: AppError> {
-    pub entries: Arc<Vec<messages::Entry>>,
+pub struct ReplicateLogEntries<D: AppData, E: AppError> {
+    pub entries: Arc<Vec<messages::Entry<D>>>,
     marker: std::marker::PhantomData<E>,
 }
 
-impl<E: AppError> ReplicateLogEntries<E> {
+impl<D: AppData, E: AppError> ReplicateLogEntries<D, E> {
     // Create a new instance.
-    pub fn new(entries: Arc<Vec<messages::Entry>>) -> Self {
+    pub fn new(entries: Arc<Vec<messages::Entry<D>>>) -> Self {
         Self{entries, marker: std::marker::PhantomData}
     }
 }
 
-impl<E: AppError> Message for ReplicateLogEntries<E> {
+impl<D: AppData, E: AppError> Message for ReplicateLogEntries<D, E> {
     type Result = Result<(), E>;
 }
 
@@ -147,25 +148,25 @@ impl<E: AppError> Message for ReplicateLogEntries<E> {
 /// NOTE WELL: once the futures ecosystem settles a bit and we can pass around references in
 /// futures and message types, this interface will solidify and payload will always just be a
 /// `&[Entry]` or the like. For now, the payload variants help to keep allocations lower.
-pub struct ApplyToStateMachine<E: AppError> {
-    pub payload: ApplyToStateMachinePayload,
+pub struct ApplyToStateMachine<D: AppData, E: AppError> {
+    pub payload: ApplyToStateMachinePayload<D>,
     marker: std::marker::PhantomData<E>,
 }
 
-impl<E: AppError> ApplyToStateMachine<E> {
+impl<D: AppData, E: AppError> ApplyToStateMachine<D, E> {
     // Create a new instance.
-    pub fn new(payload: ApplyToStateMachinePayload) -> Self {
+    pub fn new(payload: ApplyToStateMachinePayload<D>) -> Self {
         Self{payload, marker: std::marker::PhantomData}
     }
 }
 
 /// The type of payload which needs to be applied to the state machine.
-pub enum ApplyToStateMachinePayload {
-    Multi(Vec<messages::Entry>),
-    Single(Arc<messages::Entry>),
+pub enum ApplyToStateMachinePayload<D: AppData> {
+    Multi(Vec<messages::Entry<D>>),
+    Single(Arc<messages::Entry<D>>),
 }
 
-impl<E: AppError> Message for ApplyToStateMachine<E> {
+impl<D: AppData, E: AppError> Message for ApplyToStateMachine<D, E> {
     type Result = Result<(), E>;
 }
 
@@ -282,7 +283,7 @@ pub struct InstallSnapshotChunk {
 /// Implementation for this type's handler should be quite simple. Check the configured snapshot
 /// directory for any snapshot files. A proper implementation will only ever have one
 /// active snapshot, though another may exist while it is being created. As such, it is
-/// recommended to use a file naming pattern which will allow for easily distinguishing betweeen
+/// recommended to use a file naming pattern which will allow for easily distinguishing between
 /// the current live snapshot, and any new snapshot which is being created.
 pub struct GetCurrentSnapshot<E: AppError> {
     marker: std::marker::PhantomData<E>,
@@ -368,8 +369,9 @@ pub struct HardState {
 ///
 /// Log compaction, which is part of what taking a snapshot is for, is an application specific
 /// process. The essential idea is that superfluous records in the log will be removed. See §7 for
-/// more details. There are a few snapshot related messages which the `RaftStorage` actor must
-/// handle:
+/// more details. The essence is simple: make the log smaller by removing superfluous data.
+///
+/// There are a few snapshot related messages which the `RaftStorage` actor must handle:
 ///
 /// - `CreateSnapshot`: a request to create a new snapshot of the current log.
 /// - `InstallSnapshot`: the Raft leader is streaming over a snapshot, install it.
@@ -377,8 +379,9 @@ pub struct HardState {
 ///
 /// See each message type for more details on the message and how to properly implement their
 /// behaviors.
-pub trait RaftStorage<E>
+pub trait RaftStorage<D, E>
     where
+        D: AppData,
         E: AppError,
         Self: Actor<Context=Context<Self>>,
 
@@ -388,17 +391,17 @@ pub trait RaftStorage<E>
         Self: Handler<SaveHardState<E>>,
         Self::Context: ToEnvelope<Self, SaveHardState<E>>,
 
-        Self: Handler<GetLogEntries<E>>,
-        Self::Context: ToEnvelope<Self, GetLogEntries<E>>,
+        Self: Handler<GetLogEntries<D, E>>,
+        Self::Context: ToEnvelope<Self, GetLogEntries<D, E>>,
 
-        Self: Handler<AppendLogEntry<E>>,
-        Self::Context: ToEnvelope<Self, AppendLogEntry<E>>,
+        Self: Handler<AppendLogEntry<D, E>>,
+        Self::Context: ToEnvelope<Self, AppendLogEntry<D, E>>,
 
-        Self: Handler<ReplicateLogEntries<E>>,
-        Self::Context: ToEnvelope<Self, ReplicateLogEntries<E>>,
+        Self: Handler<ReplicateLogEntries<D, E>>,
+        Self::Context: ToEnvelope<Self, ReplicateLogEntries<D, E>>,
 
-        Self: Handler<ApplyToStateMachine<E>>,
-        Self::Context: ToEnvelope<Self, ApplyToStateMachine<E>>,
+        Self: Handler<ApplyToStateMachine<D, E>>,
+        Self::Context: ToEnvelope<Self, ApplyToStateMachine<D, E>>,
 
         Self: Handler<CreateSnapshot<E>>,
         Self::Context: ToEnvelope<Self, CreateSnapshot<E>>,
@@ -415,6 +418,7 @@ pub trait RaftStorage<E>
     /// for the first time. Otherwise the persistent storage should always take precedence.
     ///
     /// The value given for `members` is used as the initial cluster config when the node comes
-    /// online for the first time.
+    /// online for the first time. For brand new nodes, this allows you to seed the ID of the node
+    /// in the initial HardState.
     fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self;
 }

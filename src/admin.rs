@@ -3,7 +3,7 @@
 use actix::prelude::*;
 
 use crate::{
-    AppError, NodeId,
+    AppData, AppError, NodeId,
     messages::ClientError,
 };
 
@@ -45,36 +45,37 @@ pub enum InitWithConfigError {
 ///
 /// - if the node this command is sent to is not the leader of the cluster, it will be rejected.
 /// - if the given changes would leave the cluster in an inoperable state, it will be rejected.
-pub struct ProposeConfigChange<E: AppError> {
+pub struct ProposeConfigChange<D: AppData, E: AppError> {
     /// New members to be added to the cluster.
     pub(crate) add_members: Vec<NodeId>,
     /// Members to be removed from the cluster.
     pub(crate) remove_members: Vec<NodeId>,
-    marker: std::marker::PhantomData<E>,
+    marker_data: std::marker::PhantomData<D>,
+    marker_error: std::marker::PhantomData<E>,
 }
 
-impl<E: AppError> ProposeConfigChange<E> {
+impl<D: AppData, E: AppError> ProposeConfigChange<D, E> {
     /// Create a new instance.
     ///
     /// If there are duplicates in either of the givenn vectors, they will be filtered out to
     /// ensure config is proper.
     pub fn new(add_members: Vec<NodeId>, remove_members: Vec<NodeId>) -> Self {
-        Self{add_members, remove_members, marker: std::marker::PhantomData}
+        Self{add_members, remove_members, marker_data: std::marker::PhantomData, marker_error: std::marker::PhantomData}
     }
 }
 
-impl<E: AppError> Message for ProposeConfigChange<E> {
-    type Result = Result<(), ProposeConfigChangeError<E>>;
+impl<D: AppData, E: AppError> Message for ProposeConfigChange<D, E> {
+    type Result = Result<(), ProposeConfigChangeError<D, E>>;
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug)]
-pub enum ProposeConfigChangeError<E: AppError> {
+pub enum ProposeConfigChangeError<D: AppData, E: AppError> {
     /// An error related to the processing of the config change request.
     ///
     /// Errors of this type will only come about from the internals of applying the config change
     /// to the Raft log and the process related to that workflow.
-    ClientError(ClientError<E>),
+    ClientError(ClientError<D, E>),
     /// The given config would leave the cluster in an inoperable state.
     ///
     /// This error will be returned if the full set of changes, once fully applied, would leave

@@ -3,7 +3,7 @@ use log::{error};
 use futures::sync::oneshot;
 
 use crate::{
-    AppError,
+    AppData, AppError,
     common::{CLIENT_RPC_RX_ERR, CLIENT_RPC_TX_ERR, ApplyLogsTask, ClientPayloadWithChan, DependencyAddr},
     network::RaftNetwork,
     messages::{ClientError, ClientPayload, ClientPayloadResponse, ResponseMode},
@@ -12,11 +12,11 @@ use crate::{
     storage::{AppendLogEntry, RaftStorage},
 };
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<ClientPayload<E>> for Raft<E, N, S> {
-    type Result = ResponseActFuture<Self, ClientPayloadResponse, ClientError<E>>;
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<ClientPayload<D, E>> for Raft<D, E, N, S> {
+    type Result = ResponseActFuture<Self, ClientPayloadResponse, ClientError<D, E>>;
 
     /// Handle client requests.
-    fn handle(&mut self, msg: ClientPayload<E>, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ClientPayload<D, E>, _: &mut Self::Context) -> Self::Result {
         // Queue the message for processing or forward it along to the leader.
         let response_chan = match &mut self.state {
             RaftState::Leader(state) => {
@@ -43,14 +43,14 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<ClientPayload<E>
     }
 }
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
     /// Process the given client RPC, appending it to the log and committing it to the cluster.
     ///
     /// This function takes the given RPC, appends its entries to the log, sends the entries out
     /// to the replication streams to be replicated to the cluster followers, after half of the
     /// cluster members have successfully replicated the entries this routine will proceed with
     /// applying the entries to the state machine. Then the next RPC is processed.
-    pub(super) fn process_client_rpc(&mut self, _: &mut Context<Self>, msg: ClientPayloadWithChan<E>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+    pub(super) fn process_client_rpc(&mut self, _: &mut Context<Self>, msg: ClientPayloadWithChan<D, E>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
         match &self.state {
             // If node is still leader, continue.
             RaftState::Leader(_) => (),

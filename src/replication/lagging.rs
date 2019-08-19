@@ -5,7 +5,7 @@ use log::{debug};
 use tokio_timer::Delay;
 
 use crate::{
-    AppError,
+    AppData, AppError,
     common::DependencyAddr,
     config::SnapshotPolicy,
     messages::{AppendEntriesRequest},
@@ -14,7 +14,7 @@ use crate::{
     storage::{RaftStorage, GetLogEntries},
 };
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> ReplicationStream<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> ReplicationStream<D, E, N, S> {
     /// Drive the replication stream forward when it is in state `Lagging`.
     pub(super) fn drive_state_lagging(&mut self, ctx: &mut Context<Self>) {
         let state = match &mut self.state {

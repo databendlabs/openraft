@@ -20,7 +20,7 @@ use futures::sync::{mpsc};
 use log::{debug, error};
 
 use crate::{
-    NodeId, AppError,
+    AppData, AppError, NodeId,
     common::{ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     config::Config,
     messages::{ClientPayload, MembershipConfig},
@@ -95,7 +95,7 @@ const FATAL_STORAGE_ERR: &str = "Fatal storage error encountered which can not b
 /// Note that currently, when this actor encounters an error from the storage layer, it will stop.
 /// The rest of the system may remain online as long as is needed, but this actor will stop in
 /// order to avoid data corruption or other such issues.
-pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
+pub struct Raft<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> {
     /// This node's ID.
     id: NodeId,
     /// This node's runtime config.
@@ -103,7 +103,7 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// The cluster's current membership configuration.
     membership: MembershipConfig,
     /// The current state of this Raft node.
-    state: RaftState<E, N, S>,
+    state: RaftState<D, E, N, S>,
     /// The address of the actor responsible for implementing the `RaftNetwork` interface.
     network: Addr<N>,
     /// The address of the actor responsible for implementing the `RaftStorage` interface.
@@ -154,9 +154,9 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     /// A flag to indicate if this system is currently appending logs.
     is_appending_logs: bool,
     /// The entrypoint to the pipeline of logs which need to be applied to the state machine.
-    apply_logs_pipeline: mpsc::UnboundedSender<ApplyLogsTask<E>>,
+    apply_logs_pipeline: mpsc::UnboundedSender<ApplyLogsTask<D, E>>,
     /// The receiving end of the pipeline for applying logs. This is moved out and spawned when Raft starts.
-    _apply_logs_pipeline_receiver: Option<mpsc::UnboundedReceiver<ApplyLogsTask<E>>>,
+    _apply_logs_pipeline_receiver: Option<mpsc::UnboundedReceiver<ApplyLogsTask<D, E>>>,
 
     /// A handle to the election timeout callback.
     election_timeout: Option<actix::SpawnHandle>,
@@ -164,7 +164,7 @@ pub struct Raft<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> {
     election_timeout_stamp: Option<u128>,
 }
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
     /// Create a new Raft instance.
     ///
     /// This actor will need to be started after instantiation, which must be done within a
@@ -588,7 +588,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
     }
 }
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Actor for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Actor for Raft<D, E, N, S> {
     type Context = Context<Self>;
 
     /// The initialization routine for this actor.
