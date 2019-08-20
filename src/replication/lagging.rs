@@ -8,7 +8,7 @@ use crate::{
     AppData, AppError,
     common::DependencyAddr,
     config::SnapshotPolicy,
-    messages::{AppendEntriesRequest},
+    messages::{AppendEntriesRequest, EntryType},
     network::RaftNetwork,
     replication::{ReplicationStream, RSRateUpdate, RSState},
     storage::{RaftStorage, GetLogEntries},
@@ -73,14 +73,25 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Replicati
 
             // We have a successful payload of entries, send it to the target.
             .and_then(move |entries, act, ctx| {
+                // If a snapshot pointer is included in the payload, then we need to transition to snapshotting state.
+                for entry in entries.iter() {
+                    match entry.entry_type {
+                        EntryType::SnapshotPointer(_) => {
+                            act.transition_to_snapshotting(ctx);
+                            return fut::Either::A(fut::err(()));
+                        }
+                        _ => continue,
+                    }
+                }
+
                 let last_log_and_index = entries.last().map(|elem| (elem.index, elem.term));
                 let payload = AppendEntriesRequest{
                     target: act.target, term: act.term, leader_id: act.id,
                     prev_log_index, prev_log_term, // NOTE: these are moved in from above.
                     entries, leader_commit: act.line_commit,
                 };
-                act.send_append_entries(ctx, payload)
-                    .and_then(move |res, act, ctx| act.handle_append_entries_response(ctx, res, last_log_and_index))
+                fut::Either::B(act.send_append_entries(ctx, payload)
+                    .and_then(move |res, act, ctx| act.handle_append_entries_response(ctx, res, last_log_and_index)))
             })
 
             // Transition to line rate if needed.

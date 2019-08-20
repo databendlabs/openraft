@@ -437,8 +437,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
     /// shutdown the Raft actor.
     fn map_fatal_actix_messaging_error(&mut self, ctx: &mut Context<Self>, err: actix::MailboxError, dep: DependencyAddr) {
         error!("{} {:?} {:?}", FATAL_ACTIX_MAILBOX_ERR, dep, err);
-        ctx.stop();
-        // TODO: may need to perform some additional cleanup. If so, encapsulate the shutdown call.
+        ctx.terminate();
     }
 
     /// Transform an log the result of a `RaftStorage` interaction.
@@ -449,7 +448,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
     fn map_fatal_storage_result<T>(&mut self, ctx: &mut Context<Self>, res: Result<T, E>) -> impl ActorFuture<Actor=Self, Item=T, Error=()> {
         let res = res.map_err(|err| {
             error!("{} {:?}", FATAL_STORAGE_ERR, err);
-            ctx.stop();
+            ctx.terminate();
         });
         fut::result(res)
     }
