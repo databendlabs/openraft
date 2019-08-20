@@ -7,7 +7,7 @@
 use actix::prelude::*;
 use serde::{Serialize, Deserialize};
 
-use crate::{AppError, NodeId};
+use crate::{AppData, AppError, NodeId};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // AppendEntriesRequest //////////////////////////////////////////////////////////////////////////
@@ -25,7 +25,7 @@ use crate::{AppError, NodeId};
 /// the handling or sending of RPCs and all RPCs are handled in an idempotent fashion, so Raft
 /// will almost always retry sending a failed RPC, depending on the state of the Raft.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AppendEntriesRequest {
+pub struct AppendEntriesRequest<D: AppData> {
     /// A non-standard field, this is the ID of the intended recipient of this RPC.
     pub target: u64,
     /// The leader's current term.
@@ -40,12 +40,13 @@ pub struct AppendEntriesRequest {
     ///
     /// This may be empty when the leader is sending heartbeats. Entries
     /// may be batched for efficiency.
-    pub entries: Vec<Entry>,
+    #[serde(bound="D: AppData")]
+    pub entries: Vec<Entry<D>>,
     /// The leader's commit index.
     pub leader_commit: u64,
 }
 
-impl Message for AppendEntriesRequest {
+impl<D: AppData> Message for AppendEntriesRequest<D> {
     /// The result type of this message.
     ///
     /// The `Result::Err` type is `()` as Raft assigns no significance to RPC failures, they will
@@ -84,16 +85,17 @@ pub struct ConflictOpt {
 
 /// A Raft log entry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Entry {
+pub struct Entry<D: AppData> {
     /// This entry's term.
     pub term: u64,
     /// This entry's index.
     pub index: u64,
     /// This entry's type.
-    pub entry_type: EntryType,
+    #[serde(bound="D: AppData")]
+    pub entry_type: EntryType<D>,
 }
 
-impl Entry {
+impl<D: AppData> Entry<D> {
     /// Create a new snapshot pointer from the given data.
     pub fn new_snapshot_pointer(pointer: EntrySnapshotPointer, index: u64, term: u64) -> Self {
         Entry{term, index, entry_type: EntryType::SnapshotPointer(pointer)}
@@ -102,9 +104,10 @@ impl Entry {
 
 /// Log entry type variants.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum EntryType {
+pub enum EntryType<D: AppData> {
     /// A normal log entry.
-    Normal(EntryNormal),
+    #[serde(bound="D: AppData")]
+    Normal(EntryNormal<D>),
     /// A config change log entry.
     ConfigChange(EntryConfigChange),
     /// An entry which points to a snapshot.
@@ -113,9 +116,13 @@ pub enum EntryType {
 
 /// A normal log entry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct EntryNormal {
+pub struct EntryNormal<D: AppData> {
     /// The contents of this entry.
-    pub data: Vec<u8>,
+    ///
+    /// There are some circumstances where Raft must committ blank entries. In such a case, the
+    /// `data` field will be `None`.
+    #[serde(bound="D: AppData")]
+    pub data: Option<D>,
 }
 
 /// A config change log entry.
@@ -303,23 +310,24 @@ pub struct InstallSnapshotResponse {
 /// defined in protobuf to allow for more easily forwarding client requests to the Raft master when
 /// needed.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ClientPayload<E: AppError> {
+pub struct ClientPayload<D: AppData, E: AppError> {
     /// The application specific contents of this client request.
-    pub(crate) entry: EntryType,
+    #[serde(bound="D: AppData")]
+    pub(crate) entry: EntryType<D>,
     /// The response mode needed by this request.
     pub(crate) response_mode: ResponseMode,
     #[serde(skip)]
     marker: std::marker::PhantomData<E>,
 }
 
-impl<E: AppError> ClientPayload<E> {
+impl<D: AppData, E: AppError> ClientPayload<D, E> {
     /// Create a new client payload instance with a normal entry type.
-    pub fn new(entry: EntryNormal, response_mode: ResponseMode) -> Self {
+    pub fn new(entry: EntryNormal<D>, response_mode: ResponseMode) -> Self {
         Self::new_base(EntryType::Normal(entry), response_mode)
     }
 
     /// Create a new instance.
-    pub fn new_base(entry: EntryType, response_mode: ResponseMode) -> Self {
+    pub fn new_base(entry: EntryType<D>, response_mode: ResponseMode) -> Self {
         Self{entry, response_mode, marker: std::marker::PhantomData}
     }
 
@@ -332,13 +340,13 @@ impl<E: AppError> ClientPayload<E> {
     ///
     /// This is primarily used by new leaders when first coming to power.
     pub(crate) fn new_blank_payload() -> Self {
-        Self::new(EntryNormal{data: vec![]}, ResponseMode::Applied)
+        Self::new(EntryNormal{data: None}, ResponseMode::Applied)
     }
 }
 
-impl<E: AppError> Message for ClientPayload<E> {
+impl<D: AppData, E: AppError> Message for ClientPayload<D, E> {
     /// The result type of this message.
-    type Result = Result<ClientPayloadResponse, ClientError<E>>;
+    type Result = Result<ClientPayloadResponse, ClientError<D, E>>;
 }
 
 /// The desired response mode for a client request.
@@ -374,7 +382,7 @@ pub struct ClientPayloadResponse {
 /// Error variants which may arise while handling client requests.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag="type")]
-pub enum ClientError<E: AppError> {
+pub enum ClientError<D: AppData, E: AppError> {
     /// Some error which has taken place internally in Raft.
     Internal,
     /// An application specific error.
@@ -389,16 +397,16 @@ pub enum ClientError<E: AppError> {
     ///
     /// The process of electing a new leader is usually a very fast process in Raft, so buffering
     /// the client payload until the new leader is known should not cause a lot of overhead.
-    #[serde(bound="E: AppError")]
+    #[serde(bound="D: AppData, E: AppError")]
     ForwardToLeader {
         /// The original payload which this error is associated with.
-        payload: ClientPayload<E>,
+        payload: ClientPayload<D, E>,
         /// The ID of the current Raft leader, if known.
         leader: Option<NodeId>,
     },
 }
 
-impl<E: AppError> std::fmt::Display for ClientError<E> {
+impl<D: AppData, E: AppError> std::fmt::Display for ClientError<D, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ClientError::Internal => write!(f, "An internal error was encountered in Raft."),
@@ -408,5 +416,5 @@ impl<E: AppError> std::fmt::Display for ClientError<E> {
     }
 }
 
-impl<E: AppError> std::error::Error for ClientError<E> {}
+impl<D: AppData, E: AppError> std::error::Error for ClientError<D, E> {}
 

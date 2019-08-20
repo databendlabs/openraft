@@ -18,6 +18,9 @@ This implementation strictly adheres to the [Raft spec](https://raft.github.io/r
 ### admin commands
 Raft nodes may be controlled in various ways outside of the normal flow of the Raft protocol using the `admin` message types. This allows the parent application — within which the Raft node is running — to influence the Raft node's behavior based on application level needs. This includes the dynamic cluster membership and cluster initialization commands. See the [admin commands docs](./docs/admin-commands.md) for more details.
 
+### data types & communication
+All pertinent Raft data types in the system derive the serde traits for easier integration with other data serialization formats for maximum flexibility for applications being built on top of Raft.
+
 ### snapshots and log compaction
 The snapshot and log compaction capabilities defined in the Raft spec are fully supported by this implementation. The storage layer is left to the application which uses this Raft implementation, but all snapshot behavior defined in the Raft spec is supported. Additionally, this implemention supports:
 

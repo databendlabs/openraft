@@ -2,7 +2,7 @@ use actix::prelude::*;
 use log::{error, info, warn};
 
 use crate::{
-    AppError,
+    AppData, AppError,
     admin::{InitWithConfig, InitWithConfigError, ProposeConfigChange, ProposeConfigChangeError},
     common::UpdateCurrentLeader,
     messages::{ClientPayload, ClientPayloadResponse, MembershipConfig},
@@ -13,7 +13,7 @@ use crate::{
 };
 
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InitWithConfig> for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<InitWithConfig> for Raft<D, E, N, S> {
     type Result = ResponseActFuture<Self, (), InitWithConfigError>;
 
     /// An admin message handler invoked exclusively for cluster formation.
@@ -72,11 +72,11 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<InitWithConfig> 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // ProposeConfigChange ///////////////////////////////////////////////////////////////////////////
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<ProposeConfigChange<E>> for Raft<E, N, S> {
-    type Result = ResponseActFuture<Self, (), ProposeConfigChangeError<E>>;
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<ProposeConfigChange<D, E>> for Raft<D, E, N, S> {
+    type Result = ResponseActFuture<Self, (), ProposeConfigChangeError<D, E>>;
 
     /// An admin message handler invoked to trigger dynamic cluster configuration changes. See §6.
-    fn handle(&mut self, msg: ProposeConfigChange<E>, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ProposeConfigChange<D, E>, ctx: &mut Self::Context) -> Self::Result {
         // Ensure the node is currently the cluster leader.
         let leader_state = match &mut self.state {
             RaftState::Leader(state) => state,
@@ -145,9 +145,9 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<ProposeConfigCha
     }
 }
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
     /// Handle response from a newly committed cluster config.
-    pub(super) fn handle_newly_committed_cluster_config(&mut self, ctx: &mut Context<Self>, _: ClientPayloadResponse) -> impl ActorFuture<Actor=Self, Item=(), Error=ProposeConfigChangeError<E>> {
+    pub(super) fn handle_newly_committed_cluster_config(&mut self, ctx: &mut Context<Self>, _: ClientPayloadResponse) -> impl ActorFuture<Actor=Self, Item=(), Error=ProposeConfigChangeError<D, E>> {
         let leader_state = match &mut self.state {
             RaftState::Leader(state) => state,
             _ => return fut::ok(()),
@@ -268,7 +268,7 @@ fn normalize_init_config(msg: InitWithConfig) -> InitWithConfig {
 ///
 /// See the documentation on on `ProposeConfigChangeError` for the conditions which will cause
 /// errors to be returned.
-fn normalize_proposed_config<E: AppError>(mut msg: ProposeConfigChange<E>, current: &MembershipConfig) -> Result<ProposeConfigChange<E>, ProposeConfigChangeError<E>> {
+fn normalize_proposed_config<D: AppData, E: AppError>(mut msg: ProposeConfigChange<D, E>, current: &MembershipConfig) -> Result<ProposeConfigChange<D, E>, ProposeConfigChangeError<D, E>> {
     // Ensure no duplicates in adding new nodes & ensure the new
     // node is not also be requested for removal.
     let mut new_nodes = vec![];

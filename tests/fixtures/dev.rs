@@ -18,12 +18,12 @@ use actix_raft::{
 };
 use log::{debug};
 
-use crate::fixtures::memory_storage::{MemoryStorage, MemoryStorageError};
+use crate::fixtures::memory_storage::{MemoryStorage, MemoryStorageData, MemoryStorageError};
 
 const ERR_ROUTING_FAILURE: &str = "Routing failures are not allowed in tests.";
 
 /// A concrete Raft type used during testing.
-pub type MemRaft = Raft<MemoryStorageError, RaftRouter, MemoryStorage>;
+pub type MemRaft = Raft<MemoryStorageData, MemoryStorageError, RaftRouter, MemoryStorage>;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RaftRouter ////////////////////////////////////////////////////////////////////////////////////
@@ -73,12 +73,12 @@ impl Actor for RaftRouter {
 //////////////////////////////////////////////////////////////////////////////
 // Impl RaftNetwork //////////////////////////////////////////////////////////
 
-impl RaftNetwork<MemoryStorageError> for RaftRouter {}
+impl RaftNetwork<MemoryStorageData> for RaftRouter {}
 
-impl Handler<AppendEntriesRequest> for RaftRouter {
+impl Handler<AppendEntriesRequest<MemoryStorageData>> for RaftRouter {
     type Result = ResponseActFuture<Self, AppendEntriesResponse, ()>;
 
-    fn handle(&mut self, msg: AppendEntriesRequest, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AppendEntriesRequest<MemoryStorageData>, _: &mut Self::Context) -> Self::Result {
         self.routed.0 += 1;
         let addr = self.routing_table.get(&msg.target).unwrap();
         if self.isolated_nodes.contains(&msg.target) || self.isolated_nodes.contains(&msg.leader_id) {

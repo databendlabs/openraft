@@ -1,7 +1,7 @@
 use actix::prelude::*;
 
 use crate::{
-    AppError, NodeId,
+    AppData, AppError, NodeId,
     common::{DependencyAddr, UpdateCurrentLeader},
     messages::{VoteRequest, VoteResponse},
     network::RaftNetwork,
@@ -9,7 +9,7 @@ use crate::{
     storage::RaftStorage,
 };
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<VoteRequest> for Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<VoteRequest> for Raft<D, E, N, S> {
     type Result = ResponseActFuture<Self, VoteResponse, ()>;
 
     /// An RPC invoked by candidates to gather votes (§5.2).
@@ -29,7 +29,7 @@ impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Handler<VoteRequest> for
     }
 }
 
-impl<E: AppError, N: RaftNetwork<E>, S: RaftStorage<E>> Raft<E, N, S> {
+impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
     /// Business logic of handling a `VoteRequest` RPC.
     fn handle_vote_request(&mut self, ctx: &mut Context<Self>, msg: VoteRequest) -> Result<VoteResponse, ()> {
         // Don't interact with non-cluster members.

@@ -6,12 +6,12 @@ use actix::{
 };
 
 use crate::{
-    AppError,
+    AppData,
     messages::{
         AppendEntriesRequest,
         InstallSnapshotRequest,
         VoteRequest,
-    }
+    },
 };
 
 /// A trait defining the interface of a Raft network actor.
@@ -34,14 +34,14 @@ use crate::{
 /// flexibility here. To provide the maximum level of flexibility for data serialization, all
 /// types derive serde's `Serialize` & `DeserializeOwned` traits. Using other serialization
 /// schemes like protobuf, capnproto or flatbuffers is simple to manage and can be done entirly
-/// using Rust's standard `From/Into` traits.
-pub trait RaftNetwork<E>
+/// using the serde traits or Rust's standard `From/Into` traits.
+pub trait RaftNetwork<D>
     where
-        E: AppError,
+        D: AppData,
         Self: Actor<Context=Context<Self>>,
 
-        Self: Handler<AppendEntriesRequest>,
-        Self::Context: ToEnvelope<Self, AppendEntriesRequest>,
+        Self: Handler<AppendEntriesRequest<D>>,
+        Self::Context: ToEnvelope<Self, AppendEntriesRequest<D>>,
 
         Self: Handler<InstallSnapshotRequest>,
         Self::Context: ToEnvelope<Self, InstallSnapshotRequest>,

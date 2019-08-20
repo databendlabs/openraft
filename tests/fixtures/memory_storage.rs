@@ -11,8 +11,8 @@ use serde::{Serialize, Deserialize};
 use rmp_serde as rmps;
 
 use actix_raft::{
-    AppError, NodeId,
-    messages::{Entry, EntrySnapshotPointer, MembershipConfig},
+    AppData, AppError, NodeId,
+    messages::{Entry as RaftEntry, EntrySnapshotPointer, MembershipConfig},
     storage::{
         AppendLogEntry,
         ReplicateLogEntries,
@@ -30,6 +30,16 @@ use actix_raft::{
         SaveHardState,
     },
 };
+
+type Entry = RaftEntry<MemoryStorageData>;
+
+/// The concrete data type used by the `MemoryStorage` system.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct MemoryStorageData {
+    pub data: Vec<u8>,
+}
+
+impl AppData for MemoryStorageData {}
 
 /// The concrete error type used by the `MemoryStorage` system.
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,7 +72,7 @@ pub struct MemoryStorage {
     snapshot_actor: Addr<SnapshotActor>,
 }
 
-impl RaftStorage<MemoryStorageError> for MemoryStorage {
+impl RaftStorage<MemoryStorageData, MemoryStorageError> for MemoryStorage {
     /// Create a new instance.
     fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self {
         let snapshot_dir_pathbuf = std::path::PathBuf::from(snapshot_dir.clone());
@@ -106,27 +116,27 @@ impl Handler<SaveHardState<MemoryStorageError>> for MemoryStorage {
     }
 }
 
-impl Handler<GetLogEntries<MemoryStorageError>> for MemoryStorage {
+impl Handler<GetLogEntries<MemoryStorageData, MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, Vec<Entry>, MemoryStorageError>;
 
-    fn handle(&mut self, msg: GetLogEntries<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: GetLogEntries<MemoryStorageData, MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
         Box::new(fut::ok(self.log.range(msg.start..msg.stop).map(|e| e.1.clone()).collect()))
     }
 }
 
-impl Handler<AppendLogEntry<MemoryStorageError>> for MemoryStorage {
+impl Handler<AppendLogEntry<MemoryStorageData, MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, (), MemoryStorageError>;
 
-    fn handle(&mut self, msg: AppendLogEntry<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: AppendLogEntry<MemoryStorageData, MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
         self.log.insert(msg.entry.index, (*msg.entry).clone());
         Box::new(fut::ok(()))
     }
 }
 
-impl Handler<ReplicateLogEntries<MemoryStorageError>> for MemoryStorage {
+impl Handler<ReplicateLogEntries<MemoryStorageData, MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, (), MemoryStorageError>;
 
-    fn handle(&mut self, msg: ReplicateLogEntries<MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ReplicateLogEntries<MemoryStorageData, MemoryStorageError>, _: &mut Self::Context) -> Self::Result {
         msg.entries.iter().for_each(|e| {
             self.log.insert(e.index, e.clone());
         });
@@ -134,10 +144,10 @@ impl Handler<ReplicateLogEntries<MemoryStorageError>> for MemoryStorage {
     }
 }
 
-impl Handler<ApplyToStateMachine<MemoryStorageError>> for MemoryStorage {
+impl Handler<ApplyToStateMachine<MemoryStorageData, MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, (), MemoryStorageError>;
 
-    fn handle(&mut self, msg: ApplyToStateMachine<MemoryStorageError>, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ApplyToStateMachine<MemoryStorageData, MemoryStorageError>, _ctx: &mut Self::Context) -> Self::Result {
         let res = match msg.payload {
             ApplyToStateMachinePayload::Multi(entries) => {
                 entries.iter().try_for_each(|e| {
