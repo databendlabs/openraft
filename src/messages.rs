@@ -2,7 +2,7 @@
 //!
 //! For users of this Raft implementation, this module defines the data types of this crate's API.
 //! The `RaftNetwork` trait is based entirely off of these messages, and communication with the
-//! Raft actor is based entirely off of these messages other than the admin messages.
+//! `Raft` actor is based entirely off of these messages and the messages in the `admin` module.
 
 use actix::prelude::*;
 use serde::{Serialize, Deserialize};
@@ -125,14 +125,14 @@ pub struct EntryNormal<D: AppData> {
     pub data: Option<D>,
 }
 
-/// A config change log entry.
+/// A log entry holding a config change.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EntryConfigChange {
     /// The full list of node IDs to be considered cluster members as part of this config change.
     pub membership: MembershipConfig,
 }
 
-/// An entry which points to a snapshot.
+/// A log entry pointing to a snapshot.
 ///
 /// This will only be present when read from storage. An entry of this type will never be
 /// transmitted from a leader during replication, an `InstallSnapshotRequest`
@@ -175,6 +175,7 @@ impl MembershipConfig {
         self.members.iter().chain(self.non_voters.iter())
     }
 
+    /// Get the length of the members & non_voters vectors.
     pub fn len(&self) -> usize {
         self.members.len() + self.non_voters.len()
     }
@@ -241,7 +242,7 @@ pub struct VoteResponse {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // InstallSnapshotRequest ////////////////////////////////////////////////////////////////////////
 
-/// Invoked by leader to send chunks of a snapshot to a follower (§7).
+/// Invoked by the Raft leader to send chunks of a snapshot to a follower (§7).
 ///
 /// ### actix::Message
 /// Applications using this Raft implementation are responsible for implementing the
@@ -306,9 +307,7 @@ pub struct InstallSnapshotResponse {
 /// `Result<ClientPayloadResponse, StorageError>`. Applications built around this implementation of
 /// Raft will often need to perform their own custom logic in the storage layer and often times it
 /// is critical to be able to surface such errors to the application and its clients. To meet that
-/// end, `ClientError` allows for the communication of application specific errors. This is
-/// defined in protobuf to allow for more easily forwarding client requests to the Raft master when
-/// needed.
+/// end, `ClientError` allows for the communication of application specific errors.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientPayload<D: AppData, E: AppError> {
     /// The application specific contents of this client request.
@@ -362,13 +361,13 @@ impl<D: AppData, E: AppError> Message for ClientPayload<D, E> {
 /// The choice between these two options depends on the requirements related to the request. If
 /// the data of the client request payload will need to be read immediately after the response is
 /// received, then `Applied` must be used. If there is no requirement that the data must be
-/// immediately read after receiving a response, then `Committed` may be used to speed up response
-/// times for data mutating requests.
+/// immediately read after receiving a response, then `Committed` may be used to speed up
+/// response times.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ResponseMode {
     /// A response will be returned after the request has been committed to the cluster.
     Committed,
-    /// A response will be returned  after the request has been applied to the leader's state machine.
+    /// A response will be returned after the request has been applied to the leader's state machine.
     Applied,
 }
 

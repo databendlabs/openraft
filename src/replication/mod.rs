@@ -98,9 +98,7 @@ struct SnapshottingState;
 /// state `RSState::Lagging`, indicating that the target needs to be brought up-to-speed and that
 /// it is no longer running at line rate. When such an event takes place, any buffered replication
 /// payload will be purged, and the replication stream will begin the process of bringing the
-/// target up-to-speed. The replication stream will notify the Raft node that it is no longer
-/// running at line rate, and the Raft node will stop sending entries in the `RSReplicate`
-/// messages until the target is caught up and ready to resume running at line rate.
+/// target up-to-speed.
 ///
 /// #### bringing target up-to-date
 /// When the replication stream enters the `RSState::Lagging`, the replication stream will attempt
