@@ -1,8 +1,5 @@
 # Directory Ignores ##########################################################
 target
-# Ignoring this for now, as it will quite likely be moved to a separate integration crate.
-# TODO: move the code here to a separate integration crate or the like.
-proto
 
 # File Ignores ###############################################################
 **/*.rs.bk

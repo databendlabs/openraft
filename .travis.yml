@@ -9,8 +9,23 @@ matrix:
     - rust: nightly
   fast_finish: true
 
+before_script:
+  - (test -x $HOME/.cargo/bin/cargo-install-update || cargo install cargo-update)
+  - (test -x $HOME/.cargo/bin/mdbook || cargo install --vers "^0.3" mdbook)
+  - cargo install-update -a
+
 script:
-  - cargo test --lib
-  - RUST_LOG=actix_raft,clustering=debug cargo test clustering
-  - RUST_LOG=actix_raft,client_writes=debug cargo test client_writes
-  - RUST_LOG=actix_raft,snapshotting=debug cargo test snapshotting
+  # - mdbook build && mdbook test # TODO: fix the mdbook test errors.
+  - mdbook build
+  - cargo test
+  - cargo test --release
+
+deploy:
+  provider: pages
+  skip_cleanup: true
+  github_token: $GITHUB_TOKEN
+  keep_history: false
+  local_dir: guide/book
+  target_branch: gh-pages
+  on:
+    branch: master

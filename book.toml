@@ -1,0 +1,11 @@
+[book]
+authors = ["Anthony Dodd"]
+language = "en"
+multilingual = false
+src = "guide/src"
+title = "Actix Raft"
+description = "The ActixRaft user guide."
+
+[build]
+build-dir = "guide/book"
+create-missing = false
