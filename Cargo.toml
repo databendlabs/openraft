@@ -13,12 +13,15 @@ rand = "0.6"
 serde = { version="1", features=["derive"] }
 tokio-timer = "0.2"
 
-[build-dependencies]
-prost-build = "0.5"
-
 [dev-dependencies]
 async-log = "1"
 env_logger = "0.6"
 rmp = "0.8"
 rmp-serde = "0.13"
 tempfile = "3"
+
+[features]
+docinclude = [] # Used only for activating `doc(include="...")` on nightly.
+
+[package.metadata.docs.rs]
+features = ["docinclude"] # Activate `docinclude` during docs.rs build.

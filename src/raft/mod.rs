@@ -47,54 +47,46 @@ const FATAL_STORAGE_ERR: &str = "Fatal storage error encountered which can not b
 /// there as precisely as possible to aid in understanding this system.
 ///
 /// ### api
-/// This actor's API is broken up into 4 different layers, all based on message handling. In order
-/// to effectively use this actor, only these 4 interfaces need to considered.
+/// This actor's API is broken up into 3 different layers, all based on message handling. In order
+/// to effectively use this actor, only these 3 layers need to be considered.
 ///
-/// #### raft request messages
-/// These are Raft request PRCs coming from other nodes of the cluster. This interface is
-/// implemented as an `actix::Handler`, so a future will be returned which will resolve with the
-/// appropriate response type.
+/// #### network
+/// The network interface of the parent application is responsible for providing a conduit to
+/// exchange the various messages types defined in this system. The `RaftNetwork` trait defines
+/// the interface needed for being able to allow Raft cluster members to be able to communicate
+/// with each other. In addition to the `RaftNetwork` trait, applications are expected to provide
+/// and interface for their clients to be able to submit data which needs to be managed by Raft.
 ///
-/// Typically your application's networking layer will decode these message types and simply pass
-/// them over to this handler, await the response, and then send the response back over the wire
-/// to the caller. However, this is entirely application specific, so at the end of the day, all
-/// one needs to do is send the message to this actor, await the response, and then handle the
-/// response as needed by your application.
+/// ##### raft rpc messages
+/// These are Raft request PRCs coming from other nodes of the cluster. They are defined in the
+/// `messages` module of this crate. They are `AppendEntriesRequest`, `VoteRequest` &
+/// `InstallSnapshotRequest`. This actor will use the `RaftNetwork` impl of the parent application
+/// to send RPCs to other nodes.
 ///
-/// #### client request messages
-/// These are messages coming from your application's clients. This interface is implemented as an
-/// `actix::Handler`, so a future will be returned which will resolve with the appropriate
-/// response type. Only data mutating messages should ever need to go through Raft. The contents
-/// of these messages are entirely specific to your application.
+/// The application's networking layer must decode these message types and pass them over to the
+/// appropriate handler on this type, await the response, and then send the response back over the
+/// wire to the caller.
 ///
-/// #### outbound raft request
-/// These are messages originating from the Raft actor which are destined for some peer node of
-/// the Raft cluster. When the Raft actor is instantiated, an `actix::Recipient` must be supplied
-/// which is expected to handle the networking layer logic of actually sending the message to the
-/// target peer.
-///
-/// The networking layer is application specific, so no constraints are put in place in terms of
-/// how your application's nodes are to communicate with each other. The only thing that is
-/// required is that the message be sent and the response be delivered back.
-///
-/// Per the Raft spec, message delivery failure from a leader to a follower is to be retried
-/// indefinitely, so that is how this actor is implemented.
+/// ##### client request messages
+/// These are messages coming from an application's clients, represented by the
+/// `messages::ClientPayload` type. When the message type's handler is called a future will be
+/// returned which will resolve with the appropriate response type. Only data mutating messages
+/// should ever need to go through Raft. The contentsof these messages are entirely specific to
+/// your application.
 ///
 /// #### storage
 /// The storage interface is typically going to be the most involved as this is where your
 /// application really exists. SQL, NoSQL, mutable, immutable, KV, append only ... whatever your
 /// application's data model, this is where it comes to life.
 ///
-/// The storage interface is provided as an `actix::Addr<S: RaftStorage>`. The generic type `S`
-/// must implement the `RaftStorage` trait, which is composed of a series of actix message
-/// handling traits.
+/// The storage interface is defined by the `RaftStorage` trait. Depending on the data storage
+/// system being used, the actor my be sync or async. It just needs to implement handlers for
+/// the needed actix message types.
 ///
-/// Depending on the data storage system being used, the actor my be sync or async. It just needs
-/// to implement handlers for the needed actix message types.
-///
-/// Note that currently, when this actor encounters an error from the storage layer, it will stop.
-/// The rest of the system may remain online as long as is needed, but this actor will stop in
-/// order to avoid data corruption or other such issues.
+/// #### admin
+/// These are admin commands which may be issued to a Raft node in order to influence it in ways
+/// outside of the normal Raft lifecycle. Dynamic membership changes and cluster initialization
+/// are the main commands of this layer.
 pub struct Raft<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> {
     /// This node's ID.
     id: NodeId,

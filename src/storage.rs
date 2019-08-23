@@ -176,27 +176,8 @@ impl<D: AppData, E: AppError> Message for ApplyToStateMachine<D, E> {
 /// A request from Raft to have a new snapshot created which covers the current breadth
 /// of the log.
 ///
-/// The Raft node guarantees that this interface will never be called multiple overlapping times
-/// from the same Raft node, and it will not be called when an `InstallSnapshot` operation is in
-/// progress.
-///
-/// **It is critical to note** that the newly created snapshot must be able to be used to
-/// completely and accurately create a state machine. In addition to saving space on disk (log
-/// compaction), snapshots are used to bring new Raft nodes and slow Raft nodes up-to-speed with
-/// the cluster leader.
-///
-/// ### implementation algorithm
-/// - The generated snapshot should include all log entries starting from entry `0` up through
-/// the index specified by `through`. This will include any snapshot which may already exist. If
-/// a snapshot does already exist, the new log compaction process should be able to just load the
-/// old snapshot first, and resume processing from its last entry.
-/// - The newly generated snapshot should be written to the configured snapshot directory.
-/// - All previous entries in the log should be deleted up to the entry specified at index
-/// `through`.
-/// - The entry at index `through` should be replaced with a new entry created from calling
-/// `actix_raft::messages::Entry::new_snapshot_pointer(...)`.
-/// - Any old snapshot will no longer have representation in the log, and should be deleted.
-/// - Return a `CurrentSnapshotData` struct which contains all metadata pertinent to the snapshot.
+/// See the [storage chapter of the guide](https://railgun-rs.github.io/actix-raft/storage.html#CreateSnapshot)
+/// for details on how to implement this handler.
 pub struct CreateSnapshot<E: AppError> {
     /// The new snapshot should start from entry `0` and should cover all entries through the
     /// index specified here, inclusive.
@@ -220,27 +201,8 @@ impl<E: AppError> Message for CreateSnapshot<E> {
 
 /// A request from Raft to have a new snapshot written to disk and installed.
 ///
-/// This message holds an `UnboundedReceiver` which will stream in new chunks of data as they are
-/// received from the Raft leader.
-///
-/// ### implementation algorithm
-/// - Upon receiving the request, a new snapshot file should be created on disk.
-/// - Every new chunk of data received should be written to the new snapshot file starting at the
-/// `offset` specified in the chunk.
-/// - If the receiver is dropped, the snapshot which was being created should be removed from
-/// disk.
-///
-/// Once a chunk is received which is the final chunk of the snapshot, after writing the data,
-/// there are a few important steps to take:
-///
-/// - Create a new entry in the log via the `actix_raft::messages::Entry::new_snapshot_pointer(...)`
-/// constructor. Insert the new entry into the log at the specified `index` of this payload.
-/// - If there are any logs older than `index`, remove them.
-/// - If there are any other snapshots in the configured snapshot dir, remove them.
-/// - If existing log entry has same index and term as snapshot's last included entry, retain log
-/// entries following it, then return.
-/// - Else, discard the entire log leaving only the new snapshot pointer. The state machine must
-/// be rebuilt from the new snapshot. Return once the state machine has been brought up-to-date.
+/// See the [storage chapter of the guide](https://railgun-rs.github.io/actix-raft/storage.html#InstallSnapshot)
+/// for details on how to implement this handler.
 pub struct InstallSnapshot<E: AppError> {
     /// The term which the final entry of this snapshot covers.
     pub term: u64,
@@ -352,33 +314,8 @@ pub struct HardState {
 
 /// A trait defining the interface of a Raft storage actor.
 ///
-/// ### implementation notes
-/// Appending log entries should not be considered complete until the data has been flushed to
-/// disk. Some of Raft's safety guarantees are premised upon committed log entries being fully
-/// flushed to disk. If this invariant is not upheld, the system could incur data loss.
-///
-/// ### snapshot
-/// See §7.
-///
-/// Each node in the cluster will independently snapshot its data for compaction purposes. The
-/// conditions for when a new snapshot will be generated is based on the nodes `Config`. In
-/// addition to periodic snapshots, a leader may need to send an `InstallSnapshot` RPC to
-/// followers which are far behind or which are new to the cluster. This is based on the same
-/// `Config` value. The Raft node will send a message to this `RaftStorage` interface when a
-/// periodic snapshot is to be generated based on its configuration.
-///
-/// Log compaction, which is part of what taking a snapshot is for, is an application specific
-/// process. The essential idea is that superfluous records in the log will be removed. See §7 for
-/// more details. The essence is simple: make the log smaller by removing superfluous data.
-///
-/// There are a few snapshot related messages which the `RaftStorage` actor must handle:
-///
-/// - `CreateSnapshot`: a request to create a new snapshot of the current log.
-/// - `InstallSnapshot`: the Raft leader is streaming over a snapshot, install it.
-/// - `GetCurrentSnapshot`: the Raft node needs to know the location of the current snapshot.
-///
-/// See each message type for more details on the message and how to properly implement their
-/// behaviors.
+/// See the [storage chapter of the guide](https://railgun-rs.github.io/actix-raft/storage.html#InstallSnapshot)
+/// for details and discussion on this trait and how to implement it.
 pub trait RaftStorage<D, E>
     where
         D: AppData,

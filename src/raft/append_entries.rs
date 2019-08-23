@@ -25,7 +25,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<A
     /// 2. Reply `false` if log doesn’t contain an entry at `prev_log_index` whose term
     ///    matches `prev_log_term` (§5.3).
     /// 3. If an existing entry conflicts with a new one (same index but different terms), delete the
-    ///    existing entry and all thatfollow it (§5.3).
+    ///    existing entry and all that follow it (§5.3).
     /// 4. Append any new entries not already in the log.
     /// 5. If `leader_commit` is greater than node's commit index, set nodes commit index to
     ///    `min(leader_commit, index of last new entry)`.

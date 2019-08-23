@@ -35,7 +35,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<I
     /// Once a node becomes leader and detects that its index is 0, it will commit a new config
     /// entry (instead of the normal blank entry created by new leaders).
     ///
-    /// If a race condition takes place where two nodes persists an initial config and start an
+    /// If a race condition takes place where two nodes persist an initial config and start an
     /// election, whichever node becomes leader will end up committing its entries to the cluster.
     fn handle(&mut self, mut msg: InitWithConfig, ctx: &mut Self::Context) -> Self::Result {
         let is_pristine = self.last_log_index == 0 && self.state.is_non_voter();
