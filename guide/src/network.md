@@ -6,15 +6,13 @@ The network capabilities required by this system are broken up into two parts: t
 
 ### Application Network
 When building an application around Raft, the application will often have a few common networking components:
-- discovery: a component which allows the members of an application cluster (its nodes) to discover and communicate with each other. This is not provided by this crate. There are lots of solutions out there to solve this problem. Applications can build their own discovery system by way of DNS, they could use other systems like etcd or consul. The important thing to note here is that once a peer is discovered, it would be prudent for application nodes to maintain a connection with that peer, or at a minimum the address so that new connections can be made. This depeneds on the application's networking model.
-- data format: the way that data is serialized and sent accross the networking medium. Popular data formats include protobuf, capnproto, flatbuffers, message pack, JSON &c. Applications are responsible for serializing and deserializing the various message types used in this crate for network transmission. Serde is used throughout this system to aid on this front.
+- **discovery:** a component which allows the members of an application cluster (its nodes) to discover and communicate with each other. This is not provided by this crate. There are lots of solutions out there to solve this problem. Applications can build their own discovery system by way of DNS, they could use other systems like etcd or consul. The important thing to note here is that once a peer is discovered, it would be prudent for application nodes to maintain a connection with that peer, as heartbeats are very regular, and building network connections is not free.
+- **data format:** the way that data is serialized and sent accross the networking medium. Popular data formats include protobuf, capnproto, flatbuffers, message pack, JSON &c. Applications are responsible for serializing and deserializing the various message types used in this crate for network transmission. Serde is used throughout this system to aid on this front.
 
-At a minimum, applications must be able to facility message exchange between nodes reliably.
+Applications must be able to facilitate message exchange between nodes reliably.
 
 ### `trait RaftNetwork`
-The requirement of an application's ability to be able to send and receive Raft RPCs in defined by the `RaftNetwork` trait.
-
-The trait is defined as:
+This trait defines the requirement of an application's ability to send and receive Raft RPCs.
 
 ```rust
 pub trait RaftNetwork<D>
@@ -33,7 +31,7 @@ pub trait RaftNetwork<D>
 {}
 ```
 
-Stated simply, all this trait requires is that the implementing type be an Actix [`Actor`](https://docs.rs/actix/latest/actix) & that it implement handlers for the following message types:
+Stated simply, all this trait requires is that the implementing type be an Actix [`Actor`](https://docs.rs/actix/latest/actix/trait.Actor.html) & that it implement handlers for the following message types:
 - `AppendEntriesRequest`
 - `InstallSnapshotRequest`
 - `VoteRequest`

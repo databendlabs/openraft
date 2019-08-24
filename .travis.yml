@@ -4,6 +4,8 @@ rust:
   - beta
   - nightly
 
+cache: cargo
+
 matrix:
   allow_failures:
     - rust: nightly
@@ -15,8 +17,7 @@ before_script:
 script:
   # - mdbook build && mdbook test # TODO: fix the mdbook test errors.
   - mdbook build
-  # - cargo test
-  # - cargo test --release
+  - cargo test
 
 deploy:
   provider: pages

@@ -1,8 +1,8 @@
 Metrics
 =======
-`Raft` exports metrics on a regular interval in order to facilitate maximum observability and integration with metrics aggregations tools (eg, prometheus, influx &c) using the `RaftMetrics` type.
+`Raft` exports metrics on a regular interval in order to facilitate maximum observability and integration with metrics aggregations tools (eg, prometheus, influx &c) using the [`RaftMetrics`](https://docs.rs/actix-raft/latest/actix-raft/metrics/struct.RaftMetrics.html) type.
 
-The `Raft` instance constructor expects a `Recipient<RaftMetrics>` to be supplied, and will use this recipient to export its metrics. The `RaftMetrics` type holds the baseline metrics on the state of the Raft node the metrics are coming from, its current role in the cluster, its current membership config, as well as information on the Raft log and the last index to be applied to the state machine.
+The `Raft` instance constructor expects a `Recipient<RaftMetrics>` (an [actix::Recipient](https://docs.rs/actix/latest/actix/struct.Recipient.html)) to be supplied, and will use this recipient to export its metrics. The `RaftMetrics` type holds the baseline metrics on the state of the Raft node the metrics are coming from, its current role in the cluster, its current membership config, as well as information on the Raft log and the last index to be applied to the state machine.
 
 Applications may use this data in whatever way is needed. The obvious use cases are to expose these metrics to a metrics collection system. Applications may also use this data to trigger events within higher levels of the parent application.
 

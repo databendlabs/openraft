@@ -2,7 +2,7 @@ Cluster Formation
 =================
 All Raft nodes, when they first come online in a pristine state, will enter into the `NonVoter` state, which is a completely passive state. This gives the parent application the ability to issue admin commands to the node based on the intention of the parent application.
 
-To form a new cluster, all application nodes must issue the `InitWithConfig` command to their embedded Raft nodes with the IDs of all discovered nodes which are to be part of the cluster (including the ID of the running node). Or if the application is to run in a standalone / single-node manner, it may issue the command with only the ID of the single running node.
+To form a new cluster, all application nodes must issue the `InitWithConfig` command to their embedded Raft nodes with the IDs of all discovered nodes which are to be part of the cluster (including the ID of the running node). Or if the application is to run in a standalone / single-node manner, it may issue the command with only its own ID.
 
 #### `InitWithConfig`
 This command is used exclusively for the formation of new clusters. This command will fail if the node is not in the `NonVoter` state, or if the node's log index is not `0`.

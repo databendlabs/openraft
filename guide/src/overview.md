@@ -1,7 +1,5 @@
 {{#include ../../README.md}}
 
-*NOTE: the appearance of the "section" symbol `§` throughout this project are references to specific sections of the Raft spec.
-
 ### overview
 This crate's `Raft` type is an Actix actor which is intended to run within some parent application, which traditionally will be some sort of data storage system (SQL, NoSQL, KV store, AMQP, Streaming, whatever). Inasmuch as the `Raft` instance is an actor, it is expected that the parent application is also built upon the Actix actor framework, though that is not technically required.
 
@@ -27,3 +25,4 @@ The numbered elements represent segments of the workflow.
 
 **NOTE:** this implementation of Raft offers the option for client requests to receive a response once its entry has been committed, and before it is applied to the state machine. This is controlled by the `ClientPayload.response_type` field, which is an instance of the `ResponseMode` enum which may be either `Committed` or `Applied`. Application's may use either depending on their needs.
 
+**NOTE:** the appearance of the "section" symbols `§` throughout this project are references to specific sections of the Raft spec.

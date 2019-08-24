@@ -67,7 +67,7 @@ This handler will be called periodically based on different events happening in 
 ### log & state machine
 This pertains to implementing the `GetLogEntries`, `AppendLogEntry`, `ReplicateLogEntries` & `ApplyToStateMachine` handlers.
 
-Traditionally, there are a few different terms used to refer to the log of mutations which are to be applied to a data storage system. Write-ahead log (WAL), op-log, there are a few different terms, sometimes with different nuances. In Raft, this is known simply as the log. The log describes the "type" of mutation to be applied to the state machine, where the state machine is the actual business-logic representation of all applied logs.
+Traditionally, there are a few different terms used to refer to the log of mutations which are to be applied to a data storage system. Write-ahead log (WAL), op-log, there are a few different terms, sometimes with different nuances. In Raft, this is known simply as the log. A log entry describes the "type" of mutation to be applied to the state machine, and the state machine is the actual business-logic representation of all applied log entries.
 
 ##### `GetLogEntries`
 This will be called at various times to fetch a range of entries from the log. The `start` field is inclusive, the `stop` field is non-inclusive. Simply fetch the specified range of logs from the storage medium, and return them.
@@ -75,7 +75,7 @@ This will be called at various times to fetch a range of entries from the log. T
 ##### `AppendLogEntry`
 Called as the direct result of a client request and will only be called on the Raft leader node. **THIS IS THE ONE AND ONLY** `RaftStorage` handler which is allowed to return errors which will not cause the Raft node to terminate. Reveiw the docs on the [`AppendLogEntry`](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.AppendLogEntry.html) type, and you will see that its message response type is the `AppError` type, which is a statically known error type chosen by the implementor (which was reviewed earlier in the [raft overview chapter](https://railgun-rs.github.io/actix-raft/raft.html)).
 
-This is where an application may enforce business-logic rules, such as unique indices, relational constraints, whatever is needed by the application. If everything checks out, insert the entry at its specified index in the log. **Don't just blindly append,** use the entry's index. There are times when log entries must be overwritten, and Raft guarantees the safety of such operations.
+This is where an application may enforce business-logic rules, such as unique indices, relational constraints, type validation, whatever is needed by the application. If everything checks out, insert the entry at its specified index in the log. **Don't just blindly append,** use the entry's index. There are times when log entries must be overwritten, and Raft guarantees the safety of such operations.
 
 ##### `ReplicateLogEntries`
 This is similar to `AppendLogEntry` except that this handler is only called on followers, and they should never perform validation or falible operations. If this handler returns an error, the Raft node will terminate in order to guard against data corruption. As mentioned previously, there are times when log entries must be overwritten. Raft guarantees the safety of these operations. **Use the index of each entry when inserting into the log.**
@@ -83,7 +83,7 @@ This is similar to `AppendLogEntry` except that this handler is only called on f
 ##### `ApplyToStateMachine`
 Once a log entry is known to be committed (it has been replicated to a majority of nodes in the cluster), the leader will call this handler, and followers will eventually do the same. Once an entry is committed, it will never be removed or overwritten in the log. To implement this handler, unpack the entry or entries given in the call, and apply each respective entry, in given order, to the state machine.
 
-Raft, as a protocol, guarantees strict linearizability. Entries will never be re-applied. The only case where data is removed from the state machine is during some cases of snapshotting. Read on for more details.
+Raft, as a protocol, guarantees strict linearizability. Entries will never be re-applied. The only case where data is removed from the state machine is during some cases of snapshotting where the entire state machine needs to be rebuilt. Read on for more details.
 
 ### snapshots & log compaction
 This pertains to implementing the `CreateSnapshot`, `InstallSnapshot` & `GetCurrentSnapshot`.
@@ -100,7 +100,7 @@ This handler is called when the Raft node determines that a snapshot is needed b
 
 **It is critical to note** that the newly created snapshot must be able to be used to completely and accurately create a state machine. In addition to saving space on disk (log compaction), snapshots are used to bring new Raft nodes and slow Raft nodes up-to-speed with the cluster leader.
 
-###### implementation algorithm
+**implementation algorithm:**
 - The generated snapshot should include all log entries starting from entry `0` up through the index specified by `CreateSnapshot.through`. This will include any snapshot which may already exist. If a snapshot does already exist, the new log compaction process should be able to just load the old snapshot first, and resume processing from its last entry.
 - The newly generated snapshot should be written to the configured snapshot directory.
 - All previous entries in the log should be deleted up to the entry specified at index `through`.
@@ -113,7 +113,7 @@ This handler is called when the leader of the Raft cluster has determined that t
 
 This message holds an `UnboundedReceiver` which will stream in new chunks of data as they are received from the Raft leader. See the docs on the [InstallSnapshotChunk](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.InstallSnapshotChunk.html) for more info.
 
-###### implementation algorithm
+**implementation algorithm:**
 - Upon receiving the request, a new snapshot file should be created on disk.
 - Every new chunk of data received should be written to the new snapshot file starting at the `offset` specified in the chunk. Once the chunk has been successfully written, the `InstallSnapshotChunk.cb` (a `oneshot::Sender`) should be called to indicate that the storage engine has finished writing the chunk.
 - If the receiver is dropped, the snapshot which was being created should be removed from disk, and a success response should be returned.
