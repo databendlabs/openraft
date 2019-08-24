@@ -11,6 +11,8 @@ actix raft
 
 An implementation of the [Raft distributed consensus protocol](https://raft.github.io/) using the [Actix actor framework](https://github.com/actix/actix). Blazing fast Rust, a modern consensus protocol, an outstanding actor framework. This project intends to provide a backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming &c) built with Rust.
 
+[The guide](https://railgun-rs.github.io/actix-raft) is the best place to get started, followed by [the docs](https://docs.rs/actix-raft/latest/actix_raft/) for more in-depth details.
+
 This crate differs from other Raft implementations in that:
 - It is fully reactive and embraces the async ecosystem. It is driven by actual Raft related events taking place in the system as opposed to being driven by a `tick` operation. Batching of messages during replication is still used whenever possible for maximum throughput.
 - Storage and network integration is well defined via the two traits `RaftStorage` & `RaftNetwork`. This provides applications maximum flexibility in being able to choose their storage and networking mediums. This also allows for the storage interface to be synchronous or asynchronous based on the storage engine used, and allows for easy integration with the actix ecosystem's networking components for efficient async networking. See the [storage](https://railgun-rs.github.io/actix-raft/storage.html) & [network](https://railgun-rs.github.io/actix-raft/network.html) chapters of the guide.
