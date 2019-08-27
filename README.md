@@ -9,7 +9,7 @@ actix raft
 [![GitHub issues open](https://img.shields.io/github/issues-raw/railgun-rs/actix-raft.svg)]()
 [![GitHub issues closed](https://img.shields.io/github/issues-closed-raw/railgun-rs/actix-raft.svg)]()
 
-An implementation of the [Raft distributed consensus protocol](https://raft.github.io/) using the [Actix actor framework](https://github.com/actix/actix). Blazing fast Rust, a modern consensus protocol, an outstanding actor framework. This project intends to provide a backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming &c) built with Rust.
+An implementation of the [Raft distributed consensus protocol](https://raft.github.io/) using the [Actix actor framework](https://github.com/actix/actix). Blazing fast Rust, a modern consensus protocol, an outstanding actor framework. This project intends to provide a backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming &c) built with Rust. Please ⭐ on [github](https://github.com/railgun-rs/actix-raft)!
 
 [The guide](https://railgun-rs.github.io/actix-raft) is the best place to get started, followed by [the docs](https://docs.rs/actix-raft/latest/actix_raft/) for more in-depth details.
 
@@ -22,5 +22,14 @@ This crate differs from other Raft implementations in that:
 
 This implementation strictly adheres to the [Raft spec](https://raft.github.io/raft.pdf) (*pdf warning*), and all data models use the same nomenclature found in the spec for better understandability. This implementation of Raft has integration tests covering all aspects of a Raft cluster's lifecycle including: cluster formation, dynamic membership changes, snapshotting, writing data to a live cluster and more.
 
+If you are building an application using this Raft implementation, open an issue and let me know! I would love to add your project's name & logo to a users list in this project.
+
+### contributing
+Check out the [CONTRIBUTING.md](https://github.com/railgun-rs/actix-raft/blob/master/CONTRIBUTING.md) guide for more details on getting started with contributing to this project.
+
 ### license
 actix-raft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.
+
+----
+
+**NOTE:** the appearance of the "section" symbols `§` throughout this project are references to specific sections of the Raft spec.

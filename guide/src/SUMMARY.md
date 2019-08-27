@@ -1,6 +1,7 @@
 Actix Raft
 ==========
 [Overview](./overview.md)
+- [Getting Started](./getting-started.md)
 - [Raft](./raft.md)
 - [Network](./network.md)
 - [Storage](./storage.md)

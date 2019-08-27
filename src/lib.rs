@@ -16,6 +16,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 // Top-level exports.
 pub use crate::{
+    config::{Config, ConfigBuilder, SnapshotPolicy},
     raft::Raft,
     metrics::RaftMetrics,
     network::RaftNetwork,

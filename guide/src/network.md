@@ -5,7 +5,7 @@ Raft is a distributed consensus protocol, so the ability to send and receive dat
 The network capabilities required by this system are broken up into two parts: the application network & the `RaftNetwork` trait.
 
 ### Application Network
-When building an application around Raft, the application will often have a few common networking components:
+The main role of the application network, in this context, is to handle client requests and then feed them into Raft. There are a few other important things that it will probably need to do as well, depending on the application's needs, here are a few other common networking roles:
 - **discovery:** a component which allows the members of an application cluster (its nodes) to discover and communicate with each other. This is not provided by this crate. There are lots of solutions out there to solve this problem. Applications can build their own discovery system by way of DNS, they could use other systems like etcd or consul. The important thing to note here is that once a peer is discovered, it would be prudent for application nodes to maintain a connection with that peer, as heartbeats are very regular, and building network connections is not free.
 - **data format:** the way that data is serialized and sent accross the networking medium. Popular data formats include protobuf, capnproto, flatbuffers, message pack, JSON &c. Applications are responsible for serializing and deserializing the various message types used in this crate for network transmission. Serde is used throughout this system to aid on this front.
 
