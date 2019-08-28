@@ -2,7 +2,7 @@ Getting Started
 ===============
 This crate's `Raft` type is an Actix actor which is intended to run within some parent application, which traditionally will be some sort of data storage system (SQL, NoSQL, KV store, AMQP, Streaming, whatever). Inasmuch as the `Raft` instance is an actor, it is expected that the parent application is also built upon the Actix actor framework, though that is not technically required.
 
-To use this this crate, applications must also implement the `RaftStorage` & `RaftNetwork` traits. See the [storage](https://railgun-rs.github.io/actix-raft/storage.html) & [network](https://railgun-rs.github.io/actix-raft/network.html) chapters for details on what these traits represent and how to implement them. In brief, the implementing types must be actors which can handle specific message types which correspond to everything needed for Raft storage and networking.
+To use this crate, applications must also implement the `RaftStorage` & `RaftNetwork` traits. See the [storage](https://railgun-rs.github.io/actix-raft/storage.html) & [network](https://railgun-rs.github.io/actix-raft/network.html) chapters for details on what these traits represent and how to implement them. In brief, the implementing types must be actors which can handle specific message types which correspond to everything needed for Raft storage and networking.
 
 ### deep dive
 To get started, applications can define a type alias which declares the types which are going to be used for the application's data, errors, `RaftNetwork` impl & `RaftStorage` impl.
@@ -119,7 +119,7 @@ impl Handler<storage::GetInitialState<Error>> for AppStorage {
 // Impl handlers on `AppStorage` for the other `actix_raft::storage` message types.
 ```
 
-In order forr Raft to expose metrics on how it is doing, we will need a type which can receive `RaftMetrics` messages. Application's can do whatever they want with this info. Expose integrations with Prometheus & Influx, trigger events, whatever is needed. Here we will keep it simple.
+In order for Raft to expose metrics on how it is doing, we will need a type which can receive `RaftMetrics` messages. Application's can do whatever they want with this info. Expose integrations with Prometheus & Influx, trigger events, whatever is needed. Here we will keep it simple.
 
 ```rust
 use actix::{Actor, Context};
@@ -143,7 +143,7 @@ impl Handler<RaftMetrics> for AppStorage {
 }
 ```
 
-And finally, a simply type alias which ties everything together. This type alias can then be used throughout the application's code base without the need to specify the various types being used for data, errors, network & storage.
+And finally, a simple type alias which ties everything together. This type alias can then be used throughout the application's code base without the need to specify the various types being used for data, errors, network & storage.
 
 ```rust
 use actix_raft::Raft;
