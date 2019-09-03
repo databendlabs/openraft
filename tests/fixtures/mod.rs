@@ -14,7 +14,6 @@ use actix_raft::{
     NodeId, Raft,
     config::{Config, SnapshotPolicy},
     messages::{ClientPayload, ClientError, EntryNormal, ResponseMode},
-    storage::RaftStorage,
 };
 use async_log;
 use env_logger;

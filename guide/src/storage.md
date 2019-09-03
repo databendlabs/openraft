@@ -2,14 +2,17 @@ Storage
 =======
 The way that data is stored and represented is an integral part of every data storage system. Whether it is a SQL or NoSQL database, a columner store, a KV store, or anything which stores data, control over the storage technology and technique is critical.
 
-This implementation of Raft uses the `RaftStorage` trait to define the behavior needed of an application's storage layer to work with Raft. This is definitely the most complex looking trait in this crate. Ultimately the implementing type must be an Actix [`Actor`](https://docs.rs/actix/latest/actix) and it must implement handlers for a specific set of message types.
+This implementation of Raft uses the `RaftStorage` trait to define the behavior needed of an application's storage layer to work with Raft. This is definitely the most complex looking trait in this crate. Ultimately the implementing type must be an Actix [`Actor`](https://docs.rs/actix/latest/actix) and it must implement handlers for a specific set of message types. Overwrite the third type parameter with `actix::SyncContext<Self>` for storage engines which are not async.
+
+When creatinga new `RaftStorage` instance, it would be logical to supply the ID of the parent Raft node as well as the node's snapshot directory. Such information is needed when booting a node for the first time.
 
 ```rust
-pub trait RaftStorage<D, E>
+pub trait RaftStorage<D, E, C=Context<Self>>
     where
         D: AppData,
         E: AppError,
-        Self: Actor<Context=Context<Self>>,
+        C: ActorContext,
+        Self: Actor<Context=C>,
 
         Self: Handler<GetInitialState<E>>,
         Self::Context: ToEnvelope<Self, GetInitialState<E>>,
@@ -37,9 +40,7 @@ pub trait RaftStorage<D, E>
 
         Self: Handler<GetCurrentSnapshot<E>>,
         Self::Context: ToEnvelope<Self, GetCurrentSnapshot<E>>,
-{
-    fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self;
-}
+{}
 ```
 
 Actix handlers must be implemented for the following types, all of which are found in the `storage` module:

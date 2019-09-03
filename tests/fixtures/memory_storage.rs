@@ -72,9 +72,9 @@ pub struct MemoryStorage {
     snapshot_actor: Addr<SnapshotActor>,
 }
 
-impl RaftStorage<MemoryStorageData, MemoryStorageError> for MemoryStorage {
+impl MemoryStorage {
     /// Create a new instance.
-    fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self {
+    pub fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self {
         let snapshot_dir_pathbuf = std::path::PathBuf::from(snapshot_dir.clone());
         let membership = MembershipConfig{members, non_voters: vec![], removing: vec![], is_in_joint_consensus: false};
         Self{
@@ -93,6 +93,8 @@ impl Actor for MemoryStorage {
     /// Start this actor.
     fn started(&mut self, _ctx: &mut Self::Context) {}
 }
+
+impl RaftStorage<MemoryStorageData, MemoryStorageError> for MemoryStorage {}
 
 impl Handler<GetInitialState<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, InitialState, MemoryStorageError>;
