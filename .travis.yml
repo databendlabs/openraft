@@ -4,20 +4,14 @@ rust:
   - beta
   - nightly
 
-cache: cargo
-
 matrix:
   allow_failures:
     - rust: nightly
   fast_finish: true
 
-before_script:
-  - (test -x $HOME/.cargo/bin/mdbook || cargo install --vers "^0.3" mdbook)
-
 script:
-  # - mdbook build && mdbook test # TODO: fix the mdbook test errors.
-  - mdbook build
   - cargo test
+  - cargo install --vers "^0.3" mdbook && mdbook build
 
 deploy:
   provider: pages

@@ -316,11 +316,12 @@ pub struct HardState {
 ///
 /// See the [storage chapter of the guide](https://railgun-rs.github.io/actix-raft/storage.html#InstallSnapshot)
 /// for details and discussion on this trait and how to implement it.
-pub trait RaftStorage<D, E>
+pub trait RaftStorage<D, E, C=Context<Self>>
     where
         D: AppData,
         E: AppError,
-        Self: Actor<Context=Context<Self>>,
+        C: ActorContext,
+        Self: Actor<Context=C>,
 
         Self: Handler<GetInitialState<E>>,
         Self::Context: ToEnvelope<Self, GetInitialState<E>>,
@@ -348,14 +349,4 @@ pub trait RaftStorage<D, E>
 
         Self: Handler<GetCurrentSnapshot<E>>,
         Self::Context: ToEnvelope<Self, GetCurrentSnapshot<E>>,
-{
-    /// Create a new instance which will store its snapshots in the given directory.
-    ///
-    /// The values given to this constructor should only be used when the node is coming online
-    /// for the first time. Otherwise the persistent storage should always take precedence.
-    ///
-    /// The value given for `members` is used as the initial cluster config when the node comes
-    /// online for the first time. For brand new nodes, this allows you to seed the ID of the node
-    /// in the initial HardState.
-    fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self;
-}
+{}

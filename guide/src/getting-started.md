@@ -82,7 +82,7 @@ impl Handler<messages::AppendEntriesRequest<Data>> for AppNetwork {
 // Impl handlers on `AppNetwork` for the other `actix_raft::messages` message types.
 ```
 
-Now for the storage impl.
+Now for the storage impl. The storage impl will assume an `actix::Context` by default (which is async). Overwrite the third type parameter to `RaftStorage` as `actix::SyncContext<Self>` if your storage impl needs to be synchronous.
 
 ```rust
 use actix::{Actor, Context, ResponseActFuture};
@@ -92,15 +92,11 @@ use actix_raft::{NodeId, RaftStorage, storage};
 struct AppStorage {/* ... snip ... */}
 
 // Ensure you impl this over your application's data & error types.
-impl RaftStorage<Data, Error> for AppStorage {
-    fn new(members: Vec<NodeId>, snapshot_dir: String) -> Self {
-        // Instantiate your storage type as needed.
-        # AppStorage{}
-    }
-}
+// For sync storage, write as: `RaftStorage<Data, Error, >`
+impl RaftStorage<Data, Error, SyncContext<Self>> for AppStorage {}
 
 impl Actor for AppStorage {
-    type Context = Context<Self>;
+    type Context = Context<Self>; // Use `SyncContext<Self>` if storage is sync.
 
     // ... snip ... other actix methods can be implemented here as needed.
 }
