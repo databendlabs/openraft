@@ -130,7 +130,7 @@ impl Actor for AppMetrics {
     // ... snip ... other actix methods can be implemented here as needed.
 }
 
-impl Handler<RaftMetrics> for AppStorage {
+impl Handler<RaftMetrics> for AppMetrics {
     type Result = ();
 
     fn handle(&mut self, _msg: RaftMetrics, _ctx: &mut Context<Self>) -> Self::Result {
