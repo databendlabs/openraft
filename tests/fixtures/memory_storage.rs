@@ -94,7 +94,10 @@ impl Actor for MemoryStorage {
     fn started(&mut self, _ctx: &mut Self::Context) {}
 }
 
-impl RaftStorage<MemoryStorageData, MemoryStorageError> for MemoryStorage {}
+impl RaftStorage<MemoryStorageData, MemoryStorageError> for MemoryStorage {
+    type Actor = Self;
+    type Context = Context<Self>;
+}
 
 impl Handler<GetInitialState<MemoryStorageError>> for MemoryStorage {
     type Result = ResponseActFuture<Self, InitialState, MemoryStorageError>;

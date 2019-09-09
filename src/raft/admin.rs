@@ -9,7 +9,7 @@ use crate::{
     network::RaftNetwork,
     raft::{RaftState, Raft, ReplicationState, state::ConsensusState},
     replication::{ReplicationStream},
-    storage::RaftStorage,
+    storage::{GetLogEntries, RaftStorage},
 };
 
 
@@ -113,7 +113,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<P
             let rs = ReplicationStream::new(
                 self.id, target, self.current_term, self.config.clone(),
                 self.last_log_index, self.last_log_term, self.commit_index,
-                ctx.address(), self.network.clone(), self.storage.clone().recipient(),
+                ctx.address(), self.network.clone(), self.storage.clone().recipient::<GetLogEntries<D, E>>(),
             );
             let addr = rs.start(); // Start the actor on the same thread.
 

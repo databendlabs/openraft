@@ -176,7 +176,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
 
         fut::Either::B(f.and_then(move |_, act, _| {
             act.is_appending_logs = true;
-            fut::wrap_future(act.storage.send(ReplicateLogEntries::new(entries.clone())))
+            fut::wrap_future(act.storage.send::<ReplicateLogEntries<D, E>>(ReplicateLogEntries::new(entries.clone())))
                 .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
                 .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
                 .map(move |_, act, _| {
@@ -207,7 +207,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         &mut self, _: &mut Context<Self>, index: u64, term: u64,
     ) -> impl ActorFuture<Actor=Self, Item=Option<ConflictOpt>, Error=()> {
         let storage = self.storage.clone();
-        fut::wrap_future(self.storage.send(GetLogEntries::new(index, index)))
+        fut::wrap_future(self.storage.send::<GetLogEntries<D, E>>(GetLogEntries::new(index, index)))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
             .and_then(move |res, act, _| {
@@ -229,7 +229,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
                             // entry of that payload which is still in the target term for
                             // conflict optimization.
                             let start = if index >= 50 { index - 50 } else { 0 };
-                            fut::Either::B(fut::wrap_future(storage.send(GetLogEntries::new(start, index)))
+                            fut::Either::B(fut::wrap_future(storage.send::<GetLogEntries<D, E>>(GetLogEntries::new(start, index)))
                                 .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
                                 .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
                                 .and_then(move |res, act, _| {

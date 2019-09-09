@@ -2,45 +2,40 @@ Storage
 =======
 The way that data is stored and represented is an integral part of every data storage system. Whether it is a SQL or NoSQL database, a columner store, a KV store, or anything which stores data, control over the storage technology and technique is critical.
 
-This implementation of Raft uses the `RaftStorage` trait to define the behavior needed of an application's storage layer to work with Raft. This is definitely the most complex looking trait in this crate. Ultimately the implementing type must be an Actix [`Actor`](https://docs.rs/actix/latest/actix) and it must implement handlers for a specific set of message types. Overwrite the third type parameter with `actix::SyncContext<Self>` for storage engines which are not async.
+This implementation of Raft uses the `RaftStorage` trait to define the behavior needed of an application's storage layer to work with Raft. This is definitely the most complex looking trait in this crate. Ultimately the implementing type must be an Actix [`Actor`](https://docs.rs/actix/latest/actix) and it must implement handlers for a specific set of message types.
 
 When creatinga new `RaftStorage` instance, it would be logical to supply the ID of the parent Raft node as well as the node's snapshot directory. Such information is needed when booting a node for the first time.
 
 ```rust
-pub trait RaftStorage<D, E, C=Context<Self>>
+pub trait RaftStorage<D, E>: 'static
     where
         D: AppData,
         E: AppError,
-        C: ActorContext,
-        Self: Actor<Context=C>,
+{
+    /// The type to use as the storage actor. Should just be Self.
+    type Actor: Actor<Context=Self::Context> +
+        Handler<GetInitialState<E>> +
+        Handler<SaveHardState<E>> +
+        Handler<GetLogEntries<D, E>> +
+        Handler<AppendLogEntry<D, E>> +
+        Handler<ReplicateLogEntries<D, E>> +
+        Handler<ApplyToStateMachine<D, E>> +
+        Handler<CreateSnapshot<E>> +
+        Handler<InstallSnapshot<E>> +
+        Handler<GetCurrentSnapshot<E>>;
 
-        Self: Handler<GetInitialState<E>>,
-        Self::Context: ToEnvelope<Self, GetInitialState<E>>,
-
-        Self: Handler<SaveHardState<E>>,
-        Self::Context: ToEnvelope<Self, SaveHardState<E>>,
-
-        Self: Handler<GetLogEntries<D, E>>,
-        Self::Context: ToEnvelope<Self, GetLogEntries<D, E>>,
-
-        Self: Handler<AppendLogEntry<D, E>>,
-        Self::Context: ToEnvelope<Self, AppendLogEntry<D, E>>,
-
-        Self: Handler<ReplicateLogEntries<D, E>>,
-        Self::Context: ToEnvelope<Self, ReplicateLogEntries<D, E>>,
-
-        Self: Handler<ApplyToStateMachine<D, E>>,
-        Self::Context: ToEnvelope<Self, ApplyToStateMachine<D, E>>,
-
-        Self: Handler<CreateSnapshot<E>>,
-        Self::Context: ToEnvelope<Self, CreateSnapshot<E>>,
-
-        Self: Handler<InstallSnapshot<E>>,
-        Self::Context: ToEnvelope<Self, InstallSnapshot<E>>,
-
-        Self: Handler<GetCurrentSnapshot<E>>,
-        Self::Context: ToEnvelope<Self, GetCurrentSnapshot<E>>,
-{}
+    /// The type to use as the storage actor's context. Should be `Context<Self>` or `SyncContext<Self>`.
+    type Context: ActorContext +
+        ToEnvelope<Self::Actor, GetInitialState<E>> +
+        ToEnvelope<Self::Actor, SaveHardState<E>> +
+        ToEnvelope<Self::Actor, GetLogEntries<D, E>> +
+        ToEnvelope<Self::Actor, AppendLogEntry<D, E>> +
+        ToEnvelope<Self::Actor, ReplicateLogEntries<D, E>> +
+        ToEnvelope<Self::Actor, ApplyToStateMachine<D, E>> +
+        ToEnvelope<Self::Actor, CreateSnapshot<E>> +
+        ToEnvelope<Self::Actor, InstallSnapshot<E>> +
+        ToEnvelope<Self::Actor, GetCurrentSnapshot<E>>;
+}
 ```
 
 Actix handlers must be implemented for the following types, all of which are found in the `storage` module:

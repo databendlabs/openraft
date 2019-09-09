@@ -67,7 +67,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
 
         // Send the payload over to the storage engine.
         self.is_appending_logs = true; // NOTE: this routine is pipelined, but we still use a semaphore in case of transition to follower.
-        fut::Either::B(fut::wrap_future(self.storage.send(AppendLogEntry::new(payload.entry())))
+        fut::Either::B(fut::wrap_future(self.storage.send::<AppendLogEntry<D, E>>(AppendLogEntry::new(payload.entry())))
             .map_err(|err, act: &mut Self, ctx| {
                 act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage);
                 ClientError::Internal
