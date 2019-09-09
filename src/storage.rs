@@ -316,37 +316,32 @@ pub struct HardState {
 ///
 /// See the [storage chapter of the guide](https://railgun-rs.github.io/actix-raft/storage.html#InstallSnapshot)
 /// for details and discussion on this trait and how to implement it.
-pub trait RaftStorage<D, E, C=Context<Self>>
+pub trait RaftStorage<D, E>: 'static
     where
         D: AppData,
         E: AppError,
-        C: ActorContext,
-        Self: Actor<Context=C>,
+{
+    /// The type to use as the storage actor. Should just be Self.
+    type Actor: Actor<Context=Self::Context> +
+        Handler<GetInitialState<E>> +
+        Handler<SaveHardState<E>> +
+        Handler<GetLogEntries<D, E>> +
+        Handler<AppendLogEntry<D, E>> +
+        Handler<ReplicateLogEntries<D, E>> +
+        Handler<ApplyToStateMachine<D, E>> +
+        Handler<CreateSnapshot<E>> +
+        Handler<InstallSnapshot<E>> +
+        Handler<GetCurrentSnapshot<E>>;
 
-        Self: Handler<GetInitialState<E>>,
-        Self::Context: ToEnvelope<Self, GetInitialState<E>>,
-
-        Self: Handler<SaveHardState<E>>,
-        Self::Context: ToEnvelope<Self, SaveHardState<E>>,
-
-        Self: Handler<GetLogEntries<D, E>>,
-        Self::Context: ToEnvelope<Self, GetLogEntries<D, E>>,
-
-        Self: Handler<AppendLogEntry<D, E>>,
-        Self::Context: ToEnvelope<Self, AppendLogEntry<D, E>>,
-
-        Self: Handler<ReplicateLogEntries<D, E>>,
-        Self::Context: ToEnvelope<Self, ReplicateLogEntries<D, E>>,
-
-        Self: Handler<ApplyToStateMachine<D, E>>,
-        Self::Context: ToEnvelope<Self, ApplyToStateMachine<D, E>>,
-
-        Self: Handler<CreateSnapshot<E>>,
-        Self::Context: ToEnvelope<Self, CreateSnapshot<E>>,
-
-        Self: Handler<InstallSnapshot<E>>,
-        Self::Context: ToEnvelope<Self, InstallSnapshot<E>>,
-
-        Self: Handler<GetCurrentSnapshot<E>>,
-        Self::Context: ToEnvelope<Self, GetCurrentSnapshot<E>>,
-{}
+    /// The type to use as the storage actor's context. Should be `Context<Self>` or `SyncContext<Self>`.
+    type Context: ActorContext +
+        ToEnvelope<Self::Actor, GetInitialState<E>> +
+        ToEnvelope<Self::Actor, SaveHardState<E>> +
+        ToEnvelope<Self::Actor, GetLogEntries<D, E>> +
+        ToEnvelope<Self::Actor, AppendLogEntry<D, E>> +
+        ToEnvelope<Self::Actor, ReplicateLogEntries<D, E>> +
+        ToEnvelope<Self::Actor, ApplyToStateMachine<D, E>> +
+        ToEnvelope<Self::Actor, CreateSnapshot<E>> +
+        ToEnvelope<Self::Actor, InstallSnapshot<E>> +
+        ToEnvelope<Self::Actor, GetCurrentSnapshot<E>>;
+}

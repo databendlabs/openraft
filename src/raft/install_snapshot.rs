@@ -98,7 +98,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
 
         // Start storage engine task.
         let (snap_index, snap_term) = (msg.last_included_index, msg.last_included_term);
-        let task = fut::wrap_future(self.storage.send(InstallSnapshot::new(snap_term, snap_index, rx)))
+        let task = fut::wrap_future(self.storage.send::<InstallSnapshot<E>>(InstallSnapshot::new(snap_term, snap_index, rx)))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
             .map(move |_, _, _| {
@@ -154,7 +154,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         }
 
         let (snap_index, snap_term) = (msg.last_included_index, msg.last_included_term);
-        let f = fut::wrap_future(self.storage.send(InstallSnapshot::new(snap_term, snap_index, rx)))
+        let f = fut::wrap_future(self.storage.send::<InstallSnapshot<E>>(InstallSnapshot::new(snap_term, snap_index, rx)))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
             .map(move |_, _, _| {

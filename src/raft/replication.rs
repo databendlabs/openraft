@@ -113,7 +113,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<R
                 }
                 // If snapshot is not within half of threshold, or if snapshot does not exist, create a new snapshot.
                 // Create a new snapshot up through the committed index (to avoid jitter).
-                fut::Either::B(fut::wrap_future(act.storage.send(CreateSnapshot::new(act.commit_index)))
+                fut::Either::B(fut::wrap_future(act.storage.send::<CreateSnapshot<E>>(CreateSnapshot::new(act.commit_index)))
                     .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
                     .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
                     .and_then(|res, _, _| {

@@ -35,7 +35,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         // commit index from this term.
         let entry_index = entry.index;
         let f = if (self.last_applied + 1) != entry_index {
-            fut::Either::A(fut::wrap_future(self.storage.send(GetLogEntries::new(self.last_applied + 1, entry_index)))
+            fut::Either::A(fut::wrap_future(self.storage.send::<GetLogEntries<D, E>>(GetLogEntries::new(self.last_applied + 1, entry_index)))
                 .map_err(|err, act: &mut Self, ctx| {
                     act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage);
                     ClientError::Internal
@@ -43,7 +43,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
                 .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res).map_err(|_, _, _| ClientError::Internal))
                 .and_then(|res, act, _| {
                     let line_index = res.iter().last().map(|e| e.index);
-                    fut::wrap_future(act.storage.send(ApplyToStateMachine::new(ApplyToStateMachinePayload::Multi(res))))
+                    fut::wrap_future(act.storage.send::<ApplyToStateMachine<D, E>>(ApplyToStateMachine::new(ApplyToStateMachinePayload::Multi(res))))
                         .map_err(|err, act: &mut Self, ctx| {
                             act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage);
                             ClientError::Internal
@@ -65,7 +65,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         // Resume with the normal flow of logic. Here we are simply taking the payload of entries
         // to be applied to the state machine, applying and then responding as needed.
         let line_index = entry.index;
-        f.and_then(move |_, act, _| fut::wrap_future(act.storage.send(ApplyToStateMachine::new(ApplyToStateMachinePayload::Single(entry))))
+        f.and_then(move |_, act, _| fut::wrap_future(act.storage.send::<ApplyToStateMachine<D, E>>(ApplyToStateMachine::new(ApplyToStateMachinePayload::Single(entry))))
             .map_err(|err, act: &mut Self, ctx| {
                 act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage);
                 ClientError::Internal
@@ -103,14 +103,14 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         // Fetch the series of entries which must be applied to the state machine.
         let start = self.last_applied + 1;
         let stop = self.commit_index + 1;
-        fut::Either::B(fut::wrap_future(self.storage.send(GetLogEntries::new(start, stop)))
+        fut::Either::B(fut::wrap_future(self.storage.send::<GetLogEntries<D, E>>(GetLogEntries::new(start, stop)))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
 
             // Send the entries over to the storage engine to be applied to the state machine.
             .and_then(|entries, act, _| {
                 let line_index = entries.last().map(|elem| elem.index);
-                fut::wrap_future(act.storage.send(ApplyToStateMachine::new(ApplyToStateMachinePayload::Multi(entries))))
+                fut::wrap_future(act.storage.send::<ApplyToStateMachine<D, E>>(ApplyToStateMachine::new(ApplyToStateMachinePayload::Multi(entries))))
                     .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
                     .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
                     .map(move |_, _, _| line_index)

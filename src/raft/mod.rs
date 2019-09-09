@@ -28,7 +28,7 @@ use crate::{
     network::RaftNetwork,
     raft::state::{CandidateState, FollowerState, LeaderState, RaftState, ReplicationState, SnapshotState},
     replication::{ReplicationStream, RSTerminate},
-    storage::{GetInitialState, HardState, InitialState, RaftStorage, SaveHardState},
+    storage::{GetInitialState, GetLogEntries, HardState, InitialState, RaftStorage, SaveHardState},
 };
 
 const FATAL_ACTIX_MAILBOX_ERR: &str = "Fatal actix MailboxError while communicating with Raft dependency. Raft is shutting down.";
@@ -99,7 +99,7 @@ pub struct Raft<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>
     /// The address of the actor responsible for implementing the `RaftNetwork` interface.
     network: Addr<N>,
     /// The address of the actor responsible for implementing the `RaftStorage` interface.
-    storage: Addr<S>,
+    storage: Addr<S::Actor>,
     /// The address of the actor responsible for recieving metrics output from this Node.
     metrics: Recipient<RaftMetrics>,
 
@@ -161,7 +161,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
     ///
     /// This actor will need to be started after instantiation, which must be done within a
     /// running actix system.
-    pub fn new(id: NodeId, config: Config, network: Addr<N>, storage: Addr<S>, metrics: Recipient<RaftMetrics>) -> Self {
+    pub fn new(id: NodeId, config: Config, network: Addr<N>, storage: Addr<S::Actor>, metrics: Recipient<RaftMetrics>) -> Self {
         let state = RaftState::Initializing;
         let config = Arc::new(config);
         let (tx, rx) = mpsc::unbounded();
@@ -311,7 +311,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
             let rs = ReplicationStream::new(
                 self.id, *target, self.current_term, self.config.clone(),
                 self.last_log_index, self.last_log_term, self.commit_index,
-                ctx.address(), self.network.clone(), self.storage.clone().recipient(),
+                ctx.address(), self.network.clone(), self.storage.clone().recipient::<GetLogEntries<D, E>>(),
             );
             let addr = rs.start(); // Start the actor on the same thread.
 
@@ -470,7 +470,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
     /// DEPRECATED: use `save_hard_state_async`.
     fn save_hard_state(&mut self, ctx: &mut Context<Self>) {
         let hs = HardState{current_term: self.current_term, voted_for: self.voted_for, membership: self.membership.clone()};
-        let f = fut::wrap_future(self.storage.send(SaveHardState::new(hs)))
+        let f = fut::wrap_future(self.storage.send::<SaveHardState<E>>(SaveHardState::new(hs)))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res));
 
@@ -480,7 +480,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
     /// Save the Raft node's current hard state to disk.
     fn save_hard_state_async(&mut self, _: &mut Context<Self>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
         let hs = HardState{current_term: self.current_term, voted_for: self.voted_for, membership: self.membership.clone()};
-        fut::wrap_future(self.storage.send(SaveHardState::new(hs)))
+        fut::wrap_future(self.storage.send::<SaveHardState<E>>(SaveHardState::new(hs)))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
     }
@@ -585,7 +585,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Actor for
     /// The initialization routine for this actor.
     fn started(&mut self, ctx: &mut Self::Context) {
         // Fetch the node's initial state from the storage actor & initialize.
-        let f = fut::wrap_future(self.storage.send(GetInitialState::new()))
+        let f = fut::wrap_future(self.storage.send::<GetInitialState<E>>(GetInitialState::new()))
             .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
             .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
             .map(|state, act, ctx| act.initialize(ctx, state));
