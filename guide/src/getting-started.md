@@ -57,7 +57,7 @@ use actix::{Actor, Context, ResponseActFuture};
 use actix_raft::{RaftNetwork, messages};
 
 /// Your application's network interface actor.
-struct AppNetwork;
+struct AppNetwork {/* ... snip ... */}
 
 impl Actor for AppNetwork {
     type Context = Context<Self>;
@@ -122,7 +122,7 @@ use actix::{Actor, Context};
 use actix_raft::RaftMetrics;
 
 /// Your application's metrics interface actor.
-struct AppMetrics;
+struct AppMetrics {/* ... snip ... */}
 
 impl Actor for AppMetrics {
     type Context = Context<Self>;
@@ -170,7 +170,7 @@ fn main() {
 
     // Start the various actor types and hold on to their addrs.
     let network = AppNetwork.start();
-    let storage = AppStorage::new(members, config.snapshot_dir.clone()).start();
+    let storage = AppStorage.start();
     let metrics = AppMetrics.start();
     let app_raft = AppRaft::new(1, config, network, storage, metrics).start();
 
