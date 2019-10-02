@@ -6,7 +6,7 @@ use crate::{
     AppData, AppError,
     common::{ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     network::RaftNetwork,
-    messages::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryType},
+    messages::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryPayload},
     raft::{RaftState, Raft, SnapshotState},
     storage::{GetLogEntries, RaftStorage, ReplicateLogEntries},
 };
@@ -162,8 +162,8 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         }
 
         // Check the given entries for any config changes and take the most recent.
-        let last_conf_change = entries.iter().filter_map(|ent| match &ent.entry_type {
-            EntryType::ConfigChange(conf) => Some(conf),
+        let last_conf_change = entries.iter().filter_map(|ent| match &ent.payload {
+            EntryPayload::ConfigChange(conf) => Some(conf),
             _ => None,
         }).last();
         let f = match last_conf_change {

@@ -69,15 +69,15 @@ pub(crate) struct ClientPayloadWithIndex<D: AppData, E: AppError> {
 impl<D: AppData, E: AppError> ClientPayloadWithIndex<D, E> {
     /// Create a new instance.
     pub(self) fn new(payload: ClientPayloadWithChan<D, E>, index: u64, term: u64) -> Self {
-        let entry = Arc::new(Entry{index: index, term: term, entry_type: payload.rpc.entry.clone()});
+        let entry = Arc::new(Entry{index: index, term: term, payload: payload.rpc.entry.clone()});
         Self{tx: payload.tx, entry, response_mode: payload.rpc.response_mode, index, term}
     }
 
     /// Downgrade the payload, typically for forwarding purposes.
     pub(crate) fn downgrade(self) -> ClientPayloadWithChan<D, E> {
         let entry = match Arc::try_unwrap(self.entry) {
-            Ok(entry) => entry.entry_type,
-            Err(arc) => arc.entry_type.clone(),
+            Ok(entry) => entry.payload,
+            Err(arc) => arc.payload.clone(),
         };
         ClientPayloadWithChan{tx: self.tx, rpc: ClientPayload::new_base(entry, self.response_mode)}
     }

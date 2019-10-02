@@ -90,21 +90,23 @@ pub struct Entry<D: AppData> {
     pub term: u64,
     /// This entry's index.
     pub index: u64,
-    /// This entry's type.
+    /// This entry's payload.
     #[serde(bound="D: AppData")]
-    pub entry_type: EntryType<D>,
+    pub payload: EntryPayload<D>,
 }
 
 impl<D: AppData> Entry<D> {
     /// Create a new snapshot pointer from the given data.
     pub fn new_snapshot_pointer(pointer: EntrySnapshotPointer, index: u64, term: u64) -> Self {
-        Entry{term, index, entry_type: EntryType::SnapshotPointer(pointer)}
+        Entry{term, index, payload: EntryPayload::SnapshotPointer(pointer)}
     }
 }
 
-/// Log entry type variants.
+/// Log entry payload variants.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum EntryType<D: AppData> {
+pub enum EntryPayload<D: AppData> {
+    /// An empty payload committed by a new cluster leader.
+    Blank,
     /// A normal log entry.
     #[serde(bound="D: AppData")]
     Normal(EntryNormal<D>),
@@ -118,11 +120,8 @@ pub enum EntryType<D: AppData> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EntryNormal<D: AppData> {
     /// The contents of this entry.
-    ///
-    /// There are some circumstances where Raft must committ blank entries. In such a case, the
-    /// `data` field will be `None`.
     #[serde(bound="D: AppData")]
-    pub data: Option<D>,
+    pub data: D,
 }
 
 /// A log entry holding a config change.
@@ -312,7 +311,7 @@ pub struct InstallSnapshotResponse {
 pub struct ClientPayload<D: AppData, E: AppError> {
     /// The application specific contents of this client request.
     #[serde(bound="D: AppData")]
-    pub(crate) entry: EntryType<D>,
+    pub(crate) entry: EntryPayload<D>,
     /// The response mode needed by this request.
     pub(crate) response_mode: ResponseMode,
     #[serde(skip)]
@@ -322,24 +321,24 @@ pub struct ClientPayload<D: AppData, E: AppError> {
 impl<D: AppData, E: AppError> ClientPayload<D, E> {
     /// Create a new client payload instance with a normal entry type.
     pub fn new(entry: EntryNormal<D>, response_mode: ResponseMode) -> Self {
-        Self::new_base(EntryType::Normal(entry), response_mode)
+        Self::new_base(EntryPayload::Normal(entry), response_mode)
     }
 
     /// Create a new instance.
-    pub fn new_base(entry: EntryType<D>, response_mode: ResponseMode) -> Self {
+    pub fn new_base(entry: EntryPayload<D>, response_mode: ResponseMode) -> Self {
         Self{entry, response_mode, marker: std::marker::PhantomData}
     }
 
     /// Generate a new payload holding a config change.
     pub(crate) fn new_config(membership: MembershipConfig) -> Self {
-        Self::new_base(EntryType::ConfigChange(EntryConfigChange{membership}), ResponseMode::Committed)
+        Self::new_base(EntryPayload::ConfigChange(EntryConfigChange{membership}), ResponseMode::Committed)
     }
 
     /// Generate a new blank payload.
     ///
-    /// This is primarily used by new leaders when first coming to power.
+    /// This is used by new leaders when first coming to power.
     pub(crate) fn new_blank_payload() -> Self {
-        Self::new(EntryNormal{data: None}, ResponseMode::Applied)
+        Self::new_base(EntryPayload::Blank, ResponseMode::Applied)
     }
 }
 

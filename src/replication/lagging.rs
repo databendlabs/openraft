@@ -8,7 +8,7 @@ use crate::{
     AppData, AppError,
     common::DependencyAddr,
     config::SnapshotPolicy,
-    messages::{AppendEntriesRequest, EntryType},
+    messages::{AppendEntriesRequest, EntryPayload},
     network::RaftNetwork,
     replication::{ReplicationStream, RSRateUpdate, RSState},
     storage::{RaftStorage, GetLogEntries},
@@ -75,8 +75,8 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Replicati
             .and_then(move |entries, act, ctx| {
                 // If a snapshot pointer is included in the payload, then we need to transition to snapshotting state.
                 for entry in entries.iter() {
-                    match entry.entry_type {
-                        EntryType::SnapshotPointer(_) => {
+                    match entry.payload {
+                        EntryPayload::SnapshotPointer(_) => {
                             act.transition_to_snapshotting(ctx);
                             return fut::Either::A(fut::err(()));
                         }
