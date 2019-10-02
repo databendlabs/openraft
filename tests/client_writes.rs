@@ -47,7 +47,7 @@ fn client_writes() {
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
     ctl.register(0, node0.addr.clone()).register(1, node1.addr.clone()).register(2, node2.addr.clone());
-    ctl.start_with_test(4,  Box::new(|act, ctx| {
+    ctl.start_with_test(10,  Box::new(|act, ctx| {
         // Get the current leader.
         ctx.spawn(fut::wrap_future(act.network.send(GetCurrentLeader))
             .map_err(|_, _: &mut RaftTestController, _| panic!("Failed to get current leader."))

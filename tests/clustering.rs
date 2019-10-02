@@ -47,7 +47,7 @@ fn clustering() {
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
     ctl.register(0, node0.addr.clone()).register(1, node1.addr.clone()).register(2, node2.addr.clone());
-    ctl.start_with_test(5, Box::new(|act, ctx| {
+    ctl.start_with_test(10, Box::new(|act, ctx| {
         let (tx0, rx0) = oneshot::channel();
         act.network.do_send(ExecuteInRaftRouter(Box::new(move |act, _| {
             let node0: &RaftMetrics = act.metrics.get(&0).unwrap();

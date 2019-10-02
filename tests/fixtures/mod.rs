@@ -174,7 +174,7 @@ impl NodeBuilder {
         let temp_dir = tempdir_in("/tmp").expect("Tempdir to be created without error.");
         let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
         let config = Config::build(snapshot_dir.clone())
-            .election_timeout_min(800).election_timeout_max(1000).heartbeat_interval(300)
+            .election_timeout_min(1500).election_timeout_max(2000).heartbeat_interval(150)
             .metrics_rate(Duration::from_secs(metrics_rate))
             .snapshot_policy(snapshot_policy).snapshot_max_chunk_size(10000)
             .validate().expect("Raft config to be created without error.");
@@ -206,7 +206,7 @@ pub fn new_raft_node(id: NodeId, network: Addr<RaftRouter>, members: Vec<NodeId>
     let temp_dir = tempdir_in("/tmp").expect("Tempdir to be created without error.");
     let snapshot_dir = temp_dir.path().to_string_lossy().to_string();
     let config = Config::build(snapshot_dir.clone())
-        .election_timeout_min(800).election_timeout_max(1000).heartbeat_interval(300)
+        .election_timeout_min(1500).election_timeout_max(2000).heartbeat_interval(150)
         .metrics_rate(Duration::from_secs(metrics_rate))
         .snapshot_policy(SnapshotPolicy::Disabled).snapshot_max_chunk_size(10000)
         .validate().expect("Raft config to be created without error.");
