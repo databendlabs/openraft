@@ -42,7 +42,7 @@ fn singlenode() {
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
     ctl.register(0, node0.addr.clone());
-    ctl.start_with_test(5, Box::new(|act, ctx| {
+    ctl.start_with_test(10, Box::new(|act, ctx| {
         // Assert that all nodes are in NonVoter state with index 0.
         let task = fut::wrap_future(act.network.send(ExecuteInRaftRouter(Box::new(move |act, _| {
             for node in act.metrics.values() {

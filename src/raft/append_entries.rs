@@ -70,7 +70,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<A
         }
 
         // Update election timeout.
-        self.update_election_timeout(ctx);
+        self.update_election_timeout_stamp();
 
         // Update current term if needed.
         if self.current_term != msg.term {

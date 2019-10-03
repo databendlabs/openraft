@@ -51,7 +51,7 @@ fn dynamic_membership() {
     // Setup test controller and actions.
     let mut ctl = RaftTestController::new(network);
     ctl.register(0, node0.addr.clone()).register(1, node1.addr.clone()).register(2, node2.addr.clone());
-    ctl.start_with_test(5, Box::new(|act, ctx| {
+    ctl.start_with_test(10, Box::new(|act, ctx| {
         let task = act.write_data(ctx)
             // Data has been writtent to new cluster, get the ID of the current leader.
             .and_then(|_, act, _| {
@@ -78,7 +78,7 @@ fn dynamic_membership() {
                     .map(move |_, _, _| leader_id)
             })
             // Delay for a bit to ensure we can target a new leader in the test.
-            .and_then(|leader_id, _, _| fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(3)))
+            .and_then(|leader_id, _, _| fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(6)))
                 .map_err(|_, _, _| ())
                 .map(move |_, _, _| leader_id))
             // Remove old node.
@@ -91,7 +91,7 @@ fn dynamic_membership() {
             })
             // Write some additional data to the new leader.
             .and_then(|old_leader_id, act, ctx| act.write_data(ctx).map(move |_, _, _| old_leader_id))
-            .and_then(|old_leader_id, _, _| fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(3))
+            .and_then(|old_leader_id, _, _| fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(6))
                 .map_err(|_| ()))
                 .map(move |_, _, _| old_leader_id))
 

@@ -68,7 +68,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
             None => {
                 self.voted_for = Some(msg.candidate_id);
                 self.save_hard_state(ctx);
-                self.update_election_timeout(ctx);
+                self.update_election_timeout_stamp();
                 self.become_follower(ctx);
                 Ok(VoteResponse{term: self.current_term, vote_granted: true, is_candidate_unknown: false})
             },

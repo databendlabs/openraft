@@ -12,12 +12,12 @@ mod vote;
 use std::{
     collections::BTreeMap,
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant},
 };
 
 use actix::prelude::*;
 use futures::sync::{mpsc};
-use log::{debug, error};
+use log::{error};
 
 use crate::{
     AppData, AppError, NodeId,
@@ -152,8 +152,8 @@ pub struct Raft<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>
 
     /// A handle to the election timeout callback.
     election_timeout: Option<actix::SpawnHandle>,
-    /// The currently scheduled timeout timestamp in millis.
-    election_timeout_stamp: Option<u128>,
+    /// The currently scheduled election timeout.
+    election_timeout_stamp: Option<Instant>,
 }
 
 impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
@@ -516,12 +516,13 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
 
     /// Update the election timeout process.
     ///
-    /// This will run the nodes election timeout mechanism to ensure that elections are held if
-    /// too much time passes before hearing from a leader or a candidate.
+    /// This will schedule a new interval job based on the configured election timeout. The
+    /// interval job will check to see if a campaign should be started based on when the last
+    /// heartbeat was received from the Raft leader or a candidate.
     ///
-    /// The election timeout will be updated everytime this node receives an RPC from the leader
-    /// as well as any time a candidate node sends a RequestVote RPC. We reset on candidate RPCs
-    /// iff the RPC is a valid vote request.
+    /// The election timeout stamp will be updated everytime this node receives an RPC from the
+    /// leader as well as any time a candidate node sends a RequestVote RPC if it is a
+    /// valid vote request.
     fn update_election_timeout(&mut self, ctx: &mut Context<Self>) {
         // Don't update if the cluster has this node configured as a non-voter.
         if !self.membership.contains(&self.id) || self.membership.non_voters.contains(&self.id) {
@@ -531,27 +532,22 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         // Cancel any current election timeout before spawning a new one.
         if let Some(handle) = self.election_timeout.take() {
             ctx.cancel_future(handle);
-            self.election_timeout_stamp = None;
         }
 
         let timeout = Duration::from_millis(self.config.election_timeout_millis);
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
-        self.election_timeout_stamp = Some(now.as_millis() + self.config.election_timeout_millis as u128);
-        self.election_timeout = Some(ctx.run_later(timeout, |act, ctx| {
-            match act.election_timeout_stamp.take() {
-                Some(stamp) if stamp <= SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis() => {
-                    if !act.state.is_non_voter() {
-                        act.become_candidate(ctx)
-                    }
+        self.election_timeout_stamp = Some(Instant::now() + timeout.clone());
+        self.election_timeout = Some(ctx.run_interval(timeout, |act, ctx| {
+            if let Some(stamp) = &act.election_timeout_stamp {
+                if &Instant::now() >= stamp {
+                    act.become_candidate(ctx)
                 }
-                Some(stamp) => {
-                    debug!("{} invoked election timeout prematurely.", act.id);
-                    // If the scheduled timeout is still in the future, put it back.
-                    act.election_timeout_stamp = Some(stamp);
-                }
-                None => return,
             }
         }));
+    }
+
+    /// Update the election timeout stamp, typically due to receiving a heartbeat from the Raft leader.
+    fn update_election_timeout_stamp(&mut self) {
+        self.election_timeout_stamp = Some(Instant::now() + Duration::from_millis(self.config.election_timeout_millis));
     }
 
     /// Update the node's current membership config.
