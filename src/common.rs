@@ -5,7 +5,7 @@ use std::sync::Arc;
 use futures::sync::oneshot;
 
 use crate::{
-    AppData, AppError, NodeId,
+    AppData, AppDataResponse, AppError, NodeId,
     messages::{
         ClientError, ClientPayload, ClientPayloadResponse,
         Entry, ResponseMode,
@@ -19,7 +19,7 @@ pub(crate) const CLIENT_RPC_TX_ERR: &str = "Client RPC channel sender was unexpe
 // ApplyLogsTask /////////////////////////////////////////////////////////////////////////////////
 
 /// A task declaring some set of logs which need to be applied to the state machine.
-pub(crate) enum ApplyLogsTask<D: AppData, E: AppError> {
+pub(crate) enum ApplyLogsTask<D: AppData, R: AppDataResponse, E: AppError> {
     /// Check for & apply any logs which have been committed but which have not yet been applied.
     Outstanding,
     /// Logs which need to be applied are supplied for immediate use.
@@ -27,24 +27,24 @@ pub(crate) enum ApplyLogsTask<D: AppData, E: AppError> {
         /// The payload of logs to be applied.
         entry: Arc<Entry<D>>,
         /// The optional response channel for when this task is complete.
-        chan: Option<oneshot::Sender<Result<ClientPayloadResponse, ClientError<D, E>>>>,
+        chan: Option<oneshot::Sender<Result<ClientPayloadResponse<R>, ClientError<D, R, E>>>>,
     },
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // ClientPayloadWithChan /////////////////////////////////////////////////////////////////////////
 
-pub(crate) struct ClientPayloadWithChan<D: AppData, E: AppError> {
-    pub tx: oneshot::Sender<Result<ClientPayloadResponse, ClientError<D, E>>>,
-    pub rpc: ClientPayload<D, E>,
+pub(crate) struct ClientPayloadWithChan<D: AppData, R: AppDataResponse, E: AppError> {
+    pub tx: oneshot::Sender<Result<ClientPayloadResponse<R>, ClientError<D, R, E>>>,
+    pub rpc: ClientPayload<D, R, E>,
 }
 
-impl<D: AppData, E: AppError> ClientPayloadWithChan<D, E> {
+impl<D: AppData, R: AppDataResponse, E: AppError> ClientPayloadWithChan<D, R, E> {
     /// Upgrade a client payload with an assigned index & term.
     ///
     /// - `index`: the index to assign to this payload.
     /// - `term`: the term to assign to this payload.
-    pub(crate) fn upgrade(self, index: u64, term: u64) -> ClientPayloadWithIndex<D, E> {
+    pub(crate) fn upgrade(self, index: u64, term: u64) -> ClientPayloadWithIndex<D, R, E> {
         ClientPayloadWithIndex::new(self, index, term)
     }
 }
@@ -53,9 +53,9 @@ impl<D: AppData, E: AppError> ClientPayloadWithChan<D, E> {
 // ClientPayloadWithIndex /////////////////////////////////////////////////////////////////////////
 
 /// A client payload which has made its way into the processing pipeline.
-pub(crate) struct ClientPayloadWithIndex<D: AppData, E: AppError> {
+pub(crate) struct ClientPayloadWithIndex<D: AppData, R: AppDataResponse, E: AppError> {
     /// The channel of the original client request.
-    pub tx: oneshot::Sender<Result<ClientPayloadResponse, ClientError<D, E>>>,
+    pub tx: oneshot::Sender<Result<ClientPayloadResponse<R>, ClientError<D, R, E>>>,
     /// The entry of the original request with an assigned index & term, ready for storage.
     entry: Arc<Entry<D>>,
     /// The response mode of the original client request.
@@ -66,15 +66,15 @@ pub(crate) struct ClientPayloadWithIndex<D: AppData, E: AppError> {
     pub term: u64,
 }
 
-impl<D: AppData, E: AppError> ClientPayloadWithIndex<D, E> {
+impl<D: AppData, R: AppDataResponse, E: AppError> ClientPayloadWithIndex<D, R, E> {
     /// Create a new instance.
-    pub(self) fn new(payload: ClientPayloadWithChan<D, E>, index: u64, term: u64) -> Self {
+    pub(self) fn new(payload: ClientPayloadWithChan<D, R, E>, index: u64, term: u64) -> Self {
         let entry = Arc::new(Entry{index: index, term: term, payload: payload.rpc.entry.clone()});
         Self{tx: payload.tx, entry, response_mode: payload.rpc.response_mode, index, term}
     }
 
     /// Downgrade the payload, typically for forwarding purposes.
-    pub(crate) fn downgrade(self) -> ClientPayloadWithChan<D, E> {
+    pub(crate) fn downgrade(self) -> ClientPayloadWithChan<D, R, E> {
         let entry = match Arc::try_unwrap(self.entry) {
             Ok(entry) => entry.payload,
             Err(arc) => arc.payload.clone(),

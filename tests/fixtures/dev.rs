@@ -18,12 +18,12 @@ use actix_raft::{
 };
 use log::{debug};
 
-use crate::fixtures::memory_storage::{MemoryStorage, MemoryStorageData, MemoryStorageError};
+use crate::fixtures::memory_storage::{MemoryStorage, MemoryStorageData, MemoryStorageError, MemoryStorageResponse};
 
 const ERR_ROUTING_FAILURE: &str = "Routing failures are not allowed in tests.";
 
 /// A concrete Raft type used during testing.
-pub type MemRaft = Raft<MemoryStorageData, MemoryStorageError, RaftRouter, MemoryStorage>;
+pub type MemRaft = Raft<MemoryStorageData, MemoryStorageResponse, MemoryStorageError, RaftRouter, MemoryStorage>;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RaftRouter ////////////////////////////////////////////////////////////////////////////////////

@@ -8,7 +8,7 @@ use actix::prelude::*;
 use futures::sync::{mpsc, oneshot};
 
 use crate::{
-    AppData, AppError, NodeId,
+    AppData, AppDataResponse, AppError, NodeId,
     common::{ClientPayloadWithIndex, ClientPayloadWithChan},
     messages::{MembershipConfig},
     network::RaftNetwork,
@@ -18,7 +18,7 @@ use crate::{
 
 
 /// The state of the Raft node.
-pub(crate) enum RaftState<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> {
+pub(crate) enum RaftState<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> {
     /// A non-standard Raft state indicating that the node is initializing.
     Initializing,
     /// The node is completely passive; replicating entries, but not voting or timing out.
@@ -49,10 +49,10 @@ pub(crate) enum RaftState<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftSto
     ///
     /// The leader handles all client requests. If a client contacts a follower, the follower must
     /// redirects it to the leader.
-    Leader(LeaderState<D, E, N, S>),
+    Leader(LeaderState<D, R, E, N, S>),
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> RaftState<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> RaftState<D, R, E, N, S> {
     /// Check if currently in follower state.
     pub fn is_follower(&self) -> bool {
         match self {
@@ -79,7 +79,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> RaftState
     }
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> fmt::Display for RaftState<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> fmt::Display for RaftState<D, R, E, N, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let state = match self {
             RaftState::Initializing => "Initializing",
@@ -95,20 +95,20 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> fmt::Disp
 /// Volatile state specific to the Raft leader.
 ///
 /// This state is reinitialized after an election.
-pub(crate) struct LeaderState<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> {
+pub(crate) struct LeaderState<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> {
     /// A mapping of node IDs the replication state of the target node.
-    pub nodes: BTreeMap<NodeId, ReplicationState<D, E, N, S>>,
+    pub nodes: BTreeMap<NodeId, ReplicationState<D, R, E, N, S>>,
     /// A queue of client requests to be processed.
-    pub client_request_queue: mpsc::UnboundedSender<ClientPayloadWithChan<D, E>>,
+    pub client_request_queue: mpsc::UnboundedSender<ClientPayloadWithChan<D, R, E>>,
     /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
-    pub awaiting_committed: Vec<ClientPayloadWithIndex<D, E>>,
+    pub awaiting_committed: Vec<ClientPayloadWithIndex<D, R, E>>,
     /// A field tracking the cluster's current consensus state, which is used for dynamic membership.
     pub consensus_state: ConsensusState,
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> LeaderState<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> LeaderState<D, R, E, N, S> {
     /// Create a new instance.
-    pub fn new(tx: mpsc::UnboundedSender<ClientPayloadWithChan<D, E>>, membership: &MembershipConfig) -> Self {
+    pub fn new(tx: mpsc::UnboundedSender<ClientPayloadWithChan<D, R, E>>, membership: &MembershipConfig) -> Self {
         let consensus_state = if membership.is_in_joint_consensus {
             ConsensusState::Joint{
                 new_nodes: membership.non_voters.clone(),
@@ -122,11 +122,11 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> LeaderSta
 }
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-pub(crate) struct ReplicationState<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> {
+pub(crate) struct ReplicationState<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> {
     pub match_index: u64,
     pub is_at_line_rate: bool,
     pub remove_after_commit: Option<u64>,
-    pub addr: Addr<ReplicationStream<D, E, N, S>>,
+    pub addr: Addr<ReplicationStream<D, R, E, N, S>>,
 }
 
 pub(crate) enum ConsensusState {

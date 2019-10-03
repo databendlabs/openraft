@@ -23,10 +23,10 @@ use tempfile::{tempdir_in, TempDir};
 
 use crate::fixtures::{
     dev::{GetCurrentLeader, MemRaft, RaftRouter},
-    memory_storage::{MemoryStorage, MemoryStorageData, MemoryStorageError},
+    memory_storage::{MemoryStorage, MemoryStorageData, MemoryStorageError, MemoryStorageResponse},
 };
 
-pub type Payload = ClientPayload<MemoryStorageData, MemoryStorageError>;
+pub type Payload = ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>;
 
 pub fn setup_logger() {
     let logger = env_logger::Builder::from_default_env().build();

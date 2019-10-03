@@ -10,7 +10,7 @@ use futures::sync::{mpsc::UnboundedReceiver, oneshot::Sender};
 use serde::{Serialize, Deserialize};
 
 use crate::{
-    AppData, AppError, NodeId,
+    AppData, AppDataResponse, AppError, NodeId,
     messages,
 };
 
@@ -81,7 +81,7 @@ impl<D: AppData, E: AppError> Message for GetLogEntries<D, E> {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// AppendLogEntry ////////////////////////////////////////////////////////////////////////////////
+// AppendEntryToLog //////////////////////////////////////////////////////////////////////////////
 
 /// A request from Raft to append a new entry to the log.
 ///
@@ -92,81 +92,99 @@ impl<D: AppData, E: AppError> Message for GetLogEntries<D, E> {
 ///
 /// This property of error handling allows you to keep your application logic as close to the
 /// storage layer as needed.
-pub struct AppendLogEntry<D: AppData, E: AppError> {
+pub struct AppendEntryToLog<D: AppData, E: AppError> {
     pub entry: Arc<messages::Entry<D>>,
     marker: std::marker::PhantomData<E>,
 }
 
-impl<D: AppData, E: AppError> AppendLogEntry<D, E> {
+impl<D: AppData, E: AppError> AppendEntryToLog<D, E> {
     // Create a new instance.
     pub fn new(entry: Arc<messages::Entry<D>>) -> Self {
         Self{entry, marker: std::marker::PhantomData}
     }
 }
 
-impl<D: AppData, E: AppError> Message for AppendLogEntry<D, E> {
+impl<D: AppData, E: AppError> Message for AppendEntryToLog<D, E> {
     type Result = Result<(), E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// ReplicateLogEntries ///////////////////////////////////////////////////////////////////////////
+// ReplicateToLog ////////////////////////////////////////////////////////////////////////////////
 
 /// A request from Raft to replicate a payload of entries to the log.
 ///
 /// These requests come about via the Raft leader's replication process. An error coming from this
 /// interface will cause Raft to shutdown, as this is not where application logic should be
 /// returning application specific errors. Application specific constraints may only be enforced
-/// in the `AppendLogEntry` handler.
+/// in the `AppendEntryToLog` handler.
 ///
 /// Though the entries will always be presented in order, each entry's index should be used to
 /// determine its location to be written in the log, as logs may need to be overwritten under
 /// some circumstances.
-pub struct ReplicateLogEntries<D: AppData, E: AppError> {
+pub struct ReplicateToLog<D: AppData, E: AppError> {
     pub entries: Arc<Vec<messages::Entry<D>>>,
     marker: std::marker::PhantomData<E>,
 }
 
-impl<D: AppData, E: AppError> ReplicateLogEntries<D, E> {
+impl<D: AppData, E: AppError> ReplicateToLog<D, E> {
     // Create a new instance.
     pub fn new(entries: Arc<Vec<messages::Entry<D>>>) -> Self {
         Self{entries, marker: std::marker::PhantomData}
     }
 }
 
-impl<D: AppData, E: AppError> Message for ReplicateLogEntries<D, E> {
+impl<D: AppData, E: AppError> Message for ReplicateToLog<D, E> {
     type Result = Result<(), E>;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-// ApplyToStateMachine ///////////////////////////////////////////////////////////////////////////
+// ApplyEntryToStateMachine //////////////////////////////////////////////////////////////////////
 
-/// A request from Raft to apply the given log entries to the state machine.
+/// A request from Raft to apply the given log entry to the state machine.
+///
+/// This handler is called as part of the client request path. Client requests which are
+/// configured to respond after they have been `Applied` will wait until after this handler
+/// returns before issuing a response to the client request.
 ///
 /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
 /// have been replicated to a majority of the cluster, will be applied to the state machine.
+pub struct ApplyEntryToStateMachine<D: AppData, R: AppDataResponse, E: AppError> {
+    pub payload: Arc<messages::Entry<D>>,
+    marker0: std::marker::PhantomData<R>,
+    marker1: std::marker::PhantomData<E>,
+}
+
+impl<D: AppData, R: AppDataResponse, E: AppError> ApplyEntryToStateMachine<D, R, E> {
+    // Create a new instance.
+    pub fn new(payload: Arc<messages::Entry<D>>) -> Self {
+        Self{payload, marker0: std::marker::PhantomData, marker1: std::marker::PhantomData}
+    }
+}
+
+impl<D: AppData, R: AppDataResponse, E: AppError> Message for ApplyEntryToStateMachine<D, R, E> {
+    type Result = Result<R, E>;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// ReplicateToStateMachine ///////////////////////////////////////////////////////////////////////
+
+/// A request from Raft to apply the given payload of entries to the state machine, as part of replication.
 ///
-/// NOTE WELL: once the futures ecosystem settles a bit and we can pass around references in
-/// futures and message types, this interface will solidify and payload will always just be a
-/// `&[Entry]` or the like. For now, the payload variants help to keep allocations lower.
-pub struct ApplyToStateMachine<D: AppData, E: AppError> {
-    pub payload: ApplyToStateMachinePayload<D>,
+/// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
+/// have been replicated to a majority of the cluster, will be applied to the state machine.
+pub struct ReplicateToStateMachine<D: AppData, E: AppError> {
+    pub payload: Vec<messages::Entry<D>>,
     marker: std::marker::PhantomData<E>,
 }
 
-impl<D: AppData, E: AppError> ApplyToStateMachine<D, E> {
+impl<D: AppData, E: AppError> ReplicateToStateMachine<D, E> {
     // Create a new instance.
-    pub fn new(payload: ApplyToStateMachinePayload<D>) -> Self {
+    pub fn new(payload: Vec<messages::Entry<D>>) -> Self {
         Self{payload, marker: std::marker::PhantomData}
     }
 }
 
-/// The type of payload which needs to be applied to the state machine.
-pub enum ApplyToStateMachinePayload<D: AppData> {
-    Multi(Vec<messages::Entry<D>>),
-    Single(Arc<messages::Entry<D>>),
-}
-
-impl<D: AppData, E: AppError> Message for ApplyToStateMachine<D, E> {
+impl<D: AppData, E: AppError> Message for ReplicateToStateMachine<D, E> {
     type Result = Result<(), E>;
 }
 
@@ -316,9 +334,10 @@ pub struct HardState {
 ///
 /// See the [storage chapter of the guide](https://railgun-rs.github.io/actix-raft/storage.html#InstallSnapshot)
 /// for details and discussion on this trait and how to implement it.
-pub trait RaftStorage<D, E>: 'static
+pub trait RaftStorage<D, R, E>: 'static
     where
         D: AppData,
+        R: AppDataResponse,
         E: AppError,
 {
     /// The type to use as the storage actor. Should just be Self.
@@ -326,9 +345,10 @@ pub trait RaftStorage<D, E>: 'static
         Handler<GetInitialState<E>> +
         Handler<SaveHardState<E>> +
         Handler<GetLogEntries<D, E>> +
-        Handler<AppendLogEntry<D, E>> +
-        Handler<ReplicateLogEntries<D, E>> +
-        Handler<ApplyToStateMachine<D, E>> +
+        Handler<AppendEntryToLog<D, E>> +
+        Handler<ReplicateToLog<D, E>> +
+        Handler<ApplyEntryToStateMachine<D, R, E>> +
+        Handler<ReplicateToStateMachine<D, E>> +
         Handler<CreateSnapshot<E>> +
         Handler<InstallSnapshot<E>> +
         Handler<GetCurrentSnapshot<E>>;
@@ -338,9 +358,10 @@ pub trait RaftStorage<D, E>: 'static
         ToEnvelope<Self::Actor, GetInitialState<E>> +
         ToEnvelope<Self::Actor, SaveHardState<E>> +
         ToEnvelope<Self::Actor, GetLogEntries<D, E>> +
-        ToEnvelope<Self::Actor, AppendLogEntry<D, E>> +
-        ToEnvelope<Self::Actor, ReplicateLogEntries<D, E>> +
-        ToEnvelope<Self::Actor, ApplyToStateMachine<D, E>> +
+        ToEnvelope<Self::Actor, AppendEntryToLog<D, E>> +
+        ToEnvelope<Self::Actor, ReplicateToLog<D, E>> +
+        ToEnvelope<Self::Actor, ApplyEntryToStateMachine<D, R, E>> +
+        ToEnvelope<Self::Actor, ReplicateToStateMachine<D, E>> +
         ToEnvelope<Self::Actor, CreateSnapshot<E>> +
         ToEnvelope<Self::Actor, InstallSnapshot<E>> +
         ToEnvelope<Self::Actor, GetCurrentSnapshot<E>>;

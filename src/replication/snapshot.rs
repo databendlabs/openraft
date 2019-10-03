@@ -9,7 +9,7 @@ use futures::{
 use tokio_timer::Delay;
 
 use crate::{
-    AppData, AppError, NodeId,
+    AppData, AppDataResponse, AppError, NodeId,
     common::DependencyAddr,
     messages::{InstallSnapshotRequest, InstallSnapshotResponse},
     network::RaftNetwork,
@@ -20,7 +20,7 @@ use crate::{
     storage::{RaftStorage},
 };
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> ReplicationStream<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> ReplicationStream<D, R, E, N, S> {
 
     /// Drive the replication stream forward when it is in state `Snapshotting`.
     pub(super) fn drive_state_snapshotting(&mut self, ctx: &mut Context<Self>) {

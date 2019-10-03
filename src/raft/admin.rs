@@ -2,7 +2,7 @@ use actix::prelude::*;
 use log::{error, info, warn};
 
 use crate::{
-    AppData, AppError,
+    AppData, AppDataResponse, AppError,
     admin::{InitWithConfig, InitWithConfigError, ProposeConfigChange, ProposeConfigChangeError},
     common::UpdateCurrentLeader,
     messages::{ClientPayload, ClientPayloadResponse, MembershipConfig},
@@ -13,7 +13,7 @@ use crate::{
 };
 
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<InitWithConfig> for Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<InitWithConfig> for Raft<D, R, E, N, S> {
     type Result = ResponseActFuture<Self, (), InitWithConfigError>;
 
     /// An admin message handler invoked exclusively for cluster formation.
@@ -72,11 +72,11 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<I
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // ProposeConfigChange ///////////////////////////////////////////////////////////////////////////
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<ProposeConfigChange<D, E>> for Raft<D, E, N, S> {
-    type Result = ResponseActFuture<Self, (), ProposeConfigChangeError<D, E>>;
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<ProposeConfigChange<D, R, E>> for Raft<D, R, E, N, S> {
+    type Result = ResponseActFuture<Self, (), ProposeConfigChangeError<D, R, E>>;
 
     /// An admin message handler invoked to trigger dynamic cluster configuration changes. See §6.
-    fn handle(&mut self, msg: ProposeConfigChange<D, E>, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ProposeConfigChange<D, R, E>, ctx: &mut Self::Context) -> Self::Result {
         // Ensure the node is currently the cluster leader.
         let leader_state = match &mut self.state {
             RaftState::Leader(state) => state,
@@ -145,9 +145,9 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<P
     }
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Raft<D, R, E, N, S> {
     /// Handle response from a newly committed cluster config.
-    pub(super) fn handle_newly_committed_cluster_config(&mut self, ctx: &mut Context<Self>, _: ClientPayloadResponse) -> impl ActorFuture<Actor=Self, Item=(), Error=ProposeConfigChangeError<D, E>> {
+    pub(super) fn handle_newly_committed_cluster_config(&mut self, ctx: &mut Context<Self>, _: ClientPayloadResponse<R>) -> impl ActorFuture<Actor=Self, Item=(), Error=ProposeConfigChangeError<D, R, E>> {
         let leader_state = match &mut self.state {
             RaftState::Leader(state) => state,
             _ => return fut::ok(()),
@@ -209,7 +209,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         );
     }
 
-    pub(super) fn handle_joint_consensus_finalization(&mut self, ctx: &mut Context<Self>, res: ClientPayloadResponse) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+    pub(super) fn handle_joint_consensus_finalization(&mut self, ctx: &mut Context<Self>, res: ClientPayloadResponse<R>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
         // It is only safe to call this routine as leader & when in a uniform consensus state.
         let leader_state = match &mut self.state {
             RaftState::Leader(state) => match &state.consensus_state {
@@ -234,10 +234,10 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         let nodes_to_remove: Vec<_> = leader_state.nodes.iter_mut()
             .filter(|(id, _)| !membership.contains(id))
             .filter_map(|(idx, replstate)| {
-                if replstate.match_index >= res.index {
+                if replstate.match_index >= res.index() {
                     Some(idx.clone())
                 } else {
-                    replstate.remove_after_commit = Some(res.index);
+                    replstate.remove_after_commit = Some(res.index());
                     None
                 }
             }).collect();
@@ -268,7 +268,7 @@ fn normalize_init_config(msg: InitWithConfig) -> InitWithConfig {
 ///
 /// See the documentation on on `ProposeConfigChangeError` for the conditions which will cause
 /// errors to be returned.
-fn normalize_proposed_config<D: AppData, E: AppError>(mut msg: ProposeConfigChange<D, E>, current: &MembershipConfig) -> Result<ProposeConfigChange<D, E>, ProposeConfigChangeError<D, E>> {
+fn normalize_proposed_config<D: AppData, R: AppDataResponse, E: AppError>(mut msg: ProposeConfigChange<D, R, E>, current: &MembershipConfig) -> Result<ProposeConfigChange<D, R, E>, ProposeConfigChangeError<D, R, E>> {
     // Ensure no duplicates in adding new nodes & ensure the new
     // node is not also be requested for removal.
     let mut new_nodes = vec![];

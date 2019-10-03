@@ -1,7 +1,7 @@
 use actix::prelude::*;
 
 use crate::{
-    AppData, AppError,
+    AppData, AppDataResponse, AppError,
     common::DependencyAddr,
     messages::{
         AppendEntriesRequest, AppendEntriesResponse,
@@ -11,7 +11,7 @@ use crate::{
     storage::{RaftStorage},
 };
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> ReplicationStream<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> ReplicationStream<D, R, E, N, S> {
 
     /// Handle heartbeat responses.
     ///
