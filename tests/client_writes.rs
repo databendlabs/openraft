@@ -85,7 +85,7 @@ fn client_writes() {
                 for idx in 0..100 {
                     ctx.notify(ClientRequest{payload: idx, current_leader, cb: None});
                 }
-                fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(3))).map_err(|_, _, _| ())
+                fut::wrap_future(Delay::new(Instant::now() + Duration::from_secs(10))).map_err(|_, _, _| ())
             })
 
             // Assert that all nodes are up, same leader, same final state from the standpoint of the metrics.

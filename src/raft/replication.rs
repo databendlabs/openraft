@@ -2,7 +2,7 @@ use actix::prelude::*;
 use log::{debug, error, warn};
 
 use crate::{
-    AppData, AppError,
+    AppData, AppDataResponse, AppError,
     common::{CLIENT_RPC_TX_ERR, ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     config::SnapshotPolicy,
     messages::{ClientPayloadResponse, ResponseMode},
@@ -19,7 +19,7 @@ use crate::{
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSFatalActixMessagingError ////////////////////////////////////////////////////////////////////
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSFatalActixMessagingError> for Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<RSFatalActixMessagingError> for Raft<D, R, E, N, S> {
     type Result = ();
 
     /// Handle events from replication streams reporting errors.
@@ -31,7 +31,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<R
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSFatalStorageError ///////////////////////////////////////////////////////////////////////////
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSFatalStorageError<E>> for Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<RSFatalStorageError<E>> for Raft<D, R, E, N, S> {
     type Result = ();
 
     /// Handle events from replication streams reporting errors.
@@ -44,7 +44,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<R
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSRateUpdate //////////////////////////////////////////////////////////////////////////////////
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSRateUpdate> for Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<RSRateUpdate> for Raft<D, R, E, N, S> {
     type Result = ();
 
     /// Handle events from replication streams updating their replication rate tracker.
@@ -78,7 +78,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<R
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSNeedsSnapshot ///////////////////////////////////////////////////////////////////////////////
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSNeedsSnapshot> for Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<RSNeedsSnapshot> for Raft<D, R, E, N, S> {
     type Result = ResponseActFuture<Self, RSNeedsSnapshotResponse, ()>;
 
     /// Handle events from replication streams requesting for snapshot info.
@@ -127,7 +127,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<R
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSRevertToFollower ////////////////////////////////////////////////////////////////////////////
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSRevertToFollower> for Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<RSRevertToFollower> for Raft<D, R, E, N, S> {
     type Result = ();
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
@@ -144,7 +144,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<R
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // RSUpdateMatchIndex ////////////////////////////////////////////////////////////////////////////
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSUpdateMatchIndex> for Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<RSUpdateMatchIndex> for Raft<D, R, E, N, S> {
     type Result = ();
 
     /// Handle events from a replication stream which updates the target node's match index.
@@ -201,7 +201,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<R
                     if let &ResponseMode::Committed = &request.response_mode {
                         // If this RPC is configured to wait only for log committed, then respond to client now.
                         let entry = request.entry();
-                        let _ = request.tx.send(Ok(ClientPayloadResponse{index: request.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_TX_ERR, err));
+                        let _ = request.tx.send(Ok(ClientPayloadResponse::Committed{index: request.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_TX_ERR, err));
                         let _ = self.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry, chan: None});
                     } else {
                         // Else, send it through the pipeline and it will be responded to afterwords.

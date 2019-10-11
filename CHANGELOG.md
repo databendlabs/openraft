@@ -1,5 +1,15 @@
 changelog
 =========
+### 0.4
+#### 0.4.0
+This changeset introduces a new `AppDataResponse` type which represents a concrete data type which must be sent back from the `RaftStorage` impl from the `ApplyEntryToStateMachine` handler. This provides a more direct path for returning application level data from the storage impl. Often times this is needed for responding to client requests in a timely / efficient manner.
+
+- `AppDataResponse` type has been added (see above).
+- A few handlers have been updated in the `RaftStorage` type. The handlers are now separated based on where they are invoked from the Raft node. The three changed handlers are:
+  - `AppendEntryToLog`: this is the same. It is the initial step of handling client requests to apply an entry to the log. This is still where application level errors may be safely returned to the client.
+  - `ReplicateToLog`: this is for replicating entries to the log. This is part of the replication process.
+  - `ApplyEntryToStateMachine`: this is for applying an entry to the state machine as the final part of a client request. This is where the new `AddDataResponse` type must be returned.
+  - `ReplicateToStateMachine`: this is for replicating entries to the state machine. This is part of the replication process.
 
 ### 0.3
 #### 0.3.1

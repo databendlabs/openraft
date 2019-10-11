@@ -5,16 +5,16 @@ use log::{debug};
 use tokio_timer::Delay;
 
 use crate::{
-    AppData, AppError,
+    AppData, AppDataResponse, AppError,
     common::DependencyAddr,
     config::SnapshotPolicy,
-    messages::{AppendEntriesRequest, EntryType},
+    messages::{AppendEntriesRequest, EntryPayload},
     network::RaftNetwork,
     replication::{ReplicationStream, RSRateUpdate, RSState},
     storage::{RaftStorage, GetLogEntries},
 };
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> ReplicationStream<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> ReplicationStream<D, R, E, N, S> {
     /// Drive the replication stream forward when it is in state `Lagging`.
     pub(super) fn drive_state_lagging(&mut self, ctx: &mut Context<Self>) {
         let state = match &mut self.state {
@@ -75,8 +75,8 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Replicati
             .and_then(move |entries, act, ctx| {
                 // If a snapshot pointer is included in the payload, then we need to transition to snapshotting state.
                 for entry in entries.iter() {
-                    match entry.entry_type {
-                        EntryType::SnapshotPointer(_) => {
+                    match entry.payload {
+                        EntryPayload::SnapshotPointer(_) => {
                             act.transition_to_snapshotting(ctx);
                             return fut::Either::A(fut::err(()));
                         }

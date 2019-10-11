@@ -3,15 +3,15 @@ use std::sync::Arc;
 use actix::prelude::*;
 
 use crate::{
-    AppData, AppError,
+    AppData, AppDataResponse, AppError,
     common::{ApplyLogsTask, DependencyAddr, UpdateCurrentLeader},
     network::RaftNetwork,
-    messages::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryType},
+    messages::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryPayload},
     raft::{RaftState, Raft, SnapshotState},
-    storage::{GetLogEntries, RaftStorage, ReplicateLogEntries},
+    storage::{GetLogEntries, RaftStorage, ReplicateToLog},
 };
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<AppendEntriesRequest<D>> for Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<AppendEntriesRequest<D>> for Raft<D, R, E, N, S> {
     type Result = ResponseActFuture<Self, AppendEntriesResponse, ()>;
 
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -137,7 +137,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<A
     }
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Raft<D, R, E, N, S> {
     /// Append the given entries to the log.
     ///
     /// This routine also encapsulates all logic which must be performed related to appending log
@@ -162,8 +162,8 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
         }
 
         // Check the given entries for any config changes and take the most recent.
-        let last_conf_change = entries.iter().filter_map(|ent| match &ent.entry_type {
-            EntryType::ConfigChange(conf) => Some(conf),
+        let last_conf_change = entries.iter().filter_map(|ent| match &ent.payload {
+            EntryPayload::ConfigChange(conf) => Some(conf),
             _ => None,
         }).last();
         let f = match last_conf_change {
@@ -176,7 +176,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
 
         fut::Either::B(f.and_then(move |_, act, _| {
             act.is_appending_logs = true;
-            fut::wrap_future(act.storage.send::<ReplicateLogEntries<D, E>>(ReplicateLogEntries::new(entries.clone())))
+            fut::wrap_future(act.storage.send::<ReplicateToLog<D, E>>(ReplicateToLog::new(entries.clone())))
                 .map_err(|err, act: &mut Self, ctx| act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage))
                 .and_then(|res, act, ctx| act.map_fatal_storage_result(ctx, res))
                 .map(move |_, act, _| {

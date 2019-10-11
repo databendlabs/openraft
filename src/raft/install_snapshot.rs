@@ -3,7 +3,7 @@ use log::{debug, error};
 use futures::sync::{mpsc, oneshot};
 
 use crate::{
-    AppData, AppError,
+    AppData, AppDataResponse, AppError,
     common::{DependencyAddr, UpdateCurrentLeader},
     network::RaftNetwork,
     messages::{InstallSnapshotRequest, InstallSnapshotResponse},
@@ -11,7 +11,7 @@ use crate::{
     storage::{InstallSnapshot, InstallSnapshotChunk, RaftStorage},
 };
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<InstallSnapshotRequest> for Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<InstallSnapshotRequest> for Raft<D, R, E, N, S> {
     type Result = ResponseActFuture<Self, InstallSnapshotResponse, ()>;
 
     /// Invoked by leader to send chunks of a snapshot to a follower (§7).
@@ -89,7 +89,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<I
     }
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Raft<D, R, E, N, S> {
     // Install a new snapshot which was small enough to fit into a single frame.
     fn handle_mini_snapshot(&mut self, ctx: &mut Context<Self>, msg: InstallSnapshotRequest) -> Box<dyn ActorFuture<Actor=Self, Item=InstallSnapshotResponse, Error=()>> {
         let (tx, rx) = mpsc::unbounded();

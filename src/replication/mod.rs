@@ -13,7 +13,7 @@ use std::sync::Arc;
 use actix::prelude::*;
 
 use crate::{
-    AppData, AppError, NodeId,
+    AppData, AppDataResponse, AppError, NodeId,
     common::DependencyAddr,
     config::{Config, SnapshotPolicy},
     messages::{
@@ -122,7 +122,7 @@ struct SnapshottingState;
 ///
 /// NOTE: we do not stack replication requests to targets because this could result in
 /// out-of-order delivery.
-pub(crate) struct ReplicationStream<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> {
+pub(crate) struct ReplicationStream<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> {
     //////////////////////////////////////////////////////////////////////////
     // Static Fields /////////////////////////////////////////////////////////
 
@@ -136,7 +136,7 @@ pub(crate) struct ReplicationStream<D: AppData, E: AppError, N: RaftNetwork<D>, 
     /// will be brought down as part of a state transition to becoming a follower.
     term: u64,
     /// A channel for communicating with the Raft node which spawned this actor.
-    raftnode: Addr<Raft<D, E, N, S>>,
+    raftnode: Addr<Raft<D, R, E, N, S>>,
     /// The address of the actor responsible for implementing the `RaftNetwork` interface.
     network: Addr<N>,
     /// The storage interface.
@@ -185,12 +185,12 @@ pub(crate) struct ReplicationStream<D: AppData, E: AppError, N: RaftNetwork<D>, 
     match_term: u64,
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> ReplicationStream<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> ReplicationStream<D, R, E, N, S> {
     /// Create a new instance.
     pub fn new(
         id: NodeId, target: NodeId, term: u64, config: Arc<Config>,
         line_index: u64, line_term: u64, line_commit: u64,
-        raftnode: Addr<Raft<D, E, N, S>>, network: Addr<N>, storage: Recipient<GetLogEntries<D, E>>,
+        raftnode: Addr<Raft<D, R, E, N, S>>, network: Addr<N>, storage: Recipient<GetLogEntries<D, E>>,
     ) -> Self {
         Self{
             id, target, term, raftnode, network, storage, config,
@@ -383,7 +383,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Replicati
     }
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Actor for ReplicationStream<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Actor for ReplicationStream<D, R, E, N, S> {
     type Context = Context<Self>;
 
     /// Perform actors startup routine.
@@ -421,7 +421,7 @@ impl<D: AppData> Message for RSReplicate<D> {
     type Result = Result<(), ()>;
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSReplicate<D>> for ReplicationStream<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<RSReplicate<D>> for ReplicationStream<D, R, E, N, S> {
     type Result = Result<(), ()>;
 
     /// Handle a request to replicate the given payload of entries.
@@ -454,7 +454,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<R
 #[derive(Clone, Message)]
 pub(crate) struct RSUpdateLineCommit(pub u64);
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSUpdateLineCommit> for ReplicationStream<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<RSUpdateLineCommit> for ReplicationStream<D, R, E, N, S> {
     type Result = ();
 
     /// Handle a request to update the current line commit of the leader.
@@ -470,7 +470,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<R
 #[derive(Message)]
 pub(crate) struct RSTerminate;
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<RSTerminate> for ReplicationStream<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<RSTerminate> for ReplicationStream<D, R, E, N, S> {
     type Result = ();
 
     /// Handle a request to terminate this replication stream.

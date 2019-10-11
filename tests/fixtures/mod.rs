@@ -23,10 +23,10 @@ use tempfile::{tempdir_in, TempDir};
 
 use crate::fixtures::{
     dev::{GetCurrentLeader, MemRaft, RaftRouter},
-    memory_storage::{MemoryStorage, MemoryStorageData, MemoryStorageError},
+    memory_storage::{MemoryStorage, MemoryStorageData, MemoryStorageError, MemoryStorageResponse},
 };
 
-pub type Payload = ClientPayload<MemoryStorageData, MemoryStorageError>;
+pub type Payload = ClientPayload<MemoryStorageData, MemoryStorageResponse, MemoryStorageError>;
 
 pub fn setup_logger() {
     let logger = env_logger::Builder::from_default_env().build();
@@ -85,7 +85,7 @@ impl Handler<ClientRequest> for RaftTestController {
 
     fn handle(&mut self, mut msg: ClientRequest, ctx: &mut Self::Context) {
         if let Some(leader) = &msg.current_leader {
-            let entry = EntryNormal{data: Some(MemoryStorageData{data: msg.payload.to_string().into_bytes()})};
+            let entry = EntryNormal{data: MemoryStorageData{data: msg.payload.to_string().into_bytes()}};
             let payload = Payload::new(entry, ResponseMode::Applied);
             let node = self.nodes.get(leader).expect("Expected leader to be present it RaftTestController's nodes map.");
             let f = fut::wrap_future(node.send(payload))

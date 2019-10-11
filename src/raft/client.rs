@@ -3,20 +3,20 @@ use log::{error};
 use futures::sync::oneshot;
 
 use crate::{
-    AppData, AppError,
+    AppData, AppDataResponse, AppError,
     common::{CLIENT_RPC_RX_ERR, CLIENT_RPC_TX_ERR, ApplyLogsTask, ClientPayloadWithChan, DependencyAddr},
     network::RaftNetwork,
     messages::{ClientError, ClientPayload, ClientPayloadResponse, ResponseMode},
     raft::{RaftState, Raft},
     replication::RSReplicate,
-    storage::{AppendLogEntry, RaftStorage},
+    storage::{AppendEntryToLog, RaftStorage},
 };
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<ClientPayload<D, E>> for Raft<D, E, N, S> {
-    type Result = ResponseActFuture<Self, ClientPayloadResponse, ClientError<D, E>>;
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Handler<ClientPayload<D, R, E>> for Raft<D, R, E, N, S> {
+    type Result = ResponseActFuture<Self, ClientPayloadResponse<R>, ClientError<D, R, E>>;
 
     /// Handle client requests.
-    fn handle(&mut self, msg: ClientPayload<D, E>, _: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: ClientPayload<D, R, E>, _: &mut Self::Context) -> Self::Result {
         // Queue the message for processing or forward it along to the leader.
         let response_chan = match &mut self.state {
             RaftState::Leader(state) => {
@@ -43,14 +43,14 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Handler<C
     }
 }
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> Raft<D, R, E, N, S> {
     /// Process the given client RPC, appending it to the log and committing it to the cluster.
     ///
     /// This function takes the given RPC, appends its entries to the log, sends the entries out
     /// to the replication streams to be replicated to the cluster followers, after half of the
     /// cluster members have successfully replicated the entries this routine will proceed with
     /// applying the entries to the state machine. Then the next RPC is processed.
-    pub(super) fn process_client_rpc(&mut self, _: &mut Context<Self>, msg: ClientPayloadWithChan<D, E>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
+    pub(super) fn process_client_rpc(&mut self, _: &mut Context<Self>, msg: ClientPayloadWithChan<D, R, E>) -> impl ActorFuture<Actor=Self, Item=(), Error=()> {
         match &self.state {
             // If node is still leader, continue.
             RaftState::Leader(_) => (),
@@ -67,7 +67,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
 
         // Send the payload over to the storage engine.
         self.is_appending_logs = true; // NOTE: this routine is pipelined, but we still use a semaphore in case of transition to follower.
-        fut::Either::B(fut::wrap_future(self.storage.send::<AppendLogEntry<D, E>>(AppendLogEntry::new(payload.entry())))
+        fut::Either::B(fut::wrap_future(self.storage.send::<AppendEntryToLog<D, E>>(AppendEntryToLog::new(payload.entry())))
             .map_err(|err, act: &mut Self, ctx| {
                 act.map_fatal_actix_messaging_error(ctx, err, DependencyAddr::RaftStorage);
                 ClientError::Internal
@@ -128,7 +128,7 @@ impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> Raft<D, E
                     if let &ResponseMode::Committed = &payload.response_mode {
                         // If this RPC is configured to wait only for log committed, then respond to client now.
                         let entry = payload.entry();
-                        let _ = payload.tx.send(Ok(ClientPayloadResponse{index: payload.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_RX_ERR, err));
+                        let _ = payload.tx.send(Ok(ClientPayloadResponse::Committed{index: payload.index})).map_err(|err| error!("{} {:?}", CLIENT_RPC_RX_ERR, err));
                         let _ = act.apply_logs_pipeline.unbounded_send(ApplyLogsTask::Entry{entry, chan: None});
                     } else {
                         // Else, send it through the pipeline and it will be responded to afterwords.

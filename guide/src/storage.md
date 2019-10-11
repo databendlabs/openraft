@@ -7,9 +7,10 @@ This implementation of Raft uses the `RaftStorage` trait to define the behavior 
 When creatinga new `RaftStorage` instance, it would be logical to supply the ID of the parent Raft node as well as the node's snapshot directory. Such information is needed when booting a node for the first time.
 
 ```rust
-pub trait RaftStorage<D, E>: 'static
+pub trait RaftStorage<D, R, E>: 'static
     where
         D: AppData,
+        R: AppDataResponse,
         E: AppError,
 {
     /// The type to use as the storage actor. Should just be Self.
@@ -17,9 +18,10 @@ pub trait RaftStorage<D, E>: 'static
         Handler<GetInitialState<E>> +
         Handler<SaveHardState<E>> +
         Handler<GetLogEntries<D, E>> +
-        Handler<AppendLogEntry<D, E>> +
-        Handler<ReplicateLogEntries<D, E>> +
-        Handler<ApplyToStateMachine<D, E>> +
+        Handler<AppendEntryToLog<D, E>> +
+        Handler<ReplicateToLog<D, E>> +
+        Handler<ApplyEntryToStateMachine<D, R, E>> +
+        Handler<ReplicateToStateMachine<D, E>> +
         Handler<CreateSnapshot<E>> +
         Handler<InstallSnapshot<E>> +
         Handler<GetCurrentSnapshot<E>>;
@@ -29,9 +31,10 @@ pub trait RaftStorage<D, E>: 'static
         ToEnvelope<Self::Actor, GetInitialState<E>> +
         ToEnvelope<Self::Actor, SaveHardState<E>> +
         ToEnvelope<Self::Actor, GetLogEntries<D, E>> +
-        ToEnvelope<Self::Actor, AppendLogEntry<D, E>> +
-        ToEnvelope<Self::Actor, ReplicateLogEntries<D, E>> +
-        ToEnvelope<Self::Actor, ApplyToStateMachine<D, E>> +
+        ToEnvelope<Self::Actor, AppendEntryToLog<D, E>> +
+        ToEnvelope<Self::Actor, ReplicateToLog<D, E>> +
+        ToEnvelope<Self::Actor, ApplyEntryToStateMachine<D, R, E>> +
+        ToEnvelope<Self::Actor, ReplicateToStateMachine<D, E>> +
         ToEnvelope<Self::Actor, CreateSnapshot<E>> +
         ToEnvelope<Self::Actor, InstallSnapshot<E>> +
         ToEnvelope<Self::Actor, GetCurrentSnapshot<E>>;
@@ -42,9 +45,10 @@ Actix handlers must be implemented for the following types, all of which are fou
 - [GetInitialState](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.GetInitialState.html): A request from Raft to get Raft's state information from storage.
 - [SaveHardState](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.SaveHardState.html): A request from Raft to save its HardState.
 - [GetLogEntries](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.GetLogEntries.html): A request from Raft to get a series of log entries from storage.
-- [AppendLogEntry](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.AppendLogEntry.html): A request from Raft to append a new entry to the log.
-- [ReplicateLogEntries](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.ReplicateLogEntries.html): A request from Raft to replicate a payload of entries to the log.
-- [ApplyToStateMachine](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.ApplyToStateMachine.html): A request from Raft to apply the given log entries to the state machine.
+- [AppendEntryToLog](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.AppendEntryToLog.html): A request from Raft to append a new entry to the log.
+- [ReplicateToLog](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.ReplicateToLog.html): A request from Raft to replicate a payload of entries to the log.
+- [ApplyEntryToStateMachine](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.ApplyEntryToStateMachine.html): A request from Raft to apply the given log entry to the state machine.
+- [ReplicateToStateMachine](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.ReplicateToStateMachine.html): A request from Raft to apply the given log entries to the state machine, as part of replication.
 - [CreateSnapshot](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.CreateSnapshot.html): A request from Raft to have a new snapshot created which covers the current breadth of the log.
 - [InstallSnapshot](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.InstallSnapshot.html): A request from Raft to have a new snapshot written to disk and installed.
 - [GetCurrentSnapshot](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.GetCurrentSnapshot.html): A request from Raft to get metadata of the current snapshot.
@@ -61,27 +65,34 @@ When the storage system comes online, it should check for any state currently on
 This handler will be called periodically based on different events happening in Raft. Primarily, membership changes and elections will cause this to be called. Implementation is simple. Persist the data in the given [`HardState`](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.HardState.html) to disk, ensure that it can be accurately retrieved even after a node failure, and respond.
 
 ### log & state machine
-This pertains to implementing the `GetLogEntries`, `AppendLogEntry`, `ReplicateLogEntries` & `ApplyToStateMachine` handlers.
+This pertains to implementing the `GetLogEntries`, `AppendEntryToLog`, `ReplicateToLog`, `ApplyEntryToStateMachine` & `ReplicateToStateMachine` handlers.
 
 Traditionally, there are a few different terms used to refer to the log of mutations which are to be applied to a data storage system. Write-ahead log (WAL), op-log, there are a few different terms, sometimes with different nuances. In Raft, this is known simply as the log. A log entry describes the "type" of mutation to be applied to the state machine, and the state machine is the actual business-logic representation of all applied log entries.
 
 ##### `GetLogEntries`
 This will be called at various times to fetch a range of entries from the log. The `start` field is inclusive, the `stop` field is non-inclusive. Simply fetch the specified range of logs from the storage medium, and return them.
 
-##### `AppendLogEntry`
-Called as the direct result of a client request and will only be called on the Raft leader node. **THIS IS THE ONE AND ONLY** `RaftStorage` handler which is allowed to return errors which will not cause the Raft node to terminate. Reveiw the docs on the [`AppendLogEntry`](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.AppendLogEntry.html) type, and you will see that its message response type is the `AppError` type, which is a statically known error type chosen by the implementor (which was reviewed earlier in the [raft overview chapter](https://railgun-rs.github.io/actix-raft/raft.html)).
+##### `AppendEntryToLog`
+Called as the direct result of a client request and will only be called on the Raft leader node. **THIS IS THE ONE AND ONLY** `RaftStorage` handler which is allowed to return errors which will not cause the Raft node to terminate. Reveiw the docs on the [`AppendEntryToLog`](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.AppendEntryToLog.html) type, and you will see that its message response type is the `AppError` type, which is a statically known error type chosen by the implementor (which was reviewed earlier in the [raft overview chapter](https://railgun-rs.github.io/actix-raft/raft.html)).
 
 This is where an application may enforce business-logic rules, such as unique indices, relational constraints, type validation, whatever is needed by the application. If everything checks out, insert the entry at its specified index in the log. **Don't just blindly append,** use the entry's index. There are times when log entries must be overwritten, and Raft guarantees the safety of such operations.
 
 **Another very important note:** per the Raft spec in §8, to ensure that client requests are not applied > 1 due to a failure scenario and the client issuing a retry, the Raft spec recommends that applications track client IDs and use serial numbers on each request. This handler may then use that information to reject duplicate request using an application specific error. The application's client may observe this error and treat it as an overall success. This is an application level responsibility, Raft simply provides the mechanism to be able to implement it.
 
-##### `ReplicateLogEntries`
-This is similar to `AppendLogEntry` except that this handler is only called on followers, and they should never perform validation or falible operations. If this handler returns an error, the Raft node will terminate in order to guard against data corruption. As mentioned previously, there are times when log entries must be overwritten. Raft guarantees the safety of these operations. **Use the index of each entry when inserting into the log.**
+##### `ReplicateToLog`
+This is similar to `AppendEntryToLog` except that this handler is only called on followers, and they should never perform validation or falible operations. If this handler returns an error, the Raft node will terminate in order to guard against data corruption. As mentioned previously, there are times when log entries must be overwritten. Raft guarantees the safety of these operations. **Use the index of each entry when inserting into the log.**
 
-##### `ApplyToStateMachine`
-Once a log entry is known to be committed (it has been replicated to a majority of nodes in the cluster), the leader will call this handler, and followers will eventually do the same. Once an entry is committed, it will never be removed or overwritten in the log. To implement this handler, unpack the entry or entries given in the call, and apply each respective entry, in given order, to the state machine.
+##### `ApplyEntryToStateMachine`
+Once a log entry is known to be committed (it has been replicated to a majority of nodes in the cluster), the leader will call this handler to apply the entry to the application's state machine. Committed entries will never be removed or overwritten in the log, which is why it is safe to apply the entry to the state machine. To implement this handler, apply the contents of the entry to the application's state machine in whatever way is needed. This handler is allowed to return an application specific response type, which allows the application to return arbitrary information about the process of applying the entry.
+
+For example, if building a SQL database, and the entry calls for inserting a new record and the full row of data needs to be returned to the client, this handler may return such data in its response.
 
 Raft, as a protocol, guarantees strict linearizability. Entries will never be re-applied. The only case where data is removed from the state machine is during some cases of snapshotting where the entire state machine needs to be rebuilt. Read on for more details.
+
+**NOTE WELL:** there are times when Raft needs to append blank entries to the log which will end up being applied to the state machine. See §8 for more details. Application's should handle this with a "no-op" variant of their `AppDataResponse` type.
+
+##### `ReplicateToStateMachine`
+This is similar to `ApplyEntryToStateMachine` except that this handler is only called on followers as part of replication, and are not allowed to return response data (as there is nothing to return response data to during replication).
 
 ### snapshots & log compaction
 This pertains to implementing the `CreateSnapshot`, `InstallSnapshot` & `GetCurrentSnapshot`.

@@ -7,22 +7,37 @@ To use this crate, applications must also implement the `RaftStorage` & `RaftNet
 ### deep dive
 To get started, applications can define a type alias which declares the types which are going to be used for the application's data, errors, `RaftNetwork` impl & `RaftStorage` impl.
 
-First, let's define the new application's main data struct. This is the data which will be inside of Raft's normal log entries.
+First, let's define the new application's main data type & a response type. This is the data which will be inside of Raft's normal log entries and the response type which the storage engine will return after applying them to the state machine.
 
 ```rust
-use actix_raft::AppData;
+use actix_raft::{AppData, AppDataResponse};
 use serde::{Serialize, Deserialize};
 
-/// The application's data struct.
+/// The application's data type.
+///
+/// Enum types are recommended as typically there will be different types of data mutating
+/// requests which will be submitted by application clients.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Data {
-    // Your data fields go here.
+enum Data {
+    // Your data variants go here.
 }
 
-/// This also has a `'static` lifetime constraint, so no `&` references
-/// at this time. The new futures & async/await should help out with this
-/// quite a lot, so hopefully this constraint will be removed in actix as well.
+/// The application's data response types.
+///
+/// Enum types are recommended as typically there will be multiple response types which can be
+/// returned from the storage layer.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+enum DataResponse {
+    // Your response variants go here.
+}
+
+/// This also has a `'static` lifetime constraint, so no `&` references at this time.
+/// The new futures & async/await should help out with this quite a lot, so
+/// hopefully this constraint will be removed in actix as well.
 impl AppData for Data {}
+
+/// This also has a `'static` lifetime constraint, so no `&` references at this time.
+impl AppDataResponse for DataResponse {}
 ```
 
 Now we'll define the application's error type.
@@ -82,7 +97,7 @@ impl Handler<messages::AppendEntriesRequest<Data>> for AppNetwork {
 // Impl handlers on `AppNetwork` for the other `actix_raft::messages` message types.
 ```
 
-Now for the storage impl. The storage impl will assume an `actix::Context` by default (which is async).
+Now for the storage impl. We'll use an `actix::Context` here (which is async), but you could also use an `actix::SyncContext`.
 
 ```rust
 use actix::{Actor, Context, ResponseActFuture};
@@ -91,14 +106,14 @@ use actix_raft::{NodeId, RaftStorage, storage};
 /// Your application's storage interface actor.
 struct AppStorage {/* ... snip ... */}
 
-// Ensure you impl this over your application's data & error types.
-impl RaftStorage<Data, Error> for AppStorage {
+// Ensure you impl this over your application's data, data response & error types.
+impl RaftStorage<Data, DataResponse, Error> for AppStorage {
     type Actor = Self;
-    type Context = Context<Self>; // Or SyncContext<Self> for Sync actors.
+    type Context = Context<Self>;
 }
 
 impl Actor for AppStorage {
-    type Context = Context<Self>; // Use `SyncContext<Self>` if storage is sync.
+    type Context = Context<Self>;
 
     // ... snip ... other actix methods can be implemented here as needed.
 }
@@ -147,7 +162,7 @@ And finally, a simple type alias which ties everything together. This type alias
 use actix_raft::Raft;
 
 /// A type alias used to define an application's concrete Raft type.
-type AppRaft = Raft<Data, Error, AppNetwork, AppStorage>;
+type AppRaft = Raft<Data, DataResponse, Error, AppNetwork, AppStorage>;
 ```
 
 ### booting up the system

@@ -1,8 +1,12 @@
 Raft
 ====
-The central most type of this crate is the `Raft` type.
+The central most type of this crate is the `Raft` type. It is a highly generic actor with the signature:
 
-It is a highly generic actor with the signature `Raft<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>>`. The generics here allow `Raft` to use statically known types, defined in the parent application using this crate, for maximum performance and type-safety. Users of this Raft implementation get to choose the exact types they want to use for application specific error handling coming from the storage layer, and also get to work with their application's data types directly without the overhead of serializing and deserializing the data as it moves through the `Raft` system.
+```
+Raft<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>>
+```
+
+The generics here allow `Raft` to use statically known types, defined in the parent application using this crate, for maximum performance and type-safety. Users of this Raft implementation get to choose the exact types they want to use for application specific error handling coming from the storage layer, and also get to work with their application's data types directly without the overhead of serializing and deserializing the data as it moves through the `Raft` system.
 
 ### API
 As the `Raft` type is an Actix [`Actor`](https://docs.rs/actix/latest/actix/trait.Actor.html), all interaction with `Raft` is handled via message passing. All pertinent message types derive the serde traits for easier integration with other data serialization formats in the Rust ecosystem, providing maximum flexibility for applications using this crate.
@@ -33,13 +37,13 @@ The following diagram shows how client requests are presented to Raft from withi
 
 The numbered elements represent segments of the workflow.
 1. The parent application has received a client request, and presents the payload to `Raft` using the `ClientPayload` type.
-2. `Raft` will present the payload to the `RaftStorage` impl via the `AppendLogEntry` type. This is the one location where the `RaftStorage` impl may return an application specific error. This could be for validation logic, enforcing unique indices, data/schema validation; whatever application level rules the application enforces, this is where they should be enforced. Close to the data, just before it hits the `Raft` log.
+2. `Raft` will present the payload to the `RaftStorage` impl via the `AppendEntryToLog` type. This is the one location where the `RaftStorage` impl may return an application specific error. This could be for validation logic, enforcing unique indices, data/schema validation; whatever application level rules the application enforces, this is where they should be enforced. Close to the data, just before it hits the `Raft` log.
 3. The `RaftStorage` impl responds to the `Raft` actor. If it is successful, go to step 4, else the error response will be sent back to the caller immediately. The error response is a statically known type defined by the parent application.
 4. `Raft` uses the `RaftNetwork` impl to communicate with the peers of the cluster.
 5. `Raft` uses the `RaftNetwork` impl to replicate the entry to all other nodes in the cluster.
 6. Follower nodes in the cluster respond upon successful replication.
 7. Once the entry has been replicated to a majority of nodes in the cluster — known as a "committed" entry in the Raft spec — it is ready to be applied to the application's state machine.
-8. `Raft` will apply the entry to the application's state machine via the `ApplyToStateMachine` type.
+8. `Raft` will apply the entry to the application's state machine via the `ApplyEntryToStateMachine` type.
 9. The `RaftStorage` impl responds to the `Raft` actor.
 10. The success response is returned to the caller.
 

@@ -2,14 +2,14 @@
 use actix::prelude::*;
 
 use crate::{
-    AppData, AppError,
+    AppData, AppDataResponse, AppError,
     messages::{AppendEntriesRequest},
     network::RaftNetwork,
     replication::{ReplicationStream, RSState},
     storage::{RaftStorage},
 };
 
-impl<D: AppData, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, E>> ReplicationStream<D, E, N, S> {
+impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStorage<D, R, E>> ReplicationStream<D, R, E, N, S> {
     /// Drive the replication stream forward when it is in state `LineRate`.
     pub(super) fn drive_state_line_rate(&mut self, ctx: &mut Context<Self>) {
         let state = match &mut self.state {
