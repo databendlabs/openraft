@@ -409,17 +409,25 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStor
                 .finish());
         }
 
+        // Start the metrics reporter.
+        ctx.run_interval(self.config.metrics_rate.clone(), |act, ctx| act.report_metrics(ctx));
+
         // Set initial state based on state recovered from disk.
         let is_only_configured_member = self.membership.len() == 1 && self.membership.contains(&self.id);
-        if !is_only_configured_member || &self.last_log_index != &u64::min_value() {
+        // If this is the only configured member and there is live state, then this is
+        // a single-node cluster currently. Become leader.
+        if is_only_configured_member && &self.last_log_index != &u64::min_value() {
+            self.become_leader(ctx);
+        }
+        // Else if there are other members, that can only mean that state was recovered. Become follower.
+        else if !is_only_configured_member {
             self.state = RaftState::Follower(FollowerState::default());
             self.update_election_timeout(ctx);
-        } else {
+        }
+        // Else, for any other condition, stay non-voter.
+        else {
             self.state = RaftState::NonVoter;
         }
-
-        // Begin reporting metrics.
-        ctx.run_interval(self.config.metrics_rate.clone(), |act, ctx| act.report_metrics(ctx));
     }
 
     /// Transform and log an actix MailboxError.
