@@ -301,6 +301,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStor
         // Spawn stream which consumes client RPCs.
         ctx.spawn(fut::wrap_stream(client_request_receiver)
             .and_then(|msg, act: &mut Self, ctx| act.process_client_rpc(ctx, msg))
+            .then(|_, _, _| fut::ok(())) // Ensure errors don't cause the stream to close.
             .finish());
 
         // Spawn new replication stream actors.
