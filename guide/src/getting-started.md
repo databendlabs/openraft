@@ -106,8 +106,8 @@ use actix_raft::{NodeId, RaftStorage, storage};
 /// Your application's storage interface actor.
 struct AppStorage {/* ... snip ... */}
 
-// Ensure you impl this over your application's data & error types.
-impl RaftStorage<Data, Error> for AppStorage {
+// Ensure you impl this over your application's data, data response & error types.
+impl RaftStorage<Data, DataResponse, Error> for AppStorage {
     type Actor = Self;
     type Context = Context<Self>;
 }
