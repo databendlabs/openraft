@@ -1,6 +1,13 @@
 changelog
 =========
 ### 0.4
+#### 0.4.1
+A few bug fixes.
+
+- Fixed an issue where a node in a single-node Raft was not resuming as leader after a crash.
+- Fixed an issue where hard state was not being saved after a node becomes leader in a single-node Raft.
+- Fixed an issue where the client request pipeline (a `Stream` with the `actix::StreamFinish`) was being closed after an error was returned during processing of client requests (which should not cause the stream to close). This was unexpected and undocumented behavior, very simple fix though.
+
 #### 0.4.0
 This changeset introduces a new `AppDataResponse` type which represents a concrete data type which must be sent back from the `RaftStorage` impl from the `ApplyEntryToStateMachine` handler. This provides a more direct path for returning application level data from the storage impl. Often times this is needed for responding to client requests in a timely / efficient manner.
 
