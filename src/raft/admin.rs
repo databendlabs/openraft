@@ -60,6 +60,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStor
             self.current_term += 1;
             self.voted_for = Some(self.id);
             self.become_leader(ctx);
+            self.save_hard_state(ctx);
         } else {
             self.become_candidate(ctx);
         }
