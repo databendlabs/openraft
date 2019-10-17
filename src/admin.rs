@@ -36,6 +36,17 @@ pub enum InitWithConfigError {
     NotAllowed,
 }
 
+impl std::fmt::Display for InitWithConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InitWithConfigError::Internal => write!(f, "An error internal to Raft has taken place."),
+            InitWithConfigError::NotAllowed => write!(f, "Submission of this command to this node is not allowed due to the state of the node."),
+        }
+    }
+}
+
+impl std::error::Error for InitWithConfigError {}
+
 //////////////////////////////////////////////////////////////////////////////////////////////////
 // ProposeConfigChange ///////////////////////////////////////////////////////////////////////////
 
@@ -100,3 +111,17 @@ pub enum ProposeConfigChangeError<D: AppData, R: AppDataResponse, E: AppError> {
     /// removed have already been scheduled for removal and/or do not exist in the current config.
     Noop,
 }
+
+impl<D: AppData, R: AppDataResponse, E: AppError> std::fmt::Display for ProposeConfigChangeError<D, R, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProposeConfigChangeError::ClientError(err) => write!(f, "{}", err),
+            ProposeConfigChangeError::InoperableConfig => write!(f, "The given config would leave the cluster in an inoperable state."),
+            ProposeConfigChangeError::Internal => write!(f, "An error internal to Raft has taken place."),
+            ProposeConfigChangeError::NodeNotLeader(leader_opt) => write!(f, "The handling node is not the Raft leader. Tracked value for cluster leader: {:?}", leader_opt),
+            ProposeConfigChangeError::Noop => write!(f, "The proposed config change would have no effect, this is a no-op."),
+        }
+    }
+}
+
+impl<D: AppData, R: AppDataResponse, E: AppError> std::error::Error for ProposeConfigChangeError<D, R, E> {}

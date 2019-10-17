@@ -327,7 +327,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError> ClientPayload<D, R, E> {
     }
 
     /// Create a new instance.
-    pub fn new_base(entry: EntryPayload<D>, response_mode: ResponseMode) -> Self {
+    pub(crate) fn new_base(entry: EntryPayload<D>, response_mode: ResponseMode) -> Self {
         Self{entry, response_mode, marker0: std::marker::PhantomData, marker1: std::marker::PhantomData}
     }
 
