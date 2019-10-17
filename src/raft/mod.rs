@@ -251,6 +251,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStor
         // Setup new term.
         self.current_term += 1;
         self.voted_for = Some(self.id);
+        self.current_leader = None;
         self.save_hard_state(ctx);
 
         // Send RPCs to all members in parallel.
