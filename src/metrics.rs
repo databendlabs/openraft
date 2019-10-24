@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// All possible states of a Raft node.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
     /// The node is completely passive; replicating entries, but not voting or timing out.
     NonVoter,
@@ -41,7 +41,7 @@ pub enum State {
 ///
 /// See the [module level documentation](https://docs.rs/actix-raft/latest/actix-raft/metrics/index.html)
 /// for more details.
-#[derive(Clone, Debug, Message)]
+#[derive(Clone, Debug, Message, PartialEq, Eq)]
 pub struct RaftMetrics {
     /// The ID of the Raft node.
     pub id: NodeId,

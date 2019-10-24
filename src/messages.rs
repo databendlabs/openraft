@@ -146,7 +146,7 @@ pub struct EntrySnapshotPointer {
 // MembershipConfig //////////////////////////////////////////////////////////////////////////////
 
 /// A model of the membership configuration of the cluster.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MembershipConfig {
     /// A flag indicating if the system is currently in a joint consensus state.
     pub is_in_joint_consensus: bool,
