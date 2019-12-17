@@ -7,6 +7,7 @@ Added a few convenience derivations.
 - Derive `Eq` on `messages::MembershipConfig`.
 - Derive `Eq` on `metrics::State`.
 - Derive `PartialEq` & `Eq` on `metrics::RaftMetrics`.
+- Update development dependencies.
 
 #### 0.4.2
 A few QOL improvements.

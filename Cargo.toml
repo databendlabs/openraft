@@ -22,10 +22,10 @@ serde = { version="1", features=["derive"] }
 tokio-timer = "0.2"
 
 [dev-dependencies]
-async-log = "1"
-env_logger = "0.6"
+async-log = "2"
+env_logger = "0.7"
 rmp = "0.8"
-rmp-serde = "0.13"
+rmp-serde = "0.14"
 tempfile = "3"
 
 [features]
