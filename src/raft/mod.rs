@@ -183,10 +183,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStor
         self.cleanup_state(ctx);
 
         // Ensure there is no election timeout.
-        self.election_timeout_stamp = None;
-        if let Some(handle) = self.election_timeout.take() {
-            ctx.cancel_future(handle);
-        }
+        self.cancel_election_timeout(ctx);
 
         // Perform the transition.
         self.state = RaftState::NonVoter;
@@ -204,9 +201,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStor
         self.cleanup_state(ctx);
 
         // Ensure we have an election timeout loop running.
-        if self.election_timeout.is_none() {
-            self.update_election_timeout(ctx);
-        }
+        self.update_election_timeout(ctx); // Cleans-up any old timeout task, and spawns a new one.
 
         // Perform the transition.
         self.state = RaftState::Follower(FollowerState::default());
@@ -291,9 +286,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStor
     fn become_leader(&mut self, ctx: &mut Context<Self>) {
         // Cleanup previous state & ensure we've cancelled the election timeout system.
         self.cleanup_state(ctx);
-        if let Some(handle) = self.election_timeout {
-            ctx.cancel_future(handle);
-        }
+        self.cancel_election_timeout(ctx);
 
         // Prep new leader state.
         let (client_request_queue, client_request_receiver) = mpsc::unbounded();
@@ -540,9 +533,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStor
         }
 
         // Cancel any current election timeout before spawning a new one.
-        if let Some(handle) = self.election_timeout.take() {
-            ctx.cancel_future(handle);
-        }
+        self.cancel_election_timeout(ctx);
 
         let timeout = Duration::from_millis(self.config.election_timeout_millis);
         self.election_timeout_stamp = Some(Instant::now() + timeout.clone());
@@ -558,6 +549,14 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D>, S: RaftStor
     /// Update the election timeout stamp, typically due to receiving a heartbeat from the Raft leader.
     fn update_election_timeout_stamp(&mut self) {
         self.election_timeout_stamp = Some(Instant::now() + Duration::from_millis(self.config.election_timeout_millis));
+    }
+
+    /// Cancel the current election timeout task if present & clean-up the election timeout stamp.
+    fn cancel_election_timeout(&mut self, ctx: &mut Context<Self>) {
+        self.election_timeout_stamp = None;
+        if let Some(handle) = self.election_timeout.take() {
+            ctx.cancel_future(handle);
+        }
     }
 
     /// Update the node's current membership config.
