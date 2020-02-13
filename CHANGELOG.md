@@ -8,6 +8,7 @@ Added a few convenience derivations.
 - Derive `Eq` on `metrics::State`.
 - Derive `PartialEq` & `Eq` on `metrics::RaftMetrics`.
 - Update development dependencies.
+- Fixed bug [#41](https://github.com/railgun-rs/actix-raft/issues/41) where nodes were not starting a new election timeout task after comign down from leader state. Thanks @lionesswardrobe for the report!
 
 #### 0.4.2
 A few QOL improvements.
