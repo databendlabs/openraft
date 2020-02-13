@@ -1,7 +1,7 @@
 changelog
 =========
 ### 0.4
-#### 0.4.3 (unreleased)
+#### 0.4.3
 Added a few convenience derivations.
 
 - Derive `Eq` on `messages::MembershipConfig`.
