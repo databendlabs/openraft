@@ -16,16 +16,16 @@ All message types are sent to a `Raft` node via the actor's [`Addr`](https://doc
 The public API of the `Raft` type is broken up into 3 sections: Client Requests, Raft RPCs & Admin Commands.
 
 ##### Client Requests
-- [ClientPayload](https://docs.rs/actix-raft/latest/actix-raft/messages/struct.ClientPayload.html): a payload of data which needs to be committed to the Raft cluster. Typically, this will be data coming from application clients.
+- [ClientPayload](https://docs.rs/actix-raft/latest/actix_raft/messages/struct.ClientPayload.html): a payload of data which needs to be committed to the Raft cluster. Typically, this will be data coming from application clients.
 
 ##### Raft RPCs
-- [AppendEntriesRequest](https://docs.rs/actix-raft/latest/actix-raft/messages/struct.AppendEntriesRequest.html): An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
-- [VoteRequest](https://docs.rs/actix-raft/latest/actix-raft/messages/struct.VoteRequest.html): An RPC invoked by candidates to gather votes (§5.2).
-- [InstallSnapshotRequest](https://docs.rs/actix-raft/latest/actix-raft/messages/struct.InstallSnapshotRequest.html): Invoked by the Raft leader to send chunks of a snapshot to a follower (§7).
+- [AppendEntriesRequest](https://docs.rs/actix-raft/latest/actix_raft/messages/struct.AppendEntriesRequest.html): An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
+- [VoteRequest](https://docs.rs/actix-raft/latest/actix_raft/messages/struct.VoteRequest.html): An RPC invoked by candidates to gather votes (§5.2).
+- [InstallSnapshotRequest](https://docs.rs/actix-raft/latest/actix_raft/messages/struct.InstallSnapshotRequest.html): Invoked by the Raft leader to send chunks of a snapshot to a follower (§7).
 
 ##### Admin Commands
-- [InitWithConfig](https://docs.rs/actix-raft/latest/actix-raft/messages/struct.InitWithConfig.html): Initialize a pristine Raft node with the given config & start a campaign to become leader.
-- [ProposeConfigChange](https://docs.rs/actix-raft/latest/actix-raft/messages/struct.ProposeConfigChange.html): Propose a new membership config change to a running cluster.
+- [InitWithConfig](https://docs.rs/actix-raft/latest/actix_raft/messages/struct.InitWithConfig.html): Initialize a pristine Raft node with the given config & start a campaign to become leader.
+- [ProposeConfigChange](https://docs.rs/actix-raft/latest/actix_raft/messages/struct.ProposeConfigChange.html): Propose a new membership config change to a running cluster.
 
 
 ### client requests diagram

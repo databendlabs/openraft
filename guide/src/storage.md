@@ -42,16 +42,16 @@ pub trait RaftStorage<D, R, E>: 'static
 ```
 
 Actix handlers must be implemented for the following types, all of which are found in the `storage` module:
-- [GetInitialState](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.GetInitialState.html): A request from Raft to get Raft's state information from storage.
-- [SaveHardState](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.SaveHardState.html): A request from Raft to save its HardState.
-- [GetLogEntries](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.GetLogEntries.html): A request from Raft to get a series of log entries from storage.
-- [AppendEntryToLog](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.AppendEntryToLog.html): A request from Raft to append a new entry to the log.
-- [ReplicateToLog](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.ReplicateToLog.html): A request from Raft to replicate a payload of entries to the log.
-- [ApplyEntryToStateMachine](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.ApplyEntryToStateMachine.html): A request from Raft to apply the given log entry to the state machine.
-- [ReplicateToStateMachine](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.ReplicateToStateMachine.html): A request from Raft to apply the given log entries to the state machine, as part of replication.
-- [CreateSnapshot](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.CreateSnapshot.html): A request from Raft to have a new snapshot created which covers the current breadth of the log.
-- [InstallSnapshot](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.InstallSnapshot.html): A request from Raft to have a new snapshot written to disk and installed.
-- [GetCurrentSnapshot](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.GetCurrentSnapshot.html): A request from Raft to get metadata of the current snapshot.
+- [GetInitialState](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.GetInitialState.html): A request from Raft to get Raft's state information from storage.
+- [SaveHardState](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.SaveHardState.html): A request from Raft to save its HardState.
+- [GetLogEntries](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.GetLogEntries.html): A request from Raft to get a series of log entries from storage.
+- [AppendEntryToLog](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.AppendEntryToLog.html): A request from Raft to append a new entry to the log.
+- [ReplicateToLog](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.ReplicateToLog.html): A request from Raft to replicate a payload of entries to the log.
+- [ApplyEntryToStateMachine](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.ApplyEntryToStateMachine.html): A request from Raft to apply the given log entry to the state machine.
+- [ReplicateToStateMachine](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.ReplicateToStateMachine.html): A request from Raft to apply the given log entries to the state machine, as part of replication.
+- [CreateSnapshot](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.CreateSnapshot.html): A request from Raft to have a new snapshot created which covers the current breadth of the log.
+- [InstallSnapshot](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.InstallSnapshot.html): A request from Raft to have a new snapshot written to disk and installed.
+- [GetCurrentSnapshot](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.GetCurrentSnapshot.html): A request from Raft to get metadata of the current snapshot.
 
 The following sections detail how to implement a safe and correct storage system for Raft using the `RaftStorage` trait. A very important note to keep in mind: data storage, data layout, data representation ... all of that is up to the implementor of the `RaftStorage` trait. That's the whole point. Every application is going to have nuances in terms of what they need to do at the storage layer. This is one of the primary locations where an application can innovate and differentiate.
 
@@ -59,10 +59,10 @@ The following sections detail how to implement a safe and correct storage system
 This pertains to implementing the `GetInitialState` & `SaveHardState` handlers.
 
 ##### `GetInitialState`
-When the storage system comes online, it should check for any state currently on disk. Based on how the storage layer is persisting data, it may have to look in a few locations to get all of the needed data. Once the [`InitialState`](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.InitialState.html) data has been collected, respond.
+When the storage system comes online, it should check for any state currently on disk. Based on how the storage layer is persisting data, it may have to look in a few locations to get all of the needed data. Once the [`InitialState`](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.InitialState.html) data has been collected, respond.
 
 ##### `SaveHardState`
-This handler will be called periodically based on different events happening in Raft. Primarily, membership changes and elections will cause this to be called. Implementation is simple. Persist the data in the given [`HardState`](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.HardState.html) to disk, ensure that it can be accurately retrieved even after a node failure, and respond.
+This handler will be called periodically based on different events happening in Raft. Primarily, membership changes and elections will cause this to be called. Implementation is simple. Persist the data in the given [`HardState`](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.HardState.html) to disk, ensure that it can be accurately retrieved even after a node failure, and respond.
 
 ### log & state machine
 This pertains to implementing the `GetLogEntries`, `AppendEntryToLog`, `ReplicateToLog`, `ApplyEntryToStateMachine` & `ReplicateToStateMachine` handlers.
@@ -73,7 +73,7 @@ Traditionally, there are a few different terms used to refer to the log of mutat
 This will be called at various times to fetch a range of entries from the log. The `start` field is inclusive, the `stop` field is non-inclusive. Simply fetch the specified range of logs from the storage medium, and return them.
 
 ##### `AppendEntryToLog`
-Called as the direct result of a client request and will only be called on the Raft leader node. **THIS IS THE ONE AND ONLY** `RaftStorage` handler which is allowed to return errors which will not cause the Raft node to terminate. Reveiw the docs on the [`AppendEntryToLog`](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.AppendEntryToLog.html) type, and you will see that its message response type is the `AppError` type, which is a statically known error type chosen by the implementor (which was reviewed earlier in the [raft overview chapter](https://railgun-rs.github.io/actix-raft/raft.html)).
+Called as the direct result of a client request and will only be called on the Raft leader node. **THIS IS THE ONE AND ONLY** `RaftStorage` handler which is allowed to return errors which will not cause the Raft node to terminate. Reveiw the docs on the [`AppendEntryToLog`](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.AppendEntryToLog.html) type, and you will see that its message response type is the `AppError` type, which is a statically known error type chosen by the implementor (which was reviewed earlier in the [raft overview chapter](https://railgun-rs.github.io/actix-raft/raft.html)).
 
 This is where an application may enforce business-logic rules, such as unique indices, relational constraints, type validation, whatever is needed by the application. If everything checks out, insert the entry at its specified index in the log. **Don't just blindly append,** use the entry's index. There are times when log entries must be overwritten, and Raft guarantees the safety of such operations.
 
@@ -113,14 +113,14 @@ This handler is called when the Raft node determines that a snapshot is needed b
 - The generated snapshot should include all log entries starting from entry `0` up through the index specified by `CreateSnapshot.through`. This will include any snapshot which may already exist. If a snapshot does already exist, the new log compaction process should be able to just load the old snapshot first, and resume processing from its last entry.
 - The newly generated snapshot should be written to the configured snapshot directory.
 - All previous entries in the log should be deleted up to the entry specified at index `through`.
-- The entry at index `through` should be replaced with a new entry created from calling [`Entry::new_snapshot_pointer(...)`](https://docs.rs/actix-raft/latest/actix-raft/messages/struct.Entry.html).
+- The entry at index `through` should be replaced with a new entry created from calling [`Entry::new_snapshot_pointer(...)`](https://docs.rs/actix-raft/latest/actix_raft/messages/struct.Entry.html).
 - Any old snapshot will no longer have representation in the log, and should be deleted.
-- Return a [`CurrentSnapshotData`](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.CurrentSnapshotData.html) struct which contains all metadata pertinent to the snapshot.
+- Return a [`CurrentSnapshotData`](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.CurrentSnapshotData.html) struct which contains all metadata pertinent to the snapshot.
 
 ##### `InstallSnapshot`
 This handler is called when the leader of the Raft cluster has determined that the subject node needs to receive a new snapshot. This is typically the case when new nodes are added to a running cluster, or if a node has gone offline for some amount of time without being removed from the cluster, or the node is VERY slow.
 
-This message holds an `UnboundedReceiver` which will stream in new chunks of data as they are received from the Raft leader. See the docs on the [InstallSnapshotChunk](https://docs.rs/actix-raft/latest/actix-raft/storage/struct.InstallSnapshotChunk.html) for more info.
+This message holds an `UnboundedReceiver` which will stream in new chunks of data as they are received from the Raft leader. See the docs on the [InstallSnapshotChunk](https://docs.rs/actix-raft/latest/actix_raft/storage/struct.InstallSnapshotChunk.html) for more info.
 
 **implementation algorithm:**
 - Upon receiving the request, a new snapshot file should be created on disk.
@@ -129,7 +129,7 @@ This message holds an `UnboundedReceiver` which will stream in new chunks of dat
 
 Once a chunk is received which is the final chunk of the snapshot (`InstallSnapshotChunk.done`), after writing the chunk's data, there are a few important steps to take:
 
-- Create a new entry in the log via the [`Entry::new_snapshot_pointer(...)`](https://docs.rs/actix-raft/latest/actix-raft/messages/struct.Entry.html) constructor. Insert the new entry into the log at the specified `index` of the original `InstallSnapshot` payload.
+- Create a new entry in the log via the [`Entry::new_snapshot_pointer(...)`](https://docs.rs/actix-raft/latest/actix_raft/messages/struct.Entry.html) constructor. Insert the new entry into the log at the specified `index` of the original `InstallSnapshot` payload.
 - If there are any logs older than `index`, remove them.
 - If there are any other snapshots in the configured snapshot dir, remove them.
 - If an existing log entry has same index and term as snapshot's last included entry, retain log entries following it, then return.
