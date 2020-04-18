@@ -1,0 +1,263 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js light">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Raft - Actix Raft</title>
+        
+
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+        <meta name="description" content="The ActixRaft user guide.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800" rel="stylesheet" type="text/css">
+        <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro:500" rel="stylesheet" type="text/css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        
+
+        
+    </head>
+    <body>
+        <!-- Provide site root to javascript -->
+        <script type="text/javascript">
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script type="text/javascript">
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script type="text/javascript">
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script type="text/javascript">
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="raft.html" class="active"><strong aria-hidden="true">2.</strong> Raft</a></li><li class="chapter-item expanded "><a href="network.html"><strong aria-hidden="true">3.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">4.</strong> Storage</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">5.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">5.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">5.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">6.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">7.</strong> Get To It</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                        
+                    </div>
+
+                    <h1 class="menu-title">Actix Raft</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        
+                    </div>
+                </div>
+
+                
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" name="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+                
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script type="text/javascript">
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1><a class="header" href="#raft" id="raft">Raft</a></h1>
+<p>The central most type of this crate is the <code>Raft</code> type. It is a highly generic actor with the signature:</p>
+<pre><code>Raft&lt;D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork&lt;D&gt;, S: RaftStorage&lt;D, R, E&gt;&gt;
+</code></pre>
+<p>The generics here allow <code>Raft</code> to use statically known types, defined in the parent application using this crate, for maximum performance and type-safety. Users of this Raft implementation get to choose the exact types they want to use for application specific error handling coming from the storage layer, and also get to work with their application's data types directly without the overhead of serializing and deserializing the data as it moves through the <code>Raft</code> system.</p>
+<h3><a class="header" href="#api" id="api">API</a></h3>
+<p>As the <code>Raft</code> type is an Actix <a href="https://docs.rs/actix/latest/actix/trait.Actor.html"><code>Actor</code></a>, all interaction with <code>Raft</code> is handled via message passing. All pertinent message types derive the serde traits for easier integration with other data serialization formats in the Rust ecosystem, providing maximum flexibility for applications using this crate.</p>
+<p>All message types are sent to a <code>Raft</code> node via the actor's <a href="https://docs.rs/actix/latest/actix/struct.Addr.html"><code>Addr</code></a>. Applications using this crate are expected to have networking capabilities for cluster communication &amp; client interaction. Applications are responsible for handling client requests &amp; Raft RPCs coming from their network layer, and must send them to the <code>Raft</code> actor returning the response. More details on this topic can be found in the <a href="https://railgun-rs.github.io/actix-raft/network.html">network chapter</a>.</p>
+<p>The public API of the <code>Raft</code> type is broken up into 3 sections: Client Requests, Raft RPCs &amp; Admin Commands.</p>
+<h5><a class="header" href="#client-requests" id="client-requests">Client Requests</a></h5>
+<ul>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/messages/struct.ClientPayload.html">ClientPayload</a>: a payload of data which needs to be committed to the Raft cluster. Typically, this will be data coming from application clients.</li>
+</ul>
+<h5><a class="header" href="#raft-rpcs" id="raft-rpcs">Raft RPCs</a></h5>
+<ul>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/messages/struct.AppendEntriesRequest.html">AppendEntriesRequest</a>: An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/messages/struct.VoteRequest.html">VoteRequest</a>: An RPC invoked by candidates to gather votes (§5.2).</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/messages/struct.InstallSnapshotRequest.html">InstallSnapshotRequest</a>: Invoked by the Raft leader to send chunks of a snapshot to a follower (§7).</li>
+</ul>
+<h5><a class="header" href="#admin-commands" id="admin-commands">Admin Commands</a></h5>
+<ul>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/messages/struct.InitWithConfig.html">InitWithConfig</a>: Initialize a pristine Raft node with the given config &amp; start a campaign to become leader.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/messages/struct.ProposeConfigChange.html">ProposeConfigChange</a>: Propose a new membership config change to a running cluster.</li>
+</ul>
+<h3><a class="header" href="#client-requests-diagram" id="client-requests-diagram">client requests diagram</a></h3>
+<p>The following diagram shows how client requests are presented to Raft from within an application, how the data is stored, replicated and ultimately applied to the application's state machine.</p>
+<p>
+    <img src="./images/raft-workflow-client-requests.png"/>
+</p>
+<p>The numbered elements represent segments of the workflow.</p>
+<ol>
+<li>The parent application has received a client request, and presents the payload to <code>Raft</code> using the <code>ClientPayload</code> type.</li>
+<li><code>Raft</code> will present the payload to the <code>RaftStorage</code> impl via the <code>AppendEntryToLog</code> type. This is the one location where the <code>RaftStorage</code> impl may return an application specific error. This could be for validation logic, enforcing unique indices, data/schema validation; whatever application level rules the application enforces, this is where they should be enforced. Close to the data, just before it hits the <code>Raft</code> log.</li>
+<li>The <code>RaftStorage</code> impl responds to the <code>Raft</code> actor. If it is successful, go to step 4, else the error response will be sent back to the caller immediately. The error response is a statically known type defined by the parent application.</li>
+<li><code>Raft</code> uses the <code>RaftNetwork</code> impl to communicate with the peers of the cluster.</li>
+<li><code>Raft</code> uses the <code>RaftNetwork</code> impl to replicate the entry to all other nodes in the cluster.</li>
+<li>Follower nodes in the cluster respond upon successful replication.</li>
+<li>Once the entry has been replicated to a majority of nodes in the cluster — known as a &quot;committed&quot; entry in the Raft spec — it is ready to be applied to the application's state machine.</li>
+<li><code>Raft</code> will apply the entry to the application's state machine via the <code>ApplyEntryToStateMachine</code> type.</li>
+<li>The <code>RaftStorage</code> impl responds to the <code>Raft</code> actor.</li>
+<li>The success response is returned to the caller.</li>
+</ol>
+<p><strong>NOTE:</strong> this implementation of Raft offers the option for client requests to receive a response once its entry has been committed, and before it is applied to the state machine. This is controlled by the <code>ClientPayload.response_type</code> field, which is an instance of the <code>ResponseMode</code> enum which may be either <code>Committed</code> or <code>Applied</code>. Application's may use either depending on their needs.</p>
+<hr />
+<p>The API is simple enough, but there is more to learn about <code>Raft</code> than just feeding it messages. The next logical topic to understand is <a href="https://railgun-rs.github.io/actix-raft/network.html">Raft networking</a>.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                        
+                            <a rel="prev" href="getting-started.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+                        
+
+                        
+                            <a rel="next" href="network.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+                        
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                
+                    <a rel="prev" href="getting-started.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+                
+
+                
+                    <a rel="next" href="network.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+                
+            </nav>
+
+        </div>
+
+        
+
+        
+
+        
+        
+        
+        <script type="text/javascript">
+            window.playpen_copyable = true;
+        </script>
+        
+
+        
+
+        
+        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
+        
+
+        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+
+        <!-- Custom JS scripts -->
+        
+
+        
+
+    </body>
+</html>

@@ -1,0 +1,418 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js light">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Getting Started - Actix Raft</title>
+        
+
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+        <meta name="description" content="The ActixRaft user guide.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800" rel="stylesheet" type="text/css">
+        <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro:500" rel="stylesheet" type="text/css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        
+
+        
+    </head>
+    <body>
+        <!-- Provide site root to javascript -->
+        <script type="text/javascript">
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script type="text/javascript">
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script type="text/javascript">
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script type="text/javascript">
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html" class="active"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="raft.html"><strong aria-hidden="true">2.</strong> Raft</a></li><li class="chapter-item expanded "><a href="network.html"><strong aria-hidden="true">3.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">4.</strong> Storage</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">5.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">5.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">5.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">6.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">7.</strong> Get To It</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                        
+                    </div>
+
+                    <h1 class="menu-title">Actix Raft</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        
+                    </div>
+                </div>
+
+                
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" name="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+                
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script type="text/javascript">
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1><a class="header" href="#getting-started" id="getting-started">Getting Started</a></h1>
+<p>This crate's <code>Raft</code> type is an Actix actor which is intended to run within some parent application, which traditionally will be some sort of data storage system (SQL, NoSQL, KV store, AMQP, Streaming, whatever). Inasmuch as the <code>Raft</code> instance is an actor, it is expected that the parent application is also built upon the Actix actor framework, though that is not technically required.</p>
+<p>To use this crate, applications must also implement the <code>RaftStorage</code> &amp; <code>RaftNetwork</code> traits. See the <a href="https://railgun-rs.github.io/actix-raft/storage.html">storage</a> &amp; <a href="https://railgun-rs.github.io/actix-raft/network.html">network</a> chapters for details on what these traits represent and how to implement them. In brief, the implementing types must be actors which can handle specific message types which correspond to everything needed for Raft storage and networking.</p>
+<h3><a class="header" href="#deep-dive" id="deep-dive">deep dive</a></h3>
+<p>To get started, applications can define a type alias which declares the types which are going to be used for the application's data, errors, <code>RaftNetwork</code> impl &amp; <code>RaftStorage</code> impl.</p>
+<p>First, let's define the new application's main data type &amp; a response type. This is the data which will be inside of Raft's normal log entries and the response type which the storage engine will return after applying them to the state machine.</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>use actix_raft::{AppData, AppDataResponse};
+use serde::{Serialize, Deserialize};
+
+/// The application's data type.
+///
+/// Enum types are recommended as typically there will be different types of data mutating
+/// requests which will be submitted by application clients.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+enum Data {
+    // Your data variants go here.
+}
+
+/// The application's data response types.
+///
+/// Enum types are recommended as typically there will be multiple response types which can be
+/// returned from the storage layer.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+enum DataResponse {
+    // Your response variants go here.
+}
+
+/// This also has a `'static` lifetime constraint, so no `&amp;` references at this time.
+/// The new futures &amp; async/await should help out with this quite a lot, so
+/// hopefully this constraint will be removed in actix as well.
+impl AppData for Data {}
+
+/// This also has a `'static` lifetime constraint, so no `&amp;` references at this time.
+impl AppDataResponse for DataResponse {}
+<span class="boring">}
+</span></code></pre></pre>
+<p>Now we'll define the application's error type.</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>use actix_raft::AppError;
+use serde::{Serialize, Deserialize};
+
+/// The application's error struct. This could be an enum as well.
+///
+/// NOTE: the below impls for Display &amp; Error can be
+/// derived using crates like `Failure` &amp;c.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Error;
+
+impl std::fmt::Display for Error {
+    fn fmt(&amp;self, f: &amp;mut std::fmt::Formatter&lt;'_&gt;) -&gt; std::fmt::Result {
+        // ... snip ...
+    }
+}
+
+impl std::error::Error for Error {}
+
+// Mark this type for use as an `actix_raft::AppError`.
+impl AppError for Error {}
+<span class="boring">}
+</span></code></pre></pre>
+<p>Now for the two big parts. <code>RaftNetwork</code> &amp; <code>RaftStorage</code>. Here, we will only look at the skeleton for these types. See the <a href="https://railgun-rs.github.io/actix-raft/network.html">network</a> &amp; <a href="https://railgun-rs.github.io/actix-raft/storage.html">storage</a> chapters for more details on how to actually implement these types. First, let's cover the network impl.</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>use actix::{Actor, Context, ResponseActFuture};
+use actix_raft::{RaftNetwork, messages};
+
+/// Your application's network interface actor.
+struct AppNetwork {/* ... snip ... */}
+
+impl Actor for AppNetwork {
+    type Context = Context&lt;Self&gt;;
+
+    // ... snip ... other actix methods can be implemented here as needed.
+}
+
+// Ensure you impl this over your application's data type. Here, it is `Data`.
+impl RaftNetwork&lt;Data&gt; for AppNetwork {}
+
+// Then you just implement the various message handlers.
+// See the network chapter for details.
+impl Handler&lt;messages::AppendEntriesRequest&lt;Data&gt;&gt; for AppNetwork {
+    type Result = ResponseActFuture&lt;Self, messages::AppendEntriesResponse, ()&gt;;
+
+    fn handle(&amp;mut self, _msg: messages::AppendEntriesRequest&lt;Data&gt;, _ctx: &amp;mut Self::Context) -&gt; Self::Result {
+        // ... snip ...
+<span class="boring">        actix::fut::err(())
+</span>    }
+}
+
+// Impl handlers on `AppNetwork` for the other `actix_raft::messages` message types.
+<span class="boring">}
+</span></code></pre></pre>
+<p>Now for the storage impl. We'll use an <code>actix::Context</code> here (which is async), but you could also use an <code>actix::SyncContext</code>.</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>use actix::{Actor, Context, ResponseActFuture};
+use actix_raft::{NodeId, RaftStorage, storage};
+
+/// Your application's storage interface actor.
+struct AppStorage {/* ... snip ... */}
+
+// Ensure you impl this over your application's data, data response &amp; error types.
+impl RaftStorage&lt;Data, DataResponse, Error&gt; for AppStorage {
+    type Actor = Self;
+    type Context = Context&lt;Self&gt;;
+}
+
+impl Actor for AppStorage {
+    type Context = Context&lt;Self&gt;;
+
+    // ... snip ... other actix methods can be implemented here as needed.
+}
+
+// Then you just implement the various message handlers.
+// See the storage chapter for details.
+impl Handler&lt;storage::GetInitialState&lt;Error&gt;&gt; for AppStorage {
+    type Result = ResponseActFuture&lt;Self, storage::InitialState, Error&gt;;
+
+    fn handle(&amp;mut self, _msg: storage::GetInitialState&lt;Error&gt;, _ctx: &amp;mut Self::Context) -&gt; Self::Result {
+        // ... snip ...
+<span class="boring">        actix::fut::err(())
+</span>    }
+}
+
+// Impl handlers on `AppStorage` for the other `actix_raft::storage` message types.
+<span class="boring">}
+</span></code></pre></pre>
+<p>In order for Raft to expose metrics on how it is doing, we will need a type which can receive <code>RaftMetrics</code> messages. Application's can do whatever they want with this info. Expose integrations with Prometheus &amp; Influx, trigger events, whatever is needed. Here we will keep it simple.</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>use actix::{Actor, Context};
+use actix_raft::RaftMetrics;
+
+/// Your application's metrics interface actor.
+struct AppMetrics {/* ... snip ... */}
+
+impl Actor for AppMetrics {
+    type Context = Context&lt;Self&gt;;
+
+    // ... snip ... other actix methods can be implemented here as needed.
+}
+
+impl Handler&lt;RaftMetrics&gt; for AppMetrics {
+    type Result = ();
+
+    fn handle(&amp;mut self, _msg: RaftMetrics, _ctx: &amp;mut Context&lt;Self&gt;) -&gt; Self::Result {
+        // ... snip ...
+    }
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p>And finally, a simple type alias which ties everything together. This type alias can then be used throughout the application's code base without the need to specify the various types being used for data, errors, network &amp; storage.</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>use actix_raft::Raft;
+
+/// A type alias used to define an application's concrete Raft type.
+type AppRaft = Raft&lt;Data, DataResponse, Error, AppNetwork, AppStorage&gt;;
+<span class="boring">}
+</span></code></pre></pre>
+<h3><a class="header" href="#booting-up-the-system" id="booting-up-the-system">booting up the system</a></h3>
+<p>Now that the various needed types are in place, the actix system will need to be started, the various actor types we've defined above will need to be started, and then we're off to the races.</p>
+<pre><pre class="playpen"><code class="language-rust">use actix;
+use actix_raft::{Config, ConfigBuilder, SnapshotPolicy};
+
+fn main() {
+    // Build the actix system.
+    let sys = actix::System::new(&quot;my-awesome-app&quot;);
+
+    // Build the needed runtime config for Raft specifying where
+    // snapshots will be stored. See the storage chapter for more details.
+    let config = Config::build(String::from(&quot;/app/snapshots&quot;)).validate().unwrap();
+
+    // Start off with just a single node in the cluster. Applications
+    // should implement their own discovery system. See the cluster
+    // formation chapter for more details.
+    let members = vec![1];
+
+    // Start the various actor types and hold on to their addrs.
+    let network = AppNetwork.start();
+    let storage = AppStorage.start();
+    let metrics = AppMetrics.start();
+    let app_raft = AppRaft::new(1, config, network, storage, metrics).start();
+
+    // Run the actix system. Unix signals for termination &amp;
+    // graceful shutdown are automatically handled.
+    let _ = sys.run();
+}
+</code></pre></pre>
+<hr />
+<p>You've already ascended to the next level of AWESOME! There is a lot more to cover, we're just getting started. Next, let's take a look at the <code>Raft</code> type in more detail.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                        
+                            <a rel="prev" href="overview.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+                        
+
+                        
+                            <a rel="next" href="raft.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+                        
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                
+                    <a rel="prev" href="overview.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+                
+
+                
+                    <a rel="next" href="raft.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+                
+            </nav>
+
+        </div>
+
+        
+
+        
+
+        
+        
+        
+        <script type="text/javascript">
+            window.playpen_copyable = true;
+        </script>
+        
+
+        
+
+        
+        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
+        
+
+        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+
+        <!-- Custom JS scripts -->
+        
+
+        
+
+    </body>
+</html>

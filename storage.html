@@ -1,0 +1,338 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js light">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Storage - Actix Raft</title>
+        
+
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+        <meta name="description" content="The ActixRaft user guide.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800" rel="stylesheet" type="text/css">
+        <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro:500" rel="stylesheet" type="text/css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        
+
+        
+    </head>
+    <body>
+        <!-- Provide site root to javascript -->
+        <script type="text/javascript">
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script type="text/javascript">
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script type="text/javascript">
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script type="text/javascript">
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="raft.html"><strong aria-hidden="true">2.</strong> Raft</a></li><li class="chapter-item expanded "><a href="network.html"><strong aria-hidden="true">3.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html" class="active"><strong aria-hidden="true">4.</strong> Storage</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">5.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">5.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">5.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">6.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">7.</strong> Get To It</a></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                        
+                    </div>
+
+                    <h1 class="menu-title">Actix Raft</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        
+                    </div>
+                </div>
+
+                
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" name="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+                
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script type="text/javascript">
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1><a class="header" href="#storage" id="storage">Storage</a></h1>
+<p>The way that data is stored and represented is an integral part of every data storage system. Whether it is a SQL or NoSQL database, a columner store, a KV store, or anything which stores data, control over the storage technology and technique is critical.</p>
+<p>This implementation of Raft uses the <code>RaftStorage</code> trait to define the behavior needed of an application's storage layer to work with Raft. This is definitely the most complex looking trait in this crate. Ultimately the implementing type must be an Actix <a href="https://docs.rs/actix/latest/actix"><code>Actor</code></a> and it must implement handlers for a specific set of message types.</p>
+<p>When creatinga new <code>RaftStorage</code> instance, it would be logical to supply the ID of the parent Raft node as well as the node's snapshot directory. Such information is needed when booting a node for the first time.</p>
+<pre><pre class="playpen"><code class="language-rust">
+<span class="boring">#![allow(unused_variables)]
+</span><span class="boring">fn main() {
+</span>pub trait RaftStorage&lt;D, R, E&gt;: 'static
+    where
+        D: AppData,
+        R: AppDataResponse,
+        E: AppError,
+{
+    /// The type to use as the storage actor. Should just be Self.
+    type Actor: Actor&lt;Context=Self::Context&gt; +
+        Handler&lt;GetInitialState&lt;E&gt;&gt; +
+        Handler&lt;SaveHardState&lt;E&gt;&gt; +
+        Handler&lt;GetLogEntries&lt;D, E&gt;&gt; +
+        Handler&lt;AppendEntryToLog&lt;D, E&gt;&gt; +
+        Handler&lt;ReplicateToLog&lt;D, E&gt;&gt; +
+        Handler&lt;ApplyEntryToStateMachine&lt;D, R, E&gt;&gt; +
+        Handler&lt;ReplicateToStateMachine&lt;D, E&gt;&gt; +
+        Handler&lt;CreateSnapshot&lt;E&gt;&gt; +
+        Handler&lt;InstallSnapshot&lt;E&gt;&gt; +
+        Handler&lt;GetCurrentSnapshot&lt;E&gt;&gt;;
+
+    /// The type to use as the storage actor's context. Should be `Context&lt;Self&gt;` or `SyncContext&lt;Self&gt;`.
+    type Context: ActorContext +
+        ToEnvelope&lt;Self::Actor, GetInitialState&lt;E&gt;&gt; +
+        ToEnvelope&lt;Self::Actor, SaveHardState&lt;E&gt;&gt; +
+        ToEnvelope&lt;Self::Actor, GetLogEntries&lt;D, E&gt;&gt; +
+        ToEnvelope&lt;Self::Actor, AppendEntryToLog&lt;D, E&gt;&gt; +
+        ToEnvelope&lt;Self::Actor, ReplicateToLog&lt;D, E&gt;&gt; +
+        ToEnvelope&lt;Self::Actor, ApplyEntryToStateMachine&lt;D, R, E&gt;&gt; +
+        ToEnvelope&lt;Self::Actor, ReplicateToStateMachine&lt;D, E&gt;&gt; +
+        ToEnvelope&lt;Self::Actor, CreateSnapshot&lt;E&gt;&gt; +
+        ToEnvelope&lt;Self::Actor, InstallSnapshot&lt;E&gt;&gt; +
+        ToEnvelope&lt;Self::Actor, GetCurrentSnapshot&lt;E&gt;&gt;;
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p>Actix handlers must be implemented for the following types, all of which are found in the <code>storage</code> module:</p>
+<ul>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.GetInitialState.html">GetInitialState</a>: A request from Raft to get Raft's state information from storage.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.SaveHardState.html">SaveHardState</a>: A request from Raft to save its HardState.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.GetLogEntries.html">GetLogEntries</a>: A request from Raft to get a series of log entries from storage.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.AppendEntryToLog.html">AppendEntryToLog</a>: A request from Raft to append a new entry to the log.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.ReplicateToLog.html">ReplicateToLog</a>: A request from Raft to replicate a payload of entries to the log.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.ApplyEntryToStateMachine.html">ApplyEntryToStateMachine</a>: A request from Raft to apply the given log entry to the state machine.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.ReplicateToStateMachine.html">ReplicateToStateMachine</a>: A request from Raft to apply the given log entries to the state machine, as part of replication.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.CreateSnapshot.html">CreateSnapshot</a>: A request from Raft to have a new snapshot created which covers the current breadth of the log.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.InstallSnapshot.html">InstallSnapshot</a>: A request from Raft to have a new snapshot written to disk and installed.</li>
+<li><a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.GetCurrentSnapshot.html">GetCurrentSnapshot</a>: A request from Raft to get metadata of the current snapshot.</li>
+</ul>
+<p>The following sections detail how to implement a safe and correct storage system for Raft using the <code>RaftStorage</code> trait. A very important note to keep in mind: data storage, data layout, data representation ... all of that is up to the implementor of the <code>RaftStorage</code> trait. That's the whole point. Every application is going to have nuances in terms of what they need to do at the storage layer. This is one of the primary locations where an application can innovate and differentiate.</p>
+<h3><a class="header" href="#state" id="state">state</a></h3>
+<p>This pertains to implementing the <code>GetInitialState</code> &amp; <code>SaveHardState</code> handlers.</p>
+<h5><a class="header" href="#getinitialstate" id="getinitialstate"><code>GetInitialState</code></a></h5>
+<p>When the storage system comes online, it should check for any state currently on disk. Based on how the storage layer is persisting data, it may have to look in a few locations to get all of the needed data. Once the <a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.InitialState.html"><code>InitialState</code></a> data has been collected, respond.</p>
+<h5><a class="header" href="#savehardstate" id="savehardstate"><code>SaveHardState</code></a></h5>
+<p>This handler will be called periodically based on different events happening in Raft. Primarily, membership changes and elections will cause this to be called. Implementation is simple. Persist the data in the given <a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.HardState.html"><code>HardState</code></a> to disk, ensure that it can be accurately retrieved even after a node failure, and respond.</p>
+<h3><a class="header" href="#log--state-machine" id="log--state-machine">log &amp; state machine</a></h3>
+<p>This pertains to implementing the <code>GetLogEntries</code>, <code>AppendEntryToLog</code>, <code>ReplicateToLog</code>, <code>ApplyEntryToStateMachine</code> &amp; <code>ReplicateToStateMachine</code> handlers.</p>
+<p>Traditionally, there are a few different terms used to refer to the log of mutations which are to be applied to a data storage system. Write-ahead log (WAL), op-log, there are a few different terms, sometimes with different nuances. In Raft, this is known simply as the log. A log entry describes the &quot;type&quot; of mutation to be applied to the state machine, and the state machine is the actual business-logic representation of all applied log entries.</p>
+<h5><a class="header" href="#getlogentries" id="getlogentries"><code>GetLogEntries</code></a></h5>
+<p>This will be called at various times to fetch a range of entries from the log. The <code>start</code> field is inclusive, the <code>stop</code> field is non-inclusive. Simply fetch the specified range of logs from the storage medium, and return them.</p>
+<h5><a class="header" href="#appendentrytolog" id="appendentrytolog"><code>AppendEntryToLog</code></a></h5>
+<p>Called as the direct result of a client request and will only be called on the Raft leader node. <strong>THIS IS THE ONE AND ONLY</strong> <code>RaftStorage</code> handler which is allowed to return errors which will not cause the Raft node to terminate. Reveiw the docs on the <a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.AppendEntryToLog.html"><code>AppendEntryToLog</code></a> type, and you will see that its message response type is the <code>AppError</code> type, which is a statically known error type chosen by the implementor (which was reviewed earlier in the <a href="https://railgun-rs.github.io/actix-raft/raft.html">raft overview chapter</a>).</p>
+<p>This is where an application may enforce business-logic rules, such as unique indices, relational constraints, type validation, whatever is needed by the application. If everything checks out, insert the entry at its specified index in the log. <strong>Don't just blindly append,</strong> use the entry's index. There are times when log entries must be overwritten, and Raft guarantees the safety of such operations.</p>
+<p><strong>Another very important note:</strong> per the Raft spec in §8, to ensure that client requests are not applied &gt; 1 due to a failure scenario and the client issuing a retry, the Raft spec recommends that applications track client IDs and use serial numbers on each request. This handler may then use that information to reject duplicate request using an application specific error. The application's client may observe this error and treat it as an overall success. This is an application level responsibility, Raft simply provides the mechanism to be able to implement it.</p>
+<h5><a class="header" href="#replicatetolog" id="replicatetolog"><code>ReplicateToLog</code></a></h5>
+<p>This is similar to <code>AppendEntryToLog</code> except that this handler is only called on followers, and they should never perform validation or falible operations. If this handler returns an error, the Raft node will terminate in order to guard against data corruption. As mentioned previously, there are times when log entries must be overwritten. Raft guarantees the safety of these operations. <strong>Use the index of each entry when inserting into the log.</strong></p>
+<h5><a class="header" href="#applyentrytostatemachine" id="applyentrytostatemachine"><code>ApplyEntryToStateMachine</code></a></h5>
+<p>Once a log entry is known to be committed (it has been replicated to a majority of nodes in the cluster), the leader will call this handler to apply the entry to the application's state machine. Committed entries will never be removed or overwritten in the log, which is why it is safe to apply the entry to the state machine. To implement this handler, apply the contents of the entry to the application's state machine in whatever way is needed. This handler is allowed to return an application specific response type, which allows the application to return arbitrary information about the process of applying the entry.</p>
+<p>For example, if building a SQL database, and the entry calls for inserting a new record and the full row of data needs to be returned to the client, this handler may return such data in its response.</p>
+<p>Raft, as a protocol, guarantees strict linearizability. Entries will never be re-applied. The only case where data is removed from the state machine is during some cases of snapshotting where the entire state machine needs to be rebuilt. Read on for more details.</p>
+<p><strong>NOTE WELL:</strong> there are times when Raft needs to append blank entries to the log which will end up being applied to the state machine. See §8 for more details. Application's should handle this with a &quot;no-op&quot; variant of their <code>AppDataResponse</code> type.</p>
+<h5><a class="header" href="#replicatetostatemachine" id="replicatetostatemachine"><code>ReplicateToStateMachine</code></a></h5>
+<p>This is similar to <code>ApplyEntryToStateMachine</code> except that this handler is only called on followers as part of replication, and are not allowed to return response data (as there is nothing to return response data to during replication).</p>
+<h3><a class="header" href="#snapshots--log-compaction" id="snapshots--log-compaction">snapshots &amp; log compaction</a></h3>
+<p>This pertains to implementing the <code>CreateSnapshot</code>, <code>InstallSnapshot</code> &amp; <code>GetCurrentSnapshot</code>.</p>
+<p>The snapshot and log compaction capabilities defined in the Raft spec are fully supported by this implementation. The storage layer is left to the application which uses this Raft implementation, but all snapshot behavior defined in the Raft spec is supported. Additionally, this implemention supports:</p>
+<ul>
+<li>Configurable snapshot policies. This allows nodes to perform log compacation at configurable intervals.</li>
+<li>Leader based <code>InstallSnapshot</code> RPC support. This allows the Raft leader to make determinations on when a new member (or a slow member) should receive a snapshot in order to come up-to-date faster.</li>
+</ul>
+<p>For clarity, <strong>it is emphasized</strong> that implementing the log compaction &amp; snapshot creation behavior is up to the <code>RaftStorage</code> implementor. This guide is here to help, and §7 of the Raft spec is dedicated to the subject.</p>
+<h5><a class="header" href="#createsnapshot" id="createsnapshot"><code>CreateSnapshot</code></a></h5>
+<p>This handler is called when the Raft node determines that a snapshot is needed based on the cluster's configured snapshot policy. <code>Raft</code> guarantees that this interface will never be called multiple overlapping times, and it will not be called when an <code>InstallSnapshot</code> operation is in progress.</p>
+<p><strong>It is critical to note</strong> that the newly created snapshot must be able to be used to completely and accurately create a state machine. In addition to saving space on disk (log compaction), snapshots are used to bring new Raft nodes and slow Raft nodes up-to-speed with the cluster leader.</p>
+<p><strong>implementation algorithm:</strong></p>
+<ul>
+<li>The generated snapshot should include all log entries starting from entry <code>0</code> up through the index specified by <code>CreateSnapshot.through</code>. This will include any snapshot which may already exist. If a snapshot does already exist, the new log compaction process should be able to just load the old snapshot first, and resume processing from its last entry.</li>
+<li>The newly generated snapshot should be written to the configured snapshot directory.</li>
+<li>All previous entries in the log should be deleted up to the entry specified at index <code>through</code>.</li>
+<li>The entry at index <code>through</code> should be replaced with a new entry created from calling <a href="https://docs.rs/actix-raft/latest/actix_raft/messages/struct.Entry.html"><code>Entry::new_snapshot_pointer(...)</code></a>.</li>
+<li>Any old snapshot will no longer have representation in the log, and should be deleted.</li>
+<li>Return a <a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.CurrentSnapshotData.html"><code>CurrentSnapshotData</code></a> struct which contains all metadata pertinent to the snapshot.</li>
+</ul>
+<h5><a class="header" href="#installsnapshot" id="installsnapshot"><code>InstallSnapshot</code></a></h5>
+<p>This handler is called when the leader of the Raft cluster has determined that the subject node needs to receive a new snapshot. This is typically the case when new nodes are added to a running cluster, or if a node has gone offline for some amount of time without being removed from the cluster, or the node is VERY slow.</p>
+<p>This message holds an <code>UnboundedReceiver</code> which will stream in new chunks of data as they are received from the Raft leader. See the docs on the <a href="https://docs.rs/actix-raft/latest/actix_raft/storage/struct.InstallSnapshotChunk.html">InstallSnapshotChunk</a> for more info.</p>
+<p><strong>implementation algorithm:</strong></p>
+<ul>
+<li>Upon receiving the request, a new snapshot file should be created on disk.</li>
+<li>Every new chunk of data received should be written to the new snapshot file starting at the <code>offset</code> specified in the chunk. Once the chunk has been successfully written, the <code>InstallSnapshotChunk.cb</code> (a <code>oneshot::Sender</code>) should be called to indicate that the storage engine has finished writing the chunk.</li>
+<li>If the receiver is dropped, the snapshot which was being created should be removed from disk, and a success response should be returned.</li>
+</ul>
+<p>Once a chunk is received which is the final chunk of the snapshot (<code>InstallSnapshotChunk.done</code>), after writing the chunk's data, there are a few important steps to take:</p>
+<ul>
+<li>Create a new entry in the log via the <a href="https://docs.rs/actix-raft/latest/actix_raft/messages/struct.Entry.html"><code>Entry::new_snapshot_pointer(...)</code></a> constructor. Insert the new entry into the log at the specified <code>index</code> of the original <code>InstallSnapshot</code> payload.</li>
+<li>If there are any logs older than <code>index</code>, remove them.</li>
+<li>If there are any other snapshots in the configured snapshot dir, remove them.</li>
+<li>If an existing log entry has same index and term as snapshot's last included entry, retain log entries following it, then return.</li>
+<li>Else, discard the entire log leaving only the new snapshot pointer. <strong>The state machine must be rebuilt from the new snapshot.</strong> Return once the state machine has been brought up-to-date.</li>
+</ul>
+<h5><a class="header" href="#getcurrentsnapshot" id="getcurrentsnapshot"><code>GetCurrentSnapshot</code></a></h5>
+<p>A request to get information on the current snapshot. <code>RaftStorage</code> implementations must take care to ensure that there is only ever one active snapshot, old snapshots should be deleted as part of <code>CreateSnapshot</code> and <code>InstallSnapshot</code> requests, and the snapshot information should be able to be retrieved efficiently. Having to load and parse the entire snapshot on each <code>GetCurrentSnapshot</code> request may not be such a great idea! Snapshots can be quite large.</p>
+<hr />
+<p>Woot woot! Made it through the hard part! There is more to learn, so let's keep going.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                        
+                            <a rel="prev" href="network.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+                        
+
+                        
+                            <a rel="next" href="cluster-controls.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+                        
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                
+                    <a rel="prev" href="network.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+                
+
+                
+                    <a rel="next" href="cluster-controls.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+                
+            </nav>
+
+        </div>
+
+        
+
+        
+
+        
+        
+        
+        <script type="text/javascript">
+            window.playpen_copyable = true;
+        </script>
+        
+
+        
+
+        
+        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
+        
+
+        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+
+        <!-- Custom JS scripts -->
+        
+
+        
+
+    </body>
+</html>
