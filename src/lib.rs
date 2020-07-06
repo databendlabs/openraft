@@ -1,27 +1,32 @@
 #![cfg_attr(feature="docinclude", feature(external_doc))]
 #![cfg_attr(feature="docinclude", doc(include="../README.md"))]
 
-pub mod admin;
-mod common;
 pub mod config;
-pub mod messages;
+mod core;
+pub mod error;
 pub mod metrics;
 pub mod network;
-mod raft;
 mod replication;
+pub mod raft;
 pub mod storage;
 
-use std::{error::Error, fmt::Debug};
+use std::error::Error;
+use std::fmt::Debug;
+
 use serde::{Serialize, de::DeserializeOwned};
 
 // Top-level exports.
 pub use crate::{
     config::{Config, ConfigBuilder, SnapshotPolicy},
-    raft::Raft,
+    error::{ConfigError, InitWithConfigError, ProposeConfigChangeError, RaftError},
     metrics::RaftMetrics,
     network::RaftNetwork,
+    raft::Raft,
     storage::RaftStorage,
 };
+
+// Re-exports.
+pub use async_trait::async_trait;
 
 /// A Raft node's ID.
 pub type NodeId = u64;

@@ -33,3 +33,8 @@ actix-raft is licensed under the terms of the MIT License or the Apache License 
 ----
 
 **NOTE:** the appearance of the "section" symbols `§` throughout this project are references to specific sections of the Raft spec.
+
+----
+
+TODO:
+- [ ] add a section to the guide on application specific requirements, mostly pertinent to §8 of the spec.

@@ -1,28 +1,30 @@
 [package]
-name = "actix-raft"
-version = "0.4.4"
+name = "async-raft"
+version = "0.5.0"
 edition = "2018"
 authors = ["Anthony Dodd <Dodd.AnthonyJosiah@gmail.com>"]
 categories = ["algorithms", "asynchronous", "data-structures"]
-description = "An implementation of the Raft distributed consensus protocol using the Actix actor framework."
-documentation = "https://docs.rs/actix-raft"
-homepage = "https://github.com/railgun-rs/actix-raft"
+description = "An async implementation of the Raft distributed consensus protocol."
+documentation = "https://docs.rs/async-raft"
+homepage = "https://github.com/railgun-rs/async-raft"
 keywords = ["raft", "consensus", "data-storage"]
 license = "MIT/Apache-2.0"
-repository = "https://github.com/railgun-rs/actix-raft"
+repository = "https://github.com/railgun-rs/async-raft"
 readme = "README.md"
 
 [dependencies]
-actix = "0.8"
-bytes = "0.4"
-futures = "0.1"
+async-trait = "0.1.36"
+bytes = "0.5"
+futures = "0.3"
 log = "0.4"
-rand = "0.6"
+rand = "0.7"
 serde = { version="1", features=["derive"] }
-tokio-timer = "0.2"
+thiserror = "1.0.20"
+tokio = { version="0.2", default-features=false, features=["io-util", "macros", "rt-core", "stream", "sync", "time"] }
+tracing = "0.1"
+tracing-futures = "0.2.4"
 
 [dev-dependencies]
-async-log = "2"
 env_logger = "0.7"
 rmp = "0.8"
 rmp-serde = "0.14"

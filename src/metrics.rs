@@ -1,47 +1,33 @@
 //! Raft metrics for observability.
 //!
-//! The `RaftMetrics` type derives the `actix::Message` type, so applications are expected to
-//! implement a handler for receiving these metrics, and then should pass its
-//! `actix::Receiver<RaftMetrics>` to the `Raft` instance constructor when starting a Raft node.
-//!
-//! The `RaftMetrics` type holds the baseline metrics on the state of the Raft node the metrics
-//! are coming from, its current role in the cluster, its current membership config, as well as
-//! information on the Raft log and the last index to be applied to the state machine.
-//!
 //! Applications may use this data in whatever way is needed. The obvious use cases are to expose
-//! these metrics to a metrics collection system like Prometheus or Influx. Applications may also
+//! these metrics to a metrics collection system like Prometheus. Applications may also
 //! use this data to trigger events within higher levels of the parent application.
 //!
-//! Metrics will be exported at a regular interval according to the
-//! [Config.metrics_rate](https://docs.rs/actix-raft/latest/actix_raft/config/struct.Config.html#structfield.metrics_rate)
-//! value, but will also emit a new metrics record any time the `state` of the Raft node changes,
-//! the `membership_config` changes, or the `current_leader` changes.
+//! Metrics are observed on a running Raft node via the `Raft::metrics()` method, which will
+//! return a stream of metrics.
 
-use actix::prelude::*;
-
-use crate::{
-    NodeId,
-    messages::MembershipConfig,
-};
+use crate::NodeId;
+use crate::raft::MembershipConfig;
 
 /// All possible states of a Raft node.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
-    /// The node is completely passive; replicating entries, but not voting or timing out.
+    /// The node is completely passive; replicating entries, but neither voting nor timing out.
     NonVoter,
-    /// The node is actively replicating logs from the leader.
+    /// The node is replicating logs from the leader.
     Follower,
-    /// The node has detected an election timeout so is requesting votes to become leader.
+    /// The node is campaigning to become the cluster leader.
     Candidate,
-    /// The node is actively functioning as the Raft cluster leader.
+    /// The node is the Raft cluster leader.
     Leader,
 }
 
 /// Baseline metrics of the current state of the subject Raft node.
 ///
-/// See the [module level documentation](https://docs.rs/actix-raft/latest/actix_raft/metrics/index.html)
+/// See the [module level documentation](TODO:)
 /// for more details.
-#[derive(Clone, Debug, Message, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RaftMetrics {
     /// The ID of the Raft node.
     pub id: NodeId,
@@ -57,4 +43,11 @@ pub struct RaftMetrics {
     pub current_leader: Option<NodeId>,
     /// The current membership config of the cluster.
     pub membership_config: MembershipConfig,
+}
+
+impl RaftMetrics {
+    pub(crate) fn new_initial(id: NodeId) -> Self {
+        let membership_config = MembershipConfig::new_initial(id);
+        Self{id, state: State::Follower, current_term: 0, last_log_index: 0, last_applied: 0, current_leader: None, membership_config}
+    }
 }
