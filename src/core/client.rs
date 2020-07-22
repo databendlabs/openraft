@@ -16,7 +16,9 @@ pub(super) struct ClientRequestEntry<D: AppData, R: AppDataResponse, E: AppError
     /// This value is Arc'd so that it may be sent across thread boundaries for replication
     /// without having to clone the data payload itself.
     pub entry: Arc<Entry<D>>,
+    /// The response mode of the request.
     pub response_mode: ResponseMode,
+    /// The response channel for the request.
     pub tx: TxClientResponse<D, R, E>,
 }
 
@@ -29,6 +31,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError> ClientRequestEntry<D, R, E> {
 
 impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> LeaderState<'a, D, R, E, N, S> {
     /// Commit the initial entry which new leaders are obligated to create when first coming to power, per §8.
+    #[tracing::instrument(level="trace", skip(self))]
     pub(super) async fn commit_initial_leader_entry(&mut self) -> RaftResult<(), E> {
         // If the cluster has just formed, and the current index is 0, then commit the current
         // config, else a blank payload.
@@ -73,6 +76,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Handle client requests.
+    #[tracing::instrument(level="trace", skip(self, rpc, tx))]
     pub(super) async fn handle_client_request(&mut self, rpc: ClientRequest<D>, tx: TxClientResponse<D, R, E>) {
         let entry = match self.append_payload_to_log(rpc.entry).await {
             Ok(entry) => ClientRequestEntry::from_entry(entry, rpc.response_mode, tx),
@@ -85,6 +89,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Transform the given payload into an entry, assign an index and term, and append the entry to the log.
+    #[tracing::instrument(level="trace", skip(self, payload))]
     pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> RaftResult<Entry<D>, E> {
         let entry = Entry{index: self.core.last_log_index + 1, term: self.core.current_term, payload};
         self.core.storage.append_entry_to_log(&entry).await.map_err(|err| self.core.map_fatal_storage_result(err))?;
@@ -97,6 +102,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     /// NOTE WELL: this routine does not wait for the request to actually finish replication, it
     /// merely beings the process. Once the request is committed to the cluster, its response will
     /// be generated asynchronously.
+    #[tracing::instrument(level="trace", skip(self, req))]
     pub(super) async fn replicate_client_request(&mut self, req: ClientRequestEntry<D, R, E>) {
         // Replicate the request if there are other cluster members. The client response will be
         // returned elsewhere after the entry has been committed to the cluster.
@@ -118,6 +124,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Handle the post-commit logic for a client request.
+    #[tracing::instrument(level="trace", skip(self, req))]
     pub(super) async fn client_request_post_commit(&mut self, req: ClientRequestEntry<D, R, E>) {
         // Respond to the user per the requested client response mode.
         match &req.response_mode {

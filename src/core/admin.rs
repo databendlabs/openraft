@@ -11,8 +11,10 @@ use crate::replication::{RaftEvent, ReplicationStream};
 
 impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> NonVoterState<'a, D, R, E, N, S> {
     /// Handle the admin `init_with_config` command.
+    #[tracing::instrument(level="debug", skip(self, req))]
     pub(super) async fn handle_init_with_config(&mut self, mut req: InitWithConfig) -> Result<(), InitWithConfigError<E>> {
         if self.core.last_log_index != 0 || self.core.current_term != 0 {
+            tracing::error!({self.core.last_log_index, self.core.current_term}, "rejecting init_with_config request as last_log_index or current_term is 0");
             return Err(InitWithConfigError::NotAllowed);
         }
 
@@ -44,6 +46,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
 impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> LeaderState<'a, D, R, E, N, S> {
     /// An admin message handler invoked to trigger dynamic cluster configuration changes. See §6.
+    #[tracing::instrument(level="debug", skip(self, msg))]
     pub(super) async fn handle_propose_config_change(
         &mut self, msg: ProposeConfigChange,
     ) -> Result<impl Future<Output=Result<(), ProposeConfigChangeError<E>>> + Send + Sync + 'static, ProposeConfigChangeError<E>> {
@@ -68,6 +71,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         // can be updated to be normal members once all non-voters have been brought up-to-date.
         for target in msg.add_members {
             // Build & spawn a replication stream for the target member.
+            tracing::debug!({target}, "spawning replication stream");
             let replstream = ReplicationStream::new(
                 self.core.id, target, self.core.current_term, self.core.config.clone(),
                 self.core.last_log_index, self.core.last_log_term, self.core.commit_index,
@@ -79,6 +83,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
         // For any nodes being removed which are currently non-voters, immediately remove them.
         for node in msg.remove_members {
+            tracing::debug!({target=node}, "removing target node from replication pool");
             if let Some((idx, _)) = self.core.membership.non_voters.iter().enumerate().find(|(_, e)| *e == &node) {
                 if let Some(node) = self.nodes.remove(&node) {
                     let _ = node.replstream.repltx.send(RaftEvent::Terminate);
@@ -114,8 +119,8 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Handle the committment of a joint consensus cluster configuration.
-    #[tracing::instrument(skip(self, _res))]
-    pub(super) async fn handle_joint_consensus_committed(&mut self, _res: ClientResponse<R>) -> Result<(), RaftError<E>> {
+    #[tracing::instrument(level="debug", skip(self))]
+    pub(super) async fn handle_joint_consensus_committed(&mut self, _: ClientResponse<R>) -> Result<(), RaftError<E>> {
         match &mut self.consensus_state {
             ConsensusState::Joint{is_committed, ..} => {
                 *is_committed = true; // Mark as comitted.
@@ -130,11 +135,11 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Finalize the comitted joint consensus.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level="debug", skip(self))]
     pub(super) async fn finalize_joint_consensus(&mut self) -> Result<(), RaftError<E>> {
         // Only proceed if it is safe to do so.
         if !self.consensus_state.is_joint_consensus_safe_to_finalize() {
-            tracing::warn!("attempted to finalize joint consensus when it was not safe to do so");
+            tracing::error!("attempted to finalize joint consensus when it was not safe to do so");
             return Ok(());
         }
 
@@ -165,11 +170,11 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Handle the committment of a uniform consensus cluster configuration.
-    #[tracing::instrument(skip(self, res))]
+    #[tracing::instrument(level="debug", skip(self, res))]
     pub(super) async fn handle_uniform_consensus_committed(&mut self, res: ClientResponse<R>) -> Result<(), RaftError<E>> {
         // Step down if needed.
         if !self.core.membership.contains(&self.core.id) {
-            tracing::info!("raft node {} is stepping down", self.core.id);
+            tracing::debug!("raft node is stepping down");
             self.core.set_target_state(TargetState::NonVoter);
             self.core.update_current_leader(UpdateCurrentLeader::Unknown);
             return Ok(());
@@ -190,6 +195,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
                 }
             }).collect();
         for node in nodes_to_remove {
+            tracing::debug!({target=node}, "removing target node from replication pool");
             if let Some(node) = self.nodes.remove(&node) {
                 let _ = node.replstream.repltx.send(RaftEvent::Terminate);
             }

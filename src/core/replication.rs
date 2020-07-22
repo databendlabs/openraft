@@ -8,6 +8,7 @@ use crate::replication::{RaftEvent, ReplicaEvent};
 use crate::storage::CurrentSnapshotData;
 
 impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> LeaderState<'a, D, R, E, N, S> {
+    #[tracing::instrument(level="trace", skip(self, event))]
     pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent) {
         let res = match event {
             ReplicaEvent::RateUpdate{target, is_line_rate} => self.handle_rate_update(target, is_line_rate).await,
@@ -21,6 +22,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Handle events from replication streams updating their replication rate tracker.
+    #[tracing::instrument(level="trace", skip(self, target, is_line_rate))]
     async fn handle_rate_update(&mut self, target: NodeId, is_line_rate: bool) -> RaftResult<(), E> {
         // Get a handle the target's replication stat & update it as needed.
         let repl_state = match self.nodes.get_mut(&target) {
@@ -44,6 +46,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
+    #[tracing::instrument(level="trace", skip(self, term))]
     async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> RaftResult<(), E> {
         if &term > &self.core.current_term {
             self.core.update_current_term(term, None);
@@ -55,7 +58,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Handle events from a replication stream which updates the target node's match index.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level="trace", skip(self, target, match_index))]
     async fn handle_update_match_index(&mut self, target: NodeId, match_index: u64) -> RaftResult<(), E> {
         // Update target's match index & check if it is awaiting removal.
         let mut needs_removal = false;
@@ -111,6 +114,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Handle events from replication streams requesting for snapshot info.
+    #[tracing::instrument(level="trace", skip(self, tx))]
     async fn handle_needs_snapshot(&mut self, _: NodeId, tx: oneshot::Sender<CurrentSnapshotData>) -> RaftResult<(), E> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {

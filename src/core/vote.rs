@@ -1,5 +1,6 @@
 use tokio::time::Instant;
 use tokio::sync::mpsc;
+use tracing_futures::Instrument;
 
 use crate::{AppData, AppDataResponse, AppError, NodeId, RaftNetwork, RaftStorage};
 use crate::error::RaftResult;
@@ -10,15 +11,17 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// An RPC invoked by candidates to gather votes (§5.2).
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level="trace", skip(self, msg))]
     pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> RaftResult<VoteResponse, E> {
         // Don't accept vote requests from unknown-cluster members.
         if !self.membership.contains(&msg.candidate_id) {
+            tracing::trace!({candidate=msg.candidate_id}, "RequestVote RPC received from an unknown node");
             return Ok(VoteResponse{term: self.current_term, vote_granted: false, is_candidate_unknown: true});
         }
 
         // If candidate's current term is less than this nodes current term, reject.
         if &msg.term < &self.current_term {
+            tracing::trace!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "RequestVote RPC term is less than current term");
             return Ok(VoteResponse{term: self.current_term, vote_granted: false, is_candidate_unknown: false});
         }
 
@@ -27,6 +30,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
             let now = Instant::now();
             let delta = now.duration_since(*inst);
             if self.config.election_timeout_min >= (delta.as_millis() as u64) {
+                tracing::trace!({candidate=msg.candidate_id}, "rejecting vote request received within election timeout minimum");
                 return Ok(VoteResponse{term: self.current_term, vote_granted: false, is_candidate_unknown: false});
             }
         }
@@ -44,6 +48,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         // If candidate's log is not at least as up-to-date as this node, then reject.
         let client_is_uptodate = (&msg.last_log_term >= &self.last_log_term) && (&msg.last_log_index >= &self.last_log_index);
         if !client_is_uptodate {
+            tracing::trace!({candidate=msg.candidate_id}, "rejecting vote request as candidate's log is not up-to-date");
             return Ok(VoteResponse{term: self.current_term, vote_granted: false, is_candidate_unknown: false});
         }
 
@@ -61,6 +66,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
                 self.set_target_state(TargetState::Follower);
                 self.update_next_election_timeout();
                 self.save_hard_state().await?;
+                tracing::trace!({candidate=msg.candidate_id, msg.term}, "voted for candidate");
                 Ok(VoteResponse{term: self.current_term, vote_granted: true, is_candidate_unknown: false})
             },
         }
@@ -69,12 +75,12 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
 
 impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> CandidateState<'a, D, R, E, N, S> {
     /// Handle response from a vote request sent to a peer.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level="trace", skip(self, res, target))]
     pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> RaftResult<(), E> {
         // If responding node sees this node as being unknown to the cluster, and this node has been active,
         // then go into NonVoter state, as this typically means this node is being removed from the cluster.
         if res.is_candidate_unknown && self.core.last_log_index > 0 {
-            tracing::trace!({id=self.core.id, target=target}, "target node considers this node to be unknown to the cluster, transitioning to non-voter");
+            tracing::trace!({target=target}, "target node considers this node to be unknown to the cluster, transitioning to non-voter");
             self.core.set_target_state(TargetState::NonVoter);
             return Ok(());
         }
@@ -85,6 +91,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
             self.core.update_current_leader(UpdateCurrentLeader::Unknown);
             self.core.set_target_state(TargetState::Follower);
             self.core.save_hard_state().await?;
+            tracing::trace!("reverting to follower state due to greater term observed in RequestVote RPC response");
             return Ok(());
         }
 
@@ -93,6 +100,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
             self.votes_granted += 1;
             if self.votes_granted >= self.votes_needed {
                 // If the campaign was successful, go into leader state.
+                tracing::trace!("transitioning to leader state as minimum number of votes have been received");
                 self.core.set_target_state(TargetState::Leader);
                 return Ok(());
             }
@@ -103,7 +111,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Build a future of vote requests sent to all peers.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level="trace", skip(self))]
     pub(super) fn spawn_parallel_vote_requests(&self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
         let (tx, rx) = mpsc::channel(self.core.membership.members.len());
         for member in self.core.membership.members.iter().cloned().filter(|member| member != &self.core.id) {
@@ -116,7 +124,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
                     }
                     Err(err) => tracing::error!({error=%err, peer=member}, "error while requesting vote from peer"),
                 }
-            });
+            }.instrument(tracing::trace_span!("requesting vote from peer", target=member)));
         }
         rx
     }

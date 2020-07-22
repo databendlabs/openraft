@@ -4,6 +4,7 @@ use crate::core::RaftCore;
 
 impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> RaftCore<D, R, E, N, S> {
     /// Apply the given log entry to the state machine.
+    #[tracing::instrument(level="trace", skip(self, entry))]
     pub(super) async fn apply_entry_to_state_machine(&mut self, entry: &Entry<D>) -> Result<R, E> {
         // First, we just ensure that we apply any outstanding up to, but not including, the index
         // of the given entry. We need to be able to return the data response from applying this

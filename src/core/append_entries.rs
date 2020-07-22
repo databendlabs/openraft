@@ -7,9 +7,11 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
     ///
     /// See `receiver implementation: AppendEntries RPC` in raft-essentials.md in this repo.
+    #[tracing::instrument(level="trace", skip(self, msg))]
     pub(super) async fn handle_append_entries_request(&mut self, msg: AppendEntriesRequest<D>) -> RaftResult<AppendEntriesResponse, E> {
         // If message's term is less than most recent term, then we do not honor the request.
         if &msg.term < &self.current_term {
+            tracing::trace!({self.current_term, rpc_term=msg.term}, "AppendEntries RPC term is less than current term");
             return Ok(AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None});
         }
 
@@ -62,6 +64,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
 
         /////////////////////////////////////
         //// Begin Log Consistency Check ////
+        tracing::trace!("begin log consistency check");
 
         // Previous log info doesn't immediately line up, so perform log consistency check and proceed based on its result.
         let entries = self.storage.get_log_entries(msg.prev_log_index, msg.prev_log_index).await.map_err(|err| self.map_fatal_storage_result(err))?;
@@ -97,6 +100,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
 
         ///////////////////////////////////
         //// End Log Consistency Check ////
+        tracing::trace!("end log consistency check");
 
         self.append_log_entries(&msg.entries).await?;
         Ok(AppendEntriesResponse{term: self.current_term, success: true, conflict_opt: None})
@@ -106,6 +110,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     ///
     /// Configuration changes are also detected and applied here. See `configuration changes`
     /// in the raft-essentials.md in this repo.
+    #[tracing::instrument(level="trace", skip(self, entries))]
     async fn append_log_entries(&mut self, entries: &[Entry<D>]) -> RaftResult<(), E> {
         // Check the given entries for any config changes and take the most recent.
         let last_conf_change = entries.iter()
@@ -115,6 +120,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
             })
             .last();
         if let Some(conf) = last_conf_change {
+            tracing::debug!({membership=?conf}, "applying new membership config received from leader");
             self.update_membership(conf.membership.clone()).await?;
         };
 

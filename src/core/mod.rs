@@ -17,6 +17,7 @@ use tokio::stream::StreamExt;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, Duration, delay_until};
+use tracing_futures::Instrument;
 
 use crate::{AppData, AppDataResponse, AppError, RaftNetwork, RaftStorage, NodeId};
 use crate::error::{ClientError, InitWithConfigError, ProposeConfigChangeError, RaftResult};
@@ -27,7 +28,7 @@ use crate::core::client::ClientRequestEntry;
 use crate::raft::{RxChanAppendEntries, RxChanVote, RxChanInstallSnapshot, RxChanClient, RxChanInit, RxChanPropose};
 use crate::raft::{ClientRequest, ClientResponse, InitWithConfig, ProposeConfigChange};
 use crate::raft::{TxClientResponse, TxInitResponse, TxProposeResponse};
-use crate::replication::{ReplicationStream, ReplicaEvent};
+use crate::replication::{RaftEvent, ReplicationStream, ReplicaEvent};
 use crate::storage::{HardState, SnapshotWriter};
 
 /// The core type implementing the Raft protocol.
@@ -133,6 +134,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     }
 
     /// The main loop of the Raft protocol.
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.id))]
     async fn main(mut self) -> RaftResult<(), E> {
         let state = self.storage.get_initial_state().await?;
         self.last_log_index = state.last_log_index;
@@ -183,6 +185,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     }
 
     /// Report a metrics payload on the current state of the Raft node.
+    #[tracing::instrument(level="debug", skip(self, state))]
     fn report_metrics(&mut self, state: State) {
         let res = self.tx_metrics.broadcast(RaftMetrics{
             id: self.id, state, current_term: self.current_term,
@@ -192,25 +195,28 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
             membership_config: self.membership.clone(),
         });
         if let Err(err) = res {
-            tracing::error!({error=%err}, "error reporting metrics");
+            tracing::error!({error=%err, id=self.id}, "error reporting metrics");
         }
     }
 
     /// Save the Raft node's current hard state to disk.
+    #[tracing::instrument(level="debug", skip(self))]
     async fn save_hard_state(&mut self) -> RaftResult<(), E> {
         let hs = HardState{current_term: self.current_term, voted_for: self.voted_for, membership: self.membership.clone()};
         Ok(self.storage.save_hard_state(&hs).await.map_err(|err| self.map_fatal_storage_result(err))?)
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
-    fn set_target_state(&mut self, state: TargetState) {
-        if &state == &TargetState::Follower && self.membership.non_voters.contains(&self.id) {
+    #[tracing::instrument(level="debug", skip(self))]
+    fn set_target_state(&mut self, target_state: TargetState) {
+        if &target_state == &TargetState::Follower && self.membership.non_voters.contains(&self.id) {
             self.target_state = TargetState::NonVoter;
         }
-        self.target_state = state;
+        self.target_state = target_state;
     }
 
     /// Get the next election timeout, generating a new value if not set.
+    #[tracing::instrument(level="trace", skip(self))]
     fn get_next_election_timeout(&mut self) -> Instant {
         match self.next_election_timeout {
             Some(inst) => inst.clone(),
@@ -223,11 +229,13 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     }
 
     /// Set a value for the next election timeout.
+    #[tracing::instrument(level="trace", skip(self))]
     fn update_next_election_timeout(&mut self) {
         self.next_election_timeout = Some(Instant::now() + Duration::from_millis(self.config.new_rand_election_timeout()));
     }
 
     /// Update the value of the `current_leader` property.
+    #[tracing::instrument(level="debug", skip(self))]
     fn update_current_leader(&mut self, update: UpdateCurrentLeader) {
         match update {
             UpdateCurrentLeader::ThisNode => {
@@ -243,6 +251,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     }
 
     /// Encapsulate the process of updating the current term, as updating the `voted_for` state must also be updated.
+    #[tracing::instrument(level="debug", skip(self))]
     fn update_current_term(&mut self, new_term: u64, voted_for: Option<NodeId>) {
         if new_term > self.current_term {
             self.current_term = new_term;
@@ -255,6 +264,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// This method assumes that a storage error observed here is non-recoverable. As such, the
     /// Raft node will be instructed to stop. If such behavior is not needed, then don't use this
     /// interface.
+    #[tracing::instrument(level="debug", skip(self))]
     fn map_fatal_storage_result<Err: std::error::Error>(&mut self, err: Err) -> Err {
         tracing::error!({error=%err, id=self.id}, "fatal storage error, shutting down");
         self.set_target_state(TargetState::Shutdown);
@@ -262,6 +272,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     }
 
     /// Update the node's current membership config & save hard state.
+    #[tracing::instrument(level="debug", skip(self))]
     async fn update_membership(&mut self, cfg: MembershipConfig) -> RaftResult<(), E> {
         // If the given config does not contain this node's ID, it means one of the following:
         //
@@ -282,6 +293,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     }
 
     /// Update the system's snapshot state based on the given data.
+    #[tracing::instrument(level="debug", skip(self))]
     fn update_snapshot_state(&mut self, update: SnapshotUpdate) {
         if let SnapshotUpdate::SnapshotComplete(index) = update {
             self.snapshot_index = index
@@ -294,6 +306,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     }
 
     /// Trigger a log compaction (snapshot) job if needed.
+    #[tracing::instrument(level="debug", skip(self))]
     pub(self) fn trigger_log_compaction_if_needed(&mut self) {
         if self.snapshot_state.is_some() {
             return;
@@ -329,26 +342,30 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
                     let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotFailed);
                 }
             }
-        });
+        }.instrument(tracing::debug_span!("beginning new log compaction process")));
     }
 
     /// Reject an init config request due to the Raft node being in a state which prohibits the request.
+    #[tracing::instrument(level="trace", skip(self, tx))]
     fn reject_init_with_config(&self, _: InitWithConfig, tx: TxInitResponse<E>) {
         let _ = tx.send(Err(InitWithConfigError::NotAllowed));
     }
 
     /// Reject a proposed config change request due to the Raft node being in a state which prohibits the request.
+    #[tracing::instrument(level="trace", skip(self, tx))]
     fn reject_propose_config_change(&self, _: ProposeConfigChange, tx: TxProposeResponse<E>) {
         let _ = tx.send(Err(ProposeConfigChangeError::NodeNotLeader));
     }
 
     /// Forward the given client request to the leader.
+    #[tracing::instrument(level="trace", skip(self, req, tx))]
     fn forward_client_request(&self, req: ClientRequest<D>, tx: TxClientResponse<D, R, E>) {
         let _ = tx.send(Err(ClientError::ForwardToLeader(req, self.voted_for.clone())));
     }
 }
 
 /// An enum describing the way the current leader property is to be updated.
+#[derive(Debug)]
 pub(self) enum UpdateCurrentLeader {
     Unknown,
     OtherNode(NodeId),
@@ -376,6 +393,7 @@ pub(self) enum SnapshotState {
 }
 
 /// An update on a snapshot creation process.
+#[derive(Debug)]
 pub(self) enum SnapshotUpdate {
     /// Snapshot creation has finished successfully and covers the given index.
     SnapshotComplete(u64),
@@ -464,7 +482,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Transition to the Raft leader state.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="leader"))]
     pub(self) async fn run(mut self) -> RaftResult<(), E> {
         // Spawn replication streams.
         let targets = self.core.membership.members.iter()
@@ -493,6 +511,9 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
         loop {
             if !self.core.target_state.is_leader() {
+                for node in self.nodes.values() {
+                    let _ = node.replstream.repltx.send(RaftEvent::Terminate);
+                }
                 return Ok(());
             }
             tokio::select!{
@@ -574,10 +595,10 @@ pub enum ConsensusState {
 impl ConsensusState {
     /// Check the current state to determine if it is in joint consensus, and if it is safe to finalize the joint consensus.
     ///
-    /// The return value is based on:
-    /// 1. if this object currently represents a joint consensus state.
-    /// 2. and if the corresponding config for this consensus state has been committed to the cluster.
-    /// 3. and if any new nodes being added to the cluster have been synced.
+    /// The return value will be true if:
+    /// 1. this object currently represents a joint consensus state.
+    /// 2. the corresponding config for this consensus state has been committed to the cluster.
+    /// 3. all new nodes being added to the cluster have been synced.
     pub fn is_joint_consensus_safe_to_finalize(&self) -> bool {
         match self {
             ConsensusState::Joint{is_committed, new_nodes_being_synced}
@@ -605,7 +626,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Run the candidate loop.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="candidate"))]
     pub(self) async fn run(mut self) -> RaftResult<(), E> {
         // Each iteration of the outer loop represents a new term.
         loop {
@@ -670,7 +691,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Run the follower loop.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="follower"))]
     pub(self) async fn run(self) -> RaftResult<(), E> {
         self.core.report_metrics(State::Follower);
         loop {
@@ -717,7 +738,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Run the non-voter loop.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="non-voter"))]
     pub(self) async fn run(mut self) -> RaftResult<(), E> {
         self.core.report_metrics(State::NonVoter);
         loop {

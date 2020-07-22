@@ -54,8 +54,8 @@ pub struct Raft<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E
     tx_propose_config_change: TxChanPropose<E>,
     rx_metrics: watch::Receiver<RaftMetrics>,
     raft_handle: JoinHandle<RaftResult<(), E>>,
-    _marker_n: std::marker::PhantomData<N>,
-    _marker_s: std::marker::PhantomData<S>,
+    marker_n: std::marker::PhantomData<N>,
+    marker_s: std::marker::PhantomData<S>,
 }
 
 impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> Raft<D, R, E, N, S> {
@@ -93,7 +93,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         Self{
             tx_append_entries, tx_vote, tx_install_snapshot, tx_client,
             tx_init_with_config, tx_propose_config_change, rx_metrics, raft_handle,
-            _marker_n: std::marker::PhantomData, _marker_s: std::marker::PhantomData,
+            marker_n: std::marker::PhantomData, marker_s: std::marker::PhantomData,
         }
     }
 

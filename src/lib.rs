@@ -48,7 +48,7 @@ pub trait AppData: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 
 /// entry is successfully applied to the state machine as part of a client request (this is not
 /// used during replication). This allows applications to seamlessly return application specific
 /// data from their storage layer, up through Raft, and back into their application for returning
-/// data to clients or other such uses.
+/// data to clients or other similar cases.
 pub trait AppDataResponse: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}
 
 /// A trait defining application specific error types.
@@ -59,11 +59,11 @@ pub trait AppDataResponse: Clone + Debug + Send + Sync + Serialize + Deserialize
 /// to be able to communicate application specific logic from the storage layer.
 ///
 /// **NOTE WELL:** if an `AppError` is returned from any of the `RaftStorage` interfaces, other
-/// than the `AppendEntryToLog` interface, then the Raft node will immediately shutdown. This is due
+/// than the `AppendEntryToLog` interface, then the Raft node will shutdown. This is due
 /// to the fact that custom error handling logic is only allowed in the `AppendEntryToLog` interface
 /// while the Raft node is the cluster leader. When the node is in any other state, the storage
-/// layer is expected to operate without any errors. Shutting down immediately is how Raft
-/// attempts to guard against data corruption and the like.
+/// layer is expected to operate without any errors. Shutting down is how Raft attempts to guard
+/// against data corruption and the like.
 ///
 /// At this point in time, `AppError` concrete types are required to implement the serde types
 /// for easier integration within parent apps. This may change in the future depending on how

@@ -22,7 +22,7 @@ serde = { version="1", features=["derive"] }
 thiserror = "1.0.20"
 tokio = { version="0.2", default-features=false, features=["io-util", "macros", "rt-core", "stream", "sync", "time"] }
 tracing = "0.1"
-tracing-futures = "0.2.4"
+tracing-futures = { version="0.2.4", features=["tokio"] }
 
 [dev-dependencies]
 env_logger = "0.7"

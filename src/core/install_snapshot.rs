@@ -14,6 +14,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// Leaders always send chunks in order. It is important to note that, according to the Raft spec,
     /// a log may only have one snapshot at any time. As snapshot contents are application specific,
     /// the Raft log will only store a pointer to the snapshot file along with the index & term.
+    #[tracing::instrument(level="trace", skip(self, req))]
     pub(super) async fn handle_install_snapshot_request(&mut self, req: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse, E> {
         // If message's term is less than most recent term, then we do not honor the request.
         if &req.term < &self.current_term {
@@ -50,6 +51,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         }
     }
 
+    #[tracing::instrument(level="trace", skip(self, req))]
     async fn begin_installing_snapshot(&mut self, req: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse, E> {
         // Create a new snapshot and begin writing its contents.
         let mut snapshot = self.storage.install_snapshot(req.last_included_index, req.last_included_term, self.membership.clone()).await
@@ -70,6 +72,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         return Ok(InstallSnapshotResponse{term: self.current_term});
     }
 
+    #[tracing::instrument(level="trace", skip(self, req, offset, snapshot))]
     async fn continue_installing_snapshot(
         &mut self, req: InstallSnapshotRequest, mut offset: u64, mut snapshot: Box<dyn SnapshotWriter>,
     ) -> RaftResult<InstallSnapshotResponse, E> {
@@ -101,6 +104,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// Finalize the installation of a new snapshot.
     ///
     /// Any errors which come up from this routine will cause the Raft node to go into shutdown.
+    #[tracing::instrument(level="trace", skip(self, req, snapshot))]
     async fn finalize_snapshot_installation(&mut self, req: InstallSnapshotRequest, snapshot: &mut dyn SnapshotWriter) -> RaftResult<(), E> {
         snapshot.shutdown().await.map_err(|err| self.map_fatal_storage_result(err))?;
         let delete_through = if &self.last_log_index > &req.last_included_index {

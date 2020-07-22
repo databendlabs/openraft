@@ -146,6 +146,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         ReplicationStream{handle, repltx: raftrx_tx}
     }
 
+    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, target=self.target))]
     async fn main(mut self) {
         loop {
             match &self.target_state {
@@ -161,6 +162,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     ///
     /// This request will timeout if no response is received within the
     /// configured heartbeat interval.
+    #[tracing::instrument(level="trace", skip(self))]
     async fn send_append_entries(&mut self) {
         // Attempt to fill the send buffer from the replication buffer.
         if self.outbound_buffer.len() == 0 {
@@ -185,12 +187,12 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
             Ok(outer_res) => match outer_res {
                 Ok(res) => res,
                 Err(err) => {
-                    tracing::error!({target=self.target, error=%err}, "error sending AppendEntries RPC to target");
+                    tracing::error!({error=%err}, "error sending AppendEntries RPC to target");
                     return;
                 }
             }
             Err(err) => {
-                tracing::debug!({target=self.target, error=%err}, "timeout while sending AppendEntries RPC to target");
+                tracing::error!({error=%err}, "timeout while sending AppendEntries RPC to target");
                 return;
             },
         };
@@ -410,6 +412,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         Self{core}
     }
 
+    #[tracing::instrument(level="trace", skip(self), fields(state="line-rate"))]
     pub async fn run(self) {
         let event = ReplicaEvent::RateUpdate{target: self.core.target, is_line_rate: true};
         let _ = self.core.rafttx.send(event);
@@ -445,6 +448,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         Self{core}
     }
 
+    #[tracing::instrument(level="trace", skip(self), fields(state="lagging"))]
     pub async fn run(mut self) {
         let event = ReplicaEvent::RateUpdate{target: self.core.target, is_line_rate: false};
         let _ = self.core.rafttx.send(event);
@@ -485,6 +489,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     }
 
     /// Prep the outbound buffer with the next payload of entries to append.
+    #[tracing::instrument(level="trace", skip(self))]
     async fn prep_outbound_buffer_from_storage(&mut self) {
         // If the send buffer is empty, we need to fill it.
         if self.core.outbound_buffer.is_empty() {
@@ -506,7 +511,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
             let entries = match self.core.storage.get_log_entries(self.core.next_index, stop_idx).await {
                 Ok(entries) => entries,
                 Err(err) => {
-                    tracing::error!({error=%err, target=self.core.target}, "error fetching logs from storage");
+                    tracing::error!({error=%err}, "error fetching logs from storage");
                     return;
                 }
             };
@@ -538,6 +543,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         Self{core, snapshot: None, snapshot_fetch_rx: None}
     }
 
+    #[tracing::instrument(level="trace", skip(self), fields(state="snapshotting"))]
     pub async fn run(mut self) {
         let event = ReplicaEvent::RateUpdate{target: self.core.target, is_line_rate: false};
         let _ = self.core.rafttx.send(event);
@@ -566,7 +572,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
             // If we have a snapshot to work with, then stream it.
             if let Some(snapshot) = self.snapshot.take() {
                 if let Err(err) = self.stream_snapshot(snapshot).await {
-                    tracing::error!({error=%err, target=self.core.target}, "error streaming snapshot to target");
+                    tracing::error!({error=%err}, "error streaming snapshot to target");
                 }
                 continue;
             }
@@ -577,7 +583,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     ///
     /// If an error comes up during processing, this routine should simple be called again after
     /// issuing a new request to the storage layer.
-    #[tracing::instrument(skip(self, rx))]
+    #[tracing::instrument(level="trace", skip(self, rx))]
     async fn wait_for_snapshot(&mut self, mut rx: oneshot::Receiver<CurrentSnapshotData>) {
         loop {
             tokio::select!{
@@ -596,7 +602,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         }
     }
 
-    #[tracing::instrument(skip(self, snapshot))]
+    #[tracing::instrument(level="trace", skip(self, snapshot))]
     async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData) -> RaftResult<(), E> {
         let mut offset = 0;
         loop {
@@ -617,12 +623,12 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
                 Ok(outer_res) => match outer_res {
                     Ok(res) => res,
                     Err(err) => {
-                        tracing::error!({error=%err, target=self.core.target}, "error sending InstallSnapshot RPC to target");
+                        tracing::error!({error=%err}, "error sending InstallSnapshot RPC to target");
                         continue;
                     }
                 },
                 Err(err) => {
-                    tracing::error!({error=%err, target=self.core.target}, "timeout while sending InstallSnapshot RPC to target");
+                    tracing::error!({error=%err}, "timeout while sending InstallSnapshot RPC to target");
                     continue;
                 }
             };
