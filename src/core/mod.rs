@@ -10,6 +10,7 @@ mod vote;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::future::{Abortable, AbortHandle};
 use futures::stream::FuturesOrdered;
@@ -93,6 +94,11 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<
     /// The duration until the next election timeout.
     next_election_timeout: Option<Instant>,
 
+    /// An atomic bool indicating if this node needs to shutdown.
+    ///
+    /// This is only used from the `Raft` handle.
+    needs_shutdown: Arc<AtomicBool>,
+
     tx_compaction: mpsc::Sender<SnapshotUpdate>,
     rx_compaction: mpsc::Receiver<SnapshotUpdate>,
 
@@ -115,6 +121,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         rx_init: RxChanInit<E>,
         rx_propose: RxChanPropose<E>,
         tx_metrics: watch::Sender<RaftMetrics>,
+        needs_shutdown: Arc<AtomicBool>,
     ) -> JoinHandle<RaftResult<(), E>> {
         let config = Arc::new(config);
         let membership = MembershipConfig{is_in_joint_consensus: false, members: vec![id], non_voters: vec![], removing: vec![]};
@@ -129,6 +136,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
             tx_compaction, rx_compaction,
             rx_append_entries, rx_vote, rx_install_snapshot, rx_client,
             rx_init, rx_propose, tx_metrics,
+            needs_shutdown,
         };
         tokio::spawn(this.main())
     }
@@ -510,7 +518,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         self.commit_initial_leader_entry().await?;
 
         loop {
-            if !self.core.target_state.is_leader() {
+            if !self.core.target_state.is_leader() || self.core.needs_shutdown.load(Ordering::SeqCst) {
                 for node in self.nodes.values() {
                     let _ = node.replstream.repltx.send(RaftEvent::Terminate);
                 }
@@ -647,7 +655,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
             // Inner processing loop for this Raft state.
             loop {
-                if !self.core.target_state.is_candidate() {
+                if !self.core.target_state.is_candidate() || self.core.needs_shutdown.load(Ordering::SeqCst) {
                     return Ok(());
                 }
 
@@ -695,7 +703,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     pub(self) async fn run(self) -> RaftResult<(), E> {
         self.core.report_metrics(State::Follower);
         loop {
-            if !self.core.target_state.is_follower() {
+            if !self.core.target_state.is_follower() || self.core.needs_shutdown.load(Ordering::SeqCst) {
                 return Ok(());
             }
 
@@ -742,7 +750,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     pub(self) async fn run(mut self) -> RaftResult<(), E> {
         self.core.report_metrics(State::NonVoter);
         loop {
-            if !self.core.target_state.is_non_voter() {
+            if !self.core.target_state.is_non_voter() || self.core.needs_shutdown.load(Ordering::SeqCst) {
                 return Ok(());
             }
             tokio::select!{

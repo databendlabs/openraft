@@ -1,6 +1,7 @@
 //! Public Raft interface and data types.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Serialize, Deserialize};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -45,6 +46,12 @@ pub(crate) type RxChanPropose<E> = mpsc::UnboundedReceiver<(ProposeConfigChange,
 /// The beginning of §5, the spec has a condensed summary of the Raft consensus algorithm. This
 /// crate, and especially this actor, attempts to follow the terminology and nomenclature used
 /// there as precisely as possible to aid in understanding this system.
+///
+/// ### shutting down
+/// If any of the interfaces returns a `RaftError::ShuttingDown`, this indicates that the Raft node
+/// is shutting down (probably for data safety reasons due to a storage error), and the `shutdown`
+/// method should be called on this type to await the shutdown of the node. If the parent
+/// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the trick.
 pub struct Raft<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> {
     tx_append_entries: TxChanAppendEntries<D, E>,
     tx_vote: TxChanVote<E>,
@@ -56,6 +63,7 @@ pub struct Raft<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E
     raft_handle: JoinHandle<RaftResult<(), E>>,
     marker_n: std::marker::PhantomData<N>,
     marker_s: std::marker::PhantomData<S>,
+    needs_shutdown: Arc<AtomicBool>,
 }
 
 impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> Raft<D, R, E, N, S> {
@@ -85,15 +93,18 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         let (tx_init_with_config, rx_init_with_config) = mpsc::unbounded_channel();
         let (tx_propose_config_change, rx_propose_config_change) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
+        let needs_shutdown = Arc::new(AtomicBool::new(false));
         let raft_handle = RaftCore::spawn(
             id, config, network, storage,
             rx_append_entries, rx_vote, rx_install_snapshot, rx_client,
             rx_init_with_config, rx_propose_config_change, tx_metrics,
+            needs_shutdown.clone(),
         );
         Self{
             tx_append_entries, tx_vote, tx_install_snapshot, tx_client,
             tx_init_with_config, tx_propose_config_change, rx_metrics, raft_handle,
             marker_n: std::marker::PhantomData, marker_s: std::marker::PhantomData,
+            needs_shutdown,
         }
     }
 
@@ -226,8 +237,9 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         self.rx_metrics.clone()
     }
 
-    /// Get the Raft core JoinHandle, consuming this interface.
-    pub fn core_handle(self) -> tokio::task::JoinHandle<RaftResult<(), E>> {
+    /// Shutdown this Raft node, returning its join handle.
+    pub fn shutdown(self) -> tokio::task::JoinHandle<RaftResult<(), E>> {
+        self.needs_shutdown.store(true, Ordering::SeqCst);
         self.raft_handle
     }
 }

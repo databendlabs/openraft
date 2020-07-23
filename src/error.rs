@@ -23,7 +23,7 @@ pub enum RaftError<E: AppError> {
     ShuttingDown,
     /// An IO error from tokio.
     #[error("{0}")]
-    IO(#[from] tokio::io::Error)
+    IO(#[from] tokio::io::Error),
 }
 
 /// An error related to a client request.
