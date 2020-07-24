@@ -377,7 +377,7 @@ pub struct MembershipConfig {
 
 impl MembershipConfig {
     /// Create a new initial config containing only the given node ID.
-    pub(crate) fn new_initial(id: NodeId) -> Self {
+    pub fn new_initial(id: NodeId) -> Self {
         Self{is_in_joint_consensus: false, members: vec![id], non_voters: vec![], removing: vec![]}
     }
 

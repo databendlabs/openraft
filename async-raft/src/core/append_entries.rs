@@ -73,7 +73,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
             // The target entry was not found. This can only mean that we don't have the
             // specified index yet. Use the last known index & term as a conflict opt.
             None => return Ok(AppendEntriesResponse{
-                term: self.current_term, success: true,
+                term: self.current_term, success: false,
                 conflict_opt: Some(ConflictOpt{term: self.last_log_term, index: self.last_log_index}),
             }),
         };

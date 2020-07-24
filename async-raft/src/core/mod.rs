@@ -30,7 +30,7 @@ use crate::raft::{RxChanAppendEntries, RxChanVote, RxChanInstallSnapshot, RxChan
 use crate::raft::{ClientRequest, ClientResponse, InitWithConfig, ProposeConfigChange};
 use crate::raft::{TxClientResponse, TxInitResponse, TxProposeResponse};
 use crate::replication::{RaftEvent, ReplicationStream, ReplicaEvent};
-use crate::storage::{HardState, SnapshotWriter};
+use crate::storage::HardState;
 
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> {
@@ -83,7 +83,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<
     last_log_term: u64,
 
     /// The node's current snapshot state.
-    snapshot_state: Option<SnapshotState>,
+    snapshot_state: Option<SnapshotState<S::Snapshot>>,
     /// The index of the current snapshot, if a snapshot exists.
     ///
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
@@ -334,7 +334,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         let mut tx_compaction = self.tx_compaction.clone();
         self.snapshot_state = Some(SnapshotState::Snapshotting{through: through_index, handle, sender: chan_tx.clone()});
         tokio::spawn(async move {
-            let res = Abortable::new(storage.create_snapshot(through_index), reg).await;
+            let res = Abortable::new(storage.do_log_compaction(through_index), reg).await;
             match res {
                 Ok(res) => match res {
                     Ok(snapshot) => {
@@ -381,7 +381,7 @@ pub(self) enum UpdateCurrentLeader {
 }
 
 /// The current snapshot state of the Raft node.
-pub(self) enum SnapshotState {
+pub(self) enum SnapshotState<S> {
     /// The Raft node is compacting itself.
     Snapshotting {
         /// The last included index of the new snapshot being generated.
@@ -395,8 +395,10 @@ pub(self) enum SnapshotState {
     Streaming {
         /// The offset of the last byte written to the snapshot.
         offset: u64,
+        /// The ID of the snapshot being written.
+        id: String,
         /// A handle to the snapshot writer.
-        snapshot: Box<dyn SnapshotWriter>,
+        snapshot: Box<S>,
     },
 }
 
@@ -455,9 +457,9 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwo
     /// A mapping of node IDs the replication state of the target node.
     pub(super) nodes: BTreeMap<NodeId, ReplicationState<D>>,
     /// The stream of events coming from replication streams.
-    pub(super) replicationrx: mpsc::UnboundedReceiver<ReplicaEvent>,
+    pub(super) replicationrx: mpsc::UnboundedReceiver<ReplicaEvent<S::Snapshot>>,
     /// The clonable sender channel for replication stream events.
-    pub(super) replicationtx: mpsc::UnboundedSender<ReplicaEvent>,
+    pub(super) replicationtx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
     /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
     pub(super) awaiting_committed: Vec<ClientRequestEntry<D, R, E>>,
     /// A field tracking the cluster's current consensus state, which is used for dynamic membership.

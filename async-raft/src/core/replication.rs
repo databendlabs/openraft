@@ -9,7 +9,7 @@ use crate::storage::CurrentSnapshotData;
 
 impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> LeaderState<'a, D, R, E, N, S> {
     #[tracing::instrument(level="trace", skip(self, event))]
-    pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent) {
+    pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent<S::Snapshot>) {
         let res = match event {
             ReplicaEvent::RateUpdate{target, is_line_rate} => self.handle_rate_update(target, is_line_rate).await,
             ReplicaEvent::RevertToFollower{target, term} => self.handle_revert_to_follower(target, term).await,
@@ -115,7 +115,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
     /// Handle events from replication streams requesting for snapshot info.
     #[tracing::instrument(level="trace", skip(self, tx))]
-    async fn handle_needs_snapshot(&mut self, _: NodeId, tx: oneshot::Sender<CurrentSnapshotData>) -> RaftResult<(), E> {
+    async fn handle_needs_snapshot(&mut self, _: NodeId, tx: oneshot::Sender<CurrentSnapshotData<S::Snapshot>>) -> RaftResult<(), E> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => *threshold,
@@ -127,7 +127,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         if let Some(snapshot) = current_snapshot_opt {
             // If snapshot exists, ensure its distance from the leader's last log index is <= half
             // of the configured snapshot threshold, else create a new snapshot.
-            if snapshot_is_within_half_of_threshold(&snapshot, &self.core.last_log_index, &threshold) {
+            if snapshot_is_within_half_of_threshold(&snapshot.index, &self.core.last_log_index, &threshold) {
                 let _ = tx.send(snapshot);
                 return Ok(());
             }
@@ -192,9 +192,9 @@ fn calculate_new_commit_index(mut entries: Vec<u64>, current_commit: u64) -> u64
 }
 
 /// Check if the given snapshot data is within half of the configured threshold.
-fn snapshot_is_within_half_of_threshold(data: &CurrentSnapshotData, last_log_index: &u64, threshold: &u64) -> bool {
+fn snapshot_is_within_half_of_threshold(snapshot_last_index: &u64, last_log_index: &u64, threshold: &u64) -> bool {
     // Calculate distance from actor's last log index.
-    let distance_from_line = if &data.index > last_log_index { 0u64 } else { last_log_index - &data.index }; // Guard against underflow.
+    let distance_from_line = if snapshot_last_index > last_log_index { 0u64 } else { last_log_index - snapshot_last_index }; // Guard against underflow.
     let half_of_threshold = threshold / &2;
     distance_from_line <= half_of_threshold
 }
@@ -205,10 +205,6 @@ fn snapshot_is_within_half_of_threshold(data: &CurrentSnapshotData, last_log_ind
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::raft::MembershipConfig;
-    use crate::storage::SnapshotReader;
-
-    impl SnapshotReader for std::io::Cursor<Vec<u8>> {}
 
     //////////////////////////////////////////////////////////////////////////
     // snapshot_is_within_half_of_threshold //////////////////////////////////
@@ -217,10 +213,10 @@ mod tests {
         use super::*;
 
         macro_rules! test_snapshot_is_within_half_of_threshold {
-            ({test=>$name:ident, data=>$data:expr, last_log_index=>$last_log:expr, threshold=>$thresh:expr, expected=>$exp:literal}) => {
+            ({test=>$name:ident, snapshot_last_index=>$snapshot_last_index:expr, last_log_index=>$last_log:expr, threshold=>$thresh:expr, expected=>$exp:literal}) => {
                 #[test]
                 fn $name() {
-                    let res = snapshot_is_within_half_of_threshold($data, $last_log, $thresh);
+                    let res = snapshot_is_within_half_of_threshold($snapshot_last_index, $last_log, $thresh);
                     assert_eq!(res, $exp)
                 }
             }
@@ -228,29 +224,17 @@ mod tests {
 
         test_snapshot_is_within_half_of_threshold!({
             test=>happy_path_true_when_within_half_threshold,
-            data=>&CurrentSnapshotData{
-                term: 1, index: 50, membership: MembershipConfig{members: vec![], non_voters: vec![], removing: vec![], is_in_joint_consensus: false},
-                snapshot: Box::new(std::io::Cursor::new(vec![])),
-            },
-            last_log_index=>&100, threshold=>&500, expected=>true
+            snapshot_last_index=>&50, last_log_index=>&100, threshold=>&500, expected=>true
         });
 
         test_snapshot_is_within_half_of_threshold!({
             test=>happy_path_false_when_above_half_threshold,
-            data=>&CurrentSnapshotData{
-                term: 1, index: 1, membership: MembershipConfig{members: vec![], non_voters: vec![], removing: vec![], is_in_joint_consensus: false},
-                snapshot: Box::new(std::io::Cursor::new(vec![])),
-            },
-            last_log_index=>&500, threshold=>&100, expected=>false
+            snapshot_last_index=>&1, last_log_index=>&500, threshold=>&100, expected=>false
         });
 
         test_snapshot_is_within_half_of_threshold!({
             test=>guards_against_underflow,
-            data=>&CurrentSnapshotData{
-                term: 1, index: 200, membership: MembershipConfig{members: vec![], non_voters: vec![], removing: vec![], is_in_joint_consensus: false},
-                snapshot: Box::new(std::io::Cursor::new(vec![])),
-            },
-            last_log_index=>&100, threshold=>&500, expected=>true
+            snapshot_last_index=>&200, last_log_index=>&100, threshold=>&500, expected=>true
         });
     }
 

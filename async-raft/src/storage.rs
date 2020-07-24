@@ -7,13 +7,10 @@ use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
 use crate::{AppData, AppDataResponse, AppError, NodeId};
 use crate::raft::{Entry, MembershipConfig};
 
-/// A trait representing an `AsyncWrite` handle to a snapshot.
-pub trait SnapshotWriter: AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static {}
-/// A trait representing an `AsyncRead` handle to a snapshot.
-pub trait SnapshotReader: AsyncRead + AsyncSeek + Send + Sync + Unpin + 'static {}
-
 /// The data associated with the current snapshot.
-pub struct CurrentSnapshotData {
+pub struct CurrentSnapshotData<S>
+    where S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
     /// The snapshot entry's term.
     pub term: u64,
     /// The snapshot entry's index.
@@ -21,7 +18,7 @@ pub struct CurrentSnapshotData {
     /// The latest membership configuration covered by the snapshot.
     pub membership: MembershipConfig,
     /// A read handle to the associated snapshot.
-    pub snapshot: Box<dyn SnapshotReader>,
+    pub snapshot: Box<S>,
 }
 
 /// A record holding the hard state of a Raft node.
@@ -74,6 +71,9 @@ pub trait RaftStorage<D, R, E>: Send + Sync + 'static
         R: AppDataResponse,
         E: AppError,
 {
+    /// The storage engine's associated type used for exposing a snapshot for reading & writing.
+    type Snapshot: AsyncRead + AsyncWrite + AsyncSeek + Send + Unpin + 'static;
+
     /// A request from Raft to get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface on the storage system to
@@ -128,42 +128,52 @@ pub trait RaftStorage<D, R, E>: Send + Sync + 'static
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
     /// have been replicated to a majority of the cluster, will be applied to the state machine.
-    async fn apply_entry_to_state_machine(&self, payload: &Entry<D>) -> Result<R, E>;
+    async fn apply_entry_to_state_machine(&self, entry: &Entry<D>) -> Result<R, E>;
 
     /// A request from Raft to apply the given payload of entries to the state machine, as part of replication.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
     /// have been replicated to a majority of the cluster, will be applied to the state machine.
-    async fn replicate_to_state_machine(&self, payload: &[Entry<D>]) -> Result<(), E>;
+    async fn replicate_to_state_machine(&self, entries: &[Entry<D>]) -> Result<(), E>;
 
-    /// A request from Raft to have a new snapshot created.
+    /// A request from Raft to perform log compaction, returning a handle to the generated snapshot.
     ///
     /// ### `through`
-    /// The new snapshot should start from entry `0` and should cover all entries through the
-    /// index specified by `through`, inclusively.
+    /// The log should be compacted starting from entry `0` and should cover all entries through the
+    /// index specified by `through`, inclusively. This will always be the `commit_index` of the
+    /// Raft log at the time of the request.
     ///
     /// ### implementation guide
     /// See the [storage chapter of the guide](TODO:)
     /// for details on how to implement this handler.
-    async fn create_snapshot(&self, through: u64) -> Result<CurrentSnapshotData, E>;
+    async fn do_log_compaction(&self, through: u64) -> Result<CurrentSnapshotData<Self::Snapshot>, E>;
 
-    /// A request from the leader of the Raft cluster to install a new snapshot.
+    /// Create a new snapshot returning a writable handle to the snapshot object along with the ID of the snapshot.
     ///
     /// ### implementation guide
     /// See the [storage chapter of the guide]()
     /// for details on how to implement this handler.
-    async fn install_snapshot(&self, index: u64, term: u64, membership_config: MembershipConfig) -> Result<Box<dyn SnapshotWriter>, E>;
+    async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>), E>;
 
-    /// Finalize the installation of a snapshot which was streamed from the cluster leader.
+    /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
     ///
-    /// Delete all entries in the log, stopping at `deleted_through`, unless `None`, in which case
+    /// Delete all entries in the log, stopping at `delete_through`, unless `None`, in which case
     /// all entries of the log are to be deleted.
     ///
     /// Write a new snapshot pointer to the log at the given `index`. The snapshot pointer should be
     /// constructed via the `Entry::new_snapshot_pointer` constructor.
     ///
     /// All other snapshots should be deleted at this point.
-    async fn finalize_install_snapshot(&self, index: u64, term: u64, delete_through: Option<u64>) -> Result<(), E>;
+    ///
+    /// ### snapshot
+    /// A snapshot created from an earlier call to `created_snapshot` which provided the snapshot.
+    /// By the time ownership of the snapshot object is returned here, its
+    /// `AsyncWriteExt.shutdown()` method will have been called, so no additional writes should be
+    /// made to the snapshot.
+    async fn finalize_snapshot_installation(
+        &self, index: u64, term: u64, delete_through: Option<u64>,
+        id: String, snapshot: Box<Self::Snapshot>,
+    ) -> Result<(), E>;
 
     /// A request from Raft to get a readable handle to the current snapshot, along with its metadata.
     ///
@@ -176,5 +186,5 @@ pub trait RaftStorage<D, R, E>: Send + Sync + 'static
     ///
     /// A proper snapshot implementation will store the term, index and membership config as part
     /// of the snapshot as well, which can be decoded for creating this method's response.
-    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData>, E>;
+    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>, E>;
 }
