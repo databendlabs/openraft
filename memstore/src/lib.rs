@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use std::collections::BTreeMap;
 use std::io::Cursor;
 
@@ -8,6 +11,8 @@ use async_raft::storage::{CurrentSnapshotData, HardState, InitialState};
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
 use tokio::sync::RwLock;
+#[cfg(test)]
+use tokio::sync::RwLockWriteGuard;
 
 /// The application data type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -71,12 +76,39 @@ pub struct MemStore {
 }
 
 impl MemStore {
+    /// Create a new `MemStore` instance.
     pub fn new(id: NodeId) -> Self {
         let log = RwLock::new(BTreeMap::new());
         let sm = RwLock::new(BTreeMap::new());
         let hs = RwLock::new(None);
         let current_snapshot = RwLock::new(None);
         Self{id, log, sm, hs, current_snapshot}
+    }
+
+    /// Create a new `MemStore` instance with some existing state (for testing).
+    #[cfg(test)]
+    pub fn new_with_state(
+        id: NodeId,
+        log: BTreeMap<u64, Entry<MemStoreData>>,
+        sm: BTreeMap<u64, Entry<MemStoreData>>,
+        hs: Option<HardState>,
+        current_snapshot: Option<MemStoreSnapshot>,
+    ) -> Self {
+        let log = RwLock::new(log);
+        let sm = RwLock::new(sm);
+        let hs = RwLock::new(hs);
+        let current_snapshot = RwLock::new(current_snapshot);
+        Self{id, log, sm, hs, current_snapshot}
+    }
+
+    #[cfg(test)]
+    pub async fn get_log<'a>(&'a self) -> RwLockWriteGuard<'a, BTreeMap<u64, Entry<MemStoreData>>> {
+        self.log.write().await
+    }
+
+    #[cfg(test)]
+    pub async fn get_state_machine<'a>(&'a self) -> RwLockWriteGuard<'a, BTreeMap<u64, Entry<MemStoreData>>> {
+        self.sm.write().await
     }
 }
 

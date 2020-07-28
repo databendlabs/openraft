@@ -148,6 +148,10 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
             self.core.membership.members.push(node);
         }
         for node in self.core.membership.removing.drain(..) {
+            // Remember, the leader still has replication streams to these nodes. Just because they
+            // have been removed from the config here does not mean they are not replicated to. Removed
+            // nodes will still receive the final config. Once they have committed that config, then the
+            // leader closes its replication stream to that node, which will have gone into non-voter state.
             if let Some((idx, _)) = self.core.membership.members.iter().enumerate().find(|(_, e)| *e == &node) {
                 self.core.membership.members.remove(idx);
             }

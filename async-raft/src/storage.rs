@@ -25,7 +25,7 @@ pub struct CurrentSnapshotData<S>
 ///
 /// This model derives serde's traits for easily (de)serializing this
 /// model for storage & retrieval.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct HardState {
     /// The last recorded term observed by this system.
     pub current_term: u64,
