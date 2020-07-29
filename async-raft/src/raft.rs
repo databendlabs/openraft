@@ -1,5 +1,6 @@
 //! Public Raft interface and data types.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -9,30 +10,9 @@ use tokio::task::JoinHandle;
 
 use crate::{AppData, AppDataResponse, AppError, NodeId, RaftNetwork, RaftStorage};
 use crate::config::Config;
-use crate::error::{ClientError, InitWithConfigError, ProposeConfigChangeError, RaftError, RaftResult};
+use crate::error::{ClientError, InitializeError, ChangeConfigError, RaftError, RaftResult};
 use crate::metrics::RaftMetrics;
 use crate::core::RaftCore;
-
-pub(crate) type TxAppendEntriesResponse<E> = oneshot::Sender<RaftResult<AppendEntriesResponse, E>>;
-pub(crate) type TxVoteResponse<E> = oneshot::Sender<RaftResult<VoteResponse, E>>;
-pub(crate) type TxInstallSnapshotResponse<E> = oneshot::Sender<RaftResult<InstallSnapshotResponse, E>>;
-pub(crate) type TxClientResponse<D, R, E> = oneshot::Sender<Result<ClientResponse<R>, ClientError<D, E>>>;
-pub(crate) type TxInitResponse<E> = oneshot::Sender<Result<(), InitWithConfigError<E>>>;
-pub(crate) type TxProposeResponse<E> = oneshot::Sender<Result<(), ProposeConfigChangeError<E>>>;
-
-pub(crate) type TxChanAppendEntries<D, E> = mpsc::UnboundedSender<(AppendEntriesRequest<D>, TxAppendEntriesResponse<E>)>;
-pub(crate) type TxChanVote<E> = mpsc::UnboundedSender<(VoteRequest, TxVoteResponse<E>)>;
-pub(crate) type TxChanInstallSnapshot<E> = mpsc::UnboundedSender<(InstallSnapshotRequest, TxInstallSnapshotResponse<E>)>;
-pub(crate) type TxChanClient<D, R, E> = mpsc::UnboundedSender<(ClientRequest<D>, TxClientResponse<D, R, E>)>;
-pub(crate) type TxChanInit<E> = mpsc::UnboundedSender<(InitWithConfig, TxInitResponse<E>)>;
-pub(crate) type TxChanPropose<E> = mpsc::UnboundedSender<(ProposeConfigChange, TxProposeResponse<E>)>;
-
-pub(crate) type RxChanAppendEntries<D, E> = mpsc::UnboundedReceiver<(AppendEntriesRequest<D>, TxAppendEntriesResponse<E>)>;
-pub(crate) type RxChanVote<E> = mpsc::UnboundedReceiver<(VoteRequest, TxVoteResponse<E>)>;
-pub(crate) type RxChanInstallSnapshot<E> = mpsc::UnboundedReceiver<(InstallSnapshotRequest, TxInstallSnapshotResponse<E>)>;
-pub(crate) type RxChanClient<D, R, E> = mpsc::UnboundedReceiver<(ClientRequest<D>, TxClientResponse<D, R, E>)>;
-pub(crate) type RxChanInit<E> = mpsc::UnboundedReceiver<(InitWithConfig, TxInitResponse<E>)>;
-pub(crate) type RxChanPropose<E> = mpsc::UnboundedReceiver<(ProposeConfigChange, TxProposeResponse<E>)>;
 
 /// The Raft API.
 ///
@@ -53,17 +33,12 @@ pub(crate) type RxChanPropose<E> = mpsc::UnboundedReceiver<(ProposeConfigChange,
 /// method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the trick.
 pub struct Raft<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> {
-    tx_append_entries: TxChanAppendEntries<D, E>,
-    tx_vote: TxChanVote<E>,
-    tx_install_snapshot: TxChanInstallSnapshot<E>,
-    tx_client: TxChanClient<D, R, E>,
-    tx_init_with_config: TxChanInit<E>,
-    tx_propose_config_change: TxChanPropose<E>,
+    tx_api: mpsc::UnboundedSender<RaftMsg<D, R, E>>,
     rx_metrics: watch::Receiver<RaftMetrics>,
     raft_handle: JoinHandle<RaftResult<(), E>>,
+    needs_shutdown: Arc<AtomicBool>,
     marker_n: std::marker::PhantomData<N>,
     marker_s: std::marker::PhantomData<S>,
-    needs_shutdown: Arc<AtomicBool>,
 }
 
 impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> Raft<D, R, E, N, S> {
@@ -86,25 +61,17 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
     /// See the docs on the `RaftStorage` trait for more details.
     pub fn new(id: NodeId, config: Config, network: Arc<N>, storage: Arc<S>) -> Self {
-        let (tx_append_entries, rx_append_entries) = mpsc::unbounded_channel();
-        let (tx_vote, rx_vote) = mpsc::unbounded_channel();
-        let (tx_install_snapshot, rx_install_snapshot) = mpsc::unbounded_channel();
-        let (tx_client, rx_client) = mpsc::unbounded_channel();
-        let (tx_init_with_config, rx_init_with_config) = mpsc::unbounded_channel();
-        let (tx_propose_config_change, rx_propose_config_change) = mpsc::unbounded_channel();
+        let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let needs_shutdown = Arc::new(AtomicBool::new(false));
         let raft_handle = RaftCore::spawn(
             id, config, network, storage,
-            rx_append_entries, rx_vote, rx_install_snapshot, rx_client,
-            rx_init_with_config, rx_propose_config_change, tx_metrics,
+            rx_api, tx_metrics,
             needs_shutdown.clone(),
         );
         Self{
-            tx_append_entries, tx_vote, tx_install_snapshot, tx_client,
-            tx_init_with_config, tx_propose_config_change, rx_metrics, raft_handle,
+            tx_api, rx_metrics, raft_handle, needs_shutdown,
             marker_n: std::marker::PhantomData, marker_s: std::marker::PhantomData,
-            needs_shutdown,
         }
     }
 
@@ -116,10 +83,10 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// Applications are responsible for implementing a network layer which can receive the RPCs
     /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
     /// in the guide for more details.
-    #[tracing::instrument(level="debug", skip(self, msg))]
-    pub async fn append_entries(&self, msg: AppendEntriesRequest<D>) -> RaftResult<AppendEntriesResponse, E> {
+    #[tracing::instrument(level="debug", skip(self, rpc))]
+    pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> RaftResult<AppendEntriesResponse, E> {
         let (tx, rx) = oneshot::channel();
-        self.tx_append_entries.send((msg, tx)).map_err(|_| RaftError::ShuttingDown)?;
+        self.tx_api.send(RaftMsg::AppendEntries{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
@@ -130,10 +97,10 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// Applications are responsible for implementing a network layer which can receive the RPCs
     /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
     /// in the guide for more details.
-    #[tracing::instrument(level="debug", skip(self, msg))]
-    pub async fn vote(&self, msg: VoteRequest) -> RaftResult<VoteResponse, E> {
+    #[tracing::instrument(level="debug", skip(self, rpc))]
+    pub async fn vote(&self, rpc: VoteRequest) -> RaftResult<VoteResponse, E> {
         let (tx, rx) = oneshot::channel();
-        self.tx_vote.send((msg, tx)).map_err(|_| RaftError::ShuttingDown)?;
+        self.tx_api.send(RaftMsg::RequestVote{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
@@ -145,10 +112,10 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// Applications are responsible for implementing a network layer which can receive the RPCs
     /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
     /// in the guide for more details.
-    #[tracing::instrument(level="debug", skip(self, msg))]
-    pub async fn install_snapshot(&self, msg: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse, E> {
+    #[tracing::instrument(level="debug", skip(self, rpc))]
+    pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse, E> {
         let (tx, rx) = oneshot::channel();
-        self.tx_install_snapshot.send((msg, tx)).map_err(|_| RaftError::ShuttingDown)?;
+        self.tx_api.send(RaftMsg::InstallSnapshot{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
@@ -168,10 +135,10 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     ///
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
-    #[tracing::instrument(level="debug", skip(self, msg))]
-    pub async fn client(&self, msg: ClientRequest<D>) -> Result<ClientResponse<R>, ClientError<D, E>> {
+    #[tracing::instrument(level="debug", skip(self, rpc))]
+    pub async fn client(&self, rpc: ClientRequest<D>) -> Result<ClientResponse<R>, ClientError<D, E>> {
         let (tx, rx) = oneshot::channel();
-        self.tx_client.send((msg, tx)).map_err(|_| ClientError::RaftError(RaftError::ShuttingDown))?;
+        self.tx_api.send(RaftMsg::ClientRequest{rpc, tx}).map_err(|_| ClientError::RaftError(RaftError::ShuttingDown))?;
         Ok(rx.await.map_err(|_| ClientError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
     }
 
@@ -179,7 +146,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     ///
     /// This command should be called on pristine nodes — where the log index is 0 and the node is
     /// in NonVoter state — as if either of those constraints are false, it indicates that the
-    /// cluster is already formed and in motion. If `InitWithConfigError::NotAllowed` is returned
+    /// cluster is already formed and in motion. If `InitializeError::NotAllowed` is returned
     /// from this function, it is safe to ignore, as it simply indicates that the cluster is
     /// already up and running, which is ultimately the goal of this function.
     ///
@@ -205,31 +172,48 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     ///
     /// Once a cluster is up and running, the `propose_config_change` routine should be used to
     /// update the cluster's membership config.
-    #[tracing::instrument(level="debug", skip(self, msg))]
-    pub async fn init_with_config(&self, msg: InitWithConfig) -> Result<(), InitWithConfigError<E>> {
+    #[tracing::instrument(level="debug", skip(self))]
+    pub async fn initialize(&self, members: HashSet<NodeId>) -> Result<(), InitializeError<E>> {
         let (tx, rx) = oneshot::channel();
-        self.tx_init_with_config.send((msg, tx)).map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx.await.map_err(|_| InitWithConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+        self.tx_api.send(RaftMsg::Initialize{members, tx}).map_err(|_| RaftError::ShuttingDown)?;
+        Ok(rx.await.map_err(|_| InitializeError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+    }
+
+    /// Synchronize a new Raft node, bringing it up-to-speed (§6).
+    ///
+    /// Applications built on top of Raft will typically have some peer discovery mechanism for
+    /// detecting when new nodes come online and need to be added to the cluster. This API
+    /// facilitates the ability to request that a new node be synchronized with the leader, so
+    /// that it is up-to-date and ready to be added to the cluster.
+    ///
+    /// Calling this API will add the target node as a non-voter, starting the syncing process.
+    /// Once the node is up-to-speed, this function will return. It is the responsibility of the
+    /// application to then call `change_config` once all of the new nodes are synced.
+    ///
+    /// If this Raft node is not the cluster leader, then this call will fail.
+    #[tracing::instrument(level="debug", skip(self))]
+    pub async fn add_non_voter(&self, id: NodeId) -> Result<(), ChangeConfigError<E>> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_api.send(RaftMsg::AddNonVoter{id, tx}).map_err(|_| RaftError::ShuttingDown)?;
+        Ok(rx.await.map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
     }
 
     /// Propose a cluster configuration change (§6).
     ///
-    /// Applications built on top of Raft will typically have some peer discovery mechanism for
-    /// detecting when new nodes are being added to the cluster, or when a node has been offline
-    /// for some amount of time and should be removed from the cluster (cluster self-healing). Other
-    /// applications may not have a dynamic membership system, but instead may have a manual method
-    /// of updating a cluster's membership.
-    ///
-    /// An all of the above cases (as well as other cases not discussed), this method is used for
-    /// proposing changes to the cluster's membership configuration.
+    /// This will cause the leader to begin a cluster membership configuration change. If there
+    /// are new nodes in the proposed config which are not already registered as non-voters — from
+    /// an earlier call to `add_non_voter` — then the new nodes first be synced as non-voters
+    /// before moving the cluster into joint consensus. As this process may take some time, it is
+    /// recommended that `add_non_voter` be called first for new nodes, and then once all new nodes
+    /// have been synchronized, call this method to start reconfiguration.
     ///
     /// If this Raft node is not the cluster leader, then the proposed configuration change will be
     /// rejected.
-    #[tracing::instrument(level="debug", skip(self, msg))]
-    pub async fn propose_config_change(&self, msg: ProposeConfigChange) -> Result<(), ProposeConfigChangeError<E>> {
+    #[tracing::instrument(level="debug", skip(self))]
+    pub async fn change_config(&self, members: HashSet<NodeId>) -> Result<(), ChangeConfigError<E>> {
         let (tx, rx) = oneshot::channel();
-        self.tx_propose_config_change.send((msg, tx)).map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx.await.map_err(|_| ProposeConfigChangeError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+        self.tx_api.send(RaftMsg::ChangeMembership{members, tx}).map_err(|_| RaftError::ShuttingDown)?;
+        Ok(rx.await.map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
     }
 
     /// Get a handle to the metrics channel.
@@ -242,6 +226,41 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         self.needs_shutdown.store(true, Ordering::SeqCst);
         self.raft_handle
     }
+}
+
+pub(crate) type ClientResponseTx<D, R, E> = oneshot::Sender<Result<ClientResponse<R>, ClientError<D, E>>>;
+pub(crate) type ChangeMembershipTx<E> = oneshot::Sender<Result<(), ChangeConfigError<E>>>;
+
+/// A message coming from the Raft API.
+pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse, E: AppError> {
+    AppendEntries{
+        rpc: AppendEntriesRequest<D>,
+        tx: oneshot::Sender<Result<AppendEntriesResponse, RaftError<E>>>,
+    },
+    RequestVote{
+        rpc: VoteRequest,
+        tx: oneshot::Sender<Result<VoteResponse, RaftError<E>>>,
+    },
+    InstallSnapshot{
+        rpc: InstallSnapshotRequest,
+        tx: oneshot::Sender<Result<InstallSnapshotResponse, RaftError<E>>>,
+    },
+    ClientRequest{
+        rpc: ClientRequest<D>,
+        tx: ClientResponseTx<D, R, E>,
+    },
+    Initialize{
+        members: HashSet<NodeId>,
+        tx: oneshot::Sender<Result<(), InitializeError<E>>>,
+    },
+    AddNonVoter{
+        id: NodeId,
+        tx: ChangeMembershipTx<E>,
+    },
+    ChangeMembership{
+        members: HashSet<NodeId>,
+        tx: ChangeMembershipTx<E>,
+    },
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -311,8 +330,18 @@ pub struct Entry<D: AppData> {
 
 impl<D: AppData> Entry<D> {
     /// Create a new snapshot pointer from the given data.
-    pub fn new_snapshot_pointer(pointer: EntrySnapshotPointer, index: u64, term: u64) -> Self {
-        Entry{term, index, payload: EntryPayload::SnapshotPointer(pointer)}
+    ///
+    /// ### index & term
+    /// The index and term of the entry being replaced by this snapshot pointer entry.
+    ///
+    /// ### id
+    /// The ID of the associated snapshot.
+    ///
+    /// ### membership
+    /// The cluster membership config which is contained in the snapshot, which will always be the
+    /// latest membership covered by the snapshot.
+    pub fn new_snapshot_pointer(index: u64, term: u64, id: String, membership: MembershipConfig) -> Self {
+        Entry{term, index, payload: EntryPayload::SnapshotPointer(EntrySnapshotPointer{id, membership})}
     }
 }
 
@@ -354,6 +383,8 @@ pub struct EntryConfigChange {
 pub struct EntrySnapshotPointer {
     /// The ID of the snapshot, which is application specific, and probably only meaningful to the storage layer.
     pub id: String,
+    /// The cluster's membership config covered by this snapshot.
+    pub membership: MembershipConfig,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -362,40 +393,52 @@ pub struct EntrySnapshotPointer {
 /// A model of the membership configuration of the cluster.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MembershipConfig {
-    /// A flag indicating if the system is currently in a joint consensus state.
-    pub is_in_joint_consensus: bool,
-    /// Voting members of the Raft cluster.
-    pub members: Vec<NodeId>,
-    /// Non-voting members of the cluster.
+    /// All members of the Raft cluster.
+    pub members: HashSet<NodeId>,
+    /// All members of the Raft cluster after joint consensus is finalized.
     ///
-    /// These nodes are being brought up-to-speed by the leader and will be transitioned over to
-    /// being standard members once they are up-to-date.
-    pub non_voters: Vec<NodeId>,
-    /// The set of nodes which are to be removed after joint consensus is complete.
-    pub removing: Vec<NodeId>,
+    /// The presence of a value here indicates that the config is in joint consensus.
+    pub members_after_consensus: Option<HashSet<NodeId>>,
 }
 
 impl MembershipConfig {
-    /// Create a new initial config containing only the given node ID.
-    pub fn new_initial(id: NodeId) -> Self {
-        Self{is_in_joint_consensus: false, members: vec![id], non_voters: vec![], removing: vec![]}
+    /// Get an iterator over all nodes in the current config.
+    pub fn all_nodes(&self) -> HashSet<u64> {
+        let mut all = self.members.clone();
+        if let Some(members) = &self.members_after_consensus {
+            all.extend(members);
+        }
+        all
     }
 
     /// Check if the given NodeId exists in this membership config.
     ///
-    /// This checks only the contents of `members` & `non_voters`.
+    /// When in joint consensus, this will check both config groups.
     pub fn contains(&self, x: &NodeId) -> bool {
-        self.members.contains(x) || self.non_voters.contains(x)
+        self.members.contains(x) || if let Some(members) = &self.members_after_consensus {
+            members.contains(x)
+        } else {
+            false
+        }
     }
 
-    /// Get an iterator over all nodes in the current config.
-    pub fn all_nodes(&self) -> impl Iterator<Item=&NodeId> {
-        self.members.iter().chain(self.non_voters.iter())
+    /// Check to see if the config is currently in joint consensus.
+    pub fn is_in_joint_consensus(&self) -> bool {
+        self.members_after_consensus.is_some()
     }
 
-    /// Get the length of the members & non_voters vectors.
+    /// Get the length of the `members` vec.
+    ///
+    /// This does not consider the length of the config after joint consensus, if applicable.
     pub fn len(&self) -> usize {
-        self.members.len() + self.non_voters.len()
+        self.members.len()
+    }
+
+    /// Create a new initial config containing only the given node ID.
+    pub fn new_initial(id: NodeId) -> Self {
+        let mut members = HashSet::new();
+        members.insert(id);
+        Self{members, members_after_consensus: None}
     }
 }
 
@@ -429,11 +472,6 @@ pub struct VoteResponse {
     pub term: u64,
     /// Will be true if the candidate received a vote from the responder.
     pub vote_granted: bool,
-    /// Will be true if the candidate is unknown to the responding node's config.
-    ///
-    /// If this field is true, and the sender's (the candidate's) index is greater than 0, then it
-    /// should revert to the NonVoter state; if the sender's index is 0, then resume campaigning.
-    pub is_candidate_unknown: bool,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -551,10 +589,10 @@ pub enum ClientResponse<R: AppDataResponse> {
 
 impl<R: AppDataResponse> ClientResponse<R> {
     /// The index of the log entry corresponding to this response object.
-    pub fn index(&self) -> u64 {
+    pub fn index(&self) -> &u64 {
         match self {
-            Self::Committed{index} => *index,
-            Self::Applied{index, ..} => *index,
+            Self::Committed{index} => index,
+            Self::Applied{index, ..} => index,
         }
     }
 
@@ -564,50 +602,5 @@ impl<R: AppDataResponse> ClientResponse<R> {
             Self::Committed{..} => None,
             Self::Applied{data, ..} => Some(data),
         }
-    }
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// The data model used for initializing a pristine Raft node.
-pub struct InitWithConfig {
-    /// All currently known members to initialize the new cluster with.
-    ///
-    /// If the ID of the node this command is being submitted to is not present, it will be added.
-    /// If there are duplicates, they will be filtered out to ensure config is proper.
-    pub(crate) members: Vec<NodeId>,
-}
-
-impl InitWithConfig {
-    /// Construct a new instance.
-    pub fn new(members: Vec<NodeId>) -> Self {
-        Self{members}
-    }
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Propose a new membership config change to a running cluster.
-///
-/// There are a few invariants which must be upheld here:
-///
-/// - if the node this command is sent to is not the leader of the cluster, it will be rejected.
-/// - if the given changes would leave the cluster in an inoperable state, it will be rejected.
-pub struct ProposeConfigChange {
-    /// New members to be added to the cluster.
-    pub(crate) add_members: Vec<NodeId>,
-    /// Members to be removed from the cluster.
-    pub(crate) remove_members: Vec<NodeId>,
-}
-
-impl ProposeConfigChange {
-    /// Create a new instance.
-    ///
-    /// If there are duplicates in either of the givenn vectors, they will be filtered out to
-    /// ensure config is proper.
-    pub fn new(add_members: Vec<NodeId>, remove_members: Vec<NodeId>) -> Self {
-        Self{add_members, remove_members}
     }
 }

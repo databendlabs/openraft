@@ -8,20 +8,8 @@
 //! return a stream of metrics.
 
 use crate::NodeId;
+use crate::core::State;
 use crate::raft::MembershipConfig;
-
-/// All possible states of a Raft node.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum State {
-    /// The node is completely passive; replicating entries, but neither voting nor timing out.
-    NonVoter,
-    /// The node is replicating logs from the leader.
-    Follower,
-    /// The node is campaigning to become the cluster leader.
-    Candidate,
-    /// The node is the Raft cluster leader.
-    Leader,
-}
 
 /// Baseline metrics of the current state of the subject Raft node.
 ///

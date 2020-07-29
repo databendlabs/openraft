@@ -49,9 +49,9 @@ pub enum ConfigError {
     MaxPayloadEntriesTooSmall,
 }
 
-/// The set of errors which may take place when requesting to propose a config change.
+/// The set of errors which may take place when initializing a pristine Raft node.
 #[derive(Debug, Error)]
-pub enum InitWithConfigError<E: AppError> {
+pub enum InitializeError<E: AppError> {
     /// An internal error has taken place.
     #[error("{0}")]
     RaftError(#[from] RaftError<E>),
@@ -62,7 +62,7 @@ pub enum InitWithConfigError<E: AppError> {
 
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug, Error)]
-pub enum ProposeConfigChangeError<E: AppError> {
+pub enum ChangeConfigError<E: AppError> {
     /// An error related to the processing of the config change request.
     ///
     /// Errors of this type will only come about from the internals of applying the config change
@@ -71,11 +71,11 @@ pub enum ProposeConfigChangeError<E: AppError> {
     RaftError(#[from] RaftError<E>),
     /// The cluster is already undergoing a configuration change.
     #[error("the cluster is already undergoing a configuration change")]
-    AlreadyInJointConsensus,
+    ConfigChangeInProgress,
     /// The given config would leave the cluster in an inoperable state.
     ///
     /// This error will be returned if the full set of changes, once fully applied, would leave
-    /// the cluster with less than two members.
+    /// the cluster in an inoperable state.
     #[error("the given config would leave the cluster in an inoperable state")]
     InoperableConfig,
     /// The node the config change proposal was sent to was not the leader of the cluster.
@@ -84,15 +84,11 @@ pub enum ProposeConfigChangeError<E: AppError> {
     /// The proposed config changes would make no difference to the current config.
     ///
     /// This takes into account a current joint consensus and the end result of the config.
-    ///
-    /// This error will be returned if the proposed add & remove elements are empty; all of the
-    /// entries to be added already exist in the current config and/or all of the entries to be
-    /// removed have already been scheduled for removal and/or do not exist in the current config.
     #[error("the proposed config change would have no effect, this is a no-op")]
     Noop,
 }
 
-impl<D: AppData, E: AppError> From<ClientError<D, E>> for ProposeConfigChangeError<E> {
+impl<D: AppData, E: AppError> From<ClientError<D, E>> for ChangeConfigError<E> {
     fn from(src: ClientError<D, E>) -> Self {
         match src {
             ClientError::RaftError(err) => Self::RaftError(err),

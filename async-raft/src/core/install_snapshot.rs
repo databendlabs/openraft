@@ -5,7 +5,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use crate::{AppData, AppDataResponse, AppError, RaftNetwork, RaftStorage};
 use crate::error::RaftResult;
 use crate::raft::{InstallSnapshotRequest, InstallSnapshotResponse};
-use crate::core::{TargetState, RaftCore, SnapshotState, UpdateCurrentLeader};
+use crate::core::{State, RaftCore, SnapshotState, UpdateCurrentLeader};
 
 impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> RaftCore<D, R, E, N, S> {
     /// Invoked by leader to send chunks of a snapshot to a follower (§7).
@@ -24,19 +24,26 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         self.update_next_election_timeout();
 
         // Update current term if needed.
+        let mut report_metrics = false;
         if &self.current_term != &req.term {
             self.update_current_term(req.term, None);
             self.save_hard_state().await?;
+            report_metrics = true;
         }
 
         // Update current leader if needed.
         if self.current_leader.as_ref() != Some(&req.leader_id) {
             self.update_current_leader(UpdateCurrentLeader::OtherNode(req.leader_id));
+            report_metrics = true;
         }
 
         // If not follower, become follower.
         if !self.target_state.is_follower() && !self.target_state.is_non_voter() {
-            self.set_target_state(TargetState::Follower);
+            self.set_target_state(State::Follower); // State update will emit metrics.
+        }
+
+        if report_metrics {
+            self.report_metrics();
         }
 
         // Compare current snapshot state with received RPC and handle as needed.

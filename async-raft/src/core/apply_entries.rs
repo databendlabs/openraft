@@ -23,6 +23,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         // Apply this entry to the state machine and return its data response.
         let res = self.storage.apply_entry_to_state_machine(entry).await.map_err(|err| self.map_fatal_storage_result(err))?;
         self.last_applied = entry.index;
+        self.report_metrics();
         Ok(res)
     }
 }

@@ -1,5 +1,12 @@
-async raft
-==========
+<h1 align="center">async raft</h1>
+<div align="center">
+    <strong>
+        An implementation of the <a href="https://raft.github.io/">Raft distributed consensus protocol</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/railgun-rs/actix-raft">github</a>!
+    </strong>
+</div>
+<br />
+<div align="center">
+
 [![Build Status](https://travis-ci.com/railgun-rs/actix-raft.svg?branch=master)](https://travis-ci.com/railgun-rs/actix-raft)
 [![Crates.io](https://img.shields.io/crates/v/actix-raft.svg)](https://crates.io/crates/actix-raft)
 [![docs.rs](https://docs.rs/actix-raft/badge.svg)](https://docs.rs/actix-raft)
@@ -9,7 +16,10 @@ async raft
 [![GitHub issues open](https://img.shields.io/github/issues-raw/railgun-rs/actix-raft.svg)]()
 [![GitHub issues closed](https://img.shields.io/github/issues-closed-raw/railgun-rs/actix-raft.svg)]()
 
-An implementation of the [Raft distributed consensus protocol](https://raft.github.io/) using [the Tokio framework](https://tokio.rs/). Blazing fast Rust, a modern consensus protocol, and a reliable async runtime — this project intends to provide a consensus backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming &c). Please ⭐ on [github](https://github.com/railgun-rs/actix-raft)!
+</div>
+</br>
+
+Blazing fast Rust, a modern consensus protocol, and a reliable async runtime — this project intends to provide a consensus backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming &c).
 
 [The guide](https://railgun-rs.github.io/actix-raft) is the best place to get started, followed by [the docs](https://docs.rs/actix-raft/latest/actix_raft/) for more in-depth details.
 

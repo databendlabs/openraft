@@ -1,5 +1,5 @@
 #![cfg_attr(feature="docinclude", feature(external_doc))]
-#![cfg_attr(feature="docinclude", doc(include="../README.md"))]
+#![cfg_attr(feature="docinclude", doc(include="../../README.md"))]
 
 pub mod config;
 mod core;
@@ -18,7 +18,7 @@ use serde::{Serialize, de::DeserializeOwned};
 // Top-level exports.
 pub use crate::{
     config::{Config, ConfigBuilder, SnapshotPolicy},
-    error::{ConfigError, InitWithConfigError, ProposeConfigChangeError, RaftError},
+    error::{ConfigError, InitializeError, ChangeConfigError, RaftError},
     metrics::RaftMetrics,
     network::RaftNetwork,
     raft::Raft,

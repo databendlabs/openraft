@@ -1,7 +1,7 @@
 use crate::{AppData, AppDataResponse, AppError, RaftNetwork, RaftStorage};
 use crate::error::RaftResult;
 use crate::raft::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryPayload};
-use crate::core::{RaftCore, TargetState, UpdateCurrentLeader};
+use crate::core::{RaftCore, State, UpdateCurrentLeader};
 
 impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> RaftCore<D, R, E, N, S> {
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -31,7 +31,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
 
         // Transition to follower state if needed.
         if !self.target_state.is_follower() && !self.target_state.is_non_voter() {
-            self.set_target_state(TargetState::Follower);
+            self.set_target_state(State::Follower);
         }
 
         // Apply any outstanding logs to state machine based on `msg.leader_commit`.
@@ -59,6 +59,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         let msg_index_and_term_match = (&msg.prev_log_index == &self.last_log_index) && (&msg.prev_log_term == &self.last_log_term);
         if msg_prev_index_is_min || msg_index_and_term_match {
             self.append_log_entries(&msg.entries).await?;
+            self.report_metrics();
             return Ok(AppendEntriesResponse{term: self.current_term, success: true, conflict_opt: None});
         }
 
@@ -103,6 +104,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         tracing::trace!("end log consistency check");
 
         self.append_log_entries(&msg.entries).await?;
+        self.report_metrics();
         Ok(AppendEntriesResponse{term: self.current_term, success: true, conflict_opt: None})
     }
 

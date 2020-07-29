@@ -168,5 +168,5 @@ The Raft spec states explicitly that the index is a monotonically increasing val
 
 Sticking with a uniform, monotonically increasing index value, which does not reset per term, is the recommended approach.
 
-### does the definition of committment include the leader itself?
+### does the definition of commitment include the leader itself?
 The leader is included in the calculation of majorities, except in the case of joint consensus for the specific case where the leader is not part of the new configuration.

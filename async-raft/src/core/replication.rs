@@ -3,11 +3,23 @@ use tokio::sync::oneshot;
 use crate::{AppData, AppDataResponse, AppError, NodeId, RaftNetwork, RaftStorage};
 use crate::config::SnapshotPolicy;
 use crate::error::RaftResult;
-use crate::core::{ConsensusState, LeaderState, SnapshotState, TargetState, UpdateCurrentLeader};
-use crate::replication::{RaftEvent, ReplicaEvent};
+use crate::core::{ConsensusState, LeaderState, ReplicationState, SnapshotState, State, UpdateCurrentLeader};
+use crate::replication::{RaftEvent, ReplicaEvent, ReplicationStream};
 use crate::storage::CurrentSnapshotData;
 
 impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> LeaderState<'a, D, R, E, N, S> {
+    /// Spawn a new replication stream returning its replication state handle.
+    #[tracing::instrument(level="debug", skip(self))]
+    pub(super) fn spawn_replication_stream(&self, target: NodeId) -> ReplicationState<D> {
+        let replstream = ReplicationStream::new(
+            self.core.id, target, self.core.current_term, self.core.config.clone(),
+            self.core.last_log_index, self.core.last_log_term, self.core.commit_index,
+            self.core.network.clone(), self.core.storage.clone(), self.replicationtx.clone(),
+        );
+        ReplicationState{match_index: self.core.last_log_index, is_at_line_rate: false, replstream, remove_after_commit: None}
+    }
+
+    /// Handle a replication event coming from one of the replication streams.
     #[tracing::instrument(level="trace", skip(self, event))]
     pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent<S::Snapshot>) {
         let res = match event {
@@ -15,6 +27,10 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
             ReplicaEvent::RevertToFollower{target, term} => self.handle_revert_to_follower(target, term).await,
             ReplicaEvent::UpdateMatchIndex{target, match_index} => self.handle_update_match_index(target, match_index).await,
             ReplicaEvent::NeedsSnapshot{target, tx} => self.handle_needs_snapshot(target, tx).await,
+            ReplicaEvent::Shutdown => {
+                self.core.set_target_state(State::Shutdown);
+                return;
+            }
         };
         if let Err(err) = res {
             tracing::error!({error=%err}, "error while processing event from replication stream");
@@ -25,23 +41,34 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     #[tracing::instrument(level="trace", skip(self, target, is_line_rate))]
     async fn handle_rate_update(&mut self, target: NodeId, is_line_rate: bool) -> RaftResult<(), E> {
         // Get a handle the target's replication stat & update it as needed.
-        let repl_state = match self.nodes.get_mut(&target) {
-            Some(repl_state) => repl_state,
-            _ => return Ok(()),
-        };
-        repl_state.is_at_line_rate = is_line_rate;
-        // If in joint consensus, and the target node was one of the new nodes, update
-        // the joint consensus state to indicate that the target is up-to-date.
-        if let ConsensusState::Joint{new_nodes_being_synced, ..} = &mut self.consensus_state {
-            if let Some((idx, _)) = new_nodes_being_synced.iter().enumerate().find(|(_, e)| e == &&target) {
-                new_nodes_being_synced.remove(idx);
+        if let Some(state) = self.nodes.get_mut(&target) {
+            state.is_at_line_rate = is_line_rate;
+            return Ok(());
+        }
+        // Else, if this is a non-voter, then update as needed.
+        if let Some(state) = self.non_voters.get_mut(&target) {
+            state.state.is_at_line_rate = is_line_rate;
+            state.is_ready_to_join = true;
+            // Issue a response on the non-voters response channel if needed.
+            if let Some(tx) = state.tx.take() {
+                let _ = tx.send(Ok(()));
             }
-            // If there are no remaining nodes to sync, then finalize this joint consensus.
-            if self.consensus_state.is_joint_consensus_safe_to_finalize() {
-                self.finalize_joint_consensus().await?;
+            // If we are in NonVoterSync state, and this is one of the nodes being awaiting, then update.
+            match std::mem::replace(&mut self.consensus_state, ConsensusState::Uniform) {
+                ConsensusState::NonVoterSync{mut awaiting, members, tx} => {
+                    awaiting.remove(&target);
+                    if awaiting.is_empty() {
+                        // We are ready to move forward with entering joint consensus.
+                        self.consensus_state = ConsensusState::Uniform;
+                        self.change_membership(members, tx).await;
+                    } else {
+                        // We are still awaiting additional nodes, so replace our original state.
+                        self.consensus_state = ConsensusState::NonVoterSync{awaiting, members, tx};
+                    }
+                }
+                other => self.consensus_state = other, // Set the original value back to what it was.
             }
         }
-
         Ok(())
     }
 
@@ -52,7 +79,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
             self.core.update_current_term(term, None);
             self.core.save_hard_state().await?;
             self.core.update_current_leader(UpdateCurrentLeader::Unknown);
-            self.core.set_target_state(TargetState::Follower);
+            self.core.set_target_state(State::Follower);
         }
         Ok(())
     }
@@ -60,12 +87,18 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
     /// Handle events from a replication stream which updates the target node's match index.
     #[tracing::instrument(level="trace", skip(self, target, match_index))]
     async fn handle_update_match_index(&mut self, target: NodeId, match_index: u64) -> RaftResult<(), E> {
+        // If this is a non-voter, then update and return.
+        if let Some(state) = self.non_voters.get_mut(&target) {
+            state.state.match_index = match_index;
+            return Ok(());
+        }
+
         // Update target's match index & check if it is awaiting removal.
         let mut needs_removal = false;
         match self.nodes.get_mut(&target) {
-            Some(replstate) => {
-                replstate.match_index = match_index;
-                if let Some(threshold) = &replstate.remove_after_commit {
+            Some(state) => {
+                state.match_index = match_index;
+                if let Some(threshold) = &state.remove_after_commit {
                     if &match_index >= threshold {
                         needs_removal = true;
                     }
@@ -81,26 +114,43 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
             }
         }
 
-        // Parse through each targets' match index, and update the value of `commit_index` based
-        // on the highest value which has been replicated to a majority of the cluster
-        // including the leader which created the entry.
-        let mut indices: Vec<_> = self.nodes.values().map(|elem| elem.match_index).collect();
-        indices.push(self.core.last_log_index);
-        let new_commit_index = calculate_new_commit_index(indices, self.core.commit_index);
-        let has_new_commit_index = &new_commit_index > &self.core.commit_index;
+        // Determine the new commit index of the current membership config nodes.
+        let mut indices_c0 = self.nodes.iter()
+            .filter(|(id, _)| self.core.membership.members.contains(id))
+            .map(|(_, node)| node.match_index)
+            .collect::<Vec<_>>();
+        if !self.is_stepping_down {
+            indices_c0.push(self.core.last_log_index);
+        }
+        let commit_index_c0 = calculate_new_commit_index(indices_c0, self.core.commit_index);
 
-        // If a new commit index has been determined, update a few needed elements.
+        // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
+        let mut commit_index_c1 = commit_index_c0; // Defaults to just matching C0.
+        if let Some(members) = &self.core.membership.members_after_consensus {
+            let indices_c1 = self.nodes.iter()
+                .filter(|(id, _)| members.contains(id))
+                .map(|(_, node)| node.match_index)
+                .collect();
+            commit_index_c1 = calculate_new_commit_index(indices_c1, self.core.commit_index);
+        }
+
+        // Determine if we have a new commit index, accounting for joint consensus.
+        // If a new commit index has been established, then update a few needed elements.
+        let has_new_commit_index = &commit_index_c0 > &self.core.commit_index && &commit_index_c1 > &self.core.commit_index;
         if has_new_commit_index {
-            self.core.commit_index = new_commit_index;
+            self.core.commit_index = std::cmp::min(commit_index_c0, commit_index_c1);
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
-                let _ = node.replstream.repltx.send(RaftEvent::UpdateCommitIndex{commit_index: new_commit_index});
+                let _ = node.replstream.repltx.send(RaftEvent::UpdateCommitIndex{commit_index: self.core.commit_index});
+            }
+            for node in self.non_voters.values() {
+                let _ = node.state.replstream.repltx.send(RaftEvent::UpdateCommitIndex{commit_index: self.core.commit_index});
             }
 
             // Check if there are any pending requests which need to be processed.
             let filter = self.awaiting_committed.iter().enumerate()
-                .take_while(|(_idx, elem)| &elem.entry.index <= &new_commit_index)
+                .take_while(|(_idx, elem)| &elem.entry.index <= &self.core.commit_index)
                 .last()
                 .map(|(idx, _)| idx);
             if let Some(offset) = filter {
@@ -109,6 +159,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
                     self.client_request_post_commit(request).await;
                 }
             }
+            self.core.report_metrics();
         }
         Ok(())
     }
@@ -163,8 +214,8 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
 /// Determine the value for `current_commit` based on all known indicies of the cluster members.
 ///
-/// - `entries`: is a vector of all of the highest known index to be replicated on a target node,
-/// one per node of the cluster, including the leader.
+/// - `entries`: is a vector of all of the highest known indices to be replicated on a target node,
+/// one per node of the cluster, including the leader as long as the leader is not stepping down.
 /// - `current_commit`: is the Raft node's `current_commit` value before invoking this function.
 /// The output of this function will never be less than this value.
 ///

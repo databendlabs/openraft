@@ -6,7 +6,7 @@ use std::io::Cursor;
 
 use async_raft::async_trait;
 use async_raft::{AppData, AppDataResponse, AppError, NodeId, RaftStorage};
-use async_raft::raft::{Entry, EntryPayload, EntrySnapshotPointer, MembershipConfig};
+use async_raft::raft::{Entry, EntryPayload, MembershipConfig};
 use async_raft::storage::{CurrentSnapshotData, HardState, InitialState};
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
@@ -243,7 +243,7 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
             let mut current_snapshot = self.current_snapshot.write().await;
             term = log.get(&through).map(|entry| entry.term).ok_or_else(|| MemStoreError::InconsistentLog)?;
             *log = log.split_off(&through);
-            log.insert(through, Entry::new_snapshot_pointer(EntrySnapshotPointer{id: "".into()}, through, term));
+            log.insert(through, Entry::new_snapshot_pointer(through, term, "".into(), membership_config.clone()));
 
             snapshot = MemStoreSnapshot{index: through, term, membership: membership_config.clone(), data};
             *current_snapshot = Some(snapshot.clone());
@@ -267,14 +267,23 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
             .map_err(|err| MemStoreError::SnapshotCborError(err.to_string()))?;
         // Update log.
         {
+            // Go backwards through the log to find the most recent membership config <= the `through` index.
             let mut log = self.log.write().await;
+            let membership_config = log.values().rev()
+                .skip_while(|entry| &entry.index > &index)
+                .find_map(|entry| match &entry.payload {
+                    EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| MembershipConfig::new_initial(self.id));
+
             match &delete_through {
                 Some(through) => {
                     *log = log.split_off(&(through + 1));
                 }
                 None => log.clear(),
             }
-            log.insert(index, Entry::new_snapshot_pointer(EntrySnapshotPointer{id}, index, term));
+            log.insert(index, Entry::new_snapshot_pointer(index, term, id, membership_config));
         }
 
         // Update current snapshot.

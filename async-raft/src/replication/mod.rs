@@ -137,7 +137,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
         let this = Self{
             id, target, term, network, storage, config, max_payload_entries,
             marker_r: std::marker::PhantomData, marker_e: std::marker::PhantomData,
-            target_state: TargetReplState::LineRate, last_log_index, commit_index,
+            target_state: TargetReplState::Lagging, last_log_index, commit_index,
             next_index: last_log_index + 1, match_index: last_log_index, match_term: last_log_term,
             rafttx, raftrx, heartbeat: interval(heartbeat_timeout), heartbeat_timeout,
             replication_buffer: Vec::new(), outbound_buffer: Vec::new(),
@@ -148,6 +148,10 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
 
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, target=self.target))]
     async fn main(mut self) {
+        // Perform an initial heartbeat.
+        self.send_append_entries().await;
+
+        // Proceed to the replication stream's inner loop.
         loop {
             match &self.target_state {
                 TargetReplState::LineRate => LineRateState::new(&mut self).run().await,
@@ -251,6 +255,8 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
                 }
                 Err(err) => {
                     tracing::error!({error=%err}, "error fetching log entry due to returned AppendEntries RPC conflict_opt");
+                    let _ = self.rafttx.send(ReplicaEvent::Shutdown);
+                    self.target_state = TargetReplState::Shutdown;
                     return;
                 }
             };
@@ -348,7 +354,7 @@ impl<D: AppData> AsRef<Entry<D>> for OutboundEntry<D> {
 enum TargetReplState {
     /// The replication stream is running at line rate.
     LineRate,
-    /// The replication stream is lagging behind due to the target node.
+    /// The replication stream is lagging behind.
     Lagging,
     /// The replication stream is streaming a snapshot over to the target node.
     Snapshotting,
@@ -411,6 +417,8 @@ pub(crate) enum ReplicaEvent<S>
         /// The response channel for delivering the snapshot data.
         tx: oneshot::Sender<CurrentSnapshotData<S>>,
     },
+    /// Some critical error has taken place, and Raft needs to shutdown.
+    Shutdown,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -443,7 +451,10 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
             }
             tokio::select!{
                 _ = self.core.heartbeat.next() => self.core.send_append_entries().await,
-                Some(event) = self.core.raftrx.next() => self.core.drain_raftrx(event),
+                event = self.core.raftrx.next() => match event {
+                    Some(event) => self.core.drain_raftrx(event),
+                    None => self.core.target_state = TargetReplState::Shutdown,
+                }
             }
         }
     }
@@ -528,6 +539,8 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
                 Ok(entries) => entries,
                 Err(err) => {
                     tracing::error!({error=%err}, "error fetching logs from storage");
+                    let _ = self.core.rafttx.send(ReplicaEvent::Shutdown);
+                    self.core.target_state = TargetReplState::Shutdown;
                     return;
                 }
             };
@@ -604,7 +617,13 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         loop {
             tokio::select!{
                 _ = self.core.heartbeat.next() => self.core.send_append_entries().await,
-                Some(event) = self.core.raftrx.next() => self.core.drain_raftrx(event),
+                event = self.core.raftrx.next() => match event {
+                    Some(event) => self.core.drain_raftrx(event),
+                    None => {
+                        self.core.target_state = TargetReplState::Shutdown;
+                        return;
+                    }
+                },
                 res = &mut rx => {
                     match res {
                         Ok(snapshot) => {
@@ -613,7 +632,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
                         }
                         Err(_) => return, // Channels may close for various acceptable reasons.
                     }
-                }
+                },
             }
         }
     }
