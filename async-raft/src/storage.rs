@@ -1,10 +1,11 @@
 //! The Raft storage interface and data types.
 
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
 
-use crate::{AppData, AppDataResponse, AppError, NodeId};
+use crate::{AppData, AppDataResponse, NodeId};
 use crate::raft::{Entry, MembershipConfig};
 
 /// The data associated with the current snapshot.
@@ -31,8 +32,6 @@ pub struct HardState {
     pub current_term: u64,
     /// The ID of the node voted for in the `current_term`.
     pub voted_for: Option<NodeId>,
-    /// The cluster membership configuration.
-    pub membership: MembershipConfig,
 }
 
 /// A struct used to represent the initial state which a Raft node needs when first starting.
@@ -46,6 +45,9 @@ pub struct InitialState {
     pub last_applied_log: u64,
     /// The saved hard state of the node.
     pub hard_state: HardState,
+    /// The latest cluster membership configuration found in the log, else a new initial
+    /// membership config consisting only of this node's ID.
+    pub membership: MembershipConfig,
 }
 
 impl InitialState {
@@ -54,9 +56,11 @@ impl InitialState {
     /// ### `id`
     /// The ID of the Raft node.
     pub fn new_initial(id: NodeId) -> Self {
-        Self{last_log_index: 0, last_log_term: 0, last_applied_log: 0, hard_state: HardState{
-            current_term: 0, voted_for: None, membership: MembershipConfig::new_initial(id),
-        }}
+        Self{
+            last_log_index: 0, last_log_term: 0, last_applied_log: 0,
+            hard_state: HardState{current_term: 0, voted_for: None},
+            membership: MembershipConfig::new_initial(id),
+        }
     }
 }
 
@@ -65,14 +69,26 @@ impl InitialState {
 /// See the [storage chapter of the guide](TODO:)
 /// for details and discussion on this trait and how to implement it.
 #[async_trait]
-pub trait RaftStorage<D, R, E>: Send + Sync + 'static
+pub trait RaftStorage<D, R>: Send + Sync + 'static
     where
         D: AppData,
         R: AppDataResponse,
-        E: AppError,
 {
     /// The storage engine's associated type used for exposing a snapshot for reading & writing.
     type Snapshot: AsyncRead + AsyncWrite + AsyncSeek + Send + Unpin + 'static;
+
+    /// Get the latest membership config found in the log.
+    ///
+    /// This must always be implemented as a reverse search through the log to find the most
+    /// recent membership config to be appended to the log.
+    ///
+    /// If a snapshot pointer is encountered, then the membership config embedded in that snapshot
+    /// pointer should be used.
+    ///
+    /// If the system is pristine, then it should return the value of calling
+    /// `MembershipConfig::new_initial(node_id)`. It is required that the storage engine persist
+    /// the node's ID so that it is consistent across restarts.
+    async fn get_membership_config(&self) -> Result<MembershipConfig>;
 
     /// A request from Raft to get Raft's state information from storage.
     ///
@@ -84,29 +100,22 @@ pub trait RaftStorage<D, R, E>: Send + Sync + 'static
     /// The storage impl may need to look in a few different places to accurately respond to this
     /// request: the last entry in the log for `last_log_index` & `last_log_term`; the node's hard
     /// state record; and the index of the last log applied to the state machine.
-    async fn get_initial_state(&self) -> Result<InitialState, E>;
+    async fn get_initial_state(&self) -> Result<InitialState>;
 
     /// A request from Raft to save its hard state.
-    async fn save_hard_state(&self, hs: &HardState) -> Result<(), E>;
+    async fn save_hard_state(&self, hs: &HardState) -> Result<()>;
 
     /// A request from Raft to get a series of log entries from storage.
     ///
     /// The start value is inclusive in the search and the stop value is non-inclusive: `[start, stop)`.
-    async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<D>>, E>;
+    async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<D>>>;
 
     /// Delete all logs starting from `start` and stopping at `stop`, else continuing to the end
     /// of the log if `stop` is `None`.
-    async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<(), E>;
+    async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()>;
 
     /// A request from Raft to append a new entry to the log.
-    ///
-    /// These requests come about via client requests, and as such, this is the only stroage method
-    /// which is allowed to return errors which will not cause Raft to shutdown. Application
-    /// errors coming from this interface will be sent back to the client as-is.
-    ///
-    /// This property of error handling allows you to keep your application logic as close to the
-    /// storage layer as needed.
-    async fn append_entry_to_log(&self, entry: &Entry<D>) -> Result<(), E>;
+    async fn append_entry_to_log(&self, entry: &Entry<D>) -> Result<()>;
 
     /// A request from Raft to replicate a payload of entries to the log.
     ///
@@ -118,23 +127,31 @@ pub trait RaftStorage<D, R, E>: Send + Sync + 'static
     /// Though the entries will always be presented in order, each entry's index should be used to
     /// determine its location to be written in the log, as logs may need to be overwritten under
     /// some circumstances.
-    async fn replicate_to_log(&self, entries: &[Entry<D>]) -> Result<(), E>;
+    async fn replicate_to_log(&self, entries: &[Entry<D>]) -> Result<()>;
 
     /// A request from Raft to apply the given log entry to the state machine.
     ///
-    /// This handler is called as part of the client request path. Client requests which are
-    /// configured to respond after they have been `Applied` will wait until after this handler
-    /// returns before issuing a response to the client request.
-    ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
     /// have been replicated to a majority of the cluster, will be applied to the state machine.
-    async fn apply_entry_to_state_machine(&self, entry: &Entry<D>) -> Result<R, E>;
+    ///
+    /// This is where the business logic of interacting with your application's state machine
+    /// should live. This is 100% application specific. Perhaps this is where an application
+    /// specific transaction is being started, or perhaps committed. This may be where a key/value
+    /// is being stored. This may be where an entry is being appended to an immutable log.
+    ///
+    /// The behavior here is application specific, but errors should never be returned unless the
+    /// error represents an actual failure to apply the entry. An error returned here will cause
+    /// the Raft node to shutdown in order to preserve the safety of the data and avoid corruption.
+    /// If instead some application specific error needs to be returned to the client, those
+    /// variants must be encapsulated in the type `R`, which may have application specific success
+    /// and error variants encoded in the type, perhaps using an inner `Result` type.
+    async fn apply_entry_to_state_machine(&self, index: &u64, data: &D) -> Result<R>;
 
     /// A request from Raft to apply the given payload of entries to the state machine, as part of replication.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
     /// have been replicated to a majority of the cluster, will be applied to the state machine.
-    async fn replicate_to_state_machine(&self, entries: &[Entry<D>]) -> Result<(), E>;
+    async fn replicate_to_state_machine(&self, entries: &[(&u64, &D)]) -> Result<()>;
 
     /// A request from Raft to perform log compaction, returning a handle to the generated snapshot.
     ///
@@ -146,14 +163,14 @@ pub trait RaftStorage<D, R, E>: Send + Sync + 'static
     /// ### implementation guide
     /// See the [storage chapter of the guide](TODO:)
     /// for details on how to implement this handler.
-    async fn do_log_compaction(&self, through: u64) -> Result<CurrentSnapshotData<Self::Snapshot>, E>;
+    async fn do_log_compaction(&self, through: u64) -> Result<CurrentSnapshotData<Self::Snapshot>>;
 
     /// Create a new snapshot returning a writable handle to the snapshot object along with the ID of the snapshot.
     ///
     /// ### implementation guide
     /// See the [storage chapter of the guide]()
     /// for details on how to implement this handler.
-    async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>), E>;
+    async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>)>;
 
     /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
     ///
@@ -173,7 +190,7 @@ pub trait RaftStorage<D, R, E>: Send + Sync + 'static
     async fn finalize_snapshot_installation(
         &self, index: u64, term: u64, delete_through: Option<u64>,
         id: String, snapshot: Box<Self::Snapshot>,
-    ) -> Result<(), E>;
+    ) -> Result<()>;
 
     /// A request from Raft to get a readable handle to the current snapshot, along with its metadata.
     ///
@@ -186,5 +203,5 @@ pub trait RaftStorage<D, R, E>: Send + Sync + 'static
     ///
     /// A proper snapshot implementation will store the term, index and membership config as part
     /// of the snapshot as well, which can be decoded for creating this method's response.
-    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>, E>;
+    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>>;
 }

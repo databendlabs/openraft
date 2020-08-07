@@ -14,6 +14,38 @@ jobs:
           command: build
           args: -p async-raft --release
 
+      # unit tests
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --lib
+
+      # integration tests
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test initialization
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test client_writes
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test singlenode
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test dynamic_membership
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test compaction
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test stepdown
+
   build-async-raft-nightly:
     name: build async-raft nightly
     runs-on: ubuntu-latest
@@ -38,5 +70,5 @@ jobs:
           toolchain: stable
       - uses: actions-rs/cargo@v1
         with:
-          command: build
-          args: -p memstore --release
+          command: test
+          args: -p memstore

@@ -2,36 +2,39 @@
 
 use thiserror::Error;
 
-use crate::{AppData, AppError, NodeId};
+use crate::{AppData, NodeId};
 use crate::raft::ClientRequest;
 
 /// A result type where the error variant is always a `RaftError`.
-pub type RaftResult<T, E> = std::result::Result<T, RaftError<E>>;
+pub type RaftResult<T> = std::result::Result<T, RaftError>;
 
 /// Error variants related to the internals of Raft.
 #[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum RaftError<E: AppError> {
-    /// An application error.
+pub enum RaftError {
+    /// An error which has come from the `RaftStorage` layer.
     #[error("{0}")]
-    AppError(#[from] E),
-    /// A configuration error indicating that the given values for election timeout min & max are invalid: max must be greater than min.
-    #[error("given values for election timeout min & max are invalid: max must be greater than min")]
-    InvalidElectionTimeoutMinMax,
+    RaftStorage(anyhow::Error),
+    /// An error which has come from the `RaftNetwork` layer.
+    #[error("{0}")]
+    RaftNetwork(anyhow::Error),
     /// An internal Raft error indicating that Raft is shutting down.
     #[error("Raft is shutting down")]
     ShuttingDown,
-    /// An IO error from tokio.
-    #[error("{0}")]
-    IO(#[from] tokio::io::Error),
+}
+
+impl From<tokio::io::Error> for RaftError {
+    fn from(src: tokio::io::Error) -> Self {
+        RaftError::RaftStorage(src.into())
+    }
 }
 
 /// An error related to a client request.
 #[derive(Debug, Error)]
-pub enum ClientError<D: AppData, E: AppError> {
+pub enum ClientError<D: AppData> {
     /// A Raft error.
     #[error("{0}")]
-    RaftError(#[from] RaftError<E>),
+    RaftError(#[from] RaftError),
     /// The client request must be forwarded to the cluster leader.
     #[error("the client request must be forwarded to the cluster leader")]
     ForwardToLeader(ClientRequest<D>, Option<NodeId>),
@@ -51,10 +54,10 @@ pub enum ConfigError {
 
 /// The set of errors which may take place when initializing a pristine Raft node.
 #[derive(Debug, Error)]
-pub enum InitializeError<E: AppError> {
+pub enum InitializeError {
     /// An internal error has taken place.
     #[error("{0}")]
-    RaftError(#[from] RaftError<E>),
+    RaftError(#[from] RaftError),
     /// The requested action is not allowed due to the Raft node's current state.
     #[error("the requested action is not allowed due to the Raft node's current state")]
     NotAllowed,
@@ -62,13 +65,13 @@ pub enum InitializeError<E: AppError> {
 
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug, Error)]
-pub enum ChangeConfigError<E: AppError> {
+pub enum ChangeConfigError {
     /// An error related to the processing of the config change request.
     ///
     /// Errors of this type will only come about from the internals of applying the config change
     /// to the Raft log and the process related to that workflow.
     #[error("{0}")]
-    RaftError(#[from] RaftError<E>),
+    RaftError(#[from] RaftError),
     /// The cluster is already undergoing a configuration change.
     #[error("the cluster is already undergoing a configuration change")]
     ConfigChangeInProgress,
@@ -88,8 +91,8 @@ pub enum ChangeConfigError<E: AppError> {
     Noop,
 }
 
-impl<D: AppData, E: AppError> From<ClientError<D, E>> for ChangeConfigError<E> {
-    fn from(src: ClientError<D, E>) -> Self {
+impl<D: AppData> From<ClientError<D>> for ChangeConfigError {
+    fn from(src: ClientError<D>) -> Self {
         match src {
             ClientError::RaftError(err) => Self::RaftError(err),
             ClientError::ForwardToLeader(_, _) => Self::NodeNotLeader,

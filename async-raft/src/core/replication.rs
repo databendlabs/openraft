@@ -1,15 +1,15 @@
 use tokio::sync::oneshot;
 
-use crate::{AppData, AppDataResponse, AppError, NodeId, RaftNetwork, RaftStorage};
+use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 use crate::config::SnapshotPolicy;
 use crate::error::RaftResult;
 use crate::core::{ConsensusState, LeaderState, ReplicationState, SnapshotState, State, UpdateCurrentLeader};
 use crate::replication::{RaftEvent, ReplicaEvent, ReplicationStream};
 use crate::storage::CurrentSnapshotData;
 
-impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> LeaderState<'a, D, R, E, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
-    #[tracing::instrument(level="debug", skip(self))]
+    #[tracing::instrument(level="trace", skip(self))]
     pub(super) fn spawn_replication_stream(&self, target: NodeId) -> ReplicationState<D> {
         let replstream = ReplicationStream::new(
             self.core.id, target, self.core.current_term, self.core.config.clone(),
@@ -39,7 +39,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
     /// Handle events from replication streams updating their replication rate tracker.
     #[tracing::instrument(level="trace", skip(self, target, is_line_rate))]
-    async fn handle_rate_update(&mut self, target: NodeId, is_line_rate: bool) -> RaftResult<(), E> {
+    async fn handle_rate_update(&mut self, target: NodeId, is_line_rate: bool) -> RaftResult<()> {
         // Get a handle the target's replication stat & update it as needed.
         if let Some(state) = self.nodes.get_mut(&target) {
             state.is_at_line_rate = is_line_rate;
@@ -48,25 +48,27 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         // Else, if this is a non-voter, then update as needed.
         if let Some(state) = self.non_voters.get_mut(&target) {
             state.state.is_at_line_rate = is_line_rate;
-            state.is_ready_to_join = true;
+            state.is_ready_to_join = is_line_rate;
             // Issue a response on the non-voters response channel if needed.
-            if let Some(tx) = state.tx.take() {
-                let _ = tx.send(Ok(()));
-            }
-            // If we are in NonVoterSync state, and this is one of the nodes being awaiting, then update.
-            match std::mem::replace(&mut self.consensus_state, ConsensusState::Uniform) {
-                ConsensusState::NonVoterSync{mut awaiting, members, tx} => {
-                    awaiting.remove(&target);
-                    if awaiting.is_empty() {
-                        // We are ready to move forward with entering joint consensus.
-                        self.consensus_state = ConsensusState::Uniform;
-                        self.change_membership(members, tx).await;
-                    } else {
-                        // We are still awaiting additional nodes, so replace our original state.
-                        self.consensus_state = ConsensusState::NonVoterSync{awaiting, members, tx};
-                    }
+            if state.is_ready_to_join {
+                if let Some(tx) = state.tx.take() {
+                    let _ = tx.send(Ok(()));
                 }
-                other => self.consensus_state = other, // Set the original value back to what it was.
+                // If we are in NonVoterSync state, and this is one of the nodes being awaiting, then update.
+                match std::mem::replace(&mut self.consensus_state, ConsensusState::Uniform) {
+                    ConsensusState::NonVoterSync{mut awaiting, members, tx} => {
+                        awaiting.remove(&target);
+                        if awaiting.is_empty() {
+                            // We are ready to move forward with entering joint consensus.
+                            self.consensus_state = ConsensusState::Uniform;
+                            self.change_membership(members, tx).await;
+                        } else {
+                            // We are still awaiting additional nodes, so replace our original state.
+                            self.consensus_state = ConsensusState::NonVoterSync{awaiting, members, tx};
+                        }
+                    }
+                    other => self.consensus_state = other, // Set the original value back to what it was.
+                }
             }
         }
         Ok(())
@@ -74,7 +76,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
     #[tracing::instrument(level="trace", skip(self, term))]
-    async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> RaftResult<(), E> {
+    async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> RaftResult<()> {
         if &term > &self.core.current_term {
             self.core.update_current_term(term, None);
             self.core.save_hard_state().await?;
@@ -86,7 +88,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
     /// Handle events from a replication stream which updates the target node's match index.
     #[tracing::instrument(level="trace", skip(self, target, match_index))]
-    async fn handle_update_match_index(&mut self, target: NodeId, match_index: u64) -> RaftResult<(), E> {
+    async fn handle_update_match_index(&mut self, target: NodeId, match_index: u64) -> RaftResult<()> {
         // If this is a non-voter, then update and return.
         if let Some(state) = self.non_voters.get_mut(&target) {
             state.state.match_index = match_index;
@@ -166,7 +168,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
     /// Handle events from replication streams requesting for snapshot info.
     #[tracing::instrument(level="trace", skip(self, tx))]
-    async fn handle_needs_snapshot(&mut self, _: NodeId, tx: oneshot::Sender<CurrentSnapshotData<S::Snapshot>>) -> RaftResult<(), E> {
+    async fn handle_needs_snapshot(&mut self, _: NodeId, tx: oneshot::Sender<CurrentSnapshotData<S::Snapshot>>) -> RaftResult<()> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => *threshold,
@@ -174,7 +176,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
 
         // Check for existence of current snapshot.
         let current_snapshot_opt = self.core.storage.get_current_snapshot().await
-            .map_err(|err| self.core.map_fatal_storage_result(err))?;
+            .map_err(|err| self.core.map_fatal_storage_error(err))?;
         if let Some(snapshot) = current_snapshot_opt {
             // If snapshot exists, ensure its distance from the leader's last log index is <= half
             // of the configured snapshot threshold, else create a new snapshot.

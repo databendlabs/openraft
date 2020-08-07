@@ -1,52 +1,50 @@
 #[cfg(test)]
 mod test;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
 
+use anyhow::Result;
 use async_raft::async_trait;
-use async_raft::{AppData, AppDataResponse, AppError, NodeId, RaftStorage};
+use async_raft::{AppData, AppDataResponse, NodeId, RaftStorage};
 use async_raft::raft::{Entry, EntryPayload, MembershipConfig};
 use async_raft::storage::{CurrentSnapshotData, HardState, InitialState};
 use serde::{Serialize, Deserialize};
-use thiserror::Error;
 use tokio::sync::RwLock;
-#[cfg(test)]
-use tokio::sync::RwLockWriteGuard;
+use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
-/// The application data type which the `MemStore` works with.
+const ERR_INCONSISTENT_LOG: &str = "a query was received which was expecting data to be in place which does not exist in the log";
+
+/// A request to update a client's status info, returning the last recorded status.
+///
+/// This is the application data type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MemStoreData {
-    /// A simple string payload.
-    pub data: String,
+pub struct ClientRequest {
+    /// The ID of the client which has sent the request.
+    pub client: String,
+    /// The serial number of this request.
+    pub serial: u64,
+    /// A string describing the status of the client. For a real application, this should probably
+    /// be an enum representing all of the various types of requests / operations which a client
+    /// can perform.
+    pub status: String,
 }
 
-impl AppData for MemStoreData {}
+impl AppData for ClientRequest {}
 
 /// The application data response type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct MemStoreDataResponse {
-    /// The Raft index of the written data payload.
-    pub index: u64,
+pub struct ClientResponse(std::result::Result<Option<String>, ClientError>);
+
+impl AppDataResponse for ClientResponse {}
+
+/// Error data response.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ClientError {
+    /// This request has already been applied to the state machine, and the original response
+    /// no longer exists.
+    OldRequestReplayed,
 }
-
-impl AppDataResponse for MemStoreDataResponse {}
-
-/// The application error which the `MemStore` works with.
-#[derive(Serialize, Deserialize, Debug, Error)]
-pub enum MemStoreError {
-    /// An application specific error indicating that the given payload is not allowed.
-    #[error("the given payload is not allowed")]
-    NotAllowed,
-    /// An error related to CBOR usage with the snapshot system.
-    #[error("{0}")]
-    SnapshotCborError(String),
-    /// A query was received which was expecting data to be in place which does not exist in the log.
-    #[error("a query was received which was expecting data to be in place which does not exist in the log")]
-    InconsistentLog,
-}
-
-impl AppError for MemStoreError {}
 
 /// The application snapshot type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -61,14 +59,24 @@ pub struct MemStoreSnapshot {
     pub data: Vec<u8>,
 }
 
+/// The state machine of the `MemStore`.
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+pub struct MemStoreStateMachine {
+    pub last_applied_log: u64,
+    /// A mapping of client IDs to their state info.
+    pub client_serial_responses: HashMap<String, (u64, Option<String>)>,
+    /// The current status of a client by ID.
+    pub client_status: HashMap<String, String>,
+}
+
 /// An in-memory storage system for demo and testing purposes related to `async-raft`.
 pub struct MemStore {
     /// The ID of the Raft node for which this memory storage instances is configured.
     id: NodeId,
     /// The Raft log.
-    log: RwLock<BTreeMap<u64, Entry<MemStoreData>>>,
+    log: RwLock<BTreeMap<u64, Entry<ClientRequest>>>,
     /// The Raft state machine.
-    sm: RwLock<BTreeMap<u64, Entry<MemStoreData>>>,
+    sm: RwLock<MemStoreStateMachine>,
     /// The current hard state.
     hs: RwLock<Option<HardState>>,
     /// The current snapshot.
@@ -79,7 +87,7 @@ impl MemStore {
     /// Create a new `MemStore` instance.
     pub fn new(id: NodeId) -> Self {
         let log = RwLock::new(BTreeMap::new());
-        let sm = RwLock::new(BTreeMap::new());
+        let sm = RwLock::new(MemStoreStateMachine::default());
         let hs = RwLock::new(None);
         let current_snapshot = RwLock::new(None);
         Self{id, log, sm, hs, current_snapshot}
@@ -89,8 +97,8 @@ impl MemStore {
     #[cfg(test)]
     pub fn new_with_state(
         id: NodeId,
-        log: BTreeMap<u64, Entry<MemStoreData>>,
-        sm: BTreeMap<u64, Entry<MemStoreData>>,
+        log: BTreeMap<u64, Entry<ClientRequest>>,
+        sm: MemStoreStateMachine,
         hs: Option<HardState>,
         current_snapshot: Option<MemStoreSnapshot>,
     ) -> Self {
@@ -101,41 +109,59 @@ impl MemStore {
         Self{id, log, sm, hs, current_snapshot}
     }
 
-    #[cfg(test)]
-    pub async fn get_log<'a>(&'a self) -> RwLockWriteGuard<'a, BTreeMap<u64, Entry<MemStoreData>>> {
+    /// Get a handle to the log for testing purposes.
+    pub async fn get_log<'a>(&'a self) -> RwLockWriteGuard<'a, BTreeMap<u64, Entry<ClientRequest>>> {
         self.log.write().await
     }
 
-    #[cfg(test)]
-    pub async fn get_state_machine<'a>(&'a self) -> RwLockWriteGuard<'a, BTreeMap<u64, Entry<MemStoreData>>> {
+    /// Get a handle to the state machine for testing purposes.
+    pub async fn get_state_machine<'a>(&'a self) -> RwLockWriteGuard<'a, MemStoreStateMachine> {
         self.sm.write().await
+    }
+
+    /// Get a handle to the current hard state for testing purposes.
+    pub async fn read_hard_state<'a>(&'a self) -> RwLockReadGuard<'a, Option<HardState>> {
+        self.hs.read().await
     }
 }
 
 #[async_trait]
-impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore {
+impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     type Snapshot = Cursor<Vec<u8>>;
 
     #[tracing::instrument(level="trace", skip(self))]
-    async fn get_initial_state(&self) -> Result<InitialState, MemStoreError> {
+    async fn get_membership_config(&self) -> Result<MembershipConfig> {
+        let log = self.log.read().await;
+        let cfg_opt = log.values().rev().find_map(|entry| match &entry.payload {
+            EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
+            EntryPayload::SnapshotPointer(snap) => Some(snap.membership.clone()),
+            _ => None,
+        });
+        Ok(match cfg_opt {
+            Some(cfg) => cfg,
+            None => MembershipConfig::new_initial(self.id),
+        })
+    }
+
+    #[tracing::instrument(level="trace", skip(self))]
+    async fn get_initial_state(&self) -> Result<InitialState> {
+        let membership = self.get_membership_config().await?;
         let mut hs = self.hs.write().await;
         let log = self.log.read().await;
-        let sm = self.log.read().await;
+        let sm = self.sm.read().await;
         match &mut *hs {
             Some(inner) => {
                 let (last_log_index, last_log_term) = match log.values().rev().nth(0) {
                     Some(log) => (log.index, log.term),
                     None => (0, 0),
                 };
-                let last_applied_log = match sm.values().rev().nth(0) {
-                    Some(entry) => entry.index,
-                    None => 0,
-                };
+                let last_applied_log = sm.last_applied_log;
                 return Ok(InitialState{
                     last_log_index,
                     last_log_term,
                     last_applied_log,
                     hard_state: inner.clone(),
+                    membership,
                 });
             }
             None => {
@@ -147,12 +173,12 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
     }
 
     #[tracing::instrument(level="trace", skip(self, hs))]
-    async fn save_hard_state(&self, hs: &HardState) -> Result<(), MemStoreError> {
+    async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
         Ok(*self.hs.write().await = Some(hs.clone()))
     }
 
     #[tracing::instrument(level="trace", skip(self))]
-    async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<MemStoreData>>, MemStoreError> {
+    async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<ClientRequest>>> {
         // Invalid request, return empty vec.
         if &start > &stop {
             tracing::error!("invalid request, start > stop");
@@ -163,7 +189,7 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
     }
 
     #[tracing::instrument(level="trace", skip(self))]
-    async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<(), MemStoreError> {
+    async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
         if stop.as_ref().map(|stop| &start > stop).unwrap_or(false) {
             tracing::error!("invalid request, start > stop");
             return Ok(());
@@ -183,14 +209,14 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
     }
 
     #[tracing::instrument(level="trace", skip(self, entry))]
-    async fn append_entry_to_log(&self, entry: &Entry<MemStoreData>) -> Result<(), MemStoreError> {
+    async fn append_entry_to_log(&self, entry: &Entry<ClientRequest>) -> Result<()> {
         let mut log = self.log.write().await;
         log.insert(entry.index, entry.clone());
         Ok(())
     }
 
     #[tracing::instrument(level="trace", skip(self, entries))]
-    async fn replicate_to_log(&self, entries: &[Entry<MemStoreData>]) -> Result<(), MemStoreError> {
+    async fn replicate_to_log(&self, entries: &[Entry<ClientRequest>]) -> Result<()> {
         let mut log = self.log.write().await;
         for entry in entries {
             log.insert(entry.index, entry.clone());
@@ -198,29 +224,43 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
         Ok(())
     }
 
-    #[tracing::instrument(level="trace", skip(self, entry))]
-    async fn apply_entry_to_state_machine(&self, entry: &Entry<MemStoreData>) -> Result<MemStoreDataResponse, MemStoreError> {
+    #[tracing::instrument(level="trace", skip(self, data))]
+    async fn apply_entry_to_state_machine(&self, index: &u64, data: &ClientRequest) -> Result<ClientResponse> {
         let mut sm = self.sm.write().await;
-        sm.insert(entry.index, entry.clone());
-        Ok(MemStoreDataResponse{index: entry.index})
+        sm.last_applied_log = *index;
+        if let Some((serial, res)) = sm.client_serial_responses.get(&data.client) {
+            if serial == &data.serial {
+                return Ok(ClientResponse(Ok(res.clone())))
+            }
+        }
+        let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
+        sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
+        Ok(ClientResponse(Ok(previous)))
     }
 
     #[tracing::instrument(level="trace", skip(self, entries))]
-    async fn replicate_to_state_machine(&self, entries: &[Entry<MemStoreData>]) -> Result<(), MemStoreError> {
+    async fn replicate_to_state_machine(&self, entries: &[(&u64, &ClientRequest)]) -> Result<()> {
         let mut sm = self.sm.write().await;
-        for entry in entries {
-            sm.insert(entry.index, entry.clone());
+        for (index, data) in entries {
+            sm.last_applied_log = **index;
+            if let Some((serial, _)) = sm.client_serial_responses.get(&data.client) {
+                if serial == &data.serial {
+                    continue;
+                }
+            }
+            let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
+            sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
         }
         Ok(())
     }
 
     #[tracing::instrument(level="trace", skip(self))]
-    async fn do_log_compaction(&self, through: u64) -> Result<CurrentSnapshotData<Self::Snapshot>, MemStoreError> {
+    async fn do_log_compaction(&self, through: u64) -> Result<CurrentSnapshotData<Self::Snapshot>> {
         let data;
         {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
-            data = serde_cbor::to_vec(&*sm).map_err(|err| MemStoreError::SnapshotCborError(err.to_string()))?;
+            data = serde_json::to_vec(&*sm)?;
         } // Release state machine read lock.
 
         let membership_config;
@@ -236,20 +276,21 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
                 .unwrap_or_else(|| MembershipConfig::new_initial(self.id));
         } // Release log read lock.
 
-        let snapshot;
+        let snapshot_bytes: Vec<u8>;
         let term;
         {
             let mut log = self.log.write().await;
             let mut current_snapshot = self.current_snapshot.write().await;
-            term = log.get(&through).map(|entry| entry.term).ok_or_else(|| MemStoreError::InconsistentLog)?;
+            term = log.get(&through).map(|entry| entry.term).ok_or_else(|| anyhow::anyhow!(ERR_INCONSISTENT_LOG))?;
             *log = log.split_off(&through);
             log.insert(through, Entry::new_snapshot_pointer(through, term, "".into(), membership_config.clone()));
 
-            snapshot = MemStoreSnapshot{index: through, term, membership: membership_config.clone(), data};
-            *current_snapshot = Some(snapshot.clone());
+            let snapshot = MemStoreSnapshot{index: through, term, membership: membership_config.clone(), data};
+            snapshot_bytes = serde_json::to_vec(&snapshot)?;
+            *current_snapshot = Some(snapshot);
         } // Release log & snapshot write locks.
 
-        let snapshot_bytes = serde_cbor::to_vec(&snapshot).map_err(|err| MemStoreError::SnapshotCborError(err.to_string()))?;
+        tracing::trace!({snapshot_size=snapshot_bytes.len()}, "log compaction complete");
         Ok(CurrentSnapshotData{
             term, index: through, membership: membership_config.clone(),
             snapshot: Box::new(Cursor::new(snapshot_bytes)),
@@ -257,14 +298,16 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
     }
 
     #[tracing::instrument(level="trace", skip(self))]
-    async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>), MemStoreError> {
+    async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>)> {
         Ok((String::from(""), Box::new(Cursor::new(Vec::new())))) // Snapshot IDs are insignificant to this storage engine.
     }
 
-    #[tracing::instrument(level="trace", skip(self))]
-    async fn finalize_snapshot_installation(&self, index: u64, term: u64, delete_through: Option<u64>, id: String, snapshot: Box<Self::Snapshot>) -> Result<(), MemStoreError> {
-        let new_snapshot: MemStoreSnapshot = serde_cbor::from_slice(snapshot.get_ref())
-            .map_err(|err| MemStoreError::SnapshotCborError(err.to_string()))?;
+    #[tracing::instrument(level="trace", skip(self, snapshot))]
+    async fn finalize_snapshot_installation(&self, index: u64, term: u64, delete_through: Option<u64>, id: String, snapshot: Box<Self::Snapshot>) -> Result<()> {
+        tracing::trace!({snapshot_size=snapshot.get_ref().len()}, "decoding snapshot for installation");
+        let raw = serde_json::to_string_pretty(snapshot.get_ref().as_slice())?;
+        println!("JSON SNAP:\n{}", raw);
+        let new_snapshot: MemStoreSnapshot = serde_json::from_slice(snapshot.get_ref().as_slice())?;
         // Update log.
         {
             // Go backwards through the log to find the most recent membership config <= the `through` index.
@@ -286,6 +329,13 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
             log.insert(index, Entry::new_snapshot_pointer(index, term, id, membership_config));
         }
 
+        // Update the state machine.
+        {
+            let new_sm: MemStoreStateMachine = serde_json::from_slice(&new_snapshot.data)?;
+            let mut sm = self.sm.write().await;
+            *sm = new_sm;
+        }
+
         // Update current snapshot.
         let mut current_snapshot = self.current_snapshot.write().await;
         *current_snapshot = Some(new_snapshot);
@@ -293,10 +343,10 @@ impl RaftStorage<MemStoreData, MemStoreDataResponse, MemStoreError> for MemStore
     }
 
     #[tracing::instrument(level="trace", skip(self))]
-    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>, MemStoreError> {
+    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
-                let reader = serde_cbor::to_vec(&snapshot).map_err(|err| MemStoreError::SnapshotCborError(err.to_string()))?;
+                let reader = serde_json::to_vec(&snapshot)?;
                 Ok(Some(CurrentSnapshotData{
                     index: snapshot.index,
                     term: snapshot.term,

@@ -13,22 +13,23 @@ repository = "https://github.com/railgun-rs/async-raft"
 readme = "README.md"
 
 [dependencies]
+anyhow = "1.0.32"
 async-trait = "0.1.36"
 bytes = "0.5"
+derive_more = { version="0.99.9", default-features=false, features=["from"] }
 futures = "0.3"
 log = "0.4"
 rand = "0.7"
 serde = { version="1", features=["derive"] }
 thiserror = "1.0.20"
-tokio = { version="0.2", default-features=false, features=["fs", "io-util", "macros", "rt-core", "stream", "sync", "time"] }
+tokio = { version="0.2", default-features=false, features=["fs", "io-util", "macros", "rt-core", "rt-threaded", "stream", "sync", "time"] }
 tracing = "0.1"
 tracing-futures = { version="0.2.4", features=["tokio"] }
 
 [dev-dependencies]
-env_logger = "0.7"
-rmp = "0.8"
-rmp-serde = "0.14"
-tempfile = "3"
+maplit = "1.0.2"
+memstore = { version="0.1.0", path="../memstore" }
+tracing-subscriber = "0.2.10"
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.

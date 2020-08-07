@@ -2,17 +2,17 @@ use tokio::time::Instant;
 use tokio::sync::mpsc;
 use tracing_futures::Instrument;
 
-use crate::{AppData, AppDataResponse, AppError, NodeId, RaftNetwork, RaftStorage};
+use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 use crate::error::RaftResult;
 use crate::core::{CandidateState, RaftCore, State, UpdateCurrentLeader};
 use crate::raft::{VoteRequest, VoteResponse};
 
-impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> RaftCore<D, R, E, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// An RPC invoked by candidates to gather votes (§5.2).
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
     #[tracing::instrument(level="trace", skip(self, msg))]
-    pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> RaftResult<VoteResponse, E> {
+    pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> RaftResult<VoteResponse> {
         // If candidate's current term is less than this nodes current term, reject.
         if &msg.term < &self.current_term {
             tracing::trace!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "RequestVote RPC term is less than current term");
@@ -29,8 +29,9 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
             }
         }
 
-        // Per spec, if we observe a term greater than our own, we must update
-        // term & immediately become follower, we still need to do vote checking after this.
+        // Per spec, if we observe a term greater than our own outside of the election timeout
+        // minimum, then we must update term & immediately become follower. We still need to
+        // do vote checking after this.
         if &msg.term > &self.current_term {
             self.update_current_term(msg.term, None);
             self.update_next_election_timeout();
@@ -67,10 +68,10 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     }
 }
 
-impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> CandidateState<'a, D, R, E, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level="trace", skip(self, res, target))]
-    pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> RaftResult<(), E> {
+    pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> RaftResult<()> {
         // If peer's term is greater than current term, revert to follower state.
         if res.term > self.core.current_term {
             self.core.update_current_term(res.term, None);
@@ -103,7 +104,7 @@ impl<'a, D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: R
         Ok(())
     }
 
-    /// Build a future of vote requests sent to all peers.
+    /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level="trace", skip(self))]
     pub(super) fn spawn_parallel_vote_requests(&self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
         let all_members = self.core.membership.all_nodes();

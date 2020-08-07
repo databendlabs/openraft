@@ -10,7 +10,6 @@ mod replication;
 pub mod raft;
 pub mod storage;
 
-use std::error::Error;
 use std::fmt::Debug;
 
 use serde::{Serialize, de::DeserializeOwned};
@@ -18,7 +17,8 @@ use serde::{Serialize, de::DeserializeOwned};
 // Top-level exports.
 pub use crate::{
     config::{Config, ConfigBuilder, SnapshotPolicy},
-    error::{ConfigError, InitializeError, ChangeConfigError, RaftError},
+    core::State,
+    error::{ClientError, ConfigError, InitializeError, ChangeConfigError, RaftError},
     metrics::RaftMetrics,
     network::RaftNetwork,
     raft::Raft,
@@ -48,24 +48,10 @@ pub trait AppData: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 
 /// entry is successfully applied to the state machine as part of a client request (this is not
 /// used during replication). This allows applications to seamlessly return application specific
 /// data from their storage layer, up through Raft, and back into their application for returning
-/// data to clients or other similar cases.
+/// data to clients.
+///
+/// This type must encapsulate both success and error responses, as application specific logic
+/// related to the success or failure of a client request, application specific validation logic,
+/// enforcing of data constraints, and anything of that nature are expressly out of the realm of
+/// the Raft consensus protocol.
 pub trait AppDataResponse: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}
-
-/// A trait defining application specific error types.
-///
-/// The intention of this trait is that applications which are using this crate will be able to
-/// pass their own concrete error types up from the storage layer, through the Raft system, to
-/// the higher levels of their application for more granular control. Many applications will need
-/// to be able to communicate application specific logic from the storage layer.
-///
-/// **NOTE WELL:** if an `AppError` is returned from any of the `RaftStorage` interfaces, other
-/// than the `AppendEntryToLog` interface, then the Raft node will shutdown. This is due
-/// to the fact that custom error handling logic is only allowed in the `AppendEntryToLog` interface
-/// while the Raft node is the cluster leader. When the node is in any other state, the storage
-/// layer is expected to operate without any errors. Shutting down is how Raft attempts to guard
-/// against data corruption and the like.
-///
-/// At this point in time, `AppError` concrete types are required to implement the serde types
-/// for easier integration within parent apps. This may change in the future depending on how
-/// useful this pattern is, or if it ends up just getting in the way.
-pub trait AppError: Error + Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}

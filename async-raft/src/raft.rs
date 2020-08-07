@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
-use crate::{AppData, AppDataResponse, AppError, NodeId, RaftNetwork, RaftStorage};
+use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 use crate::config::Config;
 use crate::error::{ClientError, InitializeError, ChangeConfigError, RaftError, RaftResult};
 use crate::metrics::RaftMetrics;
@@ -32,16 +32,16 @@ use crate::core::RaftCore;
 /// is shutting down (probably for data safety reasons due to a storage error), and the `shutdown`
 /// method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the trick.
-pub struct Raft<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> {
-    tx_api: mpsc::UnboundedSender<RaftMsg<D, R, E>>,
+pub struct Raft<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+    tx_api: mpsc::UnboundedSender<RaftMsg<D, R>>,
     rx_metrics: watch::Receiver<RaftMetrics>,
-    raft_handle: JoinHandle<RaftResult<(), E>>,
+    raft_handle: JoinHandle<RaftResult<()>>,
     needs_shutdown: Arc<AtomicBool>,
     marker_n: std::marker::PhantomData<N>,
     marker_s: std::marker::PhantomData<S>,
 }
 
-impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftStorage<D, R, E>> Raft<D, R, E, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Raft<D, R, N, S> {
     /// Create and spawn a new Raft task.
     ///
     /// ### `id`
@@ -60,12 +60,12 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// ### `storage`
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
     /// See the docs on the `RaftStorage` trait for more details.
-    pub fn new(id: NodeId, config: Config, network: Arc<N>, storage: Arc<S>) -> Self {
+    pub fn new(id: NodeId, config: Arc<Config>, network: Arc<N>, storage: Arc<S>) -> Self {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let needs_shutdown = Arc::new(AtomicBool::new(false));
         let raft_handle = RaftCore::spawn(
-            id, config, network, storage,
+            id, config, network, storage.clone(),
             rx_api, tx_metrics,
             needs_shutdown.clone(),
         );
@@ -84,7 +84,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
     /// in the guide for more details.
     #[tracing::instrument(level="debug", skip(self, rpc))]
-    pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> RaftResult<AppendEntriesResponse, E> {
+    pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> RaftResult<AppendEntriesResponse> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::AppendEntries{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
@@ -98,7 +98,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
     /// in the guide for more details.
     #[tracing::instrument(level="debug", skip(self, rpc))]
-    pub async fn vote(&self, rpc: VoteRequest) -> RaftResult<VoteResponse, E> {
+    pub async fn vote(&self, rpc: VoteRequest) -> RaftResult<VoteResponse> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::RequestVote{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
@@ -113,7 +113,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
     /// in the guide for more details.
     #[tracing::instrument(level="debug", skip(self, rpc))]
-    pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse, E> {
+    pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::InstallSnapshot{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
@@ -136,7 +136,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
     #[tracing::instrument(level="debug", skip(self, rpc))]
-    pub async fn client(&self, rpc: ClientRequest<D>) -> Result<ClientResponse<R>, ClientError<D, E>> {
+    pub async fn client(&self, rpc: ClientRequest<D>) -> Result<ClientResponse<R>, ClientError<D>> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::ClientRequest{rpc, tx}).map_err(|_| ClientError::RaftError(RaftError::ShuttingDown))?;
         Ok(rx.await.map_err(|_| ClientError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
@@ -173,7 +173,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// Once a cluster is up and running, the `propose_config_change` routine should be used to
     /// update the cluster's membership config.
     #[tracing::instrument(level="debug", skip(self))]
-    pub async fn initialize(&self, members: HashSet<NodeId>) -> Result<(), InitializeError<E>> {
+    pub async fn initialize(&self, members: HashSet<NodeId>) -> Result<(), InitializeError> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::Initialize{members, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| InitializeError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
@@ -192,7 +192,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     ///
     /// If this Raft node is not the cluster leader, then this call will fail.
     #[tracing::instrument(level="debug", skip(self))]
-    pub async fn add_non_voter(&self, id: NodeId) -> Result<(), ChangeConfigError<E>> {
+    pub async fn add_non_voter(&self, id: NodeId) -> Result<(), ChangeConfigError> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::AddNonVoter{id, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
@@ -210,7 +210,7 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     /// If this Raft node is not the cluster leader, then the proposed configuration change will be
     /// rejected.
     #[tracing::instrument(level="debug", skip(self))]
-    pub async fn change_config(&self, members: HashSet<NodeId>) -> Result<(), ChangeConfigError<E>> {
+    pub async fn change_config(&self, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::ChangeMembership{members, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
@@ -222,44 +222,44 @@ impl<D: AppData, R: AppDataResponse, E: AppError, N: RaftNetwork<D, E>, S: RaftS
     }
 
     /// Shutdown this Raft node, returning its join handle.
-    pub fn shutdown(self) -> tokio::task::JoinHandle<RaftResult<(), E>> {
+    pub fn shutdown(self) -> tokio::task::JoinHandle<RaftResult<()>> {
         self.needs_shutdown.store(true, Ordering::SeqCst);
         self.raft_handle
     }
 }
 
-pub(crate) type ClientResponseTx<D, R, E> = oneshot::Sender<Result<ClientResponse<R>, ClientError<D, E>>>;
-pub(crate) type ChangeMembershipTx<E> = oneshot::Sender<Result<(), ChangeConfigError<E>>>;
+pub(crate) type ClientResponseTx<D, R> = oneshot::Sender<Result<ClientResponse<R>, ClientError<D>>>;
+pub(crate) type ChangeMembershipTx = oneshot::Sender<Result<(), ChangeConfigError>>;
 
 /// A message coming from the Raft API.
-pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse, E: AppError> {
+pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     AppendEntries{
         rpc: AppendEntriesRequest<D>,
-        tx: oneshot::Sender<Result<AppendEntriesResponse, RaftError<E>>>,
+        tx: oneshot::Sender<Result<AppendEntriesResponse, RaftError>>,
     },
     RequestVote{
         rpc: VoteRequest,
-        tx: oneshot::Sender<Result<VoteResponse, RaftError<E>>>,
+        tx: oneshot::Sender<Result<VoteResponse, RaftError>>,
     },
     InstallSnapshot{
         rpc: InstallSnapshotRequest,
-        tx: oneshot::Sender<Result<InstallSnapshotResponse, RaftError<E>>>,
+        tx: oneshot::Sender<Result<InstallSnapshotResponse, RaftError>>,
     },
     ClientRequest{
         rpc: ClientRequest<D>,
-        tx: ClientResponseTx<D, R, E>,
+        tx: ClientResponseTx<D, R>,
     },
     Initialize{
         members: HashSet<NodeId>,
-        tx: oneshot::Sender<Result<(), InitializeError<E>>>,
+        tx: oneshot::Sender<Result<(), InitializeError>>,
     },
     AddNonVoter{
         id: NodeId,
-        tx: ChangeMembershipTx<E>,
+        tx: ChangeMembershipTx,
     },
     ChangeMembership{
         members: HashSet<NodeId>,
-        tx: ChangeMembershipTx<E>,
+        tx: ChangeMembershipTx,
     },
 }
 
@@ -515,92 +515,38 @@ pub struct ClientRequest<D: AppData> {
     /// The application specific contents of this client request.
     #[serde(bound="D: AppData")]
     pub(crate) entry: EntryPayload<D>,
-    /// The response mode needed by this request.
-    pub(crate) response_mode: ResponseMode,
 }
 
 impl<D: AppData> ClientRequest<D> {
     /// Create a new client payload instance with a normal entry type.
-    pub fn new(entry: EntryNormal<D>, response_mode: ResponseMode) -> Self {
-        Self::new_base(EntryPayload::Normal(entry), response_mode)
+    pub fn new(entry: D) -> Self {
+        Self::new_base(EntryPayload::Normal(EntryNormal{data: entry}))
     }
 
     /// Create a new instance.
-    pub(crate) fn new_base(entry: EntryPayload<D>, response_mode: ResponseMode) -> Self {
-        Self{entry, response_mode}
+    pub(crate) fn new_base(entry: EntryPayload<D>) -> Self {
+        Self{entry}
     }
 
     /// Generate a new payload holding a config change.
     pub(crate) fn new_config(membership: MembershipConfig) -> Self {
-        Self::new_base(EntryPayload::ConfigChange(EntryConfigChange{membership}), ResponseMode::Committed)
+        Self::new_base(EntryPayload::ConfigChange(EntryConfigChange{membership}))
     }
 
     /// Generate a new blank payload.
     ///
     /// This is used by new leaders when first coming to power.
     pub(crate) fn new_blank_payload() -> Self {
-        Self::new_base(EntryPayload::Blank, ResponseMode::Committed)
+        Self::new_base(EntryPayload::Blank)
     }
-}
-
-/// The desired response mode for a client request.
-///
-/// Generally speaking, applications should just use `Applied`. It will allow for response data
-/// to be returned to the client, and also ensures that reads will be immediately consistent.
-///
-/// This value specifies when a client request desires to receive its response from Raft. When
-/// `Comitted` is chosen, the client request will receive a response after the request has been
-/// successfully replicated to at least half of the nodes in the cluster. This is what the Raft
-/// protocol refers to as being comitted.
-///
-/// When `Applied` is chosen, the client request will receive a response after the request has
-/// been successfully committed and successfully applied to the state machine.
-///
-/// The choice between these two options depends on the requirements related to the request. If
-/// a data response from the application's state machine needs to be returned, of if the data of
-/// the client request payload will need to be read immediately after the response is
-/// received, then `Applied` must be used. Otherwise `Committed` may be used to speed up
-/// response times. All things considered, the difference in response time will just be the amount
-/// of times it takes to apply the payload to the state machine, and may not be significant.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum ResponseMode {
-    /// A response will be returned after the request has been committed to the cluster.
-    Committed,
-    /// A response will be returned after the request has been applied to the leader's state machine.
-    Applied,
 }
 
 /// The response to a `ClientRequest`.
 #[derive(Debug, Serialize, Deserialize)]
-pub enum ClientResponse<R: AppDataResponse> {
-    /// A client response issued just after the request was committed to the cluster.
-    Committed {
-        /// The log index of the successfully processed client request.
-        index: u64,
-    },
-    Applied {
-        /// The log index of the successfully processed client request.
-        index: u64,
-        /// Application specific response data.
-        #[serde(bound="R: AppDataResponse")]
-        data: R,
-    },
-}
-
-impl<R: AppDataResponse> ClientResponse<R> {
-    /// The index of the log entry corresponding to this response object.
-    pub fn index(&self) -> &u64 {
-        match self {
-            Self::Committed{index} => index,
-            Self::Applied{index, ..} => index,
-        }
-    }
-
-    /// The response data payload, if this is an `Applied` client response.
-    pub fn data(&self) -> Option<&R> {
-        match &self {
-            Self::Committed{..} => None,
-            Self::Applied{data, ..} => Some(data),
-        }
-    }
+pub struct ClientResponse<R: AppDataResponse> {
+    /// The log index of the successfully processed client request.
+    pub index: u64,
+    /// Application specific response data.
+    #[serde(bound="R: AppDataResponse")]
+    pub data: R,
 }
