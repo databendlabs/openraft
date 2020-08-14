@@ -5,7 +5,7 @@ use tokio::sync::oneshot;
 
 use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 use crate::error::{InitializeError, ChangeConfigError, RaftError};
-use crate::raft::{ChangeMembershipTx, ClientRequest, MembershipConfig};
+use crate::raft::{ChangeMembershipTx, ClientWriteRequest, MembershipConfig};
 use crate::core::{ConsensusState, LeaderState, NonVoterReplicationState, NonVoterState, State, UpdateCurrentLeader};
 use crate::core::client::ClientRequestEntry;
 use crate::replication::RaftEvent;
@@ -117,7 +117,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.core.membership.members_after_consensus = Some(members);
 
         // Propagate the command as any other client request.
-        let payload = ClientRequest::<D>::new_config(self.core.membership.clone());
+        let payload = ClientWriteRequest::<D>::new_config(self.core.membership.clone());
         let (tx_joint, rx_join) = oneshot::channel();
         let entry = match self.append_payload_to_log(payload.entry).await {
             Ok(entry) => entry,
@@ -192,7 +192,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // described at the very end of §6. This measure is already implemented and in place.
 
         // Propagate the next command as any other client request.
-        let payload = ClientRequest::<D>::new_config(self.core.membership.clone());
+        let payload = ClientWriteRequest::<D>::new_config(self.core.membership.clone());
         let (tx_uniform, rx_uniform) = oneshot::channel();
         let entry = self.append_payload_to_log(payload.entry).await?;
         let cr_entry = ClientRequestEntry::from_entry(entry, tx_uniform);

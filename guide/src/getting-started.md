@@ -1,202 +1,62 @@
 Getting Started
 ===============
-This crate's `Raft` type is an Actix actor which is intended to run within some parent application, which traditionally will be some sort of data storage system (SQL, NoSQL, KV store, AMQP, Streaming, whatever). Inasmuch as the `Raft` instance is an actor, it is expected that the parent application is also built upon the Actix actor framework, though that is not technically required.
+Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients. Why use Raft? Among other things, it provides data storage systems with fault-tolerance, strong consistency and linearizability.
 
-To use this crate, applications must also implement the `RaftStorage` & `RaftNetwork` traits. See the [storage](https://railgun-rs.github.io/actix-raft/storage.html) & [network](https://railgun-rs.github.io/actix-raft/network.html) chapters for details on what these traits represent and how to implement them. In brief, the implementing types must be actors which can handle specific message types which correspond to everything needed for Raft storage and networking.
+A visual depiction of how Raft works (taken from the spec) can be seen below.
 
-### deep dive
-To get started, applications can define a type alias which declares the types which are going to be used for the application's data, errors, `RaftNetwork` impl & `RaftStorage` impl.
+<p>
+    <img style="max-width:600px;" src="./images/raft-overview.png"/>
+</p>
 
-First, let's define the new application's main data type & a response type. This is the data which will be inside of Raft's normal log entries and the response type which the storage engine will return after applying them to the state machine.
+Raft is intended to run within some parent application, which traditionally will be some sort of data storage system (SQL, NoSQL, KV store, AMQP, Streaming, Graph, whatever). You can do whatever you want with your application, Raft will provide you with the consensus module.
+
+## first steps
+In order to start using Raft, you will need to declare the data types you will use for client requests and client responses. Let's do that now. Throughout this guide, we will be using the `memstore` crate, which is an in-memory implementation of the `RaftStorage` trait for demo and testing purposes (part of the same repo). This will give us a concrete set of examples to work with, which also happen to be used for all of the integration tests of `async-raft` itself.
+
+### `async_raft::AppData`
+This marker trait is used to declare an application's data type. It has the following constraints: `Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static`. Your data type represents the requests which will be sent to your application to create, update and delete data. Requests to read data should not be sent through Raft, only mutating requests. More on linearizable reads, and how to avoid stale reads, is discussed in the [Raft API chapter](TODO:).
+
+The intention of this trait is that applications which are using this crate will be able to use their own concrete data types throughout their application without having to serialize and deserialize their data as it goes through Raft. Instead, applications can present their data models as-is to Raft, Raft will present it to the application's `RaftStorage` impl when ready, and the application may then deal with the data directly in the storage engine without having to do a preliminary deserialization.
+
+##### impl
+Finishing up this step is easy, just `impl AppData for YourData {}` ... and in most cases, that's it. You'll need to be sure that the aforementioned constraints are satisfied on `YourData`. The following derivation should do the trick `#[derive(Clone, Debug, Serialize, Deserialize)]`.
+
+In the `memstore` crate, here is a snippet of what the code looks like:
 
 ```rust
-use actix_raft::{AppData, AppDataResponse};
-use serde::{Serialize, Deserialize};
-
-/// The application's data type.
+/// The application data request type which the `MemStore` works with.
 ///
-/// Enum types are recommended as typically there will be different types of data mutating
-/// requests which will be submitted by application clients.
+/// Conceptually, for demo purposes, this represents an update to a client's status info,
+/// returning the previously recorded status.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-enum Data {
-    // Your data variants go here.
+pub struct ClientRequest {
+    /* fields omitted */
 }
 
-/// The application's data response types.
-///
-/// Enum types are recommended as typically there will be multiple response types which can be
-/// returned from the storage layer.
+impl AppData for ClientRequest {}
+```
+
+### `async_raft::AppDataResponse`
+This marker trait is used to declare an application's response data. It has the following constraints: `Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static`.
+
+The intention of this trait is that applications which are using this crate will be able to use their own concrete data types for returning response data from the storage layer when an entry is applied to the state machine as part of a client request (this is not used during replication). This allows applications to seamlessly return application specific data from their storage layer, up through Raft, and back into their application for returning data to clients.
+
+This type must encapsulate both success and error responses, as application specific logic related to the success or failure of a client request — application specific validation logic, enforcing of data constraints, and anything of that nature — are expressly out of the realm of the Raft consensus protocol.
+
+##### impl
+Finishing up this step is also easy: `impl AppDataResponse for YourDataResponse {}`. The aforementioned derivation applies here as well.
+
+In the `memstore` crate, here is a snippet of what the code looks like:
+
+```rust
+
+/// The application data response type which the `MemStore` works with.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-enum DataResponse {
-    // Your response variants go here.
-}
+pub struct ClientResponse(Result<Option<String>, ClientError>);
 
-/// This also has a `'static` lifetime constraint, so no `&` references at this time.
-/// The new futures & async/await should help out with this quite a lot, so
-/// hopefully this constraint will be removed in actix as well.
-impl AppData for Data {}
-
-/// This also has a `'static` lifetime constraint, so no `&` references at this time.
-impl AppDataResponse for DataResponse {}
+impl AppDataResponse for ClientResponse {}
 ```
 
-Now we'll define the application's error type.
+---
 
-```rust
-use actix_raft::AppError;
-use serde::{Serialize, Deserialize};
-
-/// The application's error struct. This could be an enum as well.
-///
-/// NOTE: the below impls for Display & Error can be
-/// derived using crates like `Failure` &c.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Error;
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // ... snip ...
-    }
-}
-
-impl std::error::Error for Error {}
-
-// Mark this type for use as an `actix_raft::AppError`.
-impl AppError for Error {}
-```
-
-Now for the two big parts. `RaftNetwork` & `RaftStorage`. Here, we will only look at the skeleton for these types. See the [network](https://railgun-rs.github.io/actix-raft/network.html) & [storage](https://railgun-rs.github.io/actix-raft/storage.html) chapters for more details on how to actually implement these types. First, let's cover the network impl.
-
-```rust
-use actix::{Actor, Context, ResponseActFuture};
-use actix_raft::{RaftNetwork, messages};
-
-/// Your application's network interface actor.
-struct AppNetwork {/* ... snip ... */}
-
-impl Actor for AppNetwork {
-    type Context = Context<Self>;
-
-    // ... snip ... other actix methods can be implemented here as needed.
-}
-
-// Ensure you impl this over your application's data type. Here, it is `Data`.
-impl RaftNetwork<Data> for AppNetwork {}
-
-// Then you just implement the various message handlers.
-// See the network chapter for details.
-impl Handler<messages::AppendEntriesRequest<Data>> for AppNetwork {
-    type Result = ResponseActFuture<Self, messages::AppendEntriesResponse, ()>;
-
-    fn handle(&mut self, _msg: messages::AppendEntriesRequest<Data>, _ctx: &mut Self::Context) -> Self::Result {
-        // ... snip ...
-        # actix::fut::err(())
-    }
-}
-
-// Impl handlers on `AppNetwork` for the other `actix_raft::messages` message types.
-```
-
-Now for the storage impl. We'll use an `actix::Context` here (which is async), but you could also use an `actix::SyncContext`.
-
-```rust
-use actix::{Actor, Context, ResponseActFuture};
-use actix_raft::{NodeId, RaftStorage, storage};
-
-/// Your application's storage interface actor.
-struct AppStorage {/* ... snip ... */}
-
-// Ensure you impl this over your application's data, data response & error types.
-impl RaftStorage<Data, DataResponse, Error> for AppStorage {
-    type Actor = Self;
-    type Context = Context<Self>;
-}
-
-impl Actor for AppStorage {
-    type Context = Context<Self>;
-
-    // ... snip ... other actix methods can be implemented here as needed.
-}
-
-// Then you just implement the various message handlers.
-// See the storage chapter for details.
-impl Handler<storage::GetInitialState<Error>> for AppStorage {
-    type Result = ResponseActFuture<Self, storage::InitialState, Error>;
-
-    fn handle(&mut self, _msg: storage::GetInitialState<Error>, _ctx: &mut Self::Context) -> Self::Result {
-        // ... snip ...
-        # actix::fut::err(())
-    }
-}
-
-// Impl handlers on `AppStorage` for the other `actix_raft::storage` message types.
-```
-
-In order for Raft to expose metrics on how it is doing, we will need a type which can receive `RaftMetrics` messages. Application's can do whatever they want with this info. Expose integrations with Prometheus & Influx, trigger events, whatever is needed. Here we will keep it simple.
-
-```rust
-use actix::{Actor, Context};
-use actix_raft::RaftMetrics;
-
-/// Your application's metrics interface actor.
-struct AppMetrics {/* ... snip ... */}
-
-impl Actor for AppMetrics {
-    type Context = Context<Self>;
-
-    // ... snip ... other actix methods can be implemented here as needed.
-}
-
-impl Handler<RaftMetrics> for AppMetrics {
-    type Result = ();
-
-    fn handle(&mut self, _msg: RaftMetrics, _ctx: &mut Context<Self>) -> Self::Result {
-        // ... snip ...
-    }
-}
-```
-
-And finally, a simple type alias which ties everything together. This type alias can then be used throughout the application's code base without the need to specify the various types being used for data, errors, network & storage.
-
-```rust
-use actix_raft::Raft;
-
-/// A type alias used to define an application's concrete Raft type.
-type AppRaft = Raft<Data, DataResponse, Error, AppNetwork, AppStorage>;
-```
-
-### booting up the system
-Now that the various needed types are in place, the actix system will need to be started, the various actor types we've defined above will need to be started, and then we're off to the races.
-
-```rust
-use actix;
-use actix_raft::{Config, ConfigBuilder, SnapshotPolicy};
-
-fn main() {
-    // Build the actix system.
-    let sys = actix::System::new("my-awesome-app");
-
-    // Build the needed runtime config for Raft specifying where
-    // snapshots will be stored. See the storage chapter for more details.
-    let config = Config::build(String::from("/app/snapshots")).validate().unwrap();
-
-    // Start off with just a single node in the cluster. Applications
-    // should implement their own discovery system. See the cluster
-    // formation chapter for more details.
-    let members = vec![1];
-
-    // Start the various actor types and hold on to their addrs.
-    let network = AppNetwork.start();
-    let storage = AppStorage.start();
-    let metrics = AppMetrics.start();
-    let app_raft = AppRaft::new(1, config, network, storage, metrics).start();
-
-    // Run the actix system. Unix signals for termination &
-    // graceful shutdown are automatically handled.
-    let _ = sys.run();
-}
-```
-
-----
-
-You've already ascended to the next level of AWESOME! There is a lot more to cover, we're just getting started. Next, let's take a look at the `Raft` type in more detail.
+Woot woot! Onward to the networking layer.

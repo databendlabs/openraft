@@ -14,19 +14,16 @@ use std::fmt::Debug;
 
 use serde::{Serialize, de::DeserializeOwned};
 
-// Top-level exports.
 pub use crate::{
     config::{Config, ConfigBuilder, SnapshotPolicy},
     core::State,
-    error::{ClientError, ConfigError, InitializeError, ChangeConfigError, RaftError},
+    error::{ClientWriteError, ConfigError, InitializeError, ChangeConfigError, RaftError},
     metrics::RaftMetrics,
     network::RaftNetwork,
     raft::Raft,
     storage::RaftStorage,
 };
-
-// Re-exports.
-pub use async_trait::async_trait;
+pub use async_trait;
 
 /// A Raft node's ID.
 pub type NodeId = u64;
@@ -45,13 +42,13 @@ pub trait AppData: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 
 ///
 /// The intention of this trait is that applications which are using this crate will be able to
 /// use their own concrete data types for returning response data from the storage layer when an
-/// entry is successfully applied to the state machine as part of a client request (this is not
-/// used during replication). This allows applications to seamlessly return application specific
-/// data from their storage layer, up through Raft, and back into their application for returning
+/// entry is applied to the state machine as part of a client request (this is not used during
+/// replication). This allows applications to seamlessly return application specific data from
+/// their storage layer, up through Raft, and back into their application for returning
 /// data to clients.
 ///
 /// This type must encapsulate both success and error responses, as application specific logic
-/// related to the success or failure of a client request, application specific validation logic,
-/// enforcing of data constraints, and anything of that nature are expressly out of the realm of
+/// related to the success or failure of a client request — application specific validation logic,
+/// enforcing of data constraints, and anything of that nature — are expressly out of the realm of
 /// the Raft consensus protocol.
 pub trait AppDataResponse: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}

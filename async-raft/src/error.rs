@@ -3,7 +3,7 @@
 use thiserror::Error;
 
 use crate::{AppData, NodeId};
-use crate::raft::ClientRequest;
+use crate::raft::ClientWriteRequest;
 
 /// A result type where the error variant is always a `RaftError`.
 pub type RaftResult<T> = std::result::Result<T, RaftError>;
@@ -29,15 +29,26 @@ impl From<tokio::io::Error> for RaftError {
     }
 }
 
-/// An error related to a client request.
+/// An error related to a client read request.
 #[derive(Debug, Error)]
-pub enum ClientError<D: AppData> {
+pub enum ClientReadError {
     /// A Raft error.
     #[error("{0}")]
     RaftError(#[from] RaftError),
-    /// The client request must be forwarded to the cluster leader.
-    #[error("the client request must be forwarded to the cluster leader")]
-    ForwardToLeader(ClientRequest<D>, Option<NodeId>),
+    /// The client read request must be forwarded to the cluster leader.
+    #[error("the client read request must be forwarded to the cluster leader")]
+    ForwardToLeader(Option<NodeId>),
+}
+
+/// An error related to a client write request.
+#[derive(Debug, Error)]
+pub enum ClientWriteError<D: AppData> {
+    /// A Raft error.
+    #[error("{0}")]
+    RaftError(#[from] RaftError),
+    /// The client write request must be forwarded to the cluster leader.
+    #[error("the client write request must be forwarded to the cluster leader")]
+    ForwardToLeader(ClientWriteRequest<D>, Option<NodeId>),
 }
 
 /// Error variants related to configuration.
@@ -54,6 +65,7 @@ pub enum ConfigError {
 
 /// The set of errors which may take place when initializing a pristine Raft node.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum InitializeError {
     /// An internal error has taken place.
     #[error("{0}")]
@@ -65,6 +77,7 @@ pub enum InitializeError {
 
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ChangeConfigError {
     /// An error related to the processing of the config change request.
     ///
@@ -91,11 +104,11 @@ pub enum ChangeConfigError {
     Noop,
 }
 
-impl<D: AppData> From<ClientError<D>> for ChangeConfigError {
-    fn from(src: ClientError<D>) -> Self {
+impl<D: AppData> From<ClientWriteError<D>> for ChangeConfigError {
+    fn from(src: ClientWriteError<D>) -> Self {
         match src {
-            ClientError::RaftError(err) => Self::RaftError(err),
-            ClientError::ForwardToLeader(_, _) => Self::NodeNotLeader,
+            ClientWriteError::RaftError(err) => Self::RaftError(err),
+            ClientWriteError::ForwardToLeader(_, _) => Self::NodeNotLeader,
         }
     }
 }

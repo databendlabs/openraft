@@ -6,13 +6,13 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
-use async_raft::async_trait;
+use async_raft::async_trait::async_trait;
 use async_raft::{Config, NodeId, Raft, RaftMetrics, RaftNetwork, State};
-use async_raft::error::{ChangeConfigError, ClientError};
+use async_raft::error::{ChangeConfigError, ClientReadError, ClientWriteError};
 use async_raft::raft::{AppendEntriesRequest, AppendEntriesResponse};
 use async_raft::raft::{InstallSnapshotRequest, InstallSnapshotResponse};
 use async_raft::raft::{VoteRequest, VoteResponse};
-use async_raft::raft::ClientRequest;
+use async_raft::raft::ClientWriteRequest;
 use async_raft::raft::MembershipConfig;
 use async_raft::storage::RaftStorage;
 use memstore::{MemStore, ClientRequest as MemClientRequest, ClientResponse as MemClientResponse};
@@ -124,10 +124,17 @@ impl RaftRouter {
         node.0.add_non_voter(target).await
     }
 
-    pub async fn change_config(&self, leader: NodeId, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
+    pub async fn change_membership(&self, leader: NodeId, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).expect(&format!("node with ID {} does not exist", leader));
-        node.0.change_config(members).await
+        node.0.change_membership(members).await
+    }
+
+    /// Send a client read request to the target node.
+    pub async fn client_read(&self, target: NodeId) -> Result<(), ClientReadError> {
+        let rt = self.routing_table.read().await;
+        let node = rt.get(&target).expect(&format!("node with ID {} does not exist", target));
+        node.0.client_read().await
     }
 
     /// Send a client request to the target node, causing test failure on error.
@@ -146,10 +153,10 @@ impl RaftRouter {
         }
     }
 
-    async fn send_client_request(&self, target: NodeId, req: MemClientRequest) -> std::result::Result<MemClientResponse, ClientError<MemClientRequest>> {
+    async fn send_client_request(&self, target: NodeId, req: MemClientRequest) -> std::result::Result<MemClientResponse, ClientWriteError<MemClientRequest>> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&target).expect(&format!("node '{}' does not exist in routing table", target));
-        node.0.client(ClientRequest::new(req)).await.map(|res| res.data)
+        node.0.client_write(ClientWriteRequest::new(req)).await.map(|res| res.data)
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////

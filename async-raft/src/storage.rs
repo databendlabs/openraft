@@ -90,7 +90,7 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
     /// the node's ID so that it is consistent across restarts.
     async fn get_membership_config(&self) -> Result<MembershipConfig>;
 
-    /// A request from Raft to get Raft's state information from storage.
+    /// Get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface on the storage system to
     /// fetch the last known state from stable storage. If no such entry exists due to being the
@@ -102,10 +102,10 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
     /// state record; and the index of the last log applied to the state machine.
     async fn get_initial_state(&self) -> Result<InitialState>;
 
-    /// A request from Raft to save its hard state.
+    /// Save Raft's hard-state.
     async fn save_hard_state(&self, hs: &HardState) -> Result<()>;
 
-    /// A request from Raft to get a series of log entries from storage.
+    /// Get a series of log entries from storage.
     ///
     /// The start value is inclusive in the search and the stop value is non-inclusive: `[start, stop)`.
     async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<D>>>;
@@ -114,22 +114,16 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
     /// of the log if `stop` is `None`.
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()>;
 
-    /// A request from Raft to append a new entry to the log.
+    /// Append a new entry to the log.
     async fn append_entry_to_log(&self, entry: &Entry<D>) -> Result<()>;
 
-    /// A request from Raft to replicate a payload of entries to the log.
-    ///
-    /// These requests come about via the Raft leader's replication process. An error coming from this
-    /// interface will cause Raft to shutdown, as this is not where application logic should be
-    /// returning application specific errors. Application specific constraints may only be enforced
-    /// in the `AppendEntryToLog` handler.
+    /// Replicate a payload of entries to the log.
     ///
     /// Though the entries will always be presented in order, each entry's index should be used to
-    /// determine its location to be written in the log, as logs may need to be overwritten under
-    /// some circumstances.
+    /// determine its location to be written in the log.
     async fn replicate_to_log(&self, entries: &[Entry<D>]) -> Result<()>;
 
-    /// A request from Raft to apply the given log entry to the state machine.
+    /// Apply the given log entry to the state machine.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
     /// have been replicated to a majority of the cluster, will be applied to the state machine.
@@ -147,13 +141,13 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
     /// and error variants encoded in the type, perhaps using an inner `Result` type.
     async fn apply_entry_to_state_machine(&self, index: &u64, data: &D) -> Result<R>;
 
-    /// A request from Raft to apply the given payload of entries to the state machine, as part of replication.
+    /// Apply the given payload of entries to the state machine, as part of replication.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
     /// have been replicated to a majority of the cluster, will be applied to the state machine.
     async fn replicate_to_state_machine(&self, entries: &[(&u64, &D)]) -> Result<()>;
 
-    /// A request from Raft to perform log compaction, returning a handle to the generated snapshot.
+    /// Perform log compaction, returning a handle to the generated snapshot.
     ///
     /// ### `through`
     /// The log should be compacted starting from entry `0` and should cover all entries through the
@@ -165,7 +159,8 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
     /// for details on how to implement this handler.
     async fn do_log_compaction(&self, through: u64) -> Result<CurrentSnapshotData<Self::Snapshot>>;
 
-    /// Create a new snapshot returning a writable handle to the snapshot object along with the ID of the snapshot.
+    /// Create a new blank snapshot, returning a writable handle to the snapshot object along with
+    /// the ID of the snapshot.
     ///
     /// ### implementation guide
     /// See the [storage chapter of the guide]()
@@ -174,11 +169,12 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
 
     /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
     ///
-    /// Delete all entries in the log, stopping at `delete_through`, unless `None`, in which case
+    /// Delete all entries in the log through `delete_through`, unless `None`, in which case
     /// all entries of the log are to be deleted.
     ///
     /// Write a new snapshot pointer to the log at the given `index`. The snapshot pointer should be
-    /// constructed via the `Entry::new_snapshot_pointer` constructor.
+    /// constructed via the `Entry::new_snapshot_pointer` constructor and the other parameters
+    /// provided to this method.
     ///
     /// All other snapshots should be deleted at this point.
     ///
@@ -192,7 +188,7 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
         id: String, snapshot: Box<Self::Snapshot>,
     ) -> Result<()>;
 
-    /// A request from Raft to get a readable handle to the current snapshot, along with its metadata.
+    /// Get a readable handle to the current snapshot, along with its metadata.
     ///
     /// ### implementation algorithm
     /// Implementing this method should be straightforward. Check the configured snapshot
@@ -202,6 +198,6 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
     /// the current live snapshot, and any new snapshot which is being created.
     ///
     /// A proper snapshot implementation will store the term, index and membership config as part
-    /// of the snapshot as well, which can be decoded for creating this method's response.
+    /// of the snapshot, which should be decoded for creating this method's response data.
     async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>>;
 }

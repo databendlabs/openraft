@@ -45,7 +45,7 @@ async fn stepdown() -> Result<()> {
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
-    router.change_config(orig_leader, hashset![1, 2, 3]).await?;
+    router.change_membership(orig_leader, hashset![1, 2, 3]).await?;
     delay_for(Duration::from_secs(1)).await; // Give time for step down metrics to flow through.
 
     // Assert on the state of the old leader.

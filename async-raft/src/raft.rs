@@ -10,26 +10,22 @@ use tokio::task::JoinHandle;
 
 use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 use crate::config::Config;
-use crate::error::{ClientError, InitializeError, ChangeConfigError, RaftError, RaftResult};
+use crate::error::{ClientReadError, ClientWriteError, ChangeConfigError, InitializeError, RaftError, RaftResult};
 use crate::metrics::RaftMetrics;
 use crate::core::RaftCore;
 
 /// The Raft API.
 ///
-/// This type implements the full Raft spec, and is the interface into a running Raft node.
+/// This type implements the full Raft spec, and is the interface to a running Raft node.
 /// Applications building on top of Raft will use this to spawn a Raft task and interact with
 /// the spawned task.
 ///
-/// For more information on the Raft protocol, see the specification here:
-/// https://raft.github.io/raft.pdf (**pdf warning**).
-///
-/// The beginning of §5, the spec has a condensed summary of the Raft consensus algorithm. This
-/// crate, and especially this actor, attempts to follow the terminology and nomenclature used
-/// there as precisely as possible to aid in understanding this system.
+/// For more information on the Raft protocol, see
+/// [the specification here](https://raft.github.io/raft.pdf) (**pdf warning**).
 ///
 /// ### shutting down
 /// If any of the interfaces returns a `RaftError::ShuttingDown`, this indicates that the Raft node
-/// is shutting down (probably for data safety reasons due to a storage error), and the `shutdown`
+/// is shutting down (potentially for data safety reasons due to a storage error), and the `shutdown`
 /// method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the trick.
 pub struct Raft<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
@@ -51,7 +47,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// state machine. This ensures that restarts of the node will yield the same ID every time.
     ///
     /// ### `config`
-    /// The runtime config Raft. See the docs on the `Config` object for more details.
+    /// Raft's runtime config. See the docs on the `Config` object for more details.
     ///
     /// ### `network`
     /// An implementation of the `RaftNetwork` trait which will be used by Raft for sending RPCs to
@@ -84,7 +80,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
     /// in the guide for more details.
     #[tracing::instrument(level="debug", skip(self, rpc))]
-    pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> RaftResult<AppendEntriesResponse> {
+    pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::AppendEntries{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
@@ -98,7 +94,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
     /// in the guide for more details.
     #[tracing::instrument(level="debug", skip(self, rpc))]
-    pub async fn vote(&self, rpc: VoteRequest) -> RaftResult<VoteResponse> {
+    pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::RequestVote{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
@@ -113,33 +109,45 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
     /// in the guide for more details.
     #[tracing::instrument(level="debug", skip(self, rpc))]
-    pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse> {
+    pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::InstallSnapshot{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
-    /// Submit a client request to this Raft node to update the state of the system (§5.1).
+    /// Check to ensure this node is still the cluster leader, in order to guard against stale reads (§8).
     ///
-    /// Client requests are application specific and should contain whatever type of data is needed
-    /// by the application itself.
+    /// The actual read operation itself is up to the application, this method just ensures that
+    /// the read will not be stale.
+    #[tracing::instrument(level="debug", skip(self))]
+    pub async fn client_read(&self) -> Result<(), ClientReadError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx_api.send(RaftMsg::ClientReadRequest{tx}).map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
+        Ok(rx.await.map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+    }
+
+    /// Submit a mutating client request to Raft to update the state of the system (§5.1).
+    ///
+    /// It will be appended to the log, committed to the cluster, and then applied to the
+    /// application state machine. The result of applying the request to the state machine will
+    /// be returned as the response from this method.
     ///
     /// Our goal for Raft is to implement linearizable semantics. If the leader crashes after committing
     /// a log entry but before responding to the client, the client may retry the command with a new
-    /// leader, causing it to be executed a second time.
-    ///
-    /// The solution is for clients to assign unique serial numbers to every command. Then, the state
-    /// machine tracks the latest serial number processed for each client, along with the associated
-    /// response. If it receives a command whose serial number has already been executed, it responds
-    /// immediately without reexecuting the request (§8).
+    /// leader, causing it to be executed a second time. As such, clients should assign unique serial
+    /// numbers to every command. Then, the state machine should track the latest serial number
+    /// processed for each client, along with the associated response. If it receives a command whose
+    /// serial number has already been executed, it responds immediately without reexecuting the
+    /// request (§8). The `RaftStorage::apply_entry_to_state_machine` method is the perfect place
+    /// to implement this.
     ///
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
     #[tracing::instrument(level="debug", skip(self, rpc))]
-    pub async fn client(&self, rpc: ClientRequest<D>) -> Result<ClientResponse<R>, ClientError<D>> {
+    pub async fn client_write(&self, rpc: ClientWriteRequest<D>) -> Result<ClientWriteResponse<R>, ClientWriteError<D>> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::ClientRequest{rpc, tx}).map_err(|_| ClientError::RaftError(RaftError::ShuttingDown))?;
-        Ok(rx.await.map_err(|_| ClientError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+        self.tx_api.send(RaftMsg::ClientWriteRequest{rpc, tx}).map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown))?;
+        Ok(rx.await.map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -153,7 +161,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// This command will work for single-node or multi-node cluster formation. This command
     /// should be called with all discovered nodes which need to be part of cluster, and as such
     /// it is recommended that applications be configured with an initial cluster formation delay
-    /// which will allow time for the initial members of the cluster to be discovered for this call.
+    /// which will allow time for the initial members of the cluster to be discovered (by the
+    /// parent application) for this call.
     ///
     /// If successful, this routine will set the given config as the active config, only in memory,
     /// and will start an election.
@@ -167,11 +176,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// entry (instead of the normal blank entry created by new leaders).
     ///
     /// Every member of the cluster should perform these actions. This routine is race-condition
-    /// free, and Raft guarantees that the first node to become the cluster leader will propage
+    /// free, and Raft guarantees that the first node to become the cluster leader will propagate
     /// only its own config.
-    ///
-    /// Once a cluster is up and running, the `propose_config_change` routine should be used to
-    /// update the cluster's membership config.
     #[tracing::instrument(level="debug", skip(self))]
     pub async fn initialize(&self, members: HashSet<NodeId>) -> Result<(), InitializeError> {
         let (tx, rx) = oneshot::channel();
@@ -188,7 +194,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// Calling this API will add the target node as a non-voter, starting the syncing process.
     /// Once the node is up-to-speed, this function will return. It is the responsibility of the
-    /// application to then call `change_config` once all of the new nodes are synced.
+    /// application to then call `change_membership` once all of the new nodes are synced.
     ///
     /// If this Raft node is not the cluster leader, then this call will fail.
     #[tracing::instrument(level="debug", skip(self))]
@@ -202,7 +208,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// This will cause the leader to begin a cluster membership configuration change. If there
     /// are new nodes in the proposed config which are not already registered as non-voters — from
-    /// an earlier call to `add_non_voter` — then the new nodes first be synced as non-voters
+    /// an earlier call to `add_non_voter` — then the new nodes will first be synced as non-voters
     /// before moving the cluster into joint consensus. As this process may take some time, it is
     /// recommended that `add_non_voter` be called first for new nodes, and then once all new nodes
     /// have been synchronized, call this method to start reconfiguration.
@@ -210,7 +216,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// If this Raft node is not the cluster leader, then the proposed configuration change will be
     /// rejected.
     #[tracing::instrument(level="debug", skip(self))]
-    pub async fn change_config(&self, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
+    pub async fn change_membership(&self, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
         let (tx, rx) = oneshot::channel();
         self.tx_api.send(RaftMsg::ChangeMembership{members, tx}).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
@@ -228,36 +234,40 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 }
 
-pub(crate) type ClientResponseTx<D, R> = oneshot::Sender<Result<ClientResponse<R>, ClientError<D>>>;
+pub(crate) type ClientWriteResponseTx<D, R> = oneshot::Sender<Result<ClientWriteResponse<R>, ClientWriteError<D>>>;
+pub(crate) type ClientReadResponseTx = oneshot::Sender<Result<(), ClientReadError>>;
 pub(crate) type ChangeMembershipTx = oneshot::Sender<Result<(), ChangeConfigError>>;
 
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
-    AppendEntries{
+    AppendEntries {
         rpc: AppendEntriesRequest<D>,
         tx: oneshot::Sender<Result<AppendEntriesResponse, RaftError>>,
     },
-    RequestVote{
+    RequestVote {
         rpc: VoteRequest,
         tx: oneshot::Sender<Result<VoteResponse, RaftError>>,
     },
-    InstallSnapshot{
+    InstallSnapshot {
         rpc: InstallSnapshotRequest,
         tx: oneshot::Sender<Result<InstallSnapshotResponse, RaftError>>,
     },
-    ClientRequest{
-        rpc: ClientRequest<D>,
-        tx: ClientResponseTx<D, R>,
+    ClientWriteRequest {
+        rpc: ClientWriteRequest<D>,
+        tx: ClientWriteResponseTx<D, R>,
     },
-    Initialize{
+    ClientReadRequest {
+        tx: ClientReadResponseTx,
+    },
+    Initialize {
         members: HashSet<NodeId>,
         tx: oneshot::Sender<Result<(), InitializeError>>,
     },
-    AddNonVoter{
+    AddNonVoter {
         id: NodeId,
         tx: ChangeMembershipTx,
     },
-    ChangeMembership{
+    ChangeMembership {
         members: HashSet<NodeId>,
         tx: ChangeMembershipTx,
     },
@@ -427,13 +437,6 @@ impl MembershipConfig {
         self.members_after_consensus.is_some()
     }
 
-    /// Get the length of the `members` vec.
-    ///
-    /// This does not consider the length of the config after joint consensus, if applicable.
-    pub fn len(&self) -> usize {
-        self.members.len()
-    }
-
     /// Create a new initial config containing only the given node ID.
     pub fn new_initial(id: NodeId) -> Self {
         let mut members = HashSet::new();
@@ -508,16 +511,16 @@ pub struct InstallSnapshotResponse {
 
 /// An application specific client request to update the state of the system (§5.1).
 ///
-/// The entries of this payload will be appended to the Raft log and then applied to the Raft state
+/// The entry of this payload will be appended to the Raft log and then applied to the Raft state
 /// machine according to the Raft protocol.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ClientRequest<D: AppData> {
+pub struct ClientWriteRequest<D: AppData> {
     /// The application specific contents of this client request.
     #[serde(bound="D: AppData")]
     pub(crate) entry: EntryPayload<D>,
 }
 
-impl<D: AppData> ClientRequest<D> {
+impl<D: AppData> ClientWriteRequest<D> {
     /// Create a new client payload instance with a normal entry type.
     pub fn new(entry: D) -> Self {
         Self::new_base(EntryPayload::Normal(EntryNormal{data: entry}))
@@ -543,7 +546,7 @@ impl<D: AppData> ClientRequest<D> {
 
 /// The response to a `ClientRequest`.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ClientResponse<R: AppDataResponse> {
+pub struct ClientWriteResponse<R: AppDataResponse> {
     /// The log index of the successfully processed client request.
     pub index: u64,
     /// Application specific response data.

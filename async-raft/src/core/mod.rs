@@ -22,9 +22,9 @@ use tracing_futures::Instrument;
 use crate::{AppData, AppDataResponse, RaftNetwork, RaftStorage, NodeId};
 use crate::config::{Config, SnapshotPolicy};
 use crate::core::client::ClientRequestEntry;
-use crate::error::{ClientError, ChangeConfigError, InitializeError, RaftError, RaftResult};
+use crate::error::{ClientReadError, ClientWriteError, ChangeConfigError, InitializeError, RaftError, RaftResult};
 use crate::metrics::RaftMetrics;
-use crate::raft::{ChangeMembershipTx, ClientRequest, ClientResponseTx, RaftMsg, MembershipConfig};
+use crate::raft::{ChangeMembershipTx, ClientWriteRequest, ClientReadResponseTx, ClientWriteResponseTx, RaftMsg, MembershipConfig};
 use crate::replication::{RaftEvent, ReplicationStream, ReplicaEvent};
 use crate::storage::HardState;
 
@@ -125,7 +125,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// The main loop of the Raft protocol.
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.id))]
+    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
     async fn main(mut self) -> RaftResult<()> {
         tracing::trace!("raft node is initializing");
         let state = self.storage.get_initial_state().await.map_err(|err| self.map_fatal_storage_error(err))?;
@@ -146,7 +146,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // Set initial state based on state recovered from disk.
-        let is_only_configured_member = self.membership.len() == 1 && self.membership.contains(&self.id);
+        let is_only_configured_member = self.membership.members.len() == 1 && self.membership.contains(&self.id);
         // If this is the only configured member and there is live state, then this is
         // a single-node cluster. Become leader.
         if is_only_configured_member && &self.last_log_index != &u64::min_value() {
@@ -356,10 +356,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let _ = tx.send(Err(ChangeConfigError::NodeNotLeader));
     }
 
-    /// Forward the given client request to the leader.
+    /// Forward the given client write request to the leader.
     #[tracing::instrument(level="trace", skip(self, req, tx))]
-    fn forward_client_request(&self, req: ClientRequest<D>, tx: ClientResponseTx<D, R>) {
-        let _ = tx.send(Err(ClientError::ForwardToLeader(req, self.voted_for.clone())));
+    fn forward_client_write_request(&self, req: ClientWriteRequest<D>, tx: ClientWriteResponseTx<D, R>) {
+        let _ = tx.send(Err(ClientWriteError::ForwardToLeader(req, self.current_leader.clone())));
+    }
+
+    /// Forward the given client read request to the leader.
+    #[tracing::instrument(level="trace", skip(self, tx))]
+    fn forward_client_read_request(&self, tx: ClientReadResponseTx) {
+        let _ = tx.send(Err(ClientReadError::ForwardToLeader(self.current_leader.clone())));
     }
 }
 
@@ -531,8 +537,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     RaftMsg::InstallSnapshot{rpc, tx} => {
                         let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
                     }
-                    RaftMsg::ClientRequest{rpc, tx} => {
-                        self.handle_client_request(rpc, tx).await;
+                    RaftMsg::ClientReadRequest{tx} => {
+                        self.handle_client_read_request(tx).await;
+                    }
+                    RaftMsg::ClientWriteRequest{rpc, tx} => {
+                        self.handle_client_write_request(rpc, tx).await;
                     }
                     RaftMsg::Initialize{tx, ..} => {
                         self.core.reject_init_with_config(tx);
@@ -575,6 +584,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 struct ReplicationState<D: AppData> {
     pub match_index: u64,
+    pub match_term: u64,
     pub is_at_line_rate: bool,
     pub remove_after_commit: Option<u64>,
     pub replstream: ReplicationStream<D>,
@@ -693,8 +703,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         RaftMsg::InstallSnapshot{rpc, tx} => {
                             let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
                         }
-                        RaftMsg::ClientRequest{rpc, tx} => {
-                            self.core.forward_client_request(rpc, tx);
+                        RaftMsg::ClientReadRequest{tx} => {
+                            self.core.forward_client_read_request(tx);
+                        }
+                        RaftMsg::ClientWriteRequest{rpc, tx} => {
+                            self.core.forward_client_write_request(rpc, tx);
                         }
                         RaftMsg::Initialize{tx, ..} => {
                             self.core.reject_init_with_config(tx);
@@ -749,8 +762,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     RaftMsg::InstallSnapshot{rpc, tx} => {
                         let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
                     }
-                    RaftMsg::ClientRequest{rpc, tx} => {
-                        self.core.forward_client_request(rpc, tx);
+                    RaftMsg::ClientReadRequest{tx} => {
+                        self.core.forward_client_read_request(tx);
+                    }
+                    RaftMsg::ClientWriteRequest{rpc, tx} => {
+                        self.core.forward_client_write_request(rpc, tx);
                     }
                     RaftMsg::Initialize{tx, ..} => {
                         self.core.reject_init_with_config(tx);
@@ -800,8 +816,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     RaftMsg::InstallSnapshot{rpc, tx} => {
                         let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
                     }
-                    RaftMsg::ClientRequest{rpc, tx} => {
-                        self.core.forward_client_request(rpc, tx);
+                    RaftMsg::ClientReadRequest{tx} => {
+                        self.core.forward_client_read_request(tx);
+                    }
+                    RaftMsg::ClientWriteRequest{rpc, tx} => {
+                        self.core.forward_client_write_request(rpc, tx);
                     }
                     RaftMsg::Initialize{members, tx} => {
                         let _ = tx.send(self.handle_init_with_config(members).await);

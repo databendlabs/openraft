@@ -1,6 +1,4 @@
-//! The Raft configuration module.
-
-use std::time::Duration;
+//! Raft runtime configuration.
 
 use rand::{thread_rng, Rng};
 
@@ -18,12 +16,10 @@ pub const DEFAULT_LOGS_SINCE_LAST: u64 = 5000;
 pub const DEFAULT_MAX_PAYLOAD_ENTRIES: u64 = 300;
 /// Default replication lag threshold.
 pub const DEFAULT_REPLICATION_LAG_THRESHOLD: u64 = 1000;
-/// Default metrics rate.
-pub const DEFAULT_METRICS_RATE: Duration = Duration::from_millis(5000);
 /// Default snapshot chunksize.
 pub const DEFAULT_SNAPSHOT_CHUNKSIZE: u64 = 1024 * 1024 * 3;
 
-/// Raft log snapshot policy.
+/// Log compaction and snapshot policy.
 ///
 /// This governs when periodic snapshots will be taken, and also governs the conditions which
 /// would cause a leader to send an `InstallSnapshot` RPC to a follower based on replication lag.
@@ -43,6 +39,11 @@ impl Default for SnapshotPolicy {
 }
 
 /// The runtime configuration for a Raft node.
+///
+/// The default values used by this type should generally work well for Raft clusters which will
+/// be running with nodes in multiple datacenter availability zones with low latency between
+/// zones. These values should typically be made configurable from the perspective of the
+/// application which is being built on top of Raft.
 ///
 /// When building the Raft configuration for your application, remember this inequality from the
 /// Raft spec: `broadcastTime ≪ electionTimeout ≪ MTBF`.
@@ -71,7 +72,7 @@ pub struct Config {
     pub election_timeout_min: u64,
     /// The maximum election timeout in milliseconds.
     pub election_timeout_max: u64,
-    /// The heartbeat interval at which leaders will send heartbeats to followers.
+    /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers.
     ///
     /// Defaults to 50 milliseconds.
     ///
@@ -127,7 +128,7 @@ impl Config {
     }
 }
 
-/// A configuration builder to ensure that the Raft's runtime config is valid.
+/// A configuration builder to ensure that runtime config is valid.
 ///
 /// For election timeout config & heartbeat interval configuration, it is recommended that §5.6 of
 /// the Raft spec is considered in order to set the appropriate values.

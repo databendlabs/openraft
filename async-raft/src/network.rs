@@ -3,7 +3,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::AppData;
+use crate::{AppData, NodeId};
 use crate::raft::{AppendEntriesRequest, AppendEntriesResponse};
 use crate::raft::{InstallSnapshotRequest, InstallSnapshotResponse};
 use crate::raft::{VoteRequest, VoteResponse};
@@ -18,11 +18,11 @@ pub trait RaftNetwork<D>: Send + Sync + 'static
         D: AppData,
 {
     /// Send an AppendEntries RPC to the target Raft node (§5).
-    async fn append_entries(&self, target: u64, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse>;
+    async fn append_entries(&self, target: NodeId, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse>;
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
-    async fn install_snapshot(&self, target: u64, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse>;
+    async fn install_snapshot(&self, target: NodeId, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse>;
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn vote(&self, target: u64, rpc: VoteRequest) -> Result<VoteResponse>;
+    async fn vote(&self, target: NodeId, rpc: VoteRequest) -> Result<VoteResponse>;
 }

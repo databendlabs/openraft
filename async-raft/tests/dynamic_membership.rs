@@ -56,7 +56,7 @@ async fn dynamic_membership() -> Result<()> {
         inner?;
     }
     tracing::info!("--- changing cluster config");
-    router.change_config(0, hashset![0, 1, 2, 3, 4]).await?;
+    router.change_membership(0, hashset![0, 1, 2, 3, 4]).await?;
     delay_for(Duration::from_secs(5)).await;
     router.assert_stable_cluster(Some(1), Some(3)).await; // Still in term 1, so leader is still node 0.
 

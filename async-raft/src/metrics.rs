@@ -11,7 +11,7 @@ use crate::NodeId;
 use crate::core::State;
 use crate::raft::MembershipConfig;
 
-/// Baseline metrics of the current state of the subject Raft node.
+/// A set of metrics describing the current state of a Raft node.
 ///
 /// See the [module level documentation](TODO:)
 /// for more details.

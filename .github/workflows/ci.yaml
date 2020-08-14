@@ -28,6 +28,10 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
+          args: -p async-raft --release --test client_reads
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
           args: -p async-raft --release --test client_writes
       - uses: actions-rs/cargo@v1
         with:

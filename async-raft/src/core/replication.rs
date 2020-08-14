@@ -16,7 +16,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.last_log_index, self.core.last_log_term, self.core.commit_index,
             self.core.network.clone(), self.core.storage.clone(), self.replicationtx.clone(),
         );
-        ReplicationState{match_index: self.core.last_log_index, is_at_line_rate: false, replstream, remove_after_commit: None}
+        ReplicationState{
+            match_index: self.core.last_log_index,
+            match_term: self.core.current_term,
+            is_at_line_rate: false,
+            replstream,
+            remove_after_commit: None,
+        }
     }
 
     /// Handle a replication event coming from one of the replication streams.
@@ -25,7 +31,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let res = match event {
             ReplicaEvent::RateUpdate{target, is_line_rate} => self.handle_rate_update(target, is_line_rate).await,
             ReplicaEvent::RevertToFollower{target, term} => self.handle_revert_to_follower(target, term).await,
-            ReplicaEvent::UpdateMatchIndex{target, match_index} => self.handle_update_match_index(target, match_index).await,
+            ReplicaEvent::UpdateMatchIndex{target, match_index, match_term} => self.handle_update_match_index(target, match_index, match_term).await,
             ReplicaEvent::NeedsSnapshot{target, tx} => self.handle_needs_snapshot(target, tx).await,
             ReplicaEvent::Shutdown => {
                 self.core.set_target_state(State::Shutdown);
@@ -88,10 +94,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Handle events from a replication stream which updates the target node's match index.
     #[tracing::instrument(level="trace", skip(self, target, match_index))]
-    async fn handle_update_match_index(&mut self, target: NodeId, match_index: u64) -> RaftResult<()> {
+    async fn handle_update_match_index(&mut self, target: NodeId, match_index: u64, match_term: u64) -> RaftResult<()> {
         // If this is a non-voter, then update and return.
         if let Some(state) = self.non_voters.get_mut(&target) {
             state.state.match_index = match_index;
+            state.state.match_term = match_term;
             return Ok(());
         }
 
@@ -100,6 +107,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         match self.nodes.get_mut(&target) {
             Some(state) => {
                 state.match_index = match_index;
+                state.match_term = match_term;
                 if let Some(threshold) = &state.remove_after_commit {
                     if &match_index >= threshold {
                         needs_removal = true;

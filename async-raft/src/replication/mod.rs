@@ -145,7 +145,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         ReplicationStream{handle, repltx: raftrx_tx}
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, target=self.target))]
+    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, target=self.target, cluster=%self.config.cluster_name))]
     async fn main(mut self) {
         // Perform an initial heartbeat.
         self.send_append_entries().await;
@@ -213,7 +213,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 self.next_index = index + 1; // This should always be the next expected index.
                 self.match_index = index;
                 self.match_term = term;
-                let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex{target: self.target, match_index: index});
+                let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex{target: self.target, match_index: index, match_term: term});
 
                 // If running at line rate, and our buffered outbound requests have accumulated too
                 // much, we need to purge and transition to a lagging state. The target is not able to
@@ -249,6 +249,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // it will never exist. So instead, we just return, and accept the conflict data.
             if &conflict.index == &0 {
                 self.target_state = TargetReplState::Lagging;
+                let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex{
+                    target: self.target, match_index: self.match_index, match_term: self.match_term,
+                });
                 return;
             }
 
@@ -261,6 +264,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     // This condition would only ever be reached if the log has been removed due to
                     // log compaction (barring critical storage failure), so transition to snapshotting.
                     self.target_state = TargetReplState::Snapshotting;
+                    let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex{
+                        target: self.target, match_index: self.match_index, match_term: self.match_term,
+                    });
                     return;
                 }
                 Err(err) => {
@@ -272,6 +278,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             };
 
             // Check snapshot policy and handle conflict as needed.
+            let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex{
+                target: self.target, match_index: self.match_index, match_term: self.match_term,
+            });
             match &self.config.snapshot_policy {
                 SnapshotPolicy::LogsSinceLast(threshold) => {
                     let diff = &self.last_log_index - &conflict.index; // NOTE WELL: underflow is guarded against above.
@@ -286,10 +295,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 }
             }
         }
-
-        self.match_index = if self.match_index > 0 { self.match_index - 1} else { 0 };
-        self.next_index = self.match_index + 1;
-        self.target_state = TargetReplState::Lagging;
     }
 
     /// Perform a check to see if this replication stream is lagging behind far enough that a
@@ -422,6 +427,8 @@ pub(crate) enum ReplicaEvent<S>
         target: NodeId,
         /// The index of the most recent log known to have been successfully replicated on the target.
         match_index: u64,
+        /// The term of the most recent log known to have been successfully replicated on the target.
+        match_term: u64,
     },
     /// An event indicating that the Raft node needs to revert to follower state.
     RevertToFollower{

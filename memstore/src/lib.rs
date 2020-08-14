@@ -1,3 +1,6 @@
+#![cfg_attr(feature="docinclude", feature(external_doc))]
+#![cfg_attr(feature="docinclude", doc(include="../README.md"))]
+
 #[cfg(test)]
 mod test;
 
@@ -5,7 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::io::Cursor;
 
 use anyhow::Result;
-use async_raft::async_trait;
+use async_raft::async_trait::async_trait;
 use async_raft::{AppData, AppDataResponse, NodeId, RaftStorage};
 use async_raft::raft::{Entry, EntryPayload, MembershipConfig};
 use async_raft::storage::{CurrentSnapshotData, HardState, InitialState};
@@ -15,9 +18,10 @@ use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 const ERR_INCONSISTENT_LOG: &str = "a query was received which was expecting data to be in place which does not exist in the log";
 
-/// A request to update a client's status info, returning the last recorded status.
+/// The application data request type which the `MemStore` works with.
 ///
-/// This is the application data type which the `MemStore` works with.
+/// Conceptually, for demo purposes, this represents an update to a client's status info,
+/// returning the previously recorded status.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientRequest {
     /// The ID of the client which has sent the request.
@@ -69,7 +73,7 @@ pub struct MemStoreStateMachine {
     pub client_status: HashMap<String, String>,
 }
 
-/// An in-memory storage system for demo and testing purposes related to `async-raft`.
+/// An in-memory storage system implementing the `async_raft::RaftStorage` trait.
 pub struct MemStore {
     /// The ID of the Raft node for which this memory storage instances is configured.
     id: NodeId,

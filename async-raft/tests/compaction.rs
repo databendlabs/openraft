@@ -51,7 +51,7 @@ async fn compaction() -> Result<()> {
     // Add a new node and assert that it received the same snapshot.
     router.new_raft_node(1).await;
     router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
-    router.change_config(0, hashset![0, 1]).await.expect("failed to modify cluster membership");
+    router.change_membership(0, hashset![0, 1]).await.expect("failed to modify cluster membership");
     delay_for(Duration::from_secs(5)).await; // Wait to ensure metrics are updated (this is way more than enough).
     router.assert_stable_cluster(Some(1), Some(502)).await; // We expect index to be 500 + 2 (joint & uniform config change entries).
     router.assert_storage_state(1, 502, None, 500, Some((500.into(), 1, MembershipConfig{members: hashset![0u64], members_after_consensus: None}))).await;
