@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Network - Async Raft</title>
+        <title>Putting It All Together - Async Raft</title>
         
         
 
@@ -93,7 +93,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="network.html" class="active"><strong aria-hidden="true">2.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">3.</strong> Storage</a></li><li class="chapter-item expanded "><a href="raft.html"><strong aria-hidden="true">4.</strong> Raft API</a></li><li class="chapter-item expanded "><a href="putting-it-all-together.html"><strong aria-hidden="true">5.</strong> Putting It All Together</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">6.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">6.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">6.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">7.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">8.</strong> Get To It</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="network.html"><strong aria-hidden="true">2.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">3.</strong> Storage</a></li><li class="chapter-item expanded "><a href="raft.html"><strong aria-hidden="true">4.</strong> Raft API</a></li><li class="chapter-item expanded "><a href="putting-it-all-together.html" class="active"><strong aria-hidden="true">5.</strong> Putting It All Together</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">6.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">6.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">6.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">7.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">8.</strong> Get To It</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -159,43 +159,147 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1><a class="header" href="#network" id="network">Network</a></h1>
-<p>Raft is a distributed consensus protocol, so the ability to send and receive data over a network is integral to the proper functionality of nodes within a Raft cluster.</p>
-<p>The network capabilities required by this system are broken up into two parts: the <code>RaftNetwork</code> trait &amp; the application network.</p>
-<h3><a class="header" href="#raftnetwork" id="raftnetwork"><code>RaftNetwork</code></a></h3>
-<p>Raft uses the <code>RaftNetwork</code> trait for sending Raft RPCs. This trait says nothing about how those requests should be received on the other end. There is a lot of flexibility with this trait. Maybe you want to use <a href="https://github.com/hyperium/tonic">Tonic gRPC</a>, or perhaps some other <a href="https://github.com/seanmonstar/reqwest">HTTP-based protocol</a>. One could use WebSockets, a raw TCP socket, UDP, HTTP3 ... in the end, this depends on the application's needs. Whichever option is chosen, the fundamental requirement is that an implementor of the <code>RaftNetwork</code> trait must be able to reliably transmit data over the network.</p>
-<p>All of the methods to be implemented are similar in structure. Take this one for example:</p>
+                        <h1><a class="header" href="#putting-it-all-together" id="putting-it-all-together">Putting It All Together</a></h1>
+<p>In previous chapters we've seen how to define our application's data types which will be used for interacting with Raft, we've seen how to implement the <code>RaftNetwork</code> trait, we've seen how to implement the <code>RaftStorage</code> trait, and we've reviewed the <code>Raft</code> API itself. Now its time to put all of these components together. Let's do this.</p>
+<p>For this chapter, we're going to use snippets of the code found in the <code>memstore</code> crate, which is an in-memory implementation of the <code>RaftStorage</code> trait for demo and testing purposes, which also happens to be used for all of the integration tests of <code>async-raft</code> itself.</p>
+<h3><a class="header" href="#recap-on-our-data-types" id="recap-on-our-data-types">Recap On Our Data Types</a></h3>
+<p>As we've seen earlier, here are our <code>AppData</code> and <code>AppDataResponse</code> types/impls.</p>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>    /// Send an AppendEntries RPC to the target Raft node (§5).
-    async fn append_entries(&amp;self, target: NodeId, rpc: AppendEntriesRequest&lt;D&gt;) -&gt; Result&lt;AppendEntriesResponse&gt;;
+</span>/// The application data request type which the `MemStore` works with.
+///
+/// Conceptually, for demo purposes, this represents an update to a client's status info,
+/// returning the previously recorded status.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ClientRequest {
+    /// The ID of the client which has sent the request.
+    pub client: String,
+    /// The serial number of this request.
+    pub serial: u64,
+    /// A string describing the status of the client. For a real application, this should probably
+    /// be an enum representing all of the various types of requests / operations which a client
+    /// can perform.
+    pub status: String,
+}
+
+impl AppData for ClientRequest {}
+
+/// The application data response type which the `MemStore` works with.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ClientResponse(Result&lt;Option&lt;String&gt;, ClientError&gt;);
+
+impl AppDataResponse for ClientResponse {}
 <span class="boring">}
 </span></code></pre></pre>
-<p>The implementing type should use the given <code>NodeId</code> (just a <code>u64</code>) to identify the target Raft node to which the given <code>rpc</code> must be sent. For applications using a single Raft cluster, this is quite simple. If using a multi-Raft setup, cluster information could be embedded in the <code>RaftNetwork</code> implementing type, and network requests could be enriched with that cluster information before being transmitted over the network to ensure that the receiving server can pass the received <code>rpc</code> to the correct Raft cluster.</p>
-<p>The excellent <a href="https://docs.rs/async-trait/"><code>async_trait</code></a> crate is re-exported by this crate to make implementation as easy as possible. Please see the documentation on how to use this macro to creating an async trait implementation.</p>
-<h3><a class="header" href="#application-network" id="application-network">Application Network</a></h3>
-<p>The main role of the application network, in this context, is to handle RPCs from Raft peers and client requests coming from application clients, and then feed them into Raft. This is essentially the receiving end of the <code>RaftNetwork</code> trait, however this project does not enforce any specific interface on how this is to be implemented. The only requirement is that it work with the <code>RaftNetwork</code> trait implementation. There are a few other important things that it will probably need to do as well, depending on the application's needs, here are a few other common networking roles:</p>
-<ul>
-<li><strong>discovery:</strong> a component which allows the members of an application cluster (its nodes) to discover and communicate with each other. This is not provided by this crate. There are lots of solutions out there to solve this problem. Applications can build their own discovery system by way of DNS, they could use other systems like etcd or consul. The important thing to note here is that once a peer is discovered, it would be prudent for application nodes to maintain a connection with that peer, as heartbeats are very regular, and building new network connections is not free.</li>
-<li><strong>data format:</strong> the way that data is serialized and sent accross the networking medium. Popular data formats include protobuf, capnproto, flatbuffers, message pack, JSON &amp;c. Applications are responsible for serializing and deserializing the various message types used in this crate for network transmission. Serde is used throughout this system to aid on this front.</li>
-</ul>
-<p>Applications must be able to facilitate message exchange between nodes reliably.</p>
+<h3><a class="header" href="#raftnetwork-impl" id="raftnetwork-impl">RaftNetwork impl</a></h3>
+<p>We've already discussed the <code>RaftNetwork</code> trait in a previous chapter. Here is an abbreviated snippet of what the <code>RaftNetwork</code> impl looks like in the <code>async-raft</code> integration test suite.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// We use anyhow::Result in our impl below.
+use anyhow::Result;
+
+/// A type which emulates a network transport and implements the `RaftNetwork` trait.
+pub struct RaftRouter {
+    // ... some internal state ...
+}
+
+#[async_trait]
+impl RaftNetwork&lt;ClientRequest&gt; for RaftRouter {
+    /// Send an AppendEntries RPC to the target Raft node (§5).
+    async fn append_entries(&amp;self, target: u64, rpc: AppendEntriesRequest&lt;ClientRequest&gt;) -&gt; Result&lt;AppendEntriesResponse&gt; {
+        // ... snip ...
+    }
+
+    /// Send an InstallSnapshot RPC to the target Raft node (§7).
+    async fn install_snapshot(&amp;self, target: u64, rpc: InstallSnapshotRequest) -&gt; Result&lt;InstallSnapshotResponse&gt; {
+        // ... snip ...
+    }
+
+    /// Send a RequestVote RPC to the target Raft node (§5).
+    async fn vote(&amp;self, target: u64, rpc: VoteRequest) -&gt; Result&lt;VoteResponse&gt; {
+        // ... snip ...
+    }
+}
+<span class="boring">}
+</span></code></pre></pre>
+<h3><a class="header" href="#raftstorage-impl" id="raftstorage-impl">RaftStorage impl</a></h3>
+<p>We've already got a <code>RaftStorage</code> impl to work with from the <code>memstore</code> crate. Here is an abbreviated snippet of the code.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// We use anyhow::Result in our impl below.
+use anyhow::Result;
+
+#[async_trait]
+impl RaftStorage&lt;ClientRequest, ClientResponse&gt; for MemStore {
+    type Snapshot = Cursor&lt;Vec&lt;u8&gt;&gt;;
+
+    async fn get_membership_config(&amp;self) -&gt; Result&lt;MembershipConfig&gt; {
+        // ... snip ...
+    }
+
+    async fn get_initial_state(&amp;self) -&gt; Result&lt;InitialState&gt; {
+        // ... snip ...
+    }
+
+    // The remainder of our methods are implemented below.
+    // ... snip ...
+}
+<span class="boring">}
+</span></code></pre></pre>
+<h3><a class="header" href="#raft-type-alias" id="raft-type-alias">Raft Type Alias</a></h3>
+<p>For better readability in your application's code, it would be beneficial to define a type alias which fully qualifies all of the types which your Raft instance will be using. This is quite simple. The example below is taken directly from this project's integration test suite, which uses the <code>memstore</code> crate and a specialized <code>RaftNetwork</code> impl designed specifically for testing.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>/// A concrete Raft type used during testing.
+pub type MemRaft = Raft&lt;ClientRequest, ClientResponse, RaftRouter, MemStore&gt;;
+<span class="boring">}
+</span></code></pre></pre>
+<h3><a class="header" href="#give-it-the-boot" id="give-it-the-boot">Give It The Boot</a></h3>
+<p>Though applications will be much more complex than this contrived example, booting a Raft node is dead simple. Even if your application uses a multi-Raft pattern for managing different segments / shards of data, the same principal applies. Boot a Raft node, and retain its instance for API usage.</p>
+<pre><pre class="playground"><code class="language-rust">//! This code assumes the code samples above.
+
+#[tokio::main]
+async fn main() {
+    // Get our node's ID from stable storage.
+    let node_id = get_id_from_storage().await;
+
+    // Build our Raft runtime config, then instantiate our
+    // RaftNetwork &amp; RaftStorage impls.
+    let config = Arc::new(Config::build(&quot;primary-raft-group&quot;.into())
+        .validate()
+        .expect(&quot;failed to build Raft config&quot;));
+    let network = Arc::new(RaftRouter::new(config.clone()));
+    let storage = Arc::new(MemStore::new(node_id));
+
+    // Create a new Raft node, which spawns an async task which
+    // runs the Raft core logic. Keep this Raft instance around
+    // for calling API methods based on events in your app.
+    let raft = Raft::new(node_id, config, network, storage);
+
+    run_app(raft).await; // This is subjective. Do it your own way.
+                         // Just run your app, feeding Raft &amp; client
+                         // RPCs into the Raft node as they arrive.
+}
+</code></pre></pre>
 <hr />
-<p>Now that we've got a solid taste for the network requirements, let's move on to Raft storage.</p>
+<p>You've officially ascended to the next level of AWESOME! Next, let's take a look at cluster lifecycle controls, dynamic membership, and the like.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
                         
-                            <a rel="prev" href="getting-started.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="raft.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
                         
 
                         
-                            <a rel="next" href="storage.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="cluster-controls.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         
@@ -207,13 +311,13 @@
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
                 
-                    <a rel="prev" href="getting-started.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="raft.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
                 
 
                 
-                    <a rel="next" href="storage.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="cluster-controls.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
                 

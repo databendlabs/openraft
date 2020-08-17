@@ -3,15 +3,26 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Metrics - Actix Raft</title>
+        <title>Metrics - Async Raft</title>
+        
         
 
+
+        <!-- Custom HTML head -->
+        
+
+
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
-        <meta name="description" content="The ActixRaft user guide.">
+        <meta name="description" content="The async-raft user guide.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
 
+        
+        <link rel="icon" href="favicon.svg">
+        
+        
         <link rel="shortcut icon" href="favicon.png">
+        
         <link rel="stylesheet" href="css/variables.css">
         <link rel="stylesheet" href="css/general.css">
         <link rel="stylesheet" href="css/chrome.css">
@@ -19,8 +30,9 @@
 
         <!-- Fonts -->
         <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800" rel="stylesheet" type="text/css">
-        <link href="https://fonts.googleapis.com/css?family=Source+Code+Pro:500" rel="stylesheet" type="text/css">
+        
+        <link rel="stylesheet" href="fonts/fonts.css">
+        
 
         <!-- Highlight.js Stylesheets -->
         <link rel="stylesheet" href="highlight.css">
@@ -36,7 +48,7 @@
         <!-- Provide site root to javascript -->
         <script type="text/javascript">
             var path_to_root = "";
-            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "light";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
         </script>
 
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
@@ -81,7 +93,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="raft.html"><strong aria-hidden="true">2.</strong> Raft</a></li><li class="chapter-item expanded "><a href="network.html"><strong aria-hidden="true">3.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">4.</strong> Storage</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">5.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">5.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">5.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html" class="active"><strong aria-hidden="true">6.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">7.</strong> Get To It</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="network.html"><strong aria-hidden="true">2.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">3.</strong> Storage</a></li><li class="chapter-item expanded "><a href="raft.html"><strong aria-hidden="true">4.</strong> Raft API</a></li><li class="chapter-item expanded "><a href="putting-it-all-together.html"><strong aria-hidden="true">5.</strong> Putting It All Together</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">6.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">6.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">6.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html" class="active"><strong aria-hidden="true">7.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">8.</strong> Get To It</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -113,7 +125,7 @@
                         
                     </div>
 
-                    <h1 class="menu-title">Actix Raft</h1>
+                    <h1 class="menu-title">Async Raft</h1>
 
                     <div class="right-buttons">
                         <a href="print.html" title="Print this book" aria-label="Print this book">
@@ -148,10 +160,8 @@
                 <div id="content" class="content">
                     <main>
                         <h1><a class="header" href="#metrics" id="metrics">Metrics</a></h1>
-<p><code>Raft</code> exports metrics on a regular interval in order to facilitate maximum observability and integration with metrics aggregations tools (eg, prometheus, influx &amp;c) using the <a href="https://docs.rs/actix-raft/latest/actix_raft/metrics/struct.RaftMetrics.html"><code>RaftMetrics</code></a> type.</p>
-<p>The <code>Raft</code> instance constructor expects a <code>Recipient&lt;RaftMetrics&gt;</code> (an <a href="https://docs.rs/actix/latest/actix/struct.Recipient.html">actix::Recipient</a>) to be supplied, and will use this recipient to export its metrics. The <code>RaftMetrics</code> type holds the baseline metrics on the state of the Raft node the metrics are coming from, its current role in the cluster, its current membership config, as well as information on the Raft log and the last index to be applied to the state machine.</p>
-<p>Applications may use this data in whatever way is needed. The obvious use cases are to expose these metrics to a metrics collection system. Applications may also use this data to trigger events within higher levels of the parent application.</p>
-<p>Metrics will be exported at a regular interval according to the <a href="https://docs.rs/actix-raft/latest/actix_raft/config/struct.Config.html#structfield.metrics_rate">Config.metrics_rate</a> value, but will also emit a new metrics record any time the <code>state</code> of the Raft node changes, the <code>membership_config</code> changes, or the <code>current_leader</code> changes.</p>
+<p><code>Raft</code> exports metrics on its internal state via the <code>Raft.metrics</code> method, which returns a stream of <a href="TODO:"><code>RaftMetrics</code></a>. The metrics themselves describe the state of the Raft node, its current role in the cluster, its current membership config, as well as information on the Raft log and the last index to be applied to the state machine.</p>
+<p>Applications may use this data in whatever way is needed. The obvious use cases are to expose these metrics to a metrics collection system, such as Prometheus, TimescaleDB, Influx &amp;c. Applications may also use this data to trigger events within higher levels of the application itself.</p>
 
                     </main>
 
@@ -195,10 +205,10 @@
         
 
         
-        
+
         
         <script type="text/javascript">
-            window.playpen_copyable = true;
+            window.playground_copyable = true;
         </script>
         
 
