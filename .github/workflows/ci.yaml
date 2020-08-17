@@ -1,0 +1,78 @@
+on: [push]
+name: ci
+jobs:
+  build-async-raft:
+    name: build async-raft
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p async-raft --release
+
+      # unit tests
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --lib
+
+      # integration tests
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test initialization
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test client_reads
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test client_writes
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test singlenode
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test dynamic_membership
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test compaction
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --release --test stepdown
+
+  build-async-raft-nightly:
+    name: build async-raft nightly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p async-raft --release --all-features
+
+  build-memstore:
+    name: build memstore
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p memstore

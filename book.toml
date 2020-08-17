@@ -3,8 +3,8 @@ authors = ["Anthony Dodd"]
 language = "en"
 multilingual = false
 src = "guide/src"
-title = "Actix Raft"
-description = "The ActixRaft user guide."
+title = "Async Raft"
+description = "The async-raft user guide."
 
 [build]
 build-dir = "guide/book"
