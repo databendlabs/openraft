@@ -8,13 +8,11 @@
 <div align="center">
 
 [![Build Status](https://github.com/async-raft/async-raft/workflows/ci/badge.svg?branch=async-raft)](https://travis-ci.com/async-raft/async-raft)
-[![Crates.io](https://img.shields.io/crates/v/async-raft.svg)](https://crates.io/crates/async-raft)
-[![docs.rs](https://docs.rs/async-raft/badge.svg)](https://docs.rs/async-raft)
+[![Crates.io](https://img.shields.io/crates/v/memstore.svg)](https://crates.io/crates/memstore)
+[![docs.rs](https://docs.rs/memstore/badge.svg)](https://docs.rs/memstore)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE)
-![Crates.io](https://img.shields.io/crates/d/async-raft.svg)
-![Crates.io](https://img.shields.io/crates/dv/async-raft.svg)
-[![GitHub issues open](https://img.shields.io/github/issues-raw/async-raft/async-raft.svg)]()
-[![GitHub issues closed](https://img.shields.io/github/issues-closed-raw/async-raft/async-raft.svg)]()
+![Crates.io](https://img.shields.io/crates/d/memstore.svg)
+![Crates.io](https://img.shields.io/crates/dv/memstore.svg)
 
 </div>
 </br>

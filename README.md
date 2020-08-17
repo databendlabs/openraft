@@ -13,8 +13,6 @@
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE)
 ![Crates.io](https://img.shields.io/crates/d/async-raft.svg)
 ![Crates.io](https://img.shields.io/crates/dv/async-raft.svg)
-[![GitHub issues open](https://img.shields.io/github/issues-raw/async-raft/async-raft.svg)]()
-[![GitHub issues closed](https://img.shields.io/github/issues-closed-raw/async-raft/async-raft.svg)]()
 
 </div>
 <br/>
