@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0.32"
-async-raft = { version="0.5", path="../async-raft" }
+async-raft = { version="0.5.0-alpha.0", path="../async-raft" }
 serde = { version="1.0.114", features=["derive"] }
 serde_json = "1.0.57"
 thiserror = "1.0.20"
