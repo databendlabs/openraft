@@ -160,7 +160,7 @@
                 <div id="content" class="content">
                     <main>
                         <h1><a class="header" href="#metrics" id="metrics">Metrics</a></h1>
-<p><code>Raft</code> exports metrics on its internal state via the <code>Raft.metrics</code> method, which returns a stream of <a href="TODO:"><code>RaftMetrics</code></a>. The metrics themselves describe the state of the Raft node, its current role in the cluster, its current membership config, as well as information on the Raft log and the last index to be applied to the state machine.</p>
+<p><code>Raft</code> exports metrics on its internal state via the <code>Raft.metrics</code> method, which returns a stream of <a href="https://docs.rs/crate/async-raft/latest/async_raft/metrics/struct.RaftMetrics.html"><code>RaftMetrics</code></a>. The metrics themselves describe the state of the Raft node, its current role in the cluster, its current membership config, as well as information on the Raft log and the last index to be applied to the state machine.</p>
 <p>Applications may use this data in whatever way is needed. The obvious use cases are to expose these metrics to a metrics collection system, such as Prometheus, TimescaleDB, Influx &amp;c. Applications may also use this data to trigger events within higher levels of the application itself.</p>
 
                     </main>

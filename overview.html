@@ -162,39 +162,39 @@
                         <h1 align="center">async raft</h1>
 <div align="center">
     <strong>
-        An implementation of the <a href="https://raft.github.io/">Raft distributed consensus protocol</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/railgun-rs/actix-raft">github</a>!
+        An implementation of the <a href="https://raft.github.io/">Raft distributed consensus protocol</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/async-raft/async-raft">github</a>!
     </strong>
 </div>
 <br/>
 <div align="center">
-<p><a href="https://travis-ci.com/railgun-rs/actix-raft"><img src="https://github.com/railgun-rs/actix-raft/workflows/ci/badge.svg?branch=async-raft" alt="Build Status" /></a>
-<a href="https://crates.io/crates/actix-raft"><img src="https://img.shields.io/crates/v/actix-raft.svg" alt="Crates.io" /></a>
-<a href="https://docs.rs/actix-raft"><img src="https://docs.rs/actix-raft/badge.svg" alt="docs.rs" /></a>
+<p><a href="https://travis-ci.com/async-raft/async-raft"><img src="https://github.com/async-raft/async-raft/workflows/ci/badge.svg?branch=async-raft" alt="Build Status" /></a>
+<a href="https://crates.io/crates/async-raft"><img src="https://img.shields.io/crates/v/async-raft.svg" alt="Crates.io" /></a>
+<a href="https://docs.rs/async-raft"><img src="https://docs.rs/async-raft/badge.svg" alt="docs.rs" /></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="License" /></a>
-<img src="https://img.shields.io/crates/d/actix-raft.svg" alt="Crates.io" />
-<img src="https://img.shields.io/crates/dv/actix-raft.svg" alt="Crates.io" />
-<a href=""><img src="https://img.shields.io/github/issues-raw/railgun-rs/actix-raft.svg" alt="GitHub issues open" /></a>
-<a href=""><img src="https://img.shields.io/github/issues-closed-raw/railgun-rs/actix-raft.svg" alt="GitHub issues closed" /></a></p>
+<img src="https://img.shields.io/crates/d/async-raft.svg" alt="Crates.io" />
+<img src="https://img.shields.io/crates/dv/async-raft.svg" alt="Crates.io" />
+<a href=""><img src="https://img.shields.io/github/issues-raw/async-raft/async-raft.svg" alt="GitHub issues open" /></a>
+<a href=""><img src="https://img.shields.io/github/issues-closed-raw/async-raft/async-raft.svg" alt="GitHub issues closed" /></a></p>
 </div>
 <br/>
 <p>Blazing fast Rust, a modern consensus protocol, and a reliable async runtime — this project intends to provide a consensus backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
-<p><a href="https://railgun-rs.github.io/actix-raft">The guide</a> is the best place to get started, followed by <a href="https://docs.rs/actix-raft/latest/actix_raft/">the docs</a> for more in-depth details.</p>
+<p><a href="https://async-raft.github.io/async-raft">The guide</a> is the best place to get started, followed by <a href="https://docs.rs/async-raft/latest/async_raft/">the docs</a> for more in-depth details.</p>
 <p>This crate differs from other Raft implementations in that:</p>
 <ul>
 <li>It is fully reactive and embraces the async ecosystem. It is driven by actual Raft related events taking place in the system as opposed to being driven by a <code>tick</code> operation. Batching of messages during replication is still used whenever possible for maximum throughput.</li>
-<li>Storage and network integration is well defined via two traits <code>RaftStorage</code> &amp; <code>RaftNetwork</code>. This provides applications maximum flexibility in being able to choose their storage and networking mediums. See the <a href="https://railgun-rs.github.io/actix-raft/storage.html">storage</a> &amp; <a href="https://railgun-rs.github.io/actix-raft/network.html">network</a> chapters of the guide for more details.</li>
-<li>All interaction with the Raft node is well defined via a single public <code>Raft</code> type, which is used to spawn the Raft async task, and to interact with that task. The API for this system is clear and concise. See the <a href="https://railgun-rs.github.io/actix-raft/raft.html">raft</a> chapter in the guide.</li>
-<li>It fully supports dynamic cluster membership changes according to the Raft spec. See the <a href="https://railgun-rs.github.io/actix-raft/dynamic-membership.html"><code>dynamic membership</code></a> chapter in the guide. With full support for leader stepdown, and non-voter syncing.</li>
-<li>Details on initial cluster formation, and how to effectively do so from an application's perspective, are discussed in the <a href="https://railgun-rs.github.io/actix-raft/cluster-formation.html">cluster formation</a> chapter in the guide.</li>
+<li>Storage and network integration is well defined via two traits <code>RaftStorage</code> &amp; <code>RaftNetwork</code>. This provides applications maximum flexibility in being able to choose their storage and networking mediums. See the <a href="https://async-raft.github.io/async-raft/storage.html">storage</a> &amp; <a href="https://async-raft.github.io/async-raft/network.html">network</a> chapters of the guide for more details.</li>
+<li>All interaction with the Raft node is well defined via a single public <code>Raft</code> type, which is used to spawn the Raft async task, and to interact with that task. The API for this system is clear and concise. See the <a href="https://async-raft.github.io/async-raft/raft.html">raft</a> chapter in the guide.</li>
+<li>It fully supports dynamic cluster membership changes according to the Raft spec. See the <a href="https://async-raft.github.io/async-raft/dynamic-membership.html"><code>dynamic membership</code></a> chapter in the guide. With full support for leader stepdown, and non-voter syncing.</li>
+<li>Details on initial cluster formation, and how to effectively do so from an application's perspective, are discussed in the <a href="https://async-raft.github.io/async-raft/cluster-formation.html">cluster formation</a> chapter in the guide.</li>
 <li>Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.</li>
 <li>The entire code base is <a href="https://docs.rs/tracing/">instrumented with tracing</a>. This can be used for <a href="https://docs.rs/tracing/latest/tracing/index.html#log-compatibility">standard logging</a>, or for <a href="https://docs.rs/tracing/latest/tracing/index.html#related-crates">distributed tracing</a>, and the verbosity can be <a href="https://docs.rs/tracing/latest/tracing/level_filters/index.html">statically configured at compile time</a> to completely remove all instrumentation below the configured level.</li>
 </ul>
 <p>This implementation strictly adheres to the <a href="https://raft.github.io/raft.pdf">Raft spec</a> (<em>pdf warning</em>), and all data models use the same nomenclature found in the spec for better understandability. This implementation of Raft has integration tests covering all aspects of a Raft cluster's lifecycle including: cluster formation, dynamic membership changes, snapshotting, writing data to a live cluster and more.</p>
 <p>If you are building an application using this Raft implementation, open an issue and let me know! I would love to add your project's name &amp; logo to a users list in this project.</p>
 <h3><a class="header" href="#contributing" id="contributing">contributing</a></h3>
-<p>Check out the <a href="https://github.com/railgun-rs/actix-raft/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a> guide for more details on getting started with contributing to this project.</p>
+<p>Check out the <a href="https://github.com/async-raft/async-raft/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a> guide for more details on getting started with contributing to this project.</p>
 <h3><a class="header" href="#license" id="license">license</a></h3>
-<p>actix-raft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.</p>
+<p>async-raft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.</p>
 <hr />
 <p><strong>NOTE:</strong> the appearance of the &quot;section&quot; symbols <code>§</code> throughout this project are references to specific sections of the Raft spec.</p>
 
