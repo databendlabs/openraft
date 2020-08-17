@@ -6,10 +6,10 @@ authors = ["Anthony Dodd <Dodd.AnthonyJosiah@gmail.com>"]
 categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An async implementation of the Raft distributed consensus protocol."
 documentation = "https://docs.rs/async-raft"
-homepage = "https://github.com/railgun-rs/async-raft"
+homepage = "https://github.com/async-raft/async-raft"
 keywords = ["raft", "consensus", "data-storage"]
 license = "MIT/Apache-2.0"
-repository = "https://github.com/railgun-rs/async-raft"
+repository = "https://github.com/async-raft/async-raft"
 readme = "README.md"
 
 [dependencies]

@@ -10,7 +10,7 @@ There are a few important decisions which need to be made in order to implement 
 
 Once you're ready to begin with your implementation, be sure to adhere to the documentation of the `RaftStorage` methods themselves. There are plenty of data safety requirements to uphold in order for your application to work properly overall, and to work properly with Raft.
 
-For inspiration, have a look at this [repo's `memstore` project](https://github.com/railgun-rs/actix-raft/tree/master/memstore). It is an in-memory implementation of the `RaftStorage` trait, intended for demo and testing purposes.
+For inspiration, have a look at this [repo's `memstore` project](https://github.com/async-raft/async-raft/tree/master/memstore). It is an in-memory implementation of the `RaftStorage` trait, intended for demo and testing purposes.
 
 ### compaction / snapshots
 This implementation of Raft automatically triggers log compaction based on runtime configuration, using the `RaftStorage::do_log_compaction` method. Additionally, the Raft leader may stream a snapshot over to other nodes if the node is new and needs to be brought up-to-speed, or if a node is lagging behind.

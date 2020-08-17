@@ -12,9 +12,6 @@ use crate::core::State;
 use crate::raft::MembershipConfig;
 
 /// A set of metrics describing the current state of a Raft node.
-///
-/// See the [module level documentation](TODO:)
-/// for more details.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RaftMetrics {
     /// The ID of the Raft node.

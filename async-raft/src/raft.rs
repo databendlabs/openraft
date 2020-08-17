@@ -23,6 +23,9 @@ use crate::core::RaftCore;
 /// For more information on the Raft protocol, see
 /// [the specification here](https://raft.github.io/raft.pdf) (**pdf warning**).
 ///
+/// For details and discussion on this API, see the
+/// [Raft API](https://async-raft.github.io/async-raft/raft.html) section of the guide.
+///
 /// ### shutting down
 /// If any of the interfaces returns a `RaftError::ShuttingDown`, this indicates that the Raft node
 /// is shutting down (potentially for data safety reasons due to a storage error), and the `shutdown`
@@ -75,10 +78,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
-    ///
-    /// Applications are responsible for implementing a network layer which can receive the RPCs
-    /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
-    /// in the guide for more details.
     #[tracing::instrument(level="debug", skip(self, rpc))]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
@@ -89,10 +88,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
-    ///
-    /// Applications are responsible for implementing a network layer which can receive the RPCs
-    /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
-    /// in the guide for more details.
     #[tracing::instrument(level="debug", skip(self, rpc))]
     pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
@@ -104,10 +99,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node up-to-speed
     /// with the leader (§7).
-    ///
-    /// Applications are responsible for implementing a network layer which can receive the RPCs
-    /// sent by Raft nodes via their `RaftNetwork` implementation. See the [networking section](TODO:)
-    /// in the guide for more details.
     #[tracing::instrument(level="debug", skip(self, rpc))]
     pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse, RaftError> {
         let (tx, rx) = oneshot::channel();

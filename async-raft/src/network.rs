@@ -10,7 +10,7 @@ use crate::raft::{VoteRequest, VoteResponse};
 
 /// A trait defining the interface for a Raft network between cluster members.
 ///
-/// See the [network chapter of the guide](TODO:)
+/// See the [network chapter of the guide](https://async-raft.github.io/async-raft/network.html)
 /// for details and discussion on this trait and how to implement it.
 #[async_trait]
 pub trait RaftNetwork<D>: Send + Sync + 'static

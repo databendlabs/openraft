@@ -66,7 +66,7 @@ impl InitialState {
 
 /// A trait defining the interface for a Raft storage system.
 ///
-/// See the [storage chapter of the guide](TODO:)
+/// See the [storage chapter of the guide](https://async-raft.github.io/async-raft/storage.html)
 /// for details and discussion on this trait and how to implement it.
 #[async_trait]
 pub trait RaftStorage<D, R>: Send + Sync + 'static
@@ -155,7 +155,7 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
     /// Raft log at the time of the request.
     ///
     /// ### implementation guide
-    /// See the [storage chapter of the guide](TODO:)
+    /// See the [storage chapter of the guide](https://async-raft.github.io/async-raft/storage.html)
     /// for details on how to implement this handler.
     async fn do_log_compaction(&self, through: u64) -> Result<CurrentSnapshotData<Self::Snapshot>>;
 
