@@ -1,6 +1,6 @@
 [package]
 name = "async-raft"
-version = "0.5.0-alpha.0"
+version = "0.5.0"
 edition = "2018"
 authors = ["Anthony Dodd <Dodd.AnthonyJosiah@gmail.com>"]
 categories = ["algorithms", "asynchronous", "data-structures"]
@@ -10,7 +10,7 @@ homepage = "https://github.com/async-raft/async-raft"
 keywords = ["raft", "consensus", "data-storage"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/async-raft/async-raft"
-readme = "README.md"
+readme = "../README.md"
 
 [dependencies]
 anyhow = "1.0.32"
