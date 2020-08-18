@@ -49,6 +49,12 @@ jobs:
         with:
           command: test
           args: -p async-raft --release --test stepdown
+          
+      # clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -p async-raft -- -D warnings
 
   build-async-raft-nightly:
     name: build async-raft nightly
@@ -76,3 +82,7 @@ jobs:
         with:
           command: test
           args: -p memstore
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: -p memstore -- -D warnings
