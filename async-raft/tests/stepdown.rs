@@ -20,7 +20,7 @@ use fixtures::RaftRouter;
 ///   after the config change is committed.
 ///
 /// RUST_LOG=async_raft,memstore,stepdown=trace cargo test -p async-raft --test stepdown
-#[tokio::test(core_threads=4)]
+#[tokio::test(core_threads=5)]
 async fn stepdown() -> Result<()> {
     fixtures::init_tracing();
 
@@ -63,7 +63,7 @@ async fn stepdown() -> Result<()> {
 
     // Assert that the current cluster is stable.
     router.remove_node(0).await;
-    delay_for(Duration::from_secs(3)).await; // Give time for a new leader to be elected.
+    delay_for(Duration::from_secs(5)).await; // Give time for a new leader to be elected.
     router.assert_stable_cluster(Some(2), Some(4)).await;
     router.assert_storage_state(2, 4, None, 0, None).await;
     // ----------------------------------- ^^^ this is `0` instead of `4` because blank payloads from new leaders
