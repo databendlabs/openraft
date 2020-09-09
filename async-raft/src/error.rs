@@ -94,8 +94,8 @@ pub enum ChangeConfigError {
     /// the cluster in an inoperable state.
     #[error("the given config would leave the cluster in an inoperable state")]
     InoperableConfig,
-    /// The node the config change proposal was sent to was not the leader of the cluster. The id
-    /// of the current leader is returned.
+    /// The node the config change proposal was sent to was not the leader of the cluster. The ID
+    /// of the current leader is returned if known.
     #[error("this node is not the Raft leader")]
     NodeNotLeader(Option<NodeId>),
     /// The proposed config changes would make no difference to the current config.

@@ -2,6 +2,8 @@ changelog
 =========
 
 ## [unreleased]
+### changed
+- `ChangeConfigError::NodeNotLeader` now returns the ID of the current cluster leader if known.
 
 ## 0.5.0
 ### changed
