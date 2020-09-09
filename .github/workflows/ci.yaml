@@ -10,6 +10,7 @@ jobs:
         with:
           toolchain: 1.45.2
           default: true
+          components: clippy
 
       # clippy
       - uses: actions-rs/cargo@v1
@@ -82,6 +83,7 @@ jobs:
         with:
           toolchain: 1.45.2
           default: true
+          components: clippy
 
       # clippy
       - uses: actions-rs/cargo@v1
