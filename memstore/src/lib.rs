@@ -114,17 +114,17 @@ impl MemStore {
     }
 
     /// Get a handle to the log for testing purposes.
-    pub async fn get_log<'a>(&'a self) -> RwLockWriteGuard<'a, BTreeMap<u64, Entry<ClientRequest>>> {
+    pub async fn get_log(&self) -> RwLockWriteGuard<'_, BTreeMap<u64, Entry<ClientRequest>>> {
         self.log.write().await
     }
 
     /// Get a handle to the state machine for testing purposes.
-    pub async fn get_state_machine<'a>(&'a self) -> RwLockWriteGuard<'a, MemStoreStateMachine> {
+    pub async fn get_state_machine(&self) -> RwLockWriteGuard<'_, MemStoreStateMachine> {
         self.sm.write().await
     }
 
     /// Get a handle to the current hard state for testing purposes.
-    pub async fn read_hard_state<'a>(&'a self) -> RwLockReadGuard<'a, Option<HardState>> {
+    pub async fn read_hard_state(&self) -> RwLockReadGuard<'_, Option<HardState>> {
         self.hs.read().await
     }
 }
@@ -155,7 +155,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         let sm = self.sm.read().await;
         match &mut *hs {
             Some(inner) => {
-                let (last_log_index, last_log_term) = match log.values().rev().nth(0) {
+                let (last_log_index, last_log_term) = match log.values().rev().next() {
                     Some(log) => (log.index, log.term),
                     None => (0, 0),
                 };
@@ -178,13 +178,14 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
     #[tracing::instrument(level="trace", skip(self, hs))]
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
-        Ok(*self.hs.write().await = Some(hs.clone()))
+        *self.hs.write().await = Some(hs.clone());
+        Ok(())
     }
 
     #[tracing::instrument(level="trace", skip(self))]
     async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<ClientRequest>>> {
         // Invalid request, return empty vec.
-        if &start > &stop {
+        if start > stop {
             tracing::error!("invalid request, start > stop");
             return Ok(vec![]);
         }
@@ -272,7 +273,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             // Go backwards through the log to find the most recent membership config <= the `through` index.
             let log = self.log.read().await;
             membership_config = log.values().rev()
-                .skip_while(|entry| &entry.index > &through)
+                .skip_while(|entry| entry.index > through)
                 .find_map(|entry| match &entry.payload {
                     EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
                     _ => None,
@@ -317,7 +318,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             // Go backwards through the log to find the most recent membership config <= the `through` index.
             let mut log = self.log.write().await;
             let membership_config = log.values().rev()
-                .skip_while(|entry| &entry.index > &index)
+                .skip_while(|entry| entry.index > index)
                 .find_map(|entry| match &entry.payload {
                     EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
                     _ => None,

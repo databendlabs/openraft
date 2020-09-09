@@ -10,11 +10,11 @@ jobs:
         with:
           toolchain: 1.45.2
 
-      # release build
+      # clippy
       - uses: actions-rs/cargo@v1
         with:
-          command: build
-          args: -p async-raft --release
+          command: clippy
+          args: -p async-raft -- -D warnings
 
       # unit tests
       - uses: actions-rs/cargo@v1
@@ -26,37 +26,37 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p async-raft --release --test initialization
+          args: -p async-raft --test initialization
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p async-raft --release --test client_reads
+          args: -p async-raft --test client_reads
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p async-raft --release --test client_writes
+          args: -p async-raft --test client_writes
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p async-raft --release --test singlenode
+          args: -p async-raft --test singlenode
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p async-raft --release --test dynamic_membership
+          args: -p async-raft --test dynamic_membership
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p async-raft --release --test compaction
+          args: -p async-raft --test compaction
       - uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p async-raft --release --test stepdown
-          
-      # clippy
+          args: -p async-raft --test stepdown
+
+      # release build
       - uses: actions-rs/cargo@v1
         with:
-          command: clippy
-          args: -p async-raft -- -D warnings
+          command: build
+          args: -p async-raft --release
 
   build-async-raft-nightly:
     name: build async-raft nightly
@@ -80,11 +80,21 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.45.2
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p memstore
+
+      # clippy
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: -p memstore -- -D warnings
+
+      # unit tests
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p memstore
+
+      # release build
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: -p memstore --release

@@ -139,10 +139,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .map_err(|_| RaftError::ShuttingDown)
                 .into_future()
                 .then(|res| futures::future::ready(match res {
-                    Ok(ok) => match ok {
-                        Ok(ok) => Ok(ok),
-                        Err(err) => Err(ChangeConfigError::from(err)),
-                    },
+                    Ok(Ok(_)) => Ok(()),
+                    Ok(Err(err)) => Err(ChangeConfigError::from(err)),
                     Err(err) => Err(ChangeConfigError::from(err)),
                 }))
                 .await;
@@ -153,11 +151,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Handle the commitment of a joint consensus cluster configuration.
     #[tracing::instrument(level="trace", skip(self))]
     pub(super) async fn handle_joint_consensus_committed(&mut self) -> Result<(), RaftError> {
-        match &mut self.consensus_state {
-            ConsensusState::Joint{is_committed, ..} => {
-                *is_committed = true; // Mark as comitted.
-            }
-            _ => (),
+        if let ConsensusState::Joint{is_committed, ..} = &mut self.consensus_state {
+            *is_committed = true; // Mark as comitted.
         }
         // Only proceed to finalize this joint consensus if there are no remaining nodes being synced.
         if self.consensus_state.is_joint_consensus_safe_to_finalize() {
@@ -222,8 +217,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let nodes_to_remove: Vec<_> = self.nodes.iter_mut()
             .filter(|(id, _)| !membership.contains(id))
             .filter_map(|(idx, replstate)| {
-                if &replstate.match_index >= &index {
-                    Some(idx.clone())
+                if replstate.match_index >= index {
+                    Some(*idx)
                 } else {
                     replstate.remove_after_commit = Some(index);
                     None

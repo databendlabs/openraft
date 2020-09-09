@@ -16,7 +16,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level="trace", skip(self, req))]
     pub(super) async fn handle_install_snapshot_request(&mut self, req: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse> {
         // If message's term is less than most recent term, then we do not honor the request.
-        if &req.term < &self.current_term {
+        if req.term < self.current_term {
             return Ok(InstallSnapshotResponse{term: self.current_term});
         }
 
@@ -25,7 +25,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Update current term if needed.
         let mut report_metrics = false;
-        if &self.current_term != &req.term {
+        if self.current_term != req.term {
             self.update_current_term(req.term, None);
             self.save_hard_state().await?;
             report_metrics = true;
@@ -83,7 +83,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &mut self, req: InstallSnapshotRequest, mut offset: u64, id: String, mut snapshot: Box<S::Snapshot>,
     ) -> RaftResult<InstallSnapshotResponse> {
         // Always seek to the target offset if not an exact match.
-        if &req.offset != &offset {
+        if req.offset != offset {
             if let Err(err) = snapshot.as_mut().seek(SeekFrom::Start(req.offset)).await {
                 self.snapshot_state = Some(SnapshotState::Streaming{offset, id, snapshot});
                 return Err(err.into());
@@ -113,7 +113,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level="trace", skip(self, req, snapshot))]
     async fn finalize_snapshot_installation(&mut self, req: InstallSnapshotRequest, id: String, mut snapshot: Box<S::Snapshot>) -> RaftResult<()> {
         snapshot.as_mut().shutdown().await.map_err(|err| self.map_fatal_storage_error(err.into()))?;
-        let delete_through = if &self.last_log_index > &req.last_included_index {
+        let delete_through = if self.last_log_index > req.last_included_index {
             Some(req.last_included_index)
         } else {
             None

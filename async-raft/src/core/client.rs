@@ -54,7 +54,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Check to see if we have any config change logs newer than our commit index. If so, then
         // we need to drive the commitment of the config change to the cluster.
         let mut pending_config = None; // The inner bool represents `is_in_join_consensus`.
-        if &self.core.last_log_index > &self.core.commit_index {
+        if self.core.last_log_index > self.core.commit_index {
             let (stale_logs_start, stale_logs_stop) = (self.core.commit_index + 1, self.core.last_log_index + 1);
             pending_config = self.core.storage.get_log_entries(stale_logs_start, stale_logs_stop).await
                 .map_err(|err| self.core.map_fatal_storage_error(err))?
@@ -65,7 +65,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     EntryPayload::SnapshotPointer(cfg) => Some(cfg.membership.is_in_joint_consensus()),
                     _ => None,
                 })
-                .nth(0);
+                .next();
         }
 
         // Commit the initial payload to the cluster.
@@ -127,7 +127,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 entries: vec![],
                 leader_commit: self.core.commit_index,
             };
-            let target = id.clone();
+            let target = *id;
             let network = self.core.network.clone();
             let ttl = Duration::from_millis(self.core.config.heartbeat_interval);
             let task = tokio::spawn(async move {
@@ -155,7 +155,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             };
 
             // If we receive a response with a greater term, then revert to follower and abort this request.
-            if &data.term != &self.core.current_term {
+            if data.term != self.core.current_term {
                 self.core.update_current_term(data.term, None);
                 self.core.set_target_state(State::Follower);
             }
@@ -167,7 +167,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             if self.core.membership.members_after_consensus.as_ref().map(|members| members.contains(&target)).unwrap_or(false) {
                 c1_confirmed += 1;
             }
-            if &c0_confirmed >= &c0_needed && &c1_confirmed >= &c1_needed {
+            if c0_confirmed >= c0_needed && c1_confirmed >= c1_needed {
                 let _ = tx.send(Ok(()));
                 return;
             }
@@ -250,7 +250,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                             let _ = tx.send(Ok(ClientWriteResponse{index: req.entry.index, data}));
                         }
                         Err(err) => {
-                            let _ = tx.send(Err(ClientWriteError::RaftError(RaftError::from(err))));
+                            let _ = tx.send(Err(ClientWriteError::RaftError(err)));
                         }
                     }
                 }

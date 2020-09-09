@@ -209,7 +209,7 @@ impl ConfigBuilder {
             return Err(ConfigError::MaxPayloadEntriesTooSmall);
         }
         let replication_lag_threshold = self.replication_lag_threshold.unwrap_or(DEFAULT_REPLICATION_LAG_THRESHOLD);
-        let snapshot_policy = self.snapshot_policy.unwrap_or_else(|| SnapshotPolicy::default());
+        let snapshot_policy = self.snapshot_policy.unwrap_or_else(SnapshotPolicy::default);
         let snapshot_max_chunk_size = self.snapshot_max_chunk_size.unwrap_or(DEFAULT_SNAPSHOT_CHUNKSIZE);
         Ok(Config{
             cluster_name: self.cluster_name,

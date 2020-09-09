@@ -149,7 +149,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let is_only_configured_member = self.membership.members.len() == 1 && self.membership.contains(&self.id);
         // If this is the only configured member and there is live state, then this is
         // a single-node cluster. Become leader.
-        if is_only_configured_member && &self.last_log_index != &u64::min_value() {
+        if is_only_configured_member && self.last_log_index != u64::min_value() {
             self.target_state = State::Leader;
         }
         // Else if there are other members, that can only mean that state was recovered. Become follower.
@@ -203,7 +203,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Update core's target state, ensuring all invariants are upheld.
     #[tracing::instrument(level="trace", skip(self))]
     fn set_target_state(&mut self, target_state: State) {
-        if &target_state == &State::Follower && !self.membership.contains(&self.id) {
+        if target_state == State::Follower && !self.membership.contains(&self.id) {
             self.target_state = State::NonVoter;
         }
         self.target_state = target_state;
@@ -213,10 +213,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level="trace", skip(self))]
     fn get_next_election_timeout(&mut self) -> Instant {
         match self.next_election_timeout {
-            Some(inst) => inst.clone(),
+            Some(inst) => inst,
             None => {
                 let inst = Instant::now() + Duration::from_millis(self.config.new_rand_election_timeout());
-                self.next_election_timeout = Some(inst.clone());
+                self.next_election_timeout = Some(inst);
                 inst
             }
         }
@@ -278,7 +278,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.membership = cfg;
         if !self.membership.contains(&self.id) {
             self.set_target_state(State::NonVoter);
-        } else if &self.target_state == &State::NonVoter && self.membership.members.contains(&self.id) {
+        } else if self.target_state == State::NonVoter && self.membership.members.contains(&self.id) {
             // The node is a NonVoter and the new config has it configured as a normal member.
             // Transition to follower.
             self.set_target_state(State::Follower);
@@ -293,9 +293,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.snapshot_index = index
         }
         // If snapshot state is anything other than streaming, then drop it.
-        match self.snapshot_state.take() {
-            Some(state @ SnapshotState::Streaming{..}) => self.snapshot_state = Some(state),
-            _ => (),
+        if let Some(state @ SnapshotState::Streaming{..}) = self.snapshot_state.take() {
+            self.snapshot_state = Some(state)
         }
     }
 
@@ -305,16 +304,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if self.snapshot_state.is_some() {
             return;
         }
-        let threshold = match &self.config.snapshot_policy {
-            SnapshotPolicy::LogsSinceLast(threshold) => threshold,
-        };
+        let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
         // Make sure we have actual entries for compaction.
         let through_index = std::cmp::min(self.commit_index, self.last_log_index);
-        if &through_index == &0 {
+        if through_index == 0 {
             return;
         }
         // If we are below the threshold, then there is nothing to do.
-        if &(&through_index - &self.snapshot_index) < threshold {
+        if (through_index - self.snapshot_index) < *threshold {
             return;
         }
 
@@ -359,13 +356,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Forward the given client write request to the leader.
     #[tracing::instrument(level="trace", skip(self, req, tx))]
     fn forward_client_write_request(&self, req: ClientWriteRequest<D>, tx: ClientWriteResponseTx<D, R>) {
-        let _ = tx.send(Err(ClientWriteError::ForwardToLeader(req, self.current_leader.clone())));
+        let _ = tx.send(Err(ClientWriteError::ForwardToLeader(req, self.current_leader)));
     }
 
     /// Forward the given client read request to the leader.
     #[tracing::instrument(level="trace", skip(self, tx))]
     fn forward_client_read_request(&self, tx: ClientReadResponseTx) {
-        let _ = tx.send(Err(ClientReadError::ForwardToLeader(self.current_leader.clone())));
+        let _ = tx.send(Err(ClientReadError::ForwardToLeader(self.current_leader)));
     }
 }
 

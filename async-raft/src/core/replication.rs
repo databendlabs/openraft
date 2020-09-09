@@ -83,7 +83,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Handle events from replication streams for when this node needs to revert to follower state.
     #[tracing::instrument(level="trace", skip(self, term))]
     async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> RaftResult<()> {
-        if &term > &self.core.current_term {
+        if term > self.core.current_term {
             self.core.update_current_term(term, None);
             self.core.save_hard_state().await?;
             self.core.update_current_leader(UpdateCurrentLeader::Unknown);
@@ -146,7 +146,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Determine if we have a new commit index, accounting for joint consensus.
         // If a new commit index has been established, then update a few needed elements.
-        let has_new_commit_index = &commit_index_c0 > &self.core.commit_index && &commit_index_c1 > &self.core.commit_index;
+        let has_new_commit_index = commit_index_c0 > self.core.commit_index && commit_index_c1 > self.core.commit_index;
         if has_new_commit_index {
             self.core.commit_index = std::cmp::min(commit_index_c0, commit_index_c1);
 
@@ -160,7 +160,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Check if there are any pending requests which need to be processed.
             let filter = self.awaiting_committed.iter().enumerate()
-                .take_while(|(_idx, elem)| &elem.entry.index <= &self.core.commit_index)
+                .take_while(|(_idx, elem)| elem.entry.index <= self.core.commit_index)
                 .last()
                 .map(|(idx, _)| idx);
             if let Some(offset) = filter {
@@ -194,21 +194,18 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         }
 
-        // Check if snapshot creation is already in progress.
-        match self.core.snapshot_state.take() {
-            // If so, we spawn a task to await its completion (or cancellation), and respond to
-            // the replication stream. The repl stream will wait for the completion and will then
-            // send anothe request to fetch the finished snapshot.
-            Some(SnapshotState::Snapshotting{through, handle, sender}) => {
-                let mut chan = sender.subscribe();
-                tokio::spawn(async move {
-                    let _ = chan.recv().await;
-                    drop(tx);
-                });
-                self.core.snapshot_state = Some(SnapshotState::Snapshotting{through, handle, sender});
-                return Ok(());
-            }
-            _ => (), // Else we just drop any other state and continue. Leaders never enter `Streaming` state.
+        // Check if snapshot creation is already in progress. If so, we spawn a task to await its
+        // completion (or cancellation), and respond to the replication stream. The repl stream
+        // will wait for the completion and will then send anothe request to fetch the finished snapshot.
+        // Else we just drop any other state and continue. Leaders never enter `Streaming` state.
+        if let Some(SnapshotState::Snapshotting{through, handle, sender}) = self.core.snapshot_state.take() {
+            let mut chan = sender.subscribe();
+            tokio::spawn(async move {
+                let _ = chan.recv().await;
+                drop(tx);
+            });
+            self.core.snapshot_state = Some(SnapshotState::Snapshotting{through, handle, sender});
+            return Ok(());
         }
 
         // At this point, we just attempt to request a snapshot. Under normal circumstances, the
@@ -256,7 +253,7 @@ fn calculate_new_commit_index(mut entries: Vec<u64>, current_commit: u64) -> u64
 fn snapshot_is_within_half_of_threshold(snapshot_last_index: &u64, last_log_index: &u64, threshold: &u64) -> bool {
     // Calculate distance from actor's last log index.
     let distance_from_line = if snapshot_last_index > last_log_index { 0u64 } else { last_log_index - snapshot_last_index }; // Guard against underflow.
-    let half_of_threshold = threshold / &2;
+    let half_of_threshold = threshold / 2;
     distance_from_line <= half_of_threshold
 }
 

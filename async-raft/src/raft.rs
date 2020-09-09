@@ -64,7 +64,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let needs_shutdown = Arc::new(AtomicBool::new(false));
         let raft_handle = RaftCore::spawn(
-            id, config, network, storage.clone(),
+            id, config, network, storage,
             rx_api, tx_metrics,
             needs_shutdown.clone(),
         );

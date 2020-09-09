@@ -14,7 +14,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level="trace", skip(self, msg))]
     pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> RaftResult<VoteResponse> {
         // If candidate's current term is less than this nodes current term, reject.
-        if &msg.term < &self.current_term {
+        if msg.term < self.current_term {
             tracing::trace!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "RequestVote RPC term is less than current term");
             return Ok(VoteResponse{term: self.current_term, vote_granted: false});
         }
@@ -32,7 +32,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Per spec, if we observe a term greater than our own outside of the election timeout
         // minimum, then we must update term & immediately become follower. We still need to
         // do vote checking after this.
-        if &msg.term > &self.current_term {
+        if msg.term > self.current_term {
             self.update_current_term(msg.term, None);
             self.update_next_election_timeout();
             self.set_target_state(State::Follower);
@@ -41,7 +41,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Check if candidate's log is at least as up-to-date as this node's.
         // If candidate's log is not at least as up-to-date as this node, then reject.
-        let client_is_uptodate = (&msg.last_log_term >= &self.last_log_term) && (&msg.last_log_index >= &self.last_log_index);
+        let client_is_uptodate = (msg.last_log_term >= self.last_log_term) && (msg.last_log_index >= self.last_log_index);
         if !client_is_uptodate {
             tracing::trace!({candidate=msg.candidate_id}, "rejecting vote request as candidate's log is not up-to-date");
             return Ok(VoteResponse{term: self.current_term, vote_granted: false});
@@ -93,7 +93,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 self.votes_granted_new += 1;
             }
             // If we've received enough votes from both config groups, then transition to leader state`.
-            if &self.votes_granted_old >= &self.votes_needed_old && &self.votes_granted_new >= &self.votes_needed_new {
+            if self.votes_granted_old >= self.votes_needed_old && self.votes_granted_new >= self.votes_needed_new {
                 tracing::trace!("transitioning to leader state as minimum number of votes have been received");
                 self.core.set_target_state(State::Leader);
                 return Ok(());
