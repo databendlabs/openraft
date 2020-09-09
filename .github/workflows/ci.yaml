@@ -81,6 +81,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.45.2
+          default: true
 
       # clippy
       - uses: actions-rs/cargo@v1
