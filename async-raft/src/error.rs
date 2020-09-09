@@ -94,9 +94,10 @@ pub enum ChangeConfigError {
     /// the cluster in an inoperable state.
     #[error("the given config would leave the cluster in an inoperable state")]
     InoperableConfig,
-    /// The node the config change proposal was sent to was not the leader of the cluster.
+    /// The node the config change proposal was sent to was not the leader of the cluster. The id
+    /// of the current leader is returned.
     #[error("this node is not the Raft leader")]
-    NodeNotLeader,
+    NodeNotLeader(Option<NodeId>),
     /// The proposed config changes would make no difference to the current config.
     ///
     /// This takes into account a current joint consensus and the end result of the config.
@@ -108,7 +109,7 @@ impl<D: AppData> From<ClientWriteError<D>> for ChangeConfigError {
     fn from(src: ClientWriteError<D>) -> Self {
         match src {
             ClientWriteError::RaftError(err) => Self::RaftError(err),
-            ClientWriteError::ForwardToLeader(_, _) => Self::NodeNotLeader,
+            ClientWriteError::ForwardToLeader(_, id) => Self::NodeNotLeader(id),
         }
     }
 }

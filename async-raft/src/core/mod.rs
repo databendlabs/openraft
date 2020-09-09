@@ -353,7 +353,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Reject a proposed config change request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level="trace", skip(self, tx))]
     fn reject_config_change_not_leader(&self, tx: oneshot::Sender<Result<(), ChangeConfigError>>) {
-        let _ = tx.send(Err(ChangeConfigError::NodeNotLeader));
+        let _ = tx.send(Err(ChangeConfigError::NodeNotLeader(self.current_leader)));
     }
 
     /// Forward the given client write request to the leader.
