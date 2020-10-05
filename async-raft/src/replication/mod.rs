@@ -256,7 +256,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
 
             // Fetch the entry at conflict index and use the term specified there.
-            match self.storage.get_log_entries(conflict.index, conflict.index).await.map(|entries| entries.get(0).map(|entry| entry.term)) {
+            match self.storage.get_log_entries(conflict.index, conflict.index + 1).await.map(|entries| entries.get(0).map(|entry| entry.term)) {
                 Ok(Some(term)) => {
                     self.match_term = term; // If we have the specified log, ensure we use its term.
                 }
