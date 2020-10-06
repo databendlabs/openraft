@@ -5,7 +5,7 @@ on:
       - "async-raft-v*"
 
 jobs:
-  publish_raft:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - name: Setup | Checkout
@@ -22,7 +22,7 @@ jobs:
         run: cd async-raft && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
   release:
-    needs: build
+    needs: publish
     runs-on: ubuntu-latest
     steps:
       - name: Setup | Checkout
