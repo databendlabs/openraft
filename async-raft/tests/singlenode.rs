@@ -20,7 +20,7 @@ use fixtures::RaftRouter;
 /// - asserts that the leader was able to successfully commit its initial payload.
 ///
 /// RUST_LOG=async_raft,memstore,singlenode=trace cargo test -p async-raft --test singlenode
-#[tokio::test(core_threads=4)]
+#[tokio::test(core_threads = 4)]
 async fn singlenode() -> Result<()> {
     fixtures::init_tracing();
 

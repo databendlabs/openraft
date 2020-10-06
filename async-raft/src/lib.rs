@@ -1,23 +1,23 @@
-#![cfg_attr(feature="docinclude", feature(external_doc))]
-#![cfg_attr(feature="docinclude", doc(include="../README.md"))]
+#![cfg_attr(feature = "docinclude", feature(external_doc))]
+#![cfg_attr(feature = "docinclude", doc(include = "../README.md"))]
 
 pub mod config;
 mod core;
 pub mod error;
 pub mod metrics;
 pub mod network;
-mod replication;
 pub mod raft;
+mod replication;
 pub mod storage;
 
 use std::fmt::Debug;
 
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 
 pub use crate::{
     config::{Config, ConfigBuilder, SnapshotPolicy},
     core::State,
-    error::{ClientWriteError, ConfigError, InitializeError, ChangeConfigError, RaftError},
+    error::{ChangeConfigError, ClientWriteError, ConfigError, InitializeError, RaftError},
     metrics::RaftMetrics,
     network::RaftNetwork,
     raft::Raft,

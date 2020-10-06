@@ -21,7 +21,7 @@ use fixtures::RaftRouter;
 ///   followers have successfully replicated the payload.
 ///
 /// RUST_LOG=async_raft,memstore,initialization=trace cargo test -p async-raft --test initialization
-#[tokio::test(core_threads=4)]
+#[tokio::test(core_threads = 4)]
 async fn initialization() -> Result<()> {
     fixtures::init_tracing();
 

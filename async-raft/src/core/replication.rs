@@ -1,22 +1,29 @@
 use tokio::sync::oneshot;
 
-use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 use crate::config::SnapshotPolicy;
-use crate::error::RaftResult;
 use crate::core::{ConsensusState, LeaderState, ReplicationState, SnapshotState, State, UpdateCurrentLeader};
+use crate::error::RaftResult;
 use crate::replication::{RaftEvent, ReplicaEvent, ReplicationStream};
 use crate::storage::CurrentSnapshotData;
+use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
-    #[tracing::instrument(level="trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub(super) fn spawn_replication_stream(&self, target: NodeId) -> ReplicationState<D> {
         let replstream = ReplicationStream::new(
-            self.core.id, target, self.core.current_term, self.core.config.clone(),
-            self.core.last_log_index, self.core.last_log_term, self.core.commit_index,
-            self.core.network.clone(), self.core.storage.clone(), self.replicationtx.clone(),
+            self.core.id,
+            target,
+            self.core.current_term,
+            self.core.config.clone(),
+            self.core.last_log_index,
+            self.core.last_log_term,
+            self.core.commit_index,
+            self.core.network.clone(),
+            self.core.storage.clone(),
+            self.replicationtx.clone(),
         );
-        ReplicationState{
+        ReplicationState {
             match_index: self.core.last_log_index,
             match_term: self.core.current_term,
             is_at_line_rate: false,
@@ -26,13 +33,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle a replication event coming from one of the replication streams.
-    #[tracing::instrument(level="trace", skip(self, event))]
+    #[tracing::instrument(level = "trace", skip(self, event))]
     pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent<S::Snapshot>) {
         let res = match event {
-            ReplicaEvent::RateUpdate{target, is_line_rate} => self.handle_rate_update(target, is_line_rate).await,
-            ReplicaEvent::RevertToFollower{target, term} => self.handle_revert_to_follower(target, term).await,
-            ReplicaEvent::UpdateMatchIndex{target, match_index, match_term} => self.handle_update_match_index(target, match_index, match_term).await,
-            ReplicaEvent::NeedsSnapshot{target, tx} => self.handle_needs_snapshot(target, tx).await,
+            ReplicaEvent::RateUpdate { target, is_line_rate } => self.handle_rate_update(target, is_line_rate).await,
+            ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
+            ReplicaEvent::UpdateMatchIndex {
+                target,
+                match_index,
+                match_term,
+            } => self.handle_update_match_index(target, match_index, match_term).await,
+            ReplicaEvent::NeedsSnapshot { target, tx } => self.handle_needs_snapshot(target, tx).await,
             ReplicaEvent::Shutdown => {
                 self.core.set_target_state(State::Shutdown);
                 return;
@@ -44,7 +55,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle events from replication streams updating their replication rate tracker.
-    #[tracing::instrument(level="trace", skip(self, target, is_line_rate))]
+    #[tracing::instrument(level = "trace", skip(self, target, is_line_rate))]
     async fn handle_rate_update(&mut self, target: NodeId, is_line_rate: bool) -> RaftResult<()> {
         // Get a handle the target's replication stat & update it as needed.
         if let Some(state) = self.nodes.get_mut(&target) {
@@ -62,7 +73,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 }
                 // If we are in NonVoterSync state, and this is one of the nodes being awaiting, then update.
                 match std::mem::replace(&mut self.consensus_state, ConsensusState::Uniform) {
-                    ConsensusState::NonVoterSync{mut awaiting, members, tx} => {
+                    ConsensusState::NonVoterSync { mut awaiting, members, tx } => {
                         awaiting.remove(&target);
                         if awaiting.is_empty() {
                             // We are ready to move forward with entering joint consensus.
@@ -70,7 +81,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                             self.change_membership(members, tx).await;
                         } else {
                             // We are still awaiting additional nodes, so replace our original state.
-                            self.consensus_state = ConsensusState::NonVoterSync{awaiting, members, tx};
+                            self.consensus_state = ConsensusState::NonVoterSync { awaiting, members, tx };
                         }
                     }
                     other => self.consensus_state = other, // Set the original value back to what it was.
@@ -81,7 +92,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
-    #[tracing::instrument(level="trace", skip(self, term))]
+    #[tracing::instrument(level = "trace", skip(self, term))]
     async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> RaftResult<()> {
         if term > self.core.current_term {
             self.core.update_current_term(term, None);
@@ -93,7 +104,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle events from a replication stream which updates the target node's match index.
-    #[tracing::instrument(level="trace", skip(self, target, match_index))]
+    #[tracing::instrument(level = "trace", skip(self, target, match_index))]
     async fn handle_update_match_index(&mut self, target: NodeId, match_index: u64, match_term: u64) -> RaftResult<()> {
         // If this is a non-voter, then update and return.
         if let Some(state) = self.non_voters.get_mut(&target) {
@@ -113,7 +124,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         needs_removal = true;
                     }
                 }
-            },
+            }
             _ => return Ok(()), // Node not found.
         }
 
@@ -125,7 +136,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         // Determine the new commit index of the current membership config nodes.
-        let mut indices_c0 = self.nodes.iter()
+        let mut indices_c0 = self
+            .nodes
+            .iter()
             .filter(|(id, _)| self.core.membership.members.contains(id))
             .map(|(_, node)| node.match_index)
             .collect::<Vec<_>>();
@@ -137,7 +150,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
         let mut commit_index_c1 = commit_index_c0; // Defaults to just matching C0.
         if let Some(members) = &self.core.membership.members_after_consensus {
-            let indices_c1 = self.nodes.iter()
+            let indices_c1 = self
+                .nodes
+                .iter()
                 .filter(|(id, _)| members.contains(id))
                 .map(|(_, node)| node.match_index)
                 .collect();
@@ -152,14 +167,21 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
-                let _ = node.replstream.repltx.send(RaftEvent::UpdateCommitIndex{commit_index: self.core.commit_index});
+                let _ = node.replstream.repltx.send(RaftEvent::UpdateCommitIndex {
+                    commit_index: self.core.commit_index,
+                });
             }
             for node in self.non_voters.values() {
-                let _ = node.state.replstream.repltx.send(RaftEvent::UpdateCommitIndex{commit_index: self.core.commit_index});
+                let _ = node.state.replstream.repltx.send(RaftEvent::UpdateCommitIndex {
+                    commit_index: self.core.commit_index,
+                });
             }
 
             // Check if there are any pending requests which need to be processed.
-            let filter = self.awaiting_committed.iter().enumerate()
+            let filter = self
+                .awaiting_committed
+                .iter()
+                .enumerate()
                 .take_while(|(_idx, elem)| elem.entry.index <= self.core.commit_index)
                 .last()
                 .map(|(idx, _)| idx);
@@ -175,7 +197,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle events from replication streams requesting for snapshot info.
-    #[tracing::instrument(level="trace", skip(self, tx))]
+    #[tracing::instrument(level = "trace", skip(self, tx))]
     async fn handle_needs_snapshot(&mut self, _: NodeId, tx: oneshot::Sender<CurrentSnapshotData<S::Snapshot>>) -> RaftResult<()> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {
@@ -183,7 +205,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         };
 
         // Check for existence of current snapshot.
-        let current_snapshot_opt = self.core.storage.get_current_snapshot().await
+        let current_snapshot_opt = self
+            .core
+            .storage
+            .get_current_snapshot()
+            .await
             .map_err(|err| self.core.map_fatal_storage_error(err))?;
         if let Some(snapshot) = current_snapshot_opt {
             // If snapshot exists, ensure its distance from the leader's last log index is <= half
@@ -198,13 +224,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // completion (or cancellation), and respond to the replication stream. The repl stream
         // will wait for the completion and will then send anothe request to fetch the finished snapshot.
         // Else we just drop any other state and continue. Leaders never enter `Streaming` state.
-        if let Some(SnapshotState::Snapshotting{through, handle, sender}) = self.core.snapshot_state.take() {
+        if let Some(SnapshotState::Snapshotting { through, handle, sender }) = self.core.snapshot_state.take() {
             let mut chan = sender.subscribe();
             tokio::spawn(async move {
                 let _ = chan.recv().await;
                 drop(tx);
             });
-            self.core.snapshot_state = Some(SnapshotState::Snapshotting{through, handle, sender});
+            self.core.snapshot_state = Some(SnapshotState::Snapshotting { through, handle, sender });
             return Ok(());
         }
 
@@ -240,7 +266,7 @@ fn calculate_new_commit_index(mut entries: Vec<u64>, current_commit: u64) -> u64
 
     // Calculate offset which will give the majority slice of high-end.
     entries.sort();
-    let offset = if (len % 2) == 0 { (len/2)-1 } else { len/2 };
+    let offset = if (len % 2) == 0 { (len / 2) - 1 } else { len / 2 };
     let new_val = entries.get(offset).unwrap_or(&current_commit);
     if new_val < &current_commit {
         current_commit
@@ -252,7 +278,11 @@ fn calculate_new_commit_index(mut entries: Vec<u64>, current_commit: u64) -> u64
 /// Check if the given snapshot data is within half of the configured threshold.
 fn snapshot_is_within_half_of_threshold(snapshot_last_index: &u64, last_log_index: &u64, threshold: &u64) -> bool {
     // Calculate distance from actor's last log index.
-    let distance_from_line = if snapshot_last_index > last_log_index { 0u64 } else { last_log_index - snapshot_last_index }; // Guard against underflow.
+    let distance_from_line = if snapshot_last_index > last_log_index {
+        0u64
+    } else {
+        last_log_index - snapshot_last_index
+    }; // Guard against underflow.
     let half_of_threshold = threshold / 2;
     distance_from_line <= half_of_threshold
 }
@@ -277,7 +307,7 @@ mod tests {
                     let res = snapshot_is_within_half_of_threshold($snapshot_last_index, $last_log, $thresh);
                     assert_eq!(res, $exp)
                 }
-            }
+            };
         }
 
         test_snapshot_is_within_half_of_threshold!({
@@ -311,37 +341,19 @@ mod tests {
                     entries.sort();
                     assert_eq!(output, $expected, "Sorted values: {:?}", entries);
                 }
-            }
+            };
         }
 
-        test_calculate_new_commit_index!(
-            basic_values,
-            10, 5, vec![20, 5, 0, 15, 10]
-        );
+        test_calculate_new_commit_index!(basic_values, 10, 5, vec![20, 5, 0, 15, 10]);
 
-        test_calculate_new_commit_index!(
-            len_zero_should_return_current_commit,
-            20, 20, vec![]
-        );
+        test_calculate_new_commit_index!(len_zero_should_return_current_commit, 20, 20, vec![]);
 
-        test_calculate_new_commit_index!(
-            len_one_where_greater_than_current,
-            100, 0, vec![100]
-        );
+        test_calculate_new_commit_index!(len_one_where_greater_than_current, 100, 0, vec![100]);
 
-        test_calculate_new_commit_index!(
-            len_one_where_less_than_current,
-            100, 100, vec![50]
-        );
+        test_calculate_new_commit_index!(len_one_where_less_than_current, 100, 100, vec![50]);
 
-        test_calculate_new_commit_index!(
-            even_number_of_nodes,
-            0, 0, vec![0, 100, 0, 100, 0, 100]
-        );
+        test_calculate_new_commit_index!(even_number_of_nodes, 0, 0, vec![0, 100, 0, 100, 0, 100]);
 
-        test_calculate_new_commit_index!(
-            majority_wins,
-            100, 0, vec![0, 100, 0, 100, 0, 100, 100]
-        );
+        test_calculate_new_commit_index!(majority_wins, 100, 0, vec![0, 100, 0, 100, 0, 100, 100]);
     }
 }

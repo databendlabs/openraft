@@ -1,7 +1,7 @@
 //! Raft runtime configuration.
 
 use rand::{thread_rng, Rng};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::error::ConfigError;
 
@@ -111,7 +111,7 @@ impl Config {
     /// The directory where the log snapshots are to be kept for a Raft node is required and must
     /// be specified to start the config builder process.
     pub fn build(cluster_name: String) -> ConfigBuilder {
-        ConfigBuilder{
+        ConfigBuilder {
             cluster_name,
             election_timeout_min: None,
             election_timeout_max: None,
@@ -135,7 +135,8 @@ impl Config {
 /// the Raft spec is considered in order to set the appropriate values.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigBuilder {
-    cluster_name: String,
+    /// The application specific name of this Raft cluster.
+    pub cluster_name: String,
     /// The minimum election timeout, in milliseconds.
     pub election_timeout_min: Option<u64>,
     /// The maximum election timeout, in milliseconds.
@@ -212,7 +213,7 @@ impl ConfigBuilder {
         let replication_lag_threshold = self.replication_lag_threshold.unwrap_or(DEFAULT_REPLICATION_LAG_THRESHOLD);
         let snapshot_policy = self.snapshot_policy.unwrap_or_else(SnapshotPolicy::default);
         let snapshot_max_chunk_size = self.snapshot_max_chunk_size.unwrap_or(DEFAULT_SNAPSHOT_CHUNKSIZE);
-        Ok(Config{
+        Ok(Config {
             cluster_name: self.cluster_name,
             election_timeout_min,
             election_timeout_max,
@@ -255,7 +256,8 @@ mod tests {
             .replication_lag_threshold(100)
             .snapshot_max_chunk_size(200)
             .snapshot_policy(SnapshotPolicy::LogsSinceLast(10000))
-            .validate().unwrap();
+            .validate()
+            .unwrap();
 
         assert!(cfg.election_timeout_min >= 100);
         assert!(cfg.election_timeout_max <= 200);
@@ -269,7 +271,9 @@ mod tests {
     #[test]
     fn test_invalid_election_timeout_config_produces_expected_error() {
         let res = Config::build("cluster0".into())
-            .election_timeout_min(1000).election_timeout_max(700).validate();
+            .election_timeout_min(1000)
+            .election_timeout_max(700)
+            .validate();
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert_eq!(err, ConfigError::InvalidElectionTimeoutMinMax);

@@ -7,13 +7,13 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
 use tokio::stream::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use tokio::time::{Duration, Interval, interval, timeout};
+use tokio::time::{interval, timeout, Duration, Interval};
 
-use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 use crate::config::{Config, SnapshotPolicy};
 use crate::error::RaftResult;
 use crate::raft::{AppendEntriesRequest, Entry, EntryPayload, InstallSnapshotRequest};
 use crate::storage::CurrentSnapshotData;
+use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 
 /// The public handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<D: AppData> {
@@ -26,13 +26,20 @@ pub(crate) struct ReplicationStream<D: AppData> {
 impl<D: AppData> ReplicationStream<D> {
     /// Create a new replication stream for the target peer.
     pub(crate) fn new<R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>(
-        id: NodeId, target: NodeId, term: u64, config: Arc<Config>,
-        last_log_index: u64, last_log_term: u64, commit_index: u64,
-        network: Arc<N>, storage: Arc<S>, replicationtx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
+        id: NodeId, target: NodeId, term: u64, config: Arc<Config>, last_log_index: u64, last_log_term: u64, commit_index: u64, network: Arc<N>,
+        storage: Arc<S>, replicationtx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
     ) -> Self {
         ReplicationCore::spawn(
-            id, target, term, config, last_log_index, last_log_term, commit_index,
-            network, storage, replicationtx,
+            id,
+            target,
+            term,
+            config,
+            last_log_index,
+            last_log_term,
+            commit_index,
+            network,
+            storage,
+            replicationtx,
         )
     }
 }
@@ -45,7 +52,6 @@ impl<D: AppData> ReplicationStream<D> {
 struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     //////////////////////////////////////////////////////////////////////////
     // Static Fields /////////////////////////////////////////////////////////
-
     /// The ID of this Raft node.
     id: NodeId,
     /// The ID of the target Raft node which replication events are to be sent to.
@@ -68,7 +74,6 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
 
     //////////////////////////////////////////////////////////////////////////
     // Dynamic Fields ////////////////////////////////////////////////////////
-
     /// The target state of this replication stream.
     target_state: TargetReplState,
 
@@ -126,23 +131,36 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
     /// Spawn a new replication task for the target node.
     pub(self) fn spawn(
-        id: NodeId, target: NodeId, term: u64, config: Arc<Config>,
-        last_log_index: u64, last_log_term: u64, commit_index: u64,
-        network: Arc<N>, storage: Arc<S>, rafttx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
+        id: NodeId, target: NodeId, term: u64, config: Arc<Config>, last_log_index: u64, last_log_term: u64, commit_index: u64, network: Arc<N>,
+        storage: Arc<S>, rafttx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
     ) -> ReplicationStream<D> {
         let (raftrx_tx, raftrx) = mpsc::unbounded_channel();
         let heartbeat_timeout = Duration::from_millis(config.heartbeat_interval);
         let max_payload_entries = config.max_payload_entries as usize;
-        let this = Self{
-            id, target, term, network, storage, config, max_payload_entries,
+        let this = Self {
+            id,
+            target,
+            term,
+            network,
+            storage,
+            config,
+            max_payload_entries,
             marker_r: std::marker::PhantomData,
-            target_state: TargetReplState::Lagging, last_log_index, commit_index,
-            next_index: last_log_index + 1, match_index: last_log_index, match_term: last_log_term,
-            rafttx, raftrx, heartbeat: interval(heartbeat_timeout), heartbeat_timeout,
-            replication_buffer: Vec::new(), outbound_buffer: Vec::new(),
+            target_state: TargetReplState::Lagging,
+            last_log_index,
+            commit_index,
+            next_index: last_log_index + 1,
+            match_index: last_log_index,
+            match_term: last_log_term,
+            rafttx,
+            raftrx,
+            heartbeat: interval(heartbeat_timeout),
+            heartbeat_timeout,
+            replication_buffer: Vec::new(),
+            outbound_buffer: Vec::new(),
         };
         let handle = tokio::spawn(this.main());
-        ReplicationStream{handle, repltx: raftrx_tx}
+        ReplicationStream { handle, repltx: raftrx_tx }
     }
 
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, target=self.target, cluster=%self.config.cluster_name))]
@@ -165,24 +183,30 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     ///
     /// This request will timeout if no response is received within the
     /// configured heartbeat interval.
-    #[tracing::instrument(level="trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn send_append_entries(&mut self) {
         // Attempt to fill the send buffer from the replication buffer.
         if self.outbound_buffer.is_empty() {
             let repl_len = self.replication_buffer.len();
             if repl_len > 0 {
-                let chunk_size = if repl_len < self.max_payload_entries { repl_len } else { self.max_payload_entries };
-                self.outbound_buffer.extend(
-                    self.replication_buffer.drain(..chunk_size)
-                    .map(OutboundEntry::Arc));
+                let chunk_size = if repl_len < self.max_payload_entries {
+                    repl_len
+                } else {
+                    self.max_payload_entries
+                };
+                self.outbound_buffer
+                    .extend(self.replication_buffer.drain(..chunk_size).map(OutboundEntry::Arc));
             }
         }
 
         // Build the heartbeat frame to be sent to the follower.
-        let payload = AppendEntriesRequest{
-            term: self.term, leader_id: self.id,
-            prev_log_index: self.match_index, prev_log_term: self.match_term,
-            leader_commit: self.commit_index, entries: self.outbound_buffer.iter().map(|entry| entry.as_ref().clone()).collect(),
+        let payload = AppendEntriesRequest {
+            term: self.term,
+            leader_id: self.id,
+            prev_log_index: self.match_index,
+            prev_log_term: self.match_term,
+            leader_commit: self.commit_index,
+            entries: self.outbound_buffer.iter().map(|entry| entry.as_ref().clone()).collect(),
         };
 
         // Send the payload.
@@ -193,11 +217,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     tracing::error!({error=%err}, "error sending AppendEntries RPC to target");
                     return;
                 }
-            }
+            },
             Err(err) => {
                 tracing::error!({error=%err}, "timeout while sending AppendEntries RPC to target");
                 return;
-            },
+            }
         };
         let last_index_and_term = match self.outbound_buffer.last() {
             Some(last) => Some((last.as_ref().index, last.as_ref().term)),
@@ -213,7 +237,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 self.next_index = index + 1; // This should always be the next expected index.
                 self.match_index = index;
                 self.match_term = term;
-                let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex{target: self.target, match_index: index, match_term: term});
+                let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex {
+                    target: self.target,
+                    match_index: index,
+                    match_term: term,
+                });
 
                 // If running at line rate, and our buffered outbound requests have accumulated too
                 // much, we need to purge and transition to a lagging state. The target is not able to
@@ -227,8 +255,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         // Replication was not successful, if a newer term has been returned, revert to follower.
         if res.term > self.term {
-            tracing::trace!({res.term}, "append entries failed, reverting to follower");
-            let _ = self.rafttx.send(ReplicaEvent::RevertToFollower{target: self.target, term: res.term});
+            tracing::trace!({ res.term }, "append entries failed, reverting to follower");
+            let _ = self.rafttx.send(ReplicaEvent::RevertToFollower {
+                target: self.target,
+                term: res.term,
+            });
             self.target_state = TargetReplState::Shutdown;
             return;
         }
@@ -249,14 +280,21 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // it will never exist. So instead, we just return, and accept the conflict data.
             if conflict.index == 0 {
                 self.target_state = TargetReplState::Lagging;
-                let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex{
-                    target: self.target, match_index: self.match_index, match_term: self.match_term,
+                let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex {
+                    target: self.target,
+                    match_index: self.match_index,
+                    match_term: self.match_term,
                 });
                 return;
             }
 
             // Fetch the entry at conflict index and use the term specified there.
-            match self.storage.get_log_entries(conflict.index, conflict.index + 1).await.map(|entries| entries.get(0).map(|entry| entry.term)) {
+            match self
+                .storage
+                .get_log_entries(conflict.index, conflict.index + 1)
+                .await
+                .map(|entries| entries.get(0).map(|entry| entry.term))
+            {
                 Ok(Some(term)) => {
                     self.match_term = term; // If we have the specified log, ensure we use its term.
                 }
@@ -264,8 +302,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     // This condition would only ever be reached if the log has been removed due to
                     // log compaction (barring critical storage failure), so transition to snapshotting.
                     self.target_state = TargetReplState::Snapshotting;
-                    let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex{
-                        target: self.target, match_index: self.match_index, match_term: self.match_term,
+                    let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex {
+                        target: self.target,
+                        match_index: self.match_index,
+                        match_term: self.match_term,
                     });
                     return;
                 }
@@ -278,8 +318,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             };
 
             // Check snapshot policy and handle conflict as needed.
-            let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex{
-                target: self.target, match_index: self.match_index, match_term: self.match_term,
+            let _ = self.rafttx.send(ReplicaEvent::UpdateMatchIndex {
+                target: self.target,
+                match_index: self.match_index,
+                match_term: self.match_term,
             });
             match &self.config.snapshot_policy {
                 SnapshotPolicy::LogsSinceLast(threshold) => {
@@ -299,7 +341,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
     /// Perform a check to see if this replication stream is lagging behind far enough that a
     /// snapshot is warranted.
-    #[tracing::instrument(level="trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub(self) fn needs_snapshot(&self) -> bool {
         match &self.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => {
@@ -330,10 +372,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             };
             // Process the event.
             match event {
-                RaftEvent::UpdateCommitIndex{commit_index} => {
+                RaftEvent::UpdateCommitIndex { commit_index } => {
                     self.commit_index = commit_index;
                 }
-                RaftEvent::Replicate{entry, commit_index} => {
+                RaftEvent::Replicate { entry, commit_index } => {
                     self.commit_index = commit_index;
                     self.last_log_index = entry.index;
                     if self.target_state == TargetReplState::LineRate {
@@ -408,10 +450,11 @@ pub(crate) enum RaftEvent<D: AppData> {
 
 /// An event coming from a replication stream.
 pub(crate) enum ReplicaEvent<S>
-    where S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+where
+    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     /// An event representing an update to the replication rate of a replication stream.
-    RateUpdate{
+    RateUpdate {
         /// The ID of the Raft node to which this event relates.
         target: NodeId,
         /// A flag indicating if the corresponding target node is replicating at line rate.
@@ -422,7 +465,7 @@ pub(crate) enum ReplicaEvent<S>
         is_line_rate: bool,
     },
     /// An event from a replication stream which updates the target node's match index.
-    UpdateMatchIndex{
+    UpdateMatchIndex {
         /// The ID of the target node for which the match index is to be updated.
         target: NodeId,
         /// The index of the most recent log known to have been successfully replicated on the target.
@@ -431,14 +474,14 @@ pub(crate) enum ReplicaEvent<S>
         match_term: u64,
     },
     /// An event indicating that the Raft node needs to revert to follower state.
-    RevertToFollower{
+    RevertToFollower {
         /// The ID of the target node from which the new term was observed.
         target: NodeId,
         /// The new term observed.
         term: u64,
     },
     /// An event from a replication stream requesting snapshot info.
-    NeedsSnapshot{
+    NeedsSnapshot {
         /// The ID of the target node from which the event was sent.
         target: NodeId,
         /// The response channel for delivering the snapshot data.
@@ -460,12 +503,15 @@ struct LineRateState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: R
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LineRateState<'a, D, R, N, S> {
     /// Create a new instance.
     pub fn new(core: &'a mut ReplicationCore<D, R, N, S>) -> Self {
-        Self{core}
+        Self { core }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(state="line-rate"))]
+    #[tracing::instrument(level = "trace", skip(self), fields(state = "line-rate"))]
     pub async fn run(mut self) {
-        let event = ReplicaEvent::RateUpdate{target: self.core.target, is_line_rate: true};
+        let event = ReplicaEvent::RateUpdate {
+            target: self.core.target,
+            is_line_rate: true,
+        };
         let _ = self.core.rafttx.send(event);
         loop {
             if self.core.target_state != TargetReplState::LineRate {
@@ -473,7 +519,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // We always prioritize draining our buffers first.
-            let next_buf_index = self.core.outbound_buffer.first().map(|entry| entry.as_ref().index)
+            let next_buf_index = self
+                .core
+                .outbound_buffer
+                .first()
+                .map(|entry| entry.as_ref().index)
                 .or_else(|| self.core.replication_buffer.first().map(|entry| entry.index));
             if let Some(index) = next_buf_index {
                 // Ensure that our buffered data matches up with `next_index`. When transitioning to
@@ -490,7 +540,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 self.core.send_append_entries().await;
                 continue;
             }
-            tokio::select!{
+            tokio::select! {
                 _ = self.core.heartbeat.next() => self.core.send_append_entries().await,
                 event = self.core.raftrx.next() => match event {
                     Some(event) => self.core.drain_raftrx(event),
@@ -501,7 +551,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Ensure there are no gaps in the outbound buffer due to transition from lagging.
-    #[tracing::instrument(level="trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn frontload_outbound_buffer(&mut self, start: u64, stop: u64) {
         let entries = match self.core.storage.get_log_entries(start, stop).await {
             Ok(entries) => entries,
@@ -536,12 +586,15 @@ struct LaggingState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Ra
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LaggingState<'a, D, R, N, S> {
     /// Create a new instance.
     pub fn new(core: &'a mut ReplicationCore<D, R, N, S>) -> Self {
-        Self{core}
+        Self { core }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(state="lagging"))]
+    #[tracing::instrument(level = "trace", skip(self), fields(state = "lagging"))]
     pub async fn run(mut self) {
-        let event = ReplicaEvent::RateUpdate{target: self.core.target, is_line_rate: false};
+        let event = ReplicaEvent::RateUpdate {
+            target: self.core.target,
+            is_line_rate: false,
+        };
         let _ = self.core.rafttx.send(event);
         self.core.replication_buffer.clear();
         self.core.outbound_buffer.clear();
@@ -581,7 +634,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Prep the outbound buffer with the next payload of entries to append.
-    #[tracing::instrument(level="trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn prep_outbound_buffer_from_storage(&mut self) {
         // If the send buffer is empty, we need to fill it.
         if self.core.outbound_buffer.is_empty() {
@@ -633,12 +686,19 @@ struct SnapshottingState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> SnapshottingState<'a, D, R, N, S> {
     /// Create a new instance.
     pub fn new(core: &'a mut ReplicationCore<D, R, N, S>) -> Self {
-        Self{core, snapshot: None, snapshot_fetch_rx: None}
+        Self {
+            core,
+            snapshot: None,
+            snapshot_fetch_rx: None,
+        }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(state="snapshotting"))]
+    #[tracing::instrument(level = "trace", skip(self), fields(state = "snapshotting"))]
     pub async fn run(mut self) {
-        let event = ReplicaEvent::RateUpdate{target: self.core.target, is_line_rate: false};
+        let event = ReplicaEvent::RateUpdate {
+            target: self.core.target,
+            is_line_rate: false,
+        };
         let _ = self.core.rafttx.send(event);
         self.core.replication_buffer.clear();
         self.core.outbound_buffer.clear();
@@ -651,7 +711,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // If we don't have any of the components we need, fetch the current snapshot.
             if self.snapshot.is_none() && self.snapshot_fetch_rx.is_none() {
                 let (tx, rx) = oneshot::channel();
-                let _ = self.core.rafttx.send(ReplicaEvent::NeedsSnapshot{target: self.core.target, tx});
+                let _ = self.core.rafttx.send(ReplicaEvent::NeedsSnapshot {
+                    target: self.core.target,
+                    tx,
+                });
                 self.snapshot_fetch_rx = Some(rx);
             }
 
@@ -676,10 +739,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     ///
     /// If an error comes up during processing, this routine should simple be called again after
     /// issuing a new request to the storage layer.
-    #[tracing::instrument(level="trace", skip(self, rx))]
+    #[tracing::instrument(level = "trace", skip(self, rx))]
     async fn wait_for_snapshot(&mut self, mut rx: oneshot::Receiver<CurrentSnapshotData<S::Snapshot>>) {
         loop {
-            tokio::select!{
+            tokio::select! {
                 _ = self.core.heartbeat.next() => self.core.send_append_entries().await,
                 event = self.core.raftrx.next() => match event {
                     Some(event) => self.core.drain_raftrx(event),
@@ -701,7 +764,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
     }
 
-    #[tracing::instrument(level="trace", skip(self, snapshot))]
+    #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::Snapshot>) -> RaftResult<()> {
         let mut offset = 0;
         self.core.last_log_index = snapshot.index;
@@ -714,11 +777,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await?;
             let nread = snapshot.snapshot.read_buf(&mut buf).await?;
             let done = nread == 0; // If bytes read == 0, then we're done.
-            let req = InstallSnapshotRequest{
-                term: self.core.term, leader_id: self.core.id,
+            let req = InstallSnapshotRequest {
+                term: self.core.term,
+                leader_id: self.core.id,
                 last_included_index: snapshot.index,
                 last_included_term: snapshot.term,
-                offset, data: Vec::from(&buf[..nread]), done,
+                offset,
+                data: Vec::from(&buf[..nread]),
+                done,
             };
             buf.clear();
 
@@ -740,7 +806,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Handle response conditions.
             if res.term > self.core.term {
-                let _ = self.core.rafttx.send(ReplicaEvent::RevertToFollower{target: self.core.target, term: res.term});
+                let _ = self.core.rafttx.send(ReplicaEvent::RevertToFollower {
+                    target: self.core.target,
+                    term: res.term,
+                });
                 self.core.target_state = TargetReplState::Shutdown;
                 return Ok(());
             }

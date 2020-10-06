@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use async_raft::Config;
 use async_raft::raft::MembershipConfig;
+use async_raft::Config;
 use futures::prelude::*;
 use maplit::hashset;
 use tokio::time::delay_for;
@@ -21,7 +21,7 @@ use fixtures::RaftRouter;
 /// - assert that the cluster stayed stable and has all of the expected data.
 ///
 /// RUST_LOG=async_raft,memstore,client_writes=trace cargo test -p async-raft --test client_writes
-#[tokio::test(core_threads=4)]
+#[tokio::test(core_threads = 4)]
 async fn client_writes() -> Result<()> {
     fixtures::init_tracing();
 
@@ -51,10 +51,25 @@ async fn client_writes() -> Result<()> {
     clients.push(router.client_request_many(leader, "3", 1000));
     clients.push(router.client_request_many(leader, "4", 1000));
     clients.push(router.client_request_many(leader, "5", 1000));
-    while let Some(_) = clients.next().await { }
+    while clients.next().await.is_some() {}
     delay_for(Duration::from_secs(5)).await; // Ensure enough time is given for replication (this is WAY more than enough).
     router.assert_stable_cluster(Some(1), Some(6001)).await; // The extra 1 is from the leader's initial commit entry.
-    router.assert_storage_state(1, 6001, Some(0), 6001, Some(((5000..5100).into(), 1, MembershipConfig{members: hashset![0, 1, 2], members_after_consensus: None}))).await;
+    router
+        .assert_storage_state(
+            1,
+            6001,
+            Some(0),
+            6001,
+            Some((
+                (5000..5100).into(),
+                1,
+                MembershipConfig {
+                    members: hashset![0, 1, 2],
+                    members_after_consensus: None,
+                },
+            )),
+        )
+        .await;
 
     Ok(())
 }

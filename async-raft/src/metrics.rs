@@ -7,9 +7,9 @@
 //! Metrics are observed on a running Raft node via the `Raft::metrics()` method, which will
 //! return a stream of metrics.
 
-use crate::NodeId;
 use crate::core::State;
 use crate::raft::MembershipConfig;
+use crate::NodeId;
 
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,6 +33,14 @@ pub struct RaftMetrics {
 impl RaftMetrics {
     pub(crate) fn new_initial(id: NodeId) -> Self {
         let membership_config = MembershipConfig::new_initial(id);
-        Self{id, state: State::Follower, current_term: 0, last_log_index: 0, last_applied: 0, current_leader: None, membership_config}
+        Self {
+            id,
+            state: State::Follower,
+            current_term: 0,
+            last_log_index: 0,
+            last_applied: 0,
+            current_leader: None,
+            membership_config,
+        }
     }
 }

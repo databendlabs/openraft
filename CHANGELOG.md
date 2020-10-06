@@ -1,10 +1,14 @@
 changelog
 =========
+This changelog follows the patterns described here: https://keepachangelog.com/en/1.0.0/.
 
 ## [unreleased]
+
+## 0.5.1
 ### changed
 - `ChangeConfigError::NodeNotLeader` now returns the ID of the current cluster leader if known.
 - Fix off-by-one error in `get_log_entries` during the replication process.
+- Added `#[derive(Serialize, Deserialize)]` to `Config`, `ConfigBuilder` & `SnapshotPolicy`.
 
 ## 0.5.0
 ### changed

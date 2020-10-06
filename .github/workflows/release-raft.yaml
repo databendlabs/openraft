@@ -1,0 +1,42 @@
+name: Release
+on:
+  push:
+    tags:
+      - "async-raft-v*"
+
+jobs:
+  publish_raft:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup | Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Publish | Async Raft
+        run: cd async-raft && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Setup | Create Release Log
+        run: cat CHANGELOG.md | tail -n +7 | head -n 25 > RELEASE_LOG.md
+
+      - name: Build | Publish Pre-Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: RELEASE_LOG.md
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

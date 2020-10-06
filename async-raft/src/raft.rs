@@ -1,18 +1,18 @@
 //! Public Raft interface and data types.
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
-use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 use crate::config::Config;
-use crate::error::{ClientReadError, ClientWriteError, ChangeConfigError, InitializeError, RaftError, RaftResult};
-use crate::metrics::RaftMetrics;
 use crate::core::RaftCore;
+use crate::error::{ChangeConfigError, ClientReadError, ClientWriteError, InitializeError, RaftError, RaftResult};
+use crate::metrics::RaftMetrics;
+use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 
 /// The Raft API.
 ///
@@ -63,14 +63,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let needs_shutdown = Arc::new(AtomicBool::new(false));
-        let raft_handle = RaftCore::spawn(
-            id, config, network, storage,
-            rx_api, tx_metrics,
-            needs_shutdown.clone(),
-        );
-        Self{
-            tx_api, rx_metrics, raft_handle, needs_shutdown,
-            marker_n: std::marker::PhantomData, marker_s: std::marker::PhantomData,
+        let raft_handle = RaftCore::spawn(id, config, network, storage, rx_api, tx_metrics, needs_shutdown.clone());
+        Self {
+            tx_api,
+            rx_metrics,
+            raft_handle,
+            needs_shutdown,
+            marker_n: std::marker::PhantomData,
+            marker_s: std::marker::PhantomData,
         }
     }
 
@@ -78,20 +78,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
-    #[tracing::instrument(level="debug", skip(self, rpc))]
+    #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::AppendEntries{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
+        self.tx_api
+            .send(RaftMsg::AppendEntries { rpc, tx })
+            .map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
-    #[tracing::instrument(level="debug", skip(self, rpc))]
+    #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::RequestVote{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
+        self.tx_api.send(RaftMsg::RequestVote { rpc, tx }).map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
@@ -99,10 +101,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node up-to-speed
     /// with the leader (§7).
-    #[tracing::instrument(level="debug", skip(self, rpc))]
+    #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::InstallSnapshot{rpc, tx}).map_err(|_| RaftError::ShuttingDown)?;
+        self.tx_api
+            .send(RaftMsg::InstallSnapshot { rpc, tx })
+            .map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
@@ -110,11 +114,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// The actual read operation itself is up to the application, this method just ensures that
     /// the read will not be stale.
-    #[tracing::instrument(level="debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn client_read(&self) -> Result<(), ClientReadError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::ClientReadRequest{tx}).map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
-        Ok(rx.await.map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+        self.tx_api
+            .send(RaftMsg::ClientReadRequest { tx })
+            .map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
+        Ok(rx
+            .await
+            .map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))
+            .and_then(|res| res)?)
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).
@@ -134,11 +143,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
-    #[tracing::instrument(level="debug", skip(self, rpc))]
+    #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn client_write(&self, rpc: ClientWriteRequest<D>) -> Result<ClientWriteResponse<R>, ClientWriteError<D>> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::ClientWriteRequest{rpc, tx}).map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown))?;
-        Ok(rx.await.map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+        self.tx_api
+            .send(RaftMsg::ClientWriteRequest { rpc, tx })
+            .map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown))?;
+        Ok(rx
+            .await
+            .map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown))
+            .and_then(|res| res)?)
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -169,11 +183,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Every member of the cluster should perform these actions. This routine is race-condition
     /// free, and Raft guarantees that the first node to become the cluster leader will propagate
     /// only its own config.
-    #[tracing::instrument(level="debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize(&self, members: HashSet<NodeId>) -> Result<(), InitializeError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::Initialize{members, tx}).map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx.await.map_err(|_| InitializeError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+        self.tx_api
+            .send(RaftMsg::Initialize { members, tx })
+            .map_err(|_| RaftError::ShuttingDown)?;
+        Ok(rx
+            .await
+            .map_err(|_| InitializeError::RaftError(RaftError::ShuttingDown))
+            .and_then(|res| res)?)
     }
 
     /// Synchronize a new Raft node, bringing it up-to-speed (§6).
@@ -188,11 +207,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// application to then call `change_membership` once all of the new nodes are synced.
     ///
     /// If this Raft node is not the cluster leader, then this call will fail.
-    #[tracing::instrument(level="debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn add_non_voter(&self, id: NodeId) -> Result<(), ChangeConfigError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::AddNonVoter{id, tx}).map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx.await.map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+        self.tx_api.send(RaftMsg::AddNonVoter { id, tx }).map_err(|_| RaftError::ShuttingDown)?;
+        Ok(rx
+            .await
+            .map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown))
+            .and_then(|res| res)?)
     }
 
     /// Propose a cluster configuration change (§6).
@@ -206,11 +228,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// If this Raft node is not the cluster leader, then the proposed configuration change will be
     /// rejected.
-    #[tracing::instrument(level="debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn change_membership(&self, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::ChangeMembership{members, tx}).map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx.await.map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)?)
+        self.tx_api
+            .send(RaftMsg::ChangeMembership { members, tx })
+            .map_err(|_| RaftError::ShuttingDown)?;
+        Ok(rx
+            .await
+            .map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown))
+            .and_then(|res| res)?)
     }
 
     /// Get a handle to the metrics channel.
@@ -282,7 +309,7 @@ pub struct AppendEntriesRequest<D: AppData> {
     ///
     /// This may be empty when the leader is sending heartbeats. Entries
     /// are batched for efficiency.
-    #[serde(bound="D: AppData")]
+    #[serde(bound = "D: AppData")]
     pub entries: Vec<Entry<D>>,
     /// The leader's commit index.
     pub leader_commit: u64,
@@ -325,7 +352,7 @@ pub struct Entry<D: AppData> {
     /// This entry's index.
     pub index: u64,
     /// This entry's payload.
-    #[serde(bound="D: AppData")]
+    #[serde(bound = "D: AppData")]
     pub payload: EntryPayload<D>,
 }
 
@@ -342,7 +369,11 @@ impl<D: AppData> Entry<D> {
     /// The cluster membership config which is contained in the snapshot, which will always be the
     /// latest membership covered by the snapshot.
     pub fn new_snapshot_pointer(index: u64, term: u64, id: String, membership: MembershipConfig) -> Self {
-        Entry{term, index, payload: EntryPayload::SnapshotPointer(EntrySnapshotPointer{id, membership})}
+        Entry {
+            term,
+            index,
+            payload: EntryPayload::SnapshotPointer(EntrySnapshotPointer { id, membership }),
+        }
     }
 }
 
@@ -352,7 +383,7 @@ pub enum EntryPayload<D: AppData> {
     /// An empty payload committed by a new cluster leader.
     Blank,
     /// A normal log entry.
-    #[serde(bound="D: AppData")]
+    #[serde(bound = "D: AppData")]
     Normal(EntryNormal<D>),
     /// A config change log entry.
     ConfigChange(EntryConfigChange),
@@ -364,7 +395,7 @@ pub enum EntryPayload<D: AppData> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EntryNormal<D: AppData> {
     /// The contents of this entry.
-    #[serde(bound="D: AppData")]
+    #[serde(bound = "D: AppData")]
     pub data: D,
 }
 
@@ -416,11 +447,12 @@ impl MembershipConfig {
     ///
     /// When in joint consensus, this will check both config groups.
     pub fn contains(&self, x: &NodeId) -> bool {
-        self.members.contains(x) || if let Some(members) = &self.members_after_consensus {
-            members.contains(x)
-        } else {
-            false
-        }
+        self.members.contains(x)
+            || if let Some(members) = &self.members_after_consensus {
+                members.contains(x)
+            } else {
+                false
+            }
     }
 
     /// Check to see if the config is currently in joint consensus.
@@ -432,7 +464,10 @@ impl MembershipConfig {
     pub fn new_initial(id: NodeId) -> Self {
         let mut members = HashSet::new();
         members.insert(id);
-        Self{members, members_after_consensus: None}
+        Self {
+            members,
+            members_after_consensus: None,
+        }
     }
 }
 
@@ -455,7 +490,12 @@ pub struct VoteRequest {
 impl VoteRequest {
     /// Create a new instance.
     pub fn new(term: u64, candidate_id: u64, last_log_index: u64, last_log_term: u64) -> Self {
-        Self{term, candidate_id, last_log_index, last_log_term}
+        Self {
+            term,
+            candidate_id,
+            last_log_index,
+            last_log_term,
+        }
     }
 }
 
@@ -507,24 +547,24 @@ pub struct InstallSnapshotResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientWriteRequest<D: AppData> {
     /// The application specific contents of this client request.
-    #[serde(bound="D: AppData")]
+    #[serde(bound = "D: AppData")]
     pub(crate) entry: EntryPayload<D>,
 }
 
 impl<D: AppData> ClientWriteRequest<D> {
     /// Create a new client payload instance with a normal entry type.
     pub fn new(entry: D) -> Self {
-        Self::new_base(EntryPayload::Normal(EntryNormal{data: entry}))
+        Self::new_base(EntryPayload::Normal(EntryNormal { data: entry }))
     }
 
     /// Create a new instance.
     pub(crate) fn new_base(entry: EntryPayload<D>) -> Self {
-        Self{entry}
+        Self { entry }
     }
 
     /// Generate a new payload holding a config change.
     pub(crate) fn new_config(membership: MembershipConfig) -> Self {
-        Self::new_base(EntryPayload::ConfigChange(EntryConfigChange{membership}))
+        Self::new_base(EntryPayload::ConfigChange(EntryConfigChange { membership }))
     }
 
     /// Generate a new blank payload.
@@ -541,6 +581,6 @@ pub struct ClientWriteResponse<R: AppDataResponse> {
     /// The log index of the successfully processed client request.
     pub index: u64,
     /// Application specific response data.
-    #[serde(bound="R: AppDataResponse")]
+    #[serde(bound = "R: AppDataResponse")]
     pub data: R,
 }

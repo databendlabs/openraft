@@ -22,7 +22,7 @@ use fixtures::RaftRouter;
 /// - restore the isolated node and assert that it becomes a follower.
 ///
 /// RUST_LOG=async_raft,memstore,dynamic_membership=trace cargo test -p async-raft --test dynamic_membership
-#[tokio::test(core_threads=6)]
+#[tokio::test(core_threads = 6)]
 async fn dynamic_membership() -> Result<()> {
     fixtures::init_tracing();
 
