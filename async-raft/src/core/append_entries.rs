@@ -1,7 +1,7 @@
-use crate::{AppData, AppDataResponse, RaftNetwork, RaftStorage};
+use crate::core::{RaftCore, State, UpdateCurrentLeader};
 use crate::error::RaftResult;
 use crate::raft::{AppendEntriesRequest, AppendEntriesResponse, ConflictOpt, Entry, EntryPayload};
-use crate::core::{RaftCore, State, UpdateCurrentLeader};
+use crate::{AppData, AppDataResponse, RaftNetwork, RaftStorage};
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -15,7 +15,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // If message's term is less than most recent term, then we do not honor the request.
         if msg.term < self.current_term {
             tracing::trace!({self.current_term, rpc_term=msg.term}, "AppendEntries RPC term is less than current term");
-            return Ok(AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: None});
+            return Ok(AppendEntriesResponse {
+                term: self.current_term,
+                success: false,
+                conflict_opt: None,
+            });
         }
 
         // Update election timeout.
@@ -52,7 +56,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 if report_metrics {
                     self.report_metrics();
                 }
-                return Ok(AppendEntriesResponse{term: self.current_term, success: true, conflict_opt: None});
+                return Ok(AppendEntriesResponse {
+                    term: self.current_term,
+                    success: true,
+                    conflict_opt: None,
+                });
             }
 
             // Else, append log entries.
@@ -61,7 +69,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             if report_metrics {
                 self.report_metrics();
             }
-            return Ok(AppendEntriesResponse{term: self.current_term, success: true, conflict_opt: None});
+            return Ok(AppendEntriesResponse {
+                term: self.current_term,
+                success: true,
+                conflict_opt: None,
+            });
         }
 
         /////////////////////////////////////
@@ -69,7 +81,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tracing::trace!("begin log consistency check");
 
         // Previous log info doesn't immediately line up, so perform log consistency check and proceed based on its result.
-        let entries = self.storage.get_log_entries(msg.prev_log_index, msg.prev_log_index).await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let entries = self
+            .storage
+            .get_log_entries(msg.prev_log_index, msg.prev_log_index + 1)
+            .await
+            .map_err(|err| self.map_fatal_storage_error(err))?;
         let target_entry = match entries.first() {
             Some(target_entry) => target_entry,
             // The target entry was not found. This can only mean that we don't have the
@@ -78,9 +94,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 if report_metrics {
                     self.report_metrics();
                 }
-                return Ok(AppendEntriesResponse{
-                    term: self.current_term, success: false,
-                    conflict_opt: Some(ConflictOpt{term: self.last_log_term, index: self.last_log_index}),
+                return Ok(AppendEntriesResponse {
+                    term: self.current_term,
+                    success: false,
+                    conflict_opt: Some(ConflictOpt {
+                        term: self.last_log_term,
+                        index: self.last_log_index,
+                    }),
                 });
             }
         };
@@ -90,8 +110,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // We've found a point of agreement with the leader. If we have any logs present
             // with an index greater than this, then we must delete them per §5.3.
             if self.last_log_index > target_entry.index {
-                self.storage.delete_logs_from(target_entry.index + 1, None).await.map_err(|err| self.map_fatal_storage_error(err))?;
-                let membership = self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
+                self.storage
+                    .delete_logs_from(target_entry.index + 1, None)
+                    .await
+                    .map_err(|err| self.map_fatal_storage_error(err))?;
+                let membership = self
+                    .storage
+                    .get_membership_config()
+                    .await
+                    .map_err(|err| self.map_fatal_storage_error(err))?;
                 self.update_membership(membership)?;
             }
         }
@@ -99,15 +126,29 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // entry of that payload which is still in the target term for conflict optimization.
         else {
             let start = if msg.prev_log_index >= 50 { msg.prev_log_index - 50 } else { 0 };
-            let old_entries = self.storage.get_log_entries(start, msg.prev_log_index).await.map_err(|err| self.map_fatal_storage_error(err))?;
+            let old_entries = self
+                .storage
+                .get_log_entries(start, msg.prev_log_index)
+                .await
+                .map_err(|err| self.map_fatal_storage_error(err))?;
             let opt = match old_entries.iter().find(|entry| entry.term == msg.prev_log_term) {
-                Some(entry) => Some(ConflictOpt{term: entry.term, index: entry.index}),
-                None => Some(ConflictOpt{term: self.last_log_term, index: self.last_log_index}),
+                Some(entry) => Some(ConflictOpt {
+                    term: entry.term,
+                    index: entry.index,
+                }),
+                None => Some(ConflictOpt {
+                    term: self.last_log_term,
+                    index: self.last_log_index,
+                }),
             };
             if report_metrics {
                 self.report_metrics();
             }
-            return Ok(AppendEntriesResponse{term: self.current_term, success: false, conflict_opt: opt});
+            return Ok(AppendEntriesResponse {
+                term: self.current_term,
+                success: false,
+                conflict_opt: opt,
+            });
         }
 
         ///////////////////////////////////
@@ -119,17 +160,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if report_metrics {
             self.report_metrics();
         }
-        Ok(AppendEntriesResponse{term: self.current_term, success: true, conflict_opt: None})
+        Ok(AppendEntriesResponse {
+            term: self.current_term,
+            success: true,
+            conflict_opt: None,
+        })
     }
 
     /// Append the given entries to the log.
     ///
     /// Configuration changes are also detected and applied here. See `configuration changes`
     /// in the raft-essentials.md in this repo.
-    #[tracing::instrument(level="trace", skip(self, entries))]
+    #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn append_log_entries(&mut self, entries: &[Entry<D>]) -> RaftResult<()> {
         // Check the given entries for any config changes and take the most recent.
-        let last_conf_change = entries.iter()
+        let last_conf_change = entries
+            .iter()
             .filter_map(|ent| match &ent.payload {
                 EntryPayload::ConfigChange(conf) => Some(conf),
                 _ => None,
@@ -141,7 +187,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         };
 
         // Replicate entries to log (same as append, but in follower mode).
-        self.storage.replicate_to_log(entries).await.map_err(|err| self.map_fatal_storage_error(err))?;
+        self.storage
+            .replicate_to_log(entries)
+            .await
+            .map_err(|err| self.map_fatal_storage_error(err))?;
         if let Some(entry) = entries.last() {
             self.last_log_index = entry.index;
             self.last_log_term = entry.term;
@@ -150,17 +199,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Replicate outstanding logs to the state machine if needed.
-    #[tracing::instrument(level="trace", skip(self, report_metrics))]
+    #[tracing::instrument(level = "trace", skip(self, report_metrics))]
     async fn replicate_to_state_machine_if_needed(&mut self, report_metrics: &mut bool) -> RaftResult<()> {
         if self.commit_index > self.last_applied {
             // Fetch the series of entries which must be applied to the state machine, and apply them.
             let stop = std::cmp::min(self.commit_index, self.last_log_index) + 1;
-            let entries = self.storage.get_log_entries(self.last_applied + 1, stop).await.map_err(|err| self.map_fatal_storage_error(err))?;
+            let entries = self
+                .storage
+                .get_log_entries(self.last_applied + 1, stop)
+                .await
+                .map_err(|err| self.map_fatal_storage_error(err))?;
             if let Some(entry) = entries.last() {
                 self.last_applied = entry.index;
                 *report_metrics = true;
             }
-            let data_entries: Vec<_> = entries.iter()
+            let data_entries: Vec<_> = entries
+                .iter()
                 .filter_map(|entry| match &entry.payload {
                     EntryPayload::Normal(inner) => Some((&entry.index, &inner.data)),
                     _ => None,
@@ -169,7 +223,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             if data_entries.is_empty() {
                 return Ok(());
             }
-            self.storage.replicate_to_state_machine(&data_entries).await.map_err(|err| self.map_fatal_storage_error(err))?;
+            self.storage
+                .replicate_to_state_machine(&data_entries)
+                .await
+                .map_err(|err| self.map_fatal_storage_error(err))?;
 
             // Request async compaction, if needed.
             self.trigger_log_compaction_if_needed();

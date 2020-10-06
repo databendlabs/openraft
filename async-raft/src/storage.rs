@@ -2,15 +2,16 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
 
-use crate::{AppData, AppDataResponse, NodeId};
 use crate::raft::{Entry, MembershipConfig};
+use crate::{AppData, AppDataResponse, NodeId};
 
 /// The data associated with the current snapshot.
 pub struct CurrentSnapshotData<S>
-    where S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+where
+    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     /// The snapshot entry's term.
     pub term: u64,
@@ -56,9 +57,14 @@ impl InitialState {
     /// ### `id`
     /// The ID of the Raft node.
     pub fn new_initial(id: NodeId) -> Self {
-        Self{
-            last_log_index: 0, last_log_term: 0, last_applied_log: 0,
-            hard_state: HardState{current_term: 0, voted_for: None},
+        Self {
+            last_log_index: 0,
+            last_log_term: 0,
+            last_applied_log: 0,
+            hard_state: HardState {
+                current_term: 0,
+                voted_for: None,
+            },
             membership: MembershipConfig::new_initial(id),
         }
     }
@@ -70,9 +76,9 @@ impl InitialState {
 /// for details and discussion on this trait and how to implement it.
 #[async_trait]
 pub trait RaftStorage<D, R>: Send + Sync + 'static
-    where
-        D: AppData,
-        R: AppDataResponse,
+where
+    D: AppData,
+    R: AppDataResponse,
 {
     /// The storage engine's associated type used for exposing a snapshot for reading & writing.
     type Snapshot: AsyncRead + AsyncWrite + AsyncSeek + Send + Unpin + 'static;
@@ -184,8 +190,7 @@ pub trait RaftStorage<D, R>: Send + Sync + 'static
     /// `AsyncWriteExt.shutdown()` method will have been called, so no additional writes should be
     /// made to the snapshot.
     async fn finalize_snapshot_installation(
-        &self, index: u64, term: u64, delete_through: Option<u64>,
-        id: String, snapshot: Box<Self::Snapshot>,
+        &self, index: u64, term: u64, delete_through: Option<u64>, id: String, snapshot: Box<Self::Snapshot>,
     ) -> Result<()>;
 
     /// Get a readable handle to the current snapshot, along with its metadata.

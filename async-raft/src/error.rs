@@ -2,8 +2,8 @@
 
 use thiserror::Error;
 
-use crate::{AppData, NodeId};
 use crate::raft::ClientWriteRequest;
+use crate::{AppData, NodeId};
 
 /// A result type where the error variant is always a `RaftError`.
 pub type RaftResult<T> = std::result::Result<T, RaftError>;

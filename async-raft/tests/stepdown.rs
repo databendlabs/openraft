@@ -20,7 +20,7 @@ use fixtures::RaftRouter;
 ///   after the config change is committed.
 ///
 /// RUST_LOG=async_raft,memstore,stepdown=trace cargo test -p async-raft --test stepdown
-#[tokio::test(core_threads=5)]
+#[tokio::test(core_threads = 5)]
 async fn stepdown() -> Result<()> {
     fixtures::init_tracing();
 
@@ -50,14 +50,35 @@ async fn stepdown() -> Result<()> {
 
     // Assert on the state of the old leader.
     {
-        let metrics = router.latest_metrics().await.into_iter().find(|node| node.id == 0)
+        let metrics = router
+            .latest_metrics()
+            .await
+            .into_iter()
+            .find(|node| node.id == 0)
             .expect("expected to find metrics on original leader node");
         let cfg = metrics.membership_config;
         assert!(metrics.state != State::Leader, "expected old leader to have stepped down");
-        assert_eq!(metrics.current_term, 1, "expected old leader to still be in first term, got {}", metrics.current_term);
-        assert_eq!(metrics.last_log_index, 3, "expected old leader to have last log index of 3, got {}", metrics.last_log_index);
-        assert_eq!(metrics.last_applied, 3, "expected old leader to have last applied of 3, got {}", metrics.last_applied);
-        assert_eq!(cfg.members, hashset![1, 2, 3], "expected old leader to have membership of [1, 2, 3], got {:?}", cfg.members);
+        assert_eq!(
+            metrics.current_term, 1,
+            "expected old leader to still be in first term, got {}",
+            metrics.current_term
+        );
+        assert_eq!(
+            metrics.last_log_index, 3,
+            "expected old leader to have last log index of 3, got {}",
+            metrics.last_log_index
+        );
+        assert_eq!(
+            metrics.last_applied, 3,
+            "expected old leader to have last applied of 3, got {}",
+            metrics.last_applied
+        );
+        assert_eq!(
+            cfg.members,
+            hashset![1, 2, 3],
+            "expected old leader to have membership of [1, 2, 3], got {:?}",
+            cfg.members
+        );
         assert!(cfg.members_after_consensus.is_none(), "expected old leader to be out of joint consensus");
     }
 
