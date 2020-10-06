@@ -1,6 +1,7 @@
 //! Raft runtime configuration.
 
 use rand::{thread_rng, Rng};
+use serde::{Serialize, Deserialize};
 
 use crate::error::ConfigError;
 
@@ -25,7 +26,7 @@ pub const DEFAULT_SNAPSHOT_CHUNKSIZE: u64 = 1024 * 1024 * 3;
 /// would cause a leader to send an `InstallSnapshot` RPC to a follower based on replication lag.
 ///
 /// Additional policies may become available in the future.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum SnapshotPolicy {
     /// A snapshot will be generated once the log has grown the specified number of logs since
     /// the last snapshot.
@@ -62,7 +63,7 @@ impl Default for SnapshotPolicy {
 /// What does all of this mean? Simply keep your election timeout settings high enough that the
 /// performance of your network will not cause election timeouts, but don't keep it so high that
 /// a real leader crash would cause prolonged downtime. See the Raft spec §5.6 for more details.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     /// The application specific name of this Raft cluster.
     ///
@@ -132,7 +133,7 @@ impl Config {
 ///
 /// For election timeout config & heartbeat interval configuration, it is recommended that §5.6 of
 /// the Raft spec is considered in order to set the appropriate values.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigBuilder {
     cluster_name: String,
     /// The minimum election timeout, in milliseconds.
