@@ -7,12 +7,14 @@
 //! Metrics are observed on a running Raft node via the `Raft::metrics()` method, which will
 //! return a stream of metrics.
 
+use serde::{Deserialize, Serialize};
+
 use crate::core::State;
 use crate::raft::MembershipConfig;
 use crate::NodeId;
 
 /// A set of metrics describing the current state of a Raft node.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RaftMetrics {
     /// The ID of the Raft node.
     pub id: NodeId,

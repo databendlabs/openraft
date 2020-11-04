@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use futures::future::{AbortHandle, Abortable};
 use futures::stream::FuturesOrdered;
+use serde::{Deserialize, Serialize};
 use tokio::stream::StreamExt;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
@@ -434,7 +435,7 @@ pub(self) enum SnapshotUpdate {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// All possible states of a Raft node.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum State {
     /// The node is completely passive; replicating entries, but neither voting nor timing out.
     NonVoter,
