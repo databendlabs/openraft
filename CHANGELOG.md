@@ -4,6 +4,10 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 
 ## [unreleased]
 
+## 0.5.2
+### fixed
+- Fixed [#79](https://github.com/async-raft/async-raft/issues/79). The Raft core state machine was not being properly updated in response to shutdown requests. That has been addressed and shutdowns are now behaving as expected.
+
 ## 0.5.1
 ### changed
 - `ChangeConfigError::NodeNotLeader` now returns the ID of the current cluster leader if known.
