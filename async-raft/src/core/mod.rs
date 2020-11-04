@@ -183,6 +183,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // controllers and simply awaits the delegated loop to return, which will only take place
         // if some error has been encountered, or if a state change is required.
         loop {
+            if self.needs_shutdown.load(Ordering::SeqCst) {
+                self.set_target_state(State::Shutdown);
+            }
             match &self.target_state {
                 State::Leader => LeaderState::new(&mut self).run().await?,
                 State::Candidate => CandidateState::new(&mut self).run().await?,
