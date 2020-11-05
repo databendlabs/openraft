@@ -96,11 +96,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// consensus. Each request will have a timeout, and we respond once we have a majority
     /// agreement from each config group. Most of the time, we will have a single uniform
     /// config group.
+    ///
+    /// From the spec (§8):
+    /// Second, a leader must check whether it has been deposed before processing a read-only
+    /// request (its information may be stale if a more recent leader has been elected). Raft
+    /// handles this by having the leader exchange heartbeat messages with a majority of the
+    /// cluster before responding to read-only requests.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(super) async fn handle_client_read_request(&mut self, tx: ClientReadResponseTx) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
-        let len_members = self.core.membership.members.len();
         let mut c0_confirmed = 0usize;
+        let len_members = self.core.membership.members.len(); // Will never be zero, as we don't allow it when proposing config changes.
         let c0_needed: usize = if (len_members % 2) == 0 {
             (len_members / 2) - 1
         } else {
@@ -113,21 +119,24 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             c1_needed = if (len % 2) == 0 { (len / 2) - 1 } else { len / 2 };
         }
 
-        // As long as we are not about to step down, then increment for our vote.
-        if !self.is_stepping_down {
-            if self.core.membership.members.contains(&self.core.id) {
-                c0_confirmed += 1;
-            }
-            if self
-                .core
-                .membership
-                .members_after_consensus
-                .as_ref()
-                .map(|members| members.contains(&self.core.id))
-                .unwrap_or(false)
-            {
-                c1_confirmed += 1;
-            }
+        // Increment confirmations for self, including post-joint-consensus config if applicable.
+        c0_confirmed += 1;
+        let is_in_post_join_consensus_config = self
+            .core
+            .membership
+            .members_after_consensus
+            .as_ref()
+            .map(|members| members.contains(&self.core.id))
+            .unwrap_or(false);
+        if is_in_post_join_consensus_config {
+            c1_confirmed += 1;
+        }
+
+        // If we already have all needed confirmations — which would be the case for singlenode
+        // clusters — then respond.
+        if c0_confirmed >= c0_needed && c1_confirmed >= c1_needed {
+            let _ = tx.send(Ok(()));
+            return;
         }
 
         // Spawn parallel requests, all with the standard timeout for heartbeats.

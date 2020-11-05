@@ -4,6 +4,10 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 
 ## [unreleased]
 
+## 0.5.4
+### fixed
+- Fixed [#82](https://github.com/async-raft/async-raft/issues/82) where client reads were not behaving correctly for single node clusters. Single node integration tests have been updated to ensure this functionality is working as needed.
+
 ## 0.5.3
 ### fixed
 - Fixed [#79](https://github.com/async-raft/async-raft/issues/79) ... for real this time! Add an integration test to prove it.
