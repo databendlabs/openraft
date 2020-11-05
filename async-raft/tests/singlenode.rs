@@ -44,5 +44,8 @@ async fn singlenode() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(1001)).await;
     router.assert_storage_state(1, 1001, Some(0), 1001, None).await;
 
+    // Read some data from the single node cluster.
+    router.client_read(0).await?;
+
     Ok(())
 }
