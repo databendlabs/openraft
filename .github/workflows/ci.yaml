@@ -5,57 +5,74 @@ jobs:
     name: build async-raft
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.45.2
           default: true
           components: clippy
 
       # clippy
-      - uses: actions-rs/cargo@v1
+      - name: Clippy
+        uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: -p async-raft -- -D warnings
 
       # unit tests
-      - uses: actions-rs/cargo@v1
+      - name: Unit Tests
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: -p async-raft --lib
 
       # integration tests
-      - uses: actions-rs/cargo@v1
+      - name: Integration Test | Initialization
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: -p async-raft --test initialization
-      - uses: actions-rs/cargo@v1
+      - name: Integration Test | Client Reads
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: -p async-raft --test client_reads
-      - uses: actions-rs/cargo@v1
+      - name: Integration Test | Client Writes
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: -p async-raft --test client_writes
-      - uses: actions-rs/cargo@v1
+      - name: Integration Test | Singlenode
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: -p async-raft --test singlenode
-      - uses: actions-rs/cargo@v1
+      - name: Integration Test | Dynamic Membership
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: -p async-raft --test dynamic_membership
-      - uses: actions-rs/cargo@v1
+      - name: Integration Test | Compaction
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: -p async-raft --test compaction
-      - uses: actions-rs/cargo@v1
+      - name: Integration Test | Stepdown
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: -p async-raft --test stepdown
+      - name: Integration Test | Shutdown
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --test shutdown
 
       # release build
-      - uses: actions-rs/cargo@v1
+      - name: Build | Release Mode
+        uses: actions-rs/cargo@v1
         with:
           command: build
           args: -p async-raft --release
@@ -64,12 +81,15 @@ jobs:
     name: build async-raft nightly
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           override: true
-      - uses: actions-rs/cargo@v1
+      - name: Build | Release Mode
+        uses: actions-rs/cargo@v1
         with:
           command: build
           args: -p async-raft --release --all-features
@@ -78,27 +98,32 @@ jobs:
     name: build memstore
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.45.2
           default: true
           components: clippy
 
       # clippy
-      - uses: actions-rs/cargo@v1
+      - name: Clippy
+        uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: -p memstore -- -D warnings
 
       # unit tests
-      - uses: actions-rs/cargo@v1
+      - name: Unit Tests
+        uses: actions-rs/cargo@v1
         with:
           command: test
           args: -p memstore
 
       # release build
-      - uses: actions-rs/cargo@v1
+      - name: Build | Release Mode
+        uses: actions-rs/cargo@v1
         with:
           command: build
           args: -p memstore --release

@@ -10,13 +10,15 @@ jobs:
   deploy:
     runs-on: ubuntu-18.04
     steps:
-      - uses: actions/checkout@v2
-      - name: mdbook
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+      - name: Setup | mdbook
         uses: peaceiris/actions-mdbook@v1
         with:
           mdbook-version: '0.4.2'
-      - run: mdbook build
-      - name: deploy
+      - name: Build
+        run: mdbook build
+      - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

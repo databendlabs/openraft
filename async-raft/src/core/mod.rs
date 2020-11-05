@@ -8,7 +8,6 @@ pub(crate) mod replication;
 mod vote;
 
 use std::collections::{BTreeMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures::future::{AbortHandle, Abortable};
@@ -90,22 +89,18 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// The duration until the next election timeout.
     next_election_timeout: Option<Instant>,
 
-    /// An atomic bool indicating if this node needs to shutdown.
-    ///
-    /// This is only used from the `Raft` handle.
-    needs_shutdown: Arc<AtomicBool>,
-
     tx_compaction: mpsc::Sender<SnapshotUpdate>,
     rx_compaction: mpsc::Receiver<SnapshotUpdate>,
 
     rx_api: mpsc::UnboundedReceiver<RaftMsg<D, R>>,
     tx_metrics: watch::Sender<RaftMetrics>,
+    rx_shutdown: oneshot::Receiver<()>,
 }
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     pub(crate) fn spawn(
         id: NodeId, config: Arc<Config>, network: Arc<N>, storage: Arc<S>, rx_api: mpsc::UnboundedReceiver<RaftMsg<D, R>>,
-        tx_metrics: watch::Sender<RaftMetrics>, needs_shutdown: Arc<AtomicBool>,
+        tx_metrics: watch::Sender<RaftMetrics>, rx_shutdown: oneshot::Receiver<()>,
     ) -> JoinHandle<RaftResult<()>> {
         let membership = MembershipConfig::new_initial(id); // This is updated from storage in the main loop.
         let (tx_compaction, rx_compaction) = mpsc::channel(1);
@@ -131,7 +126,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             rx_compaction,
             rx_api,
             tx_metrics,
-            needs_shutdown,
+            rx_shutdown,
         };
         tokio::spawn(this.main())
     }
@@ -183,15 +178,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // controllers and simply awaits the delegated loop to return, which will only take place
         // if some error has been encountered, or if a state change is required.
         loop {
-            if self.needs_shutdown.load(Ordering::SeqCst) {
-                self.set_target_state(State::Shutdown);
-            }
             match &self.target_state {
                 State::Leader => LeaderState::new(&mut self).run().await?,
                 State::Candidate => CandidateState::new(&mut self).run().await?,
                 State::Follower => FollowerState::new(&mut self).run().await?,
                 State::NonVoter => NonVoterState::new(&mut self).run().await?,
-                State::Shutdown => return Ok(()),
+                State::Shutdown => {
+                    tracing::info!("node has shutdown");
+                    return Ok(());
+                }
             }
         }
     }
@@ -571,7 +566,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.commit_initial_leader_entry().await?;
 
         loop {
-            if !self.core.target_state.is_leader() || self.core.needs_shutdown.load(Ordering::SeqCst) {
+            if !self.core.target_state.is_leader() {
                 for node in self.nodes.values() {
                     let _ = node.replstream.repltx.send(RaftEvent::Terminate);
                 }
@@ -630,6 +625,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     }
                 }
                 Some(event) = self.replicationrx.next() => self.handle_replica_event(event).await,
+                Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }
     }
@@ -745,7 +741,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Inner processing loop for this Raft state.
             loop {
-                if !self.core.target_state.is_candidate() || self.core.needs_shutdown.load(Ordering::SeqCst) {
+                if !self.core.target_state.is_candidate() {
                     return Ok(());
                 }
 
@@ -780,6 +776,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         }
                     },
                     Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                    Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
                 }
             }
         }
@@ -804,7 +801,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(self) async fn run(self) -> RaftResult<()> {
         self.core.report_metrics();
         loop {
-            if !self.core.target_state.is_follower() || self.core.needs_shutdown.load(Ordering::SeqCst) {
+            if !self.core.target_state.is_follower() {
                 return Ok(());
             }
 
@@ -839,6 +836,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     }
                 },
                 Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }
     }
@@ -862,7 +860,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(self) async fn run(mut self) -> RaftResult<()> {
         self.core.report_metrics();
         loop {
-            if !self.core.target_state.is_non_voter() || self.core.needs_shutdown.load(Ordering::SeqCst) {
+            if !self.core.target_state.is_non_voter() {
                 return Ok(());
             }
             tokio::select! {
@@ -893,6 +891,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     }
                 },
                 Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }
     }

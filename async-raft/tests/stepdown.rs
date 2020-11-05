@@ -83,7 +83,7 @@ async fn stepdown() -> Result<()> {
     }
 
     // Assert that the current cluster is stable.
-    router.remove_node(0).await;
+    let _ = router.remove_node(0).await;
     delay_for(Duration::from_secs(5)).await; // Give time for a new leader to be elected.
     router.assert_stable_cluster(Some(2), Some(4)).await;
     router.assert_storage_state(2, 4, None, 0, None).await;
