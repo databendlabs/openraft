@@ -1,7 +1,6 @@
 //! Public Raft interface and data types.
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -35,7 +34,7 @@ pub struct Raft<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorag
     tx_api: mpsc::UnboundedSender<RaftMsg<D, R>>,
     rx_metrics: watch::Receiver<RaftMetrics>,
     raft_handle: JoinHandle<RaftResult<()>>,
-    needs_shutdown: Arc<AtomicBool>,
+    tx_shutdown: oneshot::Sender<()>,
     marker_n: std::marker::PhantomData<N>,
     marker_s: std::marker::PhantomData<S>,
 }
@@ -62,13 +61,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     pub fn new(id: NodeId, config: Arc<Config>, network: Arc<N>, storage: Arc<S>) -> Self {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
-        let needs_shutdown = Arc::new(AtomicBool::new(false));
-        let raft_handle = RaftCore::spawn(id, config, network, storage, rx_api, tx_metrics, needs_shutdown.clone());
+        let (tx_shutdown, rx_shutdown) = oneshot::channel();
+        let raft_handle = RaftCore::spawn(id, config, network, storage, rx_api, tx_metrics, rx_shutdown);
         Self {
             tx_api,
             rx_metrics,
             raft_handle,
-            needs_shutdown,
+            tx_shutdown,
             marker_n: std::marker::PhantomData,
             marker_s: std::marker::PhantomData,
         }
@@ -247,7 +246,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Shutdown this Raft node, returning its join handle.
     pub fn shutdown(self) -> tokio::task::JoinHandle<RaftResult<()>> {
-        self.needs_shutdown.store(true, Ordering::SeqCst);
+        let _ = self.tx_shutdown.send(());
         self.raft_handle
     }
 }

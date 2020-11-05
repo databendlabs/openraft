@@ -65,11 +65,13 @@ impl RaftRouter {
     }
 
     /// Remove the target node from the routing table & isolation.
-    pub async fn remove_node(&self, id: NodeId) {
+    pub async fn remove_node(&self, id: NodeId) -> Option<(MemRaft, Arc<MemStore>)> {
         let mut rt = self.routing_table.write().await;
-        rt.remove(&id);
+        let opt_handles = rt.remove(&id);
         let mut isolated = self.isolated_nodes.write().await;
         isolated.remove(&id);
+
+        opt_handles
     }
 
     /// Initialize all nodes based on the config in the routing table.
