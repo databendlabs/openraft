@@ -52,7 +52,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if msg_prev_index_is_min || msg_index_and_term_match {
             // If this is just a heartbeat, then respond.
             if msg.entries.is_empty() {
-                self.replicate_to_state_machine_if_needed(&mut report_metrics).await?;
+                self.replicate_to_state_machine_if_needed(msg.entries).await;
                 if report_metrics {
                     self.report_metrics();
                 }
@@ -65,7 +65,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
             // Else, append log entries.
             self.append_log_entries(&msg.entries).await?;
-            self.replicate_to_state_machine_if_needed(&mut report_metrics).await?;
+            self.replicate_to_state_machine_if_needed(msg.entries).await;
             if report_metrics {
                 self.report_metrics();
             }
@@ -156,7 +156,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tracing::trace!("end log consistency check");
 
         self.append_log_entries(&msg.entries).await?;
-        self.replicate_to_state_machine_if_needed(&mut report_metrics).await?;
+        self.replicate_to_state_machine_if_needed(msg.entries).await;
         if report_metrics {
             self.report_metrics();
         }
@@ -198,20 +198,93 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         Ok(())
     }
 
-    /// Replicate outstanding logs to the state machine if needed.
-    #[tracing::instrument(level = "trace", skip(self, report_metrics))]
-    async fn replicate_to_state_machine_if_needed(&mut self, report_metrics: &mut bool) -> RaftResult<()> {
-        if self.commit_index > self.last_applied {
-            // Fetch the series of entries which must be applied to the state machine, and apply them.
-            let stop = std::cmp::min(self.commit_index, self.last_log_index) + 1;
-            let entries = self
-                .storage
-                .get_log_entries(self.last_applied + 1, stop)
-                .await
-                .map_err(|err| self.map_fatal_storage_error(err))?;
+    /// Replicate any outstanding entries to the state machine for which it is safe to do so.
+    ///
+    /// Very importantly, this routine must not block the main control loop main task, else it
+    /// may cause the Raft leader to timeout the requests to this node.
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn replicate_to_state_machine_if_needed(&mut self, entries: Vec<Entry<D>>) {
+        // Update cache. Always.
+        for entry in entries {
+            self.entries_cache.insert(entry.index, entry);
+        }
+        // Perform initial replication to state machine if needed.
+        if !self.has_completed_initial_replication_to_sm {
+            // Optimistic update, as failures will cause shutdown.
+            self.has_completed_initial_replication_to_sm = true;
+            return self.initial_replicate_to_state_machine().await;
+        }
+        // If we already have an active replication task, then do nothing.
+        if !self.replicate_to_sm_handle.is_empty() {
+            return;
+        }
+        // If we don't have any new entries to replicate, then do nothing.
+        if self.commit_index <= self.last_applied {
+            return;
+        }
+        // If we have no cached entries, then do nothing.
+        let first_idx = match self.entries_cache.iter().next() {
+            Some((_, entry)) => entry.index,
+            None => return,
+        };
+
+        // Drain entries from the beginning of the cache up to commit index.
+        let mut last_entry_seen: Option<u64> = None;
+        let entries: Vec<_> = (first_idx..=self.commit_index)
+            .filter_map(|idx| {
+                if let Some(entry) = self.entries_cache.remove(&idx) {
+                    last_entry_seen = Some(entry.index);
+                    match entry.payload {
+                        EntryPayload::Normal(inner) => Some((entry.index, inner.data)),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+        // If we actually have some cached entries to apply, then we optimistically update, as
+        // `self.last_applied` is held in-memory only, and if an error does come up, then
+        // Raft will go into shutdown.
+        if let Some(index) = last_entry_seen {
+            self.last_applied = index;
+            self.report_metrics();
+        }
+        // If we have no data entries to apply, then do nothing.
+        if entries.is_empty() {
+            return;
+        }
+        // Create a new vector of references to the entries data ... might have to change this
+        // interface a bit before 1.0.
+        let storage = self.storage.clone();
+        let handle = tokio::spawn(async move {
+            let entries_refs: Vec<_> = entries.iter().map(|(k, v)| (k, v)).collect();
+            storage.replicate_to_state_machine(&entries_refs).await?;
+            Ok(None)
+        });
+        self.replicate_to_sm_handle.push(handle);
+    }
+
+    /// Perform an initial replication of outstanding entries to the state machine.
+    ///
+    /// This will only be executed once when a Raft node first comes online.
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn initial_replicate_to_state_machine(&mut self) {
+        let stop = std::cmp::min(self.commit_index, self.last_log_index) + 1;
+        let start = self.last_applied + 1;
+        let storage = self.storage.clone();
+
+        // If we already have an active replication task, then do nothing.
+        if !self.replicate_to_sm_handle.is_empty() {
+            return;
+        }
+
+        // Fetch the series of entries which must be applied to the state machine, then apply them.
+        let handle = tokio::spawn(async move {
+            let mut new_last_applied: Option<u64> = None;
+            let entries = storage.get_log_entries(start, stop).await?;
             if let Some(entry) = entries.last() {
-                self.last_applied = entry.index;
-                *report_metrics = true;
+                new_last_applied = Some(entry.index);
             }
             let data_entries: Vec<_> = entries
                 .iter()
@@ -221,16 +294,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 })
                 .collect();
             if data_entries.is_empty() {
-                return Ok(());
+                return Ok(new_last_applied);
             }
-            self.storage
-                .replicate_to_state_machine(&data_entries)
-                .await
-                .map_err(|err| self.map_fatal_storage_error(err))?;
-
-            // Request async compaction, if needed.
-            self.trigger_log_compaction_if_needed();
-        }
-        Ok(())
+            storage.replicate_to_state_machine(&data_entries).await?;
+            Ok(new_last_applied)
+        });
+        self.replicate_to_sm_handle.push(handle);
     }
 }

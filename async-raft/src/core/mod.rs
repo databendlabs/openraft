@@ -23,7 +23,7 @@ use crate::config::{Config, SnapshotPolicy};
 use crate::core::client::ClientRequestEntry;
 use crate::error::{ChangeConfigError, ClientReadError, ClientWriteError, InitializeError, RaftError, RaftResult};
 use crate::metrics::RaftMetrics;
-use crate::raft::{ChangeMembershipTx, ClientReadResponseTx, ClientWriteRequest, ClientWriteResponseTx, MembershipConfig, RaftMsg};
+use crate::raft::{ChangeMembershipTx, ClientReadResponseTx, ClientWriteRequest, ClientWriteResponseTx, Entry, MembershipConfig, RaftMsg};
 use crate::replication::{RaftEvent, ReplicaEvent, ReplicationStream};
 use crate::storage::HardState;
 use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
@@ -85,6 +85,25 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
     snapshot_index: u64,
 
+    /// A cache of entries which are waiting to be replicated to the state machine.
+    ///
+    /// It is important to note that this cache must only be populated from the AppendEntries RPC
+    /// handler, as these values must only ever represent the entries which have been sent from
+    /// the current cluster leader.
+    ///
+    /// Whenever there is a leadership change, this value will be cleared.
+    entries_cache: BTreeMap<u64, Entry<D>>,
+    /// The stream of join handles from state machine replication tasks. There will only ever be
+    /// a maximum of 1 element at a time.
+    ///
+    /// This abstraction is needed to ensure that replicating to the state machine does not block
+    /// the AppendEntries RPC flow, and to ensure that we have a smooth transition to becoming
+    /// leader without concern over duplicate application of entries to the state machine.
+    replicate_to_sm_handle: FuturesOrdered<JoinHandle<anyhow::Result<Option<u64>>>>,
+    /// A bool indicating if this system has performed its initial replication of
+    /// outstanding entries to the state machine.
+    has_completed_initial_replication_to_sm: bool,
+
     /// The last time a heartbeat was received.
     last_heartbeat: Option<Instant>,
     /// The duration until the next election timeout.
@@ -121,6 +140,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             last_log_term: 0,
             snapshot_state: None,
             snapshot_index: 0,
+            entries_cache: Default::default(),
+            replicate_to_sm_handle: FuturesOrdered::new(),
+            has_completed_initial_replication_to_sm: false,
             last_heartbeat: None,
             next_election_timeout: None,
             tx_compaction,
@@ -250,6 +272,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Update the value of the `current_leader` property.
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_current_leader(&mut self, update: UpdateCurrentLeader) {
+        self.entries_cache.clear();
         match update {
             UpdateCurrentLeader::ThisNode => {
                 self.current_leader = Some(self.id);
@@ -365,6 +388,18 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             }
             .instrument(tracing::debug_span!("beginning new log compaction process")),
         );
+    }
+
+    /// Handle the output of an async task replicating entries to the state machine.
+    #[tracing::instrument(level = "trace", skip(self, res))]
+    pub(self) fn handle_replicate_to_sm_result(&mut self, res: anyhow::Result<Option<u64>>) -> RaftResult<()> {
+        let last_applied_opt = res.map_err(|err| self.map_fatal_storage_error(err))?;
+        if let Some(last_applied) = last_applied_opt {
+            self.last_applied = last_applied;
+        }
+        self.report_metrics();
+        self.trigger_log_compaction_if_needed();
+        Ok(())
     }
 
     /// Reject an init config request due to the Raft node being in a state which prohibits the request.
@@ -626,6 +661,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     }
                 }
                 Some(event) = self.replicationrx.next() => self.handle_replica_event(event).await,
+                Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
+                    // Errors herein will trigger shutdown, so no need to process error.
+                    let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
+                }
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }
@@ -777,6 +816,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         }
                     },
                     Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                    Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
+                        // Errors herein will trigger shutdown, so no need to process error.
+                        let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
+                    }
                     Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
                 }
             }
@@ -837,6 +880,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     }
                 },
                 Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
+                    // Errors herein will trigger shutdown, so no need to process error.
+                    let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
+                }
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }
@@ -892,6 +939,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     }
                 },
                 Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
+                    // Errors herein will trigger shutdown, so no need to process error.
+                    let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
+                }
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }

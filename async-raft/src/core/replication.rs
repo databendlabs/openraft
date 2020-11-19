@@ -239,7 +239,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // will always be found and this block will never even be executed.
         //
         // If this block is executed, and a snapshot is needed, the repl stream will submit another
-        // request here shortly, and will hit the above logic where it will await the snapshot complection.
+        // request here shortly, and will hit the above logic where it will await the snapshot completion.
         self.core.trigger_log_compaction_if_needed();
         Ok(())
     }
