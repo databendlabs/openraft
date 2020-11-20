@@ -91,7 +91,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// handler, as these values must only ever represent the entries which have been sent from
     /// the current cluster leader.
     ///
-    /// Whenever there is a leadership change, this value will be cleared.
+    /// Whenever there is a leadership change, this cache will be cleared.
     entries_cache: BTreeMap<u64, Entry<D>>,
     /// The stream of join handles from state machine replication tasks. There will only ever be
     /// a maximum of 1 element at a time.

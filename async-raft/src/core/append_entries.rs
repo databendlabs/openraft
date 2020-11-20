@@ -254,10 +254,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if entries.is_empty() {
             return;
         }
-        // Create a new vector of references to the entries data ... might have to change this
-        // interface a bit before 1.0.
+        // Spawn task to replicate these entries to the state machine.
         let storage = self.storage.clone();
         let handle = tokio::spawn(async move {
+            // Create a new vector of references to the entries data ... might have to change this
+            // interface a bit before 1.0.
             let entries_refs: Vec<_> = entries.iter().map(|(k, v)| (k, v)).collect();
             storage.replicate_to_state_machine(&entries_refs).await?;
             Ok(None)
@@ -267,7 +268,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Perform an initial replication of outstanding entries to the state machine.
     ///
-    /// This will only be executed once when a Raft node first comes online.
+    /// This will only be executed once, and only in response to its first payload of entries
+    /// from the AppendEntries RPC handler.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn initial_replicate_to_state_machine(&mut self) {
         let stop = std::cmp::min(self.commit_index, self.last_log_index) + 1;
