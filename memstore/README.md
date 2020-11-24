@@ -7,7 +7,7 @@
 <br />
 <div align="center">
 
-[![Build Status](https://github.com/async-raft/async-raft/workflows/ci/badge.svg?branch=async-raft)](https://travis-ci.com/async-raft/async-raft)
+[![Build Status](https://github.com/async-raft/async-raft/workflows/ci/badge.svg?branch=master)](https://github.com/async-raft/async-raft/actions)
 [![Crates.io](https://img.shields.io/crates/v/memstore.svg)](https://crates.io/crates/memstore)
 [![docs.rs](https://docs.rs/memstore/badge.svg)](https://docs.rs/memstore)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE)
