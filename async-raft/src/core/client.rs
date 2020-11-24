@@ -56,7 +56,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Check to see if we have any config change logs newer than our commit index. If so, then
         // we need to drive the commitment of the config change to the cluster.
-        let mut pending_config = None; // The inner bool represents `is_in_join_consensus`.
+        let mut pending_config = None; // The inner bool represents `is_in_joint_consensus`.
         if self.core.last_log_index > self.core.commit_index {
             let (stale_logs_start, stale_logs_stop) = (self.core.commit_index + 1, self.core.last_log_index + 1);
             pending_config = self.core.storage.get_log_entries(stale_logs_start, stale_logs_stop).await
@@ -80,8 +80,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.core.report_metrics();
 
         // Setup any callbacks needed for responding to commitment of a pending config.
-        if let Some(is_in_join_consensus) = pending_config {
-            if is_in_join_consensus {
+        if let Some(is_in_joint_consensus) = pending_config {
+            if is_in_joint_consensus {
                 self.joint_consensus_cb.push(rx_payload_committed); // Receiver for when the joint consensus is committed.
             } else {
                 self.uniform_consensus_cb.push(rx_payload_committed); // Receiver for when the uniform consensus is committed.
@@ -349,6 +349,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         }
 
+        // Before we can safely apply this entry to the state machine, we need to ensure there is
+        // no pending task to replicate entries to the state machine. This is edge case, and would only
+        // happen once very early in a new leader's term.
+        if !self.core.replicate_to_sm_handle.is_empty() {
+            if let Some(Ok(replicate_to_sm_result)) = self.core.replicate_to_sm_handle.next().await {
+                self.core.handle_replicate_to_sm_result(replicate_to_sm_result)?;
+            }
+        }
         // Apply this entry to the state machine and return its data response.
         let res = self
             .core

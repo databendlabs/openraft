@@ -224,13 +224,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // completion (or cancellation), and respond to the replication stream. The repl stream
         // will wait for the completion and will then send anothe request to fetch the finished snapshot.
         // Else we just drop any other state and continue. Leaders never enter `Streaming` state.
-        if let Some(SnapshotState::Snapshotting { through, handle, sender }) = self.core.snapshot_state.take() {
+        if let Some(SnapshotState::Snapshotting { handle, sender }) = self.core.snapshot_state.take() {
             let mut chan = sender.subscribe();
             tokio::spawn(async move {
                 let _ = chan.recv().await;
                 drop(tx);
             });
-            self.core.snapshot_state = Some(SnapshotState::Snapshotting { through, handle, sender });
+            self.core.snapshot_state = Some(SnapshotState::Snapshotting { handle, sender });
             return Ok(());
         }
 
@@ -239,7 +239,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // will always be found and this block will never even be executed.
         //
         // If this block is executed, and a snapshot is needed, the repl stream will submit another
-        // request here shortly, and will hit the above logic where it will await the snapshot complection.
+        // request here shortly, and will hit the above logic where it will await the snapshot completion.
         self.core.trigger_log_compaction_if_needed();
         Ok(())
     }

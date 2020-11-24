@@ -155,22 +155,20 @@ where
 
     /// Perform log compaction, returning a handle to the generated snapshot.
     ///
-    /// ### `through`
-    /// The log should be compacted starting from entry `0` and should cover all entries through the
-    /// index specified by `through`, inclusively. This will always be the `commit_index` of the
-    /// Raft log at the time of the request.
-    ///
     /// ### implementation guide
-    /// See the [storage chapter of the guide](https://async-raft.github.io/async-raft/storage.html)
-    /// for details on how to implement this handler.
-    async fn do_log_compaction(&self, through: u64) -> Result<CurrentSnapshotData<Self::Snapshot>>;
+    /// When performing log compaction, the compaction can only cover the breadth of the log up to
+    /// the last applied log and under write load this value may change quickly. As such, the
+    /// storage implementation should export/checkpoint/snapshot its state machine, and then use
+    /// the value of that export's last applied log as the metadata indicating the breadth of the
+    /// log covered by the snapshot.
+    async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>>;
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object along with
     /// the ID of the snapshot.
     ///
     /// ### implementation guide
-    /// See the [storage chapter of the guide]()
-    /// for details on how to implement this handler.
+    /// See the [storage chapter of the guide](https://async-raft.github.io/async-raft/storage.html)
+    /// for details on log compaction / snapshotting.
     async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>)>;
 
     /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.

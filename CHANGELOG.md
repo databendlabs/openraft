@@ -4,6 +4,14 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 
 ## [unreleased]
 
+## 0.6.0-alpha.0
+### changed
+- Implemented [#12](https://github.com/async-raft/async-raft/issues/12). This is a pretty old issue and a pretty solid optimization. The previous implementation of this algorithm would go to storage (typically disk) for every process of replicating entries to the state machine. Now, we are caching entries as they come in from the leader, and using only the cache as the source of data. There are a few simple measures needed to ensure this is correct, as the leader entry replication protocol takes care of most of the work for us in this case.
+- Updated / clarified the interface for log compaction. See the guide or the updated `do_log_compaction` method docs for more details.
+
+### fixed
+- Fixed [#76](https://github.com/async-raft/async-raft/issues/76) by moving the process of replicating log entries to the state machine off of the main task. This ensures that the process never blocks the main task. This also includes a few nice optimizations mentioned below.
+
 ## 0.5.5
 ### changed
 - Added `#[derive(Serialize, Deserialize)]` to `RaftMetrics`, `State`.
