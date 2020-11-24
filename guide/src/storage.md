@@ -13,7 +13,7 @@ Once you're ready to begin with your implementation, be sure to adhere to the do
 For inspiration, have a look at this [repo's `memstore` project](https://github.com/async-raft/async-raft/tree/master/memstore). It is an in-memory implementation of the `RaftStorage` trait, intended for demo and testing purposes.
 
 ### compaction / snapshots
-This implementation of Raft automatically triggers log compaction based on runtime configuration, using the `RaftStorage::do_log_compaction` method. Everything related to compaction / snapshots starts with this method. Though snapshots are originally created in the `RaftStorage::do_log_compaction` method, the Raft cluster leader may stream a snapshot over to other nodes if the node is new and needs to be brought up-to-speed, or if a node is lagging behind.
+This implementation of Raft automatically triggers log compaction based on runtime configuration, using the [`RaftStorage::do_log_compaction`](https://docs.rs/async-raft/latest/async_raft/storage/trait.RaftStorage.html#tymethod.do_log_compaction) method. Everything related to compaction / snapshots starts with this method. Though snapshots are originally created in the [`RaftStorage::do_log_compaction`](https://docs.rs/async-raft/latest/async_raft/storage/trait.RaftStorage.html#tymethod.do_log_compaction) method, the Raft cluster leader may stream a snapshot over to other nodes if the node is new and needs to be brought up-to-speed, or if a node is lagging behind.
 
 Compaction / snapshotting are not optional in this system. It is an integral component of the Raft spec, and `RaftStorage` implementations should be careful to implement the compaction / snapshotting related methods carefully according to the trait's documentation.
 

@@ -3,7 +3,7 @@ on:
     branches:
       - master
     paths:
-      - 'guide/*'
+      - 'guide/**'
       - 'book.toml'
       - 'README.md'
 jobs:
