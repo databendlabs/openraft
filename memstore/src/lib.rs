@@ -269,12 +269,13 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn do_log_compaction(&self, through: u64) -> Result<CurrentSnapshotData<Self::Snapshot>> {
-        let data;
+    async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>> {
+        let (data, last_applied_log);
         {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
             data = serde_json::to_vec(&*sm)?;
+            last_applied_log = sm.last_applied_log;
         } // Release state machine read lock.
 
         let membership_config;
@@ -284,7 +285,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             membership_config = log
                 .values()
                 .rev()
-                .skip_while(|entry| entry.index > through)
+                .skip_while(|entry| entry.index > last_applied_log)
                 .find_map(|entry| match &entry.payload {
                     EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
                     _ => None,
@@ -298,14 +299,17 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             let mut log = self.log.write().await;
             let mut current_snapshot = self.current_snapshot.write().await;
             term = log
-                .get(&through)
+                .get(&last_applied_log)
                 .map(|entry| entry.term)
                 .ok_or_else(|| anyhow::anyhow!(ERR_INCONSISTENT_LOG))?;
-            *log = log.split_off(&through);
-            log.insert(through, Entry::new_snapshot_pointer(through, term, "".into(), membership_config.clone()));
+            *log = log.split_off(&last_applied_log);
+            log.insert(
+                last_applied_log,
+                Entry::new_snapshot_pointer(last_applied_log, term, "".into(), membership_config.clone()),
+            );
 
             let snapshot = MemStoreSnapshot {
-                index: through,
+                index: last_applied_log,
                 term,
                 membership: membership_config.clone(),
                 data,
@@ -317,7 +321,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         tracing::trace!({ snapshot_size = snapshot_bytes.len() }, "log compaction complete");
         Ok(CurrentSnapshotData {
             term,
-            index: through,
+            index: last_applied_log,
             membership: membership_config.clone(),
             snapshot: Box::new(Cursor::new(snapshot_bytes)),
         })

@@ -347,13 +347,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return;
         }
         let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
-        // Make sure we have actual entries for compaction.
-        let through_index = std::cmp::min(self.commit_index, self.last_log_index);
-        if through_index == 0 {
+        // Check to ensure we have actual entries for compaction.
+        if self.last_applied == 0 || self.last_applied < self.snapshot_index {
             return;
         }
         // If we are below the threshold, then there is nothing to do.
-        if (through_index - self.snapshot_index) < *threshold {
+        if (self.last_applied - self.snapshot_index) < *threshold {
             return;
         }
 
@@ -363,13 +362,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let (chan_tx, _) = broadcast::channel(1);
         let mut tx_compaction = self.tx_compaction.clone();
         self.snapshot_state = Some(SnapshotState::Snapshotting {
-            through: through_index,
             handle,
             sender: chan_tx.clone(),
         });
         tokio::spawn(
             async move {
-                let res = Abortable::new(storage.do_log_compaction(through_index), reg).await;
+                let res = Abortable::new(storage.do_log_compaction(), reg).await;
                 match res {
                     Ok(res) => match res {
                         Ok(snapshot) => {
@@ -439,8 +437,6 @@ pub(self) enum UpdateCurrentLeader {
 pub(self) enum SnapshotState<S> {
     /// The Raft node is compacting itself.
     Snapshotting {
-        /// The last included index of the new snapshot being generated.
-        through: u64,
         /// A handle to abort the compaction process early if needed.
         handle: AbortHandle,
         /// A sender for notifiying any other tasks of the completion of this compaction.
