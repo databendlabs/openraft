@@ -10,8 +10,6 @@ pub mod raft;
 mod replication;
 pub mod storage;
 
-use std::fmt::Debug;
-
 use serde::{de::DeserializeOwned, Serialize};
 
 pub use crate::{
@@ -36,7 +34,7 @@ pub type NodeId = u64;
 /// models as-is to Raft, Raft will present it to the application's `RaftStorage` impl when ready,
 /// and the application may then deal with the data directly in the storage engine without having
 /// to do a preliminary deserialization.
-pub trait AppData: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}
+pub trait AppData: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
 
 /// A trait defining application specific response data.
 ///
@@ -51,4 +49,4 @@ pub trait AppData: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 
 /// related to the success or failure of a client request — application specific validation logic,
 /// enforcing of data constraints, and anything of that nature — are expressly out of the realm of
 /// the Raft consensus protocol.
-pub trait AppDataResponse: Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static {}
+pub trait AppDataResponse: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
