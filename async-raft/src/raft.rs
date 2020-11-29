@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{mpsc, oneshot, watch, Mutex};
 use tokio::task::JoinHandle;
 
 use crate::config::Config;
@@ -12,6 +12,15 @@ use crate::core::RaftCore;
 use crate::error::{ChangeConfigError, ClientReadError, ClientWriteError, InitializeError, RaftError, RaftResult};
 use crate::metrics::RaftMetrics;
 use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
+
+struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+    tx_api: mpsc::UnboundedSender<RaftMsg<D, R>>,
+    rx_metrics: watch::Receiver<RaftMetrics>,
+    raft_handle: Mutex<Option<JoinHandle<RaftResult<()>>>>,
+    tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
+    marker_n: std::marker::PhantomData<N>,
+    marker_s: std::marker::PhantomData<S>,
+}
 
 /// The Raft API.
 ///
@@ -31,12 +40,7 @@ use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
 /// method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the trick.
 pub struct Raft<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
-    tx_api: mpsc::UnboundedSender<RaftMsg<D, R>>,
-    rx_metrics: watch::Receiver<RaftMetrics>,
-    raft_handle: JoinHandle<RaftResult<()>>,
-    tx_shutdown: oneshot::Sender<()>,
-    marker_n: std::marker::PhantomData<N>,
-    marker_s: std::marker::PhantomData<S>,
+    inner: Arc<RaftInner<D, R, N, S>>,
 }
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Raft<D, R, N, S> {
@@ -63,14 +67,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
         let raft_handle = RaftCore::spawn(id, config, network, storage, rx_api, tx_metrics, rx_shutdown);
-        Self {
+        let inner = RaftInner {
             tx_api,
             rx_metrics,
-            raft_handle,
-            tx_shutdown,
+            raft_handle: Mutex::new(Some(raft_handle)),
+            tx_shutdown: Mutex::new(Some(tx_shutdown)),
             marker_n: std::marker::PhantomData,
             marker_s: std::marker::PhantomData,
-        }
+        };
+        Self { inner: Arc::new(inner) }
     }
 
     /// Submit an AppendEntries RPC to this Raft node.
@@ -80,7 +85,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api
+        self.inner
+            .tx_api
             .send(RaftMsg::AppendEntries { rpc, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
@@ -92,7 +98,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::RequestVote { rpc, tx }).map_err(|_| RaftError::ShuttingDown)?;
+        self.inner
+            .tx_api
+            .send(RaftMsg::RequestVote { rpc, tx })
+            .map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
@@ -103,7 +112,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api
+        self.inner
+            .tx_api
             .send(RaftMsg::InstallSnapshot { rpc, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
@@ -116,7 +126,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn client_read(&self) -> Result<(), ClientReadError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api
+        self.inner
+            .tx_api
             .send(RaftMsg::ClientReadRequest { tx })
             .map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
         Ok(rx
@@ -145,7 +156,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn client_write(&self, rpc: ClientWriteRequest<D>) -> Result<ClientWriteResponse<R>, ClientWriteError<D>> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api
+        self.inner
+            .tx_api
             .send(RaftMsg::ClientWriteRequest { rpc, tx })
             .map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown))?;
         Ok(rx
@@ -185,7 +197,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize(&self, members: HashSet<NodeId>) -> Result<(), InitializeError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api
+        self.inner
+            .tx_api
             .send(RaftMsg::Initialize { members, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx
@@ -209,7 +222,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn add_non_voter(&self, id: NodeId) -> Result<(), ChangeConfigError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api.send(RaftMsg::AddNonVoter { id, tx }).map_err(|_| RaftError::ShuttingDown)?;
+        self.inner
+            .tx_api
+            .send(RaftMsg::AddNonVoter { id, tx })
+            .map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx
             .await
             .map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown))
@@ -230,7 +246,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn change_membership(&self, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
         let (tx, rx) = oneshot::channel();
-        self.tx_api
+        self.inner
+            .tx_api
             .send(RaftMsg::ChangeMembership { members, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
         Ok(rx
@@ -241,13 +258,24 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Get a handle to the metrics channel.
     pub fn metrics(&self) -> watch::Receiver<RaftMetrics> {
-        self.rx_metrics.clone()
+        self.inner.rx_metrics.clone()
     }
 
-    /// Shutdown this Raft node, returning its join handle.
-    pub fn shutdown(self) -> tokio::task::JoinHandle<RaftResult<()>> {
-        let _ = self.tx_shutdown.send(());
-        self.raft_handle
+    /// Shutdown this Raft node.
+    pub async fn shutdown(&self) -> anyhow::Result<()> {
+        if let Some(tx) = self.inner.tx_shutdown.lock().await.take() {
+            let _ = tx.send(());
+        }
+        if let Some(handle) = self.inner.raft_handle.lock().await.take() {
+            let _ = handle.await?;
+        }
+        Ok(())
+    }
+}
+
+impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Clone for Raft<D, R, N, S> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
     }
 }
 
