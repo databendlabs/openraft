@@ -34,6 +34,10 @@ struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStora
 /// For details and discussion on this API, see the
 /// [Raft API](https://async-raft.github.io/async-raft/raft.html) section of the guide.
 ///
+/// ### clone
+/// This type implements `Clone`, and should be cloned liberally. The clone itself is very cheap
+/// and helps to facilitate use with async workflows.
+///
 /// ### shutting down
 /// If any of the interfaces returns a `RaftError::ShuttingDown`, this indicates that the Raft node
 /// is shutting down (potentially for data safety reasons due to a storage error), and the `shutdown`
