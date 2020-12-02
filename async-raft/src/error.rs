@@ -2,7 +2,6 @@
 
 use thiserror::Error;
 
-use crate::raft::ClientWriteRequest;
 use crate::{AppData, NodeId};
 
 /// A result type where the error variant is always a `RaftError`.
@@ -48,7 +47,7 @@ pub enum ClientWriteError<D: AppData> {
     RaftError(#[from] RaftError),
     /// The client write request must be forwarded to the cluster leader.
     #[error("the client write request must be forwarded to the cluster leader")]
-    ForwardToLeader(ClientWriteRequest<D>, Option<NodeId>),
+    ForwardToLeader(D, Option<NodeId>),
 }
 
 /// Error variants related to configuration.

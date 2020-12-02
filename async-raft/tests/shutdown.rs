@@ -41,11 +41,11 @@ async fn initialization() -> Result<()> {
 
     tracing::info!("--- performing node shutdowns");
     let (node0, _) = router.remove_node(0).await.ok_or_else(|| anyhow!("failed to find node 0 in router"))?;
-    node0.shutdown().await??;
+    node0.shutdown().await?;
     let (node1, _) = router.remove_node(1).await.ok_or_else(|| anyhow!("failed to find node 1 in router"))?;
-    node1.shutdown().await??;
+    node1.shutdown().await?;
     let (node2, _) = router.remove_node(2).await.ok_or_else(|| anyhow!("failed to find node 2 in router"))?;
-    node2.shutdown().await??;
+    node2.shutdown().await?;
 
     Ok(())
 }

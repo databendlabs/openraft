@@ -23,7 +23,9 @@ use crate::config::{Config, SnapshotPolicy};
 use crate::core::client::ClientRequestEntry;
 use crate::error::{ChangeConfigError, ClientReadError, ClientWriteError, InitializeError, RaftError, RaftResult};
 use crate::metrics::RaftMetrics;
-use crate::raft::{ChangeMembershipTx, ClientReadResponseTx, ClientWriteRequest, ClientWriteResponseTx, Entry, MembershipConfig, RaftMsg};
+use crate::raft::{
+    ChangeMembershipTx, ClientReadResponseTx, ClientWriteRequest, ClientWriteResponseTx, Entry, EntryPayload, MembershipConfig, RaftMsg,
+};
 use crate::replication::{RaftEvent, ReplicaEvent, ReplicationStream};
 use crate::storage::HardState;
 use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
@@ -415,7 +417,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Forward the given client write request to the leader.
     #[tracing::instrument(level = "trace", skip(self, req, tx))]
     fn forward_client_write_request(&self, req: ClientWriteRequest<D>, tx: ClientWriteResponseTx<D, R>) {
-        let _ = tx.send(Err(ClientWriteError::ForwardToLeader(req, self.current_leader)));
+        match req.entry {
+            EntryPayload::Normal(entry) => {
+                let _ = tx.send(Err(ClientWriteError::ForwardToLeader(entry.data, self.current_leader)));
+            }
+            _ => {
+                // This is unreachable, and well controlled by the type system, but let's log an
+                // error for good measure.
+                tracing::error!("unreachable branch hit within async-raft, attempting to forward a Raft internal entry");
+            }
+        }
     }
 
     /// Forward the given client read request to the leader.
