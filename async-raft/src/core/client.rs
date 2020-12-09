@@ -358,14 +358,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         }
         // Apply this entry to the state machine and return its data response.
-        let res = self
-            .core
-            .storage
-            .apply_entry_to_state_machine(index, entry)
-            .await
-            .map_err(|err| self.core.map_fatal_storage_error(err))?;
+        let res = self.core.storage.apply_entry_to_state_machine(index, entry).await.map_err(|err| {
+            if err.downcast_ref::<S::ShutdownError>().is_some() {
+                // If this is an instance of the storage impl's shutdown error, then trigger shutdown.
+                self.core.map_fatal_storage_error(err)
+            } else {
+                // Else, we propagate normally.
+                RaftError::RaftStorage(err)
+            }
+        });
         self.core.last_applied = *index;
         self.core.report_metrics();
-        Ok(res)
+        Ok(res?)
     }
 }

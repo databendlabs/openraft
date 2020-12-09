@@ -13,6 +13,7 @@ use async_raft::raft::{Entry, EntryPayload, MembershipConfig};
 use async_raft::storage::{CurrentSnapshotData, HardState, InitialState};
 use async_raft::{AppData, AppDataResponse, NodeId, RaftStorage};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tokio::sync::RwLock;
 use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
 
@@ -38,16 +39,15 @@ impl AppData for ClientRequest {}
 
 /// The application data response type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ClientResponse(std::result::Result<Option<String>, ClientError>);
+pub struct ClientResponse(Option<String>);
 
 impl AppDataResponse for ClientResponse {}
 
-/// Error data response.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ClientError {
-    /// This request has already been applied to the state machine, and the original response
-    /// no longer exists.
-    OldRequestReplayed,
+/// Error used to trigger Raft shutdown from storage.
+#[derive(Clone, Debug, Error)]
+pub enum ShutdownError {
+    #[error("unsafe storage error")]
+    UnsafeStorageError,
 }
 
 /// The application snapshot type which the `MemStore` works with.
@@ -141,6 +141,7 @@ impl MemStore {
 #[async_trait]
 impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     type Snapshot = Cursor<Vec<u8>>;
+    type ShutdownError = ShutdownError;
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
@@ -244,12 +245,12 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         sm.last_applied_log = *index;
         if let Some((serial, res)) = sm.client_serial_responses.get(&data.client) {
             if serial == &data.serial {
-                return Ok(ClientResponse(Ok(res.clone())));
+                return Ok(ClientResponse(res.clone()));
             }
         }
         let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
         sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
-        Ok(ClientResponse(Ok(previous)))
+        Ok(ClientResponse(previous))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
