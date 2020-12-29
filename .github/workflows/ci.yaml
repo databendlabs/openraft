@@ -10,7 +10,7 @@ jobs:
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.45.2
+          toolchain: stable
           default: true
 
       # unit tests
@@ -95,7 +95,7 @@ jobs:
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.45.2
+          toolchain: stable
           default: true
 
       # unit tests
