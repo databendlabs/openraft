@@ -123,6 +123,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
+    /// Get the id of the current leader from this Raft node.
+    ///
+    /// Noted that it is the responsibility of the application to verify the leader by calling
+    /// [`client_read`] or [`client_write`].
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn client_current_leader(&self) -> Option<NodeId> {
+        self.metrics().borrow().current_leader
+    }
+
     /// Check to ensure this node is still the cluster leader, in order to guard against stale reads (§8).
     ///
     /// The actual read operation itself is up to the application, this method just ensures that
