@@ -170,18 +170,18 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                     None => (0, 0),
                 };
                 let last_applied_log = sm.last_applied_log;
-                return Ok(InitialState {
+                Ok(InitialState {
                     last_log_index,
                     last_log_term,
                     last_applied_log,
                     hard_state: inner.clone(),
                     membership,
-                });
+                })
             }
             None => {
                 let new = InitialState::new_initial(self.id);
                 *hs = Some(new.hard_state.clone());
-                return Ok(new);
+                Ok(new)
             }
         }
     }

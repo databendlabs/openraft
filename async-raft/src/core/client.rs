@@ -281,7 +281,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self, req))]
     pub(super) async fn client_request_post_commit(&mut self, req: ClientRequestEntry<D, R>) {
         match req.tx {
-            // If this is a client response channel, then it means that we are dealing with
             ClientOrInternalResponseTx::Client(tx) => match &req.entry.payload {
                 EntryPayload::Normal(inner) => match self.apply_entry_to_state_machine(&req.entry.index, &inner.data).await {
                     Ok(data) => {

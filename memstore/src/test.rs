@@ -87,8 +87,10 @@ async fn test_get_initial_state_with_previous_state() -> Result<()> {
             payload: EntryPayload::Blank,
         },
     );
-    let mut sm = MemStoreStateMachine::default();
-    sm.last_applied_log = 1; // Just stubbed in for testing.
+    let sm = MemStoreStateMachine {
+        last_applied_log: 1, // Just stubbed in for testing.
+        ..Default::default()
+    };
     let hs = HardState {
         current_term: 1,
         voted_for: Some(NODE_ID),

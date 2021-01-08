@@ -75,7 +75,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             id,
             snapshot,
         });
-        return Ok(InstallSnapshotResponse { term: self.current_term });
+        Ok(InstallSnapshotResponse { term: self.current_term })
     }
 
     #[tracing::instrument(level = "trace", skip(self, req, offset, snapshot))]
@@ -104,7 +104,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         } else {
             self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
         }
-        return Ok(InstallSnapshotResponse { term: self.current_term });
+        Ok(InstallSnapshotResponse { term: self.current_term })
     }
 
     /// Finalize the installation of a new snapshot.

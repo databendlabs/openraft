@@ -270,7 +270,7 @@ impl RaftRouter {
                 node.id, node.last_log_index, expected_last_log
             );
             let mut members = node.membership_config.members.iter().cloned().collect::<Vec<_>>();
-            members.sort();
+            members.sort_unstable();
             assert_eq!(
                 members, all_nodes,
                 "node {} has membership {:?}, expected {:?}",
