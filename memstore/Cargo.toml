@@ -1,6 +1,6 @@
 [package]
 name = "memstore"
-version = "0.2.0-alpha.0"
+version = "0.2.0-alpha.2"
 edition = "2018"
 categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An in-memory implementation of the `async-raft::RaftStorage` trait."
@@ -14,7 +14,7 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.32"
-async-raft = { version="0.6.0-alpha.0", path="../async-raft" }
+async-raft = { version="0.6.0-alpha.2", path="../async-raft" }
 serde = { version="1.0.114", features=["derive"] }
 serde_json = "1.0.57"
 thiserror = "1.0.20"

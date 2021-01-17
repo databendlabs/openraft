@@ -190,8 +190,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.target_state = State::Leader;
         }
         // Else if there are other members, that can only mean that state was recovered. Become follower.
+        // Here we use a 30 second overhead on the initial next_election_timeout. This is because we need
+        // to ensure that restarted nodes don't disrupt a stable cluster by timing out and driving up their
+        // term before network communication is established.
         else if !is_only_configured_member {
             self.target_state = State::Follower;
+            let inst = Instant::now() + Duration::from_secs(30) + Duration::from_millis(self.config.new_rand_election_timeout());
+            self.next_election_timeout = Some(inst);
         }
         // Else, for any other condition, stay non-voter.
         else {
@@ -494,38 +499,22 @@ pub enum State {
 impl State {
     /// Check if currently in non-voter state.
     pub fn is_non_voter(&self) -> bool {
-        if let Self::NonVoter = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::NonVoter)
     }
 
     /// Check if currently in follower state.
     pub fn is_follower(&self) -> bool {
-        if let Self::Follower = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Follower)
     }
 
     /// Check if currently in candidate state.
     pub fn is_candidate(&self) -> bool {
-        if let Self::Candidate = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Candidate)
     }
 
     /// Check if currently in leader state.
     pub fn is_leader(&self) -> bool {
-        if let Self::Leader = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Leader)
     }
 }
 
@@ -767,6 +756,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(self) async fn run(mut self) -> RaftResult<()> {
         // Each iteration of the outer loop represents a new term.
         loop {
+            if !self.core.target_state.is_candidate() {
+                return Ok(());
+            }
+
             // Setup initial state per term.
             self.votes_granted_old = 1; // We must vote for ourselves per the Raft spec.
             self.votes_needed_old = ((self.core.membership.members.len() / 2) + 1) as u64; // Just need a majority.
@@ -787,12 +780,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let mut pending_votes = self.spawn_parallel_vote_requests();
 
             // Inner processing loop for this Raft state.
+            let mut timeout_fut = delay_until(self.core.get_next_election_timeout());
             loop {
                 if !self.core.target_state.is_candidate() {
                     return Ok(());
                 }
 
-                let mut timeout_fut = delay_until(self.core.get_next_election_timeout());
                 tokio::select! {
                     _ = &mut timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
                     Some((res, peer)) = pending_votes.recv() => self.handle_vote_response(res, peer).await?,

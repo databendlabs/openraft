@@ -265,7 +265,7 @@ fn calculate_new_commit_index(mut entries: Vec<u64>, current_commit: u64) -> u64
     };
 
     // Calculate offset which will give the majority slice of high-end.
-    entries.sort();
+    entries.sort_unstable();
     let offset = if (len % 2) == 0 { (len / 2) - 1 } else { len / 2 };
     let new_val = entries.get(offset).unwrap_or(&current_commit);
     if new_val < &current_commit {
@@ -338,7 +338,7 @@ mod tests {
                 fn $name() {
                     let mut entries = $entries;
                     let output = calculate_new_commit_index(entries.clone(), $current);
-                    entries.sort();
+                    entries.sort_unstable();
                     assert_eq!(output, $expected, "Sorted values: {:?}", entries);
                 }
             };

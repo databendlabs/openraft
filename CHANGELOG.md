@@ -4,6 +4,11 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 
 ## [unreleased]
 
+## async-raft 0.6.0-alpha.2 && memstore 0.6.0-alpha.2
+### changed
+- **BREAKING:** this introduces a `RaftStorage::ShutdownError`associated type. This allows for the Raft system to differentiate between fatal storage errors which should cause the system to shutdown vs errors which should be propagated back to the client for application specific error handling. These changes only apply to the `RaftStorage::apply_entry_to_state_machine` method.
+- A small change to Raft startup semantics. When a node comes online and successfully recoveres state (the node was already part of a cluster), the node will start with a 30 second election timeout, ensuring that it does not disrupt a running cluster.
+
 ## async-raft 0.6.0-alpha.1
 ### changed
 - The `Raft` type can now be cloned. The clone is very cheap and helps to facilitate async workflows while feeding client requests and Raft RPCs into the Raft instance.
