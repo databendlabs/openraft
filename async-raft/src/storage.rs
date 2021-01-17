@@ -83,6 +83,9 @@ where
     R: AppDataResponse,
 {
     /// The storage engine's associated type used for exposing a snapshot for reading & writing.
+    ///
+    /// See the [storage chapter of the guide](https://async-raft.github.io/async-raft/storage.html)
+    /// for details on where and how this is used.
     type Snapshot: AsyncRead + AsyncWrite + AsyncSeek + Send + Unpin + 'static;
     /// The error type used to indicate to Raft that shutdown is needed when calling the
     /// `apply_entry_to_state_machine` method.
