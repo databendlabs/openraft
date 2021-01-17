@@ -235,6 +235,7 @@ use anyhow::Result;
 #[async_trait]
 impl RaftStorage&lt;ClientRequest, ClientResponse&gt; for MemStore {
     type Snapshot = Cursor&lt;Vec&lt;u8&gt;&gt;;
+    type ShutdownError = ShutdownError;
 
     async fn get_membership_config(&amp;self) -&gt; Result&lt;MembershipConfig&gt; {
         // ... snip ...
