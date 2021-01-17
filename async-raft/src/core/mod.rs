@@ -58,8 +58,10 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     commit_index: u64,
     /// The index of the highest log entry which has been applied to the local state machine.
     ///
-    /// Is initialized to 0, increases following the `commit_index` as logs are
-    /// applied to the state machine (via the storage interface).
+    /// Is initialized to 0 for a pristine node; else, for nodes with existing state it is
+    /// is initialized to the value returned from the `RaftStorage::get_initial_state` on startup.
+    /// This value increases following the `commit_index` as logs are applied to the state
+    /// machine (via the storage interface).
     last_applied: u64,
     /// The current term.
     ///
@@ -271,9 +273,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Set a value for the next election timeout.
+    ///
+    /// If `heartbeat=true`, then also update the value of `last_heartbeat`.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_next_election_timeout(&mut self) {
-        self.next_election_timeout = Some(Instant::now() + Duration::from_millis(self.config.new_rand_election_timeout()));
+    fn update_next_election_timeout(&mut self, heartbeat: bool) {
+        let now = Instant::now();
+        self.next_election_timeout = Some(now + Duration::from_millis(self.config.new_rand_election_timeout()));
+        if heartbeat {
+            self.last_heartbeat = Some(now);
+        }
     }
 
     /// Update the value of the `current_leader` property.
@@ -359,7 +367,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return;
         }
         // If we are below the threshold, then there is nothing to do.
-        if (self.last_applied - self.snapshot_index) < *threshold {
+        let is_below_threshold = self
+            .last_applied
+            .checked_sub(self.snapshot_index)
+            .map(|diff| diff < *threshold)
+            .unwrap_or(false);
+        if is_below_threshold {
             return;
         }
 
@@ -769,7 +782,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // Setup new term.
-            self.core.update_next_election_timeout(); // Generates a new rand value within range.
+            self.core.update_next_election_timeout(false); // Generates a new rand value within range.
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
             self.core.update_current_leader(UpdateCurrentLeader::Unknown);

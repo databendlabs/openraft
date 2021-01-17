@@ -74,22 +74,15 @@ async fn compaction() -> Result<()> {
         .expect("failed to modify cluster membership");
     delay_for(Duration::from_secs(5)).await; // Wait to ensure metrics are updated (this is way more than enough).
     router.assert_stable_cluster(Some(1), Some(502)).await; // We expect index to be 500 + 2 (joint & uniform config change entries).
-    router
-        .assert_storage_state(
-            1,
-            502,
-            None,
-            500,
-            Some((
-                500.into(),
-                1,
-                MembershipConfig {
-                    members: hashset![0u64],
-                    members_after_consensus: None,
-                },
-            )),
-        )
-        .await;
+    let expected_snap = Some((
+        500.into(),
+        1,
+        MembershipConfig {
+            members: hashset![0u64],
+            members_after_consensus: None,
+        },
+    ));
+    router.assert_storage_state(1, 502, None, 500, expected_snap).await;
     // -------------------------------- ^^^^ this value is None because non-voters do not vote.
 
     Ok(())
