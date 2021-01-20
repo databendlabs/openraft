@@ -6,7 +6,7 @@ use std::time::Duration;
 use anyhow::Result;
 use async_raft::{Config, State};
 use maplit::hashset;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 use fixtures::RaftRouter;
 
@@ -20,7 +20,7 @@ use fixtures::RaftRouter;
 ///   after the config change is committed.
 ///
 /// RUST_LOG=async_raft,memstore,stepdown=trace cargo test -p async-raft --test stepdown
-#[tokio::test(core_threads = 5)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn stepdown() -> Result<()> {
     fixtures::init_tracing();
 
@@ -31,13 +31,13 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(1).await;
 
     // Assert all nodes are in non-voter state & have no entries.
-    delay_for(Duration::from_secs(3)).await;
+    sleep(Duration::from_secs(3)).await;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    delay_for(Duration::from_secs(3)).await;
+    sleep(Duration::from_secs(3)).await;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -46,7 +46,7 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
     router.change_membership(orig_leader, hashset![1, 2, 3]).await?;
-    delay_for(Duration::from_secs(5)).await; // Give time for step down metrics to flow through.
+    sleep(Duration::from_secs(5)).await; // Give time for step down metrics to flow through.
 
     // Assert on the state of the old leader.
     {
@@ -84,7 +84,7 @@ async fn stepdown() -> Result<()> {
 
     // Assert that the current cluster is stable.
     let _ = router.remove_node(0).await;
-    delay_for(Duration::from_secs(5)).await; // Give time for a new leader to be elected.
+    sleep(Duration::from_secs(5)).await; // Give time for a new leader to be elected.
     router.assert_stable_cluster(Some(2), Some(4)).await;
     router.assert_storage_state(2, 4, None, 0, None).await;
     // ----------------------------------- ^^^ this is `0` instead of `4` because blank payloads from new leaders

@@ -5,9 +5,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::Config;
+use futures::stream::StreamExt;
 use maplit::hashset;
-use tokio::stream::StreamExt;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 use fixtures::RaftRouter;
 
@@ -22,7 +22,7 @@ use fixtures::RaftRouter;
 /// - restore the isolated node and assert that it becomes a follower.
 ///
 /// RUST_LOG=async_raft,memstore,dynamic_membership=trace cargo test -p async-raft --test dynamic_membership
-#[tokio::test(core_threads = 6)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn dynamic_membership() -> Result<()> {
     fixtures::init_tracing();
 
@@ -32,13 +32,13 @@ async fn dynamic_membership() -> Result<()> {
     router.new_raft_node(0).await;
 
     // Assert all nodes are in non-voter state & have no entries.
-    delay_for(Duration::from_secs(3)).await;
+    sleep(Duration::from_secs(3)).await;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    delay_for(Duration::from_secs(3)).await;
+    sleep(Duration::from_secs(3)).await;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Sync some new nodes.
@@ -57,20 +57,20 @@ async fn dynamic_membership() -> Result<()> {
     }
     tracing::info!("--- changing cluster config");
     router.change_membership(0, hashset![0, 1, 2, 3, 4]).await?;
-    delay_for(Duration::from_secs(5)).await;
+    sleep(Duration::from_secs(5)).await;
     router.assert_stable_cluster(Some(1), Some(3)).await; // Still in term 1, so leader is still node 0.
 
     // Isolate old leader and assert that a new leader takes over.
     tracing::info!("--- isolating master node 0");
     router.isolate_node(0).await;
-    delay_for(Duration::from_secs(5)).await; // Wait for election and for everything to stabilize (this is way longer than needed).
+    sleep(Duration::from_secs(5)).await; // Wait for election and for everything to stabilize (this is way longer than needed).
     router.assert_stable_cluster(Some(2), Some(4)).await;
     let leader = router.leader().await.expect("expected new leader");
     assert!(leader != 0, "expected new leader to be different from the old leader");
 
     // Restore isolated node.
     router.restore_node(0).await;
-    delay_for(Duration::from_secs(5)).await; // Wait for election and for everything to stabilize (this is way longer than needed).
+    sleep(Duration::from_secs(5)).await; // Wait for election and for everything to stabilize (this is way longer than needed).
     router.assert_stable_cluster(Some(2), Some(4)).await; // We should still be in term 2, as leaders should
                                                           // not be deposed when they are not missing heartbeats.
     let current_leader = router.leader().await.expect("expected to find current leader");

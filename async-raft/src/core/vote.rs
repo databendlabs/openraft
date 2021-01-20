@@ -143,7 +143,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let (tx, rx) = mpsc::channel(all_members.len());
         for member in all_members.into_iter().filter(|member| member != &self.core.id) {
             let rpc = VoteRequest::new(self.core.current_term, self.core.id, self.core.last_log_index, self.core.last_log_term);
-            let (network, mut tx_inner) = (self.core.network.clone(), tx.clone());
+            let (network, tx_inner) = (self.core.network.clone(), tx.clone());
             let _ = tokio::spawn(
                 async move {
                     match network.vote(member, rpc).await {

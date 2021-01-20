@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use futures::future::TryFutureExt;
-use futures::stream::FuturesUnordered;
-use tokio::stream::StreamExt;
+use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::oneshot;
 use tokio::time::{timeout, Duration};
 

@@ -3,8 +3,8 @@
 use std::io::SeekFrom;
 use std::sync::Arc;
 
+use futures::future::FutureExt;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
-use tokio::stream::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, timeout, Duration, Interval};
@@ -398,8 +398,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 }
             }
             // Attempt to unpack the next event for the next loop iteration.
-            if let Ok(event) = self.raftrx.try_recv() {
-                event_opt = Some(event);
+            if let Some(event) = self.raftrx.recv().now_or_never() {
+                event_opt = event;
             }
             iters += 1;
         }
@@ -551,8 +551,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 continue;
             }
             tokio::select! {
-                _ = self.core.heartbeat.next() => self.core.send_append_entries().await,
-                event = self.core.raftrx.next() => match event {
+                _ = self.core.heartbeat.tick() => self.core.send_append_entries().await,
+                event = self.core.raftrx.recv() => match event {
                     Some(event) => self.core.drain_raftrx(event),
                     None => self.core.target_state = TargetReplState::Shutdown,
                 }
@@ -631,7 +631,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
-            if let Ok(event) = self.core.raftrx.try_recv() {
+            if let Some(Some(event)) = self.core.raftrx.recv().now_or_never() {
                 self.core.drain_raftrx(event);
             }
         }
@@ -753,8 +753,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     async fn wait_for_snapshot(&mut self, mut rx: oneshot::Receiver<CurrentSnapshotData<S::Snapshot>>) {
         loop {
             tokio::select! {
-                _ = self.core.heartbeat.next() => self.core.send_append_entries().await,
-                event = self.core.raftrx.next() => match event {
+                _ = self.core.heartbeat.tick() => self.core.send_append_entries().await,
+                event = self.core.raftrx.recv() => match event {
                     Some(event) => self.core.drain_raftrx(event),
                     None => {
                         self.core.target_state = TargetReplState::Shutdown;
@@ -833,7 +833,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             offset += nread as u64;
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
-            if let Ok(event) = self.core.raftrx.try_recv() {
+            if let Some(Some(event)) = self.core.raftrx.recv().now_or_never() {
                 self.core.drain_raftrx(event);
             }
         }

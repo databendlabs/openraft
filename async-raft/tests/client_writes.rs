@@ -8,7 +8,7 @@ use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use futures::prelude::*;
 use maplit::hashset;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 use fixtures::RaftRouter;
 
@@ -21,7 +21,7 @@ use fixtures::RaftRouter;
 /// - assert that the cluster stayed stable and has all of the expected data.
 ///
 /// RUST_LOG=async_raft,memstore,client_writes=trace cargo test -p async-raft --test client_writes
-#[tokio::test(core_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn client_writes() -> Result<()> {
     fixtures::init_tracing();
 
@@ -33,13 +33,13 @@ async fn client_writes() -> Result<()> {
     router.new_raft_node(2).await;
 
     // Assert all nodes are in non-voter state & have no entries.
-    delay_for(Duration::from_secs(10)).await;
+    sleep(Duration::from_secs(10)).await;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    delay_for(Duration::from_secs(10)).await;
+    sleep(Duration::from_secs(10)).await;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Write a bunch of data and assert that the cluster stayes stable.
@@ -52,7 +52,7 @@ async fn client_writes() -> Result<()> {
     clients.push(router.client_request_many(leader, "4", 1000));
     clients.push(router.client_request_many(leader, "5", 1000));
     while clients.next().await.is_some() {}
-    delay_for(Duration::from_secs(5)).await; // Ensure enough time is given for replication (this is WAY more than enough).
+    sleep(Duration::from_secs(5)).await; // Ensure enough time is given for replication (this is WAY more than enough).
     router.assert_stable_cluster(Some(1), Some(6001)).await; // The extra 1 is from the leader's initial commit entry.
     router
         .assert_storage_state(
