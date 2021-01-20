@@ -201,7 +201,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// Very importantly, this routine must not block the main control loop main task, else it
     /// may cause the Raft leader to timeout the requests to this node.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn replicate_to_state_machine_if_needed(&mut self, entries: Vec<Entry<D>>) {
         // Update cache. Always.
         for entry in entries {
