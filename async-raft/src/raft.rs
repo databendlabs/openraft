@@ -123,12 +123,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         Ok(rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)?)
     }
 
-    /// Get the id of the current leader from this Raft node.
+    /// Get the ID of the current leader from this Raft node.
     ///
-    /// Noted that it is the responsibility of the application to verify the leader by calling
-    /// [`client_read`] or [`client_write`].
+    /// This method is based on the Raft metrics system which does a good job at staying
+    /// up-to-date; however, the `client_read` method must still be used to guard against stale
+    /// reads. This method is perfect for making decisions on where to route client requests.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn client_current_leader(&self) -> Option<NodeId> {
+    pub async fn current_leader(&self) -> Option<NodeId> {
         self.metrics().borrow().current_leader
     }
 

@@ -51,6 +51,11 @@ jobs:
         with:
           command: test
           args: -p async-raft --test compaction
+      - name: Integration Test | Current Leader
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --test current_leader
       - name: Integration Test | Stepdown
         uses: actions-rs/cargo@v1
         with:

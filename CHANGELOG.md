@@ -4,7 +4,10 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 
 ## [unreleased]
 
-## async-raft 0.6.0-alpha.2 && memstore 0.6.0-alpha.2
+## async-raft 0.6.0-alpha.2 && memstore 0.2.0-alpha.2
+### added
+- [#97](https://github.com/async-raft/async-raft/issues/97) adds the new `Raft.current_leader` method. This is a convenience method which builds upon the Raft metrics system to quickly and easily identify the current cluster leader.
+
 ### fixed
 - Fixed [#98](https://github.com/async-raft/async-raft/issues/98) where heartbeats were being passed along into the log consistency check algorithm. This had the potential to cause a Raft node to go into shutdown under some circumstances.
 - Fixed a bug where the timestamp of the last received heartbeat from a leader was not being stored, resulting in degraded cluster stability under some circumstances.

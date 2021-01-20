@@ -159,10 +159,10 @@ impl RaftRouter {
     }
 
     /// Request the current leader from the target node.
-    pub async fn client_current_leader(&self, target: NodeId) -> Option<NodeId> {
+    pub async fn current_leader(&self, target: NodeId) -> Option<NodeId> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&target).unwrap_or_else(|| panic!("node with ID {} does not exist", target));
-        node.0.client_current_leader().await
+        node.0.current_leader().await
     }
 
     /// Send multiple client requests to the target node, causing test failure on error.

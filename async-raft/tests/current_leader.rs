@@ -9,16 +9,16 @@ use tokio::time::delay_for;
 
 use fixtures::RaftRouter;
 
-/// Client current leader tests.
+/// Current leader tests.
 ///
 /// What does this test do?
 ///
 /// - create a stable 3-node cluster.
-/// - call the client_current_leader interface on the all nodes, and assert success.
+/// - call the current_leader interface on the all nodes, and assert success.
 ///
-/// RUST_LOG=async_raft,memstore,client_reads=trace cargo test -p async-raft --test client_current_leader
+/// RUST_LOG=async_raft,memstore,client_reads=trace cargo test -p async-raft --test current_leader
 #[tokio::test(core_threads = 4)]
-async fn client_current_leader() -> Result<()> {
+async fn current_leader() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
@@ -43,7 +43,7 @@ async fn client_current_leader() -> Result<()> {
     assert_eq!(leader, 0, "expected leader to be node 0, got {}", leader);
 
     for i in 0..3 {
-        let leader = router.client_current_leader(i).await;
+        let leader = router.current_leader(i).await;
         assert_eq!(leader, Some(0), "expected leader to be node 0, got {:?}", leader);
     }
 
