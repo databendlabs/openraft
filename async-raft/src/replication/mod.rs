@@ -246,7 +246,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 // If running at line rate, and our buffered outbound requests have accumulated too
                 // much, we need to purge and transition to a lagging state. The target is not able to
                 // replicate data fast enough.
-                if (self.last_log_index - self.match_index) > self.config.replication_lag_threshold {
+                let is_lagging = self
+                    .last_log_index
+                    .checked_sub(self.match_index)
+                    .map(|diff| diff > self.config.replication_lag_threshold)
+                    .unwrap_or(false);
+                if is_lagging {
                     self.target_state = TargetReplState::Lagging;
                 }
             }
@@ -345,7 +350,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     pub(self) fn needs_snapshot(&self) -> bool {
         match &self.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => {
-                if self.commit_index > self.match_index && (self.commit_index - self.match_index) >= *threshold {
+                let needs_snap = self
+                    .commit_index
+                    .checked_sub(self.match_index)
+                    .map(|diff| diff >= *threshold)
+                    .unwrap_or(false);
+                if needs_snap {
                     tracing::trace!("snapshot needed");
                     true
                 } else {
@@ -767,7 +777,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::Snapshot>) -> RaftResult<()> {
         let mut offset = 0;
-        self.core.last_log_index = snapshot.index;
         self.core.next_index = snapshot.index + 1;
         self.core.match_index = snapshot.index;
         self.core.match_term = snapshot.term;

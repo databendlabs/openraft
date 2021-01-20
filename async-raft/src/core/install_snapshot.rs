@@ -21,7 +21,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // Update election timeout.
-        self.update_next_election_timeout();
+        self.update_next_election_timeout(true);
 
         // Update current term if needed.
         let mut report_metrics = false;

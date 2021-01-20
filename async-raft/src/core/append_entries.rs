@@ -23,7 +23,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // Update election timeout.
-        self.update_next_election_timeout();
+        self.update_next_election_timeout(true);
         let mut report_metrics = false;
         self.commit_index = msg.leader_commit; // The value for `self.commit_index` is only updated here when not the leader.
 
@@ -45,25 +45,24 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.set_target_state(State::Follower);
         }
 
+        // If this is just a heartbeat, then respond.
+        if msg.entries.is_empty() {
+            self.replicate_to_state_machine_if_needed(msg.entries).await;
+            if report_metrics {
+                self.report_metrics();
+            }
+            return Ok(AppendEntriesResponse {
+                term: self.current_term,
+                success: true,
+                conflict_opt: None,
+            });
+        }
+
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
         // log info, then replication is g2g.
         let msg_prev_index_is_min = msg.prev_log_index == u64::min_value();
         let msg_index_and_term_match = (msg.prev_log_index == self.last_log_index) && (msg.prev_log_term == self.last_log_term);
         if msg_prev_index_is_min || msg_index_and_term_match {
-            // If this is just a heartbeat, then respond.
-            if msg.entries.is_empty() {
-                self.replicate_to_state_machine_if_needed(msg.entries).await;
-                if report_metrics {
-                    self.report_metrics();
-                }
-                return Ok(AppendEntriesResponse {
-                    term: self.current_term,
-                    success: true,
-                    conflict_opt: None,
-                });
-            }
-
-            // Else, append log entries.
             self.append_log_entries(&msg.entries).await?;
             self.replicate_to_state_machine_if_needed(msg.entries).await;
             if report_metrics {
