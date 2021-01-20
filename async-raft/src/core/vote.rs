@@ -43,7 +43,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // do vote checking after this.
         if msg.term > self.current_term {
             self.update_current_term(msg.term, None);
-            self.update_next_election_timeout();
+            self.update_next_election_timeout(false);
             self.set_target_state(State::Follower);
             self.save_hard_state().await?;
         }
@@ -62,6 +62,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             });
         }
 
+        // TODO: add hook for PreVote optimization here. If the RPC is a PreVote, then at this
+        // point we can respond to the candidate telling them that we would vote for them.
+
         // Candidate's log is up-to-date so handle voting conditions.
         match &self.voted_for {
             // This node has already voted for the candidate.
@@ -78,7 +81,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             None => {
                 self.voted_for = Some(msg.candidate_id);
                 self.set_target_state(State::Follower);
-                self.update_next_election_timeout();
+                self.update_next_election_timeout(false);
                 self.save_hard_state().await?;
                 tracing::trace!({candidate=msg.candidate_id, msg.term}, "voted for candidate");
                 Ok(VoteResponse {
