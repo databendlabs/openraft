@@ -4,6 +4,24 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 
 ## [unreleased]
 
+## async-raft 0.6.0-alpha.2 && memstore 0.2.0-alpha.2
+### added
+- [#97](https://github.com/async-raft/async-raft/issues/97) adds the new `Raft.current_leader` method. This is a convenience method which builds upon the Raft metrics system to quickly and easily identify the current cluster leader.
+
+### fixed
+- Fixed [#98](https://github.com/async-raft/async-raft/issues/98) where heartbeats were being passed along into the log consistency check algorithm. This had the potential to cause a Raft node to go into shutdown under some circumstances.
+- Fixed a bug where the timestamp of the last received heartbeat from a leader was not being stored, resulting in degraded cluster stability under some circumstances.
+
+### changed
+- **BREAKING:** this introduces a `RaftStorage::ShutdownError`associated type. This allows for the Raft system to differentiate between fatal storage errors which should cause the system to shutdown vs errors which should be propagated back to the client for application specific error handling. These changes only apply to the `RaftStorage::apply_entry_to_state_machine` method.
+- A small change to Raft startup semantics. When a node comes online and successfully recoveres state (the node was already part of a cluster), the node will start with a 30 second election timeout, ensuring that it does not disrupt a running cluster.
+
+## async-raft 0.6.0-alpha.1
+### changed
+- The `Raft` type can now be cloned. The clone is very cheap and helps to facilitate async workflows while feeding client requests and Raft RPCs into the Raft instance.
+- The `Raft.shutdown` interface has been changed slightly. Instead of returning a `JoinHandle`, the method is now async and simply returns a result.
+- The `ClientWriteError::ForwardToLeader` error variant has been modified slightly. It now exposes the data (generic type `D` of the type) of the original client request directly. This ensures that the data can actually be used for forwarding, if that is what the parent app wants to do.
+
 ## memstore 0.2.0-alpha.0
 ### changed
 - Updated async-raft dependency to `0.6.0-aplpha.0` & updated storage interface as needed.

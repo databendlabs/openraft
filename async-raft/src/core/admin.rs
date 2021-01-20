@@ -104,13 +104,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // consensus. Else, new nodes need to first be brought up-to-speed.
         //
         // Here, all we do is check to see which nodes still need to be synced, which determines
-        // we can proceed.
-        let diff = members.difference(&self.core.membership.members).cloned().collect::<Vec<_>>();
-        let awaiting = diff
-            .into_iter()
-            .filter(|new_node| match self.non_voters.get(&new_node) {
-                Some(node) if node.is_ready_to_join => false,
-                Some(_) => true,
+        // if we can proceed.
+        let mut awaiting = HashSet::new();
+        for new_node in members.difference(&self.core.membership.members) {
+            match self.non_voters.get(&new_node) {
+                // Node is ready to join.
+                Some(node) if node.is_ready_to_join => continue,
+                // Node has repl stream, but is not yet ready to join.
+                Some(_) => (),
+                // Node does not yet have a repl stream, spawn one.
                 None => {
                     // Spawn a replication stream for the new member. Track state as a non-voter so that it
                     // can be updated to be added to the cluster config once it has been brought up-to-date.
@@ -123,10 +125,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                             tx: None,
                         },
                     );
-                    true
                 }
-            })
-            .collect::<HashSet<_>>();
+            }
+            awaiting.insert(*new_node);
+        }
         // If there are new nodes which need to sync, then we need to wait until they are synced.
         // Once they've finished, this routine will be called again to progress further.
         if !awaiting.is_empty() {

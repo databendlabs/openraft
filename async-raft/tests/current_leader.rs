@@ -3,23 +3,22 @@ mod fixtures;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_raft::Config;
 use tokio::time::delay_for;
 
 use fixtures::RaftRouter;
 
-/// Cluster shutdown test.
+/// Current leader tests.
 ///
 /// What does this test do?
 ///
-/// - this test builds upon the `initialization` test.
-/// - after the cluster has been initialize, it performs a shutdown routine
-///   on each node, asserting that the shutdown routine succeeded.
+/// - create a stable 3-node cluster.
+/// - call the current_leader interface on the all nodes, and assert success.
 ///
-/// RUST_LOG=async_raft,memstore,shutdown=trace cargo test -p async-raft --test shutdown
+/// RUST_LOG=async_raft,memstore,client_reads=trace cargo test -p async-raft --test current_leader
 #[tokio::test(core_threads = 4)]
-async fn initialization() -> Result<()> {
+async fn current_leader() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
@@ -39,13 +38,14 @@ async fn initialization() -> Result<()> {
     delay_for(Duration::from_secs(10)).await;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
-    tracing::info!("--- performing node shutdowns");
-    let (node0, _) = router.remove_node(0).await.ok_or_else(|| anyhow!("failed to find node 0 in router"))?;
-    node0.shutdown().await?;
-    let (node1, _) = router.remove_node(1).await.ok_or_else(|| anyhow!("failed to find node 1 in router"))?;
-    node1.shutdown().await?;
-    let (node2, _) = router.remove_node(2).await.ok_or_else(|| anyhow!("failed to find node 2 in router"))?;
-    node2.shutdown().await?;
+    // Get the ID of the leader, and assert that client_read succeeds.
+    let leader = router.leader().await.expect("leader not found");
+    assert_eq!(leader, 0, "expected leader to be node 0, got {}", leader);
+
+    for i in 0..3 {
+        let leader = router.current_leader(i).await;
+        assert_eq!(leader, Some(0), "expected leader to be node 0, got {:?}", leader);
+    }
 
     Ok(())
 }

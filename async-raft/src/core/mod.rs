@@ -23,7 +23,9 @@ use crate::config::{Config, SnapshotPolicy};
 use crate::core::client::ClientRequestEntry;
 use crate::error::{ChangeConfigError, ClientReadError, ClientWriteError, InitializeError, RaftError, RaftResult};
 use crate::metrics::RaftMetrics;
-use crate::raft::{ChangeMembershipTx, ClientReadResponseTx, ClientWriteRequest, ClientWriteResponseTx, Entry, MembershipConfig, RaftMsg};
+use crate::raft::{
+    ChangeMembershipTx, ClientReadResponseTx, ClientWriteRequest, ClientWriteResponseTx, Entry, EntryPayload, MembershipConfig, RaftMsg,
+};
 use crate::replication::{RaftEvent, ReplicaEvent, ReplicationStream};
 use crate::storage::HardState;
 use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
@@ -56,8 +58,10 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     commit_index: u64,
     /// The index of the highest log entry which has been applied to the local state machine.
     ///
-    /// Is initialized to 0, increases following the `commit_index` as logs are
-    /// applied to the state machine (via the storage interface).
+    /// Is initialized to 0 for a pristine node; else, for nodes with existing state it is
+    /// is initialized to the value returned from the `RaftStorage::get_initial_state` on startup.
+    /// This value increases following the `commit_index` as logs are applied to the state
+    /// machine (via the storage interface).
     last_applied: u64,
     /// The current term.
     ///
@@ -188,8 +192,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.target_state = State::Leader;
         }
         // Else if there are other members, that can only mean that state was recovered. Become follower.
+        // Here we use a 30 second overhead on the initial next_election_timeout. This is because we need
+        // to ensure that restarted nodes don't disrupt a stable cluster by timing out and driving up their
+        // term before network communication is established.
         else if !is_only_configured_member {
             self.target_state = State::Follower;
+            let inst = Instant::now() + Duration::from_secs(30) + Duration::from_millis(self.config.new_rand_election_timeout());
+            self.next_election_timeout = Some(inst);
         }
         // Else, for any other condition, stay non-voter.
         else {
@@ -264,9 +273,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Set a value for the next election timeout.
+    ///
+    /// If `heartbeat=true`, then also update the value of `last_heartbeat`.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_next_election_timeout(&mut self) {
-        self.next_election_timeout = Some(Instant::now() + Duration::from_millis(self.config.new_rand_election_timeout()));
+    fn update_next_election_timeout(&mut self, heartbeat: bool) {
+        let now = Instant::now();
+        self.next_election_timeout = Some(now + Duration::from_millis(self.config.new_rand_election_timeout()));
+        if heartbeat {
+            self.last_heartbeat = Some(now);
+        }
     }
 
     /// Update the value of the `current_leader` property.
@@ -352,7 +367,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return;
         }
         // If we are below the threshold, then there is nothing to do.
-        if (self.last_applied - self.snapshot_index) < *threshold {
+        let is_below_threshold = self
+            .last_applied
+            .checked_sub(self.snapshot_index)
+            .map(|diff| diff < *threshold)
+            .unwrap_or(false);
+        if is_below_threshold {
             return;
         }
 
@@ -415,7 +435,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Forward the given client write request to the leader.
     #[tracing::instrument(level = "trace", skip(self, req, tx))]
     fn forward_client_write_request(&self, req: ClientWriteRequest<D>, tx: ClientWriteResponseTx<D, R>) {
-        let _ = tx.send(Err(ClientWriteError::ForwardToLeader(req, self.current_leader)));
+        match req.entry {
+            EntryPayload::Normal(entry) => {
+                let _ = tx.send(Err(ClientWriteError::ForwardToLeader(entry.data, self.current_leader)));
+            }
+            _ => {
+                // This is unreachable, and well controlled by the type system, but let's log an
+                // error for good measure.
+                tracing::error!("unreachable branch hit within async-raft, attempting to forward a Raft internal entry");
+            }
+        }
     }
 
     /// Forward the given client read request to the leader.
@@ -483,38 +512,22 @@ pub enum State {
 impl State {
     /// Check if currently in non-voter state.
     pub fn is_non_voter(&self) -> bool {
-        if let Self::NonVoter = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::NonVoter)
     }
 
     /// Check if currently in follower state.
     pub fn is_follower(&self) -> bool {
-        if let Self::Follower = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Follower)
     }
 
     /// Check if currently in candidate state.
     pub fn is_candidate(&self) -> bool {
-        if let Self::Candidate = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Candidate)
     }
 
     /// Check if currently in leader state.
     pub fn is_leader(&self) -> bool {
-        if let Self::Leader = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Self::Leader)
     }
 }
 
@@ -756,6 +769,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(self) async fn run(mut self) -> RaftResult<()> {
         // Each iteration of the outer loop represents a new term.
         loop {
+            if !self.core.target_state.is_candidate() {
+                return Ok(());
+            }
+
             // Setup initial state per term.
             self.votes_granted_old = 1; // We must vote for ourselves per the Raft spec.
             self.votes_needed_old = ((self.core.membership.members.len() / 2) + 1) as u64; // Just need a majority.
@@ -765,7 +782,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // Setup new term.
-            self.core.update_next_election_timeout(); // Generates a new rand value within range.
+            self.core.update_next_election_timeout(false); // Generates a new rand value within range.
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
             self.core.update_current_leader(UpdateCurrentLeader::Unknown);
@@ -776,12 +793,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let mut pending_votes = self.spawn_parallel_vote_requests();
 
             // Inner processing loop for this Raft state.
+            let mut timeout_fut = delay_until(self.core.get_next_election_timeout());
             loop {
                 if !self.core.target_state.is_candidate() {
                     return Ok(());
                 }
 
-                let mut timeout_fut = delay_until(self.core.get_next_election_timeout());
                 tokio::select! {
                     _ = &mut timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
                     Some((res, peer)) = pending_votes.recv() => self.handle_vote_response(res, peer).await?,

@@ -10,16 +10,8 @@ jobs:
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.45.2
+          toolchain: stable
           default: true
-          components: clippy
-
-      # clippy
-      - name: Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -p async-raft -- -D warnings
 
       # unit tests
       - name: Unit Tests
@@ -59,6 +51,11 @@ jobs:
         with:
           command: test
           args: -p async-raft --test compaction
+      - name: Integration Test | Current Leader
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --test current_leader
       - name: Integration Test | Stepdown
         uses: actions-rs/cargo@v1
         with:
@@ -87,7 +84,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
-          override: true
+          default: true
       - name: Build | Release Mode
         uses: actions-rs/cargo@v1
         with:
@@ -103,16 +100,8 @@ jobs:
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: 1.45.2
+          toolchain: stable
           default: true
-          components: clippy
-
-      # clippy
-      - name: Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -p memstore -- -D warnings
 
       # unit tests
       - name: Unit Tests
@@ -127,3 +116,21 @@ jobs:
         with:
           command: build
           args: -p memstore --release
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
+          components: clippy
+      - name: Clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets -- -D warnings
