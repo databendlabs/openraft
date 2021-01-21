@@ -792,15 +792,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let mut pending_votes = self.spawn_parallel_vote_requests();
 
             // Inner processing loop for this Raft state.
-            let timeout_fut = sleep_until(self.core.get_next_election_timeout());
-            tokio::pin!(timeout_fut);
             loop {
                 if !self.core.target_state.is_candidate() {
                     return Ok(());
                 }
-
+                let timeout_fut = sleep_until(self.core.get_next_election_timeout());
                 tokio::select! {
-                    _ = &mut timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
+                    _ = timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
                     Some((res, peer)) = pending_votes.recv() => self.handle_vote_response(res, peer).await?,
                     Some(msg) = self.core.rx_api.recv() => match msg {
                         RaftMsg::AppendEntries{rpc, tx} => {
