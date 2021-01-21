@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::Config;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 use fixtures::RaftRouter;
 
@@ -18,7 +18,7 @@ use fixtures::RaftRouter;
 /// - call the client_read interface on the followers, and assert failure.
 ///
 /// RUST_LOG=async_raft,memstore,client_reads=trace cargo test -p async-raft --test client_reads
-#[tokio::test(core_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn client_reads() -> Result<()> {
     fixtures::init_tracing();
 
@@ -30,13 +30,13 @@ async fn client_reads() -> Result<()> {
     router.new_raft_node(2).await;
 
     // Assert all nodes are in non-voter state & have no entries.
-    delay_for(Duration::from_secs(10)).await;
+    sleep(Duration::from_secs(10)).await;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    delay_for(Duration::from_secs(10)).await;
+    sleep(Duration::from_secs(10)).await;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Get the ID of the leader, and assert that client_read succeeds.

@@ -7,7 +7,7 @@ use anyhow::Result;
 use async_raft::raft::MembershipConfig;
 use async_raft::{Config, SnapshotPolicy};
 use maplit::hashset;
-use tokio::time::delay_for;
+use tokio::time::sleep;
 
 use fixtures::RaftRouter;
 
@@ -20,7 +20,7 @@ use fixtures::RaftRouter;
 /// - add new nodes and assert that they receive the snapshot.
 ///
 /// RUST_LOG=async_raft,memstore,compaction=trace cargo test -p async-raft --test compaction
-#[tokio::test(core_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn compaction() -> Result<()> {
     fixtures::init_tracing();
 
@@ -35,18 +35,18 @@ async fn compaction() -> Result<()> {
     router.new_raft_node(0).await;
 
     // Assert all nodes are in non-voter state & have no entries.
-    delay_for(Duration::from_secs(10)).await;
+    sleep(Duration::from_secs(10)).await;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    delay_for(Duration::from_secs(10)).await;
+    sleep(Duration::from_secs(10)).await;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Send enough requests to the cluster that compaction on the node should be triggered.
     router.client_request_many(0, "0", 499).await; // Puts us exactly at the configured snapshot policy threshold.
-    delay_for(Duration::from_secs(5)).await; // Wait to ensure there is enough time for a snapshot to be built (this is way more than enough).
+    sleep(Duration::from_secs(5)).await; // Wait to ensure there is enough time for a snapshot to be built (this is way more than enough).
     router.assert_stable_cluster(Some(1), Some(500)).await;
     router
         .assert_storage_state(
@@ -72,7 +72,7 @@ async fn compaction() -> Result<()> {
         .change_membership(0, hashset![0, 1])
         .await
         .expect("failed to modify cluster membership");
-    delay_for(Duration::from_secs(5)).await; // Wait to ensure metrics are updated (this is way more than enough).
+    sleep(Duration::from_secs(5)).await; // Wait to ensure metrics are updated (this is way more than enough).
     router.assert_stable_cluster(Some(1), Some(502)).await; // We expect index to be 500 + 2 (joint & uniform config change entries).
     let expected_snap = Some((
         500.into(),

@@ -11,12 +11,11 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use futures::future::{AbortHandle, Abortable};
-use futures::stream::FuturesOrdered;
+use futures::stream::{FuturesOrdered, StreamExt};
 use serde::{Deserialize, Serialize};
-use tokio::stream::StreamExt;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
-use tokio::time::{delay_until, Duration, Instant};
+use tokio::time::{sleep_until, Duration, Instant};
 use tracing_futures::Instrument;
 
 use crate::config::{Config, SnapshotPolicy};
@@ -226,7 +225,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
     fn report_metrics(&mut self) {
-        let res = self.tx_metrics.broadcast(RaftMetrics {
+        let res = self.tx_metrics.send(RaftMetrics {
             id: self.id,
             state: self.target_state,
             current_term: self.current_term,
@@ -380,7 +379,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let storage = self.storage.clone();
         let (handle, reg) = AbortHandle::new_pair();
         let (chan_tx, _) = broadcast::channel(1);
-        let mut tx_compaction = self.tx_compaction.clone();
+        let tx_compaction = self.tx_compaction.clone();
         self.snapshot_state = Some(SnapshotState::Snapshotting {
             handle,
             sender: chan_tx.clone(),
@@ -621,7 +620,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 return Ok(());
             }
             tokio::select! {
-                Some(msg) = self.core.rx_api.next() => match msg {
+                Some(msg) = self.core.rx_api.recv() => match msg {
                     RaftMsg::AppendEntries{rpc, tx} => {
                         let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
                     }
@@ -647,7 +646,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         self.change_membership(members, tx).await;
                     }
                 },
-                Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
                 Some(Ok(res)) = self.joint_consensus_cb.next() => {
                     match res {
                         Ok(_) => self.handle_joint_consensus_committed().await?,
@@ -669,7 +668,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         }
                     }
                 }
-                Some(event) = self.replicationrx.next() => self.handle_replica_event(event).await,
+                Some(event) = self.replicationrx.recv() => self.handle_replica_event(event).await,
                 Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
                     // Errors herein will trigger shutdown, so no need to process error.
                     let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
@@ -793,7 +792,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let mut pending_votes = self.spawn_parallel_vote_requests();
 
             // Inner processing loop for this Raft state.
-            let mut timeout_fut = delay_until(self.core.get_next_election_timeout());
+            let timeout_fut = sleep_until(self.core.get_next_election_timeout());
+            tokio::pin!(timeout_fut);
             loop {
                 if !self.core.target_state.is_candidate() {
                     return Ok(());
@@ -802,7 +802,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 tokio::select! {
                     _ = &mut timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
                     Some((res, peer)) = pending_votes.recv() => self.handle_vote_response(res, peer).await?,
-                    Some(msg) = self.core.rx_api.next() => match msg {
+                    Some(msg) = self.core.rx_api.recv() => match msg {
                         RaftMsg::AppendEntries{rpc, tx} => {
                             let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
                         }
@@ -828,7 +828,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                             self.core.reject_config_change_not_leader(tx);
                         }
                     },
-                    Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                    Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
                     Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
                         // Errors herein will trigger shutdown, so no need to process error.
                         let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
@@ -862,11 +862,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 return Ok(());
             }
 
-            let mut election_timeout = delay_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
+            let election_timeout = sleep_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
             tokio::select! {
                 // If an election timeout is hit, then we need to transition to candidate.
-                _ = &mut election_timeout => self.core.set_target_state(State::Candidate),
-                Some(msg) = self.core.rx_api.next() => match msg {
+                _ = election_timeout => self.core.set_target_state(State::Candidate),
+                Some(msg) = self.core.rx_api.recv() => match msg {
                     RaftMsg::AppendEntries{rpc, tx} => {
                         let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
                     }
@@ -892,7 +892,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         self.core.reject_config_change_not_leader(tx);
                     }
                 },
-                Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
                 Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
                     // Errors herein will trigger shutdown, so no need to process error.
                     let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
@@ -925,7 +925,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 return Ok(());
             }
             tokio::select! {
-                Some(msg) = self.core.rx_api.next() => match msg {
+                Some(msg) = self.core.rx_api.recv() => match msg {
                     RaftMsg::AppendEntries{rpc, tx} => {
                         let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
                     }
@@ -951,7 +951,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         self.core.reject_config_change_not_leader(tx);
                     }
                 },
-                Some(update) = self.core.rx_compaction.next() => self.core.update_snapshot_state(update),
+                Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
                 Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
                     // Errors herein will trigger shutdown, so no need to process error.
                     let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);

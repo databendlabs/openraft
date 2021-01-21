@@ -18,7 +18,7 @@ async-raft = { version="0.6.0-alpha.2", path="../async-raft" }
 serde = { version="1.0.114", features=["derive"] }
 serde_json = "1.0.57"
 thiserror = "1.0.20"
-tokio = { version="0.2.22", default-features=false, features=["sync"] }
+tokio = { version="1.0", default-features=false, features=["sync"] }
 tracing = "0.1.17"
 tracing-futures = "0.2.4"
 
