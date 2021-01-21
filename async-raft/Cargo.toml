@@ -28,7 +28,7 @@ tracing-futures = "0.2.4"
 
 [dev-dependencies]
 maplit = "1.0.2"
-memstore = { version="0.2.0-alpha.2", path="../memstore" }
+memstore = { version="0.2.0", path="../memstore" }
 tracing-subscriber = "0.2.10"
 
 [features]
