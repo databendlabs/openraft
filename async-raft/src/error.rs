@@ -1,5 +1,6 @@
 //! Error types exposed by this crate.
 
+use std::fmt;
 use thiserror::Error;
 
 use crate::{AppData, NodeId};
@@ -40,7 +41,7 @@ pub enum ClientReadError {
 }
 
 /// An error related to a client write request.
-#[derive(Debug, Error)]
+#[derive(Error)]
 pub enum ClientWriteError<D: AppData> {
     /// A Raft error.
     #[error("{0}")]
@@ -48,6 +49,15 @@ pub enum ClientWriteError<D: AppData> {
     /// The client write request must be forwarded to the cluster leader.
     #[error("the client write request must be forwarded to the cluster leader")]
     ForwardToLeader(D, Option<NodeId>),
+}
+
+impl<D: AppData> fmt::Debug for ClientWriteError<D> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClientWriteError::RaftError(err) => f.debug_tuple("RaftError").field(err).finish(),
+            ClientWriteError::ForwardToLeader(_req, node_id) => f.debug_tuple("ForwardToLeader").field(node_id).finish(),
+        }
+    }
 }
 
 /// Error variants related to configuration.
