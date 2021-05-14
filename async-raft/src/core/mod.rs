@@ -183,25 +183,38 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.snapshot_index = snapshot.index;
         }
 
-        // Set initial state based on state recovered from disk.
-        let is_only_configured_member = self.membership.members.len() == 1 && self.membership.contains(&self.id);
-        // If this is the only configured member and there is live state, then this is
-        // a single-node cluster. Become leader.
-        if is_only_configured_member && self.last_log_index != u64::min_value() {
-            self.target_state = State::Leader;
-        }
-        // Else if there are other members, that can only mean that state was recovered. Become follower.
-        // Here we use a 30 second overhead on the initial next_election_timeout. This is because we need
-        // to ensure that restarted nodes don't disrupt a stable cluster by timing out and driving up their
-        // term before network communication is established.
-        else if !is_only_configured_member && self.membership.contains(&self.id) {
-            self.target_state = State::Follower;
+        let has_log = self.last_log_index != u64::min_value();
+        let single = self.membership.members.len() == 1;
+        let is_candidate = self.membership.contains(&self.id);
+
+        self.target_state = match (has_log, single, is_candidate) {
+            // A restarted raft that already received some logs but was not yet added to a cluster.
+            // It should remain in NonVoter state, not Follower.
+            (true, true, false) => State::NonVoter,
+            (true, false, false) => State::NonVoter,
+
+            (false, true, false) => State::NonVoter,  // impossible: no logs but there are other members.
+            (false, false, false) => State::NonVoter, // impossible: no logs but there are other members.
+
+            // If this is the only configured member and there is live state, then this is
+            // a single-node cluster. Become leader.
+            (true, true, true) => State::Leader,
+
+            // The initial state when a raft is created from empty store.
+            (false, true, true) => State::NonVoter,
+
+            // Otherwise it is Follower.
+            (true, false, true) => State::Follower,
+
+            (false, false, true) => State::Follower, // impossible: no logs but there are other members.
+        };
+
+        if self.target_state == State::Follower {
+            // Here we use a 30 second overhead on the initial next_election_timeout. This is because we need
+            // to ensure that restarted nodes don't disrupt a stable cluster by timing out and driving up their
+            // term before network communication is established.
             let inst = Instant::now() + Duration::from_secs(30) + Duration::from_millis(self.config.new_rand_election_timeout());
             self.next_election_timeout = Some(inst);
-        }
-        // Else, for any other condition, stay non-voter.
-        else {
-            self.target_state = State::NonVoter;
         }
 
         // This is central loop of the system. The Raft core assumes a few different roles based
