@@ -254,8 +254,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn set_target_state(&mut self, target_state: State) {
         if target_state == State::Follower && !self.membership.contains(&self.id) {
             self.target_state = State::NonVoter;
+        } else {
+            self.target_state = target_state;
         }
-        self.target_state = target_state;
     }
 
     /// Get the next election timeout, generating a new value if not set.
