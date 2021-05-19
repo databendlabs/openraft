@@ -140,12 +140,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .nodes
             .iter()
             .filter(|(id, _)| self.core.membership.members.contains(id))
-            .map(|(_, node)| node.match_index)
+            .map(|(_, node)| (node.match_index, node.match_term))
             .collect::<Vec<_>>();
         if !self.is_stepping_down {
-            indices_c0.push(self.core.last_log_index);
+            indices_c0.push((self.core.last_log_index, self.core.last_log_term));
         }
-        let commit_index_c0 = calculate_new_commit_index(indices_c0, self.core.commit_index);
+        let commit_index_c0 = calculate_new_commit_index(indices_c0, self.core.commit_index, self.core.current_term);
 
         // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
         let mut commit_index_c1 = commit_index_c0; // Defaults to just matching C0.
@@ -154,9 +154,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .nodes
                 .iter()
                 .filter(|(id, _)| members.contains(id))
-                .map(|(_, node)| node.match_index)
+                .map(|(_, node)| (node.match_index, node.match_term))
                 .collect();
-            commit_index_c1 = calculate_new_commit_index(indices_c1, self.core.commit_index);
+            commit_index_c1 = calculate_new_commit_index(indices_c1, self.core.commit_index, self.core.current_term);
         }
 
         // Determine if we have a new commit index, accounting for joint consensus.
@@ -247,31 +247,26 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
 /// Determine the value for `current_commit` based on all known indicies of the cluster members.
 ///
-/// - `entries`: is a vector of all of the highest known indices to be replicated on a target node,
+/// - `entries`: is a vector of all of the highest known indices and terms to be replicated on a target node,
 /// one per node of the cluster, including the leader as long as the leader is not stepping down.
 /// - `current_commit`: is the Raft node's `current_commit` value before invoking this function.
 /// The output of this function will never be less than this value.
+/// - `leader_term`: the current leader term, only log entries from the leader’s current term are committed
+/// by counting replicas.
 ///
 /// NOTE: there are a few edge cases accounted for in this routine which will never practically
 /// be hit, but they are accounted for in the name of good measure.
-fn calculate_new_commit_index(mut entries: Vec<u64>, current_commit: u64) -> u64 {
-    // Handle cases where len < 2.
-    let len = entries.len();
-    if len == 0 {
+fn calculate_new_commit_index(mut entries: Vec<(u64, u64)>, current_commit: u64, leader_term: u64) -> u64 {
+    if entries.is_empty() {
         return current_commit;
-    } else if len == 1 {
-        let only_elem = entries[0];
-        return if only_elem < current_commit { current_commit } else { only_elem };
-    };
-
-    // Calculate offset which will give the majority slice of high-end.
-    entries.sort_unstable();
-    let offset = if (len % 2) == 0 { (len / 2) - 1 } else { len / 2 };
-    let new_val = entries.get(offset).unwrap_or(&current_commit);
-    if new_val < &current_commit {
-        current_commit
+    }
+    entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+    let offset = (entries.len() + 1) / 2 - 1;
+    let new_val = entries.get(offset).cloned().unwrap_or((current_commit, leader_term));
+    if new_val.0 > current_commit && new_val.1 == leader_term {
+        new_val.0
     } else {
-        *new_val
+        current_commit
     }
 }
 
@@ -333,27 +328,43 @@ mod tests {
         use super::*;
 
         macro_rules! test_calculate_new_commit_index {
-            ($name:ident, $expected:literal, $current:literal, $entries:expr) => {
+            ($name:ident, $expected:literal, $current:literal, $leader_term:literal, $entries:expr) => {
                 #[test]
                 fn $name() {
                     let mut entries = $entries;
-                    let output = calculate_new_commit_index(entries.clone(), $current);
-                    entries.sort_unstable();
+                    let output = calculate_new_commit_index(entries.clone(), $current, $leader_term);
+                    entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
                     assert_eq!(output, $expected, "Sorted values: {:?}", entries);
                 }
             };
         }
 
-        test_calculate_new_commit_index!(basic_values, 10, 5, vec![20, 5, 0, 15, 10]);
+        test_calculate_new_commit_index!(basic_values, 10, 5, 3, vec![(20, 3), (5, 2), (0, 2), (15, 3), (10, 3)]);
 
-        test_calculate_new_commit_index!(len_zero_should_return_current_commit, 20, 20, vec![]);
+        test_calculate_new_commit_index!(len_zero_should_return_current_commit, 20, 20, 10, vec![]);
 
-        test_calculate_new_commit_index!(len_one_where_greater_than_current, 100, 0, vec![100]);
+        test_calculate_new_commit_index!(len_one_where_greater_than_current, 100, 0, 3, vec![(100, 3)]);
 
-        test_calculate_new_commit_index!(len_one_where_less_than_current, 100, 100, vec![50]);
+        test_calculate_new_commit_index!(len_one_where_greater_than_current_but_smaller_term, 0, 0, 3, vec![(100, 2)]);
 
-        test_calculate_new_commit_index!(even_number_of_nodes, 0, 0, vec![0, 100, 0, 100, 0, 100]);
+        test_calculate_new_commit_index!(len_one_where_less_than_current, 100, 100, 3, vec![(50, 3)]);
 
-        test_calculate_new_commit_index!(majority_wins, 100, 0, vec![0, 100, 0, 100, 0, 100, 100]);
+        test_calculate_new_commit_index!(even_number_of_nodes, 0, 0, 3, vec![(0, 3), (100, 3), (0, 3), (100, 3), (0, 3), (100, 3)]);
+
+        test_calculate_new_commit_index!(
+            majority_wins,
+            100,
+            0,
+            3,
+            vec![(0, 3), (100, 3), (0, 3), (100, 3), (0, 3), (100, 3), (100, 3)]
+        );
+
+        test_calculate_new_commit_index!(
+            majority_entries_wins_but_not_current_term,
+            0,
+            0,
+            3,
+            vec![(0, 2), (100, 2), (0, 2), (101, 3), (0, 2), (101, 3), (101, 3)]
+        );
     }
 }
