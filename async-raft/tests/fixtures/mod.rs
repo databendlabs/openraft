@@ -87,6 +87,18 @@ impl RaftRouter {
         Ok(())
     }
 
+    /// Initialize cluster with specified node ids.
+    pub async fn initialize_with(&self, node: NodeId, members: HashSet<NodeId>) -> Result<()> {
+        tracing::info!({ node }, "initializing cluster from single node");
+        let rt = self.routing_table.read().await;
+        rt.get(&node)
+            .ok_or_else(|| anyhow!("node {} not found in routing table", node))?
+            .0
+            .initialize(members.clone())
+            .await?;
+        Ok(())
+    }
+
     /// Isolate the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn isolate_node(&self, id: NodeId) {

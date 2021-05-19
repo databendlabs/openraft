@@ -194,7 +194,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Here we use a 30 second overhead on the initial next_election_timeout. This is because we need
         // to ensure that restarted nodes don't disrupt a stable cluster by timing out and driving up their
         // term before network communication is established.
-        else if !is_only_configured_member {
+        else if !is_only_configured_member && self.membership.contains(&self.id) {
             self.target_state = State::Follower;
             let inst = Instant::now() + Duration::from_secs(30) + Duration::from_millis(self.config.new_rand_election_timeout());
             self.next_election_timeout = Some(inst);
