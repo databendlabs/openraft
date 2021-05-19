@@ -154,7 +154,7 @@ impl RaftRouter {
         };
         if let Err(err) = self.send_client_request(target, req).await {
             tracing::error!({error=%err}, "error from client request");
-            panic!(err)
+            panic!("{:?}", err)
         }
     }
 

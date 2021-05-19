@@ -223,10 +223,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 return;
             }
         };
-        let last_index_and_term = match self.outbound_buffer.last() {
-            Some(last) => Some((last.as_ref().index, last.as_ref().term)),
-            None => None,
-        };
+        let last_index_and_term = self.outbound_buffer.last().map(|last| (last.as_ref().index, last.as_ref().term));
         self.outbound_buffer.clear(); // Once we've successfully sent a payload of entries, don't send them again.
 
         // Handle success conditions.
