@@ -242,15 +242,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 }
             })
             .collect();
-        // If we actually have some cached entries to apply, then we optimistically update, as
-        // `self.last_applied` is held in-memory only, and if an error does come up, then
-        // Raft will go into shutdown.
-        if let Some(index) = last_entry_seen {
-            self.last_applied = index;
-            self.report_metrics();
-        }
+
         // If we have no data entries to apply, then do nothing.
         if entries.is_empty() {
+            if let Some(index) = last_entry_seen {
+                self.last_applied = index;
+                self.report_metrics();
+            }
             return;
         }
         // Spawn task to replicate these entries to the state machine.
@@ -260,7 +258,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // interface a bit before 1.0.
             let entries_refs: Vec<_> = entries.iter().map(|(k, v)| (k, v)).collect();
             storage.replicate_to_state_machine(&entries_refs).await?;
-            Ok(None)
+            Ok(last_entry_seen)
         });
         self.replicate_to_sm_handle.push(handle);
     }

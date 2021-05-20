@@ -26,6 +26,11 @@ jobs:
         with:
           command: test
           args: -p async-raft --test initialization
+      - name: Integration Test | metrics state machine consistency
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --test metrics_state_machine_consistency
       - name: Integration Test | NonVoter restart
         uses: actions-rs/cargo@v1
         with:
