@@ -181,16 +181,58 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn handle_joint_consensus_committed(&mut self) -> Result<(), RaftError> {
         if let ConsensusState::Joint { is_committed, .. } = &mut self.consensus_state {
-            *is_committed = true; // Mark as comitted.
+            *is_committed = true; // Mark as committed.
         }
         // Only proceed to finalize this joint consensus if there are no remaining nodes being synced.
         if self.consensus_state.is_joint_consensus_safe_to_finalize() {
+            self.update_replication_state().await?;
             self.finalize_joint_consensus().await?;
         }
         Ok(())
     }
 
-    /// Finalize the comitted joint consensus.
+    /// When the joint membership is committed(not the uniform membership),
+    /// a new added node turns from a NonVoter to a Follower.
+    /// Thus we need to move replication state from `non_voters` to `nodes`.
+    ///
+    /// There are two place in this code base where `nodes` are changed:
+    /// - When a leader is established it adds all node_id found in `membership` to `nodes`.
+    /// - When membership change is committed, i.e., a joint membership or a uniform membership.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub(super) async fn update_replication_state(&mut self) -> Result<(), RaftError> {
+
+        let new_node_ids = self
+            .core
+            .membership
+            .all_nodes()
+            .into_iter()
+            .filter(|elem| elem != &self.core.id)
+            .collect::<HashSet<_>>();
+
+        let old_node_ids = self.core.membership.members.clone();
+        let node_ids_to_add = new_node_ids.difference(&old_node_ids);
+
+        // move replication state from non_voters to nodes.
+        for node_id in node_ids_to_add {
+
+            if !self.non_voters.contains_key(node_id) {
+                // Just a probe for bug
+                panic!("joint membership contains node_id:{} not in non_voters:{:?}", node_id, self.non_voters.keys().collect::<Vec<_>>());
+            }
+
+            if self.nodes.contains_key(node_id) {
+                // Just a probe for bug
+                panic!("joint membership contains an existent node_id:{} in nodes:{:?}", node_id,self.nodes.keys().collect::<Vec<_>>());
+            }
+
+            let non_voter_state = self.non_voters.remove(node_id).unwrap();
+            self.nodes.insert(*node_id, non_voter_state.state);
+        }
+
+        Ok(())
+    }
+
+    /// Finalize the committed joint consensus.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn finalize_joint_consensus(&mut self) -> Result<(), RaftError> {
         // Only proceed if it is safe to do so.
@@ -256,6 +298,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 }
             })
             .collect();
+
+        let follower_ids:Vec<u64> = self.nodes.keys().cloned().collect();
+        let non_voter_ids:Vec<u64> = self.non_voters.keys().cloned().collect();
+        tracing::debug!("nodes: {:?}", follower_ids);
+        tracing::debug!("non_voters: {:?}", non_voter_ids);
+        tracing::debug!("membership: {:?}", self.core.membership);
+        tracing::debug!("nodes_to_remove: {:?}", nodes_to_remove);
+
         for node in nodes_to_remove {
             tracing::debug!({ target = node }, "removing target node from replication pool");
             if let Some(node) = self.nodes.remove(&node) {

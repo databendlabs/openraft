@@ -21,6 +21,11 @@ jobs:
           args: -p async-raft --lib
 
       # integration tests
+      - name: Integration Test | Add remove Voter
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --test add_remove_voter
       - name: Integration Test | Initialization
         uses: actions-rs/cargo@v1
         with:
