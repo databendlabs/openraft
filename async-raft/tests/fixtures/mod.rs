@@ -115,6 +115,45 @@ impl RaftRouter {
         metrics
     }
 
+
+    pub async fn get_sto(&self, node_id: &NodeId) -> Arc<MemStore> {
+        let sto = self.routing_table.read().await.get(node_id).unwrap().clone().1;
+        sto
+    }
+    /// Wait for metrics until it satisfies some condition.
+    #[tracing::instrument(level = "info", skip(self, func))]
+    pub async fn wait_for_metrics<T>(&self, node_id:&NodeId, func: T, timeout: tokio::time::Duration, msg: &str) -> RaftMetrics
+    where
+        T: Fn(&RaftMetrics) -> bool,
+    {
+
+        let rt = self.routing_table.read().await;
+        let node = rt.get(node_id).unwrap();
+        let mut mrx = node.0.metrics().clone();
+
+        loop {
+            let latest = mrx.borrow().clone();
+
+            tracing::info!("wait for {:} metrics: {:?}", msg, latest);
+
+            if func(&latest) {
+                tracing::info!("done wait for {:} metrics: {:?}", msg, latest);
+                return latest;
+            }
+
+            let delay = tokio::time::sleep(timeout);
+
+            tokio::select! {
+                _ = delay => {
+                    panic!("timeout wait for {} metrics: {:?}", msg, latest);
+                }
+                changed = mrx.changed() => {
+                    assert!(changed.is_ok());
+                }
+            };
+        }
+    }
+
     /// Get the ID of the current leader.
     pub async fn leader(&self) -> Option<NodeId> {
         let isolated = self.isolated_nodes.read().await;
