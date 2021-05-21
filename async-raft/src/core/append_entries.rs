@@ -239,6 +239,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return;
         }
         // Spawn task to replicate these entries to the state machine.
+        // Linearizability is guaranteed by `replicate_to_sm_handle`, which is the mechanism used
+        // to ensure that only a single task can replicate data to the state machine, and that is
+        // owned by a single task, not shared between multiple threads/tasks.
         let storage = self.storage.clone();
         let handle = tokio::spawn(async move {
             // Create a new vector of references to the entries data ... might have to change this
