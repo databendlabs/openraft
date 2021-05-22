@@ -476,13 +476,19 @@ impl RaftRouter {
 impl RaftNetwork<MemClientRequest> for RaftRouter {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn append_entries(&self, target: u64, rpc: AppendEntriesRequest<MemClientRequest>) -> Result<AppendEntriesResponse> {
+
+        tracing::debug!("append_entries to id={} {:?}", target, rpc);
+
         let rt = self.routing_table.read().await;
         let isolated = self.isolated_nodes.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
         if isolated.contains(&target) || isolated.contains(&rpc.leader_id) {
             return Err(anyhow!("target node is isolated"));
         }
-        Ok(addr.0.append_entries(rpc).await?)
+        let resp = addr.0.append_entries(rpc).await;
+
+        tracing::debug!("append_entries: recv resp from id={} {:?}", target, resp);
+        Ok(resp?)
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).

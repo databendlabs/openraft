@@ -58,6 +58,11 @@ jobs:
         with:
           command: test
           args: -p async-raft --test singlenode
+      - name: Integration Test | Concurrent writing log and adding non-voter
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --test concurrent_write_and_add_non_voter
       - name: Integration Test | Dynamic Membership
         uses: actions-rs/cargo@v1
         with:

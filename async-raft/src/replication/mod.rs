@@ -532,21 +532,33 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .first()
                 .map(|entry| entry.as_ref().index)
                 .or_else(|| self.core.replication_buffer.first().map(|entry| entry.index));
-            if let Some(index) = next_buf_index {
-                // Ensure that our buffered data matches up with `next_index`. When transitioning to
-                // line rate, it is always possible that new data has been sent for replication but has
-                // skipped this replication stream during transition. In such cases, a single update from
-                // storage will put this stream back on track.
-                if self.core.next_index != index {
-                    self.frontload_outbound_buffer(self.core.next_index, index).await;
-                    if self.core.target_state != TargetReplState::LineRate {
-                        return;
-                    }
+
+            // When converting to `LaggingState`, `outbound_buffer` and `replication_buffer` is cleared,
+            // in which there may be uncommitted logs.
+            // Thus when converting back to `LineRateState`, when these two buffers are empty, we
+            // need to resend all unommitted logs.
+            // Otherwise these logs have no chance to be replicated, unless a new log is written.
+            let index = match next_buf_index {
+                Some(i) => {i}
+                None => {
+                    self.core.last_log_index+1
+                }
+            };
+
+            // Ensure that our buffered data matches up with `next_index`. When transitioning to
+            // line rate, it is always possible that new data has been sent for replication but has
+            // skipped this replication stream during transition. In such cases, a single update from
+            // storage will put this stream back on track.
+            if self.core.next_index != index {
+                self.frontload_outbound_buffer(self.core.next_index, index).await;
+                if self.core.target_state != TargetReplState::LineRate {
+                    return;
                 }
 
                 self.core.send_append_entries().await;
                 continue;
             }
+
             tokio::select! {
                 _ = self.core.heartbeat.tick() => self.core.send_append_entries().await,
                 event = self.core.raftrx.recv() => match event {
