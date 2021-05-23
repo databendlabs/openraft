@@ -62,7 +62,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
                 )
             .await;
 
-        let sto = router.get_sto(&node_id).await;
+        let sto = router.get_storage_handle(&node_id).await?;
         assert!(sto.get_state_machine().await.client_status.get("foo").is_some());
 
     }
