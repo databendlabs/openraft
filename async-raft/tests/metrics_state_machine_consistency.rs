@@ -40,7 +40,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
             Duration::from_micros(100),
             "n0.state -> Leader",
         )
-        .await;
+        .await?;
 
     tracing::info!("--- add one non-voter");
     router.add_non_voter(0, 1).await?;
@@ -60,7 +60,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
                 Duration::from_micros(100),
                 &format!("n{}.last_applied -> {}", node_id, want),
                 )
-            .await;
+            .await?;
 
         let sto = router.get_storage_handle(&node_id).await?;
         assert!(sto.get_state_machine().await.client_status.get("foo").is_some());
