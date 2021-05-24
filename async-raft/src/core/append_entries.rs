@@ -45,19 +45,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.set_target_state(State::Follower);
         }
 
-        // If this is just a heartbeat, then respond.
-        if msg.entries.is_empty() {
-            self.replicate_to_state_machine_if_needed(msg.entries).await;
-            if report_metrics {
-                self.report_metrics();
-            }
-            return Ok(AppendEntriesResponse {
-                term: self.current_term,
-                success: true,
-                conflict_opt: None,
-            });
-        }
-
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
         // log info, then replication is g2g.
         let msg_prev_index_is_min = msg.prev_log_index == u64::min_value();

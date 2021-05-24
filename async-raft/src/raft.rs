@@ -377,7 +377,7 @@ pub struct AppendEntriesResponse {
 /// This implementation of Raft uses this value to more quickly synchronize a leader with its
 /// followers which may be some distance behind in replication, may have conflicting entries, or
 /// which may be new to the cluster.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ConflictOpt {
     /// The term of the most recent entry which does not conflict with the received request.
     pub term: u64,

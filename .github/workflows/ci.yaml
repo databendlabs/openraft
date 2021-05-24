@@ -46,6 +46,13 @@ jobs:
         with:
           command: test
           args: -p async-raft --test client_writes
+
+      - name: Integration Test | Receive Conflict when appending empty entries.
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: -p async-raft --test conflict_with_empty_entries
+
       - name: Integration Test | Singlenode
         uses: actions-rs/cargo@v1
         with:
