@@ -9,15 +9,15 @@ use anyhow::{anyhow, Result};
 use tokio::sync::RwLock;
 use tracing_subscriber::prelude::*;
 
-use async_raft::{Config, NodeId, Raft, RaftMetrics, RaftNetwork, State};
 use async_raft::async_trait::async_trait;
 use async_raft::error::{ChangeConfigError, ClientReadError, ClientWriteError};
+use async_raft::raft::ClientWriteRequest;
+use async_raft::raft::MembershipConfig;
 use async_raft::raft::{AppendEntriesRequest, AppendEntriesResponse};
 use async_raft::raft::{InstallSnapshotRequest, InstallSnapshotResponse};
 use async_raft::raft::{VoteRequest, VoteResponse};
-use async_raft::raft::ClientWriteRequest;
-use async_raft::raft::MembershipConfig;
 use async_raft::storage::RaftStorage;
+use async_raft::{Config, NodeId, Raft, RaftMetrics, RaftNetwork, State};
 use memstore::{ClientRequest as MemClientRequest, ClientResponse as MemClientResponse, MemStore};
 
 /// A concrete Raft type used during testing.
@@ -119,7 +119,9 @@ impl RaftRouter {
     /// Get a handle to the storage backend for the target node.
     pub async fn get_storage_handle(&self, node_id: &NodeId) -> Result<Arc<MemStore>> {
         let rt = self.routing_table.read().await;
-        let addr = rt.get(node_id).ok_or_else(||anyhow::anyhow!("could not find node {} in routing table", node_id))?;
+        let addr = rt
+            .get(node_id)
+            .ok_or_else(|| anyhow::anyhow!("could not find node {} in routing table", node_id))?;
         let sto = addr.clone().1;
         Ok(sto)
     }
@@ -127,8 +129,8 @@ impl RaftRouter {
     /// Wait for metrics until it satisfies some condition.
     #[tracing::instrument(level = "info", skip(self, func))]
     pub async fn wait_for_metrics<T>(&self, node_id: &NodeId, func: T, timeout: tokio::time::Duration, msg: &str) -> Result<RaftMetrics>
-        where
-            T: Fn(&RaftMetrics) -> bool,
+    where
+        T: Fn(&RaftMetrics) -> bool,
     {
         let rt = self.routing_table.read().await;
         let node = rt.get(node_id).ok_or_else(|| anyhow::anyhow!("node {} not found", node_id))?;
@@ -157,28 +159,53 @@ impl RaftRouter {
         }
     }
 
-    /// Wait for specified nodes until they applied upto `want_log`(inclusive) logs.
+    /// Same as wait_for_log() but provides additional timeout argument.
     #[tracing::instrument(level = "info", skip(self))]
-    pub async fn wait_for_nodes_log(&self, node_ids: &HashSet<u64>, want_log: u64, timeout: tokio::time::Duration, msg: &str) -> Result<()> {
+    pub async fn wait_for_log_timeout(&self, node_ids: &HashSet<u64>, want_log: u64, timeout: tokio::time::Duration, msg: &str) -> Result<()> {
         for i in node_ids.iter() {
-            self
-                .wait_for_metrics(
-                    &i,
-                    |x| x.last_log_index == want_log,
-                    timeout,
-                    &format!("{} n{}.last_log_index -> {}", msg,  i, want_log),
-                )
-                .await?;
-            self
-                .wait_for_metrics(
-                    &i,
-                    |x| x.last_applied == want_log,
-                    timeout,
-                    &format!("{} n{}.last_applied -> {}", msg, i, want_log),
-                )
-                .await?;
+            self.wait_for_metrics(
+                &i,
+                |x| x.last_log_index == want_log,
+                timeout,
+                &format!("{} n{}.last_log_index -> {}", msg, i, want_log),
+            )
+            .await?;
+            self.wait_for_metrics(
+                &i,
+                |x| x.last_applied == want_log,
+                timeout,
+                &format!("{} n{}.last_applied -> {}", msg, i, want_log),
+            )
+            .await?;
         }
         Ok(())
+    }
+
+    /// Wait for specified nodes until they applied upto `want_log`(inclusive) logs.
+    #[tracing::instrument(level = "info", skip(self))]
+    pub async fn wait_for_log(&self, node_ids: &HashSet<u64>, want_log: u64, msg: &str) -> Result<()> {
+        let timeout = tokio::time::Duration::from_millis(500);
+        self.wait_for_log_timeout(node_ids, want_log, timeout, msg).await
+    }
+
+    /// Same as wait_for_state() but provides additional timeout argument.
+    #[tracing::instrument(level = "info", skip(self))]
+    pub async fn wait_for_state_timeout(&self, node_ids: &HashSet<u64>, want_state: State, timeout: tokio::time::Duration, msg: &str) -> Result<()> {
+        for i in node_ids.iter() {
+            self.wait_for_metrics(
+                &i,
+                |x| x.state == want_state,
+                timeout,
+                &format!("{} n{}.state -> {:?}", msg, i, want_state),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    pub async fn wait_for_state(&self, node_ids: &HashSet<u64>, want_state: State, msg: &str) -> Result<()> {
+        let timeout = tokio::time::Duration::from_millis(500);
+        self.wait_for_state_timeout(node_ids, want_state, timeout, msg).await
     }
 
     /// Get the ID of the current leader.
