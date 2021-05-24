@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use maplit::hashset;
@@ -33,14 +32,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
 
     // Wait for node 0 to become leader.
     router.initialize_with(0, hashset![0]).await?;
-    router
-        .wait_for_metrics(
-            &0u64,
-            |x| x.state == State::Leader,
-            Duration::from_micros(100),
-            "n0.state -> Leader",
-        )
-        .await?;
+    router.wait_for_state(&hashset![0], State::Leader, "init").await?;
 
     tracing::info!("--- add one non-voter");
     router.add_non_voter(0, 1).await?;
@@ -53,18 +45,9 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     tracing::info!("--- wait for log to sync");
     let want = 2u64;
     for node_id in 0..2 {
-        router
-            .wait_for_metrics(
-                &node_id,
-                |x| x.last_applied == want,
-                Duration::from_micros(100),
-                &format!("n{}.last_applied -> {}", node_id, want),
-                )
-            .await?;
-
+        router.wait_for_log(&hashset![node_id], want, "write one log").await?;
         let sto = router.get_storage_handle(&node_id).await?;
         assert!(sto.get_state_machine().await.client_status.get("foo").is_some());
-
     }
 
     Ok(())
