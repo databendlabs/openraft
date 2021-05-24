@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::Config;
+use async_raft::State;
 use futures::stream::StreamExt;
 use maplit::hashset;
 use tokio::time::sleep;
@@ -31,15 +32,20 @@ async fn dynamic_membership() -> Result<()> {
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
+    let mut want = 0;
+
     // Assert all nodes are in non-voter state & have no entries.
-    sleep(Duration::from_secs(3)).await;
+    router.wait_for_log(&hashset![0], want, "empty").await?;
+    router.wait_for_state(&hashset![0], State::NonVoter, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    sleep(Duration::from_secs(3)).await;
-    router.assert_stable_cluster(Some(1), Some(1)).await;
+    want += 1;
+
+    router.wait_for_log(&hashset![0], want, "init").await?;
+    router.assert_stable_cluster(Some(1), Some(want)).await;
 
     // Sync some new nodes.
     router.new_raft_node(1).await;
@@ -57,8 +63,10 @@ async fn dynamic_membership() -> Result<()> {
     }
     tracing::info!("--- changing cluster config");
     router.change_membership(0, hashset![0, 1, 2, 3, 4]).await?;
-    sleep(Duration::from_secs(5)).await;
-    router.assert_stable_cluster(Some(1), Some(3)).await; // Still in term 1, so leader is still node 0.
+    want += 2;
+
+    router.wait_for_log(&hashset![0, 1, 2, 3, 4], want, "cluster of 5 candidates").await?;
+    router.assert_stable_cluster(Some(1), Some(want)).await; // Still in term 1, so leader is still node 0.
 
     // Isolate old leader and assert that a new leader takes over.
     tracing::info!("--- isolating master node 0");

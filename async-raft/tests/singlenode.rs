@@ -1,11 +1,11 @@
 mod fixtures;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::Config;
-use tokio::time::sleep;
+use async_raft::State;
+use maplit::hashset;
 
 use fixtures::RaftRouter;
 
@@ -29,14 +29,19 @@ async fn singlenode() -> Result<()> {
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
+    let mut want = 0;
+
     // Assert all nodes are in non-voter state & have no entries.
-    sleep(Duration::from_secs(10)).await;
+    router.wait_for_log(&hashset![0], want, "empty").await?;
+    router.wait_for_state(&hashset![0], State::NonVoter, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    sleep(Duration::from_secs(10)).await;
+    want += 1;
+
+    router.wait_for_log(&hashset![0], want, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Write some data to the single node cluster.

@@ -2,12 +2,12 @@ mod fixtures;
 
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::sleep;
 
 use anyhow::Result;
 use async_raft::raft::MembershipConfig;
-use async_raft::{Config, SnapshotPolicy};
+use async_raft::{Config, SnapshotPolicy, State};
 use maplit::hashset;
-use tokio::time::sleep;
 
 use fixtures::RaftRouter;
 
@@ -34,20 +34,31 @@ async fn compaction() -> Result<()> {
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
+    let mut want = 0;
+
     // Assert all nodes are in non-voter state & have no entries.
-    sleep(Duration::from_secs(10)).await;
+    router.wait_for_log(&hashset![0], want, "empty").await?;
+    router.wait_for_state(&hashset![0], State::NonVoter, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    sleep(Duration::from_secs(10)).await;
+    want += 1;
+
+    router.wait_for_log(&hashset![0], want, "init leader").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Send enough requests to the cluster that compaction on the node should be triggered.
     router.client_request_many(0, "0", 499).await; // Puts us exactly at the configured snapshot policy threshold.
-    sleep(Duration::from_secs(5)).await; // Wait to ensure there is enough time for a snapshot to be built (this is way more than enough).
-    router.assert_stable_cluster(Some(1), Some(500)).await;
+    want += 499;
+
+    router.wait_for_log(&hashset![0], want, "write").await?;
+    router.assert_stable_cluster(Some(1), Some(want)).await;
+
+    // TODO: add snapshot info into metrics.
+    //       Then watch metrics instead of waiting.
+    sleep(Duration::from_secs(10)).await;
     router
         .assert_storage_state(
             1,
@@ -72,8 +83,10 @@ async fn compaction() -> Result<()> {
         .change_membership(0, hashset![0, 1])
         .await
         .expect("failed to modify cluster membership");
-    sleep(Duration::from_secs(5)).await; // Wait to ensure metrics are updated (this is way more than enough).
-    router.assert_stable_cluster(Some(1), Some(502)).await; // We expect index to be 500 + 2 (joint & uniform config change entries).
+    want += 2; // 2 member change logs
+
+    router.wait_for_log(&hashset![0, 1], want, "add follower").await?;
+    router.assert_stable_cluster(Some(1), Some(want)).await; // We expect index to be 500 + 2 (joint & uniform config change entries).
     let expected_snap = Some((
         500.into(),
         1,

@@ -30,14 +30,19 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
 
+    let mut want = 0;
+
     // Assert all nodes are in non-voter state & have no entries.
-    sleep(Duration::from_secs(3)).await;
+    router.wait_for_log(&hashset![0, 1], want, "empty").await?;
+    router.wait_for_state(&hashset![0, 1], State::NonVoter, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    sleep(Duration::from_secs(3)).await;
+    want += 1;
+
+    router.wait_for_log(&hashset![0, 1], want, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -46,7 +51,21 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
     router.change_membership(orig_leader, hashset![1, 2, 3]).await?;
-    sleep(Duration::from_secs(5)).await; // Give time for step down metrics to flow through.
+    want += 2;
+
+    for id in 0..4 {
+        if id == orig_leader {
+            router.wait_for_log(&hashset![id], want, "update membership: 1, 2, 3; old leader").await?;
+        } else {
+            // a new leader elected and propose a log
+            router
+                .wait_for_log(&hashset![id], want + 1, "update membership: 1, 2, 3; new candidate")
+                .await?;
+        }
+    }
+
+    // leader commit a new log.
+    want += 1;
 
     // Assert on the state of the old leader.
     {
@@ -85,8 +104,18 @@ async fn stepdown() -> Result<()> {
     // Assert that the current cluster is stable.
     let _ = router.remove_node(0).await;
     sleep(Duration::from_secs(5)).await; // Give time for a new leader to be elected.
-    router.assert_stable_cluster(Some(2), Some(4)).await;
-    router.assert_storage_state(2, 4, None, 0, None).await;
+
+    // All metrics should be identical. Just use the first one.
+    let metrics = &router.latest_metrics().await[0];
+
+    // It may take more than one round to establish a leader.
+    // As leader established it commits a Blank log.
+    // If the election takes only one round, the expected term/index is 2/4.
+    tracing::info!("term: {}", metrics.current_term);
+    tracing::info!("index: {}", metrics.last_log_index);
+    assert!(metrics.current_term >= 2, "term incr when leader changes");
+    router.assert_stable_cluster(Some(metrics.current_term), Some(want)).await;
+    router.assert_storage_state(metrics.current_term, want, None, 0, None).await;
     // ----------------------------------- ^^^ this is `0` instead of `4` because blank payloads from new leaders
     //                                         and config change entries are never applied to the state machine.
 
