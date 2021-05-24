@@ -157,6 +157,30 @@ impl RaftRouter {
         }
     }
 
+    /// Wait for specified nodes until they applied upto `want_log`(inclusive) logs.
+    #[tracing::instrument(level = "info", skip(self))]
+    pub async fn wait_for_nodes_log(&self, node_ids: &HashSet<u64>, want_log: u64, timeout: tokio::time::Duration, msg: &str) -> Result<()> {
+        for i in node_ids.iter() {
+            self
+                .wait_for_metrics(
+                    &i,
+                    |x| x.last_log_index == want_log,
+                    timeout,
+                    &format!("{} n{}.last_log_index -> {}", msg,  i, want_log),
+                )
+                .await?;
+            self
+                .wait_for_metrics(
+                    &i,
+                    |x| x.last_applied == want_log,
+                    timeout,
+                    &format!("{} n{}.last_applied -> {}", msg, i, want_log),
+                )
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Get the ID of the current leader.
     pub async fn leader(&self) -> Option<NodeId> {
         let isolated = self.isolated_nodes.read().await;
