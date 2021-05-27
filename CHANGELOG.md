@@ -6,6 +6,12 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 
 ### fixed
 
+- Fixed [122](https://github.com/async-raft/async-raft/pull/122) a conflict is expected even when appending empty enties.
+
+    `append_entries` should get a response with non-none ConflictOpt even if the entries in the message is empty.
+    Otherwise if no conflict is found the leader will never be able to sync logs to a new added
+    NonVoter, until a next log, is proposed on the leader.
+
 - Fixed [117](https://github.com/async-raft/async-raft/pull/117) `last_applied` should be updated only when logs actually applied.
 
 ## async-raft 0.6.1
