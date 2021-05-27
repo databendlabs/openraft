@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Result, Context};
 use tokio::sync::RwLock;
 use tracing_subscriber::prelude::*;
 
@@ -121,7 +121,7 @@ impl RaftRouter {
         let rt = self.routing_table.read().await;
         let addr = rt
             .get(node_id)
-            .ok_or_else(|| anyhow::anyhow!("could not find node {} in routing table", node_id))?;
+            .with_context(|| format!("could not find node {} in routing table", node_id))?;
         let sto = addr.clone().1;
         Ok(sto)
     }
@@ -133,7 +133,7 @@ impl RaftRouter {
         T: Fn(&RaftMetrics) -> bool,
     {
         let rt = self.routing_table.read().await;
-        let node = rt.get(node_id).ok_or_else(|| anyhow::anyhow!("node {} not found", node_id))?;
+        let node = rt.get(node_id).with_context(|| format!("node {} not found", node_id))?;
         let mut mrx = node.0.metrics().clone();
 
         loop {
