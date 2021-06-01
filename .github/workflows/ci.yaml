@@ -7,6 +7,7 @@ jobs:
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v2
+
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -21,78 +22,11 @@ jobs:
           args: -p async-raft --lib
 
       # integration tests
-      - name: Integration Test | Add remove Voter
+      - name: Integration Test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: -p async-raft --test add_remove_voter
-      - name: Integration Test | Initialization
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test initialization
-      - name: Integration Test | metrics state machine consistency
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test metrics_state_machine_consistency
-      - name: Integration Test | NonVoter restart
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test non_voter_restart
-      - name: Integration Test | Client Reads
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test client_reads
-      - name: Integration Test | Client Writes
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test client_writes
-
-      - name: Integration Test | Receive Conflict when appending empty entries.
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test conflict_with_empty_entries
-
-      - name: Integration Test | Singlenode
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test singlenode
-      - name: Integration Test | Concurrent writing log and adding non-voter
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test concurrent_write_and_add_non_voter
-      - name: Integration Test | Dynamic Membership
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test dynamic_membership
-      - name: Integration Test | Compaction
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test compaction
-      - name: Integration Test | Current Leader
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test current_leader
-      - name: Integration Test | Stepdown
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test stepdown
-      - name: Integration Test | Shutdown
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -p async-raft --test shutdown
+          args: -p async-raft
 
       # release build
       - name: Build | Release Mode
@@ -107,6 +41,7 @@ jobs:
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v2
+
       - name: Setup | Toolchain
         uses: actions-rs/toolchain@v1
         with:
