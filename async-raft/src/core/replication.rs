@@ -182,8 +182,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if !self.is_stepping_down {
             indices_c0.push((self.core.last_log_index, self.core.last_log_term));
         }
+        tracing::debug!("indices_c0: {:?}", indices_c0);
         let commit_index_c0 =
             calculate_new_commit_index(indices_c0, self.core.commit_index, self.core.current_term);
+
+        tracing::debug!("commit_index_c0: {}", commit_index_c0);
+
+        tracing::debug!("c1: {:?}", self.core.membership.members_after_consensus);
+        tracing::debug!("nodes: {:?}", self.nodes.keys().collect::<Vec<_>>());
 
         // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
         let mut commit_index_c1 = commit_index_c0; // Defaults to just matching C0.
@@ -194,11 +200,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .filter(|(id, _)| members.contains(id))
                 .map(|(_, node)| (node.match_index, node.match_term))
                 .collect();
+
+            tracing::debug!("indices_c1: {:?}", indices_c1);
             commit_index_c1 = calculate_new_commit_index(
                 indices_c1,
                 self.core.commit_index,
                 self.core.current_term,
             );
+            tracing::debug!("commit_index_c1: {}", commit_index_c1);
         }
 
         // Determine if we have a new commit index, accounting for joint consensus.

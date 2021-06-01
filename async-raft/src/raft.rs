@@ -517,7 +517,9 @@ pub struct EntrySnapshotPointer {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// A model of the membership configuration of the cluster.
+/// The membership configuration of the cluster.
+/// Unlike original raft, the membership always a joint.
+/// It could be a joint of one, two or more members, i.e., a quorum requires a majority of every members
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MembershipConfig {
     /// All members of the Raft cluster.

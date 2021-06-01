@@ -229,6 +229,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// - When membership change is committed, i.e., a joint membership or a uniform membership.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn update_replication_state(&mut self) -> Result<(), RaftError> {
+        tracing::debug!("update_replication_state");
+
         let new_node_ids = self
             .core
             .membership
