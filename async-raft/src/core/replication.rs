@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use tokio::sync::oneshot;
 
 use crate::config::SnapshotPolicy;
@@ -173,35 +175,25 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         // Determine the new commit index of the current membership config nodes.
-        let mut indices_c0 = self
-            .nodes
-            .iter()
-            .filter(|(id, _)| self.core.membership.members.contains(id))
-            .map(|(_, node)| (node.match_index, node.match_term))
-            .collect::<Vec<_>>();
-        if !self.is_stepping_down {
-            indices_c0.push((self.core.last_log_index, self.core.last_log_term));
-        }
+        let indices_c0 = self.get_match_indexes(&self.core.membership.members);
         tracing::debug!("indices_c0: {:?}", indices_c0);
+
         let commit_index_c0 =
             calculate_new_commit_index(indices_c0, self.core.commit_index, self.core.current_term);
-
         tracing::debug!("commit_index_c0: {}", commit_index_c0);
 
         tracing::debug!("c1: {:?}", self.core.membership.members_after_consensus);
-        tracing::debug!("nodes: {:?}", self.nodes.keys().collect::<Vec<_>>());
+        tracing::debug!(
+            "follower nodes: {:?}",
+            self.nodes.keys().collect::<Vec<_>>()
+        );
 
         // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
         let mut commit_index_c1 = commit_index_c0; // Defaults to just matching C0.
         if let Some(members) = &self.core.membership.members_after_consensus {
-            let indices_c1 = self
-                .nodes
-                .iter()
-                .filter(|(id, _)| members.contains(id))
-                .map(|(_, node)| (node.match_index, node.match_term))
-                .collect();
-
+            let indices_c1 = self.get_match_indexes(members);
             tracing::debug!("indices_c1: {:?}", indices_c1);
+
             commit_index_c1 = calculate_new_commit_index(
                 indices_c1,
                 self.core.commit_index,
@@ -250,6 +242,39 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.report_metrics();
         }
         Ok(())
+    }
+
+    /// Extract the matching index/term of the replication state of specified nodes.
+    fn get_match_indexes(&self, node_ids: &HashSet<NodeId>) -> Vec<(u64, u64)> {
+        tracing::debug!("to get match indexes of nodes: {:?}", node_ids);
+
+        let mut rst = Vec::with_capacity(node_ids.len());
+        for id in node_ids.iter() {
+            // this node is me, the leader
+            if *id == self.core.id {
+                // TODO: can it be sure that self.core.last_log_term is the term of this leader?
+                rst.push((self.core.last_log_index, self.core.last_log_term));
+                continue;
+            }
+
+            // this node is a follower
+            let repl_state = self.nodes.get(id);
+            if let Some(x) = repl_state {
+                rst.push((x.match_index, x.match_term));
+                continue;
+            }
+
+            // this node is a non-voter
+            let repl_state = self.non_voters.get(id);
+            if let Some(x) = repl_state {
+                rst.push((x.state.match_index, x.state.match_term));
+                continue;
+            }
+            panic!("node {} not found in nodes or non-voters", id);
+        }
+
+        tracing::debug!("match indexes of nodes: {:?}: {:?}", node_ids, rst);
+        rst
     }
 
     /// Handle events from replication streams requesting for snapshot info.
