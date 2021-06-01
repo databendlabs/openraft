@@ -1,11 +1,19 @@
 use std::io::SeekFrom;
 
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::io::AsyncSeekExt;
+use tokio::io::AsyncWriteExt;
 
-use crate::core::{RaftCore, SnapshotState, State, UpdateCurrentLeader};
+use crate::core::RaftCore;
+use crate::core::SnapshotState;
+use crate::core::State;
+use crate::core::UpdateCurrentLeader;
 use crate::error::RaftResult;
-use crate::raft::{InstallSnapshotRequest, InstallSnapshotResponse};
-use crate::{AppData, AppDataResponse, RaftNetwork, RaftStorage};
+use crate::raft::InstallSnapshotRequest;
+use crate::raft::InstallSnapshotResponse;
+use crate::AppData;
+use crate::AppDataResponse;
+use crate::RaftNetwork;
+use crate::RaftStorage;
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// Invoked by leader to send chunks of a snapshot to a follower (§7).
@@ -14,10 +22,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// a log may only have one snapshot at any time. As snapshot contents are application specific,
     /// the Raft log will only store a pointer to the snapshot file along with the index & term.
     #[tracing::instrument(level = "trace", skip(self, req))]
-    pub(super) async fn handle_install_snapshot_request(&mut self, req: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse> {
+    pub(super) async fn handle_install_snapshot_request(
+        &mut self,
+        req: InstallSnapshotRequest,
+    ) -> RaftResult<InstallSnapshotResponse> {
         // If message's term is less than most recent term, then we do not honor the request.
         if req.term < self.current_term {
-            return Ok(InstallSnapshotResponse { term: self.current_term });
+            return Ok(InstallSnapshotResponse {
+                term: self.current_term,
+            });
         }
 
         // Update election timeout.
@@ -53,20 +66,36 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 handle.abort(); // Abort the current compaction in favor of installation from leader.
                 Ok(self.begin_installing_snapshot(req).await?)
             }
-            Some(SnapshotState::Streaming { snapshot, id, offset }) => Ok(self.continue_installing_snapshot(req, offset, id, snapshot).await?),
+            Some(SnapshotState::Streaming {
+                snapshot,
+                id,
+                offset,
+            }) => Ok(self
+                .continue_installing_snapshot(req, offset, id, snapshot)
+                .await?),
         }
     }
 
     #[tracing::instrument(level = "trace", skip(self, req))]
-    async fn begin_installing_snapshot(&mut self, req: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse> {
+    async fn begin_installing_snapshot(
+        &mut self,
+        req: InstallSnapshotRequest,
+    ) -> RaftResult<InstallSnapshotResponse> {
         // Create a new snapshot and begin writing its contents.
-        let (id, mut snapshot) = self.storage.create_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let (id, mut snapshot) = self
+            .storage
+            .create_snapshot()
+            .await
+            .map_err(|err| self.map_fatal_storage_error(err))?;
         snapshot.as_mut().write_all(&req.data).await?;
 
         // If this was a small snapshot, and it is already done, then finish up.
         if req.done {
-            self.finalize_snapshot_installation(req, id, snapshot).await?;
-            return Ok(InstallSnapshotResponse { term: self.current_term });
+            self.finalize_snapshot_installation(req, id, snapshot)
+                .await?;
+            return Ok(InstallSnapshotResponse {
+                term: self.current_term,
+            });
         }
 
         // Else, retain snapshot components for later segments & respod.
@@ -75,17 +104,27 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             id,
             snapshot,
         });
-        Ok(InstallSnapshotResponse { term: self.current_term })
+        Ok(InstallSnapshotResponse {
+            term: self.current_term,
+        })
     }
 
     #[tracing::instrument(level = "trace", skip(self, req, offset, snapshot))]
     async fn continue_installing_snapshot(
-        &mut self, req: InstallSnapshotRequest, mut offset: u64, id: String, mut snapshot: Box<S::Snapshot>,
+        &mut self,
+        req: InstallSnapshotRequest,
+        mut offset: u64,
+        id: String,
+        mut snapshot: Box<S::Snapshot>,
     ) -> RaftResult<InstallSnapshotResponse> {
         // Always seek to the target offset if not an exact match.
         if req.offset != offset {
             if let Err(err) = snapshot.as_mut().seek(SeekFrom::Start(req.offset)).await {
-                self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
+                self.snapshot_state = Some(SnapshotState::Streaming {
+                    offset,
+                    id,
+                    snapshot,
+                });
                 return Err(err.into());
             }
             offset = req.offset;
@@ -93,25 +132,41 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Write the next segment & update offset.
         if let Err(err) = snapshot.as_mut().write_all(&req.data).await {
-            self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
+            self.snapshot_state = Some(SnapshotState::Streaming {
+                offset,
+                id,
+                snapshot,
+            });
             return Err(err.into());
         }
         offset += req.data.len() as u64;
 
         // If the snapshot stream is done, then finalize.
         if req.done {
-            self.finalize_snapshot_installation(req, id, snapshot).await?;
+            self.finalize_snapshot_installation(req, id, snapshot)
+                .await?;
         } else {
-            self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
+            self.snapshot_state = Some(SnapshotState::Streaming {
+                offset,
+                id,
+                snapshot,
+            });
         }
-        Ok(InstallSnapshotResponse { term: self.current_term })
+        Ok(InstallSnapshotResponse {
+            term: self.current_term,
+        })
     }
 
     /// Finalize the installation of a new snapshot.
     ///
     /// Any errors which come up from this routine will cause the Raft node to go into shutdown.
     #[tracing::instrument(level = "trace", skip(self, req, snapshot))]
-    async fn finalize_snapshot_installation(&mut self, req: InstallSnapshotRequest, id: String, mut snapshot: Box<S::Snapshot>) -> RaftResult<()> {
+    async fn finalize_snapshot_installation(
+        &mut self,
+        req: InstallSnapshotRequest,
+        id: String,
+        mut snapshot: Box<S::Snapshot>,
+    ) -> RaftResult<()> {
         snapshot
             .as_mut()
             .shutdown()
@@ -123,7 +178,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             None
         };
         self.storage
-            .finalize_snapshot_installation(req.last_included_index, req.last_included_term, delete_through, id, snapshot)
+            .finalize_snapshot_installation(
+                req.last_included_index,
+                req.last_included_term,
+                delete_through,
+                id,
+                snapshot,
+            )
             .await
             .map_err(|err| self.map_fatal_storage_error(err))?;
         let membership = self

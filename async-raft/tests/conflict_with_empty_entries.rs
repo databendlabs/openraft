@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-
-use async_raft::{Config, RaftNetwork};
-use async_raft::raft::{AppendEntriesRequest, ConflictOpt, Entry, EntryNormal, EntryPayload};
+use async_raft::raft::AppendEntriesRequest;
+use async_raft::raft::ConflictOpt;
+use async_raft::raft::Entry;
+use async_raft::raft::EntryNormal;
+use async_raft::raft::EntryPayload;
+use async_raft::Config;
+use async_raft::RaftNetwork;
 use fixtures::RaftRouter;
 use memstore::ClientRequest;
 
@@ -34,11 +38,14 @@ async fn conflict_with_empty_entries() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
+    let config = Arc::new(
+        Config::build("test".into())
+            .validate()
+            .expect("failed to build Raft config"),
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     router.new_raft_node(0).await;
-
 
     // Expect conflict even if the message contains no entries.
 
@@ -55,11 +62,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     assert_eq!(false, resp.success);
     assert!(resp.conflict_opt.is_some());
     let c = resp.conflict_opt.unwrap();
-    assert_eq!(ConflictOpt {
-        term: 0,
-        index: 0,
-    }, c);
-
+    assert_eq!(ConflictOpt { term: 0, index: 0 }, c);
 
     // Feed 2 logs
 
@@ -93,7 +96,6 @@ async fn conflict_with_empty_entries() -> Result<()> {
     assert_eq!(true, resp.success);
     assert!(resp.conflict_opt.is_none());
 
-
     // Expect a conflict with prev_log_index == 3
 
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
@@ -109,11 +111,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     assert_eq!(false, resp.success);
     assert!(resp.conflict_opt.is_some());
     let c = resp.conflict_opt.unwrap();
-    assert_eq!(ConflictOpt {
-        term: 1,
-        index: 2,
-    }, c);
+    assert_eq!(ConflictOpt { term: 1, index: 2 }, c);
 
     Ok(())
 }
-

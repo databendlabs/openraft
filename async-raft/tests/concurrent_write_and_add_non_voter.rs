@@ -1,13 +1,12 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
-use std::collections::HashSet;
 
 use anyhow::Result;
-use maplit::hashset;
-
 use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
+use maplit::hashset;
 
 mod fixtures;
 
@@ -41,10 +40,14 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
     fixtures::init_tracing();
 
     let timeout = Duration::from_millis(500);
-    let candidates = hashset![0,1,2];
+    let candidates = hashset![0, 1, 2];
 
     // Setup test dependencies.
-    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
+    let config = Arc::new(
+        Config::build("test".into())
+            .validate()
+            .expect("failed to build Raft config"),
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     router.new_raft_node(0).await;
@@ -78,7 +81,6 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
 
     let leader = router.leader().await.unwrap();
 
-
     tracing::info!("--- write one log");
     {
         router.client_request_many(leader, "client", 1).await;
@@ -87,16 +89,14 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
         wait_log(router.clone(), &candidates, want).await?;
     }
 
-
     // Concurrently add NonVoter and write another log.
     tracing::info!("--- concurrently add non-voter and write another log");
     {
-
         router.new_raft_node(3).await;
         let r = router.clone();
 
         let handle = {
-            tokio::spawn(async move{
+            tokio::spawn(async move {
                 r.add_non_voter(leader, 3).await.unwrap();
                 Ok::<(), anyhow::Error>(())
             })
@@ -108,21 +108,52 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
         let _ = handle.await?;
     };
 
-
     wait_log(router.clone(), &candidates, want).await?;
-    router.wait_for_metrics(&3u64, |x| { x.state == State::NonVoter }, timeout, &format!("n{}.state -> {:?}", 3, State::NonVoter)).await?;
+    router
+        .wait_for_metrics(
+            &3u64,
+            |x| x.state == State::NonVoter,
+            timeout,
+            &format!("n{}.state -> {:?}", 3, State::NonVoter),
+        )
+        .await?;
 
     // THe non-voter should receive the last written log
-    router.wait_for_metrics(&3u64, |x| { x.last_log_index == want }, timeout, &format!("n{}.last_log_index -> {}", 3, want)).await?;
+    router
+        .wait_for_metrics(
+            &3u64,
+            |x| x.last_log_index == want,
+            timeout,
+            &format!("n{}.last_log_index -> {}", 3, want),
+        )
+        .await?;
 
     Ok(())
 }
 
-async fn wait_log(router: std::sync::Arc<fixtures::RaftRouter>, node_ids: &HashSet<u64>, want_log: u64) -> anyhow::Result<()> {
+async fn wait_log(
+    router: std::sync::Arc<fixtures::RaftRouter>,
+    node_ids: &HashSet<u64>,
+    want_log: u64,
+) -> anyhow::Result<()> {
     let timeout = Duration::from_millis(500);
     for i in node_ids.iter() {
-        router.wait_for_metrics(&i, |x| { x.last_log_index == want_log }, timeout, &format!("n{}.last_log_index -> {}", i, want_log)).await?;
-        router.wait_for_metrics(&i, |x| { x.last_applied == want_log }, timeout, &format!("n{}.last_applied -> {}", i, want_log)).await?;
+        router
+            .wait_for_metrics(
+                &i,
+                |x| x.last_log_index == want_log,
+                timeout,
+                &format!("n{}.last_log_index -> {}", i, want_log),
+            )
+            .await?;
+        router
+            .wait_for_metrics(
+                &i,
+                |x| x.last_applied == want_log,
+                timeout,
+                &format!("n{}.last_applied -> {}", i, want_log),
+            )
+            .await?;
     }
     Ok(())
 }

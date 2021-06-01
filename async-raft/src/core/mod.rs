@@ -7,27 +7,53 @@ mod install_snapshot;
 pub(crate) mod replication;
 mod vote;
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
-use futures::future::{AbortHandle, Abortable};
-use futures::stream::{FuturesOrdered, StreamExt};
-use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, mpsc, oneshot, watch};
+use futures::future::AbortHandle;
+use futures::future::Abortable;
+use futures::stream::FuturesOrdered;
+use futures::stream::StreamExt;
+use serde::Deserialize;
+use serde::Serialize;
+use tokio::sync::broadcast;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
-use tokio::time::{sleep_until, Duration, Instant};
+use tokio::time::sleep_until;
+use tokio::time::Duration;
+use tokio::time::Instant;
 use tracing_futures::Instrument;
 
-use crate::config::{Config, SnapshotPolicy};
+use crate::config::Config;
+use crate::config::SnapshotPolicy;
 use crate::core::client::ClientRequestEntry;
-use crate::error::{ChangeConfigError, ClientReadError, ClientWriteError, InitializeError, RaftError, RaftResult};
+use crate::error::ChangeConfigError;
+use crate::error::ClientReadError;
+use crate::error::ClientWriteError;
+use crate::error::InitializeError;
+use crate::error::RaftError;
+use crate::error::RaftResult;
 use crate::metrics::RaftMetrics;
-use crate::raft::{
-    ChangeMembershipTx, ClientReadResponseTx, ClientWriteRequest, ClientWriteResponseTx, Entry, EntryPayload, MembershipConfig, RaftMsg,
-};
-use crate::replication::{RaftEvent, ReplicaEvent, ReplicationStream};
+use crate::raft::ChangeMembershipTx;
+use crate::raft::ClientReadResponseTx;
+use crate::raft::ClientWriteRequest;
+use crate::raft::ClientWriteResponseTx;
+use crate::raft::Entry;
+use crate::raft::EntryPayload;
+use crate::raft::MembershipConfig;
+use crate::raft::RaftMsg;
+use crate::replication::RaftEvent;
+use crate::replication::ReplicaEvent;
+use crate::replication::ReplicationStream;
 use crate::storage::HardState;
-use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
+use crate::AppData;
+use crate::AppDataResponse;
+use crate::NodeId;
+use crate::RaftNetwork;
+use crate::RaftStorage;
 
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
@@ -122,8 +148,13 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     pub(crate) fn spawn(
-        id: NodeId, config: Arc<Config>, network: Arc<N>, storage: Arc<S>, rx_api: mpsc::UnboundedReceiver<RaftMsg<D, R>>,
-        tx_metrics: watch::Sender<RaftMetrics>, rx_shutdown: oneshot::Receiver<()>,
+        id: NodeId,
+        config: Arc<Config>,
+        network: Arc<N>,
+        storage: Arc<S>,
+        rx_api: mpsc::UnboundedReceiver<RaftMsg<D, R>>,
+        tx_metrics: watch::Sender<RaftMetrics>,
+        rx_shutdown: oneshot::Receiver<()>,
     ) -> JoinHandle<RaftResult<()>> {
         let membership = MembershipConfig::new_initial(id); // This is updated from storage in the main loop.
         let (tx_compaction, rx_compaction) = mpsc::channel(1);
@@ -161,7 +192,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
     async fn main(mut self) -> RaftResult<()> {
         tracing::trace!("raft node is initializing");
-        let state = self.storage.get_initial_state().await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let state = self
+            .storage
+            .get_initial_state()
+            .await
+            .map_err(|err| self.map_fatal_storage_error(err))?;
         self.last_log_index = state.last_log_index;
         self.last_log_term = state.last_log_term;
         self.current_term = state.hard_state.current_term;
@@ -193,7 +228,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             (true, true, false) => State::NonVoter,
             (true, false, false) => State::NonVoter,
 
-            (false, true, false) => State::NonVoter,  // impossible: no logs but there are other members.
+            (false, true, false) => State::NonVoter, // impossible: no logs but there are other members.
             (false, false, false) => State::NonVoter, // impossible: no logs but there are other members.
 
             // If this is the only configured member and there is live state, then this is
@@ -213,7 +248,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // Here we use a 30 second overhead on the initial next_election_timeout. This is because we need
             // to ensure that restarted nodes don't disrupt a stable cluster by timing out and driving up their
             // term before network communication is established.
-            let inst = Instant::now() + Duration::from_secs(30) + Duration::from_millis(self.config.new_rand_election_timeout());
+            let inst = Instant::now()
+                + Duration::from_secs(30)
+                + Duration::from_millis(self.config.new_rand_election_timeout());
             self.next_election_timeout = Some(inst);
         }
 
@@ -261,7 +298,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             current_term: self.current_term,
             voted_for: self.voted_for,
         };
-        Ok(self.storage.save_hard_state(&hs).await.map_err(|err| self.map_fatal_storage_error(err))?)
+        Ok(self
+            .storage
+            .save_hard_state(&hs)
+            .await
+            .map_err(|err| self.map_fatal_storage_error(err))?)
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
@@ -281,7 +322,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             Some(inst) => inst,
             None => {
                 let t = Duration::from_millis(self.config.new_rand_election_timeout());
-                tracing::debug!("create election timeout after: {:?}",t);
+                tracing::debug!("create election timeout after: {:?}", t);
                 let inst = Instant::now() + t;
                 self.next_election_timeout = Some(inst);
                 inst
@@ -297,7 +338,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let now = Instant::now();
 
         let t = Duration::from_millis(self.config.new_rand_election_timeout());
-        tracing::debug!("update election timeout after: {:?}",t);
+        tracing::debug!("update election timeout after: {:?}", t);
 
         self.next_election_timeout = Some(now + t);
         if heartbeat {
@@ -356,7 +397,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.membership = cfg;
         if !self.membership.contains(&self.id) {
             self.set_target_state(State::NonVoter);
-        } else if self.target_state == State::NonVoter && self.membership.members.contains(&self.id) {
+        } else if self.target_state == State::NonVoter && self.membership.members.contains(&self.id)
+        {
             // The node is a NonVoter and the new config has it configured as a normal member.
             // Transition to follower.
             self.set_target_state(State::Follower);
@@ -412,7 +454,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 match res {
                     Ok(res) => match res {
                         Ok(snapshot) => {
-                            let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.index));
+                            let _ = tx_compaction
+                                .try_send(SnapshotUpdate::SnapshotComplete(snapshot.index));
                             let _ = chan_tx.send(snapshot.index); // This will always succeed.
                         }
                         Err(err) => {
@@ -431,7 +474,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Handle the output of an async task replicating entries to the state machine.
     #[tracing::instrument(level = "trace", skip(self, res))]
-    pub(self) fn handle_replicate_to_sm_result(&mut self, res: anyhow::Result<Option<u64>>) -> RaftResult<()> {
+    pub(self) fn handle_replicate_to_sm_result(
+        &mut self,
+        res: anyhow::Result<Option<u64>>,
+    ) -> RaftResult<()> {
         let last_applied_opt = res.map_err(|err| self.map_fatal_storage_error(err))?;
         if let Some(last_applied) = last_applied_opt {
             self.last_applied = last_applied;
@@ -455,10 +501,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Forward the given client write request to the leader.
     #[tracing::instrument(level = "trace", skip(self, req, tx))]
-    fn forward_client_write_request(&self, req: ClientWriteRequest<D>, tx: ClientWriteResponseTx<D, R>) {
+    fn forward_client_write_request(
+        &self,
+        req: ClientWriteRequest<D>,
+        tx: ClientWriteResponseTx<D, R>,
+    ) {
         match req.entry {
             EntryPayload::Normal(entry) => {
-                let _ = tx.send(Err(ClientWriteError::ForwardToLeader(entry.data, self.current_leader)));
+                let _ = tx.send(Err(ClientWriteError::ForwardToLeader(
+                    entry.data,
+                    self.current_leader,
+                )));
             }
             _ => {
                 // This is unreachable, and well controlled by the type system, but let's log an
@@ -582,11 +635,15 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     pub(super) uniform_consensus_cb: FuturesOrdered<oneshot::Receiver<Result<u64, RaftError>>>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    LeaderState<'a, D, R, N, S>
+{
     /// Create a new instance.
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         let consensus_state = if core.membership.is_in_joint_consensus() {
-            ConsensusState::Joint { is_committed: false }
+            ConsensusState::Joint {
+                is_committed: false,
+            }
         } else {
             ConsensusState::Uniform
         };
@@ -625,7 +682,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Setup state as leader.
         self.core.last_heartbeat = None;
         self.core.next_election_timeout = None;
-        self.core.update_current_leader(UpdateCurrentLeader::ThisNode);
+        self.core
+            .update_current_leader(UpdateCurrentLeader::ThisNode);
         self.core.report_metrics();
 
         // Per §8, commit an initial entry as part of becoming the cluster leader.
@@ -774,7 +832,9 @@ struct CandidateState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: 
     votes_needed_new: u64,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    CandidateState<'a, D, R, N, S>
+{
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         Self {
             core,
@@ -806,7 +866,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.update_next_election_timeout(false); // Generates a new rand value within range.
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
-            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core
+                .update_current_leader(UpdateCurrentLeader::Unknown);
             self.core.save_hard_state().await?;
             self.core.report_metrics();
 
@@ -864,11 +925,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to a Raft node in follower state.
-pub struct FollowerState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+pub struct FollowerState<
+    'a,
+    D: AppData,
+    R: AppDataResponse,
+    N: RaftNetwork<D>,
+    S: RaftStorage<D, R>,
+> {
     core: &'a mut RaftCore<D, R, N, S>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> FollowerState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    FollowerState<'a, D, R, N, S>
+{
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         Self { core }
     }
@@ -926,11 +995,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to a Raft node in non-voter state.
-pub struct NonVoterState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+pub struct NonVoterState<
+    'a,
+    D: AppData,
+    R: AppDataResponse,
+    N: RaftNetwork<D>,
+    S: RaftStorage<D, R>,
+> {
     core: &'a mut RaftCore<D, R, N, S>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> NonVoterState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    NonVoterState<'a, D, R, N, S>
+{
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         Self { core }
     }

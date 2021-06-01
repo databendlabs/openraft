@@ -2,11 +2,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
+use async_raft::Config;
+use async_raft::NodeId;
+use async_raft::Raft;
+use async_raft::State;
+use fixtures::RaftRouter;
 use maplit::hashset;
 use tokio::time::sleep;
-
-use async_raft::{Config, NodeId, Raft, State};
-use fixtures::RaftRouter;
 
 use crate::fixtures::MemRaft;
 
@@ -29,7 +31,11 @@ async fn non_voter_restart() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
+    let config = Arc::new(
+        Config::build("test".into())
+            .validate()
+            .expect("failed to build Raft config"),
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     router.new_raft_node(0).await;
@@ -39,7 +45,9 @@ async fn non_voter_restart() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router.wait_for_log(&hashset![0, 1], want, "empty").await?;
-    router.wait_for_state(&hashset![0, 1], State::NonVoter, "empty").await?;
+    router
+        .wait_for_state(&hashset![0, 1], State::NonVoter, "empty")
+        .await?;
     router.assert_pristine_cluster().await;
 
     tracing::info!("--- initializing single node cluster");
@@ -51,7 +59,9 @@ async fn non_voter_restart() -> Result<()> {
     router.client_request(0, "foo", 1).await;
     want += 1;
 
-    router.wait_for_log(&hashset![0, 1], want, "write one log").await?;
+    router
+        .wait_for_log(&hashset![0, 1], want, "write one log")
+        .await?;
 
     let (node0, _sto0) = router.remove_node(0).await.unwrap();
     assert_node_state(0, &node0, 1, 2, State::Leader);
@@ -69,7 +79,13 @@ async fn non_voter_restart() -> Result<()> {
     Ok(())
 }
 
-fn assert_node_state(id: NodeId, node: &MemRaft, expected_term: u64, expected_log: u64, state: State) {
+fn assert_node_state(
+    id: NodeId,
+    node: &MemRaft,
+    expected_term: u64,
+    expected_log: u64,
+    state: State,
+) {
     let m = node.metrics().borrow().clone();
     tracing::info!("node {} metrics: {:?}", id, m);
 

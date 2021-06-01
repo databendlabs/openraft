@@ -1,19 +1,38 @@
 use std::collections::HashSet;
 
-use futures::future::{FutureExt, TryFutureExt};
+use futures::future::FutureExt;
+use futures::future::TryFutureExt;
 use tokio::sync::oneshot;
 
 use crate::core::client::ClientRequestEntry;
-use crate::core::{ConsensusState, LeaderState, NonVoterReplicationState, NonVoterState, State, UpdateCurrentLeader};
-use crate::error::{ChangeConfigError, InitializeError, RaftError};
-use crate::raft::{ChangeMembershipTx, ClientWriteRequest, MembershipConfig};
+use crate::core::ConsensusState;
+use crate::core::LeaderState;
+use crate::core::NonVoterReplicationState;
+use crate::core::NonVoterState;
+use crate::core::State;
+use crate::core::UpdateCurrentLeader;
+use crate::error::ChangeConfigError;
+use crate::error::InitializeError;
+use crate::error::RaftError;
+use crate::raft::ChangeMembershipTx;
+use crate::raft::ClientWriteRequest;
+use crate::raft::MembershipConfig;
 use crate::replication::RaftEvent;
-use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
+use crate::AppData;
+use crate::AppDataResponse;
+use crate::NodeId;
+use crate::RaftNetwork;
+use crate::RaftStorage;
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> NonVoterState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    NonVoterState<'a, D, R, N, S>
+{
     /// Handle the admin `init_with_config` command.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_init_with_config(&mut self, mut members: HashSet<NodeId>) -> Result<(), InitializeError> {
+    pub(super) async fn handle_init_with_config(
+        &mut self,
+        mut members: HashSet<NodeId>,
+    ) -> Result<(), InitializeError> {
         if self.core.last_log_index != 0 || self.core.current_term != 0 {
             tracing::error!({self.core.last_log_index, self.core.current_term}, "rejecting init_with_config request as last_log_index or current_term is 0");
             return Err(InitializeError::NotAllowed);
@@ -47,11 +66,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    LeaderState<'a, D, R, N, S>
+{
     /// Add a new node to the cluster as a non-voter, bringing it up-to-speed, and then responding
     /// on the given channel.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) fn add_member(&mut self, target: NodeId, tx: oneshot::Sender<Result<(), ChangeConfigError>>) {
+    pub(super) fn add_member(
+        &mut self,
+        target: NodeId,
+        tx: oneshot::Sender<Result<(), ChangeConfigError>>,
+    ) {
         // Ensure the node doesn't already exist in the current config, in the set of new nodes
         // alreading being synced, or in the nodes being removed.
         if self.core.membership.members.contains(&target)
@@ -72,18 +97,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Spawn a replication stream for the new member. Track state as a non-voter so that it
         // can be updated to be added to the cluster config once it has been brought up-to-date.
         let state = self.spawn_replication_stream(target);
-        self.non_voters.insert(
-            target,
-            NonVoterReplicationState {
-                state,
-                is_ready_to_join: false,
-                tx: Some(tx),
-            },
-        );
+        self.non_voters.insert(target, NonVoterReplicationState {
+            state,
+            is_ready_to_join: false,
+            tx: Some(tx),
+        });
     }
 
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn change_membership(&mut self, members: HashSet<NodeId>, tx: ChangeMembershipTx) {
+    pub(super) async fn change_membership(
+        &mut self,
+        members: HashSet<NodeId>,
+        tx: ChangeMembershipTx,
+    ) {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ChangeConfigError::InoperableConfig));
@@ -117,14 +143,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     // Spawn a replication stream for the new member. Track state as a non-voter so that it
                     // can be updated to be added to the cluster config once it has been brought up-to-date.
                     let state = self.spawn_replication_stream(*new_node);
-                    self.non_voters.insert(
-                        *new_node,
-                        NonVoterReplicationState {
-                            state,
-                            is_ready_to_join: false,
-                            tx: None,
-                        },
-                    );
+                    self.non_voters.insert(*new_node, NonVoterReplicationState {
+                        state,
+                        is_ready_to_join: false,
+                        tx: None,
+                    });
                 }
             }
             awaiting.insert(*new_node);
@@ -132,7 +155,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // If there are new nodes which need to sync, then we need to wait until they are synced.
         // Once they've finished, this routine will be called again to progress further.
         if !awaiting.is_empty() {
-            self.consensus_state = ConsensusState::NonVoterSync { awaiting, members, tx };
+            self.consensus_state = ConsensusState::NonVoterSync {
+                awaiting,
+                members,
+                tx,
+            };
             return;
         }
 
@@ -140,7 +167,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if !members.contains(&self.core.id) {
             self.is_stepping_down = true;
         }
-        self.consensus_state = ConsensusState::Joint { is_committed: false };
+        self.consensus_state = ConsensusState::Joint {
+            is_committed: false,
+        };
         self.core.membership.members_after_consensus = Some(members);
 
         // Propagate the command as any other client request.
@@ -200,7 +229,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// - When membership change is committed, i.e., a joint membership or a uniform membership.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn update_replication_state(&mut self) -> Result<(), RaftError> {
-
         let new_node_ids = self
             .core
             .membership
@@ -214,15 +242,22 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // move replication state from non_voters to nodes.
         for node_id in node_ids_to_add {
-
             if !self.non_voters.contains_key(node_id) {
                 // Just a probe for bug
-                panic!("joint membership contains node_id:{} not in non_voters:{:?}", node_id, self.non_voters.keys().collect::<Vec<_>>());
+                panic!(
+                    "joint membership contains node_id:{} not in non_voters:{:?}",
+                    node_id,
+                    self.non_voters.keys().collect::<Vec<_>>()
+                );
             }
 
             if self.nodes.contains_key(node_id) {
                 // Just a probe for bug
-                panic!("joint membership contains an existent node_id:{} in nodes:{:?}", node_id,self.nodes.keys().collect::<Vec<_>>());
+                panic!(
+                    "joint membership contains an existent node_id:{} in nodes:{:?}",
+                    node_id,
+                    self.nodes.keys().collect::<Vec<_>>()
+                );
             }
 
             let non_voter_state = self.non_voters.remove(node_id).unwrap();
@@ -272,12 +307,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Handle the commitment of a uniform consensus cluster configuration.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn handle_uniform_consensus_committed(&mut self, index: u64) -> Result<(), RaftError> {
+    pub(super) async fn handle_uniform_consensus_committed(
+        &mut self,
+        index: u64,
+    ) -> Result<(), RaftError> {
         // Step down if needed.
         if self.is_stepping_down {
             tracing::debug!("raft node is stepping down");
             self.core.set_target_state(State::NonVoter);
-            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core
+                .update_current_leader(UpdateCurrentLeader::Unknown);
             return Ok(());
         }
 
@@ -299,15 +338,18 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             })
             .collect();
 
-        let follower_ids:Vec<u64> = self.nodes.keys().cloned().collect();
-        let non_voter_ids:Vec<u64> = self.non_voters.keys().cloned().collect();
+        let follower_ids: Vec<u64> = self.nodes.keys().cloned().collect();
+        let non_voter_ids: Vec<u64> = self.non_voters.keys().cloned().collect();
         tracing::debug!("nodes: {:?}", follower_ids);
         tracing::debug!("non_voters: {:?}", non_voter_ids);
         tracing::debug!("membership: {:?}", self.core.membership);
         tracing::debug!("nodes_to_remove: {:?}", nodes_to_remove);
 
         for node in nodes_to_remove {
-            tracing::debug!({ target = node }, "removing target node from replication pool");
+            tracing::debug!(
+                { target = node },
+                "removing target node from replication pool"
+            );
             if let Some(node) = self.nodes.remove(&node) {
                 let _ = node.replstream.repltx.send(RaftEvent::Terminate);
             }

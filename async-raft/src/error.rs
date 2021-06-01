@@ -1,9 +1,11 @@
 //! Error types exposed by this crate.
 
 use std::fmt;
+
 use thiserror::Error;
 
-use crate::{AppData, NodeId};
+use crate::AppData;
+use crate::NodeId;
 
 /// A result type where the error variant is always a `RaftError`.
 pub type RaftResult<T> = std::result::Result<T, RaftError>;
@@ -55,7 +57,9 @@ impl<D: AppData> fmt::Debug for ClientWriteError<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ClientWriteError::RaftError(err) => f.debug_tuple("RaftError").field(err).finish(),
-            ClientWriteError::ForwardToLeader(_req, node_id) => f.debug_tuple("ForwardToLeader").field(node_id).finish(),
+            ClientWriteError::ForwardToLeader(_req, node_id) => {
+                f.debug_tuple("ForwardToLeader").field(node_id).finish()
+            }
         }
     }
 }
@@ -65,7 +69,9 @@ impl<D: AppData> fmt::Debug for ClientWriteError<D> {
 #[non_exhaustive]
 pub enum ConfigError {
     /// A configuration error indicating that the given values for election timeout min & max are invalid: max must be greater than min.
-    #[error("given values for election timeout min & max are invalid: max must be greater than min")]
+    #[error(
+        "given values for election timeout min & max are invalid: max must be greater than min"
+    )]
     InvalidElectionTimeoutMinMax,
     /// The given value for max_payload_entries is too small, must be > 0.
     #[error("the given value for max_payload_entries is too small, must be > 0")]
@@ -75,7 +81,6 @@ pub enum ConfigError {
     /// A recommended election_timeout_min value is about 3 times heartbeat_interval.
     #[error("election_timeout_min value must be > heartbeat_interval")]
     ElectionTimeoutLessThanHeartBeatInterval,
-
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.

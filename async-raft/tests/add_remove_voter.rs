@@ -3,12 +3,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use futures::stream::StreamExt;
-use maplit::hashset;
-
 use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
+use futures::stream::StreamExt;
+use maplit::hashset;
 
 mod fixtures;
 
@@ -33,14 +32,23 @@ async fn add_remove_voter() -> Result<()> {
     let left_members = hashset![0, 1, 2, 3];
 
     // Setup test dependencies.
-    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
+    let config = Arc::new(
+        Config::build("test".into())
+            .validate()
+            .expect("failed to build Raft config"),
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
     // Assert all nodes are in non-voter state & have no entries.
     let mut want = 0;
     router
-        .wait_for_metrics(&0u64, |x| x.last_log_index == want, timeout, &format!("n{}.last_log_index -> {}", 0, 0))
+        .wait_for_metrics(
+            &0u64,
+            |x| x.last_log_index == want,
+            timeout,
+            &format!("n{}.last_log_index -> {}", 0, 0),
+        )
         .await?;
     router
         .wait_for_metrics(
@@ -119,7 +127,11 @@ async fn add_remove_voter() -> Result<()> {
     Ok(())
 }
 
-async fn wait_log(router: std::sync::Arc<fixtures::RaftRouter>, node_ids: &HashSet<u64>, want_log: u64) -> Result<()> {
+async fn wait_log(
+    router: std::sync::Arc<fixtures::RaftRouter>,
+    node_ids: &HashSet<u64>,
+    want_log: u64,
+) -> Result<()> {
     let timeout = Duration::from_millis(500);
     for i in node_ids.iter() {
         router

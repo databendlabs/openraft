@@ -7,7 +7,8 @@
 //! Metrics are observed on a running Raft node via the `Raft::metrics()` method, which will
 //! return a stream of metrics.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::core::State;
 use crate::raft::MembershipConfig;

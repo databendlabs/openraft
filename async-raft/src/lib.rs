@@ -10,18 +10,23 @@ pub mod raft;
 mod replication;
 pub mod storage;
 
-use serde::{de::DeserializeOwned, Serialize};
-
-pub use crate::{
-    config::{Config, ConfigBuilder, SnapshotPolicy},
-    core::State,
-    error::{ChangeConfigError, ClientWriteError, ConfigError, InitializeError, RaftError},
-    metrics::RaftMetrics,
-    network::RaftNetwork,
-    raft::Raft,
-    storage::RaftStorage,
-};
 pub use async_trait;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+
+pub use crate::config::Config;
+pub use crate::config::ConfigBuilder;
+pub use crate::config::SnapshotPolicy;
+pub use crate::core::State;
+pub use crate::error::ChangeConfigError;
+pub use crate::error::ClientWriteError;
+pub use crate::error::ConfigError;
+pub use crate::error::InitializeError;
+pub use crate::error::RaftError;
+pub use crate::metrics::RaftMetrics;
+pub use crate::network::RaftNetwork;
+pub use crate::raft::Raft;
+pub use crate::storage::RaftStorage;
 
 /// A Raft node's ID.
 pub type NodeId = u64;

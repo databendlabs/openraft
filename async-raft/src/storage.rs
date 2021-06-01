@@ -4,16 +4,21 @@ use std::error::Error;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncRead, AsyncSeek, AsyncWrite};
+use serde::Deserialize;
+use serde::Serialize;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncSeek;
+use tokio::io::AsyncWrite;
 
-use crate::raft::{Entry, MembershipConfig};
-use crate::{AppData, AppDataResponse, NodeId};
+use crate::raft::Entry;
+use crate::raft::MembershipConfig;
+use crate::AppData;
+use crate::AppDataResponse;
+use crate::NodeId;
 
 /// The data associated with the current snapshot.
 pub struct CurrentSnapshotData<S>
-where
-    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
     /// The snapshot entry's term.
     pub term: u64,
@@ -224,7 +229,12 @@ where
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
     async fn finalize_snapshot_installation(
-        &self, index: u64, term: u64, delete_through: Option<u64>, id: String, snapshot: Box<Self::Snapshot>,
+        &self,
+        index: u64,
+        term: u64,
+        delete_through: Option<u64>,
+        id: String,
+        snapshot: Box<Self::Snapshot>,
     ) -> Result<()>;
 
     /// Get a readable handle to the current snapshot, along with its metadata.

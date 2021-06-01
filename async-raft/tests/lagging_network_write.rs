@@ -5,9 +5,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_raft::Config;
 use async_raft::State;
-use maplit::hashset;
-
 use fixtures::RaftRouter;
+use maplit::hashset;
 
 /// Lagging network test.
 ///
@@ -25,11 +24,14 @@ async fn lagging_network_write() -> Result<()> {
 
     let timeout = tokio::time::Duration::from_millis(2000);
 
-    let config = Arc::new(Config::build("test".into())
-                          .heartbeat_interval(100)
-                          .election_timeout_min(300)
-                          .election_timeout_max(600)
-                          .validate().expect("failed to build Raft config"));
+    let config = Arc::new(
+        Config::build("test".into())
+            .heartbeat_interval(100)
+            .election_timeout_min(300)
+            .election_timeout_max(600)
+            .validate()
+            .expect("failed to build Raft config"),
+    );
     let router = RaftRouter::builder(config).send_delay(50).build();
     let router = Arc::new(router);
 
@@ -37,8 +39,12 @@ async fn lagging_network_write() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log_timeout(&hashset![0], want, timeout,  "empty").await?;
-    router.wait_for_state(&hashset![0], State::NonVoter, "empty").await?;
+    router
+        .wait_for_log_timeout(&hashset![0], want, timeout, "empty")
+        .await?;
+    router
+        .wait_for_state(&hashset![0], State::NonVoter, "empty")
+        .await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -46,8 +52,12 @@ async fn lagging_network_write() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log_timeout(&hashset![0], want, timeout, "init").await?;
-    router.wait_for_state(&hashset![0], State::Leader, "init").await?;
+    router
+        .wait_for_log_timeout(&hashset![0], want, timeout, "init")
+        .await?;
+    router
+        .wait_for_state(&hashset![0], State::Leader, "init")
+        .await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     // Sync some new nodes.
@@ -57,24 +67,33 @@ async fn lagging_network_write() -> Result<()> {
     router.new_raft_node(2).await;
     router.add_non_voter(0, 2).await?;
 
-    router.wait_for_log_timeout(&hashset![1, 2], want, timeout, "non-voter init").await?;
-
+    router
+        .wait_for_log_timeout(&hashset![1, 2], want, timeout, "non-voter init")
+        .await?;
 
     router.client_request_many(0, "client", 1).await;
     want += 1;
-    router.wait_for_log_timeout(&hashset![0, 1, 2], want, timeout,  "write one log").await?;
-
+    router
+        .wait_for_log_timeout(&hashset![0, 1, 2], want, timeout, "write one log")
+        .await?;
 
     router.change_membership(0, hashset![0, 1, 2]).await?;
     want += 2;
-    router.wait_for_state(&hashset![0], State::Leader, "changed").await?;
-    router.wait_for_state(&hashset![1, 2], State::Follower, "changed").await?;
-    router.wait_for_log_timeout(&hashset![0, 1, 2], want, timeout,  "3 candidates").await?;
-
+    router
+        .wait_for_state(&hashset![0], State::Leader, "changed")
+        .await?;
+    router
+        .wait_for_state(&hashset![1, 2], State::Follower, "changed")
+        .await?;
+    router
+        .wait_for_log_timeout(&hashset![0, 1, 2], want, timeout, "3 candidates")
+        .await?;
 
     router.client_request_many(0, "client", 1).await;
     want += 1;
-    router.wait_for_log_timeout(&hashset![0, 1, 2], want, timeout,  "write 2nd log").await?;
+    router
+        .wait_for_log_timeout(&hashset![0, 1, 2], want, timeout, "write 2nd log")
+        .await?;
 
     Ok(())
 }

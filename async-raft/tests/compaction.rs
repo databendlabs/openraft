@@ -2,14 +2,15 @@ mod fixtures;
 
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::time::sleep;
 
 use anyhow::Result;
 use async_raft::raft::MembershipConfig;
-use async_raft::{Config, SnapshotPolicy, State};
-use maplit::hashset;
-
+use async_raft::Config;
+use async_raft::SnapshotPolicy;
+use async_raft::State;
 use fixtures::RaftRouter;
+use maplit::hashset;
+use tokio::time::sleep;
 
 /// Compaction test.
 ///
@@ -38,7 +39,9 @@ async fn compaction() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router.wait_for_log(&hashset![0], want, "empty").await?;
-    router.wait_for_state(&hashset![0], State::NonVoter, "empty").await?;
+    router
+        .wait_for_state(&hashset![0], State::NonVoter, "empty")
+        .await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -46,7 +49,9 @@ async fn compaction() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0], want, "init leader").await?;
+    router
+        .wait_for_log(&hashset![0], want, "init leader")
+        .await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Send enough requests to the cluster that compaction on the node should be triggered.
@@ -65,37 +70,36 @@ async fn compaction() -> Result<()> {
             500,
             Some(0),
             500,
-            Some((
-                500.into(),
-                1,
-                MembershipConfig {
-                    members: hashset![0],
-                    members_after_consensus: None,
-                },
-            )),
+            Some((500.into(), 1, MembershipConfig {
+                members: hashset![0],
+                members_after_consensus: None,
+            })),
         )
         .await;
 
     // Add a new node and assert that it received the same snapshot.
     router.new_raft_node(1).await;
-    router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
+    router
+        .add_non_voter(0, 1)
+        .await
+        .expect("failed to add new node as non-voter");
     router
         .change_membership(0, hashset![0, 1])
         .await
         .expect("failed to modify cluster membership");
     want += 2; // 2 member change logs
 
-    router.wait_for_log(&hashset![0, 1], want, "add follower").await?;
+    router
+        .wait_for_log(&hashset![0, 1], want, "add follower")
+        .await?;
     router.assert_stable_cluster(Some(1), Some(want)).await; // We expect index to be 500 + 2 (joint & uniform config change entries).
-    let expected_snap = Some((
-        500.into(),
-        1,
-        MembershipConfig {
-            members: hashset![0u64],
-            members_after_consensus: None,
-        },
-    ));
-    router.assert_storage_state(1, 502, None, 500, expected_snap).await;
+    let expected_snap = Some((500.into(), 1, MembershipConfig {
+        members: hashset![0u64],
+        members_after_consensus: None,
+    }));
+    router
+        .assert_storage_state(1, 502, None, 500, expected_snap)
+        .await;
     // -------------------------------- ^^^^ this value is None because non-voters do not vote.
 
     Ok(())

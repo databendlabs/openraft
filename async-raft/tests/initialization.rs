@@ -5,9 +5,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_raft::Config;
 use async_raft::State;
-use maplit::hashset;
-
 use fixtures::RaftRouter;
+use maplit::hashset;
 
 /// Cluster initialization test.
 ///
@@ -26,7 +25,11 @@ async fn initialization() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
+    let config = Arc::new(
+        Config::build("test".into())
+            .validate()
+            .expect("failed to build Raft config"),
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
@@ -35,8 +38,12 @@ async fn initialization() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0, 1, 2], want, "empty").await?;
-    router.wait_for_state(&hashset![0, 1, 2], State::NonVoter, "empty").await?;
+    router
+        .wait_for_log(&hashset![0, 1, 2], want, "empty")
+        .await?;
+    router
+        .wait_for_state(&hashset![0, 1, 2], State::NonVoter, "empty")
+        .await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -44,7 +51,9 @@ async fn initialization() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0, 1, 2], want, "init").await?;
+    router
+        .wait_for_log(&hashset![0, 1, 2], want, "init")
+        .await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     Ok(())

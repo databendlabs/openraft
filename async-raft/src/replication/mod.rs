@@ -4,16 +4,31 @@ use std::io::SeekFrom;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeek, AsyncSeekExt};
-use tokio::sync::{mpsc, oneshot};
+use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncSeek;
+use tokio::io::AsyncSeekExt;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::{interval, timeout, Duration, Interval};
+use tokio::time::interval;
+use tokio::time::timeout;
+use tokio::time::Duration;
+use tokio::time::Interval;
 
-use crate::config::{Config, SnapshotPolicy};
+use crate::config::Config;
+use crate::config::SnapshotPolicy;
 use crate::error::RaftResult;
-use crate::raft::{AppendEntriesRequest, Entry, EntryPayload, InstallSnapshotRequest};
+use crate::raft::AppendEntriesRequest;
+use crate::raft::Entry;
+use crate::raft::EntryPayload;
+use crate::raft::InstallSnapshotRequest;
 use crate::storage::CurrentSnapshotData;
-use crate::{AppData, AppDataResponse, NodeId, RaftNetwork, RaftStorage};
+use crate::AppData;
+use crate::AppDataResponse;
+use crate::NodeId;
+use crate::RaftNetwork;
+use crate::RaftStorage;
 
 /// The public handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<D: AppData> {
@@ -26,8 +41,16 @@ pub(crate) struct ReplicationStream<D: AppData> {
 impl<D: AppData> ReplicationStream<D> {
     /// Create a new replication stream for the target peer.
     pub(crate) fn new<R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>(
-        id: NodeId, target: NodeId, term: u64, config: Arc<Config>, last_log_index: u64, last_log_term: u64, commit_index: u64, network: Arc<N>,
-        storage: Arc<S>, replicationtx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
+        id: NodeId,
+        target: NodeId,
+        term: u64,
+        config: Arc<Config>,
+        last_log_index: u64,
+        last_log_term: u64,
+        commit_index: u64,
+        network: Arc<N>,
+        storage: Arc<S>,
+        replicationtx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
     ) -> Self {
         ReplicationCore::spawn(
             id,
@@ -128,11 +151,21 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     heartbeat_timeout: Duration,
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    ReplicationCore<D, R, N, S>
+{
     /// Spawn a new replication task for the target node.
     pub(self) fn spawn(
-        id: NodeId, target: NodeId, term: u64, config: Arc<Config>, last_log_index: u64, last_log_term: u64, commit_index: u64, network: Arc<N>,
-        storage: Arc<S>, rafttx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
+        id: NodeId,
+        target: NodeId,
+        term: u64,
+        config: Arc<Config>,
+        last_log_index: u64,
+        last_log_term: u64,
+        commit_index: u64,
+        network: Arc<N>,
+        storage: Arc<S>,
+        rafttx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
     ) -> ReplicationStream<D> {
         let (raftrx_tx, raftrx) = mpsc::unbounded_channel();
         let heartbeat_timeout = Duration::from_millis(config.heartbeat_interval);
@@ -160,7 +193,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             outbound_buffer: Vec::new(),
         };
         let handle = tokio::spawn(this.main());
-        ReplicationStream { handle, repltx: raftrx_tx }
+        ReplicationStream {
+            handle,
+            repltx: raftrx_tx,
+        }
     }
 
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, target=self.target, cluster=%self.config.cluster_name))]
@@ -194,8 +230,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 } else {
                     self.max_payload_entries
                 };
-                self.outbound_buffer
-                    .extend(self.replication_buffer.drain(..chunk_size).map(OutboundEntry::Arc));
+                self.outbound_buffer.extend(
+                    self.replication_buffer
+                        .drain(..chunk_size)
+                        .map(OutboundEntry::Arc),
+                );
             }
         }
 
@@ -206,12 +245,24 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             prev_log_index: self.match_index,
             prev_log_term: self.match_term,
             leader_commit: self.commit_index,
-            entries: self.outbound_buffer.iter().map(|entry| entry.as_ref().clone()).collect(),
+            entries: self
+                .outbound_buffer
+                .iter()
+                .map(|entry| entry.as_ref().clone())
+                .collect(),
         };
 
         // Send the payload.
-        tracing::debug!("start sending append_entries, timeout: {:?}", self.heartbeat_timeout);
-        let res = match timeout(self.heartbeat_timeout, self.network.append_entries(self.target, payload)).await {
+        tracing::debug!(
+            "start sending append_entries, timeout: {:?}",
+            self.heartbeat_timeout
+        );
+        let res = match timeout(
+            self.heartbeat_timeout,
+            self.network.append_entries(self.target, payload),
+        )
+        .await
+        {
             Ok(outer_res) => match outer_res {
                 Ok(res) => res,
                 Err(err) => {
@@ -224,7 +275,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 return;
             }
         };
-        let last_index_and_term = self.outbound_buffer.last().map(|last| (last.as_ref().index, last.as_ref().term));
+        let last_index_and_term = self
+            .outbound_buffer
+            .last()
+            .map(|last| (last.as_ref().index, last.as_ref().term));
         self.outbound_buffer.clear(); // Once we've successfully sent a payload of entries, don't send them again.
 
         // Handle success conditions.
@@ -383,7 +437,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 RaftEvent::UpdateCommitIndex { commit_index } => {
                     self.commit_index = commit_index;
                 }
-                RaftEvent::Replicate { entry, commit_index } => {
+                RaftEvent::Replicate {
+                    entry,
+                    commit_index,
+                } => {
                     self.commit_index = commit_index;
                     self.last_log_index = entry.index;
                     if self.target_state == TargetReplState::LineRate {
@@ -458,8 +515,7 @@ pub(crate) enum RaftEvent<D: AppData> {
 
 /// An event coming from a replication stream.
 pub(crate) enum ReplicaEvent<S>
-where
-    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
     /// An event representing an update to the replication rate of a replication stream.
     RateUpdate {
@@ -508,7 +564,9 @@ struct LineRateState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: R
     core: &'a mut ReplicationCore<D, R, N, S>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LineRateState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    LineRateState<'a, D, R, N, S>
+{
     /// Create a new instance.
     pub fn new(core: &'a mut ReplicationCore<D, R, N, S>) -> Self {
         Self { core }
@@ -532,7 +590,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .outbound_buffer
                 .first()
                 .map(|entry| entry.as_ref().index)
-                .or_else(|| self.core.replication_buffer.first().map(|entry| entry.index));
+                .or_else(|| {
+                    self.core
+                        .replication_buffer
+                        .first()
+                        .map(|entry| entry.index)
+                });
 
             // When converting to `LaggingState`, `outbound_buffer` and `replication_buffer` is cleared,
             // in which there may be uncommitted logs.
@@ -540,10 +603,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // need to resend all unommitted logs.
             // Otherwise these logs have no chance to be replicated, unless a new log is written.
             let index = match next_buf_index {
-                Some(i) => {i}
-                None => {
-                    self.core.last_log_index+1
-                }
+                Some(i) => i,
+                None => self.core.last_log_index + 1,
             };
 
             // Ensure that our buffered data matches up with `next_index`. When transitioning to
@@ -551,7 +612,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // skipped this replication stream during transition. In such cases, a single update from
             // storage will put this stream back on track.
             if self.core.next_index != index {
-                self.frontload_outbound_buffer(self.core.next_index, index).await;
+                self.frontload_outbound_buffer(self.core.next_index, index)
+                    .await;
                 if self.core.target_state != TargetReplState::LineRate {
                     return;
                 }
@@ -589,7 +651,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
         // Prepend.
         self.core.outbound_buffer.reverse();
-        self.core.outbound_buffer.extend(entries.into_iter().rev().map(OutboundEntry::Raw));
+        self.core
+            .outbound_buffer
+            .extend(entries.into_iter().rev().map(OutboundEntry::Raw));
         self.core.outbound_buffer.reverse();
     }
 }
@@ -603,7 +667,9 @@ struct LaggingState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Ra
     core: &'a mut ReplicationCore<D, R, N, S>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LaggingState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    LaggingState<'a, D, R, N, S>
+{
     /// Create a new instance.
     pub fn new(core: &'a mut ReplicationCore<D, R, N, S>) -> Self {
         Self { core }
@@ -660,7 +726,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if self.core.outbound_buffer.is_empty() {
             // Determine an appropriate stop index for the storage fetch operation. Avoid underflow.
             let distance_behind = self.core.commit_index - self.core.next_index; // Underflow is guarded against in the `is_up_to_speed` check in the outer loop.
-            let is_within_payload_distance = distance_behind <= self.core.config.max_payload_entries;
+            let is_within_payload_distance =
+                distance_behind <= self.core.config.max_payload_entries;
             let stop_idx = if is_within_payload_distance {
                 // If we have caught up to the line index, then that means we will be running at
                 // line rate after this payload is successfully replicated.
@@ -672,7 +739,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Bringing the target up-to-date by fetching the largest possible payload of entries
             // from storage within permitted configuration & ensure no snapshot pointer was returned.
-            let entries = match self.core.storage.get_log_entries(self.core.next_index, stop_idx).await {
+            let entries = match self
+                .core
+                .storage
+                .get_log_entries(self.core.next_index, stop_idx)
+                .await
+            {
                 Ok(entries) => entries,
                 Err(err) => {
                     tracing::error!({error=%err}, "error fetching logs from storage");
@@ -687,7 +759,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     return;
                 }
             }
-            self.core.outbound_buffer.extend(entries.into_iter().map(OutboundEntry::Raw));
+            self.core
+                .outbound_buffer
+                .extend(entries.into_iter().map(OutboundEntry::Raw));
         }
     }
 }
@@ -696,14 +770,22 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Snapshotting specific state.
-struct SnapshottingState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+struct SnapshottingState<
+    'a,
+    D: AppData,
+    R: AppDataResponse,
+    N: RaftNetwork<D>,
+    S: RaftStorage<D, R>,
+> {
     /// An exclusive handle to the replication core.
     core: &'a mut ReplicationCore<D, R, N, S>,
     snapshot: Option<CurrentSnapshotData<S::Snapshot>>,
     snapshot_fetch_rx: Option<oneshot::Receiver<CurrentSnapshotData<S::Snapshot>>>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> SnapshottingState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
+    SnapshottingState<'a, D, R, N, S>
+{
     /// Create a new instance.
     pub fn new(core: &'a mut ReplicationCore<D, R, N, S>) -> Self {
         Self {
@@ -760,7 +842,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// If an error comes up during processing, this routine should simple be called again after
     /// issuing a new request to the storage layer.
     #[tracing::instrument(level = "trace", skip(self, rx))]
-    async fn wait_for_snapshot(&mut self, mut rx: oneshot::Receiver<CurrentSnapshotData<S::Snapshot>>) {
+    async fn wait_for_snapshot(
+        &mut self,
+        mut rx: oneshot::Receiver<CurrentSnapshotData<S::Snapshot>>,
+    ) {
         loop {
             tokio::select! {
                 _ = self.core.heartbeat.tick() => self.core.send_append_entries().await,
@@ -785,7 +870,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::Snapshot>) -> RaftResult<()> {
+    async fn stream_snapshot(
+        &mut self,
+        mut snapshot: CurrentSnapshotData<S::Snapshot>,
+    ) -> RaftResult<()> {
         let mut offset = 0;
         self.core.next_index = snapshot.index + 1;
         self.core.match_index = snapshot.index;
@@ -809,7 +897,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Send the RPC over to the target.
             tracing::trace!({snapshot_size=req.data.len(), nread, req.done, req.offset}, "sending snapshot chunk");
-            let res = match timeout(self.core.heartbeat_timeout, self.core.network.install_snapshot(self.core.target, req)).await {
+            let res = match timeout(
+                self.core.heartbeat_timeout,
+                self.core.network.install_snapshot(self.core.target, req),
+            )
+            .await
+            {
                 Ok(outer_res) => match outer_res {
                     Ok(res) => res,
                     Err(err) => {
