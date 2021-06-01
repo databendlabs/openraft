@@ -206,6 +206,10 @@ impl ConfigBuilder {
         }
         // Get other values or their defaults.
         let heartbeat_interval = self.heartbeat_interval.unwrap_or(DEFAULT_HEARTBEAT_INTERVAL);
+        if election_timeout_min <= heartbeat_interval {
+            return Err(ConfigError::InvalidElectionTimeoutMinMax)
+
+        }
         let max_payload_entries = self.max_payload_entries.unwrap_or(DEFAULT_MAX_PAYLOAD_ENTRIES);
         if max_payload_entries == 0 {
             return Err(ConfigError::MaxPayloadEntriesTooSmall);

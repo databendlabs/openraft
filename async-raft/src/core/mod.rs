@@ -217,6 +217,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.next_election_timeout = Some(inst);
         }
 
+        tracing::debug!("id={} target_state: {:?}", self.id, self.target_state);
+
         // This is central loop of the system. The Raft core assumes a few different roles based
         // on cluster state. The Raft core will delegate control to the different state
         // controllers and simply awaits the delegated loop to return, which will only take place
@@ -278,7 +280,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         match self.next_election_timeout {
             Some(inst) => inst,
             None => {
-                let inst = Instant::now() + Duration::from_millis(self.config.new_rand_election_timeout());
+                let t = Duration::from_millis(self.config.new_rand_election_timeout());
+                tracing::debug!("create election timeout after: {:?}",t);
+                let inst = Instant::now() + t;
                 self.next_election_timeout = Some(inst);
                 inst
             }
@@ -291,7 +295,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_next_election_timeout(&mut self, heartbeat: bool) {
         let now = Instant::now();
-        self.next_election_timeout = Some(now + Duration::from_millis(self.config.new_rand_election_timeout()));
+
+        let t = Duration::from_millis(self.config.new_rand_election_timeout());
+        tracing::debug!("update election timeout after: {:?}",t);
+
+        self.next_election_timeout = Some(now + t);
         if heartbeat {
             self.last_heartbeat = Some(now);
         }
@@ -873,7 +881,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             if !self.core.target_state.is_follower() {
                 return Ok(());
             }
-
             let election_timeout = sleep_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
             tokio::select! {
                 // If an election timeout is hit, then we need to transition to candidate.

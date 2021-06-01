@@ -45,16 +45,59 @@ pub struct RaftRouter {
     routing_table: RwLock<BTreeMap<NodeId, (MemRaft, Arc<MemStore>)>>,
     /// Nodes which are isolated can neither send nor receive frames.
     isolated_nodes: RwLock<HashSet<NodeId>>,
+
+    /// To enumlate network delay for sending, in milli second.
+    /// 0 means no delay.
+    send_delay: u64,
+}
+
+pub struct Builder {
+    config: Arc<Config>,
+    send_delay: u64,
+}
+
+impl Builder {
+    pub fn send_delay(mut self, ms:u64) -> Self {
+        self.send_delay = ms;
+        self
+    }
+
+    pub fn build(self) -> RaftRouter {
+        RaftRouter{
+            config: self.config,
+            routing_table:Default::default(),
+            isolated_nodes: Default::default(),
+            send_delay: self.send_delay,
+        }
+    }
 }
 
 impl RaftRouter {
+
+    pub fn builder(config: Arc<Config>) -> Builder {
+        Builder{
+            config,
+            send_delay:0,
+        }
+    }
+
     /// Create a new instance.
     pub fn new(config: Arc<Config>) -> Self {
-        Self {
-            config,
-            routing_table: Default::default(),
-            isolated_nodes: Default::default(),
+        Self::builder(config).build()
+    }
+
+    pub fn network_send_delay(&mut self, ms: u64) {
+        self.send_delay = ms;
+    }
+
+    async fn rand_send_delay(&self) {
+        if self.send_delay == 0 {
+            return;
         }
+
+        let r = rand::random::<u64>() % self.send_delay;
+        let timeout = tokio::time::Duration::from_millis(r);
+        tokio::time::sleep(timeout).await;
     }
 
     /// Create and register a new Raft node bearing the given ID.
@@ -472,12 +515,14 @@ impl RaftRouter {
     }
 }
 
+
 #[async_trait]
 impl RaftNetwork<MemClientRequest> for RaftRouter {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn append_entries(&self, target: u64, rpc: AppendEntriesRequest<MemClientRequest>) -> Result<AppendEntriesResponse> {
 
         tracing::debug!("append_entries to id={} {:?}", target, rpc);
+        self.rand_send_delay().await;
 
         let rt = self.routing_table.read().await;
         let isolated = self.isolated_nodes.read().await;
@@ -493,6 +538,9 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
     async fn install_snapshot(&self, target: u64, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse> {
+
+        self.rand_send_delay().await;
+
         let rt = self.routing_table.read().await;
         let isolated = self.isolated_nodes.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
@@ -504,6 +552,9 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
 
     /// Send a RequestVote RPC to the target Raft node (§5).
     async fn vote(&self, target: u64, rpc: VoteRequest) -> Result<VoteResponse> {
+
+        self.rand_send_delay().await;
+
         let rt = self.routing_table.read().await;
         let isolated = self.isolated_nodes.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");

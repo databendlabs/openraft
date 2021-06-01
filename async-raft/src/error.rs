@@ -70,6 +70,12 @@ pub enum ConfigError {
     /// The given value for max_payload_entries is too small, must be > 0.
     #[error("the given value for max_payload_entries is too small, must be > 0")]
     MaxPayloadEntriesTooSmall,
+
+    /// election_timeout_min smaller than heartbeat_interval would cause endless election.
+    /// A recommended election_timeout_min value is about 3 times heartbeat_interval.
+    #[error("election_timeout_min value must be > heartbeat_interval")]
+    ElectionTimeoutLessThanHeartBeatInterval,
+
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.

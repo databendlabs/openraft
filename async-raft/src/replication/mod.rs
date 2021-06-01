@@ -210,6 +210,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         };
 
         // Send the payload.
+        tracing::debug!("start sending append_entries, timeout: {:?}", self.heartbeat_timeout);
         let res = match timeout(self.heartbeat_timeout, self.network.append_entries(self.target, payload)).await {
             Ok(outer_res) => match outer_res {
                 Ok(res) => res,
