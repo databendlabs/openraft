@@ -46,7 +46,7 @@ async fn add_remove_voter() -> Result<()> {
         .wait_for_metrics(
             &0u64,
             |x| x.last_log_index == want,
-            timeout,
+            Some(timeout),
             &format!("n{}.last_log_index -> {}", 0, 0),
         )
         .await?;
@@ -54,7 +54,7 @@ async fn add_remove_voter() -> Result<()> {
         .wait_for_metrics(
             &0u64,
             |x| x.state == State::NonVoter,
-            timeout,
+            Some(timeout),
             &format!("n{}.state -> {:?}", 4, State::NonVoter),
         )
         .await?;
@@ -110,7 +110,7 @@ async fn add_remove_voter() -> Result<()> {
         .wait_for_metrics(
             &4u64,
             |x| x.state == State::NonVoter,
-            timeout,
+            Some(timeout),
             &format!("n{}.state -> {:?}", 4, State::NonVoter),
         )
         .await?;
@@ -138,7 +138,7 @@ async fn wait_log(
             .wait_for_metrics(
                 &i,
                 |x| x.last_log_index == want_log,
-                timeout,
+                Some(timeout),
                 &format!("n{}.last_log_index -> {}", i, want_log),
             )
             .await?;
@@ -146,7 +146,7 @@ async fn wait_log(
             .wait_for_metrics(
                 &i,
                 |x| x.last_applied == want_log,
-                timeout,
+                Some(timeout),
                 &format!("n{}.last_applied -> {}", i, want_log),
             )
             .await?;

@@ -38,10 +38,10 @@ async fn client_writes() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router
-        .wait_for_log(&hashset![0, 1, 2], want, "empty")
+        .wait_for_log(&hashset![0, 1, 2], want, None, "empty")
         .await?;
     router
-        .wait_for_state(&hashset![0, 1, 2], State::NonVoter, "empty")
+        .wait_for_state(&hashset![0, 1, 2], State::NonVoter, None, "empty")
         .await?;
     router.assert_pristine_cluster().await;
 
@@ -51,10 +51,10 @@ async fn client_writes() -> Result<()> {
     want += 1;
 
     router
-        .wait_for_log(&hashset![0, 1, 2], want, "leader init log")
+        .wait_for_log(&hashset![0, 1, 2], want, None, "leader init log")
         .await?;
     router
-        .wait_for_state(&hashset![0], State::Leader, "init")
+        .wait_for_state(&hashset![0], State::Leader, None, "init")
         .await?;
 
     router.assert_stable_cluster(Some(1), Some(want)).await;
@@ -72,7 +72,7 @@ async fn client_writes() -> Result<()> {
 
     want = 6001;
     router
-        .wait_for_log(&hashset![0, 1, 2], want, "sync logs")
+        .wait_for_log(&hashset![0, 1, 2], want, None, "sync logs")
         .await?;
 
     router.assert_stable_cluster(Some(1), Some(want)).await; // The extra 1 is from the leader's initial commit entry.

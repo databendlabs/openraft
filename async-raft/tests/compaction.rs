@@ -38,9 +38,11 @@ async fn compaction() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0], want, "empty").await?;
     router
-        .wait_for_state(&hashset![0], State::NonVoter, "empty")
+        .wait_for_log(&hashset![0], want, None, "empty")
+        .await?;
+    router
+        .wait_for_state(&hashset![0], State::NonVoter, None, "empty")
         .await?;
     router.assert_pristine_cluster().await;
 
@@ -50,7 +52,7 @@ async fn compaction() -> Result<()> {
     want += 1;
 
     router
-        .wait_for_log(&hashset![0], want, "init leader")
+        .wait_for_log(&hashset![0], want, None, "init leader")
         .await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
@@ -58,7 +60,9 @@ async fn compaction() -> Result<()> {
     router.client_request_many(0, "0", 499).await; // Puts us exactly at the configured snapshot policy threshold.
     want += 499;
 
-    router.wait_for_log(&hashset![0], want, "write").await?;
+    router
+        .wait_for_log(&hashset![0], want, None, "write")
+        .await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     // TODO: add snapshot info into metrics.
@@ -90,7 +94,7 @@ async fn compaction() -> Result<()> {
     want += 2; // 2 member change logs
 
     router
-        .wait_for_log(&hashset![0, 1], want, "add follower")
+        .wait_for_log(&hashset![0, 1], want, None, "add follower")
         .await?;
     router.assert_stable_cluster(Some(1), Some(want)).await; // We expect index to be 500 + 2 (joint & uniform config change entries).
     let expected_snap = Some((500.into(), 1, MembershipConfig {

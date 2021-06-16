@@ -15,7 +15,7 @@ mod fixtures;
 
 /// Cluster conflict_with_empty_entries test.
 ///
-/// `append_entries` should get a reponse with non-none ConflictOpt even if the entries in message
+/// `append_entries` should get a response with non-none ConflictOpt even if the entries in message
 /// is empty.
 /// Otherwise if no conflict is found the leader will never be able to sync logs to a new added
 /// NonVoter, until a next log is proposed on leader.
@@ -25,12 +25,12 @@ mod fixtures;
 /// - brings a 1 NonVoter node online.
 ///
 /// - send `append_logs` message to it with empty `entries` and some non-zero `prev_log_index`.
-/// - asserts that a reponse with ConflictOpt set.
+/// - asserts that a response with ConflictOpt set.
 ///
 /// - feed several logs to it.
 ///
 /// - send `append_logs` message with conflicting prev_log_index and empty `entries`.
-/// - asserts that a reponse with ConflictOpt set.
+/// - asserts that a response with ConflictOpt set.
 ///
 /// RUST_LOG=async_raft,memstore,conflict_with_empty_entries=trace cargo test -p async-raft --test conflict_with_empty_entries
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]

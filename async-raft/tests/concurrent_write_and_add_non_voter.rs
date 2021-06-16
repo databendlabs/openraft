@@ -113,7 +113,7 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
         .wait_for_metrics(
             &3u64,
             |x| x.state == State::NonVoter,
-            timeout,
+            Some(timeout),
             &format!("n{}.state -> {:?}", 3, State::NonVoter),
         )
         .await?;
@@ -123,7 +123,7 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
         .wait_for_metrics(
             &3u64,
             |x| x.last_log_index == want,
-            timeout,
+            Some(timeout),
             &format!("n{}.last_log_index -> {}", 3, want),
         )
         .await?;
@@ -142,7 +142,7 @@ async fn wait_log(
             .wait_for_metrics(
                 &i,
                 |x| x.last_log_index == want_log,
-                timeout,
+                Some(timeout),
                 &format!("n{}.last_log_index -> {}", i, want_log),
             )
             .await?;
@@ -150,7 +150,7 @@ async fn wait_log(
             .wait_for_metrics(
                 &i,
                 |x| x.last_applied == want_log,
-                timeout,
+                Some(timeout),
                 &format!("n{}.last_applied -> {}", i, want_log),
             )
             .await?;

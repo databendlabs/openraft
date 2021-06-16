@@ -33,9 +33,11 @@ async fn members_012_to_234() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0], want, "empty").await?;
     router
-        .wait_for_state(&hashset![0], State::NonVoter, "empty")
+        .wait_for_log(&hashset![0], want, None, "empty")
+        .await?;
+    router
+        .wait_for_state(&hashset![0], State::NonVoter, None, "empty")
         .await?;
     router.assert_pristine_cluster().await;
 
@@ -44,7 +46,9 @@ async fn members_012_to_234() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0], want, "init").await?;
+    router
+        .wait_for_log(&hashset![0], want, None, "init")
+        .await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     tracing::info!("--- adding 4 new nodes to cluster");
@@ -73,7 +77,7 @@ async fn members_012_to_234() -> Result<()> {
     want += 2;
 
     router
-        .wait_for_log(&hashset![0, 1, 2], want, "cluster of 0,1,2")
+        .wait_for_log(&hashset![0, 1, 2], want, None, "cluster of 0,1,2")
         .await?;
 
     tracing::info!("--- changing config to 2,3,4");
@@ -88,7 +92,7 @@ async fn members_012_to_234() -> Result<()> {
     want += 1;
 
     let wait_rst = router
-        .wait_for_log(&hashset![0], want, "cluster of joint")
+        .wait_for_log(&hashset![0], want, None, "cluster of joint")
         .await;
 
     // the first step of joint should not pass because the new config can not constitute a quorum

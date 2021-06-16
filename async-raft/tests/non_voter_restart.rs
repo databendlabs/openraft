@@ -44,9 +44,11 @@ async fn non_voter_restart() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0, 1], want, "empty").await?;
     router
-        .wait_for_state(&hashset![0, 1], State::NonVoter, "empty")
+        .wait_for_log(&hashset![0, 1], want, None, "empty")
+        .await?;
+    router
+        .wait_for_state(&hashset![0, 1], State::NonVoter, None, "empty")
         .await?;
     router.assert_pristine_cluster().await;
 
@@ -60,7 +62,7 @@ async fn non_voter_restart() -> Result<()> {
     want += 1;
 
     router
-        .wait_for_log(&hashset![0, 1], want, "write one log")
+        .wait_for_log(&hashset![0, 1], want, None, "write one log")
         .await?;
 
     let (node0, _sto0) = router.remove_node(0).await.unwrap();

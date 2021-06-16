@@ -37,9 +37,11 @@ async fn stepdown() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0, 1], want, "empty").await?;
     router
-        .wait_for_state(&hashset![0, 1], State::NonVoter, "empty")
+        .wait_for_log(&hashset![0, 1], want, None, "empty")
+        .await?;
+    router
+        .wait_for_state(&hashset![0, 1], State::NonVoter, None, "empty")
         .await?;
     router.assert_pristine_cluster().await;
 
@@ -48,7 +50,9 @@ async fn stepdown() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0, 1], want, "init").await?;
+    router
+        .wait_for_log(&hashset![0, 1], want, None, "init")
+        .await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -70,6 +74,7 @@ async fn stepdown() -> Result<()> {
                 .wait_for_log(
                     &hashset![id],
                     want,
+                    None,
                     "update membership: 1, 2, 3; old leader",
                 )
                 .await?;
@@ -79,6 +84,7 @@ async fn stepdown() -> Result<()> {
                 .wait_for_log(
                     &hashset![id],
                     want + 1,
+                    None,
                     "update membership: 1, 2, 3; new candidate",
                 )
                 .await?;

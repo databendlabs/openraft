@@ -36,10 +36,10 @@ async fn client_reads() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router
-        .wait_for_log(&hashset![0, 1, 2], want, "empty node")
+        .wait_for_log(&hashset![0, 1, 2], want, None, "empty node")
         .await?;
     router
-        .wait_for_state(&hashset![0, 1, 2], State::NonVoter, "empty node")
+        .wait_for_state(&hashset![0, 1, 2], State::NonVoter, None, "empty node")
         .await?;
     router.assert_pristine_cluster().await;
 
@@ -49,7 +49,7 @@ async fn client_reads() -> Result<()> {
     want += 1;
 
     router
-        .wait_for_log(&hashset![0, 1, 2], want, "init leader")
+        .wait_for_log(&hashset![0, 1, 2], want, None, "init leader")
         .await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 

@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -20,6 +21,7 @@ use crate::error::InitializeError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
 use crate::metrics::RaftMetrics;
+use crate::metrics::Wait;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::NodeId;
@@ -311,6 +313,35 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.inner.rx_metrics.clone()
     }
 
+    /// Get a handle to wait for the metrics to satisfy some condition.
+    ///
+    /// ```ignore
+    /// # use std::time::Duration;
+    /// # use async_raft::{State, Raft};
+    ///
+    /// let timeout = Duration::from_millis(200);
+    ///
+    /// // wait for raft log-3 to be received and applied:
+    /// r.wait(Some(timeout)).log(3).await?;
+    ///
+    /// // wait for ever for raft node's current leader to become 3:
+    /// r.wait(None).current_leader(2).await?;
+    ///
+    /// // wait for raft state to become a follower
+    /// r.wait(None).state(State::Follower).await?;
+    ///
+    /// ```
+    pub fn wait(&self, timeout: Option<Duration>) -> Wait {
+        let timeout = match timeout {
+            Some(t) => t,
+            None => Duration::from_millis(500),
+        };
+        Wait {
+            timeout,
+            rx: self.inner.rx_metrics.clone(),
+        }
+    }
+
     /// Shutdown this Raft node.
     pub async fn shutdown(&self) -> anyhow::Result<()> {
         if let Some(tx) = self.inner.tx_shutdown.lock().await.take() {
@@ -512,7 +543,7 @@ pub struct EntrySnapshotPointer {
 /// The membership configuration of the cluster.
 /// Unlike original raft, the membership always a joint.
 /// It could be a joint of one, two or more members, i.e., a quorum requires a majority of every members
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MembershipConfig {
     /// All members of the Raft cluster.
     pub members: HashSet<NodeId>,

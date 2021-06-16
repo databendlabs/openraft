@@ -37,7 +37,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     // Wait for node 0 to become leader.
     router.initialize_with(0, hashset![0]).await?;
     router
-        .wait_for_state(&hashset![0], State::Leader, "init")
+        .wait_for_state(&hashset![0], State::Leader, None, "init")
         .await?;
 
     tracing::info!("--- add one non-voter");
@@ -52,7 +52,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     let want = 2u64;
     for node_id in 0..2 {
         router
-            .wait_for_log(&hashset![node_id], want, "write one log")
+            .wait_for_log(&hashset![node_id], want, None, "write one log")
             .await?;
         let sto = router.get_storage_handle(&node_id).await?;
         assert!(sto

@@ -4,6 +4,8 @@ pub mod config;
 mod core;
 pub mod error;
 pub mod metrics;
+#[cfg(test)]
+mod metrics_wait_test;
 pub mod network;
 pub mod raft;
 mod replication;

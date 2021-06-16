@@ -35,9 +35,11 @@ async fn singlenode() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0], want, "empty").await?;
     router
-        .wait_for_state(&hashset![0], State::NonVoter, "empty")
+        .wait_for_log(&hashset![0], want, None, "empty")
+        .await?;
+    router
+        .wait_for_state(&hashset![0], State::NonVoter, None, "empty")
         .await?;
     router.assert_pristine_cluster().await;
 
@@ -46,7 +48,9 @@ async fn singlenode() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0], want, "init").await?;
+    router
+        .wait_for_log(&hashset![0], want, None, "init")
+        .await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Write some data to the single node cluster.

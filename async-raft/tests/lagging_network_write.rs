@@ -22,7 +22,7 @@ use maplit::hashset;
 async fn lagging_network_write() -> Result<()> {
     fixtures::init_tracing();
 
-    let timeout = tokio::time::Duration::from_millis(2000);
+    let timeout = Some(tokio::time::Duration::from_millis(2000));
 
     let config = Arc::new(
         Config::build("test".into())
@@ -40,10 +40,10 @@ async fn lagging_network_write() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router
-        .wait_for_log_timeout(&hashset![0], want, timeout, "empty")
+        .wait_for_log(&hashset![0], want, timeout, "empty")
         .await?;
     router
-        .wait_for_state(&hashset![0], State::NonVoter, "empty")
+        .wait_for_state(&hashset![0], State::NonVoter, None, "empty")
         .await?;
     router.assert_pristine_cluster().await;
 
@@ -53,10 +53,10 @@ async fn lagging_network_write() -> Result<()> {
     want += 1;
 
     router
-        .wait_for_log_timeout(&hashset![0], want, timeout, "init")
+        .wait_for_log(&hashset![0], want, timeout, "init")
         .await?;
     router
-        .wait_for_state(&hashset![0], State::Leader, "init")
+        .wait_for_state(&hashset![0], State::Leader, None, "init")
         .await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
@@ -68,31 +68,31 @@ async fn lagging_network_write() -> Result<()> {
     router.add_non_voter(0, 2).await?;
 
     router
-        .wait_for_log_timeout(&hashset![1, 2], want, timeout, "non-voter init")
+        .wait_for_log(&hashset![1, 2], want, timeout, "non-voter init")
         .await?;
 
     router.client_request_many(0, "client", 1).await;
     want += 1;
     router
-        .wait_for_log_timeout(&hashset![0, 1, 2], want, timeout, "write one log")
+        .wait_for_log(&hashset![0, 1, 2], want, timeout, "write one log")
         .await?;
 
     router.change_membership(0, hashset![0, 1, 2]).await?;
     want += 2;
     router
-        .wait_for_state(&hashset![0], State::Leader, "changed")
+        .wait_for_state(&hashset![0], State::Leader, None, "changed")
         .await?;
     router
-        .wait_for_state(&hashset![1, 2], State::Follower, "changed")
+        .wait_for_state(&hashset![1, 2], State::Follower, None, "changed")
         .await?;
     router
-        .wait_for_log_timeout(&hashset![0, 1, 2], want, timeout, "3 candidates")
+        .wait_for_log(&hashset![0, 1, 2], want, timeout, "3 candidates")
         .await?;
 
     router.client_request_many(0, "client", 1).await;
     want += 1;
     router
-        .wait_for_log_timeout(&hashset![0, 1, 2], want, timeout, "write 2nd log")
+        .wait_for_log(&hashset![0, 1, 2], want, timeout, "write 2nd log")
         .await?;
 
     Ok(())
