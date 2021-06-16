@@ -10,7 +10,7 @@ use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
+// use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio::time::timeout;
 use tokio::time::Duration;
@@ -33,7 +33,7 @@ use crate::RaftStorage;
 /// The public handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<D: AppData> {
     /// The spawn handle the `ReplicationCore` task.
-    pub handle: JoinHandle<()>,
+    // pub handle: JoinHandle<()>,
     /// The channel used for communicating with the replication task.
     pub repltx: mpsc::UnboundedSender<RaftEvent<D>>,
 }
@@ -192,9 +192,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
             replication_buffer: Vec::new(),
             outbound_buffer: Vec::new(),
         };
-        let handle = tokio::spawn(this.main());
+        let _handle = tokio::spawn(this.main());
         ReplicationStream {
-            handle,
+            // handle,
             repltx: raftrx_tx,
         }
     }

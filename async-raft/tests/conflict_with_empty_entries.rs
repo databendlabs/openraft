@@ -59,7 +59,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     };
 
     let resp = router.append_entries(0, rpc).await?;
-    assert_eq!(false, resp.success);
+    assert!(!resp.success);
     assert!(resp.conflict_opt.is_some());
     let c = resp.conflict_opt.unwrap();
     assert_eq!(ConflictOpt { term: 0, index: 0 }, c);
@@ -93,7 +93,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     };
 
     let resp = router.append_entries(0, rpc).await?;
-    assert_eq!(true, resp.success);
+    assert!(resp.success);
     assert!(resp.conflict_opt.is_none());
 
     // Expect a conflict with prev_log_index == 3
@@ -108,7 +108,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     };
 
     let resp = router.append_entries(0, rpc).await?;
-    assert_eq!(false, resp.success);
+    assert!(!resp.success);
     assert!(resp.conflict_opt.is_some());
     let c = resp.conflict_opt.unwrap();
     assert_eq!(ConflictOpt { term: 1, index: 2 }, c);

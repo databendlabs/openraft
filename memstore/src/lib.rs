@@ -1,5 +1,4 @@
-#![cfg_attr(feature = "docinclude", feature(external_doc))]
-#![cfg_attr(feature = "docinclude", doc(include = "../README.md"))]
+#![doc = include_str!("../README.md")]
 
 #[cfg(test)]
 mod test;

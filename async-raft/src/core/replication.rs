@@ -41,7 +41,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         ReplicationState {
             match_index: self.core.last_log_index,
             match_term: self.core.current_term,
-            is_at_line_rate: false,
             replstream,
             remove_after_commit: None,
         }
@@ -83,13 +82,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self, target, is_line_rate))]
     async fn handle_rate_update(&mut self, target: NodeId, is_line_rate: bool) -> RaftResult<()> {
         // Get a handle the target's replication stat & update it as needed.
-        if let Some(state) = self.nodes.get_mut(&target) {
-            state.is_at_line_rate = is_line_rate;
+        if let Some(_state) = self.nodes.get_mut(&target) {
             return Ok(());
         }
         // Else, if this is a non-voter, then update as needed.
         if let Some(state) = self.non_voters.get_mut(&target) {
-            state.state.is_at_line_rate = is_line_rate;
             state.is_ready_to_join = is_line_rate;
             // Issue a response on the non-voters response channel if needed.
             if state.is_ready_to_join {

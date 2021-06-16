@@ -298,11 +298,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             current_term: self.current_term,
             voted_for: self.voted_for,
         };
-        Ok(self
-            .storage
+        self.storage
             .save_hard_state(&hs)
             .await
-            .map_err(|err| self.map_fatal_storage_error(err))?)
+            .map_err(|err| self.map_fatal_storage_error(err))
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
@@ -763,7 +762,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 struct ReplicationState<D: AppData> {
     pub match_index: u64,
     pub match_term: u64,
-    pub is_at_line_rate: bool,
     pub remove_after_commit: Option<u64>,
     pub replstream: ReplicationStream<D>,
 }

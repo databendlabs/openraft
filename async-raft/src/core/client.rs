@@ -424,6 +424,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             });
         self.core.last_applied = *index;
         self.core.report_metrics();
-        Ok(res?)
+        res
     }
 }

@@ -119,10 +119,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .tx_api
             .send(RaftMsg::AppendEntries { rpc, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx
-            .await
+        rx.await
             .map_err(|_| RaftError::ShuttingDown)
-            .and_then(|res| res)?)
+            .and_then(|res| res)
     }
 
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.
@@ -135,10 +134,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .tx_api
             .send(RaftMsg::RequestVote { rpc, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx
-            .await
+        rx.await
             .map_err(|_| RaftError::ShuttingDown)
-            .and_then(|res| res)?)
+            .and_then(|res| res)
     }
 
     /// Submit an InstallSnapshot RPC to this Raft node.
@@ -155,10 +153,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .tx_api
             .send(RaftMsg::InstallSnapshot { rpc, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx
-            .await
+        rx.await
             .map_err(|_| RaftError::ShuttingDown)
-            .and_then(|res| res)?)
+            .and_then(|res| res)
     }
 
     /// Get the ID of the current leader from this Raft node.
@@ -182,10 +179,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .tx_api
             .send(RaftMsg::ClientReadRequest { tx })
             .map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
-        Ok(rx
-            .await
+        rx.await
             .map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))
-            .and_then(|res| res)?)
+            .and_then(|res| res)
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).
@@ -215,10 +211,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .tx_api
             .send(RaftMsg::ClientWriteRequest { rpc, tx })
             .map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown))?;
-        Ok(rx
-            .await
+        rx.await
             .map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown))
-            .and_then(|res| res)?)
+            .and_then(|res| res)
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -256,10 +251,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .tx_api
             .send(RaftMsg::Initialize { members, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx
-            .await
+        rx.await
             .map_err(|_| InitializeError::RaftError(RaftError::ShuttingDown))
-            .and_then(|res| res)?)
+            .and_then(|res| res)
     }
 
     /// Synchronize a new Raft node, bringing it up-to-speed (§6).
@@ -281,10 +275,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .tx_api
             .send(RaftMsg::AddNonVoter { id, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx
-            .await
+        rx.await
             .map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown))
-            .and_then(|res| res)?)
+            .and_then(|res| res)
     }
 
     /// Propose a cluster configuration change (§6).
@@ -308,10 +301,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .tx_api
             .send(RaftMsg::ChangeMembership { members, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
-        Ok(rx
-            .await
+        rx.await
             .map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown))
-            .and_then(|res| res)?)
+            .and_then(|res| res)
     }
 
     /// Get a handle to the metrics channel.
