@@ -138,33 +138,39 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle events from a replication stream which updates the target node's match index.
-    #[tracing::instrument(level = "trace", skip(self, target, match_index))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn handle_update_match_index(
         &mut self,
         target: NodeId,
         match_index: u64,
         match_term: u64,
     ) -> RaftResult<()> {
-        // If this is a non-voter, then update and return.
+        let mut found = false;
+
         if let Some(state) = self.non_voters.get_mut(&target) {
             state.state.match_index = match_index;
             state.state.match_term = match_term;
-            return Ok(());
+            found = true;
         }
 
         // Update target's match index & check if it is awaiting removal.
         let mut needs_removal = false;
-        match self.nodes.get_mut(&target) {
-            Some(state) => {
-                state.match_index = match_index;
-                state.match_term = match_term;
-                if let Some(threshold) = &state.remove_after_commit {
-                    if &match_index >= threshold {
-                        needs_removal = true;
-                    }
+
+        if let Some(state) = self.nodes.get_mut(&target) {
+            state.match_index = match_index;
+            state.match_term = match_term;
+            found = true;
+
+            if let Some(threshold) = &state.remove_after_commit {
+                if &match_index >= threshold {
+                    needs_removal = true;
                 }
             }
-            _ => return Ok(()), // Node not found.
+        }
+
+        if !found {
+            // no such node
+            return Ok(());
         }
 
         // Drop replication stream if needed.

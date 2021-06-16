@@ -281,9 +281,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
             .map(|last| (last.as_ref().index, last.as_ref().term));
         self.outbound_buffer.clear(); // Once we've successfully sent a payload of entries, don't send them again.
 
+        tracing::debug!("append_entries last: {:?}", last_index_and_term);
+
         // Handle success conditions.
         if res.success {
-            tracing::trace!("append entries succeeded");
+            tracing::debug!("append entries succeeded to {:?}", last_index_and_term);
+
             // If this was a proper replication event (last index & term were provided), then update state.
             if let Some((index, term)) = last_index_and_term {
                 self.next_index = index + 1; // This should always be the next expected index.
