@@ -145,5 +145,6 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
         timeout: Duration::from_millis(100),
         rx,
     };
-    return (init, w, tx);
+
+    (init, w, tx)
 }

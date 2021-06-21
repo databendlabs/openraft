@@ -127,7 +127,7 @@ impl Config {
 
     /// Generate a new random election timeout within the configured min & max.
     pub fn new_rand_election_timeout(&self) -> u64 {
-        thread_rng().gen_range(self.election_timeout_min, self.election_timeout_max)
+        thread_rng().gen_range(self.election_timeout_min..self.election_timeout_max)
     }
 }
 
