@@ -89,8 +89,28 @@ async fn dynamic_membership() -> Result<()> {
     // Isolate old leader and assert that a new leader takes over.
     tracing::info!("--- isolating master node 0");
     router.isolate_node(0).await;
-    sleep(Duration::from_secs(5)).await; // Wait for election and for everything to stabilize (this is way longer than needed).
-    router.assert_stable_cluster(Some(2), Some(4)).await;
+    router
+        .wait_for_metrics(
+            &1,
+            |x| x.current_leader.is_some() && x.current_leader.unwrap() != 0,
+            Some(Duration::from_millis(1000)),
+            "wait for new leader",
+        )
+        .await?;
+
+    // need some time to stabilize.
+    // TODO: it can not be sure that no new leader is elected after a leader detected on node-1
+    // Wait for election and for everything to stabilize (this is way longer than needed).
+    sleep(Duration::from_millis(1000)).await;
+
+    let metrics = &router.latest_metrics().await[1];
+    let term = metrics.current_term;
+    let applied = metrics.last_applied;
+    let leader_id = metrics.current_leader;
+
+    router
+        .assert_stable_cluster(Some(term), Some(applied))
+        .await;
     let leader = router.leader().await.expect("expected new leader");
     assert!(
         leader != 0,
@@ -99,9 +119,19 @@ async fn dynamic_membership() -> Result<()> {
 
     // Restore isolated node.
     router.restore_node(0).await;
-    sleep(Duration::from_secs(5)).await; // Wait for election and for everything to stabilize (this is way longer than needed).
-    router.assert_stable_cluster(Some(2), Some(4)).await; // We should still be in term 2, as leaders should
-                                                          // not be deposed when they are not missing heartbeats.
+    router
+        .wait_for_metrics(
+            &0,
+            |x| x.current_leader == leader_id && x.last_applied == applied,
+            Some(Duration::from_millis(1000)),
+            "wait for restored node-0 to sync",
+        )
+        .await?;
+
+    router
+        .assert_stable_cluster(Some(term), Some(applied))
+        .await;
+
     let current_leader = router
         .leader()
         .await
