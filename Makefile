@@ -8,7 +8,7 @@ fmt:
 
 lint:
 	cargo fmt
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy --all-targets -- -D warnings -A clippy::bool-assert-comparison
 
 clean:
 	cargo clean
