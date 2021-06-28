@@ -7,7 +7,6 @@ use super::*;
 const NODE_ID: u64 = 0;
 
 //////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////
 
 #[tokio::test]
 async fn test_get_membership_config_default() -> Result<()> {
@@ -56,7 +55,6 @@ async fn test_get_membership_config_with_previous_state() -> Result<()> {
 }
 
 //////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////
 
 #[tokio::test]
 async fn test_get_initial_state_default() -> Result<()> {
@@ -69,18 +67,9 @@ async fn test_get_initial_state_default() -> Result<()> {
 
     let initial = store.get_initial_state().await?;
 
-    assert_eq!(
-        initial.last_log_index, 0,
-        "unexpected default value for last log index"
-    );
-    assert_eq!(
-        initial.last_log_term, 0,
-        "unexpected default value for last log term"
-    );
-    assert_eq!(
-        initial.last_applied_log, 0,
-        "unexpected value for last applied log"
-    );
+    assert_eq!(initial.last_log_index, 0, "unexpected default value for last log index");
+    assert_eq!(initial.last_log_term, 0, "unexpected default value for last log term");
+    assert_eq!(initial.last_applied_log, 0, "unexpected value for last applied log");
     assert_eq!(
         initial.hard_state, expected_hs,
         "unexpected value for default hard state"
@@ -112,26 +101,13 @@ async fn test_get_initial_state_with_previous_state() -> Result<()> {
 
     let initial = store.get_initial_state().await?;
 
-    assert_eq!(
-        initial.last_log_index, 1,
-        "unexpected default value for last log index"
-    );
-    assert_eq!(
-        initial.last_log_term, 1,
-        "unexpected default value for last log term"
-    );
-    assert_eq!(
-        initial.last_applied_log, 1,
-        "unexpected value for last applied log"
-    );
-    assert_eq!(
-        initial.hard_state, hs,
-        "unexpected value for default hard state"
-    );
+    assert_eq!(initial.last_log_index, 1, "unexpected default value for last log index");
+    assert_eq!(initial.last_log_term, 1, "unexpected default value for last log term");
+    assert_eq!(initial.last_applied_log, 1, "unexpected value for last applied log");
+    assert_eq!(initial.hard_state, hs, "unexpected value for default hard state");
     Ok(())
 }
 
-//////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
 #[tokio::test]
@@ -153,7 +129,6 @@ async fn test_save_hard_state() -> Result<()> {
     Ok(())
 }
 
-//////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
 #[tokio::test]
@@ -180,7 +155,6 @@ async fn test_get_log_entries_returns_expected_entries() -> Result<()> {
     Ok(())
 }
 
-//////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
 #[tokio::test]
@@ -229,7 +203,6 @@ async fn test_delete_logs_from_deletes_only_target_logs() -> Result<()> {
 }
 
 //////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////
 
 #[tokio::test]
 async fn test_append_entry_to_log() -> Result<()> {
@@ -250,7 +223,6 @@ async fn test_append_entry_to_log() -> Result<()> {
     Ok(())
 }
 
-//////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
 #[tokio::test]
@@ -273,7 +245,6 @@ async fn test_replicate_to_log() -> Result<()> {
 }
 
 //////////////////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////
 
 #[tokio::test]
 async fn test_apply_entry_to_state_machine() -> Result<()> {
@@ -293,16 +264,11 @@ async fn test_apply_entry_to_state_machine() -> Result<()> {
         "expected last_applied_log to be 1, got {}",
         sm.last_applied_log
     );
-    let client_serial = sm
-        .client_serial_responses
-        .get("0")
-        .expect("expected entry to exist in client_serial_responses");
+    let client_serial =
+        sm.client_serial_responses.get("0").expect("expected entry to exist in client_serial_responses");
     assert_eq!(client_serial.0, 0, "unexpected client serial response");
     assert_eq!(client_serial.1, None, "unexpected client serial response");
-    let client_status = sm
-        .client_status
-        .get("0")
-        .expect("expected entry to exist in client_status");
+    let client_status = sm.client_status.get("0").expect("expected entry to exist in client_status");
     assert_eq!(
         client_status, "lit",
         "expected client_status to be 'lit', got '{}'",
@@ -311,7 +277,6 @@ async fn test_apply_entry_to_state_machine() -> Result<()> {
     Ok(())
 }
 
-//////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
 #[tokio::test]
@@ -358,14 +323,8 @@ async fn test_replicate_to_state_machine() -> Result<()> {
         .expect("expected entry to exist in client_serial_responses for client 2");
     assert_eq!(client_serial2.0, 0, "unexpected client serial response");
     assert_eq!(client_serial2.1, None, "unexpected client serial response");
-    let client_status1 = sm
-        .client_status
-        .get("1")
-        .expect("expected entry to exist in client_status for client 1");
-    let client_status2 = sm
-        .client_status
-        .get("2")
-        .expect("expected entry to exist in client_status for client 2");
+    let client_status1 = sm.client_status.get("1").expect("expected entry to exist in client_status for client 1");
+    let client_status2 = sm.client_status.get("2").expect("expected entry to exist in client_status for client 2");
     assert_eq!(
         client_status1, "new",
         "expected client_status to be 'new', got '{}'",
@@ -379,7 +338,6 @@ async fn test_replicate_to_state_machine() -> Result<()> {
     Ok(())
 }
 
-//////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 
 fn default_store_with_logs() -> MemStore {

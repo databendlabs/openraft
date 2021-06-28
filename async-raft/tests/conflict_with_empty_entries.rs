@@ -32,17 +32,14 @@ mod fixtures;
 /// - send `append_logs` message with conflicting prev_log_index and empty `entries`.
 /// - asserts that a response with ConflictOpt set.
 ///
-/// RUST_LOG=async_raft,memstore,conflict_with_empty_entries=trace cargo test -p async-raft --test conflict_with_empty_entries
+/// RUST_LOG=async_raft,memstore,conflict_with_empty_entries=trace cargo test -p async-raft --test
+/// conflict_with_empty_entries
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn conflict_with_empty_entries() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     router.new_raft_node(0).await;

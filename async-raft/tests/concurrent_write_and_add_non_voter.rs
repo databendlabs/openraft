@@ -34,7 +34,8 @@ mod fixtures;
 /// - add another non-voter and at the same time write a log.
 /// - asserts that all of the leader, followers and the non-voter receives all logs.
 ///
-/// RUST_LOG=async_raft,memstore,concurrent_write_and_add_non_voter=trace cargo test -p async-raft --test concurrent_write_and_add_non_voter
+/// RUST_LOG=async_raft,memstore,concurrent_write_and_add_non_voter=trace cargo test -p async-raft --test
+/// concurrent_write_and_add_non_voter
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn concurrent_write_and_add_non_voter() -> Result<()> {
     fixtures::init_tracing();
@@ -43,11 +44,7 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
     let candidates = hashset![0, 1, 2];
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     router.new_raft_node(0).await;

@@ -27,23 +27,15 @@ async fn dynamic_membership() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router
-        .wait_for_log(&hashset![0], want, None, "empty")
-        .await?;
-    router
-        .wait_for_state(&hashset![0], State::NonVoter, None, "empty")
-        .await?;
+    router.wait_for_log(&hashset![0], want, None, "empty").await?;
+    router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -51,9 +43,7 @@ async fn dynamic_membership() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router
-        .wait_for_log(&hashset![0], want, None, "init")
-        .await?;
+    router.wait_for_log(&hashset![0], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     // Sync some new nodes.
@@ -76,14 +66,7 @@ async fn dynamic_membership() -> Result<()> {
     router.change_membership(0, hashset![0, 1, 2, 3, 4]).await?;
     want += 2;
 
-    router
-        .wait_for_log(
-            &hashset![0, 1, 2, 3, 4],
-            want,
-            None,
-            "cluster of 5 candidates",
-        )
-        .await?;
+    router.wait_for_log(&hashset![0, 1, 2, 3, 4], want, None, "cluster of 5 candidates").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await; // Still in term 1, so leader is still node 0.
 
     // Isolate old leader and assert that a new leader takes over.
@@ -108,14 +91,9 @@ async fn dynamic_membership() -> Result<()> {
     let applied = metrics.last_applied;
     let leader_id = metrics.current_leader;
 
-    router
-        .assert_stable_cluster(Some(term), Some(applied))
-        .await;
+    router.assert_stable_cluster(Some(term), Some(applied)).await;
     let leader = router.leader().await.expect("expected new leader");
-    assert!(
-        leader != 0,
-        "expected new leader to be different from the old leader"
-    );
+    assert!(leader != 0, "expected new leader to be different from the old leader");
 
     // Restore isolated node.
     router.restore_node(0).await;
@@ -128,18 +106,10 @@ async fn dynamic_membership() -> Result<()> {
         )
         .await?;
 
-    router
-        .assert_stable_cluster(Some(term), Some(applied))
-        .await;
+    router.assert_stable_cluster(Some(term), Some(applied)).await;
 
-    let current_leader = router
-        .leader()
-        .await
-        .expect("expected to find current leader");
-    assert_eq!(
-        leader, current_leader,
-        "expected cluster leadership to stay the same"
-    );
+    let current_leader = router.leader().await.expect("expected to find current leader");
+    assert_eq!(leader, current_leader, "expected cluster leadership to stay the same");
 
     Ok(())
 }

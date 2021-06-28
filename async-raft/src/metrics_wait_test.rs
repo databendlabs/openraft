@@ -96,10 +96,7 @@ async fn test_wait() -> anyhow::Result<()> {
         let got = w.next_members(Some(hashset![1, 2]), "next_members").await?;
         h.await?;
 
-        assert_eq!(
-            Some(hashset![1, 2]),
-            got.membership_config.members_after_consensus
-        );
+        assert_eq!(Some(hashset![1, 2]), got.membership_config.members_after_consensus);
     }
 
     {

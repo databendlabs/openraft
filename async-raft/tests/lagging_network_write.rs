@@ -39,12 +39,8 @@ async fn lagging_network_write() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router
-        .wait_for_log(&hashset![0], want, timeout, "empty")
-        .await?;
-    router
-        .wait_for_state(&hashset![0], State::NonVoter, None, "empty")
-        .await?;
+    router.wait_for_log(&hashset![0], want, timeout, "empty").await?;
+    router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -52,12 +48,8 @@ async fn lagging_network_write() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router
-        .wait_for_log(&hashset![0], want, timeout, "init")
-        .await?;
-    router
-        .wait_for_state(&hashset![0], State::Leader, None, "init")
-        .await?;
+    router.wait_for_log(&hashset![0], want, timeout, "init").await?;
+    router.wait_for_state(&hashset![0], State::Leader, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     // Sync some new nodes.
@@ -67,33 +59,21 @@ async fn lagging_network_write() -> Result<()> {
     router.new_raft_node(2).await;
     router.add_non_voter(0, 2).await?;
 
-    router
-        .wait_for_log(&hashset![1, 2], want, timeout, "non-voter init")
-        .await?;
+    router.wait_for_log(&hashset![1, 2], want, timeout, "non-voter init").await?;
 
     router.client_request_many(0, "client", 1).await;
     want += 1;
-    router
-        .wait_for_log(&hashset![0, 1, 2], want, timeout, "write one log")
-        .await?;
+    router.wait_for_log(&hashset![0, 1, 2], want, timeout, "write one log").await?;
 
     router.change_membership(0, hashset![0, 1, 2]).await?;
     want += 2;
-    router
-        .wait_for_state(&hashset![0], State::Leader, None, "changed")
-        .await?;
-    router
-        .wait_for_state(&hashset![1, 2], State::Follower, None, "changed")
-        .await?;
-    router
-        .wait_for_log(&hashset![0, 1, 2], want, timeout, "3 candidates")
-        .await?;
+    router.wait_for_state(&hashset![0], State::Leader, None, "changed").await?;
+    router.wait_for_state(&hashset![1, 2], State::Follower, None, "changed").await?;
+    router.wait_for_log(&hashset![0, 1, 2], want, timeout, "3 candidates").await?;
 
     router.client_request_many(0, "client", 1).await;
     want += 1;
-    router
-        .wait_for_log(&hashset![0, 1, 2], want, timeout, "write 2nd log")
-        .await?;
+    router.wait_for_log(&hashset![0, 1, 2], want, timeout, "write 2nd log").await?;
 
     Ok(())
 }

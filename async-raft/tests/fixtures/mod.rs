@@ -47,11 +47,9 @@ pub fn init_tracing() {
     let subscriber = tracing_subscriber::Registry::default()
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .with(fmt_layer);
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("error setting global tracing subscriber");
+    tracing::subscriber::set_global_default(subscriber).expect("error setting global tracing subscriber");
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// A type which emulates a network transport and implements the `RaftNetwork` trait.
@@ -91,10 +89,7 @@ impl Builder {
 
 impl RaftRouter {
     pub fn builder(config: Arc<Config>) -> Builder {
-        Builder {
-            config,
-            send_delay: 0,
-        }
+        Builder { config, send_delay: 0 }
     }
 
     /// Create a new instance.
@@ -178,9 +173,7 @@ impl RaftRouter {
     /// Get a handle to the storage backend for the target node.
     pub async fn get_storage_handle(&self, node_id: &NodeId) -> Result<Arc<MemStore>> {
         let rt = self.routing_table.read().await;
-        let addr = rt
-            .get(node_id)
-            .with_context(|| format!("could not find node {} in routing table", node_id))?;
+        let addr = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
         let sto = addr.clone().1;
         Ok(sto)
     }
@@ -204,9 +197,7 @@ impl RaftRouter {
 
     pub async fn wait(&self, node_id: &NodeId, timeout: Option<Duration>) -> Result<Wait> {
         let rt = self.routing_table.read().await;
-        let node = rt
-            .get(node_id)
-            .with_context(|| format!("node {} not found", node_id))?;
+        let node = rt.get(node_id).with_context(|| format!("node {} not found", node_id))?;
 
         Ok(node.0.wait(timeout))
     }
@@ -264,36 +255,22 @@ impl RaftRouter {
         nodes.remove(&id);
     }
 
-    pub async fn add_non_voter(
-        &self,
-        leader: NodeId,
-        target: NodeId,
-    ) -> Result<(), ChangeConfigError> {
+    pub async fn add_non_voter(&self, leader: NodeId, target: NodeId) -> Result<(), ChangeConfigError> {
         let rt = self.routing_table.read().await;
-        let node = rt
-            .get(&leader)
-            .unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
+        let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.add_non_voter(target).await
     }
 
-    pub async fn change_membership(
-        &self,
-        leader: NodeId,
-        members: HashSet<NodeId>,
-    ) -> Result<(), ChangeConfigError> {
+    pub async fn change_membership(&self, leader: NodeId, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
         let rt = self.routing_table.read().await;
-        let node = rt
-            .get(&leader)
-            .unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
+        let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.change_membership(members).await
     }
 
     /// Send a client read request to the target node.
     pub async fn client_read(&self, target: NodeId) -> Result<(), ClientReadError> {
         let rt = self.routing_table.read().await;
-        let node = rt
-            .get(&target)
-            .unwrap_or_else(|| panic!("node with ID {} does not exist", target));
+        let node = rt.get(&target).unwrap_or_else(|| panic!("node with ID {} does not exist", target));
         node.0.client_read().await
     }
 
@@ -313,9 +290,7 @@ impl RaftRouter {
     /// Request the current leader from the target node.
     pub async fn current_leader(&self, target: NodeId) -> Option<NodeId> {
         let rt = self.routing_table.read().await;
-        let node = rt
-            .get(&target)
-            .unwrap_or_else(|| panic!("node with ID {} does not exist", target));
+        let node = rt.get(&target).unwrap_or_else(|| panic!("node with ID {} does not exist", target));
         node.0.current_leader().await
     }
 
@@ -332,16 +307,10 @@ impl RaftRouter {
         req: MemClientRequest,
     ) -> std::result::Result<MemClientResponse, ClientWriteError<MemClientRequest>> {
         let rt = self.routing_table.read().await;
-        let node = rt
-            .get(&target)
-            .unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target));
-        node.0
-            .client_write(ClientWriteRequest::new(req))
-            .await
-            .map(|res| res.data)
+        let node = rt.get(&target).unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target));
+        node.0.client_write(ClientWriteRequest::new(req)).await.map(|res| res.data)
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////////////
 
     /// Assert that the cluster is in a pristine state, with all nodes as non-voters.
@@ -398,18 +367,11 @@ impl RaftRouter {
     /// If `expected_last_log` is `Some`, then all nodes will be tested to ensure that their last
     /// log index and last applied log match the given value. Else, the leader's last_log_index
     /// will be used for the assertion.
-    pub async fn assert_stable_cluster(
-        &self,
-        expected_term: Option<u64>,
-        expected_last_log: Option<u64>,
-    ) {
+    pub async fn assert_stable_cluster(&self, expected_term: Option<u64>, expected_last_log: Option<u64>) {
         let isolated = self.isolated_nodes.read().await;
         let nodes = self.latest_metrics().await;
 
-        let non_isolated_nodes: Vec<_> = nodes
-            .iter()
-            .filter(|node| !isolated.contains(&node.id))
-            .collect();
+        let non_isolated_nodes: Vec<_> = nodes.iter().filter(|node| !isolated.contains(&node.id)).collect();
         let leader = nodes
             .iter()
             .filter(|node| !isolated.contains(&node.id))
@@ -461,12 +423,7 @@ impl RaftRouter {
                 "node {} has last_log_index {}, expected {}",
                 node.id, node.last_log_index, expected_last_log
             );
-            let mut members = node
-                .membership_config
-                .members
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>();
+            let mut members = node.membership_config.members.iter().cloned().collect::<Vec<_>>();
             members.sort_unstable();
             assert_eq!(
                 members, all_nodes,
@@ -493,10 +450,7 @@ impl RaftRouter {
         let rt = self.routing_table.read().await;
         for (id, (_node, storage)) in rt.iter() {
             let log = storage.get_log().await;
-            let last_log = log
-                .keys()
-                .last()
-                .unwrap_or_else(|| panic!("no last log found for node {}", id));
+            let last_log = log.keys().last().unwrap_or_else(|| panic!("no last log found for node {}", id));
             assert_eq!(
                 last_log, &expect_last_log,
                 "expected node {} to have last_log {}, got {}",
@@ -577,9 +531,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
 
         let rt = self.routing_table.read().await;
         let isolated = self.isolated_nodes.read().await;
-        let addr = rt
-            .get(&target)
-            .expect("target node not found in routing table");
+        let addr = rt.get(&target).expect("target node not found in routing table");
         if isolated.contains(&target) || isolated.contains(&rpc.leader_id) {
             return Err(anyhow!("target node is isolated"));
         }
@@ -590,18 +542,12 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
-    async fn install_snapshot(
-        &self,
-        target: u64,
-        rpc: InstallSnapshotRequest,
-    ) -> Result<InstallSnapshotResponse> {
+    async fn install_snapshot(&self, target: u64, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse> {
         self.rand_send_delay().await;
 
         let rt = self.routing_table.read().await;
         let isolated = self.isolated_nodes.read().await;
-        let addr = rt
-            .get(&target)
-            .expect("target node not found in routing table");
+        let addr = rt.get(&target).expect("target node not found in routing table");
         if isolated.contains(&target) || isolated.contains(&rpc.leader_id) {
             return Err(anyhow!("target node is isolated"));
         }
@@ -614,9 +560,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
 
         let rt = self.routing_table.read().await;
         let isolated = self.isolated_nodes.read().await;
-        let addr = rt
-            .get(&target)
-            .expect("target node not found in routing table");
+        let addr = rt.get(&target).expect("target node not found in routing table");
         if isolated.contains(&target) || isolated.contains(&rpc.candidate_id) {
             return Err(anyhow!("target node is isolated"));
         }

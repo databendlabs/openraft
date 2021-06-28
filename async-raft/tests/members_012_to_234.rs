@@ -10,7 +10,8 @@ use futures::stream::StreamExt;
 use maplit::hashset;
 
 /// Replace membership with another one with only one common node.
-/// To reproduce the bug that new config does not actually examine the term/index of non-voter, but instead only examining the followers
+/// To reproduce the bug that new config does not actually examine the term/index of non-voter, but instead only
+/// examining the followers
 ///
 /// - bring a cluster of node 0,1,2 online.
 /// - isolate 3,4; change config to 2,3,4
@@ -22,23 +23,15 @@ async fn members_012_to_234() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router
-        .wait_for_log(&hashset![0], want, None, "empty")
-        .await?;
-    router
-        .wait_for_state(&hashset![0], State::NonVoter, None, "empty")
-        .await?;
+    router.wait_for_log(&hashset![0], want, None, "empty").await?;
+    router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -46,9 +39,7 @@ async fn members_012_to_234() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router
-        .wait_for_log(&hashset![0], want, None, "init")
-        .await?;
+    router.wait_for_log(&hashset![0], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     tracing::info!("--- adding 4 new nodes to cluster");
@@ -76,9 +67,7 @@ async fn members_012_to_234() -> Result<()> {
     router.change_membership(0, hashset![0, 1, 2]).await?;
     want += 2;
 
-    router
-        .wait_for_log(&hashset![0, 1, 2], want, None, "cluster of 0,1,2")
-        .await?;
+    router.wait_for_log(&hashset![0, 1, 2], want, None, "cluster of 0,1,2").await?;
 
     tracing::info!("--- changing config to 2,3,4");
     {
@@ -91,9 +80,7 @@ async fn members_012_to_234() -> Result<()> {
     }
     want += 1;
 
-    let wait_rst = router
-        .wait_for_log(&hashset![0], want, None, "cluster of joint")
-        .await;
+    let wait_rst = router.wait_for_log(&hashset![0], want, None, "cluster of joint").await;
 
     // the first step of joint should not pass because the new config can not constitute a quorum
     assert!(wait_rst.is_err());

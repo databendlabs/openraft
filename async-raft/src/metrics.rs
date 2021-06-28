@@ -79,20 +79,10 @@ impl Wait {
         loop {
             let latest = rx.borrow().clone();
 
-            tracing::debug!(
-                "id={} wait {:} latest: {:?}",
-                latest.id,
-                msg.to_string(),
-                latest
-            );
+            tracing::debug!("id={} wait {:} latest: {:?}", latest.id, msg.to_string(), latest);
 
             if func(&latest) {
-                tracing::debug!(
-                    "id={} done wait {:} latest: {:?}",
-                    latest.id,
-                    msg.to_string(),
-                    latest
-                );
+                tracing::debug!("id={} done wait {:} latest: {:?}", latest.id, msg.to_string(), latest);
                 return Ok(latest);
             }
 
@@ -126,11 +116,7 @@ impl Wait {
 
     /// Wait for `current_leader` to become `Some(leader_id)` until timeout.
     #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn current_leader(
-        &self,
-        leader_id: NodeId,
-        msg: impl ToString,
-    ) -> Result<RaftMetrics, WaitError> {
+    pub async fn current_leader(&self, leader_id: NodeId, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
             |x| x.current_leader == Some(leader_id),
             &format!("{} .current_leader -> {}", msg.to_string(), leader_id),
@@ -156,11 +142,7 @@ impl Wait {
 
     /// Wait for `state` to become `want_state` or timeout.
     #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn state(
-        &self,
-        want_state: State,
-        msg: impl ToString,
-    ) -> Result<RaftMetrics, WaitError> {
+    pub async fn state(&self, want_state: State, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
             |x| x.state == want_state,
             &format!("{} .state -> {:?}", msg.to_string(), want_state),
@@ -170,18 +152,10 @@ impl Wait {
 
     /// Wait for `membership_config.members` to become expected node set or timeout.
     #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn members(
-        &self,
-        want_members: HashSet<NodeId>,
-        msg: impl ToString,
-    ) -> Result<RaftMetrics, WaitError> {
+    pub async fn members(&self, want_members: HashSet<NodeId>, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
             |x| x.membership_config.members == want_members,
-            &format!(
-                "{} .membership_config.members -> {:?}",
-                msg.to_string(),
-                want_members
-            ),
+            &format!("{} .membership_config.members -> {:?}", msg.to_string(), want_members),
         )
         .await
     }

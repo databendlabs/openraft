@@ -40,10 +40,7 @@ pub(super) struct ClientRequestEntry<D: AppData, R: AppDataResponse> {
 
 impl<D: AppData, R: AppDataResponse> ClientRequestEntry<D, R> {
     /// Create a new instance from the raw components of a client request.
-    pub(crate) fn from_entry<T: Into<ClientOrInternalResponseTx<D, R>>>(
-        entry: Entry<D>,
-        tx: T,
-    ) -> Self {
+    pub(crate) fn from_entry<T: Into<ClientOrInternalResponseTx<D, R>>>(entry: Entry<D>, tx: T) -> Self {
         Self {
             entry: Arc::new(entry),
             tx: tx.into(),
@@ -58,9 +55,7 @@ pub enum ClientOrInternalResponseTx<D: AppData, R: AppDataResponse> {
     Internal(oneshot::Sender<Result<u64, RaftError>>),
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
-    LeaderState<'a, D, R, N, S>
-{
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Commit the initial entry which new leaders are obligated to create when first coming to power, per §8.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn commit_initial_leader_entry(&mut self) -> RaftResult<()> {
@@ -76,8 +71,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // we need to drive the commitment of the config change to the cluster.
         let mut pending_config = None; // The inner bool represents `is_in_joint_consensus`.
         if self.core.last_log_index > self.core.commit_index {
-            let (stale_logs_start, stale_logs_stop) =
-                (self.core.commit_index + 1, self.core.last_log_index + 1);
+            let (stale_logs_start, stale_logs_stop) = (self.core.commit_index + 1, self.core.last_log_index + 1);
             pending_config = self
                 .core
                 .storage
@@ -89,9 +83,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .rev()
                 .filter_map(|entry| match &entry.payload {
                     EntryPayload::ConfigChange(cfg) => Some(cfg.membership.is_in_joint_consensus()),
-                    EntryPayload::SnapshotPointer(cfg) => {
-                        Some(cfg.membership.is_in_joint_consensus())
-                    }
+                    EntryPayload::SnapshotPointer(cfg) => Some(cfg.membership.is_in_joint_consensus()),
                     _ => None,
                 })
                 .next();
@@ -108,9 +100,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Setup any callbacks needed for responding to commitment of a pending config.
         if let Some(is_in_joint_consensus) = pending_config {
             if is_in_joint_consensus {
-                self.joint_consensus_cb.push(rx_payload_committed); // Receiver for when the joint consensus is committed.
+                self.joint_consensus_cb.push(rx_payload_committed); // Receiver for when the joint consensus is
+                                                                    // committed.
             } else {
-                self.uniform_consensus_cb.push(rx_payload_committed); // Receiver for when the uniform consensus is committed.
+                self.uniform_consensus_cb.push(rx_payload_committed); // Receiver for when the uniform consensus is
+                                                                      // committed.
             }
         }
         Ok(())
@@ -142,11 +136,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let mut c1_needed = 0usize;
         if let Some(joint_members) = &self.core.membership.members_after_consensus {
             let len = joint_members.len(); // Will never be zero, as we don't allow it when proposing config changes.
-            c1_needed = if (len % 2) == 0 {
-                (len / 2) - 1
-            } else {
-                len / 2
-            };
+            c1_needed = if (len % 2) == 0 { (len / 2) - 1 } else { len / 2 };
         }
 
         // Increment confirmations for self, including post-joint-consensus config if applicable.
@@ -187,10 +177,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 match timeout(ttl, network.append_entries(target, rpc)).await {
                     Ok(Ok(data)) => Ok((target, data)),
                     Ok(Err(err)) => Err((target, err)),
-                    Err(_timeout) => Err((
-                        target,
-                        anyhow!("timeout waiting for leadership confirmation"),
-                    )),
+                    Err(_timeout) => Err((target, anyhow!("timeout waiting for leadership confirmation"))),
                 }
             })
             .map_err(move |err| (*id, err));
@@ -239,9 +226,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // If we've hit this location, then we've failed to gather needed confirmations due to
         // request failures.
-        let _ = tx.send(Err(ClientReadError::RaftError(RaftError::RaftNetwork(
-            anyhow!("too many requests failed, could not confirm leadership"),
-        ))));
+        let _ = tx.send(Err(ClientReadError::RaftError(RaftError::RaftNetwork(anyhow!(
+            "too many requests failed, could not confirm leadership"
+        )))));
     }
 
     /// Handle client write requests.
@@ -263,10 +250,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Transform the given payload into an entry, assign an index and term, and append the entry to the log.
     #[tracing::instrument(level = "trace", skip(self, payload))]
-    pub(super) async fn append_payload_to_log(
-        &mut self,
-        payload: EntryPayload<D>,
-    ) -> RaftResult<Entry<D>> {
+    pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> RaftResult<Entry<D>> {
         let entry = Entry {
             index: self.core.last_log_index + 1,
             term: self.core.current_term,
@@ -294,7 +278,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if !self.nodes.is_empty() {
             self.awaiting_committed.push(req);
             for node in self.nodes.values() {
-                let _ = node.replstream.repltx.send(RaftEvent::Replicate {
+                let _ = node.replstream.repl_tx.send(RaftEvent::Replicate {
                     entry: entry_arc.clone(),
                     commit_index: self.core.commit_index,
                 });
@@ -309,7 +293,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Replicate to non-voters.
         if !self.non_voters.is_empty() {
             for node in self.non_voters.values() {
-                let _ = node.state.replstream.repltx.send(RaftEvent::Replicate {
+                let _ = node.state.replstream.repl_tx.send(RaftEvent::Replicate {
                     entry: entry_arc.clone(),
                     commit_index: self.core.commit_index,
                 });
@@ -323,20 +307,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         match req.tx {
             ClientOrInternalResponseTx::Client(tx) => {
                 match &req.entry.payload {
-                    EntryPayload::Normal(inner) => match self
-                        .apply_entry_to_state_machine(&req.entry.index, &inner.data)
-                        .await
-                    {
-                        Ok(data) => {
-                            let _ = tx.send(Ok(ClientWriteResponse {
-                                index: req.entry.index,
-                                data,
-                            }));
+                    EntryPayload::Normal(inner) => {
+                        match self.apply_entry_to_state_machine(&req.entry.index, &inner.data).await {
+                            Ok(data) => {
+                                let _ = tx.send(Ok(ClientWriteResponse {
+                                    index: req.entry.index,
+                                    data,
+                                }));
+                            }
+                            Err(err) => {
+                                let _ = tx.send(Err(ClientWriteError::RaftError(err)));
+                            }
                         }
-                        Err(err) => {
-                            let _ = tx.send(Err(ClientWriteError::RaftError(err)));
-                        }
-                    },
+                    }
                     _ => {
                         // Why is this a bug, and why are we shutting down? This is because we can not easily
                         // encode these constraints in the type system, and client requests should be the only
@@ -360,11 +343,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Apply the given log entry to the state machine.
     #[tracing::instrument(level = "trace", skip(self, entry))]
-    pub(super) async fn apply_entry_to_state_machine(
-        &mut self,
-        index: &u64,
-        entry: &D,
-    ) -> RaftResult<R> {
+    pub(super) async fn apply_entry_to_state_machine(&mut self, index: &u64, entry: &D) -> RaftResult<R> {
         // First, we just ensure that we apply any outstanding up to, but not including, the index
         // of the given entry. We need to be able to return the data response from applying this
         // entry to the state machine.
@@ -401,27 +380,20 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // no pending task to replicate entries to the state machine. This is edge case, and would only
         // happen once very early in a new leader's term.
         if !self.core.replicate_to_sm_handle.is_empty() {
-            if let Some(Ok(replicate_to_sm_result)) = self.core.replicate_to_sm_handle.next().await
-            {
-                self.core
-                    .handle_replicate_to_sm_result(replicate_to_sm_result)?;
+            if let Some(Ok(replicate_to_sm_result)) = self.core.replicate_to_sm_handle.next().await {
+                self.core.handle_replicate_to_sm_result(replicate_to_sm_result)?;
             }
         }
         // Apply this entry to the state machine and return its data response.
-        let res = self
-            .core
-            .storage
-            .apply_entry_to_state_machine(index, entry)
-            .await
-            .map_err(|err| {
-                if err.downcast_ref::<S::ShutdownError>().is_some() {
-                    // If this is an instance of the storage impl's shutdown error, then trigger shutdown.
-                    self.core.map_fatal_storage_error(err)
-                } else {
-                    // Else, we propagate normally.
-                    RaftError::RaftStorage(err)
-                }
-            });
+        let res = self.core.storage.apply_entry_to_state_machine(index, entry).await.map_err(|err| {
+            if err.downcast_ref::<S::ShutdownError>().is_some() {
+                // If this is an instance of the storage impl's shutdown error, then trigger shutdown.
+                self.core.map_fatal_storage_error(err)
+            } else {
+                // Else, we propagate normally.
+                RaftError::RaftStorage(err)
+            }
+        });
         self.core.last_applied = *index;
         self.core.report_metrics();
         res

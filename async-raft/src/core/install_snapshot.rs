@@ -66,33 +66,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 handle.abort(); // Abort the current compaction in favor of installation from leader.
                 Ok(self.begin_installing_snapshot(req).await?)
             }
-            Some(SnapshotState::Streaming {
-                snapshot,
-                id,
-                offset,
-            }) => Ok(self
-                .continue_installing_snapshot(req, offset, id, snapshot)
-                .await?),
+            Some(SnapshotState::Streaming { snapshot, id, offset }) => {
+                Ok(self.continue_installing_snapshot(req, offset, id, snapshot).await?)
+            }
         }
     }
 
     #[tracing::instrument(level = "trace", skip(self, req))]
-    async fn begin_installing_snapshot(
-        &mut self,
-        req: InstallSnapshotRequest,
-    ) -> RaftResult<InstallSnapshotResponse> {
+    async fn begin_installing_snapshot(&mut self, req: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse> {
         // Create a new snapshot and begin writing its contents.
-        let (id, mut snapshot) = self
-            .storage
-            .create_snapshot()
-            .await
-            .map_err(|err| self.map_fatal_storage_error(err))?;
+        let (id, mut snapshot) =
+            self.storage.create_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?;
         snapshot.as_mut().write_all(&req.data).await?;
 
         // If this was a small snapshot, and it is already done, then finish up.
         if req.done {
-            self.finalize_snapshot_installation(req, id, snapshot)
-                .await?;
+            self.finalize_snapshot_installation(req, id, snapshot).await?;
             return Ok(InstallSnapshotResponse {
                 term: self.current_term,
             });
@@ -120,11 +109,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Always seek to the target offset if not an exact match.
         if req.offset != offset {
             if let Err(err) = snapshot.as_mut().seek(SeekFrom::Start(req.offset)).await {
-                self.snapshot_state = Some(SnapshotState::Streaming {
-                    offset,
-                    id,
-                    snapshot,
-                });
+                self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
                 return Err(err.into());
             }
             offset = req.offset;
@@ -132,25 +117,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Write the next segment & update offset.
         if let Err(err) = snapshot.as_mut().write_all(&req.data).await {
-            self.snapshot_state = Some(SnapshotState::Streaming {
-                offset,
-                id,
-                snapshot,
-            });
+            self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
             return Err(err.into());
         }
         offset += req.data.len() as u64;
 
         // If the snapshot stream is done, then finalize.
         if req.done {
-            self.finalize_snapshot_installation(req, id, snapshot)
-                .await?;
+            self.finalize_snapshot_installation(req, id, snapshot).await?;
         } else {
-            self.snapshot_state = Some(SnapshotState::Streaming {
-                offset,
-                id,
-                snapshot,
-            });
+            self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
         }
         Ok(InstallSnapshotResponse {
             term: self.current_term,
@@ -167,11 +143,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         id: String,
         mut snapshot: Box<S::Snapshot>,
     ) -> RaftResult<()> {
-        snapshot
-            .as_mut()
-            .shutdown()
-            .await
-            .map_err(|err| self.map_fatal_storage_error(err.into()))?;
+        snapshot.as_mut().shutdown().await.map_err(|err| self.map_fatal_storage_error(err.into()))?;
         let delete_through = if self.last_log_index > req.last_included_index {
             Some(req.last_included_index)
         } else {
@@ -187,11 +159,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             )
             .await
             .map_err(|err| self.map_fatal_storage_error(err))?;
-        let membership = self
-            .storage
-            .get_membership_config()
-            .await
-            .map_err(|err| self.map_fatal_storage_error(err))?;
+        let membership = self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
         self.update_membership(membership)?;
         self.last_log_index = req.last_included_index;
         self.last_log_term = req.last_included_term;

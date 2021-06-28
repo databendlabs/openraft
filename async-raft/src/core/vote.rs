@@ -20,10 +20,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
     #[tracing::instrument(level = "trace", skip(self, msg))]
-    pub(super) async fn handle_vote_request(
-        &mut self,
-        msg: VoteRequest,
-    ) -> RaftResult<VoteResponse> {
+    pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> RaftResult<VoteResponse> {
         // If candidate's current term is less than this nodes current term, reject.
         if msg.term < self.current_term {
             tracing::trace!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "RequestVote RPC term is less than current term");
@@ -61,8 +58,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Check if candidate's log is at least as up-to-date as this node's.
         // If candidate's log is not at least as up-to-date as this node, then reject.
-        let client_is_uptodate = (msg.last_log_term >= self.last_log_term)
-            && (msg.last_log_index >= self.last_log_index);
+        let client_is_uptodate =
+            (msg.last_log_term >= self.last_log_term) && (msg.last_log_index >= self.last_log_index);
         if !client_is_uptodate {
             tracing::trace!(
                 { candidate = msg.candidate_id },
@@ -105,21 +102,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>
-    CandidateState<'a, D, R, N, S>
-{
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level = "trace", skip(self, res, target))]
-    pub(super) async fn handle_vote_response(
-        &mut self,
-        res: VoteResponse,
-        target: NodeId,
-    ) -> RaftResult<()> {
+    pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> RaftResult<()> {
         // If peer's term is greater than current term, revert to follower state.
         if res.term > self.core.current_term {
             self.core.update_current_term(res.term, None);
-            self.core
-                .update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
             self.core.set_target_state(State::Follower);
             self.core.save_hard_state().await?;
             tracing::trace!("reverting to follower state due to greater term observed in RequestVote RPC response");
@@ -144,12 +134,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 self.votes_granted_new += 1;
             }
             // If we've received enough votes from both config groups, then transition to leader state`.
-            if self.votes_granted_old >= self.votes_needed_old
-                && self.votes_granted_new >= self.votes_needed_new
-            {
-                tracing::trace!(
-                    "transitioning to leader state as minimum number of votes have been received"
-                );
+            if self.votes_granted_old >= self.votes_needed_old && self.votes_granted_new >= self.votes_needed_new {
+                tracing::trace!("transitioning to leader state as minimum number of votes have been received");
                 self.core.set_target_state(State::Leader);
                 return Ok(());
             }
@@ -164,10 +150,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) fn spawn_parallel_vote_requests(&self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
         let all_members = self.core.membership.all_nodes();
         let (tx, rx) = mpsc::channel(all_members.len());
-        for member in all_members
-            .into_iter()
-            .filter(|member| member != &self.core.id)
-        {
+        for member in all_members.into_iter().filter(|member| member != &self.core.id) {
             let rpc = VoteRequest::new(
                 self.core.current_term,
                 self.core.id,

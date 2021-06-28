@@ -201,35 +201,23 @@ impl ConfigBuilder {
     /// Validate the state of this builder and produce a new `Config` instance if valid.
     pub fn validate(self) -> Result<Config, ConfigError> {
         // Roll a random election time out based on the configured min & max or their respective defaults.
-        let election_timeout_min = self
-            .election_timeout_min
-            .unwrap_or(DEFAULT_ELECTION_TIMEOUT_MIN);
-        let election_timeout_max = self
-            .election_timeout_max
-            .unwrap_or(DEFAULT_ELECTION_TIMEOUT_MAX);
+        let election_timeout_min = self.election_timeout_min.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MIN);
+        let election_timeout_max = self.election_timeout_max.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MAX);
         if election_timeout_min >= election_timeout_max {
             return Err(ConfigError::InvalidElectionTimeoutMinMax);
         }
         // Get other values or their defaults.
-        let heartbeat_interval = self
-            .heartbeat_interval
-            .unwrap_or(DEFAULT_HEARTBEAT_INTERVAL);
+        let heartbeat_interval = self.heartbeat_interval.unwrap_or(DEFAULT_HEARTBEAT_INTERVAL);
         if election_timeout_min <= heartbeat_interval {
             return Err(ConfigError::InvalidElectionTimeoutMinMax);
         }
-        let max_payload_entries = self
-            .max_payload_entries
-            .unwrap_or(DEFAULT_MAX_PAYLOAD_ENTRIES);
+        let max_payload_entries = self.max_payload_entries.unwrap_or(DEFAULT_MAX_PAYLOAD_ENTRIES);
         if max_payload_entries == 0 {
             return Err(ConfigError::MaxPayloadEntriesTooSmall);
         }
-        let replication_lag_threshold = self
-            .replication_lag_threshold
-            .unwrap_or(DEFAULT_REPLICATION_LAG_THRESHOLD);
+        let replication_lag_threshold = self.replication_lag_threshold.unwrap_or(DEFAULT_REPLICATION_LAG_THRESHOLD);
         let snapshot_policy = self.snapshot_policy.unwrap_or_else(SnapshotPolicy::default);
-        let snapshot_max_chunk_size = self
-            .snapshot_max_chunk_size
-            .unwrap_or(DEFAULT_SNAPSHOT_CHUNKSIZE);
+        let snapshot_max_chunk_size = self.snapshot_max_chunk_size.unwrap_or(DEFAULT_SNAPSHOT_CHUNKSIZE);
         Ok(Config {
             cluster_name: self.cluster_name,
             election_timeout_min,
@@ -287,10 +275,7 @@ mod tests {
 
     #[test]
     fn test_invalid_election_timeout_config_produces_expected_error() {
-        let res = Config::build("cluster0".into())
-            .election_timeout_min(1000)
-            .election_timeout_max(700)
-            .validate();
+        let res = Config::build("cluster0".into()).election_timeout_min(1000).election_timeout_max(700).validate();
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert_eq!(err, ConfigError::InvalidElectionTimeoutMinMax);

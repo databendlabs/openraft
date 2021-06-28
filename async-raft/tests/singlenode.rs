@@ -24,23 +24,15 @@ async fn singlenode() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router
-        .wait_for_log(&hashset![0], want, None, "empty")
-        .await?;
-    router
-        .wait_for_state(&hashset![0], State::NonVoter, None, "empty")
-        .await?;
+    router.wait_for_log(&hashset![0], want, None, "empty").await?;
+    router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -48,17 +40,13 @@ async fn singlenode() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router
-        .wait_for_log(&hashset![0], want, None, "init")
-        .await?;
+    router.wait_for_log(&hashset![0], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Write some data to the single node cluster.
     router.client_request_many(0, "0", 1000).await;
     router.assert_stable_cluster(Some(1), Some(1001)).await;
-    router
-        .assert_storage_state(1, 1001, Some(0), 1001, None)
-        .await;
+    router.assert_storage_state(1, 1001, Some(0), 1001, None).await;
 
     // Read some data from the single node cluster.
     router.client_read(0).await?;

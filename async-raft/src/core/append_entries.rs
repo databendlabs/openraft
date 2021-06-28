@@ -60,8 +60,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
         // log info, then replication is g2g.
         let msg_prev_index_is_min = msg.prev_log_index == u64::min_value();
-        let msg_index_and_term_match = (msg.prev_log_index == self.last_log_index)
-            && (msg.prev_log_term == self.last_log_term);
+        let msg_index_and_term_match =
+            (msg.prev_log_index == self.last_log_index) && (msg.prev_log_term == self.last_log_term);
         if msg_prev_index_is_min || msg_index_and_term_match {
             self.append_log_entries(&msg.entries).await?;
             self.replicate_to_state_machine_if_needed(msg.entries).await;
@@ -79,7 +79,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //// Begin Log Consistency Check ////
         tracing::trace!("begin log consistency check");
 
-        // Previous log info doesn't immediately line up, so perform log consistency check and proceed based on its result.
+        // Previous log info doesn't immediately line up, so perform log consistency check and proceed based on its
+        // result.
         let entries = self
             .storage
             .get_log_entries(msg.prev_log_index, msg.prev_log_index + 1)
@@ -113,11 +114,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                     .delete_logs_from(target_entry.index + 1, None)
                     .await
                     .map_err(|err| self.map_fatal_storage_error(err))?;
-                let membership = self
-                    .storage
-                    .get_membership_config()
-                    .await
-                    .map_err(|err| self.map_fatal_storage_error(err))?;
+                let membership =
+                    self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
                 self.update_membership(membership)?;
             }
         }
@@ -134,10 +132,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 .get_log_entries(start, msg.prev_log_index)
                 .await
                 .map_err(|err| self.map_fatal_storage_error(err))?;
-            let opt = match old_entries
-                .iter()
-                .find(|entry| entry.term == msg.prev_log_term)
-            {
+            let opt = match old_entries.iter().find(|entry| entry.term == msg.prev_log_term) {
                 Some(entry) => Some(ConflictOpt {
                     term: entry.term,
                     index: entry.index,
@@ -193,10 +188,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         };
 
         // Replicate entries to log (same as append, but in follower mode).
-        self.storage
-            .replicate_to_log(entries)
-            .await
-            .map_err(|err| self.map_fatal_storage_error(err))?;
+        self.storage.replicate_to_log(entries).await.map_err(|err| self.map_fatal_storage_error(err))?;
         if let Some(entry) = entries.last() {
             self.last_log_index = entry.index;
             self.last_log_term = entry.term;

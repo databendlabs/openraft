@@ -24,11 +24,7 @@ async fn client_writes() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
@@ -37,12 +33,8 @@ async fn client_writes() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router
-        .wait_for_log(&hashset![0, 1, 2], want, None, "empty")
-        .await?;
-    router
-        .wait_for_state(&hashset![0, 1, 2], State::NonVoter, None, "empty")
-        .await?;
+    router.wait_for_log(&hashset![0, 1, 2], want, None, "empty").await?;
+    router.wait_for_state(&hashset![0, 1, 2], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -50,12 +42,8 @@ async fn client_writes() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router
-        .wait_for_log(&hashset![0, 1, 2], want, None, "leader init log")
-        .await?;
-    router
-        .wait_for_state(&hashset![0], State::Leader, None, "init")
-        .await?;
+    router.wait_for_log(&hashset![0, 1, 2], want, None, "leader init log").await?;
+    router.wait_for_state(&hashset![0], State::Leader, None, "init").await?;
 
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
@@ -71,9 +59,7 @@ async fn client_writes() -> Result<()> {
     while clients.next().await.is_some() {}
 
     want = 6001;
-    router
-        .wait_for_log(&hashset![0, 1, 2], want, None, "sync logs")
-        .await?;
+    router.wait_for_log(&hashset![0, 1, 2], want, None, "sync logs").await?;
 
     router.assert_stable_cluster(Some(1), Some(want)).await; // The extra 1 is from the leader's initial commit entry.
     router

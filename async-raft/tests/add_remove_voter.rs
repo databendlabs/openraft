@@ -17,8 +17,8 @@ mod fixtures;
 ///
 /// - brings 5 nodes online: one leader and 4 non-voter.
 /// - add 4 non-voter as follower.
-/// - asserts that the leader was able to successfully commit logs and that the followers has
-///   successfully replicated the payload.
+/// - asserts that the leader was able to successfully commit logs and that the followers has successfully replicated
+///   the payload.
 /// - remove one folower: node-4
 /// - asserts node-4 becomes non-voter and the leader stops sending logs to it.
 ///
@@ -32,11 +32,7 @@ async fn add_remove_voter() -> Result<()> {
     let left_members = hashset![0, 1, 2, 3];
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
@@ -127,11 +123,7 @@ async fn add_remove_voter() -> Result<()> {
     Ok(())
 }
 
-async fn wait_log(
-    router: std::sync::Arc<fixtures::RaftRouter>,
-    node_ids: &HashSet<u64>,
-    want_log: u64,
-) -> Result<()> {
+async fn wait_log(router: std::sync::Arc<fixtures::RaftRouter>, node_ids: &HashSet<u64>, want_log: u64) -> Result<()> {
     let timeout = Duration::from_millis(500);
     for i in node_ids.iter() {
         router

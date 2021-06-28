@@ -20,8 +20,8 @@ mod fixtures;
 ///
 /// - brings 2 nodes online: one leader and one non-voter.
 /// - write one log to the leader.
-/// - asserts that the leader was able to successfully commit its initial payload and that the
-///   non-voter has successfully replicated the payload.
+/// - asserts that the leader was able to successfully commit its initial payload and that the non-voter has
+///   successfully replicated the payload.
 /// - shutdown all and retstart the non-voter node.
 /// - asserts the non-voter stays in non-vtoer state.
 ///
@@ -31,11 +31,7 @@ async fn non_voter_restart() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     router.new_raft_node(0).await;
@@ -44,12 +40,8 @@ async fn non_voter_restart() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router
-        .wait_for_log(&hashset![0, 1], want, None, "empty")
-        .await?;
-    router
-        .wait_for_state(&hashset![0, 1], State::NonVoter, None, "empty")
-        .await?;
+    router.wait_for_log(&hashset![0, 1], want, None, "empty").await?;
+    router.wait_for_state(&hashset![0, 1], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     tracing::info!("--- initializing single node cluster");
@@ -61,9 +53,7 @@ async fn non_voter_restart() -> Result<()> {
     router.client_request(0, "foo", 1).await;
     want += 1;
 
-    router
-        .wait_for_log(&hashset![0, 1], want, None, "write one log")
-        .await?;
+    router.wait_for_log(&hashset![0, 1], want, None, "write one log").await?;
 
     let (node0, _sto0) = router.remove_node(0).await.unwrap();
     assert_node_state(0, &node0, 1, 2, State::Leader);
@@ -81,13 +71,7 @@ async fn non_voter_restart() -> Result<()> {
     Ok(())
 }
 
-fn assert_node_state(
-    id: NodeId,
-    node: &MemRaft,
-    expected_term: u64,
-    expected_log: u64,
-    state: State,
-) {
+fn assert_node_state(id: NodeId, node: &MemRaft, expected_term: u64, expected_log: u64, state: State) {
     let m = node.metrics().borrow().clone();
     tracing::info!("node {} metrics: {:?}", id, m);
 

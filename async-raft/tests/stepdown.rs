@@ -16,8 +16,8 @@ use tokio::time::sleep;
 ///
 /// - create a stable 2-node cluster.
 /// - starts a config change which adds two new nodes and removes the leader.
-/// - the leader should commit the change to C0 & C1 with separate majorities and then stepdown
-///   after the config change is committed.
+/// - the leader should commit the change to C0 & C1 with separate majorities and then stepdown after the config change
+///   is committed.
 ///
 /// RUST_LOG=async_raft,memstore,stepdown=trace cargo test -p async-raft --test stepdown
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
@@ -25,11 +25,7 @@ async fn stepdown() -> Result<()> {
     fixtures::init_tracing();
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
@@ -37,12 +33,8 @@ async fn stepdown() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router
-        .wait_for_log(&hashset![0, 1], want, None, "empty")
-        .await?;
-    router
-        .wait_for_state(&hashset![0, 1], State::NonVoter, None, "empty")
-        .await?;
+    router.wait_for_log(&hashset![0, 1], want, None, "empty").await?;
+    router.wait_for_state(&hashset![0, 1], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -50,34 +42,20 @@ async fn stepdown() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router
-        .wait_for_log(&hashset![0, 1], want, None, "init")
-        .await?;
+    router.wait_for_log(&hashset![0, 1], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
-    let orig_leader = router
-        .leader()
-        .await
-        .expect("expected the cluster to have a leader");
+    let orig_leader = router.leader().await.expect("expected the cluster to have a leader");
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
-    router
-        .change_membership(orig_leader, hashset![1, 2, 3])
-        .await?;
+    router.change_membership(orig_leader, hashset![1, 2, 3]).await?;
     want += 2;
 
     for id in 0..4 {
         if id == orig_leader {
-            router
-                .wait_for_log(
-                    &hashset![id],
-                    want,
-                    None,
-                    "update membership: 1, 2, 3; old leader",
-                )
-                .await?;
+            router.wait_for_log(&hashset![id], want, None, "update membership: 1, 2, 3; old leader").await?;
         } else {
             // a new leader elected and propose a log
             router
@@ -147,12 +125,8 @@ async fn stepdown() -> Result<()> {
     tracing::info!("term: {}", metrics.current_term);
     tracing::info!("index: {}", metrics.last_log_index);
     assert!(metrics.current_term >= 2, "term incr when leader changes");
-    router
-        .assert_stable_cluster(Some(metrics.current_term), Some(want))
-        .await;
-    router
-        .assert_storage_state(metrics.current_term, want, None, 0, None)
-        .await;
+    router.assert_stable_cluster(Some(metrics.current_term), Some(want)).await;
+    router.assert_storage_state(metrics.current_term, want, None, 0, None).await;
     // ----------------------------------- ^^^ this is `0` instead of `4` because blank payloads from new leaders
     //                                         and config change entries are never applied to the state machine.
 
