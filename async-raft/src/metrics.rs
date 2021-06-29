@@ -7,6 +7,7 @@
 //! Metrics are observed on a running Raft node via the `Raft::metrics()` method, which will
 //! return a stream of metrics.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use serde::Deserialize;
@@ -19,6 +20,7 @@ use crate::core::State;
 use crate::raft::MembershipConfig;
 use crate::NodeId;
 use crate::RaftError;
+use crate::ReplicationMetrics;
 
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +39,16 @@ pub struct RaftMetrics {
     pub current_leader: Option<NodeId>,
     /// The current membership config of the cluster.
     pub membership_config: MembershipConfig,
+
+    /// The metrics about the leader. It is Some() only when this node is leader.
+    pub leader_metrics: Option<LeaderMetrics>,
+}
+
+/// The metrics about the leader. It is Some() only when this node is leader.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeaderMetrics {
+    /// Replication metrics of all known replication target: voters and non-voters
+    pub replication: HashMap<NodeId, ReplicationMetrics>,
 }
 
 impl RaftMetrics {
@@ -50,6 +62,7 @@ impl RaftMetrics {
             last_applied: 0,
             current_leader: None,
             membership_config,
+            leader_metrics: None,
         }
     }
 }

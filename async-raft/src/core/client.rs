@@ -95,7 +95,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.core.last_log_term = self.core.current_term; // This only ever needs to be updated once per term.
         let cr_entry = ClientRequestEntry::from_entry(entry, tx_payload_committed);
         self.replicate_client_request(cr_entry).await;
-        self.core.report_metrics();
+        self.leader_report_metrics();
 
         // Setup any callbacks needed for responding to commitment of a pending config.
         if let Some(is_in_joint_consensus) = pending_config {
@@ -286,7 +286,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         } else {
             // Else, there are no voting nodes for replication, so the payload is now committed.
             self.core.commit_index = entry_arc.index;
-            self.core.report_metrics();
+            self.leader_report_metrics();
             self.client_request_post_commit(req).await;
         }
 
@@ -332,7 +332,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
             ClientOrInternalResponseTx::Internal(tx) => {
                 self.core.last_applied = req.entry.index;
-                self.core.report_metrics();
+                self.leader_report_metrics();
                 let _ = tx.send(Ok(req.entry.index));
             }
         }
@@ -395,7 +395,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         });
         self.core.last_applied = *index;
-        self.core.report_metrics();
+        self.leader_report_metrics();
         res
     }
 }

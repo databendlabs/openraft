@@ -136,6 +136,7 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
             members: Default::default(),
             members_after_consensus: None,
         },
+        leader_metrics: None,
     };
     let (tx, rx) = watch::channel(init.clone());
     let w = Wait {

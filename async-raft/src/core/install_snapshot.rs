@@ -14,6 +14,7 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::Update;
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// Invoked by leader to send chunks of a snapshot to a follower (§7).
@@ -56,7 +57,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         if report_metrics {
-            self.report_metrics();
+            self.report_metrics(Update::Ignore);
         }
 
         // Compare current snapshot state with received RPC and handle as needed.

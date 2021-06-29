@@ -166,7 +166,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         };
         let cr_entry = ClientRequestEntry::from_entry(entry, tx_joint);
         self.replicate_client_request(cr_entry).await;
-        self.core.report_metrics();
+        self.leader_report_metrics();
 
         // Setup channels for eventual response to the 2-phase config change.
         let (tx_cfg_change, rx_cfg_change) = oneshot::channel();
@@ -282,7 +282,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let entry = self.append_payload_to_log(payload.entry).await?;
         let cr_entry = ClientRequestEntry::from_entry(entry, tx_uniform);
         self.replicate_client_request(cr_entry).await;
-        self.core.report_metrics();
+        self.leader_report_metrics();
 
         // Setup channel for eventual commitment of the uniform consensus config.
         self.uniform_consensus_cb.push(rx_uniform); // Receiver for when the uniform consensus is committed.
@@ -325,13 +325,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         tracing::debug!("membership: {:?}", self.core.membership);
         tracing::debug!("nodes_to_remove: {:?}", nodes_to_remove);
 
-        for node in nodes_to_remove {
-            tracing::debug!({ target = node }, "removing target node from replication pool");
-            if let Some(node) = self.nodes.remove(&node) {
+        for target in nodes_to_remove {
+            tracing::debug!(target, "removing target node from replication pool");
+            if let Some(node) = self.nodes.remove(&target) {
                 let _ = node.replstream.repl_tx.send(RaftEvent::Terminate);
+
+                // remove metrics entry
+                self.leader_metrics.replication.remove(&target);
             }
         }
-        self.core.report_metrics();
+        self.leader_report_metrics();
         Ok(())
     }
 }

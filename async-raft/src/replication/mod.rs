@@ -4,6 +4,8 @@ use std::io::SeekFrom;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeek;
@@ -26,9 +28,15 @@ use crate::raft::InstallSnapshotRequest;
 use crate::storage::CurrentSnapshotData;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::LogId;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReplicationMetrics {
+    pub matched: LogId,
+}
 
 /// The public handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<D: AppData> {

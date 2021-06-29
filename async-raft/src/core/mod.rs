@@ -36,6 +36,7 @@ use crate::error::ClientWriteError;
 use crate::error::InitializeError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
+use crate::metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
 use crate::raft::ChangeMembershipTx;
 use crate::raft::ClientReadResponseTx;
@@ -54,6 +55,7 @@ use crate::AppDataResponse;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::Update;
 
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
@@ -269,7 +271,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn report_metrics(&mut self) {
+    fn report_metrics(&mut self, leader_metrics: Update<Option<&LeaderMetrics>>) {
+        let leader_metrics = match leader_metrics {
+            Update::Update(v) => v.cloned(),
+            Update::Ignore => self.tx_metrics.borrow().leader_metrics.clone(),
+        };
+
         let res = self.tx_metrics.send(RaftMetrics {
             id: self.id,
             state: self.target_state,
@@ -278,9 +285,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             last_applied: self.last_applied,
             current_leader: self.current_leader,
             membership_config: self.membership.clone(),
+            leader_metrics,
         });
+
         if let Err(err) = res {
-            tracing::error!({error=%err, id=self.id}, "error reporting metrics");
+            tracing::error!(error=%err, id=self.id, "error reporting metrics");
         }
     }
 
@@ -463,7 +472,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if let Some(last_applied) = last_applied_opt {
             self.last_applied = last_applied;
         }
-        self.report_metrics();
+        self.report_metrics(Update::Ignore);
         self.trigger_log_compaction_if_needed();
         Ok(())
     }
@@ -592,6 +601,9 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     /// A bool indicating if this node will be stepping down after committing the current config change.
     pub(super) is_stepping_down: bool,
 
+    /// The metrics about a leader
+    pub leader_metrics: LeaderMetrics,
+
     /// The stream of events coming from replication streams.
     pub(super) replicationrx: mpsc::UnboundedReceiver<ReplicaEvent<S::Snapshot>>,
     /// The clonable sender channel for replication stream events.
@@ -623,6 +635,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             nodes: BTreeMap::new(),
             non_voters: BTreeMap::new(),
             is_stepping_down: false,
+            leader_metrics: LeaderMetrics::default(),
             replicationtx,
             replicationrx,
             consensus_state,
@@ -653,7 +666,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.core.last_heartbeat = None;
         self.core.next_election_timeout = None;
         self.core.update_current_leader(UpdateCurrentLeader::ThisNode);
-        self.core.report_metrics();
+        self.leader_report_metrics();
 
         // Per §8, commit an initial entry as part of becoming the cluster leader.
         self.commit_initial_leader_entry().await?;
@@ -725,6 +738,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }
+    }
+
+    /// Report metrics with leader specific states.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub fn leader_report_metrics(&mut self) {
+        self.core.report_metrics(Update::Update(Some(&self.leader_metrics)));
     }
 }
 
@@ -834,7 +853,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.voted_for = Some(self.core.id);
             self.core.update_current_leader(UpdateCurrentLeader::Unknown);
             self.core.save_hard_state().await?;
-            self.core.report_metrics();
+            self.core.report_metrics(Update::Update(None));
 
             // Send RPCs to all members in parallel.
             let mut pending_votes = self.spawn_parallel_vote_requests();
@@ -901,7 +920,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Run the follower loop.
     #[tracing::instrument(level="trace", skip(self), fields(id=self.core.id, raft_state="follower"))]
     pub(self) async fn run(self) -> RaftResult<()> {
-        self.core.report_metrics();
+        self.core.report_metrics(Update::Update(None));
         loop {
             if !self.core.target_state.is_follower() {
                 return Ok(());
@@ -962,7 +981,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Run the non-voter loop.
     #[tracing::instrument(level="trace", skip(self), fields(id=self.core.id, raft_state="non-voter"))]
     pub(self) async fn run(mut self) -> RaftResult<()> {
-        self.core.report_metrics();
+        self.core.report_metrics(Update::Update(None));
         loop {
             if !self.core.target_state.is_non_voter() {
                 return Ok(());

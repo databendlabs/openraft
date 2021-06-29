@@ -16,9 +16,11 @@ use crate::replication::ReplicationStream;
 use crate::storage::CurrentSnapshotData;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::LogId;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::ReplicationMetrics;
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
@@ -148,12 +150,21 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return Ok(());
         }
 
+        self.update_leader_metrics(target, match_term, match_index);
+
         // Drop replication stream if needed.
+        // TODO(xp): is it possible to merge the two node remove routines?
+        //           here and that in handle_uniform_consensus_committed()
         if needs_removal {
             if let Some(node) = self.nodes.remove(&target) {
                 let _ = node.replstream.repl_tx.send(RaftEvent::Terminate);
+
+                // remove metrics entry
+                self.leader_metrics.replication.remove(&target);
             }
         }
+
+        // TODO(xp): simplify commit condition check
 
         // Determine the new commit index of the current membership config nodes.
         let indices_c0 = self.get_match_indexes(&self.core.membership.members);
@@ -207,9 +218,21 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     self.client_request_post_commit(request).await;
                 }
             }
-            self.core.report_metrics();
         }
+
+        // TODO(xp): does this update too frequently?
+        self.leader_report_metrics();
         Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    fn update_leader_metrics(&mut self, target: NodeId, match_term: u64, match_index: u64) {
+        self.leader_metrics.replication.insert(target, ReplicationMetrics {
+            matched: LogId {
+                term: match_term,
+                index: match_index,
+            },
+        });
     }
 
     /// Extract the matching index/term of the replication state of specified nodes.

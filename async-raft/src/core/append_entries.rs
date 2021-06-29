@@ -11,6 +11,7 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::Update;
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -66,7 +67,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.append_log_entries(&msg.entries).await?;
             self.replicate_to_state_machine_if_needed(msg.entries).await;
             if report_metrics {
-                self.report_metrics();
+                self.report_metrics(Update::Ignore);
             }
             return Ok(AppendEntriesResponse {
                 term: self.current_term,
@@ -92,7 +93,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // specified index yet. Use the last known index & term as a conflict opt.
             None => {
                 if report_metrics {
-                    self.report_metrics();
+                    self.report_metrics(Update::Ignore);
                 }
                 return Ok(AppendEntriesResponse {
                     term: self.current_term,
@@ -143,7 +144,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 }),
             };
             if report_metrics {
-                self.report_metrics();
+                self.report_metrics(Update::Ignore);
             }
             return Ok(AppendEntriesResponse {
                 term: self.current_term,
@@ -159,7 +160,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.append_log_entries(&msg.entries).await?;
         self.replicate_to_state_machine_if_needed(msg.entries).await;
         if report_metrics {
-            self.report_metrics();
+            self.report_metrics(Update::Ignore);
         }
         Ok(AppendEntriesResponse {
             term: self.current_term,
@@ -246,7 +247,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if entries.is_empty() {
             if let Some(index) = last_entry_seen {
                 self.last_applied = index;
-                self.report_metrics();
+                self.report_metrics(Update::Ignore);
             }
             return;
         }
