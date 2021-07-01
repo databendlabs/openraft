@@ -164,33 +164,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         }
 
-        // TODO(xp): simplify commit condition check
-
-        // Determine the new commit index of the current membership config nodes.
-        let indices_c0 = self.get_match_indexes(&self.core.membership.members);
-        tracing::debug!("indices_c0: {:?}", indices_c0);
-
-        let commit_index_c0 = calculate_new_commit_index(indices_c0, self.core.commit_index, self.core.current_term);
-        tracing::debug!("commit_index_c0: {}", commit_index_c0);
-
-        tracing::debug!("c1: {:?}", self.core.membership.members_after_consensus);
-        tracing::debug!("follower nodes: {:?}", self.nodes.keys().collect::<Vec<_>>());
-
-        // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
-        let mut commit_index_c1 = commit_index_c0; // Defaults to just matching C0.
-        if let Some(members) = &self.core.membership.members_after_consensus {
-            let indices_c1 = self.get_match_indexes(members);
-            tracing::debug!("indices_c1: {:?}", indices_c1);
-
-            commit_index_c1 = calculate_new_commit_index(indices_c1, self.core.commit_index, self.core.current_term);
-            tracing::debug!("commit_index_c1: {}", commit_index_c1);
-        }
+        let commit_index = self.calc_commit_index();
 
         // Determine if we have a new commit index, accounting for joint consensus.
         // If a new commit index has been established, then update a few needed elements.
-        let has_new_commit_index = commit_index_c0 > self.core.commit_index && commit_index_c1 > self.core.commit_index;
+
+        let has_new_commit_index = commit_index > self.core.commit_index;
+
         if has_new_commit_index {
-            self.core.commit_index = std::cmp::min(commit_index_c0, commit_index_c1);
+            self.core.commit_index = commit_index;
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
@@ -212,8 +194,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .take_while(|(_idx, elem)| elem.entry.index <= self.core.commit_index)
                 .last()
                 .map(|(idx, _)| idx);
+
             if let Some(offset) = filter {
                 // Build a new ApplyLogsTask from each of the given client requests.
+
                 for request in self.awaiting_committed.drain(..=offset).collect::<Vec<_>>() {
                     self.client_request_post_commit(request).await;
                 }
@@ -233,6 +217,30 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 index: match_index,
             },
         });
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    fn calc_commit_index(&self) -> u64 {
+        let c0_index = self.calc_members_commit_index(&self.core.membership.members, "c0");
+
+        // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
+        let mut c1_index = c0_index; // Defaults to just matching C0.
+
+        if let Some(members) = &self.core.membership.members_after_consensus {
+            c1_index = self.calc_members_commit_index(members, "c1");
+        }
+
+        std::cmp::min(c0_index, c1_index)
+    }
+
+    fn calc_members_commit_index(&self, mem: &HashSet<NodeId>, msg: &str) -> u64 {
+        let indices = self.get_match_indexes(mem);
+        tracing::debug!("{} indices: {:?}", msg, indices);
+
+        let commit_index = calculate_new_commit_index(indices, self.core.commit_index, self.core.current_term);
+        tracing::debug!("{} commit_index: {}", msg, commit_index);
+
+        commit_index
     }
 
     /// Extract the matching index/term of the replication state of specified nodes.
@@ -333,12 +341,18 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 /// NOTE: there are a few edge cases accounted for in this routine which will never practically
 /// be hit, but they are accounted for in the name of good measure.
 fn calculate_new_commit_index(mut entries: Vec<(u64, u64)>, current_commit: u64, leader_term: u64) -> u64 {
+    // TODO(xp): this should never happen
     if entries.is_empty() {
         return current_commit;
     }
+
     entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-    let offset = (entries.len() + 1) / 2 - 1;
-    let new_val = entries.get(offset).cloned().unwrap_or((current_commit, leader_term));
+
+    let quorum = entries.len() / 2 + 1;
+    let offset = entries.len() - quorum;
+
+    let new_val = entries[offset];
+
     if new_val.0 > current_commit && new_val.1 == leader_term {
         new_val.0
     } else {

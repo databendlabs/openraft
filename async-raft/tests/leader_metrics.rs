@@ -90,6 +90,7 @@ async fn leader_metrics() -> Result<()> {
     router.wait_for_log(&all_members, want, timeout, "add non-voter 1,2,3,4").await?;
 
     tracing::info!("--- changing cluster config to 012");
+
     router.change_membership(0, all_members.clone()).await?;
     want += 2; // 2 member-change logs
 
@@ -120,8 +121,8 @@ async fn leader_metrics() -> Result<()> {
     router.client_request_many(0, "client", 10).await;
     want += 10;
 
-    // Remove Node 4
     tracing::info!("--- remove n{}", 4);
+
     router.change_membership(0, left_members.clone()).await?;
     want += 2; // two member-change logs
 
@@ -156,6 +157,7 @@ async fn leader_metrics() -> Result<()> {
         .await?;
 
     tracing::info!("--- take leadership of node 0");
+
     router
         .vote(0, VoteRequest {
             term: 100,
