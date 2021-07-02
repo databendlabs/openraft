@@ -7,6 +7,7 @@ pub mod metrics;
 #[cfg(test)]
 mod metrics_wait_test;
 pub mod network;
+mod quorum;
 pub mod raft;
 mod raft_types;
 mod replication;

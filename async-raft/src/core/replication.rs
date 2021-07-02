@@ -10,6 +10,7 @@ use crate::core::SnapshotState;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
 use crate::error::RaftResult;
+use crate::quorum;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
@@ -348,8 +349,8 @@ fn calculate_new_commit_index(mut entries: Vec<(u64, u64)>, current_commit: u64,
 
     entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
-    let quorum = entries.len() / 2 + 1;
-    let offset = entries.len() - quorum;
+    let majority = quorum::majority_of(entries.len());
+    let offset = entries.len() - majority;
 
     let new_val = entries[offset];
 

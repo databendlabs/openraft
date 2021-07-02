@@ -50,8 +50,22 @@ async fn client_reads() -> Result<()> {
         .client_read(leader)
         .await
         .unwrap_or_else(|_| panic!("expected client_read to succeed for cluster leader {}", leader));
+
     router.client_read(1).await.expect_err("expected client_read on follower node 1 to fail");
     router.client_read(2).await.expect_err("expected client_read on follower node 2 to fail");
+
+    tracing::info!("--- isolate node 1 then client read should work");
+
+    router.isolate_node(1).await;
+    router.client_read(leader).await?;
+
+    tracing::info!("--- isolate node 2 then client read should fail");
+
+    router.isolate_node(2).await;
+    let rst = router.client_read(leader).await;
+    tracing::debug!(?rst, "client_read with majority down");
+
+    assert!(rst.is_err());
 
     Ok(())
 }

@@ -14,6 +14,7 @@ use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
+use crate::quorum;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientReadResponseTx;
 use crate::raft::ClientWriteRequest;
@@ -126,17 +127,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn handle_client_read_request(&mut self, tx: ClientReadResponseTx) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
         let mut c0_confirmed = 0usize;
-        let len_members = self.core.membership.members.len(); // Will never be zero, as we don't allow it when proposing config changes.
-        let c0_needed: usize = if (len_members % 2) == 0 {
-            (len_members / 2) - 1
-        } else {
-            len_members / 2
-        };
+        // Will never be zero, as we don't allow it when proposing config changes.
+        let len_members = self.core.membership.members.len();
+
+        let c0_needed = quorum::majority_of(len_members);
+
         let mut c1_confirmed = 0usize;
         let mut c1_needed = 0usize;
         if let Some(joint_members) = &self.core.membership.members_after_consensus {
             let len = joint_members.len(); // Will never be zero, as we don't allow it when proposing config changes.
-            c1_needed = if (len % 2) == 0 { (len / 2) - 1 } else { len / 2 };
+            c1_needed = quorum::majority_of(len);
         }
 
         // Increment confirmations for self, including post-joint-consensus config if applicable.
@@ -152,7 +152,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             c1_confirmed += 1;
         }
 
-        // If we already have all needed confirmations — which would be the case for singlenode
+        // If we already have all needed confirmations — which would be the case for single node
         // clusters — then respond.
         if c0_confirmed >= c0_needed && c1_confirmed >= c1_needed {
             let _ = tx.send(Ok(()));
@@ -186,14 +186,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Handle responses as they return.
         while let Some(res) = pending.next().await {
+            // TODO(xp): if receives error about a higher term, it should stop at once?
             let (target, data) = match res {
                 Ok(Ok(res)) => res,
                 Ok(Err((target, err))) => {
-                    tracing::error!({target, error=%err}, "timeout while confirming leadership for read request");
+                    tracing::error!(target, error=%err, "timeout while confirming leadership for read request");
                     continue;
                 }
                 Err((target, err)) => {
-                    tracing::error!({ target }, "{}", err);
+                    tracing::error!(target, "{}", err);
                     continue;
                 }
             };
