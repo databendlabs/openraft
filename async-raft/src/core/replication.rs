@@ -307,7 +307,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Check if snapshot creation is already in progress. If so, we spawn a task to await its
         // completion (or cancellation), and respond to the replication stream. The repl stream
-        // will wait for the completion and will then send anothe request to fetch the finished snapshot.
+        // will wait for the completion and will then send another request to fetch the finished snapshot.
         // Else we just drop any other state and continue. Leaders never enter `Streaming` state.
         if let Some(SnapshotState::Snapshotting { handle, sender }) = self.core.snapshot_state.take() {
             let mut chan = sender.subscribe();
