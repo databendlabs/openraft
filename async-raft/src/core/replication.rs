@@ -40,8 +40,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.replicationtx.clone(),
         );
         ReplicationState {
-            match_index: self.core.last_log_index,
-            match_term: self.core.current_term,
+            matched: (self.core.current_term, self.core.last_log_index).into(),
             replstream,
             remove_after_commit: None,
         }
@@ -124,8 +123,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let mut found = false;
 
         if let Some(state) = self.non_voters.get_mut(&target) {
-            state.state.match_index = match_index;
-            state.state.match_term = match_term;
+            state.state.matched = (match_term, match_index).into();
             found = true;
         }
 
@@ -133,8 +131,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let mut needs_removal = false;
 
         if let Some(state) = self.nodes.get_mut(&target) {
-            state.match_index = match_index;
-            state.match_term = match_term;
+            state.matched = (match_term, match_index).into();
             found = true;
 
             if let Some(threshold) = &state.remove_after_commit {
@@ -258,14 +255,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // this node is a follower
             let repl_state = self.nodes.get(id);
             if let Some(x) = repl_state {
-                rst.push((x.match_index, x.match_term));
+                rst.push((x.matched.index, x.matched.term));
                 continue;
             }
 
             // this node is a non-voter
             let repl_state = self.non_voters.get(id);
             if let Some(x) = repl_state {
-                rst.push((x.state.match_index, x.state.match_term));
+                rst.push((x.state.matched.index, x.state.matched.term));
                 continue;
             }
             panic!("node {} not found in nodes or non-voters", id);

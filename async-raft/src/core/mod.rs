@@ -52,6 +52,7 @@ use crate::replication::ReplicationStream;
 use crate::storage::HardState;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::LogId;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -751,8 +752,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 struct ReplicationState<D: AppData> {
-    pub match_index: u64,
-    pub match_term: u64,
+    pub matched: LogId,
     pub remove_after_commit: Option<u64>,
     pub replstream: ReplicationStream<D>,
 }

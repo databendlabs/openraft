@@ -309,7 +309,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .iter_mut()
             .filter(|(id, _)| !membership.contains(id))
             .filter_map(|(idx, replstate)| {
-                if replstate.match_index >= index {
+                if replstate.matched.index >= index {
                     Some(*idx)
                 } else {
                     replstate.remove_after_commit = Some(index);
