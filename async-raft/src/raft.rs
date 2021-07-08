@@ -24,6 +24,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::LogId;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -575,10 +576,8 @@ pub struct InstallSnapshotRequest {
     pub term: u64,
     /// The leader's ID. Useful in redirecting clients.
     pub leader_id: u64,
-    /// The snapshot replaces all log entries up through and including this index.
-    pub last_included_index: u64,
-    /// The term of the `last_included_index`.
-    pub last_included_term: u64,
+    /// The snapshot replaces all log entries up through and including this log.
+    pub last_included: LogId,
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,
     /// The raw bytes of the snapshot chunk, starting at `offset`.

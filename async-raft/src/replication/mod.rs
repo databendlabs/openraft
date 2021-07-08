@@ -856,8 +856,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let req = InstallSnapshotRequest {
                 term: self.core.term,
                 leader_id: self.core.id,
-                last_included_index: snapshot.index,
-                last_included_term: snapshot.term,
+                last_included: (snapshot.term, snapshot.index).into(),
                 offset,
                 data: Vec::from(&buf[..nread]),
                 done,
