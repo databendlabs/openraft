@@ -339,7 +339,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         // Trigger log compaction if needed.
-        self.core.trigger_log_compaction_if_needed();
+        self.core.trigger_log_compaction_if_needed(false);
     }
 
     /// Apply the given log entry to the state machine.

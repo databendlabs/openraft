@@ -416,8 +416,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Trigger a log compaction (snapshot) job if needed.
+    /// If force is True, it will skip the threshold check and start creating snapshot as demanded.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(self) fn trigger_log_compaction_if_needed(&mut self) {
+    pub(self) fn trigger_log_compaction_if_needed(&mut self, force: bool) {
         if self.snapshot_state.is_some() {
             return;
         }
@@ -426,11 +427,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if self.last_applied == 0 || self.last_applied < self.snapshot_index {
             return;
         }
-        // If we are below the threshold, then there is nothing to do.
-        let is_below_threshold =
-            self.last_applied.checked_sub(self.snapshot_index).map(|diff| diff < *threshold).unwrap_or(false);
-        if is_below_threshold {
-            return;
+
+        if !force {
+            // If we are below the threshold, then there is nothing to do.
+            if self.last_applied < self.snapshot_index + *threshold {
+                return;
+            }
         }
 
         // At this point, we are clear to begin a new compaction process.
@@ -473,7 +475,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.last_applied = last_applied;
         }
         self.report_metrics(Update::Ignore);
-        self.trigger_log_compaction_if_needed();
+        self.trigger_log_compaction_if_needed(false);
         Ok(())
     }
 

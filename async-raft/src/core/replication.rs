@@ -296,6 +296,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .get_current_snapshot()
             .await
             .map_err(|err| self.core.map_fatal_storage_error(err))?;
+
         if let Some(snapshot) = current_snapshot_opt {
             // If snapshot exists, ensure its distance from the leader's last log index is <= half
             // of the configured snapshot threshold, else create a new snapshot.
@@ -325,7 +326,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         //
         // If this block is executed, and a snapshot is needed, the repl stream will submit another
         // request here shortly, and will hit the above logic where it will await the snapshot completion.
-        self.core.trigger_log_compaction_if_needed();
+        //
+        // If snapshot is too old, i.e., the distance from last_log_index is greater than half of snapshot threshold,
+        // always force a snapshot creation.
+        self.core.trigger_log_compaction_if_needed(true);
         Ok(())
     }
 }
