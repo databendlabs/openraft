@@ -53,11 +53,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let res = match event {
             ReplicaEvent::RateUpdate { target, is_line_rate } => self.handle_rate_update(target, is_line_rate).await,
             ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
-            ReplicaEvent::UpdateMatchIndex {
-                target,
-                match_index,
-                match_term,
-            } => self.handle_update_match_index(target, match_index, match_term).await,
+            ReplicaEvent::UpdateMatchIndex { target, matched } => {
+                self.handle_update_match_index(target, matched.index, matched.term).await
+            }
             ReplicaEvent::NeedsSnapshot { target, tx } => self.handle_needs_snapshot(target, tx).await,
             ReplicaEvent::Shutdown => {
                 self.core.set_target_state(State::Shutdown);

@@ -282,8 +282,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 self.matched = (term, index).into();
                 let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                     target: self.target,
-                    match_index: index,
-                    match_term: term,
+                    matched: (term, index).into(),
                 });
 
                 // If running at line rate, and our buffered outbound requests have accumulated too
@@ -330,8 +329,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 self.target_state = TargetReplState::Lagging;
                 let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                     target: self.target,
-                    match_index: self.matched.index,
-                    match_term: self.matched.term,
+                    matched: self.matched,
                 });
                 return;
             }
@@ -352,8 +350,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     self.target_state = TargetReplState::Snapshotting;
                     let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                         target: self.target,
-                        match_index: self.matched.index,
-                        match_term: self.matched.term,
+                        matched: self.matched,
                     });
                     return;
                 }
@@ -368,8 +365,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // Check snapshot policy and handle conflict as needed.
             let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                 target: self.target,
-                match_index: self.matched.index,
-                match_term: self.matched.term,
+                matched: self.matched,
             });
             match &self.config.snapshot_policy {
                 SnapshotPolicy::LogsSinceLast(threshold) => {
@@ -512,7 +508,7 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
         target: NodeId,
         /// A flag indicating if the corresponding target node is replicating at line rate.
         ///
-        /// When replicating at line rate, the replication stream will receive log entires to
+        /// When replicating at line rate, the replication stream will receive log entries to
         /// replicate as soon as they are ready. When not running at line rate, the Raft node will
         /// only send over metadata without entries to replicate.
         is_line_rate: bool,
@@ -521,10 +517,8 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
     UpdateMatchIndex {
         /// The ID of the target node for which the match index is to be updated.
         target: NodeId,
-        /// The index of the most recent log known to have been successfully replicated on the target.
-        match_index: u64,
-        /// The term of the most recent log known to have been successfully replicated on the target.
-        match_term: u64,
+        /// The log of the most recent log known to have been successfully replicated on the target.
+        matched: LogId,
     },
     /// An event indicating that the Raft node needs to revert to follower state.
     RevertToFollower {
