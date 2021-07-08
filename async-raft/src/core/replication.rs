@@ -52,9 +52,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let res = match event {
             ReplicaEvent::RateUpdate { target, is_line_rate } => self.handle_rate_update(target, is_line_rate).await,
             ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
-            ReplicaEvent::UpdateMatchIndex { target, matched } => {
-                self.handle_update_match_index(target, matched.index, matched.term).await
-            }
+            ReplicaEvent::UpdateMatchIndex { target, matched } => self.handle_update_match_index(target, matched).await,
             ReplicaEvent::NeedsSnapshot { target, tx } => self.handle_needs_snapshot(target, tx).await,
             ReplicaEvent::Shutdown => {
                 self.core.set_target_state(State::Shutdown);
@@ -119,11 +117,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Handle events from a replication stream which updates the target node's match index.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn handle_update_match_index(&mut self, target: NodeId, match_index: u64, match_term: u64) -> RaftResult<()> {
+    async fn handle_update_match_index(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
         let mut found = false;
 
         if let Some(state) = self.non_voters.get_mut(&target) {
-            state.state.matched = (match_term, match_index).into();
+            state.state.matched = matched;
             found = true;
         }
 
@@ -131,11 +129,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let mut needs_removal = false;
 
         if let Some(state) = self.nodes.get_mut(&target) {
-            state.matched = (match_term, match_index).into();
+            state.matched = matched;
             found = true;
 
             if let Some(threshold) = &state.remove_after_commit {
-                if &match_index >= threshold {
+                if &matched.index >= threshold {
                     needs_removal = true;
                 }
             }
@@ -146,7 +144,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return Ok(());
         }
 
-        self.update_leader_metrics(target, match_term, match_index);
+        self.update_leader_metrics(target, matched);
 
         // Drop replication stream if needed.
         // TODO(xp): is it possible to merge the two node remove routines?
@@ -206,13 +204,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    fn update_leader_metrics(&mut self, target: NodeId, match_term: u64, match_index: u64) {
-        self.leader_metrics.replication.insert(target, ReplicationMetrics {
-            matched: LogId {
-                term: match_term,
-                index: match_index,
-            },
-        });
+    fn update_leader_metrics(&mut self, target: NodeId, matched: LogId) {
+        self.leader_metrics.replication.insert(target, ReplicationMetrics { matched });
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
