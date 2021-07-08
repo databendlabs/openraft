@@ -3,7 +3,7 @@ use serde::Serialize;
 
 /// The identity of a raft log.
 /// A term and an index identifies an log globally.
-#[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogId {
     pub term: u64,
     pub index: u64,

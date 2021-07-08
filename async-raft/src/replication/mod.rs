@@ -131,16 +131,12 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     /// number of RPCs which need to be sent back and forth between a peer which is lagging
     /// behind. This is defined in §5.3.
     next_index: u64,
-    /// The last know index to be successfully replicated on the target.
+    /// The last know log to be successfully replicated on the target.
     ///
-    /// This will be initialized to the leader's last_log_index, and will be updated as
+    /// This will be initialized to the leader's (last_log_term, last_log_index), and will be updated as
     /// replication proceeds.
-    match_index: u64,
-    /// The term of the last know index to be successfully replicated on the target.
-    ///
-    /// This will be initialized to the leader's last_log_term, and will be updated as
-    /// replication proceeds.
-    match_term: u64,
+    /// TODO(xp): initialize to last_log_index? should be a zero value?
+    matched: LogId,
 
     /// A buffer of data to replicate to the target follower.
     ///
@@ -189,8 +185,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             last_log_index,
             commit_index,
             next_index: last_log_index + 1,
-            match_index: last_log_index,
-            match_term: last_log_term,
+            matched: (last_log_term, last_log_index).into(),
             raft_tx: rafttx,
             raft_rx,
             heartbeat: interval(heartbeat_timeout),
@@ -244,8 +239,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         let payload = AppendEntriesRequest {
             term: self.term,
             leader_id: self.id,
-            prev_log_index: self.match_index,
-            prev_log_term: self.match_term,
+            prev_log_index: self.matched.index,
+            prev_log_term: self.matched.term,
             leader_commit: self.commit_index,
             entries: self.outbound_buffer.iter().map(|entry| entry.as_ref().clone()).collect(),
         };
@@ -284,8 +279,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // If this was a proper replication event (last index & term were provided), then update state.
             if let Some((index, term)) = last_index_and_term {
                 self.next_index = index + 1; // This should always be the next expected index.
-                self.match_index = index;
-                self.match_term = term;
+                self.matched = (term, index).into();
                 let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                     target: self.target,
                     match_index: index,
@@ -297,7 +291,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 // replicate data fast enough.
                 let is_lagging = self
                     .last_log_index
-                    .checked_sub(self.match_index)
+                    .checked_sub(self.matched.index)
                     .map(|diff| diff > self.config.replication_lag_threshold)
                     .unwrap_or(false);
                 if is_lagging {
@@ -328,8 +322,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 return;
             }
             self.next_index = conflict.index + 1;
-            self.match_index = conflict.index;
-            self.match_term = conflict.term;
+            self.matched = (conflict.term, conflict.index).into();
 
             // If conflict index is 0, we will not be able to fetch that index from storage because
             // it will never exist. So instead, we just return, and accept the conflict data.
@@ -337,8 +330,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 self.target_state = TargetReplState::Lagging;
                 let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                     target: self.target,
-                    match_index: self.match_index,
-                    match_term: self.match_term,
+                    match_index: self.matched.index,
+                    match_term: self.matched.term,
                 });
                 return;
             }
@@ -351,7 +344,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 .map(|entries| entries.get(0).map(|entry| entry.term))
             {
                 Ok(Some(term)) => {
-                    self.match_term = term; // If we have the specified log, ensure we use its term.
+                    self.matched.term = term; // If we have the specified log, ensure we use its term.
                 }
                 Ok(None) => {
                     // This condition would only ever be reached if the log has been removed due to
@@ -359,8 +352,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     self.target_state = TargetReplState::Snapshotting;
                     let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                         target: self.target,
-                        match_index: self.match_index,
-                        match_term: self.match_term,
+                        match_index: self.matched.index,
+                        match_term: self.matched.term,
                     });
                     return;
                 }
@@ -375,8 +368,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // Check snapshot policy and handle conflict as needed.
             let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                 target: self.target,
-                match_index: self.match_index,
-                match_term: self.match_term,
+                match_index: self.matched.index,
+                match_term: self.matched.term,
             });
             match &self.config.snapshot_policy {
                 SnapshotPolicy::LogsSinceLast(threshold) => {
@@ -401,7 +394,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         match &self.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => {
                 let needs_snap =
-                    self.commit_index.checked_sub(self.match_index).map(|diff| diff >= *threshold).unwrap_or(false);
+                    self.commit_index.checked_sub(self.matched.index).map(|diff| diff >= *threshold).unwrap_or(false);
                 if needs_snap {
                     tracing::trace!("snapshot needed");
                     true
@@ -845,8 +838,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::Snapshot>) -> RaftResult<()> {
         let mut offset = 0;
         self.core.next_index = snapshot.index + 1;
-        self.core.match_index = snapshot.index;
-        self.core.match_term = snapshot.term;
+        self.core.matched = (snapshot.term, snapshot.index).into();
         let mut buf = Vec::with_capacity(self.core.config.snapshot_max_chunk_size as usize);
         loop {
             // Build the RPC.
