@@ -211,7 +211,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if let Some(snapshot) =
             self.storage.get_current_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?
         {
-            self.snapshot_index = snapshot.index;
+            self.snapshot_index = snapshot.included.index;
         }
 
         let has_log = self.last_log_index != u64::min_value();
@@ -452,8 +452,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 match res {
                     Ok(res) => match res {
                         Ok(snapshot) => {
-                            let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.index));
-                            let _ = chan_tx.send(snapshot.index); // This will always succeed.
+                            let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.included.index));
+                            let _ = chan_tx.send(snapshot.included.index); // This will always succeed.
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");

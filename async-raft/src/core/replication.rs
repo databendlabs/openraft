@@ -288,7 +288,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if let Some(snapshot) = current_snapshot_opt {
             // If snapshot exists, ensure its distance from the leader's last log index is <= half
             // of the configured snapshot threshold, else create a new snapshot.
-            if snapshot_is_within_half_of_threshold(&snapshot.index, &self.core.last_log_index, &threshold) {
+            if snapshot_is_within_half_of_threshold(&snapshot.included.index, &self.core.last_log_index, &threshold) {
                 let _ = tx.send(snapshot);
                 return Ok(());
             }

@@ -15,16 +15,16 @@ use crate::raft::MembershipConfig;
 use crate::raft_types::SnapshotId;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::LogId;
 use crate::NodeId;
 
 /// The data associated with the current snapshot.
 pub struct CurrentSnapshotData<S>
 where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
-    /// The snapshot entry's term.
-    pub term: u64,
-    /// The snapshot entry's index.
-    pub index: u64,
+    // Log entries upto which this snapshot includes, inclusive.
+    pub included: LogId,
+
     /// The latest membership configuration covered by the snapshot.
     pub membership: MembershipConfig,
 
