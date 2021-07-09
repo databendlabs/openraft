@@ -25,6 +25,7 @@ use async_raft::raft::VoteRequest;
 use async_raft::raft::VoteResponse;
 use async_raft::storage::RaftStorage;
 use async_raft::Config;
+use async_raft::LogId;
 use async_raft::NodeId;
 use async_raft::Raft;
 use async_raft::RaftMetrics;
@@ -228,6 +229,21 @@ impl RaftRouter {
     ) -> Result<()> {
         for i in node_ids.iter() {
             self.wait(i, timeout).await?.state(want_state, msg).await?;
+        }
+        Ok(())
+    }
+
+    /// Wait for specified nodes until their snapshot becomes `want`.
+    #[tracing::instrument(level = "info", skip(self))]
+    pub async fn wait_for_snapshot(
+        &self,
+        node_ids: &HashSet<u64>,
+        want: LogId,
+        timeout: Option<Duration>,
+        msg: &str,
+    ) -> Result<()> {
+        for i in node_ids.iter() {
+            self.wait(i, timeout).await?.snapshot(want, msg).await?;
         }
         Ok(())
     }

@@ -213,6 +213,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.storage.get_current_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?
         {
             self.snapshot_last_included = snapshot.included;
+            self.report_metrics(Update::Ignore);
         }
 
         let has_log = self.last_log_index != u64::min_value();
@@ -287,6 +288,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             last_applied: self.last_applied,
             current_leader: self.current_leader,
             membership_config: self.membership.clone(),
+            snapshot: self.snapshot_last_included,
             leader_metrics,
         });
 
@@ -409,11 +411,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_snapshot_state(&mut self, update: SnapshotUpdate) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
-            self.snapshot_last_included = log_id
+            self.snapshot_last_included = log_id;
+            self.report_metrics(Update::Ignore);
         }
         // If snapshot state is anything other than streaming, then drop it.
         if let Some(state @ SnapshotState::Streaming { .. }) = self.snapshot_state.take() {
-            self.snapshot_state = Some(state)
+            self.snapshot_state = Some(state);
         }
     }
 

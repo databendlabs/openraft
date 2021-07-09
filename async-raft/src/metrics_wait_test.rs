@@ -7,6 +7,7 @@ use tokio::time::sleep;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::raft::MembershipConfig;
+use crate::LogId;
 use crate::RaftMetrics;
 use crate::State;
 
@@ -99,6 +100,48 @@ async fn test_wait() -> anyhow::Result<()> {
         assert_eq!(Some(hashset![1, 2]), got.membership_config.members_after_consensus);
     }
 
+    tracing::info!("--- wait for snapshot, Ok");
+    {
+        let (init, w, tx) = init_wait_test();
+
+        let h = tokio::spawn(async move {
+            sleep(Duration::from_millis(10)).await;
+            let mut update = init.clone();
+            update.snapshot = LogId { term: 1, index: 2 };
+            let rst = tx.send(update);
+            assert!(rst.is_ok());
+        });
+        let got = w.snapshot(LogId { term: 1, index: 2 }, "snapshot").await?;
+        h.await?;
+
+        assert_eq!(LogId { term: 1, index: 2 }, got.snapshot);
+    }
+
+    tracing::info!("--- wait for snapshot, only index matches");
+    {
+        let (init, w, tx) = init_wait_test();
+
+        let h = tokio::spawn(async move {
+            sleep(Duration::from_millis(10)).await;
+            let mut update = init.clone();
+            update.snapshot = LogId { term: 3, index: 2 };
+            let rst = tx.send(update);
+            assert!(rst.is_ok());
+            // delay otherwise the channel will be closed thus the error is shutdown.
+            sleep(Duration::from_millis(200)).await;
+        });
+        let got = w.snapshot(LogId { term: 1, index: 2 }, "snapshot").await;
+        h.await?;
+        match got.unwrap_err() {
+            WaitError::Timeout(t, _) => {
+                assert_eq!(Duration::from_millis(100), t);
+            }
+            _ => {
+                panic!("expect WaitError::Timeout");
+            }
+        }
+    }
+
     {
         // timeout
         let (_init, w, _tx) = init_wait_test();
@@ -136,6 +179,7 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
             members: Default::default(),
             members_after_consensus: None,
         },
+        snapshot: LogId { term: 0, index: 0 },
         leader_metrics: None,
     };
     let (tx, rx) = watch::channel(init.clone());

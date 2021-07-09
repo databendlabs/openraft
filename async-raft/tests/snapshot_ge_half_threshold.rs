@@ -1,16 +1,15 @@
 mod fixtures;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
+use async_raft::LogId;
 use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::hashset;
-use tokio::time::sleep;
 
 /// A leader should create and send snapshot when snapshot is old and is not that old to trigger a snapshot, i.e.:
 /// `threshold/2 < leader.last_log_index - snapshot.applied_index < threshold`
@@ -63,9 +62,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router.wait_for_log(&hashset![0], want, None, "send log to trigger snapshot").await?;
         router.assert_stable_cluster(Some(1), Some(want)).await;
 
-        // TODO: add snapshot info into metrics.
-        //       Then watch metrics instead of waiting.
-        sleep(Duration::from_secs(5)).await;
+        router.wait_for_snapshot(&hashset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
         router
             .assert_storage_state(
                 1,
@@ -96,6 +93,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
             members: hashset![0u64],
             members_after_consensus: None,
         }));
+        router.wait_for_snapshot(&hashset![1], LogId { term: 1, index: want }, None, "").await?;
         router.assert_storage_state(1, want, None /* non-voter does not vote */, want, expected_snap).await;
     }
 

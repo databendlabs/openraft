@@ -1,16 +1,15 @@
 mod fixtures;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
+use async_raft::LogId;
 use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::hashset;
-use tokio::time::sleep;
 
 /// Compaction test.
 ///
@@ -25,10 +24,12 @@ use tokio::time::sleep;
 async fn compaction() -> Result<()> {
     fixtures::init_tracing();
 
+    let snapshot_threshold: u64 = 50;
+
     // Setup test dependencies.
     let config = Arc::new(
         Config::build("test".into())
-            .snapshot_policy(SnapshotPolicy::LogsSinceLast(500))
+            .snapshot_policy(SnapshotPolicy::LogsSinceLast(snapshot_threshold))
             .validate()
             .expect("failed to build Raft config"),
     );
@@ -53,22 +54,19 @@ async fn compaction() -> Result<()> {
 
     // Send enough requests to the cluster that compaction on the node should be triggered.
     // Puts us exactly at the configured snapshot policy threshold.
-    router.client_request_many(0, "0", 499).await;
-    want += 499;
+    router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
+    want = snapshot_threshold;
 
     router.wait_for_log(&hashset![0], want, None, "write").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
-
-    // TODO: add snapshot info into metrics.
-    //       Then watch metrics instead of waiting.
-    sleep(Duration::from_secs(10)).await;
+    router.wait_for_snapshot(&hashset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
     router
         .assert_storage_state(
             1,
-            500,
+            want,
             Some(0),
-            500,
-            Some((500.into(), 1, MembershipConfig {
+            want,
+            Some((want.into(), 1, MembershipConfig {
                 members: hashset![0],
                 members_after_consensus: None,
             })),
@@ -85,7 +83,7 @@ async fn compaction() -> Result<()> {
     want += 1;
 
     router.wait_for_log(&hashset![0, 1], want, None, "add follower").await?;
-    let expected_snap = Some((500.into(), 1, MembershipConfig {
+    let expected_snap = Some((snapshot_threshold.into(), 1, MembershipConfig {
         members: hashset![0u64],
         members_after_consensus: None,
     }));

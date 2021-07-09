@@ -377,9 +377,21 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
         );
-        let raw = serde_json::to_string_pretty(snapshot.get_ref().as_slice())?;
-        println!("JSON SNAP:\n{}", raw);
+
+        {
+            let t = snapshot.get_ref().as_slice();
+            let y = std::str::from_utf8(t).unwrap();
+            tracing::debug!("JSON SNAP:\n{}", y);
+        }
+
         let new_snapshot: MemStoreSnapshot = serde_json::from_slice(snapshot.get_ref().as_slice())?;
+
+        {
+            let t = &new_snapshot.data;
+            let y = std::str::from_utf8(t).unwrap();
+            tracing::debug!("JSON SNAP DATA:\n{}", y);
+        }
+
         // Update log.
         {
             // Go backwards through the log to find the most recent membership config <= the `through` index.

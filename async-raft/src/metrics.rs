@@ -18,6 +18,7 @@ use tokio::time::Duration;
 
 use crate::core::State;
 use crate::raft::MembershipConfig;
+use crate::LogId;
 use crate::NodeId;
 use crate::RaftError;
 use crate::ReplicationMetrics;
@@ -39,6 +40,10 @@ pub struct RaftMetrics {
     pub current_leader: Option<NodeId>,
     /// The current membership config of the cluster.
     pub membership_config: MembershipConfig,
+
+    /// The id of the last log included in snapshot.
+    /// If there is no snapshot, it is (0,0).
+    pub snapshot: LogId,
 
     /// The metrics about the leader. It is Some() only when this node is leader.
     pub leader_metrics: Option<LeaderMetrics>,
@@ -62,6 +67,7 @@ impl RaftMetrics {
             last_applied: 0,
             current_leader: None,
             membership_config,
+            snapshot: LogId { term: 0, index: 0 },
             leader_metrics: None,
         }
     }
@@ -187,6 +193,16 @@ impl Wait {
                 msg.to_string(),
                 want_members
             ),
+        )
+        .await
+    }
+
+    /// Wait for `snapshot` to become `want_snapshot` or timeout.
+    #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn snapshot(&self, want_snapshot: LogId, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
+        self.metrics(
+            |x| x.snapshot == want_snapshot,
+            &format!("{} .snapshot -> {:?}", msg.to_string(), want_snapshot),
         )
         .await
     }
