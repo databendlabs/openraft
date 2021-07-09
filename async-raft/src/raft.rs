@@ -398,10 +398,8 @@ pub struct AppendEntriesResponse {
 /// which may be new to the cluster.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ConflictOpt {
-    /// The term of the most recent entry which does not conflict with the received request.
-    pub term: u64,
-    /// The index of the most recent entry which does not conflict with the received request.
-    pub index: u64,
+    /// The most recent entry which does not conflict with the received request.
+    pub log_id: LogId,
 }
 
 /// A Raft log entry.

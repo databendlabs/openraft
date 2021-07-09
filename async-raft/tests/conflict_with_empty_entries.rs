@@ -59,7 +59,12 @@ async fn conflict_with_empty_entries() -> Result<()> {
     assert!(!resp.success);
     assert!(resp.conflict_opt.is_some());
     let c = resp.conflict_opt.unwrap();
-    assert_eq!(ConflictOpt { term: 0, index: 0 }, c);
+    assert_eq!(
+        ConflictOpt {
+            log_id: LogId { term: 0, index: 0 }
+        },
+        c
+    );
 
     // Feed 2 logs
 
@@ -106,7 +111,12 @@ async fn conflict_with_empty_entries() -> Result<()> {
     assert!(!resp.success);
     assert!(resp.conflict_opt.is_some());
     let c = resp.conflict_opt.unwrap();
-    assert_eq!(ConflictOpt { term: 1, index: 2 }, c);
+    assert_eq!(
+        ConflictOpt {
+            log_id: LogId { term: 1, index: 2 }
+        },
+        c
+    );
 
     Ok(())
 }

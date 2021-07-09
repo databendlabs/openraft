@@ -99,10 +99,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 return Ok(AppendEntriesResponse {
                     term: self.current_term,
                     success: false,
-                    conflict_opt: Some(ConflictOpt {
-                        term: self.last_log.term,
-                        index: self.last_log.index,
-                    }),
+                    conflict_opt: Some(ConflictOpt { log_id: self.last_log }),
                 });
             }
         };
@@ -136,13 +133,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 .map_err(|err| self.map_fatal_storage_error(err))?;
             let opt = match old_entries.iter().find(|entry| entry.term == msg.prev_log.term) {
                 Some(entry) => Some(ConflictOpt {
-                    term: entry.term,
-                    index: entry.index,
+                    log_id: LogId {
+                        term: entry.term,
+                        index: entry.index,
+                    },
                 }),
-                None => Some(ConflictOpt {
-                    term: self.last_log.term,
-                    index: self.last_log.index,
-                }),
+                None => Some(ConflictOpt { log_id: self.last_log }),
             };
             if report_metrics {
                 self.report_metrics(Update::Ignore);

@@ -316,15 +316,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             // If the returned conflict opt index is greater than last_log_index, then this is a
             // logical error, and no action should be taken. This represents a replication failure.
-            if conflict.index > self.last_log_index {
+            if conflict.log_id.index > self.last_log_index {
                 return;
             }
-            self.next_index = conflict.index + 1;
-            self.matched = (conflict.term, conflict.index).into();
+            self.next_index = conflict.log_id.index + 1;
+            self.matched = conflict.log_id;
 
             // If conflict index is 0, we will not be able to fetch that index from storage because
             // it will never exist. So instead, we just return, and accept the conflict data.
-            if conflict.index == 0 {
+            if conflict.log_id.index == 0 {
                 self.target_state = TargetReplState::Lagging;
                 let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                     target: self.target,
@@ -336,7 +336,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // Fetch the entry at conflict index and use the term specified there.
             match self
                 .storage
-                .get_log_entries(conflict.index, conflict.index + 1)
+                .get_log_entries(conflict.log_id.index, conflict.log_id.index + 1)
                 .await
                 .map(|entries| entries.get(0).map(|entry| entry.term))
             {
@@ -368,7 +368,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             });
             match &self.config.snapshot_policy {
                 SnapshotPolicy::LogsSinceLast(threshold) => {
-                    let diff = self.last_log_index - conflict.index; // NOTE WELL: underflow is guarded against above.
+                    let diff = self.last_log_index - conflict.log_id.index; // NOTE WELL: underflow is guarded against above.
                     if &diff >= threshold {
                         // Follower is far behind and needs to receive an InstallSnapshot RPC.
                         self.target_state = TargetReplState::Snapshotting;
