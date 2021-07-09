@@ -6,6 +6,8 @@ mod test;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use anyhow::Result;
 use async_raft::async_trait::async_trait;
@@ -19,6 +21,7 @@ use async_raft::AppData;
 use async_raft::AppDataResponse;
 use async_raft::NodeId;
 use async_raft::RaftStorage;
+use async_raft::SnapshotId;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -69,6 +72,8 @@ pub struct MemStoreSnapshot {
     pub term: u64,
     /// The last memberhsip config included in this snapshot.
     pub membership: MembershipConfig,
+
+    pub snapshot_id: SnapshotId,
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
 }
@@ -93,6 +98,8 @@ pub struct MemStore {
     sm: RwLock<MemStoreStateMachine>,
     /// The current hard state.
     hs: RwLock<Option<HardState>>,
+
+    snapshot_idx: Arc<Mutex<u64>>,
     /// The current snapshot.
     current_snapshot: RwLock<Option<MemStoreSnapshot>>,
 }
@@ -109,6 +116,7 @@ impl MemStore {
             log,
             sm,
             hs,
+            snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
         }
     }
@@ -131,6 +139,7 @@ impl MemStore {
             log,
             sm,
             hs,
+            snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
         }
     }
@@ -309,6 +318,13 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
         let snapshot_bytes: Vec<u8>;
         let term;
+        let snapshot_idx = {
+            let mut l = self.snapshot_idx.lock().unwrap();
+            *l += 1;
+            *l
+        };
+        let snapshot_id;
+
         {
             let mut log = self.log.write().await;
             let mut current_snapshot = self.current_snapshot.write().await;
@@ -322,9 +338,11 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 Entry::new_snapshot_pointer(last_applied_log, term, "".into(), membership_config.clone()),
             );
 
+            snapshot_id = format!("{}-{}-{}", term, last_applied_log, snapshot_idx);
             let snapshot = MemStoreSnapshot {
                 index: last_applied_log,
                 term,
+                snapshot_id: snapshot_id.clone(),
                 membership: membership_config.clone(),
                 data,
             };
@@ -337,14 +355,14 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             term,
             index: last_applied_log,
             membership: membership_config.clone(),
+            snapshot_id,
             snapshot: Box::new(Cursor::new(snapshot_bytes)),
         })
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>)> {
-        Ok((String::from(""), Box::new(Cursor::new(Vec::new())))) // Snapshot IDs are insignificant to this storage
-                                                                  // engine.
+    async fn create_snapshot(&self) -> Result<Box<Self::Snapshot>> {
+        Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
@@ -408,6 +426,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                     index: snapshot.index,
                     term: snapshot.term,
                     membership: snapshot.membership.clone(),
+                    snapshot_id: snapshot.snapshot_id.clone(),
                     snapshot: Box::new(Cursor::new(reader)),
                 }))
             }

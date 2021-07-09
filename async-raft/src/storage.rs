@@ -12,6 +12,7 @@ use tokio::io::AsyncWrite;
 
 use crate::raft::Entry;
 use crate::raft::MembershipConfig;
+use crate::raft_types::SnapshotId;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::NodeId;
@@ -26,6 +27,9 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
     pub index: u64,
     /// The latest membership configuration covered by the snapshot.
     pub membership: MembershipConfig,
+
+    pub snapshot_id: SnapshotId,
+
     /// A read handle to the associated snapshot.
     pub snapshot: Box<S>,
 }
@@ -200,15 +204,14 @@ where
     /// Errors returned from this method will be logged and retried.
     async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>>;
 
-    /// Create a new blank snapshot, returning a writable handle to the snapshot object along with
-    /// the ID of the snapshot.
+    /// Create a new blank snapshot, returning a writable handle to the snapshot object.
     ///
     /// ### implementation guide
     /// See the [storage chapter of the guide](https://async-raft.github.io/async-raft/storage.html)
     /// for details on log compaction / snapshotting.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn create_snapshot(&self) -> Result<(String, Box<Self::Snapshot>)>;
+    async fn create_snapshot(&self) -> Result<Box<Self::Snapshot>>;
 
     /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
     ///

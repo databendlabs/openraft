@@ -30,6 +30,8 @@ pub use crate::metrics::RaftMetrics;
 pub use crate::network::RaftNetwork;
 pub use crate::raft::Raft;
 pub use crate::raft_types::LogId;
+pub use crate::raft_types::SnapshotId;
+pub use crate::raft_types::SnapshotSegmentId;
 pub use crate::raft_types::Update;
 pub use crate::replication::ReplicationMetrics;
 pub use crate::storage::RaftStorage;

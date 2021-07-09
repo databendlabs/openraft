@@ -830,6 +830,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::Snapshot>) -> RaftResult<()> {
+        let snapshot_id = snapshot.snapshot_id.clone();
         let mut offset = 0;
         self.core.next_index = snapshot.index + 1;
         self.core.matched = (snapshot.term, snapshot.index).into();
@@ -842,6 +843,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let req = InstallSnapshotRequest {
                 term: self.core.term,
                 leader_id: self.core.id,
+                snapshot_id: snapshot_id.clone(),
                 last_included: (snapshot.term, snapshot.index).into(),
                 offset,
                 data: Vec::from(&buf[..nread]),

@@ -4,6 +4,7 @@ use std::fmt;
 
 use thiserror::Error;
 
+use crate::raft_types::SnapshotSegmentId;
 use crate::AppData;
 use crate::NodeId;
 
@@ -14,6 +15,12 @@ pub type RaftResult<T> = std::result::Result<T, RaftError>;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum RaftError {
+    // Streaming-snapshot encountered mismatched snapshot_id/offset
+    #[error("expect: {expect}, got: {got}")]
+    SnapshotMismatch {
+        expect: SnapshotSegmentId,
+        got: SnapshotSegmentId,
+    },
     /// An error which has come from the `RaftStorage` layer.
     #[error("{0}")]
     RaftStorage(anyhow::Error),

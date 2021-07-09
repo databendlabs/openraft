@@ -447,7 +447,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         });
         tokio::spawn(
             async move {
-                let res = Abortable::new(storage.do_log_compaction(), reg).await;
+                let f = storage.do_log_compaction();
+                let res = Abortable::new(f, reg).await;
                 match res {
                     Ok(res) => match res {
                         Ok(snapshot) => {

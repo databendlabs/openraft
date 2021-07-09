@@ -52,7 +52,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let res = match event {
             ReplicaEvent::RateUpdate { target, is_line_rate } => self.handle_rate_update(target, is_line_rate).await,
             ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
-            ReplicaEvent::UpdateMatchIndex { target, matched } => self.handle_update_match_index(target, matched).await,
+            ReplicaEvent::UpdateMatchIndex { target, matched } => self.handle_update_matched(target, matched).await,
             ReplicaEvent::NeedsSnapshot { target, tx } => self.handle_needs_snapshot(target, tx).await,
             ReplicaEvent::Shutdown => {
                 self.core.set_target_state(State::Shutdown);
@@ -117,7 +117,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Handle events from a replication stream which updates the target node's match index.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn handle_update_match_index(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
+    async fn handle_update_matched(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
         let mut found = false;
 
         if let Some(state) = self.non_voters.get_mut(&target) {
