@@ -7,6 +7,7 @@ use async_raft::raft::Entry;
 use async_raft::raft::EntryNormal;
 use async_raft::raft::EntryPayload;
 use async_raft::Config;
+use async_raft::LogId;
 use async_raft::RaftNetwork;
 use fixtures::RaftRouter;
 use memstore::ClientRequest;
@@ -49,8 +50,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log_index: 5,
-        prev_log_term: 1,
+        prev_log: LogId { term: 1, index: 5 },
         entries: vec![],
         leader_commit: 5,
     };
@@ -66,8 +66,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log_index: 0,
-        prev_log_term: 1,
+        prev_log: LogId { term: 1, index: 0 },
         entries: vec![
             Entry {
                 term: 1,
@@ -98,8 +97,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log_index: 3,
-        prev_log_term: 1,
+        prev_log: LogId { term: 1, index: 3 },
         entries: vec![],
         leader_commit: 5,
     };

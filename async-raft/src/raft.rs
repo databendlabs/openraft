@@ -361,10 +361,10 @@ pub struct AppendEntriesRequest<D: AppData> {
     pub term: u64,
     /// The leader's ID. Useful in redirecting clients.
     pub leader_id: u64,
-    /// The index of the log entry immediately preceding the new entries.
-    pub prev_log_index: u64,
-    /// The term of the `prev_log_index` entry.
-    pub prev_log_term: u64,
+
+    /// The log entry immediately preceding the new entries.
+    pub prev_log: LogId,
+
     /// The new log entries to store.
     ///
     /// This may be empty when the leader is sending heartbeats. Entries

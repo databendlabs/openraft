@@ -165,8 +165,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let rpc = AppendEntriesRequest {
                 term: self.core.current_term,
                 leader_id: self.core.id,
-                prev_log_index: node.matched.index,
-                prev_log_term: node.matched.term,
+                prev_log: node.matched,
                 entries: vec![],
                 leader_commit: self.core.commit_index,
             };

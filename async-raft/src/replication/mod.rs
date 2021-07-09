@@ -239,8 +239,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         let payload = AppendEntriesRequest {
             term: self.term,
             leader_id: self.id,
-            prev_log_index: self.matched.index,
-            prev_log_term: self.matched.term,
+            prev_log: self.matched,
             leader_commit: self.commit_index,
             entries: self.outbound_buffer.iter().map(|entry| entry.as_ref().clone()).collect(),
         };
