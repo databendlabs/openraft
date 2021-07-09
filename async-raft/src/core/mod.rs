@@ -105,10 +105,8 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// first-come-first-served basis. See §5.4.1 for additional restriction on votes.
     voted_for: Option<NodeId>,
 
-    /// The index of the last entry to be appended to the log.
-    last_log_index: u64,
-    /// The term of the last entry to be appended to the log.
-    last_log_term: u64,
+    /// The last entry to be appended to the log.
+    last_log: LogId,
 
     /// The node's current snapshot state.
     snapshot_state: Option<SnapshotState<S::Snapshot>>,
@@ -174,8 +172,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             current_term: 0,
             current_leader: None,
             voted_for: None,
-            last_log_index: 0,
-            last_log_term: 0,
+            last_log: LogId { term: 0, index: 0 },
             snapshot_state: None,
             snapshot_last_included: LogId { term: 0, index: 0 },
             entries_cache: Default::default(),
@@ -197,8 +194,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn main(mut self) -> RaftResult<()> {
         tracing::trace!("raft node is initializing");
         let state = self.storage.get_initial_state().await.map_err(|err| self.map_fatal_storage_error(err))?;
-        self.last_log_index = state.last_log_index;
-        self.last_log_term = state.last_log_term;
+        self.last_log.index = state.last_log_index;
+        self.last_log.term = state.last_log_term;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
         self.membership = state.membership;
@@ -216,7 +213,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.report_metrics(Update::Ignore);
         }
 
-        let has_log = self.last_log_index != u64::min_value();
+        let has_log = self.last_log.index != u64::min_value();
         let single = self.membership.members.len() == 1;
         let is_candidate = self.membership.contains(&self.id);
 
@@ -284,7 +281,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             id: self.id,
             state: self.target_state,
             current_term: self.current_term,
-            last_log_index: self.last_log_index,
+            last_log_index: self.last_log.index,
             last_applied: self.last_applied,
             current_leader: self.current_leader,
             membership_config: self.membership.clone(),
