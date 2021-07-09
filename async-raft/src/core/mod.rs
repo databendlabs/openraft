@@ -194,8 +194,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn main(mut self) -> RaftResult<()> {
         tracing::trace!("raft node is initializing");
         let state = self.storage.get_initial_state().await.map_err(|err| self.map_fatal_storage_error(err))?;
-        self.last_log.index = state.last_log_index;
-        self.last_log.term = state.last_log_term;
+        self.last_log = state.last_log;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
         self.membership = state.membership;

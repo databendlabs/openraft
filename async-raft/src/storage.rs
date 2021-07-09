@@ -49,10 +49,9 @@ pub struct HardState {
 /// A struct used to represent the initial state which a Raft node needs when first starting.
 #[derive(Clone, Debug)]
 pub struct InitialState {
-    /// The index of the last entry.
-    pub last_log_index: u64,
-    /// The term of the last log entry.
-    pub last_log_term: u64,
+    /// The last entry.
+    pub last_log: LogId,
+
     /// The index of the last log applied to the state machine.
     pub last_applied_log: u64,
     /// The saved hard state of the node.
@@ -69,8 +68,7 @@ impl InitialState {
     /// The ID of the Raft node.
     pub fn new_initial(id: NodeId) -> Self {
         Self {
-            last_log_index: 0,
-            last_log_term: 0,
+            last_log: LogId { term: 0, index: 0 },
             last_applied_log: 0,
             hard_state: HardState {
                 current_term: 0,

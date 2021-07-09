@@ -19,6 +19,7 @@ use async_raft::storage::HardState;
 use async_raft::storage::InitialState;
 use async_raft::AppData;
 use async_raft::AppDataResponse;
+use async_raft::LogId;
 use async_raft::NodeId;
 use async_raft::RaftStorage;
 use async_raft::SnapshotId;
@@ -193,8 +194,10 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 };
                 let last_applied_log = sm.last_applied_log;
                 Ok(InitialState {
-                    last_log_index,
-                    last_log_term,
+                    last_log: LogId {
+                        term: last_log_term,
+                        index: last_log_index,
+                    },
                     last_applied_log,
                     hard_state: inner.clone(),
                     membership,
