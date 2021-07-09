@@ -185,7 +185,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.last_log_index = req.last_included.index;
         self.last_log_term = req.last_included.term;
         self.last_applied = req.last_included.index;
-        self.snapshot_index = req.last_included.index;
+        self.snapshot_last_included = req.last_included;
         Ok(())
     }
 }
