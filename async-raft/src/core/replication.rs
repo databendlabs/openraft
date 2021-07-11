@@ -355,13 +355,9 @@ fn calculate_new_commit_index(mut log_ids: Vec<LogId>, current_commit: u64, lead
 /// Check if the given snapshot data is within half of the configured threshold.
 fn snapshot_is_within_half_of_threshold(snapshot_last_index: &u64, last_log_index: &u64, threshold: &u64) -> bool {
     // Calculate distance from actor's last log index.
-    let distance_from_line = if snapshot_last_index > last_log_index {
-        0u64
-    } else {
-        last_log_index - snapshot_last_index
-    }; // Guard against underflow.
-    let half_of_threshold = threshold / 2;
-    distance_from_line <= half_of_threshold
+    let distance_from_line = last_log_index.saturating_sub(*snapshot_last_index);
+
+    distance_from_line <= threshold / 2
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
