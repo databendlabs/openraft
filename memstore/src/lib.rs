@@ -380,7 +380,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         {
             let t = snapshot.get_ref().as_slice();
             let y = std::str::from_utf8(t).unwrap();
-            tracing::debug!("JSON SNAP:\n{}", y);
+            tracing::debug!("JSON SNAP:{}", y);
         }
 
         let new_snapshot: MemStoreSnapshot = serde_json::from_slice(snapshot.get_ref().as_slice())?;
@@ -388,7 +388,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         {
             let t = &new_snapshot.data;
             let y = std::str::from_utf8(t).unwrap();
-            tracing::debug!("JSON SNAP DATA:\n{}", y);
+            tracing::debug!("JSON SNAP DATA:{}", y);
         }
 
         // Update log.

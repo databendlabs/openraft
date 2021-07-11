@@ -119,7 +119,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         })
     }
 
-    #[tracing::instrument(level = "trace", skip(self, req, offset, snapshot))]
+    #[tracing::instrument(level = "trace", skip(self, req, snapshot))]
     async fn continue_installing_snapshot(
         &mut self,
         req: InstallSnapshotRequest,
