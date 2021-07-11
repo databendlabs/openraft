@@ -73,6 +73,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
         // Else, if this is a non-voter, then update as needed.
         if let Some(state) = self.non_voters.get_mut(&target) {
+            // TODO(xp): use Vec<_> to replace the two membership configs.
             state.is_ready_to_join = is_line_rate;
             // Issue a response on the non-voters response channel if needed.
             if state.is_ready_to_join {
@@ -163,9 +164,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Determine if we have a new commit index, accounting for joint consensus.
         // If a new commit index has been established, then update a few needed elements.
 
-        let has_new_commit_index = commit_index > self.core.commit_index;
-
-        if has_new_commit_index {
+        if commit_index > self.core.commit_index {
             self.core.commit_index = commit_index;
 
             // Update all replication streams based on new commit index.
@@ -223,39 +222,39 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     fn calc_members_commit_index(&self, mem: &HashSet<NodeId>, msg: &str) -> u64 {
-        let indices = self.get_match_indexes(mem);
-        tracing::debug!("{} indices: {:?}", msg, indices);
+        let log_ids = self.get_match_log_ids(mem);
+        tracing::debug!("{} matched log_ids: {:?}", msg, log_ids);
 
-        let commit_index = calculate_new_commit_index(indices, self.core.commit_index, self.core.current_term);
+        let commit_index = calculate_new_commit_index(log_ids, self.core.commit_index, self.core.current_term);
         tracing::debug!("{} commit_index: {}", msg, commit_index);
 
         commit_index
     }
 
     /// Extract the matching index/term of the replication state of specified nodes.
-    fn get_match_indexes(&self, node_ids: &HashSet<NodeId>) -> Vec<(u64, u64)> {
-        tracing::debug!("to get match indexes of nodes: {:?}", node_ids);
+    fn get_match_log_ids(&self, node_ids: &HashSet<NodeId>) -> Vec<LogId> {
+        tracing::debug!("to get match log ids of nodes: {:?}", node_ids);
 
         let mut rst = Vec::with_capacity(node_ids.len());
         for id in node_ids.iter() {
             // this node is me, the leader
             if *id == self.core.id {
                 // TODO: can it be sure that self.core.last_log_term is the term of this leader?
-                rst.push((self.core.last_log.index, self.core.last_log.term));
+                rst.push(self.core.last_log);
                 continue;
             }
 
             // this node is a follower
             let repl_state = self.nodes.get(id);
             if let Some(x) = repl_state {
-                rst.push((x.matched.index, x.matched.term));
+                rst.push(x.matched);
                 continue;
             }
 
             // this node is a non-voter
             let repl_state = self.non_voters.get(id);
             if let Some(x) = repl_state {
-                rst.push((x.state.matched.index, x.state.matched.term));
+                rst.push(x.state.matched);
                 continue;
             }
             panic!("node {} not found in nodes or non-voters", id);
@@ -322,9 +321,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 }
 
-/// Determine the value for `current_commit` based on all known indicies of the cluster members.
+/// Determine the value for `current_commit` based on all known indices of the cluster members.
 ///
-/// - `entries`: is a vector of all of the highest known indices and terms to be replicated on a target node,
+/// - `log_ids`: is a vector of all of the highest known log ids to be replicated on a target node,
 /// one per node of the cluster, including the leader as long as the leader is not stepping down.
 /// - `current_commit`: is the Raft node's `current_commit` value before invoking this function.
 /// The output of this function will never be less than this value.
@@ -333,21 +332,21 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 ///
 /// NOTE: there are a few edge cases accounted for in this routine which will never practically
 /// be hit, but they are accounted for in the name of good measure.
-fn calculate_new_commit_index(mut entries: Vec<(u64, u64)>, current_commit: u64, leader_term: u64) -> u64 {
+fn calculate_new_commit_index(mut log_ids: Vec<LogId>, current_commit: u64, leader_term: u64) -> u64 {
     // TODO(xp): this should never happen
-    if entries.is_empty() {
+    if log_ids.is_empty() {
         return current_commit;
     }
 
-    entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+    log_ids.sort_unstable_by(|a, b| a.index.cmp(&b.index));
 
-    let majority = quorum::majority_of(entries.len());
-    let offset = entries.len() - majority;
+    let majority = quorum::majority_of(log_ids.len());
+    let offset = log_ids.len() - majority;
 
-    let new_val = entries[offset];
+    let new_val = log_ids[offset];
 
-    if new_val.0 > current_commit && new_val.1 == leader_term {
-        new_val.0
+    if new_val.index > current_commit && new_val.term == leader_term {
+        new_val.index
     } else {
         current_commit
     }
@@ -415,51 +414,58 @@ mod tests {
                 fn $name() {
                     let mut entries = $entries;
                     let output = calculate_new_commit_index(entries.clone(), $current, $leader_term);
-                    entries.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+                    entries.sort_unstable_by(|a, b| a.index.cmp(&b.index));
                     assert_eq!(output, $expected, "Sorted values: {:?}", entries);
                 }
             };
         }
 
-        test_calculate_new_commit_index!(basic_values, 10, 5, 3, vec![(20, 3), (5, 2), (0, 2), (15, 3), (10, 3)]);
+        test_calculate_new_commit_index!(basic_values, 10, 5, 3, vec![
+            (3, 20,).into(),
+            (2, 5,).into(),
+            (2, 0,).into(),
+            (3, 15,).into(),
+            (3, 10,).into()
+        ]);
 
         test_calculate_new_commit_index!(len_zero_should_return_current_commit, 20, 20, 10, vec![]);
 
-        test_calculate_new_commit_index!(len_one_where_greater_than_current, 100, 0, 3, vec![(100, 3)]);
+        test_calculate_new_commit_index!(len_one_where_greater_than_current, 100, 0, 3, vec![(3, 100).into()]);
 
         test_calculate_new_commit_index!(len_one_where_greater_than_current_but_smaller_term, 0, 0, 3, vec![(
-            100, 2
-        )]);
+            2, 100
+        )
+            .into()]);
 
-        test_calculate_new_commit_index!(len_one_where_less_than_current, 100, 100, 3, vec![(50, 3)]);
+        test_calculate_new_commit_index!(len_one_where_less_than_current, 100, 100, 3, vec![(3, 50).into()]);
 
         test_calculate_new_commit_index!(even_number_of_nodes, 0, 0, 3, vec![
-            (0, 3),
-            (100, 3),
-            (0, 3),
-            (100, 3),
-            (0, 3),
-            (100, 3)
+            (3, 0,).into(),
+            (3, 100,).into(),
+            (3, 0,).into(),
+            (3, 100,).into(),
+            (3, 0,).into(),
+            (3, 100,).into()
         ]);
 
         test_calculate_new_commit_index!(majority_wins, 100, 0, 3, vec![
-            (0, 3),
-            (100, 3),
-            (0, 3),
-            (100, 3),
-            (0, 3),
-            (100, 3),
-            (100, 3)
+            (3, 0,).into(),
+            (3, 100,).into(),
+            (3, 0,).into(),
+            (3, 100,).into(),
+            (3, 0,).into(),
+            (3, 100,).into(),
+            (3, 100,).into()
         ]);
 
         test_calculate_new_commit_index!(majority_entries_wins_but_not_current_term, 0, 0, 3, vec![
-            (0, 2),
-            (100, 2),
-            (0, 2),
-            (101, 3),
-            (0, 2),
-            (101, 3),
-            (101, 3)
+            (2, 0,).into(),
+            (2, 100,).into(),
+            (2, 0,).into(),
+            (3, 101,).into(),
+            (2, 0,).into(),
+            (3, 101,).into(),
+            (3, 101,).into()
         ]);
     }
 }
