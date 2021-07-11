@@ -25,6 +25,7 @@ use crate::raft::EntryPayload;
 use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::LogId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 
@@ -252,8 +253,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self, payload))]
     pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> RaftResult<Entry<D>> {
         let entry = Entry {
-            index: self.core.last_log.index + 1,
-            term: self.core.current_term,
+            log_id: LogId {
+                index: self.core.last_log.index + 1,
+                term: self.core.current_term,
+            },
             payload,
         };
         self.core
@@ -261,7 +264,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .append_entry_to_log(&entry)
             .await
             .map_err(|err| self.core.map_fatal_storage_error(err))?;
-        self.core.last_log.index = entry.index;
+        self.core.last_log.index = entry.log_id.index;
         Ok(entry)
     }
 
@@ -285,7 +288,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         } else {
             // Else, there are no voting nodes for replication, so the payload is now committed.
-            self.core.commit_index = entry_arc.index;
+            self.core.commit_index = entry_arc.log_id.index;
             self.leader_report_metrics();
             self.client_request_post_commit(req).await;
         }
@@ -308,10 +311,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             ClientOrInternalResponseTx::Client(tx) => {
                 match &req.entry.payload {
                     EntryPayload::Normal(inner) => {
-                        match self.apply_entry_to_state_machine(&req.entry.index, &inner.data).await {
+                        match self.apply_entry_to_state_machine(&req.entry.log_id.index, &inner.data).await {
                             Ok(data) => {
                                 let _ = tx.send(Ok(ClientWriteResponse {
-                                    index: req.entry.index,
+                                    index: req.entry.log_id.index,
                                     data,
                                 }));
                             }
@@ -331,9 +334,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 }
             }
             ClientOrInternalResponseTx::Internal(tx) => {
-                self.core.last_applied = req.entry.index;
+                self.core.last_applied = req.entry.log_id.index;
                 self.leader_report_metrics();
-                let _ = tx.send(Ok(req.entry.index));
+                let _ = tx.send(Ok(req.entry.log_id.index));
             }
         }
 
@@ -358,12 +361,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .await
                 .map_err(|err| self.core.map_fatal_storage_error(err))?;
             if let Some(entry) = entries.last() {
-                self.core.last_applied = entry.index;
+                self.core.last_applied = entry.log_id.index;
             }
             let data_entries: Vec<_> = entries
                 .iter()
                 .filter_map(|entry| match &entry.payload {
-                    EntryPayload::Normal(inner) => Some((&entry.index, &inner.data)),
+                    EntryPayload::Normal(inner) => Some((&entry.log_id.index, &inner.data)),
                     _ => None,
                 })
                 .collect();

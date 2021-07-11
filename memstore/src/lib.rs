@@ -19,7 +19,6 @@ use async_raft::storage::HardState;
 use async_raft::storage::InitialState;
 use async_raft::AppData;
 use async_raft::AppDataResponse;
-use async_raft::LogId;
 use async_raft::NodeId;
 use async_raft::RaftStorage;
 use async_raft::SnapshotId;
@@ -188,16 +187,13 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         let sm = self.sm.read().await;
         match &mut *hs {
             Some(inner) => {
-                let (last_log_index, last_log_term) = match log.values().rev().next() {
-                    Some(log) => (log.index, log.term),
-                    None => (0, 0),
+                let last_log_id = match log.values().rev().next() {
+                    Some(log) => log.log_id,
+                    None => (0, 0).into(),
                 };
                 let last_applied_log = sm.last_applied_log;
                 Ok(InitialState {
-                    last_log: LogId {
-                        term: last_log_term,
-                        index: last_log_index,
-                    },
+                    last_log: last_log_id,
                     last_applied_log,
                     hard_state: inner.clone(),
                     membership,
@@ -251,7 +247,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     #[tracing::instrument(level = "trace", skip(self, entry))]
     async fn append_entry_to_log(&self, entry: &Entry<ClientRequest>) -> Result<()> {
         let mut log = self.log.write().await;
-        log.insert(entry.index, entry.clone());
+        log.insert(entry.log_id.index, entry.clone());
         Ok(())
     }
 
@@ -259,7 +255,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     async fn replicate_to_log(&self, entries: &[Entry<ClientRequest>]) -> Result<()> {
         let mut log = self.log.write().await;
         for entry in entries {
-            log.insert(entry.index, entry.clone());
+            log.insert(entry.log_id.index, entry.clone());
         }
         Ok(())
     }
@@ -311,7 +307,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             membership_config = log
                 .values()
                 .rev()
-                .skip_while(|entry| entry.index > last_applied_log)
+                .skip_while(|entry| entry.log_id.index > last_applied_log)
                 .find_map(|entry| match &entry.payload {
                     EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
                     _ => None,
@@ -333,7 +329,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             let mut current_snapshot = self.current_snapshot.write().await;
             term = log
                 .get(&last_applied_log)
-                .map(|entry| entry.term)
+                .map(|entry| entry.log_id.term)
                 .ok_or_else(|| anyhow::anyhow!(ERR_INCONSISTENT_LOG))?;
             *log = log.split_off(&last_applied_log);
             log.insert(
@@ -402,7 +398,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             let membership_config = log
                 .values()
                 .rev()
-                .skip_while(|entry| entry.index > index)
+                .skip_while(|entry| entry.log_id.index > index)
                 .find_map(|entry| match &entry.payload {
                     EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
                     _ => None,

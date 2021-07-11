@@ -405,10 +405,8 @@ pub struct ConflictOpt {
 /// A Raft log entry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Entry<D: AppData> {
-    /// This entry's term.
-    pub term: u64,
-    /// This entry's index.
-    pub index: u64,
+    pub log_id: LogId,
+
     /// This entry's payload.
     #[serde(bound = "D: AppData")]
     pub payload: EntryPayload<D>,
@@ -428,8 +426,7 @@ impl<D: AppData> Entry<D> {
     /// latest membership covered by the snapshot.
     pub fn new_snapshot_pointer(index: u64, term: u64, id: String, membership: MembershipConfig) -> Self {
         Entry {
-            term,
-            index,
+            log_id: LogId { term, index },
             payload: EntryPayload::SnapshotPointer(EntrySnapshotPointer { id, membership }),
         }
     }

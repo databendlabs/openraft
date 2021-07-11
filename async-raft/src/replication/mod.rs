@@ -264,24 +264,24 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 return;
             }
         };
-        let last_index_and_term = self.outbound_buffer.last().map(|last| (last.as_ref().index, last.as_ref().term));
+        let last_log_id = self.outbound_buffer.last().map(|last| last.as_ref().log_id);
 
         // Once we've successfully sent a payload of entries, don't send them again.
         self.outbound_buffer.clear();
 
-        tracing::debug!("append_entries last: {:?}", last_index_and_term);
+        tracing::debug!("append_entries last: {:?}", last_log_id);
 
         // Handle success conditions.
         if res.success {
-            tracing::debug!("append entries succeeded to {:?}", last_index_and_term);
+            tracing::debug!("append entries succeeded to {:?}", last_log_id);
 
             // If this was a proper replication event (last index & term were provided), then update state.
-            if let Some((index, term)) = last_index_and_term {
-                self.next_index = index + 1; // This should always be the next expected index.
-                self.matched = (term, index).into();
+            if let Some(log_id) = last_log_id {
+                self.next_index = log_id.index + 1; // This should always be the next expected index.
+                self.matched = log_id;
                 let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
                     target: self.target,
-                    matched: (term, index).into(),
+                    matched: log_id,
                 });
 
                 // If running at line rate, and our buffered outbound requests have accumulated too
@@ -338,7 +338,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 .storage
                 .get_log_entries(conflict.log_id.index, conflict.log_id.index + 1)
                 .await
-                .map(|entries| entries.get(0).map(|entry| entry.term))
+                .map(|entries| entries.get(0).map(|entry| entry.log_id.term))
             {
                 Ok(Some(term)) => {
                     self.matched.term = term; // If we have the specified log, ensure we use its term.
@@ -425,7 +425,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
                 RaftEvent::Replicate { entry, commit_index } => {
                     self.commit_index = commit_index;
-                    self.last_log_index = entry.index;
+                    self.last_log_index = entry.log_id.index;
                     if self.target_state == TargetReplState::LineRate {
                         self.replication_buffer.push(entry);
                     }
@@ -568,8 +568,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .core
                 .outbound_buffer
                 .first()
-                .map(|entry| entry.as_ref().index)
-                .or_else(|| self.core.replication_buffer.first().map(|entry| entry.index));
+                .map(|entry| entry.as_ref().log_id.index)
+                .or_else(|| self.core.replication_buffer.first().map(|entry| entry.log_id.index));
 
             // When converting to `LaggingState`, `outbound_buffer` and `replication_buffer` is cleared,
             // in which there may be uncommitted logs.

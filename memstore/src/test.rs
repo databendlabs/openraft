@@ -28,8 +28,7 @@ async fn test_get_membership_config_with_previous_state() -> Result<()> {
     members.insert(2);
     members.insert(3);
     log.insert(1, Entry {
-        term: 1,
-        index: 1,
+        log_id: (1, 1).into(),
         payload: EntryPayload::ConfigChange(EntryConfigChange {
             membership: MembershipConfig {
                 members: members.clone(),
@@ -85,8 +84,7 @@ async fn test_get_initial_state_default() -> Result<()> {
 async fn test_get_initial_state_with_previous_state() -> Result<()> {
     let mut log = BTreeMap::new();
     log.insert(1, Entry {
-        term: 1,
-        index: 1,
+        log_id: (1, 1).into(),
         payload: EntryPayload::Blank,
     });
     let sm = MemStoreStateMachine {
@@ -148,10 +146,8 @@ async fn test_get_log_entries_returns_expected_entries() -> Result<()> {
     let logs = store.get_log_entries(5, 7).await?;
 
     assert_eq!(logs.len(), 2, "expected two logs to be returned");
-    assert_eq!(logs[0].index, 5, "unexpected value for log index");
-    assert_eq!(logs[0].term, 1, "unexpected value for log term");
-    assert_eq!(logs[1].index, 6, "unexpected value for log index");
-    assert_eq!(logs[1].term, 1, "unexpected value for log term");
+    assert_eq!(logs[0].log_id, (1, 5).into(), "unexpected value for log id");
+    assert_eq!(logs[1].log_id, (1, 6).into(), "unexpected value for log id");
     Ok(())
 }
 
@@ -198,7 +194,7 @@ async fn test_delete_logs_from_deletes_only_target_logs() -> Result<()> {
     let logs = store.get_log_entries(0, 100).await?;
 
     assert_eq!(logs.len(), 1, "expected one log to be preserved");
-    assert_eq!(logs[0].index, 10, "unexpected log index");
+    assert_eq!(logs[0].log_id.index, 10, "unexpected log index");
     Ok(())
 }
 
@@ -210,16 +206,14 @@ async fn test_append_entry_to_log() -> Result<()> {
 
     store
         .append_entry_to_log(&Entry {
-            term: 2,
-            index: 10,
+            log_id: (2, 10).into(),
             payload: EntryPayload::Blank,
         })
         .await?;
     let log = store.get_log().await;
 
     assert_eq!(log.len(), 10, "expected 10 entries to exist in the log");
-    assert_eq!(log[&10].index, 10, "unexpected log index");
-    assert_eq!(log[&10].term, 2, "unexpected log term");
+    assert_eq!(log[&10].log_id, (2, 10).into(), "unexpected log id");
     Ok(())
 }
 
@@ -231,16 +225,14 @@ async fn test_replicate_to_log() -> Result<()> {
 
     store
         .replicate_to_log(&[Entry {
-            term: 1,
-            index: 11,
+            log_id: (1, 11).into(),
             payload: EntryPayload::Blank,
         }])
         .await?;
     let log = store.get_log().await;
 
     assert_eq!(log.len(), 11, "expected 11 entries to exist in the log");
-    assert_eq!(log[&11].index, 11, "unexpected log index");
-    assert_eq!(log[&11].term, 1, "unexpected log term");
+    assert_eq!(log[&11].log_id, (1, 11).into(), "unexpected log id");
     Ok(())
 }
 
@@ -343,53 +335,43 @@ async fn test_replicate_to_state_machine() -> Result<()> {
 fn default_store_with_logs() -> MemStore {
     let mut log = BTreeMap::new();
     log.insert(1, Entry {
-        term: 1,
-        index: 1,
+        log_id: (1, 1).into(),
         payload: EntryPayload::Blank,
     });
     log.insert(2, Entry {
-        term: 1,
-        index: 2,
+        log_id: (1, 2).into(),
         payload: EntryPayload::Blank,
     });
     log.insert(3, Entry {
-        term: 1,
-        index: 3,
+        log_id: (1, 3).into(),
         payload: EntryPayload::Blank,
     });
     log.insert(4, Entry {
-        term: 1,
-        index: 4,
+        log_id: (1, 4).into(),
         payload: EntryPayload::Blank,
     });
     log.insert(5, Entry {
-        term: 1,
-        index: 5,
+        log_id: (1, 5).into(),
         payload: EntryPayload::Blank,
     });
     log.insert(6, Entry {
-        term: 1,
-        index: 6,
+        log_id: (1, 6).into(),
         payload: EntryPayload::Blank,
     });
     log.insert(7, Entry {
-        term: 1,
-        index: 7,
+        log_id: (1, 7).into(),
         payload: EntryPayload::Blank,
     });
     log.insert(8, Entry {
-        term: 1,
-        index: 8,
+        log_id: (1, 8).into(),
         payload: EntryPayload::Blank,
     });
     log.insert(9, Entry {
-        term: 1,
-        index: 9,
+        log_id: (1, 9).into(),
         payload: EntryPayload::Blank,
     });
     log.insert(10, Entry {
-        term: 1,
-        index: 10,
+        log_id: (1, 10).into(),
         payload: EntryPayload::Blank,
     });
     let sm = MemStoreStateMachine::default();

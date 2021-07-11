@@ -9,7 +9,6 @@ use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::AppData;
 use crate::AppDataResponse;
-use crate::LogId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::Update;
@@ -105,12 +104,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         };
 
         // The target entry was found. Compare its term with target term to ensure everything is consistent.
-        if target_entry.term == msg.prev_log.term {
+        if target_entry.log_id.term == msg.prev_log.term {
             // We've found a point of agreement with the leader. If we have any logs present
             // with an index greater than this, then we must delete them per §5.3.
-            if self.last_log.index > target_entry.index {
+            if self.last_log.index > target_entry.log_id.index {
                 self.storage
-                    .delete_logs_from(target_entry.index + 1, None)
+                    .delete_logs_from(target_entry.log_id.index + 1, None)
                     .await
                     .map_err(|err| self.map_fatal_storage_error(err))?;
                 let membership =
@@ -131,13 +130,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 .get_log_entries(start, msg.prev_log.index)
                 .await
                 .map_err(|err| self.map_fatal_storage_error(err))?;
-            let opt = match old_entries.iter().find(|entry| entry.term == msg.prev_log.term) {
-                Some(entry) => Some(ConflictOpt {
-                    log_id: LogId {
-                        term: entry.term,
-                        index: entry.index,
-                    },
-                }),
+            let opt = match old_entries.iter().find(|entry| entry.log_id.term == msg.prev_log.term) {
+                Some(entry) => Some(ConflictOpt { log_id: entry.log_id }),
                 None => Some(ConflictOpt { log_id: self.last_log }),
             };
             if report_metrics {
@@ -188,10 +182,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Replicate entries to log (same as append, but in follower mode).
         self.storage.replicate_to_log(entries).await.map_err(|err| self.map_fatal_storage_error(err))?;
         if let Some(entry) = entries.last() {
-            self.last_log = LogId {
-                term: entry.term,
-                index: entry.index,
-            };
+            self.last_log = entry.log_id;
         }
         Ok(())
     }
@@ -204,7 +195,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn replicate_to_state_machine_if_needed(&mut self, entries: Vec<Entry<D>>) {
         // Update cache. Always.
         for entry in entries {
-            self.entries_cache.insert(entry.index, entry);
+            self.entries_cache.insert(entry.log_id.index, entry);
         }
         // Perform initial replication to state machine if needed.
         if !self.has_completed_initial_replication_to_sm {
@@ -222,7 +213,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
         // If we have no cached entries, then do nothing.
         let first_idx = match self.entries_cache.iter().next() {
-            Some((_, entry)) => entry.index,
+            Some((_, entry)) => entry.log_id.index,
             None => return,
         };
 
@@ -231,9 +222,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let entries: Vec<_> = (first_idx..=self.commit_index)
             .filter_map(|idx| {
                 if let Some(entry) = self.entries_cache.remove(&idx) {
-                    last_entry_seen = Some(entry.index);
+                    last_entry_seen = Some(entry.log_id.index);
                     match entry.payload {
-                        EntryPayload::Normal(inner) => Some((entry.index, inner.data)),
+                        EntryPayload::Normal(inner) => Some((entry.log_id.index, inner.data)),
                         _ => None,
                     }
                 } else {
@@ -285,12 +276,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             let mut new_last_applied: Option<u64> = None;
             let entries = storage.get_log_entries(start, stop).await?;
             if let Some(entry) = entries.last() {
-                new_last_applied = Some(entry.index);
+                new_last_applied = Some(entry.log_id.index);
             }
             let data_entries: Vec<_> = entries
                 .iter()
                 .filter_map(|entry| match &entry.payload {
-                    EntryPayload::Normal(inner) => Some((&entry.index, &inner.data)),
+                    EntryPayload::Normal(inner) => Some((&entry.log_id.index, &inner.data)),
                     _ => None,
                 })
                 .collect();

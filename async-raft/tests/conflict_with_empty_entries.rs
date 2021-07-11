@@ -74,13 +74,11 @@ async fn conflict_with_empty_entries() -> Result<()> {
         prev_log: LogId { term: 1, index: 0 },
         entries: vec![
             Entry {
-                term: 1,
-                index: 1,
+                log_id: (1, 1).into(),
                 payload: EntryPayload::Blank,
             },
             Entry {
-                term: 1,
-                index: 2,
+                log_id: (1, 2).into(),
                 payload: EntryPayload::Normal(EntryNormal {
                     data: ClientRequest {
                         client: "foo".to_string(),

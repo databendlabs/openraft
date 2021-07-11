@@ -185,7 +185,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .awaiting_committed
                 .iter()
                 .enumerate()
-                .take_while(|(_idx, elem)| elem.entry.index <= self.core.commit_index)
+                .take_while(|(_idx, elem)| elem.entry.log_id.index <= self.core.commit_index)
                 .last()
                 .map(|(idx, _)| idx);
 
