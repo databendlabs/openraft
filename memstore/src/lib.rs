@@ -70,7 +70,7 @@ pub struct MemStoreSnapshot {
     /// The last log covered by this snapshot.
     pub last_log_id: LogId,
 
-    /// The last memberhsip config included in this snapshot.
+    /// The last membership config included in this snapshot.
     pub membership: MembershipConfig,
 
     pub snapshot_id: SnapshotId,
