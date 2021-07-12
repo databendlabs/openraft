@@ -31,8 +31,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         mut members: HashSet<NodeId>,
     ) -> Result<(), InitializeError> {
-        if self.core.last_log.index != 0 || self.core.current_term != 0 {
-            tracing::error!({self.core.last_log.index, self.core.current_term}, "rejecting init_with_config request as last_log_index or current_term is 0");
+        if self.core.last_log_id.index != 0 || self.core.current_term != 0 {
+            tracing::error!({self.core.last_log_id.index, self.core.current_term}, "rejecting init_with_config request as last_log_index or current_term is 0");
             return Err(InitializeError::NotAllowed);
         }
 

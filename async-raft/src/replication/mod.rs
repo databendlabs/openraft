@@ -239,7 +239,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         let payload = AppendEntriesRequest {
             term: self.term,
             leader_id: self.id,
-            prev_log: self.matched,
+            prev_log_id: self.matched,
             leader_commit: self.commit_index,
             entries: self.outbound_buffer.iter().map(|entry| entry.as_ref().clone()).collect(),
         };
@@ -831,8 +831,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::Snapshot>) -> RaftResult<()> {
         let snapshot_id = snapshot.snapshot_id.clone();
         let mut offset = 0;
-        self.core.next_index = snapshot.included.index + 1;
-        self.core.matched = snapshot.included;
+        self.core.next_index = snapshot.last_log_id.index + 1;
+        self.core.matched = snapshot.last_log_id;
         let mut buf = Vec::with_capacity(self.core.config.snapshot_max_chunk_size as usize);
         loop {
             // Build the RPC.
@@ -843,7 +843,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 term: self.core.term,
                 leader_id: self.core.id,
                 snapshot_id: snapshot_id.clone(),
-                last_included: snapshot.included,
+                last_log_id: snapshot.last_log_id,
                 offset,
                 data: Vec::from(&buf[..nread]),
                 done,

@@ -23,7 +23,7 @@ pub struct CurrentSnapshotData<S>
 where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
     // Log entries upto which this snapshot includes, inclusive.
-    pub included: LogId,
+    pub last_log_id: LogId,
 
     /// The latest membership configuration covered by the snapshot.
     pub membership: MembershipConfig,
@@ -50,7 +50,7 @@ pub struct HardState {
 #[derive(Clone, Debug)]
 pub struct InitialState {
     /// The last entry.
-    pub last_log: LogId,
+    pub last_log_id: LogId,
 
     /// The index of the last log applied to the state machine.
     pub last_applied_log: u64,
@@ -68,7 +68,7 @@ impl InitialState {
     /// The ID of the Raft node.
     pub fn new_initial(id: NodeId) -> Self {
         Self {
-            last_log: LogId { term: 0, index: 0 },
+            last_log_id: LogId { term: 0, index: 0 },
             last_applied_log: 0,
             hard_state: HardState {
                 current_term: 0,

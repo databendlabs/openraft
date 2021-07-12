@@ -17,10 +17,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
     ///
     /// See `receiver implementation: AppendEntries RPC` in raft-essentials.md in this repo.
-    #[tracing::instrument(
-        level="trace", skip(self, msg),
-        fields(term=msg.term, leader_id=msg.leader_id, prev_log_index=msg.prev_log.index, prev_log_term=msg.prev_log.term, leader_commit=msg.leader_commit),
-    )]
+    #[tracing::instrument(level="trace", skip(self, msg), fields(msg=msg.summary().as_str()))]
     pub(super) async fn handle_append_entries_request(
         &mut self,
         msg: AppendEntriesRequest<D>,
@@ -60,9 +57,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // If RPC's `prev_log_index` is 0, or the RPC's previous log info matches the local
         // log info, then replication is g2g.
-        let msg_prev_index_is_min = msg.prev_log.index == u64::min_value();
+        let msg_prev_index_is_min = msg.prev_log_id.index == u64::min_value();
         let msg_index_and_term_match =
-            (msg.prev_log.index == self.last_log.index) && (msg.prev_log.term == self.last_log.term);
+            (msg.prev_log_id.index == self.last_log_id.index) && (msg.prev_log_id.term == self.last_log_id.term);
         if msg_prev_index_is_min || msg_index_and_term_match {
             self.append_log_entries(&msg.entries).await?;
             self.replicate_to_state_machine_if_needed(msg.entries).await;
@@ -84,7 +81,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // result.
         let entries = self
             .storage
-            .get_log_entries(msg.prev_log.index, msg.prev_log.index + 1)
+            .get_log_entries(msg.prev_log_id.index, msg.prev_log_id.index + 1)
             .await
             .map_err(|err| self.map_fatal_storage_error(err))?;
         let target_entry = match entries.first() {
@@ -98,16 +95,18 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 return Ok(AppendEntriesResponse {
                     term: self.current_term,
                     success: false,
-                    conflict_opt: Some(ConflictOpt { log_id: self.last_log }),
+                    conflict_opt: Some(ConflictOpt {
+                        log_id: self.last_log_id,
+                    }),
                 });
             }
         };
 
         // The target entry was found. Compare its term with target term to ensure everything is consistent.
-        if target_entry.log_id.term == msg.prev_log.term {
+        if target_entry.log_id.term == msg.prev_log_id.term {
             // We've found a point of agreement with the leader. If we have any logs present
             // with an index greater than this, then we must delete them per §5.3.
-            if self.last_log.index > target_entry.log_id.index {
+            if self.last_log_id.index > target_entry.log_id.index {
                 self.storage
                     .delete_logs_from(target_entry.log_id.index + 1, None)
                     .await
@@ -120,19 +119,21 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // The target entry does not have the same term. Fetch the last 50 logs, and use the last
         // entry of that payload which is still in the target term for conflict optimization.
         else {
-            let start = if msg.prev_log.index >= 50 {
-                msg.prev_log.index - 50
+            let start = if msg.prev_log_id.index >= 50 {
+                msg.prev_log_id.index - 50
             } else {
                 0
             };
             let old_entries = self
                 .storage
-                .get_log_entries(start, msg.prev_log.index)
+                .get_log_entries(start, msg.prev_log_id.index)
                 .await
                 .map_err(|err| self.map_fatal_storage_error(err))?;
-            let opt = match old_entries.iter().find(|entry| entry.log_id.term == msg.prev_log.term) {
+            let opt = match old_entries.iter().find(|entry| entry.log_id.term == msg.prev_log_id.term) {
                 Some(entry) => Some(ConflictOpt { log_id: entry.log_id }),
-                None => Some(ConflictOpt { log_id: self.last_log }),
+                None => Some(ConflictOpt {
+                    log_id: self.last_log_id,
+                }),
             };
             if report_metrics {
                 self.report_metrics(Update::Ignore);
@@ -182,7 +183,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Replicate entries to log (same as append, but in follower mode).
         self.storage.replicate_to_log(entries).await.map_err(|err| self.map_fatal_storage_error(err))?;
         if let Some(entry) = entries.last() {
-            self.last_log = entry.log_id;
+            self.last_log_id = entry.log_id;
         }
         Ok(())
     }
@@ -262,7 +263,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// from the AppendEntries RPC handler.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn initial_replicate_to_state_machine(&mut self) {
-        let stop = std::cmp::min(self.commit_index, self.last_log.index) + 1;
+        let stop = std::cmp::min(self.commit_index, self.last_log_id.index) + 1;
         let start = self.last_applied + 1;
         let storage = self.storage.clone();
 

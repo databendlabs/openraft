@@ -63,7 +63,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn commit_initial_leader_entry(&mut self) -> RaftResult<()> {
         // If the cluster has just formed, and the current index is 0, then commit the current
         // config, else a blank payload.
-        let req: ClientWriteRequest<D> = if self.core.last_log.index == 0 {
+        let req: ClientWriteRequest<D> = if self.core.last_log_id.index == 0 {
             ClientWriteRequest::new_config(self.core.membership.clone())
         } else {
             ClientWriteRequest::new_blank_payload()
@@ -72,8 +72,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Check to see if we have any config change logs newer than our commit index. If so, then
         // we need to drive the commitment of the config change to the cluster.
         let mut pending_config = None; // The inner bool represents `is_in_joint_consensus`.
-        if self.core.last_log.index > self.core.commit_index {
-            let (stale_logs_start, stale_logs_stop) = (self.core.commit_index + 1, self.core.last_log.index + 1);
+        if self.core.last_log_id.index > self.core.commit_index {
+            let (stale_logs_start, stale_logs_stop) = (self.core.commit_index + 1, self.core.last_log_id.index + 1);
             pending_config = self
                 .core
                 .storage
@@ -94,7 +94,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Commit the initial payload to the cluster.
         let (tx_payload_committed, rx_payload_committed) = oneshot::channel();
         let entry = self.append_payload_to_log(req.entry).await?;
-        self.core.last_log.term = self.core.current_term; // This only ever needs to be updated once per term.
+        self.core.last_log_id.term = self.core.current_term; // This only ever needs to be updated once per term.
         let cr_entry = ClientRequestEntry::from_entry(entry, tx_payload_committed);
         self.replicate_client_request(cr_entry).await;
         self.leader_report_metrics();
@@ -166,7 +166,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let rpc = AppendEntriesRequest {
                 term: self.core.current_term,
                 leader_id: self.core.id,
-                prev_log: node.matched,
+                prev_log_id: node.matched,
                 entries: vec![],
                 leader_commit: self.core.commit_index,
             };
@@ -254,7 +254,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> RaftResult<Entry<D>> {
         let entry = Entry {
             log_id: LogId {
-                index: self.core.last_log.index + 1,
+                index: self.core.last_log_id.index + 1,
                 term: self.core.current_term,
             },
             payload,
@@ -264,7 +264,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .append_entry_to_log(&entry)
             .await
             .map_err(|err| self.core.map_fatal_storage_error(err))?;
-        self.core.last_log.index = entry.log_id.index;
+        self.core.last_log_id.index = entry.log_id.index;
         Ok(entry)
     }
 

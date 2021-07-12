@@ -32,15 +32,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             target,
             self.core.current_term,
             self.core.config.clone(),
-            self.core.last_log.index,
-            self.core.last_log.term,
+            self.core.last_log_id.index,
+            self.core.last_log_id.term,
             self.core.commit_index,
             self.core.network.clone(),
             self.core.storage.clone(),
             self.replicationtx.clone(),
         );
         ReplicationState {
-            matched: (self.core.current_term, self.core.last_log.index).into(),
+            matched: (self.core.current_term, self.core.last_log_id.index).into(),
             replstream,
             remove_after_commit: None,
         }
@@ -240,7 +240,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // this node is me, the leader
             if *id == self.core.id {
                 // TODO: can it be sure that self.core.last_log_term is the term of this leader?
-                rst.push(self.core.last_log);
+                rst.push(self.core.last_log_id);
                 continue;
             }
 
@@ -287,7 +287,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if let Some(snapshot) = current_snapshot_opt {
             // If snapshot exists, ensure its distance from the leader's last log index is <= half
             // of the configured snapshot threshold, else create a new snapshot.
-            if snapshot_is_within_half_of_threshold(&snapshot.included.index, &self.core.last_log.index, &threshold) {
+            if snapshot_is_within_half_of_threshold(
+                &snapshot.last_log_id.index,
+                &self.core.last_log_id.index,
+                &threshold,
+            ) {
                 let _ = tx.send(snapshot);
                 return Ok(());
             }

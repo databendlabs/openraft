@@ -66,8 +66,11 @@ async fn test_get_initial_state_default() -> Result<()> {
 
     let initial = store.get_initial_state().await?;
 
-    assert_eq!(initial.last_log.index, 0, "unexpected default value for last log index");
-    assert_eq!(initial.last_log.term, 0, "unexpected default value for last log term");
+    assert_eq!(
+        initial.last_log_id,
+        (0, 0).into(),
+        "unexpected default value for last log"
+    );
     assert_eq!(initial.last_applied_log, 0, "unexpected value for last applied log");
     assert_eq!(
         initial.hard_state, expected_hs,
@@ -99,8 +102,11 @@ async fn test_get_initial_state_with_previous_state() -> Result<()> {
 
     let initial = store.get_initial_state().await?;
 
-    assert_eq!(initial.last_log.index, 1, "unexpected default value for last log index");
-    assert_eq!(initial.last_log.term, 1, "unexpected default value for last log term");
+    assert_eq!(
+        initial.last_log_id,
+        (1, 1).into(),
+        "unexpected default value for last log"
+    );
     assert_eq!(initial.last_applied_log, 1, "unexpected value for last applied log");
     assert_eq!(initial.hard_state, hs, "unexpected value for default hard state");
     Ok(())

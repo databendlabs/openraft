@@ -50,7 +50,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log: LogId { term: 1, index: 5 },
+        prev_log_id: LogId { term: 1, index: 5 },
         entries: vec![],
         leader_commit: 5,
     };
@@ -71,7 +71,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log: LogId { term: 1, index: 0 },
+        prev_log_id: LogId { term: 1, index: 0 },
         entries: vec![
             Entry {
                 log_id: (1, 1).into(),
@@ -100,7 +100,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log: LogId { term: 1, index: 3 },
+        prev_log_id: LogId { term: 1, index: 3 },
         entries: vec![],
         leader_commit: 5,
     };

@@ -106,7 +106,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     voted_for: Option<NodeId>,
 
     /// The last entry to be appended to the log.
-    last_log: LogId,
+    last_log_id: LogId,
 
     /// The node's current snapshot state.
     snapshot_state: Option<SnapshotState<S::Snapshot>>,
@@ -114,7 +114,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
     ///
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
-    snapshot_last_included: LogId,
+    snapshot_last_log_id: LogId,
 
     /// A cache of entries which are waiting to be replicated to the state machine.
     ///
@@ -172,9 +172,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             current_term: 0,
             current_leader: None,
             voted_for: None,
-            last_log: LogId { term: 0, index: 0 },
+            last_log_id: LogId { term: 0, index: 0 },
             snapshot_state: None,
-            snapshot_last_included: LogId { term: 0, index: 0 },
+            snapshot_last_log_id: LogId { term: 0, index: 0 },
             entries_cache: Default::default(),
             replicate_to_sm_handle: FuturesOrdered::new(),
             has_completed_initial_replication_to_sm: false,
@@ -194,7 +194,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn main(mut self) -> RaftResult<()> {
         tracing::trace!("raft node is initializing");
         let state = self.storage.get_initial_state().await.map_err(|err| self.map_fatal_storage_error(err))?;
-        self.last_log = state.last_log;
+        self.last_log_id = state.last_log_id;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
         self.membership = state.membership;
@@ -208,11 +208,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if let Some(snapshot) =
             self.storage.get_current_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?
         {
-            self.snapshot_last_included = snapshot.included;
+            self.snapshot_last_log_id = snapshot.last_log_id;
             self.report_metrics(Update::Ignore);
         }
 
-        let has_log = self.last_log.index != u64::min_value();
+        let has_log = self.last_log_id.index != u64::min_value();
         let single = self.membership.members.len() == 1;
         let is_candidate = self.membership.contains(&self.id);
 
@@ -280,11 +280,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             id: self.id,
             state: self.target_state,
             current_term: self.current_term,
-            last_log_index: self.last_log.index,
+            last_log_index: self.last_log_id.index,
             last_applied: self.last_applied,
             current_leader: self.current_leader,
             membership_config: self.membership.clone(),
-            snapshot: self.snapshot_last_included,
+            snapshot: self.snapshot_last_log_id,
             leader_metrics,
         });
 
@@ -407,7 +407,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_snapshot_state(&mut self, update: SnapshotUpdate) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
-            self.snapshot_last_included = log_id;
+            self.snapshot_last_log_id = log_id;
             self.report_metrics(Update::Ignore);
         }
         // If snapshot state is anything other than streaming, then drop it.
@@ -425,13 +425,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
         let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
         // Check to ensure we have actual entries for compaction.
-        if self.last_applied == 0 || self.last_applied < self.snapshot_last_included.index {
+        if self.last_applied == 0 || self.last_applied < self.snapshot_last_log_id.index {
             return;
         }
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
-            if self.last_applied < self.snapshot_last_included.index + *threshold {
+            if self.last_applied < self.snapshot_last_log_id.index + *threshold {
                 return;
             }
         }
@@ -452,8 +452,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 match res {
                     Ok(res) => match res {
                         Ok(snapshot) => {
-                            let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.included));
-                            let _ = chan_tx.send(snapshot.included.index); // This will always succeed.
+                            let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.last_log_id));
+                            let _ = chan_tx.send(snapshot.last_log_id.index); // This will always succeed.
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");

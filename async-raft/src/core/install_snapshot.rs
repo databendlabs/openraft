@@ -165,15 +165,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         mut snapshot: Box<S::Snapshot>,
     ) -> RaftResult<()> {
         snapshot.as_mut().shutdown().await.map_err(|err| self.map_fatal_storage_error(err.into()))?;
-        let delete_through = if self.last_log.index > req.last_included.index {
-            Some(req.last_included.index)
+        let delete_through = if self.last_log_id.index > req.last_log_id.index {
+            Some(req.last_log_id.index)
         } else {
             None
         };
         self.storage
             .finalize_snapshot_installation(
-                req.last_included.index,
-                req.last_included.term,
+                req.last_log_id.index,
+                req.last_log_id.term,
                 delete_through,
                 id,
                 snapshot,
@@ -182,9 +182,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .map_err(|err| self.map_fatal_storage_error(err))?;
         let membership = self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
         self.update_membership(membership)?;
-        self.last_log = req.last_included;
-        self.last_applied = req.last_included.index;
-        self.snapshot_last_included = req.last_included;
+        self.last_log_id = req.last_log_id;
+        self.last_applied = req.last_log_id.index;
+        self.snapshot_last_log_id = req.last_log_id;
         self.report_metrics(Update::Ignore);
         Ok(())
     }

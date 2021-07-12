@@ -363,7 +363,7 @@ pub struct AppendEntriesRequest<D: AppData> {
     pub leader_id: u64,
 
     /// The log entry immediately preceding the new entries.
-    pub prev_log: LogId,
+    pub prev_log_id: LogId,
 
     /// The new log entries to store.
     ///
@@ -373,6 +373,15 @@ pub struct AppendEntriesRequest<D: AppData> {
     pub entries: Vec<Entry<D>>,
     /// The leader's commit index.
     pub leader_commit: u64,
+}
+
+impl<D: AppData> AppendEntriesRequest<D> {
+    pub fn summary(&self) -> String {
+        format!(
+            "term={}, leader_id={}, prev_log_id={}, leader_commit={}",
+            self.term, self.leader_id, self.prev_log_id, self.leader_commit
+        )
+    }
 }
 
 /// The response to an `AppendEntriesRequest`.
@@ -576,7 +585,7 @@ pub struct InstallSnapshotRequest {
     /// Every two snapshots should have different snapshot id.
     pub snapshot_id: SnapshotId,
     /// The snapshot replaces all log entries up through and including this log.
-    pub last_included: LogId,
+    pub last_log_id: LogId,
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,
     /// The raw bytes of the snapshot chunk, starting at `offset`.

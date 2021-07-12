@@ -193,7 +193,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 };
                 let last_applied_log = sm.last_applied_log;
                 Ok(InitialState {
-                    last_log: last_log_id,
+                    last_log_id,
                     last_applied_log,
                     hard_state: inner.clone(),
                     membership,
@@ -351,7 +351,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
         tracing::trace!({ snapshot_size = snapshot_bytes.len() }, "log compaction complete");
         Ok(CurrentSnapshotData {
-            included: (term, last_applied_log).into(),
+            last_log_id: (term, last_applied_log).into(),
             membership: membership_config.clone(),
             snapshot_id,
             snapshot: Box::new(Cursor::new(snapshot_bytes)),
@@ -433,7 +433,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             Some(snapshot) => {
                 let reader = serde_json::to_vec(&snapshot)?;
                 Ok(Some(CurrentSnapshotData {
-                    included: (snapshot.term, snapshot.index).into(),
+                    last_log_id: (snapshot.term, snapshot.index).into(),
                     membership: snapshot.membership.clone(),
                     snapshot_id: snapshot.snapshot_id.clone(),
                     snapshot: Box::new(Cursor::new(reader)),

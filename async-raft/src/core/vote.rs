@@ -59,7 +59,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Check if candidate's log is at least as up-to-date as this node's.
         // If candidate's log is not at least as up-to-date as this node, then reject.
         let client_is_uptodate =
-            (msg.last_log_term >= self.last_log.term) && (msg.last_log_index >= self.last_log.index);
+            (msg.last_log_term >= self.last_log_id.term) && (msg.last_log_index >= self.last_log_id.index);
         if !client_is_uptodate {
             tracing::trace!(
                 { candidate = msg.candidate_id },
@@ -154,8 +154,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let rpc = VoteRequest::new(
                 self.core.current_term,
                 self.core.id,
-                self.core.last_log.index,
-                self.core.last_log.term,
+                self.core.last_log_id.index,
+                self.core.last_log_id.term,
             );
             let (network, tx_inner) = (self.core.network.clone(), tx.clone());
             let _ = tokio::spawn(

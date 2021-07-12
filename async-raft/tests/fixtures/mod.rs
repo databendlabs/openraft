@@ -501,22 +501,22 @@ impl RaftRouter {
                     .unwrap_or_else(|| panic!("no snapshot present for node {}", id));
                 match index_test {
                     ValueTest::Exact(index) => assert_eq!(
-                        &snap.included.index, index,
+                        &snap.last_log_id.index, index,
                         "expected node {} to have snapshot with index {}, got {}",
-                        id, index, snap.included.index
+                        id, index, snap.last_log_id.index
                     ),
                     ValueTest::Range(range) => assert!(
-                        range.contains(&snap.included.index),
+                        range.contains(&snap.last_log_id.index),
                         "expected node {} to have snapshot within range {:?}, got {}",
                         id,
                         range,
-                        snap.included.index
+                        snap.last_log_id.index
                     ),
                 }
                 assert_eq!(
-                    &snap.included.term, term,
+                    &snap.last_log_id.term, term,
                     "expected node {} to have snapshot with term {}, got {}",
-                    id, term, snap.included.term
+                    id, term, snap.last_log_id.term
                 );
                 assert_eq!(
                     &snap.membership, cfg,
