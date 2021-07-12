@@ -19,6 +19,7 @@ use async_raft::storage::HardState;
 use async_raft::storage::InitialState;
 use async_raft::AppData;
 use async_raft::AppDataResponse;
+use async_raft::LogId;
 use async_raft::NodeId;
 use async_raft::RaftStorage;
 use async_raft::SnapshotId;
@@ -66,10 +67,9 @@ pub enum ShutdownError {
 /// The application snapshot type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MemStoreSnapshot {
-    /// The last index covered by this snapshot.
-    pub index: u64,
-    /// The term of the last index covered by this snapshot.
-    pub term: u64,
+    /// The last log covered by this snapshot.
+    pub last_log_id: LogId,
+
     /// The last memberhsip config included in this snapshot.
     pub membership: MembershipConfig,
 
@@ -339,8 +339,10 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
             snapshot_id = format!("{}-{}-{}", term, last_applied_log, snapshot_idx);
             let snapshot = MemStoreSnapshot {
-                index: last_applied_log,
-                term,
+                last_log_id: LogId {
+                    term,
+                    index: last_applied_log,
+                },
                 snapshot_id: snapshot_id.clone(),
                 membership: membership_config.clone(),
                 data,
@@ -433,7 +435,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             Some(snapshot) => {
                 let reader = serde_json::to_vec(&snapshot)?;
                 Ok(Some(CurrentSnapshotData {
-                    last_log_id: (snapshot.term, snapshot.index).into(),
+                    last_log_id: snapshot.last_log_id,
                     membership: snapshot.membership.clone(),
                     snapshot_id: snapshot.snapshot_id.clone(),
                     snapshot: Box::new(Cursor::new(reader)),
