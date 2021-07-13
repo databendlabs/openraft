@@ -501,27 +501,27 @@ impl RaftRouter {
                     .unwrap_or_else(|| panic!("no snapshot present for node {}", id));
                 match index_test {
                     ValueTest::Exact(index) => assert_eq!(
-                        &snap.last_log_id.index, index,
+                        &snap.meta.last_log_id.index, index,
                         "expected node {} to have snapshot with index {}, got {}",
-                        id, index, snap.last_log_id.index
+                        id, index, snap.meta.last_log_id.index
                     ),
                     ValueTest::Range(range) => assert!(
-                        range.contains(&snap.last_log_id.index),
+                        range.contains(&snap.meta.last_log_id.index),
                         "expected node {} to have snapshot within range {:?}, got {}",
                         id,
                         range,
-                        snap.last_log_id.index
+                        snap.meta.last_log_id.index
                     ),
                 }
                 assert_eq!(
-                    &snap.last_log_id.term, term,
+                    &snap.meta.last_log_id.term, term,
                     "expected node {} to have snapshot with term {}, got {}",
-                    id, term, snap.last_log_id.term
+                    id, term, snap.meta.last_log_id.term
                 );
                 assert_eq!(
-                    &snap.membership, cfg,
+                    &snap.meta.membership, cfg,
                     "expected node {} to have membership config {:?}, got {:?}",
-                    id, cfg, snap.membership
+                    id, cfg, snap.meta.membership
                 );
             }
             let sm = storage.get_state_machine().await;

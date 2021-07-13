@@ -829,10 +829,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::Snapshot>) -> RaftResult<()> {
-        let snapshot_id = snapshot.snapshot_id.clone();
+        let snapshot_id = snapshot.meta.snapshot_id.clone();
         let mut offset = 0;
-        self.core.next_index = snapshot.last_log_id.index + 1;
-        self.core.matched = snapshot.last_log_id;
+        self.core.next_index = snapshot.meta.last_log_id.index + 1;
+        self.core.matched = snapshot.meta.last_log_id;
         let mut buf = Vec::with_capacity(self.core.config.snapshot_max_chunk_size as usize);
         loop {
             // Build the RPC.
@@ -843,7 +843,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 term: self.core.term,
                 leader_id: self.core.id,
                 snapshot_id: snapshot_id.clone(),
-                last_log_id: snapshot.last_log_id,
+                last_log_id: snapshot.meta.last_log_id,
                 offset,
                 data: Vec::from(&buf[..nread]),
                 done,

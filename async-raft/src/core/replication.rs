@@ -288,7 +288,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // If snapshot exists, ensure its distance from the leader's last log index is <= half
             // of the configured snapshot threshold, else create a new snapshot.
             if snapshot_is_within_half_of_threshold(
-                &snapshot.last_log_id.index,
+                &snapshot.meta.last_log_id.index,
                 &self.core.last_log_id.index,
                 &threshold,
             ) {

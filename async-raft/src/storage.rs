@@ -18,10 +18,8 @@ use crate::AppDataResponse;
 use crate::LogId;
 use crate::NodeId;
 
-/// The data associated with the current snapshot.
-pub struct CurrentSnapshotData<S>
-where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
-{
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SnapshotMeta {
     // Log entries upto which this snapshot includes, inclusive.
     pub last_log_id: LogId,
 
@@ -29,6 +27,14 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
     pub membership: MembershipConfig,
 
     pub snapshot_id: SnapshotId,
+}
+
+/// The data associated with the current snapshot.
+pub struct CurrentSnapshotData<S>
+where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
+{
+    /// metadata of a snapshot
+    pub meta: SnapshotMeta,
 
     /// A read handle to the associated snapshot.
     pub snapshot: Box<S>,

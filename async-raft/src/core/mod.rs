@@ -208,7 +208,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if let Some(snapshot) =
             self.storage.get_current_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?
         {
-            self.snapshot_last_log_id = snapshot.last_log_id;
+            self.snapshot_last_log_id = snapshot.meta.last_log_id;
             self.report_metrics(Update::Ignore);
         }
 
@@ -452,8 +452,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 match res {
                     Ok(res) => match res {
                         Ok(snapshot) => {
-                            let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.last_log_id));
-                            let _ = chan_tx.send(snapshot.last_log_id.index); // This will always succeed.
+                            let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.meta.last_log_id));
+                            let _ = chan_tx.send(snapshot.meta.last_log_id.index); // This will always succeed.
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");

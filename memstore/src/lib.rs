@@ -22,7 +22,7 @@ use async_raft::AppDataResponse;
 use async_raft::LogId;
 use async_raft::NodeId;
 use async_raft::RaftStorage;
-use async_raft::SnapshotId;
+use async_raft::SnapshotMeta;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -67,13 +67,8 @@ pub enum ShutdownError {
 /// The application snapshot type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MemStoreSnapshot {
-    /// The last log covered by this snapshot.
-    pub last_log_id: LogId,
+    pub meta: SnapshotMeta,
 
-    /// The last membership config included in this snapshot.
-    pub membership: MembershipConfig,
-
-    pub snapshot_id: SnapshotId,
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
 }
@@ -339,12 +334,14 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
             snapshot_id = format!("{}-{}-{}", term, last_applied_log, snapshot_idx);
             let snapshot = MemStoreSnapshot {
-                last_log_id: LogId {
-                    term,
-                    index: last_applied_log,
+                meta: SnapshotMeta {
+                    last_log_id: LogId {
+                        term,
+                        index: last_applied_log,
+                    },
+                    snapshot_id: snapshot_id.clone(),
+                    membership: membership_config.clone(),
                 },
-                snapshot_id: snapshot_id.clone(),
-                membership: membership_config.clone(),
                 data,
             };
             snapshot_bytes = serde_json::to_vec(&snapshot)?;
@@ -353,9 +350,11 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
         tracing::trace!({ snapshot_size = snapshot_bytes.len() }, "log compaction complete");
         Ok(CurrentSnapshotData {
-            last_log_id: (term, last_applied_log).into(),
-            membership: membership_config.clone(),
-            snapshot_id,
+            meta: SnapshotMeta {
+                last_log_id: (term, last_applied_log).into(),
+                membership: membership_config.clone(),
+                snapshot_id,
+            },
             snapshot: Box::new(Cursor::new(snapshot_bytes)),
         })
     }
@@ -435,9 +434,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             Some(snapshot) => {
                 let reader = serde_json::to_vec(&snapshot)?;
                 Ok(Some(CurrentSnapshotData {
-                    last_log_id: snapshot.last_log_id,
-                    membership: snapshot.membership.clone(),
-                    snapshot_id: snapshot.snapshot_id.clone(),
+                    meta: snapshot.meta.clone(),
                     snapshot: Box::new(Cursor::new(reader)),
                 }))
             }
