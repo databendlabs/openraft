@@ -396,15 +396,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         {
             // Go backwards through the log to find the most recent membership config <= the `through` index.
             let mut log = self.log.write().await;
-            let membership_config = log
-                .values()
-                .rev()
-                .skip_while(|entry| entry.log_id.index > index)
-                .find_map(|entry| match &entry.payload {
-                    EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
-                    _ => None,
-                })
-                .unwrap_or_else(|| MembershipConfig::new_initial(self.id));
 
             match &delete_through {
                 Some(through) => {
@@ -412,7 +403,10 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 }
                 None => log.clear(),
             }
-            log.insert(index, Entry::new_snapshot_pointer(index, term, id, membership_config));
+            log.insert(
+                index,
+                Entry::new_snapshot_pointer(index, term, id, new_snapshot.meta.membership.clone()),
+            );
         }
 
         // Update the state machine.
