@@ -202,7 +202,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, hs))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
         *self.hs.write().await = Some(hs.clone());
         Ok(())
@@ -305,6 +305,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 .skip_while(|entry| entry.log_id.index > last_applied_log)
                 .find_map(|entry| match &entry.payload {
                     EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
+                    EntryPayload::SnapshotPointer(cfg) => Some(cfg.membership.clone()),
                     _ => None,
                 })
                 .unwrap_or_else(|| MembershipConfig::new_initial(self.id));
