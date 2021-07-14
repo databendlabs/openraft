@@ -22,13 +22,13 @@ use crate::error::RaftError;
 use crate::error::RaftResult;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
-use crate::raft_types::SnapshotId;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::SnapshotMeta;
 
 struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     tx_api: mpsc::UnboundedSender<RaftMsg<D, R>>,
@@ -422,21 +422,14 @@ pub struct Entry<D: AppData> {
 }
 
 impl<D: AppData> Entry<D> {
-    /// Create a new snapshot pointer from the given data.
-    ///
-    /// ### index & term
-    /// The index and term of the entry being replaced by this snapshot pointer entry.
-    ///
-    /// ### id
-    /// The ID of the associated snapshot.
-    ///
-    /// ### membership
-    /// The cluster membership config which is contained in the snapshot, which will always be the
-    /// latest membership covered by the snapshot.
-    pub fn new_snapshot_pointer(index: u64, term: u64, id: String, membership: MembershipConfig) -> Self {
+    /// Create a new snapshot pointer from the given snapshot meta.
+    pub fn new_snapshot_pointer(meta: &SnapshotMeta) -> Self {
         Entry {
-            log_id: LogId { term, index },
-            payload: EntryPayload::SnapshotPointer(EntrySnapshotPointer { id, membership }),
+            log_id: meta.last_log_id,
+            payload: EntryPayload::SnapshotPointer(EntrySnapshotPointer {
+                id: meta.snapshot_id.clone(),
+                membership: meta.membership.clone(),
+            }),
         }
     }
 }
@@ -581,15 +574,15 @@ pub struct InstallSnapshotRequest {
     pub term: u64,
     /// The leader's ID. Useful in redirecting clients.
     pub leader_id: u64,
-    /// The Id of a snapshot.
-    /// Every two snapshots should have different snapshot id.
-    pub snapshot_id: SnapshotId,
-    /// The snapshot replaces all log entries up through and including this log.
-    pub last_log_id: LogId,
+
+    /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
+    pub meta: SnapshotMeta,
+
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,
     /// The raw bytes of the snapshot chunk, starting at `offset`.
     pub data: Vec<u8>,
+
     /// Will be `true` if this is the last chunk in the snapshot.
     pub done: bool,
 }

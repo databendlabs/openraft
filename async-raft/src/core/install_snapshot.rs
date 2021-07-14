@@ -74,8 +74,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 return self.begin_installing_snapshot(req).await;
             }
             Some(SnapshotState::Streaming { snapshot, id, offset }) => {
-                if req.snapshot_id == id {
-                    return self.continue_installing_snapshot(req, offset, id, snapshot).await;
+                if req.meta.snapshot_id == id {
+                    return self.continue_installing_snapshot(req, offset, snapshot).await;
                 }
 
                 if req.offset == 0 {
@@ -85,7 +85,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 Err(RaftError::SnapshotMismatch {
                     expect: SnapshotSegmentId { id: id.clone(), offset },
                     got: SnapshotSegmentId {
-                        id: req.snapshot_id.clone(),
+                        id: req.meta.snapshot_id.clone(),
                         offset: req.offset,
                     },
                 })
@@ -96,19 +96,19 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self, req))]
     async fn begin_installing_snapshot(&mut self, req: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse> {
         // Create a new snapshot and begin writing its contents.
-        let id = req.snapshot_id.clone();
+        let id = req.meta.snapshot_id.clone();
         let mut snapshot = self.storage.create_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?;
         snapshot.as_mut().write_all(&req.data).await?;
 
         // If this was a small snapshot, and it is already done, then finish up.
         if req.done {
-            self.finalize_snapshot_installation(req, id, snapshot).await?;
+            self.finalize_snapshot_installation(req, snapshot).await?;
             return Ok(InstallSnapshotResponse {
                 term: self.current_term,
             });
         }
 
-        // Else, retain snapshot components for later segments & respod.
+        // Else, retain snapshot components for later segments & respond.
         self.snapshot_state = Some(SnapshotState::Streaming {
             offset: req.data.len() as u64,
             id,
@@ -124,9 +124,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &mut self,
         req: InstallSnapshotRequest,
         mut offset: u64,
-        id: String,
         mut snapshot: Box<S::Snapshot>,
     ) -> RaftResult<InstallSnapshotResponse> {
+        let id = req.meta.snapshot_id.clone();
+
         // Always seek to the target offset if not an exact match.
         if req.offset != offset {
             if let Err(err) = snapshot.as_mut().seek(SeekFrom::Start(req.offset)).await {
@@ -145,7 +146,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // If the snapshot stream is done, then finalize.
         if req.done {
-            self.finalize_snapshot_installation(req, id, snapshot).await?;
+            self.finalize_snapshot_installation(req, snapshot).await?;
         } else {
             self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
         }
@@ -161,30 +162,20 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn finalize_snapshot_installation(
         &mut self,
         req: InstallSnapshotRequest,
-        id: String,
         mut snapshot: Box<S::Snapshot>,
     ) -> RaftResult<()> {
         snapshot.as_mut().shutdown().await.map_err(|err| self.map_fatal_storage_error(err.into()))?;
-        let delete_through = if self.last_log_id.index > req.last_log_id.index {
-            Some(req.last_log_id.index)
-        } else {
-            None
-        };
+
         self.storage
-            .finalize_snapshot_installation(
-                req.last_log_id.index,
-                req.last_log_id.term,
-                delete_through,
-                id,
-                snapshot,
-            )
+            .finalize_snapshot_installation(&req.meta, snapshot)
             .await
             .map_err(|err| self.map_fatal_storage_error(err))?;
+
         let membership = self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
         self.update_membership(membership)?;
-        self.last_log_id = req.last_log_id;
-        self.last_applied = req.last_log_id.index;
-        self.snapshot_last_log_id = req.last_log_id;
+        self.last_log_id = req.meta.last_log_id;
+        self.last_applied = req.meta.last_log_id.index;
+        self.snapshot_last_log_id = req.meta.last_log_id;
         self.report_metrics(Update::Ignore);
         Ok(())
     }

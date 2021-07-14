@@ -295,6 +295,8 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             last_applied_log = sm.last_applied_log;
         } // Release state machine read lock.
 
+        let snapshot_size = data.len();
+
         let membership_config;
         {
             // Go backwards through the log to find the most recent membership config <= the `through` index.
@@ -311,15 +313,15 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 .unwrap_or_else(|| MembershipConfig::new_initial(self.id));
         } // Release log read lock.
 
-        let snapshot_bytes: Vec<u8>;
-        let term;
         let snapshot_idx = {
             let mut l = self.snapshot_idx.lock().unwrap();
             *l += 1;
             *l
         };
-        let snapshot_id;
 
+        let term;
+        let snapshot_id;
+        let meta;
         {
             let mut log = self.log.write().await;
             let mut current_snapshot = self.current_snapshot.write().await;
@@ -328,35 +330,34 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 .map(|entry| entry.log_id.term)
                 .ok_or_else(|| anyhow::anyhow!(ERR_INCONSISTENT_LOG))?;
             *log = log.split_off(&last_applied_log);
-            log.insert(
-                last_applied_log,
-                Entry::new_snapshot_pointer(last_applied_log, term, "".into(), membership_config.clone()),
-            );
 
             snapshot_id = format!("{}-{}-{}", term, last_applied_log, snapshot_idx);
-            let snapshot = MemStoreSnapshot {
-                meta: SnapshotMeta {
-                    last_log_id: LogId {
-                        term,
-                        index: last_applied_log,
-                    },
-                    snapshot_id: snapshot_id.clone(),
-                    membership: membership_config.clone(),
+
+            meta = SnapshotMeta {
+                last_log_id: LogId {
+                    term,
+                    index: last_applied_log,
                 },
-                data,
+                snapshot_id,
+                membership: membership_config.clone(),
             };
-            snapshot_bytes = serde_json::to_vec(&snapshot)?;
+
+            let snapshot = MemStoreSnapshot {
+                meta: meta.clone(),
+                data: data.clone(),
+            };
+            log.insert(
+                snapshot.meta.last_log_id.index,
+                Entry::new_snapshot_pointer(&snapshot.meta),
+            );
+
             *current_snapshot = Some(snapshot);
         } // Release log & snapshot write locks.
 
-        tracing::trace!({ snapshot_size = snapshot_bytes.len() }, "log compaction complete");
+        tracing::trace!({ snapshot_size = snapshot_size }, "log compaction complete");
         Ok(CurrentSnapshotData {
-            meta: SnapshotMeta {
-                last_log_id: (term, last_applied_log).into(),
-                membership: membership_config.clone(),
-                snapshot_id,
-            },
-            snapshot: Box::new(Cursor::new(snapshot_bytes)),
+            meta,
+            snapshot: Box::new(Cursor::new(data)),
         })
     }
 
@@ -366,48 +367,32 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn finalize_snapshot_installation(
-        &self,
-        index: u64,
-        term: u64,
-        delete_through: Option<u64>,
-        id: String,
-        snapshot: Box<Self::Snapshot>,
-    ) -> Result<()> {
+    async fn finalize_snapshot_installation(&self, meta: &SnapshotMeta, snapshot: Box<Self::Snapshot>) -> Result<()> {
         tracing::trace!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
         );
 
-        {
-            let t = snapshot.get_ref().as_slice();
-            let y = std::str::from_utf8(t).unwrap();
-            tracing::debug!("JSON SNAP:{}", y);
-        }
-
-        let new_snapshot: MemStoreSnapshot = serde_json::from_slice(snapshot.get_ref().as_slice())?;
+        let new_snapshot = MemStoreSnapshot {
+            meta: meta.clone(),
+            data: snapshot.into_inner(),
+        };
 
         {
             let t = &new_snapshot.data;
             let y = std::str::from_utf8(t).unwrap();
+            tracing::debug!("SNAP META:{:?}", meta);
             tracing::debug!("JSON SNAP DATA:{}", y);
         }
 
         // Update log.
         {
-            // Go backwards through the log to find the most recent membership config <= the `through` index.
             let mut log = self.log.write().await;
 
-            match &delete_through {
-                Some(through) => {
-                    *log = log.split_off(&(through + 1));
-                }
-                None => log.clear(),
-            }
-            log.insert(
-                index,
-                Entry::new_snapshot_pointer(index, term, id, new_snapshot.meta.membership.clone()),
-            );
+            // Remove logs that are included in the snapshot.
+            *log = log.split_off(&(meta.last_log_id.index + 1));
+
+            log.insert(meta.last_log_id.index, Entry::new_snapshot_pointer(&meta));
         }
 
         // Update the state machine.
@@ -427,10 +412,12 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
-                let reader = serde_json::to_vec(&snapshot)?;
+                // TODO(xp): try not to clone the entire data.
+                //           If snapshot.data is Arc<T> that impl AsyncRead etc then the sharing can be done.
+                let data = snapshot.data.clone();
                 Ok(Some(CurrentSnapshotData {
                     meta: snapshot.meta.clone(),
-                    snapshot: Box::new(Cursor::new(reader)),
+                    snapshot: Box::new(Cursor::new(data)),
                 }))
             }
             None => Ok(None),

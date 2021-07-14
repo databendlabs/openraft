@@ -6,6 +6,7 @@ use anyhow::Result;
 use async_raft::raft::InstallSnapshotRequest;
 use async_raft::Config;
 use async_raft::LogId;
+use async_raft::SnapshotMeta;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::hashset;
@@ -46,8 +47,11 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     let req0 = InstallSnapshotRequest {
         term: 1,
         leader_id: 0,
-        snapshot_id: "ss1".into(),
-        last_log_id: LogId { term: 1, index: 0 },
+        meta: SnapshotMeta {
+            snapshot_id: "ss1".into(),
+            last_log_id: LogId { term: 1, index: 0 },
+            membership: Default::default(),
+        },
         offset: 0,
         data: vec![1, 2, 3],
         done: false,
@@ -62,7 +66,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     {
         let mut req = req0.clone();
         req.offset = 3;
-        req.snapshot_id = "ss2".into();
+        req.meta.snapshot_id = "ss2".into();
         let res = n.0.install_snapshot(req).await;
         assert_eq!("expect: ss1+3, got: ss2+3", res.unwrap_err().to_string());
     }
@@ -71,12 +75,12 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     {
         let mut req = req0.clone();
         req.offset = 0;
-        req.snapshot_id = "ss2".into();
+        req.meta.snapshot_id = "ss2".into();
         n.0.install_snapshot(req).await?;
 
         let mut req = req0.clone();
         req.offset = 3;
-        req.snapshot_id = "ss2".into();
+        req.meta.snapshot_id = "ss2".into();
         n.0.install_snapshot(req).await?;
     }
 
@@ -84,7 +88,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     {
         let mut req = req0.clone();
         req.offset = 8;
-        req.snapshot_id = "ss2".into();
+        req.meta.snapshot_id = "ss2".into();
         n.0.install_snapshot(req).await?;
     }
     Ok(())
