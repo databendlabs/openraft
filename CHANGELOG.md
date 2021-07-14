@@ -4,6 +4,52 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 
 ## [unreleased]
 
+
+## 0.6.2-alpha.5
+
+
+### Fix:
+
+- fix: after 2 log compaction, membership should be able to be extract from prev compaction log
+
+- fix: when finalize_snapshot_installation, memstore should not load membership from its old log that are going to be overridden by snapshot.
+
+### Change:
+
+- change: reduce one unnecessary snapshot serialization
+    - Change: `get_current_snapshot()`: remove double-serialization:
+      convert MemStoreSnapshot to CurrentSnapshotData instead of serializing
+      MemStoreSnapshot:
+
+      Before:
+      ```
+      MemStoreSnapshot.data = serialize(state-machine)
+      CurrentSnapshotData.data = serialize(MemStoreSnapshot)
+      ```
+
+      After:
+      ```
+      MemStoreSnapshot.data = serialize(state-machine)
+      CurrentSnapshotData.data = MemStoreSnapshot.data
+      ```
+
+      when `finalize_snapshot_installation`, extract snapshot meta info from
+      `InstallSnapshotRequest`. Reduce one unnecessary deserialization.
+
+    - Change: InstallSnapshotRequest: merge `snapshot_id`, `last_log_id`,
+      `membership` into one field `meta`.
+
+    - Refactor: use SnapshotMeta(`snapshot_id`, `last_log_id`, `membership`) as
+      a container of metadata of a snapshot.
+      Reduce parameters.
+
+    - Refactor: remove redundent param `delete_through` from
+      `finalize_snapshot_installation`.
+
+
+- change: add CurrentSnapshotData.meta: SnapshotMeta, which is a container of all meta data of a snapshot: last log id included, membership etc.
+
+
 ## 0.6.2-alpha.4
 
 
