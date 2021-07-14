@@ -155,6 +155,39 @@ impl MemStore {
     }
 }
 
+impl MemStore {
+    fn find_first_membership_log<'a, T, D>(mut it: T) -> Option<MembershipConfig>
+    where
+        T: 'a + Iterator<Item = &'a Entry<D>>,
+        D: AppData,
+    {
+        it.find_map(|entry| match &entry.payload {
+            EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
+            EntryPayload::SnapshotPointer(snap) => Some(snap.membership.clone()),
+            _ => None,
+        })
+    }
+
+    /// Go backwards through the log to find the most recent membership config <= `upto_index`.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn get_membership_from_log(&self, upto_index: Option<u64>) -> Result<MembershipConfig> {
+        let log = self.log.read().await;
+
+        let reversed_logs = log.values().rev();
+        let membership = match upto_index {
+            Some(upto) => {
+                let skipped = reversed_logs.skip_while(|entry| entry.log_id.index > upto);
+                Self::find_first_membership_log(skipped)
+            }
+            None => Self::find_first_membership_log(reversed_logs),
+        };
+        Ok(match membership {
+            Some(cfg) => cfg,
+            None => MembershipConfig::new_initial(self.id),
+        })
+    }
+}
+
 #[async_trait]
 impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     type Snapshot = Cursor<Vec<u8>>;
@@ -162,16 +195,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_membership_config(&self) -> Result<MembershipConfig> {
-        let log = self.log.read().await;
-        let cfg_opt = log.values().rev().find_map(|entry| match &entry.payload {
-            EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
-            EntryPayload::SnapshotPointer(snap) => Some(snap.membership.clone()),
-            _ => None,
-        });
-        Ok(match cfg_opt {
-            Some(cfg) => cfg,
-            None => MembershipConfig::new_initial(self.id),
-        })
+        self.get_membership_from_log(None).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -297,21 +321,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
         let snapshot_size = data.len();
 
-        let membership_config;
-        {
-            // Go backwards through the log to find the most recent membership config <= the `through` index.
-            let log = self.log.read().await;
-            membership_config = log
-                .values()
-                .rev()
-                .skip_while(|entry| entry.log_id.index > last_applied_log)
-                .find_map(|entry| match &entry.payload {
-                    EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
-                    EntryPayload::SnapshotPointer(cfg) => Some(cfg.membership.clone()),
-                    _ => None,
-                })
-                .unwrap_or_else(|| MembershipConfig::new_initial(self.id));
-        } // Release log read lock.
+        let membership_config = self.get_membership_from_log(Some(last_applied_log)).await?;
 
         let snapshot_idx = {
             let mut l = self.snapshot_idx.lock().unwrap();
