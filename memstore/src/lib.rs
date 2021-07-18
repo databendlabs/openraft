@@ -76,7 +76,7 @@ pub struct MemStoreSnapshot {
 /// The state machine of the `MemStore`.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct MemStoreStateMachine {
-    pub last_applied_log: u64,
+    pub last_applied_log: LogId,
     /// A mapping of client IDs to their state info.
     pub client_serial_responses: HashMap<String, (u64, Option<String>)>,
     /// The current status of a client by ID.
@@ -280,7 +280,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self, data))]
-    async fn apply_entry_to_state_machine(&self, index: &u64, data: &ClientRequest) -> Result<ClientResponse> {
+    async fn apply_entry_to_state_machine(&self, index: &LogId, data: &ClientRequest) -> Result<ClientResponse> {
         let mut sm = self.sm.write().await;
         sm.last_applied_log = *index;
         if let Some((serial, res)) = sm.client_serial_responses.get(&data.client) {
@@ -294,7 +294,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn replicate_to_state_machine(&self, entries: &[(&u64, &ClientRequest)]) -> Result<()> {
+    async fn replicate_to_state_machine(&self, entries: &[(&LogId, &ClientRequest)]) -> Result<()> {
         let mut sm = self.sm.write().await;
         for (index, data) in entries {
             sm.last_applied_log = **index;
@@ -321,7 +321,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
         let snapshot_size = data.len();
 
-        let membership_config = self.get_membership_from_log(Some(last_applied_log)).await?;
+        let membership_config = self.get_membership_from_log(Some(last_applied_log.index)).await?;
 
         let snapshot_idx = {
             let mut l = self.snapshot_idx.lock().unwrap();
@@ -333,20 +333,21 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         let snapshot_id;
         let meta;
         {
+            // TODO(xp): get term directly from log_id
             let mut log = self.log.write().await;
             let mut current_snapshot = self.current_snapshot.write().await;
             term = log
-                .get(&last_applied_log)
+                .get(&last_applied_log.index)
                 .map(|entry| entry.log_id.term)
                 .ok_or_else(|| anyhow::anyhow!(ERR_INCONSISTENT_LOG))?;
-            *log = log.split_off(&last_applied_log);
+            *log = log.split_off(&last_applied_log.index);
 
             snapshot_id = format!("{}-{}-{}", term, last_applied_log, snapshot_idx);
 
             meta = SnapshotMeta {
                 last_log_id: LogId {
                     term,
-                    index: last_applied_log,
+                    index: last_applied_log.index,
                 },
                 snapshot_id,
                 membership: membership_config.clone(),

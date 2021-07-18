@@ -334,7 +334,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 }
             }
             ClientOrInternalResponseTx::Internal(tx) => {
-                self.core.last_applied = req.entry.log_id.index;
+                self.core.last_applied = req.entry.log_id;
                 self.leader_report_metrics();
                 let _ = tx.send(Ok(req.entry.log_id.index));
             }
@@ -355,7 +355,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let index = log_id.index;
 
-        let expected_next_index = self.core.last_applied + 1;
+        let expected_next_index = self.core.last_applied.index + 1;
         if index != expected_next_index {
             let entries = self
                 .core
@@ -365,13 +365,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .map_err(|err| self.core.map_fatal_storage_error(err))?;
 
             if let Some(entry) = entries.last() {
-                self.core.last_applied = entry.log_id.index;
+                self.core.last_applied = entry.log_id;
             }
 
             let data_entries: Vec<_> = entries
                 .iter()
                 .filter_map(|entry| match &entry.payload {
-                    EntryPayload::Normal(inner) => Some((&entry.log_id.index, &inner.data)),
+                    EntryPayload::Normal(inner) => Some((&entry.log_id, &inner.data)),
                     _ => None,
                 })
                 .collect();
@@ -393,7 +393,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         }
         // Apply this entry to the state machine and return its data response.
-        let res = self.core.storage.apply_entry_to_state_machine(&index, entry).await.map_err(|err| {
+        let res = self.core.storage.apply_entry_to_state_machine(&log_id, entry).await.map_err(|err| {
             if err.downcast_ref::<S::ShutdownError>().is_some() {
                 // If this is an instance of the storage impl's shutdown error, then trigger shutdown.
                 self.core.map_fatal_storage_error(err)
@@ -402,7 +402,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 RaftError::RaftStorage(err)
             }
         });
-        self.core.last_applied = index;
+        self.core.last_applied = *log_id;
         self.leader_report_metrics();
         res
     }

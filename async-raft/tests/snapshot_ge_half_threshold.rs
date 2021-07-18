@@ -68,7 +68,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
                 1,
                 want,
                 Some(0),
-                want,
+                LogId { term: 1, index: want },
                 Some((want.into(), 1, MembershipConfig {
                     members: hashset![0],
                     members_after_consensus: None,
@@ -94,7 +94,15 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
             members_after_consensus: None,
         }));
         router.wait_for_snapshot(&hashset![1], LogId { term: 1, index: want }, None, "").await?;
-        router.assert_storage_state(1, want, None /* non-voter does not vote */, want, expected_snap).await;
+        router
+            .assert_storage_state(
+                1,
+                want,
+                None, /* non-voter does not vote */
+                LogId { term: 1, index: want },
+                expected_snap,
+            )
+            .await;
     }
 
     Ok(())

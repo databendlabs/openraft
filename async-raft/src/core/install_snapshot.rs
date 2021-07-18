@@ -174,7 +174,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let membership = self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
         self.update_membership(membership)?;
         self.last_log_id = req.meta.last_log_id;
-        self.last_applied = req.meta.last_log_id.index;
+        self.last_applied = req.meta.last_log_id;
         self.snapshot_last_log_id = req.meta.last_log_id;
         self.report_metrics(Update::Ignore);
         Ok(())

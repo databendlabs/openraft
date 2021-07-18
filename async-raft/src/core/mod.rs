@@ -84,13 +84,15 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// Is initialized to 0, and increases monotonically. This is always based on the leader's
     /// commit index which is communicated to other members via the AppendEntries protocol.
     commit_index: u64,
-    /// The index of the highest log entry which has been applied to the local state machine.
+
+    /// The log id of the highest log entry which has been applied to the local state machine.
     ///
-    /// Is initialized to 0 for a pristine node; else, for nodes with existing state it is
+    /// Is initialized to 0,0 for a pristine node; else, for nodes with existing state it is
     /// is initialized to the value returned from the `RaftStorage::get_initial_state` on startup.
     /// This value increases following the `commit_index` as logs are applied to the state
     /// machine (via the storage interface).
-    last_applied: u64,
+    last_applied: LogId,
+
     /// The current term.
     ///
     /// Is initialized to 0 on first boot, and increases monotonically. This is normally based on
@@ -130,7 +132,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// This abstraction is needed to ensure that replicating to the state machine does not block
     /// the AppendEntries RPC flow, and to ensure that we have a smooth transition to becoming
     /// leader without concern over duplicate application of entries to the state machine.
-    replicate_to_sm_handle: FuturesOrdered<JoinHandle<anyhow::Result<Option<u64>>>>,
+    replicate_to_sm_handle: FuturesOrdered<JoinHandle<anyhow::Result<Option<LogId>>>>,
     /// A bool indicating if this system has performed its initial replication of
     /// outstanding entries to the state machine.
     has_completed_initial_replication_to_sm: bool,
@@ -168,7 +170,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             storage,
             target_state: State::Follower,
             commit_index: 0,
-            last_applied: 0,
+            last_applied: LogId { term: 0, index: 0 },
             current_term: 0,
             current_leader: None,
             voted_for: None,
@@ -281,7 +283,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             state: self.target_state,
             current_term: self.current_term,
             last_log_index: self.last_log_id.index,
-            last_applied: self.last_applied,
+            last_applied: self.last_applied.index,
             current_leader: self.current_leader,
             membership_config: self.membership.clone(),
             snapshot: self.snapshot_last_log_id,
@@ -425,13 +427,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
         let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
         // Check to ensure we have actual entries for compaction.
-        if self.last_applied == 0 || self.last_applied < self.snapshot_last_log_id.index {
+        if self.last_applied.index == 0 || self.last_applied.index < self.snapshot_last_log_id.index {
             return;
         }
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
-            if self.last_applied < self.snapshot_last_log_id.index + *threshold {
+            if self.last_applied.index < self.snapshot_last_log_id.index + *threshold {
                 return;
             }
         }
@@ -471,7 +473,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Handle the output of an async task replicating entries to the state machine.
     #[tracing::instrument(level = "trace", skip(self, res))]
-    pub(self) fn handle_replicate_to_sm_result(&mut self, res: anyhow::Result<Option<u64>>) -> RaftResult<()> {
+    pub(self) fn handle_replicate_to_sm_result(&mut self, res: anyhow::Result<Option<LogId>>) -> RaftResult<()> {
         let last_applied_opt = res.map_err(|err| self.map_fatal_storage_error(err))?;
         if let Some(last_applied) = last_applied_opt {
             self.last_applied = last_applied;

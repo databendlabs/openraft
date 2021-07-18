@@ -460,7 +460,7 @@ impl RaftRouter {
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<u64>,
-        expect_sm_last_applied_log: u64,
+        expect_sm_last_applied_log: LogId,
         expect_snapshot: Option<(ValueTest<u64>, u64, MembershipConfig)>,
     ) {
         let rt = self.routing_table.read().await;

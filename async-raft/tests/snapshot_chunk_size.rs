@@ -63,7 +63,7 @@ async fn snapshot_chunk_size() -> Result<()> {
 
         router.wait_for_log(&hashset![0], want, None, "send log to trigger snapshot").await?;
         router.wait_for_snapshot(&hashset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
-        router.assert_storage_state(1, want, Some(0), want, want_snap).await;
+        router.assert_storage_state(1, want, Some(0), LogId { term: 1, index: want }, want_snap).await;
     }
 
     tracing::info!("--- add non-voter to receive snapshot and logs");
@@ -78,7 +78,15 @@ async fn snapshot_chunk_size() -> Result<()> {
 
         router.wait_for_log(&hashset![0, 1], want, None, "add non-voter").await?;
         router.wait_for_snapshot(&hashset![1], LogId { term: 1, index: want }, None, "").await?;
-        router.assert_storage_state(1, want, None /* non-voter does not vote */, want, want_snap).await;
+        router
+            .assert_storage_state(
+                1,
+                want,
+                None, /* non-voter does not vote */
+                LogId { term: 1, index: want },
+                want_snap,
+            )
+            .await;
     }
 
     Ok(())

@@ -9,6 +9,7 @@ use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::LogId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::Update;
@@ -209,7 +210,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return;
         }
         // If we don't have any new entries to replicate, then do nothing.
-        if self.commit_index <= self.last_applied {
+        if self.commit_index <= self.last_applied.index {
             return;
         }
         // If we have no cached entries, then do nothing.
@@ -219,13 +220,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         };
 
         // Drain entries from the beginning of the cache up to commit index.
-        let mut last_entry_seen: Option<u64> = None;
+        let mut last_entry_seen: Option<LogId> = None;
         let entries: Vec<_> = (first_idx..=self.commit_index)
             .filter_map(|idx| {
                 if let Some(entry) = self.entries_cache.remove(&idx) {
-                    last_entry_seen = Some(entry.log_id.index);
+                    last_entry_seen = Some(entry.log_id);
                     match entry.payload {
-                        EntryPayload::Normal(inner) => Some((entry.log_id.index, inner.data)),
+                        EntryPayload::Normal(inner) => Some((entry.log_id, inner.data)),
                         _ => None,
                     }
                 } else {
@@ -236,8 +237,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // If we have no data entries to apply, then do nothing.
         if entries.is_empty() {
-            if let Some(index) = last_entry_seen {
-                self.last_applied = index;
+            if let Some(log_id) = last_entry_seen {
+                self.last_applied = log_id;
                 self.report_metrics(Update::Ignore);
             }
             return;
@@ -264,7 +265,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self))]
     async fn initial_replicate_to_state_machine(&mut self) {
         let stop = std::cmp::min(self.commit_index, self.last_log_id.index) + 1;
-        let start = self.last_applied + 1;
+        let start = self.last_applied.index + 1;
         let storage = self.storage.clone();
 
         // If we already have an active replication task, then do nothing.
@@ -274,15 +275,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Fetch the series of entries which must be applied to the state machine, then apply them.
         let handle = tokio::spawn(async move {
-            let mut new_last_applied: Option<u64> = None;
+            let mut new_last_applied: Option<LogId> = None;
             let entries = storage.get_log_entries(start, stop).await?;
             if let Some(entry) = entries.last() {
-                new_last_applied = Some(entry.log_id.index);
+                new_last_applied = Some(entry.log_id);
             }
             let data_entries: Vec<_> = entries
                 .iter()
                 .filter_map(|entry| match &entry.payload {
-                    EntryPayload::Normal(inner) => Some((&entry.log_id.index, &inner.data)),
+                    EntryPayload::Normal(inner) => Some((&entry.log_id, &inner.data)),
                     _ => None,
                 })
                 .collect();

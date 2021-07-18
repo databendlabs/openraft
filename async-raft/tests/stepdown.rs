@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::Config;
+use async_raft::LogId;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::hashset;
@@ -126,7 +127,9 @@ async fn stepdown() -> Result<()> {
     tracing::info!("index: {}", metrics.last_log_index);
     assert!(metrics.current_term >= 2, "term incr when leader changes");
     router.assert_stable_cluster(Some(metrics.current_term), Some(want)).await;
-    router.assert_storage_state(metrics.current_term, want, None, 0, None).await;
+    router
+        .assert_storage_state(metrics.current_term, want, None, LogId { term: 0, index: 0 }, None)
+        .await;
     // ----------------------------------- ^^^ this is `0` instead of `4` because blank payloads from new leaders
     //                                         and config change entries are never applied to the state machine.
 

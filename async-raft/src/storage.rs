@@ -58,8 +58,8 @@ pub struct InitialState {
     /// The last entry.
     pub last_log_id: LogId,
 
-    /// The index of the last log applied to the state machine.
-    pub last_applied_log: u64,
+    /// The LogId of the last log applied to the state machine.
+    pub last_applied_log: LogId,
     /// The saved hard state of the node.
     pub hard_state: HardState,
     /// The latest cluster membership configuration found in the log, else a new initial
@@ -75,7 +75,7 @@ impl InitialState {
     pub fn new_initial(id: NodeId) -> Self {
         Self {
             last_log_id: LogId { term: 0, index: 0 },
-            last_applied_log: 0,
+            last_applied_log: LogId { term: 0, index: 0 },
             hard_state: HardState {
                 current_term: 0,
                 voted_for: None,
@@ -186,7 +186,7 @@ where
     ///
     /// It is important to note that even in cases where an application specific error is returned,
     /// implementations should still record that the entry has been applied to the state machine.
-    async fn apply_entry_to_state_machine(&self, index: &u64, data: &D) -> Result<R>;
+    async fn apply_entry_to_state_machine(&self, index: &LogId, data: &D) -> Result<R>;
 
     /// Apply the given payload of entries to the state machine, as part of replication.
     ///
@@ -194,7 +194,7 @@ where
     /// have been replicated to a majority of the cluster, will be applied to the state machine.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn replicate_to_state_machine(&self, entries: &[(&u64, &D)]) -> Result<()>;
+    async fn replicate_to_state_machine(&self, entries: &[(&LogId, &D)]) -> Result<()>;
 
     /// Perform log compaction, returning a handle to the generated snapshot.
     ///

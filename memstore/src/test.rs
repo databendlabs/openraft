@@ -71,7 +71,11 @@ async fn test_get_initial_state_default() -> Result<()> {
         (0, 0).into(),
         "unexpected default value for last log"
     );
-    assert_eq!(initial.last_applied_log, 0, "unexpected value for last applied log");
+    assert_eq!(
+        initial.last_applied_log,
+        LogId { term: 0, index: 0 },
+        "unexpected value for last applied log"
+    );
     assert_eq!(
         initial.hard_state, expected_hs,
         "unexpected value for default hard state"
@@ -91,7 +95,7 @@ async fn test_get_initial_state_with_previous_state() -> Result<()> {
         payload: EntryPayload::Blank,
     });
     let sm = MemStoreStateMachine {
-        last_applied_log: 1, // Just stubbed in for testing.
+        last_applied_log: LogId { term: 3, index: 1 }, // Just stubbed in for testing.
         ..Default::default()
     };
     let hs = HardState {
@@ -107,7 +111,11 @@ async fn test_get_initial_state_with_previous_state() -> Result<()> {
         (1, 1).into(),
         "unexpected default value for last log"
     );
-    assert_eq!(initial.last_applied_log, 1, "unexpected value for last applied log");
+    assert_eq!(
+        initial.last_applied_log,
+        LogId { term: 3, index: 1 },
+        "unexpected value for last applied log"
+    );
     assert_eq!(initial.hard_state, hs, "unexpected value for default hard state");
     Ok(())
 }
@@ -249,7 +257,7 @@ async fn test_apply_entry_to_state_machine() -> Result<()> {
     let store = default_store_with_logs();
 
     store
-        .apply_entry_to_state_machine(&1, &ClientRequest {
+        .apply_entry_to_state_machine(&LogId { term: 3, index: 1 }, &ClientRequest {
             client: "0".into(),
             serial: 0,
             status: "lit".into(),
@@ -258,7 +266,8 @@ async fn test_apply_entry_to_state_machine() -> Result<()> {
     let sm = store.get_state_machine().await;
 
     assert_eq!(
-        sm.last_applied_log, 1,
+        sm.last_applied_log,
+        LogId { term: 3, index: 1 },
         "expected last_applied_log to be 1, got {}",
         sm.last_applied_log
     );
@@ -296,12 +305,17 @@ async fn test_replicate_to_state_machine() -> Result<()> {
         serial: 0,
         status: "other".into(),
     };
-    let entries = vec![(&1u64, &req0), (&2u64, &req1), (&3u64, &req2)];
+    let entries = vec![
+        (&LogId { term: 3, index: 1 }, &req0),
+        (&LogId { term: 3, index: 2 }, &req1),
+        (&LogId { term: 3, index: 3 }, &req2),
+    ];
     store.replicate_to_state_machine(&entries).await?;
     let sm = store.get_state_machine().await;
 
     assert_eq!(
-        sm.last_applied_log, 3,
+        sm.last_applied_log,
+        LogId { term: 3, index: 3 },
         "expected last_applied_log to be 3, got {}",
         sm.last_applied_log
     );

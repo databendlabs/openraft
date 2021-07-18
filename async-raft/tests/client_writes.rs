@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
+use async_raft::LogId;
 use async_raft::State;
 use fixtures::RaftRouter;
 use futures::prelude::*;
@@ -67,7 +68,7 @@ async fn client_writes() -> Result<()> {
             1,
             want,
             Some(0),
-            want,
+            LogId { term: 1, index: want },
             Some(((5000..5100).into(), 1, MembershipConfig {
                 members: hashset![0, 1, 2],
                 members_after_consensus: None,

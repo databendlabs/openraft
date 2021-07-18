@@ -65,7 +65,7 @@ async fn compaction() -> Result<()> {
             1,
             want,
             Some(0),
-            want,
+            LogId { term: 1, index: want },
             Some((want.into(), 1, MembershipConfig {
                 members: hashset![0],
                 members_after_consensus: None,
@@ -87,7 +87,15 @@ async fn compaction() -> Result<()> {
         members: hashset![0u64],
         members_after_consensus: None,
     }));
-    router.assert_storage_state(1, want, None /* non-voter does not vote */, want, expected_snap).await;
+    router
+        .assert_storage_state(
+            1,
+            want,
+            None, /* non-voter does not vote */
+            LogId { term: 1, index: want },
+            expected_snap,
+        )
+        .await;
 
     Ok(())
 }
