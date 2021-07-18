@@ -311,7 +311,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             ClientOrInternalResponseTx::Client(tx) => {
                 match &req.entry.payload {
                     EntryPayload::Normal(inner) => {
-                        match self.apply_entry_to_state_machine(&req.entry.log_id.index, &inner.data).await {
+                        match self.apply_entry_to_state_machine(&req.entry.log_id, &inner.data).await {
                             Ok(data) => {
                                 let _ = tx.send(Ok(ClientWriteResponse {
                                     index: req.entry.log_id.index,
@@ -346,23 +346,28 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Apply the given log entry to the state machine.
     #[tracing::instrument(level = "trace", skip(self, entry))]
-    pub(super) async fn apply_entry_to_state_machine(&mut self, index: &u64, entry: &D) -> RaftResult<R> {
+    pub(super) async fn apply_entry_to_state_machine(&mut self, log_id: &LogId, entry: &D) -> RaftResult<R> {
         // First, we just ensure that we apply any outstanding up to, but not including, the index
         // of the given entry. We need to be able to return the data response from applying this
         // entry to the state machine.
         //
         // Note that this would only ever happen if a node had unapplied logs from before becoming leader.
+
+        let index = log_id.index;
+
         let expected_next_index = self.core.last_applied + 1;
-        if index != &expected_next_index {
+        if index != expected_next_index {
             let entries = self
                 .core
                 .storage
-                .get_log_entries(expected_next_index, *index)
+                .get_log_entries(expected_next_index, index)
                 .await
                 .map_err(|err| self.core.map_fatal_storage_error(err))?;
+
             if let Some(entry) = entries.last() {
                 self.core.last_applied = entry.log_id.index;
             }
+
             let data_entries: Vec<_> = entries
                 .iter()
                 .filter_map(|entry| match &entry.payload {
@@ -388,7 +393,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         }
         // Apply this entry to the state machine and return its data response.
-        let res = self.core.storage.apply_entry_to_state_machine(index, entry).await.map_err(|err| {
+        let res = self.core.storage.apply_entry_to_state_machine(&index, entry).await.map_err(|err| {
             if err.downcast_ref::<S::ShutdownError>().is_some() {
                 // If this is an instance of the storage impl's shutdown error, then trigger shutdown.
                 self.core.map_fatal_storage_error(err)
@@ -397,7 +402,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 RaftError::RaftStorage(err)
             }
         });
-        self.core.last_applied = *index;
+        self.core.last_applied = index;
         self.leader_report_metrics();
         res
     }
