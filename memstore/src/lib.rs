@@ -30,9 +30,6 @@ use tokio::sync::RwLock;
 use tokio::sync::RwLockReadGuard;
 use tokio::sync::RwLockWriteGuard;
 
-const ERR_INCONSISTENT_LOG: &str =
-    "a query was received which was expecting data to be in place which does not exist in the log";
-
 /// The application data request type which the `MemStore` works with.
 ///
 /// Conceptually, for demo purposes, this represents an update to a client's status info,
@@ -329,26 +326,16 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             *l
         };
 
-        let term;
-        let snapshot_id;
         let meta;
         {
-            // TODO(xp): get term directly from log_id
             let mut log = self.log.write().await;
             let mut current_snapshot = self.current_snapshot.write().await;
-            term = log
-                .get(&last_applied_log.index)
-                .map(|entry| entry.log_id.term)
-                .ok_or_else(|| anyhow::anyhow!(ERR_INCONSISTENT_LOG))?;
             *log = log.split_off(&last_applied_log.index);
 
-            snapshot_id = format!("{}-{}-{}", term, last_applied_log, snapshot_idx);
+            let snapshot_id = format!("{}-{}-{}", last_applied_log.term, last_applied_log.index, snapshot_idx);
 
             meta = SnapshotMeta {
-                last_log_id: LogId {
-                    term,
-                    index: last_applied_log.index,
-                },
+                last_log_id: last_applied_log,
                 snapshot_id,
                 membership: membership_config.clone(),
             };
