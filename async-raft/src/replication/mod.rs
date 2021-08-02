@@ -255,12 +255,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             Ok(outer_res) => match outer_res {
                 Ok(res) => res,
                 Err(err) => {
-                    tracing::error!(error=%err, "error sending AppendEntries RPC to target");
+                    tracing::warn!(error=%err, "error sending AppendEntries RPC to target");
                     return;
                 }
             },
             Err(err) => {
-                tracing::error!(error=%err, "timeout while sending AppendEntries RPC to target");
+                tracing::warn!(error=%err, "timeout while sending AppendEntries RPC to target");
                 return;
             }
         };
@@ -789,7 +789,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // If we have a snapshot to work with, then stream it.
             if let Some(snapshot) = self.snapshot.take() {
                 if let Err(err) = self.stream_snapshot(snapshot).await {
-                    tracing::error!(error=%err, "error streaming snapshot to target");
+                    tracing::warn!(error=%err, "error streaming snapshot to target");
                 }
                 continue;
             }
@@ -865,12 +865,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 Ok(outer_res) => match outer_res {
                     Ok(res) => res,
                     Err(err) => {
-                        tracing::error!(error=%err, "error sending InstallSnapshot RPC to target");
+                        tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
                         continue;
                     }
                 },
                 Err(err) => {
-                    tracing::error!(error=%err, "timeout while sending InstallSnapshot RPC to target");
+                    tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
                     continue;
                 }
             };
