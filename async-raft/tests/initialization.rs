@@ -3,6 +3,8 @@ mod fixtures;
 use std::sync::Arc;
 
 use anyhow::Result;
+use async_raft::raft::EntryPayload;
+use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
@@ -45,6 +47,29 @@ async fn initialization() -> Result<()> {
 
     router.wait_for_log(&hashset![0, 1, 2], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
+
+    for i in 0..3 {
+        let sto = router.get_storage_handle(&1).await?;
+        let first = sto.get_log().await.get(&1).cloned();
+
+        tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);
+        let mem = match first.unwrap().payload {
+            EntryPayload::ConfigChange(ref x) => x.membership.clone(),
+            _ => {
+                panic!("expect ConfigChange payload")
+            }
+        };
+        assert_eq!(hashset![0, 1, 2], mem.members);
+
+        let sm_mem = sto.get_state_machine().await.last_membership.clone();
+        assert_eq!(
+            Some(MembershipConfig {
+                members: hashset![0, 1, 2],
+                members_after_consensus: None,
+            }),
+            sm_mem
+        );
+    }
 
     Ok(())
 }
