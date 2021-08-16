@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use async_raft::raft::EntryConfigChange;
+use async_raft::raft::EntryNormal;
 
 use super::*;
 
@@ -256,13 +257,18 @@ async fn test_replicate_to_log() -> Result<()> {
 async fn test_apply_entry_to_state_machine() -> Result<()> {
     let store = default_store_with_logs();
 
-    store
-        .apply_entry_to_state_machine(&LogId { term: 3, index: 1 }, &ClientRequest {
-            client: "0".into(),
-            serial: 0,
-            status: "lit".into(),
-        })
-        .await?;
+    let entry = Entry {
+        log_id: LogId { term: 3, index: 1 },
+
+        payload: EntryPayload::Normal(EntryNormal {
+            data: ClientRequest {
+                client: "0".into(),
+                serial: 0,
+                status: "lit".into(),
+            },
+        }),
+    };
+    store.apply_entry_to_state_machine(&entry).await?;
     let sm = store.get_state_machine().await;
 
     assert_eq!(
@@ -305,12 +311,20 @@ async fn test_replicate_to_state_machine() -> Result<()> {
         serial: 0,
         status: "other".into(),
     };
+
     let entries = vec![
         (&LogId { term: 3, index: 1 }, &req0),
         (&LogId { term: 3, index: 2 }, &req1),
         (&LogId { term: 3, index: 3 }, &req2),
-    ];
-    store.replicate_to_state_machine(&entries).await?;
+    ]
+    .into_iter()
+    .map(|(id, req)| Entry {
+        log_id: *id,
+        payload: EntryPayload::Normal(EntryNormal { data: req.clone() }),
+    })
+    .collect::<Vec<_>>();
+
+    store.replicate_to_state_machine(&entries.iter().collect::<Vec<_>>()).await?;
     let sm = store.get_state_machine().await;
 
     assert_eq!(

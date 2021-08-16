@@ -307,22 +307,22 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Handle the post-commit logic for a client request.
     #[tracing::instrument(level = "trace", skip(self, req))]
     pub(super) async fn client_request_post_commit(&mut self, req: ClientRequestEntry<D, R>) {
+        let entry = &req.entry;
+
         match req.tx {
             ClientOrInternalResponseTx::Client(tx) => {
-                match &req.entry.payload {
-                    EntryPayload::Normal(inner) => {
-                        match self.apply_entry_to_state_machine(&req.entry.log_id, &inner.data).await {
-                            Ok(data) => {
-                                let _ = tx.send(Ok(ClientWriteResponse {
-                                    index: req.entry.log_id.index,
-                                    data,
-                                }));
-                            }
-                            Err(err) => {
-                                let _ = tx.send(Err(ClientWriteError::RaftError(err)));
-                            }
+                match &entry.payload {
+                    EntryPayload::Normal(_) => match self.apply_entry_to_state_machine(&entry).await {
+                        Ok(data) => {
+                            let _ = tx.send(Ok(ClientWriteResponse {
+                                index: req.entry.log_id.index,
+                                data,
+                            }));
                         }
-                    }
+                        Err(err) => {
+                            let _ = tx.send(Err(ClientWriteError::RaftError(err)));
+                        }
+                    },
                     _ => {
                         // Why is this a bug, and why are we shutting down? This is because we can not easily
                         // encode these constraints in the type system, and client requests should be the only
@@ -334,9 +334,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 }
             }
             ClientOrInternalResponseTx::Internal(tx) => {
-                self.core.last_applied = req.entry.log_id;
+                // TODO(xp): copied from above, need refactor.
+                let res = match self.apply_entry_to_state_machine(&entry).await {
+                    Ok(_data) => Ok(entry.log_id.index),
+                    Err(err) => Err(err),
+                };
+
+                self.core.last_applied = entry.log_id;
                 self.leader_report_metrics();
-                let _ = tx.send(Ok(req.entry.log_id.index));
+                let _ = tx.send(res);
             }
         }
 
@@ -346,13 +352,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Apply the given log entry to the state machine.
     #[tracing::instrument(level = "trace", skip(self, entry))]
-    pub(super) async fn apply_entry_to_state_machine(&mut self, log_id: &LogId, entry: &D) -> RaftResult<R> {
+    pub(super) async fn apply_entry_to_state_machine(&mut self, entry: &Entry<D>) -> RaftResult<R> {
         // First, we just ensure that we apply any outstanding up to, but not including, the index
         // of the given entry. We need to be able to return the data response from applying this
         // entry to the state machine.
         //
         // Note that this would only ever happen if a node had unapplied logs from before becoming leader.
 
+        let log_id = &entry.log_id;
         let index = log_id.index;
 
         let expected_next_index = self.core.last_applied.index + 1;
@@ -368,13 +375,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 self.core.last_applied = entry.log_id;
             }
 
-            let data_entries: Vec<_> = entries
-                .iter()
-                .filter_map(|entry| match &entry.payload {
-                    EntryPayload::Normal(inner) => Some((&entry.log_id, &inner.data)),
-                    _ => None,
-                })
-                .collect();
+            let data_entries: Vec<_> = entries.iter().collect();
             if !data_entries.is_empty() {
                 self.core
                     .storage
@@ -393,7 +394,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         }
         // Apply this entry to the state machine and return its data response.
-        let res = self.core.storage.apply_entry_to_state_machine(&log_id, entry).await.map_err(|err| {
+        let res = self.core.storage.apply_entry_to_state_machine(entry).await.map_err(|err| {
             if err.downcast_ref::<S::ShutdownError>().is_some() {
                 // If this is an instance of the storage impl's shutdown error, then trigger shutdown.
                 self.core.map_fatal_storage_error(err)

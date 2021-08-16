@@ -225,10 +225,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .filter_map(|idx| {
                 if let Some(entry) = self.entries_cache.remove(&idx) {
                     last_entry_seen = Some(entry.log_id);
-                    match entry.payload {
-                        EntryPayload::Normal(inner) => Some((entry.log_id, inner.data)),
-                        _ => None,
-                    }
+                    Some(entry)
                 } else {
                     None
                 }
@@ -251,7 +248,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let handle = tokio::spawn(async move {
             // Create a new vector of references to the entries data ... might have to change this
             // interface a bit before 1.0.
-            let entries_refs: Vec<_> = entries.iter().map(|(k, v)| (k, v)).collect();
+            let entries_refs: Vec<_> = entries.iter().collect();
             storage.replicate_to_state_machine(&entries_refs).await?;
             Ok(last_entry_seen)
         });
@@ -280,13 +277,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             if let Some(entry) = entries.last() {
                 new_last_applied = Some(entry.log_id);
             }
-            let data_entries: Vec<_> = entries
-                .iter()
-                .filter_map(|entry| match &entry.payload {
-                    EntryPayload::Normal(inner) => Some((&entry.log_id, &inner.data)),
-                    _ => None,
-                })
-                .collect();
+            let data_entries: Vec<_> = entries.iter().collect();
             if data_entries.is_empty() {
                 return Ok(new_last_applied);
             }

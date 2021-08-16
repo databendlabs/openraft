@@ -128,7 +128,7 @@ async fn stepdown() -> Result<()> {
     assert!(metrics.current_term >= 2, "term incr when leader changes");
     router.assert_stable_cluster(Some(metrics.current_term), Some(want)).await;
     router
-        .assert_storage_state(metrics.current_term, want, None, LogId { term: 0, index: 0 }, None)
+        .assert_storage_state(metrics.current_term, want, None, LogId { term: 2, index: 4 }, None)
         .await;
     // ----------------------------------- ^^^ this is `0` instead of `4` because blank payloads from new leaders
     //                                         and config change entries are never applied to the state machine.

@@ -178,6 +178,11 @@ where
     /// specific transaction is being started, or perhaps committed. This may be where a key/value
     /// is being stored. This may be where an entry is being appended to an immutable log.
     ///
+    /// An impl should do:
+    /// - Deal with the EntryPayload::Normal() log, which is business logic log.
+    /// - Optionally, deal with EntryPayload::ConfigChange or EntryPayload::SnapshotPointer log if they are concerned.
+    ///   E.g. when an impl need to track the membership changing.
+    ///
     /// Error handling for this method is note worthy. If an error is returned from a call to this
     /// method, the error will be inspected, and if the error is an instance of
     /// `RaftStorage::ShutdownError`, then Raft will go into shutdown in order to preserve the
@@ -186,7 +191,7 @@ where
     ///
     /// It is important to note that even in cases where an application specific error is returned,
     /// implementations should still record that the entry has been applied to the state machine.
-    async fn apply_entry_to_state_machine(&self, index: &LogId, data: &D) -> Result<R>;
+    async fn apply_entry_to_state_machine(&self, data: &Entry<D>) -> Result<R>;
 
     /// Apply the given payload of entries to the state machine, as part of replication.
     ///
@@ -194,7 +199,7 @@ where
     /// have been replicated to a majority of the cluster, will be applied to the state machine.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn replicate_to_state_machine(&self, entries: &[(&LogId, &D)]) -> Result<()>;
+    async fn replicate_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<()>;
 
     /// Perform log compaction, returning a handle to the generated snapshot.
     ///

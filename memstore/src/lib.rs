@@ -74,6 +74,9 @@ pub struct MemStoreSnapshot {
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct MemStoreStateMachine {
     pub last_applied_log: LogId,
+
+    pub last_membership: Option<MembershipConfig>,
+
     /// A mapping of client IDs to their state info.
     pub client_serial_responses: HashMap<String, (u64, Option<String>)>,
     /// The current status of a client by ID.
@@ -233,7 +236,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<ClientRequest>>> {
         // Invalid request, return empty vec.
         if start > stop {
-            tracing::error!("invalid request, start > stop");
+            tracing::error!("get_log_entries: invalid request, start({}) > stop({})", start, stop);
             return Ok(vec![]);
         }
         let log = self.log.read().await;
@@ -243,7 +246,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
         if stop.as_ref().map(|stop| &start > stop).unwrap_or(false) {
-            tracing::error!("invalid request, start > stop");
+            tracing::error!("delete_logs_from: invalid request, start({}) > stop({:?})", start, stop);
             return Ok(());
         }
         let mut log = self.log.write().await;
@@ -276,32 +279,55 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self, data))]
-    async fn apply_entry_to_state_machine(&self, index: &LogId, data: &ClientRequest) -> Result<ClientResponse> {
+    #[tracing::instrument(level = "trace", skip(self, entry))]
+    async fn apply_entry_to_state_machine(&self, entry: &Entry<ClientRequest>) -> Result<ClientResponse> {
         let mut sm = self.sm.write().await;
-        sm.last_applied_log = *index;
-        if let Some((serial, res)) = sm.client_serial_responses.get(&data.client) {
-            if serial == &data.serial {
-                return Ok(ClientResponse(res.clone()));
+        sm.last_applied_log = entry.log_id;
+
+        return match entry.payload {
+            EntryPayload::Blank => return Ok(ClientResponse(None)),
+            EntryPayload::SnapshotPointer(_) => return Ok(ClientResponse(None)),
+            EntryPayload::Normal(ref norm) => {
+                let data = &norm.data;
+                if let Some((serial, res)) = sm.client_serial_responses.get(&data.client) {
+                    if serial == &data.serial {
+                        return Ok(ClientResponse(res.clone()));
+                    }
+                }
+                let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
+                sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
+                Ok(ClientResponse(previous))
             }
-        }
-        let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
-        sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
-        Ok(ClientResponse(previous))
+            EntryPayload::ConfigChange(ref mem) => {
+                sm.last_membership = Some(mem.membership.clone());
+                return Ok(ClientResponse(None));
+            }
+        };
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn replicate_to_state_machine(&self, entries: &[(&LogId, &ClientRequest)]) -> Result<()> {
+    async fn replicate_to_state_machine(&self, entries: &[&Entry<ClientRequest>]) -> Result<()> {
         let mut sm = self.sm.write().await;
-        for (index, data) in entries {
-            sm.last_applied_log = **index;
-            if let Some((serial, _)) = sm.client_serial_responses.get(&data.client) {
-                if serial == &data.serial {
-                    continue;
+        for entry in entries {
+            sm.last_applied_log = entry.log_id;
+
+            match entry.payload {
+                EntryPayload::Blank => {}
+                EntryPayload::SnapshotPointer(_) => {}
+                EntryPayload::Normal(ref norm) => {
+                    let data = &norm.data;
+                    if let Some((serial, _)) = sm.client_serial_responses.get(&data.client) {
+                        if serial == &data.serial {
+                            continue;
+                        }
+                    }
+                    let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
+                    sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
                 }
-            }
-            let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
-            sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
+                EntryPayload::ConfigChange(ref mem) => {
+                    sm.last_membership = Some(mem.membership.clone());
+                }
+            };
         }
         Ok(())
     }
@@ -309,16 +335,16 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>> {
         let (data, last_applied_log);
+        let membership_config;
         {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
             data = serde_json::to_vec(&*sm)?;
             last_applied_log = sm.last_applied_log;
+            membership_config = sm.last_membership.clone().unwrap_or_else(|| MembershipConfig::new_initial(self.id));
         } // Release state machine read lock.
 
         let snapshot_size = data.len();
-
-        let membership_config = self.get_membership_from_log(Some(last_applied_log.index)).await?;
 
         let snapshot_idx = {
             let mut l = self.snapshot_idx.lock().unwrap();
