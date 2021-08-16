@@ -176,6 +176,47 @@
 <img src="https://img.shields.io/crates/dv/async-raft.svg" alt="Crates.io" /></p>
 </div>
 <br/>
+<hr />
+<h2><a class="header" href="#from-datafuse-developer" id="from-datafuse-developer">From datafuse developer:</a></h2>
+<p><strong>This fork fixed several bugs in the original async-raft, introduced new features
+and is matinained by datafuse team. The API and internal data structure has changed
+to fit the latest <a href="https://github.com/datafuselabs/datafuse">datafuse</a> need.</strong></p>
+<p>The tags in form of <code>v0.6.2-alpha.*</code> are datafuse maintained versions.
+They are well tested but it should still be considered as a beta.</p>
+<p>Bug fixes are:</p>
+<ul>
+<li>fix: after 2 log compaction, membership should be able to be extract from prev compaction log</li>
+<li>fix: when finalize_snapshot_installation, memstore should not load membership from its old log that are going to be overridden by snapshot.</li>
+<li>fix: leader should re-create and send snapshot when <code>threshold/2 &lt; last_log_index - snapshot &lt; threshold</code></li>
+<li>fix: client_read has using wrong quorum=majority-1</li>
+<li>fix: doc-include can only be used in nightly build</li>
+<li>fix: when handle_update_match_index(), non-voter should also be considered, because when member change a non-voter is also count as a quorum member</li>
+<li>fix: when calc quorum, the non-voter should be count</li>
+<li>fix: a NonVoter should stay as NonVoter instead of Follower after restart</li>
+<li>fix: discarded log in replication_buffer should be finally sent.</li>
+<li>fix: a conflict is expected even when appending empty enties</li>
+<li>fix: last_applied should be updated only when logs actually applied.</li>
+</ul>
+<p>If you'd like to use this repo, notice the changes to the APIs:
+It is not quite difficult to follow up the changes.
+Most changes to the APIs are obvious and are some generalized form of the original ones.
+See the commits starts with <code>change:</code></p>
+<ul>
+<li>change: MembershipConfig.member type is changed form HashSet BTreeSet</li>
+<li>change: pass all logs to apply_entry_to_state_machine(), not just Normal logs.</li>
+<li>change: use LogId to track last applied instead of using just an index.</li>
+<li>change: reduce one unnecessary snapshot serialization</li>
+<li>change: add CurrentSnapshotData.meta: SnapshotMeta, which is a container of all meta data of a snapshot: last log id included, membership etc.</li>
+<li>change: Entry: merge term and index to log_id: LogId</li>
+<li>change: InitialState: last_log_{term,index} into last_log: LogId</li>
+<li>change: AppendEntriesRequest: merge prev_log_{term,index} into prev_log: LogId</li>
+<li>change: RaftCore: merge last_log_{term,index} into last_log: LogId</li>
+<li>change: RaftCore: replace <code>snapshot_index</code> with <code>snapshot_last_included: LogId</code>. Keep tracks of both snapshot last log term and index.</li>
+<li>change: CurrentSnapshotData: merge <code>term</code> and <code>index</code> into <code>included</code>.</li>
+<li>change: use snapshot-id to identify a snapshot stream</li>
+<li>change: InstallSnapshotRequest: merge last_included{term,index} into last_included</li>
+</ul>
+<hr />
 <p>Blazing fast Rust, a modern consensus protocol, and a reliable async runtime — this project intends to provide a consensus backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
 <p><a href="https://async-raft.github.io/async-raft">The guide</a> is the best place to get started, followed by <a href="https://docs.rs/async-raft/latest/async_raft/">the docs</a> for more in-depth details.</p>
 <p>This crate differs from other Raft implementations in that:</p>
