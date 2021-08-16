@@ -18,6 +18,55 @@
 </div>
 <br/>
 
+---
+
+
+## From datafuse developer:
+
+**This fork fixed several bugs in the original async-raft, introduced new features
+and is matinained by datafuse team. The API and internal data structure has changed
+to fit the latest [datafuse](https://github.com/datafuselabs/datafuse) need.**
+
+The tags in form of `v0.6.2-alpha.*` are datafuse maintained versions.
+They are well tested but it should still be considered as a beta.
+
+Bug fixes are:
+
+- fix: after 2 log compaction, membership should be able to be extract from prev compaction log
+- fix: when finalize_snapshot_installation, memstore should not load membership from its old log that are going to be overridden by snapshot.
+- fix: leader should re-create and send snapshot when `threshold/2 < last_log_index - snapshot < threshold`
+- fix: client_read has using wrong quorum=majority-1
+- fix: doc-include can only be used in nightly build
+- fix: when handle_update_match_index(), non-voter should also be considered, because when member change a non-voter is also count as a quorum member
+- fix: when calc quorum, the non-voter should be count
+- fix: a NonVoter should stay as NonVoter instead of Follower after restart
+- fix: discarded log in replication_buffer should be finally sent.
+- fix: a conflict is expected even when appending empty enties
+- fix: last_applied should be updated only when logs actually applied.
+
+If you'd like to use this repo, notice the changes to the APIs:
+It is not quite difficult to follow up the changes.
+Most changes to the APIs are obvious and are some generalized form of the original ones.
+See the commits starts with `change:`
+
+- change: MembershipConfig.member type is changed form HashSet BTreeSet
+- change: pass all logs to apply_entry_to_state_machine(), not just Normal logs.
+- change: use LogId to track last applied instead of using just an index.
+- change: reduce one unnecessary snapshot serialization
+- change: add CurrentSnapshotData.meta: SnapshotMeta, which is a container of all meta data of a snapshot: last log id included, membership etc.
+- change: Entry: merge term and index to log_id: LogId
+- change: InitialState: last_log_{term,index} into last_log: LogId
+- change: AppendEntriesRequest: merge prev_log_{term,index} into prev_log: LogId
+- change: RaftCore: merge last_log_{term,index} into last_log: LogId
+- change: RaftCore: replace `snapshot_index` with `snapshot_last_included: LogId`. Keep tracks of both snapshot last log term and index.
+- change: CurrentSnapshotData: merge `term` and `index` into `included`.
+- change: use snapshot-id to identify a snapshot stream
+- change: InstallSnapshotRequest: merge last_included{term,index} into last_included
+
+
+
+---
+
 Blazing fast Rust, a modern consensus protocol, and a reliable async runtime — this project intends to provide a consensus backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).
 
 [The guide](https://async-raft.github.io/async-raft) is the best place to get started, followed by [the docs](https://docs.rs/async-raft/latest/async_raft/) for more in-depth details.
