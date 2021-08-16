@@ -9,7 +9,7 @@ use async_raft::LogId;
 use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 /// Test transfer snapshot in small chnuks
 ///
@@ -42,13 +42,13 @@ async fn snapshot_chunk_size() -> Result<()> {
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&hashset![0], want, None, "empty").await?;
-        router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+        router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
 
         router.initialize_from_single_node(0).await?;
         want += 1;
 
-        router.wait_for_log(&hashset![0], want, None, "init leader").await?;
+        router.wait_for_log(&btreeset![0], want, None, "init leader").await?;
     }
 
     tracing::info!("--- send just enough logs to trigger snapshot");
@@ -57,12 +57,12 @@ async fn snapshot_chunk_size() -> Result<()> {
         want = snapshot_threshold;
 
         let want_snap = Some((want.into(), 1, MembershipConfig {
-            members: hashset![0u64],
+            members: btreeset![0u64],
             members_after_consensus: None,
         }));
 
-        router.wait_for_log(&hashset![0], want, None, "send log to trigger snapshot").await?;
-        router.wait_for_snapshot(&hashset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
+        router.wait_for_log(&btreeset![0], want, None, "send log to trigger snapshot").await?;
+        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
         router.assert_storage_state(1, want, Some(0), LogId { term: 1, index: want }, want_snap).await;
     }
 
@@ -72,12 +72,12 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
 
         let want_snap = Some((want.into(), 1, MembershipConfig {
-            members: hashset![0u64],
+            members: btreeset![0u64],
             members_after_consensus: None,
         }));
 
-        router.wait_for_log(&hashset![0, 1], want, None, "add non-voter").await?;
-        router.wait_for_snapshot(&hashset![1], LogId { term: 1, index: want }, None, "").await?;
+        router.wait_for_log(&btreeset![0, 1], want, None, "add non-voter").await?;
+        router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, None, "").await?;
         router
             .assert_storage_state(
                 1,

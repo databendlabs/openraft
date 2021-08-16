@@ -6,7 +6,7 @@ use async_raft::metrics::WaitError;
 use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 mod fixtures;
 
@@ -27,7 +27,7 @@ async fn metrics_wait() -> Result<()> {
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let cluster = hashset![0];
+    let cluster = btreeset![0];
     router.new_raft_node(0).await;
     router.initialize_with(0, cluster.clone()).await?;
     router.wait_for_state(&cluster, State::Leader, None, "init").await?;

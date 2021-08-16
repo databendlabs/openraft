@@ -8,7 +8,7 @@ use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 /// Cluster initialization test.
 ///
@@ -36,8 +36,8 @@ async fn initialization() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0, 1, 2], want, None, "empty").await?;
-    router.wait_for_state(&hashset![0, 1, 2], State::NonVoter, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], want, None, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1, 2], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -45,7 +45,7 @@ async fn initialization() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0, 1, 2], want, None, "init").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     for i in 0..3 {
@@ -59,12 +59,12 @@ async fn initialization() -> Result<()> {
                 panic!("expect ConfigChange payload")
             }
         };
-        assert_eq!(hashset![0, 1, 2], mem.members);
+        assert_eq!(btreeset![0, 1, 2], mem.members);
 
         let sm_mem = sto.get_state_machine().await.last_membership.clone();
         assert_eq!(
             Some(MembershipConfig {
-                members: hashset![0, 1, 2],
+                members: btreeset![0, 1, 2],
                 members_after_consensus: None,
             }),
             sm_mem

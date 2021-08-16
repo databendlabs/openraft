@@ -9,7 +9,7 @@ use async_raft::LogId;
 use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 /// Compaction test.
 ///
@@ -39,8 +39,8 @@ async fn compaction() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0], want, None, "empty").await?;
-    router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
+    router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
 
     router.assert_pristine_cluster().await;
 
@@ -49,7 +49,7 @@ async fn compaction() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0], want, None, "init leader").await?;
+    router.wait_for_log(&btreeset![0], want, None, "init leader").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Send enough requests to the cluster that compaction on the node should be triggered.
@@ -57,9 +57,9 @@ async fn compaction() -> Result<()> {
     router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
     want = snapshot_threshold;
 
-    router.wait_for_log(&hashset![0], want, None, "write").await?;
+    router.wait_for_log(&btreeset![0], want, None, "write").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
-    router.wait_for_snapshot(&hashset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
+    router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
     router
         .assert_storage_state(
             1,
@@ -67,7 +67,7 @@ async fn compaction() -> Result<()> {
             Some(0),
             LogId { term: 1, index: want },
             Some((want.into(), 1, MembershipConfig {
-                members: hashset![0],
+                members: btreeset![0],
                 members_after_consensus: None,
             })),
         )
@@ -82,9 +82,9 @@ async fn compaction() -> Result<()> {
     router.client_request_many(0, "0", 1).await;
     want += 1;
 
-    router.wait_for_log(&hashset![0, 1], want, None, "add follower").await?;
+    router.wait_for_log(&btreeset![0, 1], want, None, "add follower").await?;
     let expected_snap = Some((snapshot_threshold.into(), 1, MembershipConfig {
-        members: hashset![0u64],
+        members: btreeset![0u64],
         members_after_consensus: None,
     }));
     router

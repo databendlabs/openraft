@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use async_raft::raft::EntryConfigChange;
 use async_raft::raft::EntryNormal;
@@ -24,7 +24,7 @@ async fn test_get_membership_config_default() -> Result<()> {
 #[tokio::test]
 async fn test_get_membership_config_with_previous_state() -> Result<()> {
     let mut log = BTreeMap::new();
-    let mut members: HashSet<NodeId> = Default::default();
+    let mut members: BTreeSet<NodeId> = Default::default();
     members.insert(1);
     members.insert(2);
     members.insert(3);

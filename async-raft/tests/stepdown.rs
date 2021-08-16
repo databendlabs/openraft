@@ -8,7 +8,7 @@ use async_raft::Config;
 use async_raft::LogId;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 use tokio::time::sleep;
 
 /// Client write tests.
@@ -34,8 +34,8 @@ async fn stepdown() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0, 1], want, None, "empty").await?;
-    router.wait_for_state(&hashset![0, 1], State::NonVoter, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1], want, None, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -43,7 +43,7 @@ async fn stepdown() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0, 1], want, None, "init").await?;
+    router.wait_for_log(&btreeset![0, 1], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -51,17 +51,17 @@ async fn stepdown() -> Result<()> {
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
-    router.change_membership(orig_leader, hashset![1, 2, 3]).await?;
+    router.change_membership(orig_leader, btreeset![1, 2, 3]).await?;
     want += 2;
 
     for id in 0..4 {
         if id == orig_leader {
-            router.wait_for_log(&hashset![id], want, None, "update membership: 1, 2, 3; old leader").await?;
+            router.wait_for_log(&btreeset![id], want, None, "update membership: 1, 2, 3; old leader").await?;
         } else {
             // a new leader elected and propose a log
             router
                 .wait_for_log(
-                    &hashset![id],
+                    &btreeset![id],
                     want + 1,
                     None,
                     "update membership: 1, 2, 3; new candidate",
@@ -103,7 +103,7 @@ async fn stepdown() -> Result<()> {
         );
         assert_eq!(
             cfg.members,
-            hashset![1, 2, 3],
+            btreeset![1, 2, 3],
             "expected old leader to have membership of [1, 2, 3], got {:?}",
             cfg.members
         );

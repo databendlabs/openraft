@@ -9,7 +9,7 @@ use async_raft::LogId;
 use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 /// A leader should create and send snapshot when snapshot is old and is not that old to trigger a snapshot, i.e.:
 /// `threshold/2 < leader.last_log_index - snapshot.applied_index < threshold`
@@ -45,12 +45,12 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&hashset![0], want, None, "empty").await?;
-        router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+        router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
         router.initialize_from_single_node(0).await?;
         want += 1;
 
-        router.wait_for_log(&hashset![0], want, None, "init leader").await?;
+        router.wait_for_log(&btreeset![0], want, None, "init leader").await?;
         router.assert_stable_cluster(Some(1), Some(want)).await;
     }
 
@@ -59,10 +59,10 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
         want = snapshot_threshold;
 
-        router.wait_for_log(&hashset![0], want, None, "send log to trigger snapshot").await?;
+        router.wait_for_log(&btreeset![0], want, None, "send log to trigger snapshot").await?;
         router.assert_stable_cluster(Some(1), Some(want)).await;
 
-        router.wait_for_snapshot(&hashset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
+        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
         router
             .assert_storage_state(
                 1,
@@ -70,7 +70,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
                 Some(0),
                 LogId { term: 1, index: want },
                 Some((want.into(), 1, MembershipConfig {
-                    members: hashset![0],
+                    members: btreeset![0],
                     members_after_consensus: None,
                 })),
             )
@@ -88,12 +88,12 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router.new_raft_node(1).await;
         router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
 
-        router.wait_for_log(&hashset![0, 1], want, None, "add non-voter").await?;
+        router.wait_for_log(&btreeset![0, 1], want, None, "add non-voter").await?;
         let expected_snap = Some((want.into(), 1, MembershipConfig {
-            members: hashset![0u64],
+            members: btreeset![0u64],
             members_after_consensus: None,
         }));
-        router.wait_for_snapshot(&hashset![1], LogId { term: 1, index: want }, None, "").await?;
+        router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, None, "").await?;
         router
             .assert_storage_state(
                 1,

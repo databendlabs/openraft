@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 mod fixtures;
 
@@ -32,8 +32,8 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     tracing::info!("--- initializing single node cluster");
 
     // Wait for node 0 to become leader.
-    router.initialize_with(0, hashset![0]).await?;
-    router.wait_for_state(&hashset![0], State::Leader, None, "init").await?;
+    router.initialize_with(0, btreeset![0]).await?;
+    router.wait_for_state(&btreeset![0], State::Leader, None, "init").await?;
 
     tracing::info!("--- add one non-voter");
     router.add_non_voter(0, 1).await?;
@@ -46,7 +46,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     tracing::info!("--- wait for log to sync");
     let want = 2u64;
     for node_id in 0..2 {
-        router.wait_for_log(&hashset![node_id], want, None, "write one log").await?;
+        router.wait_for_log(&btreeset![node_id], want, None, "write one log").await?;
         let sto = router.get_storage_handle(&node_id).await?;
         assert!(sto.get_state_machine().await.client_status.get("foo").is_some());
     }

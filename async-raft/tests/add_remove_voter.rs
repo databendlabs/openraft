@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,7 +7,7 @@ use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
 use futures::stream::StreamExt;
-use maplit::hashset;
+use maplit::btreeset;
 
 mod fixtures;
 
@@ -19,7 +19,7 @@ mod fixtures;
 /// - add 4 non-voter as follower.
 /// - asserts that the leader was able to successfully commit logs and that the followers has successfully replicated
 ///   the payload.
-/// - remove one folower: node-4
+/// - remove one follower: node-4
 /// - asserts node-4 becomes non-voter and the leader stops sending logs to it.
 ///
 /// RUST_LOG=async_raft,memstore,add_remove_voter=trace cargo test -p async-raft --test add_remove_voter
@@ -28,8 +28,8 @@ async fn add_remove_voter() -> Result<()> {
     fixtures::init_tracing();
 
     let timeout = Duration::from_millis(500);
-    let all_members = hashset![0, 1, 2, 3, 4];
-    let left_members = hashset![0, 1, 2, 3];
+    let all_members = btreeset![0, 1, 2, 3, 4];
+    let left_members = btreeset![0, 1, 2, 3];
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
@@ -62,7 +62,7 @@ async fn add_remove_voter() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want = 1;
 
-    wait_log(router.clone(), &hashset![0], want).await?;
+    wait_log(router.clone(), &btreeset![0], want).await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     // Sync some new nodes.
@@ -123,7 +123,7 @@ async fn add_remove_voter() -> Result<()> {
     Ok(())
 }
 
-async fn wait_log(router: std::sync::Arc<fixtures::RaftRouter>, node_ids: &HashSet<u64>, want_log: u64) -> Result<()> {
+async fn wait_log(router: std::sync::Arc<fixtures::RaftRouter>, node_ids: &BTreeSet<u64>, want_log: u64) -> Result<()> {
     let timeout = Duration::from_millis(500);
     for i in node_ids.iter() {
         router

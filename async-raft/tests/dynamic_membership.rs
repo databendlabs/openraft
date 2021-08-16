@@ -8,7 +8,7 @@ use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
 use futures::stream::StreamExt;
-use maplit::hashset;
+use maplit::btreeset;
 use tokio::time::sleep;
 
 /// Dynamic membership test.
@@ -34,8 +34,8 @@ async fn dynamic_membership() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0], want, None, "empty").await?;
-    router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
+    router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -43,7 +43,7 @@ async fn dynamic_membership() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0], want, None, "init").await?;
+    router.wait_for_log(&btreeset![0], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     // Sync some new nodes.
@@ -63,10 +63,10 @@ async fn dynamic_membership() -> Result<()> {
     }
 
     tracing::info!("--- changing cluster config");
-    router.change_membership(0, hashset![0, 1, 2, 3, 4]).await?;
+    router.change_membership(0, btreeset![0, 1, 2, 3, 4]).await?;
     want += 2;
 
-    router.wait_for_log(&hashset![0, 1, 2, 3, 4], want, None, "cluster of 5 candidates").await?;
+    router.wait_for_log(&btreeset![0, 1, 2, 3, 4], want, None, "cluster of 5 candidates").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await; // Still in term 1, so leader is still node 0.
 
     // Isolate old leader and assert that a new leader takes over.

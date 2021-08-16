@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use tokio::sync::oneshot;
 
@@ -221,7 +221,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         std::cmp::min(c0_index, c1_index)
     }
 
-    fn calc_members_commit_index(&self, mem: &HashSet<NodeId>, msg: &str) -> u64 {
+    fn calc_members_commit_index(&self, mem: &BTreeSet<NodeId>, msg: &str) -> u64 {
         let log_ids = self.get_match_log_ids(mem);
         tracing::debug!("{} matched log_ids: {:?}", msg, log_ids);
 
@@ -232,7 +232,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Extract the matching index/term of the replication state of specified nodes.
-    fn get_match_log_ids(&self, node_ids: &HashSet<NodeId>) -> Vec<LogId> {
+    fn get_match_log_ids(&self, node_ids: &BTreeSet<NodeId>) -> Vec<LogId> {
         tracing::debug!("to get match log ids of nodes: {:?}", node_ids);
 
         let mut rst = Vec::with_capacity(node_ids.len());

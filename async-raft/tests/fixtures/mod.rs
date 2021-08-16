@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -134,7 +135,7 @@ impl RaftRouter {
     pub async fn initialize_from_single_node(&self, node: NodeId) -> Result<()> {
         tracing::info!({ node }, "initializing cluster from single node");
         let rt = self.routing_table.read().await;
-        let members: HashSet<NodeId> = rt.keys().cloned().collect();
+        let members: BTreeSet<NodeId> = rt.keys().cloned().collect();
         rt.get(&node)
             .ok_or_else(|| anyhow!("node {} not found in routing table", node))?
             .0
@@ -144,7 +145,7 @@ impl RaftRouter {
     }
 
     /// Initialize cluster with specified node ids.
-    pub async fn initialize_with(&self, node: NodeId, members: HashSet<NodeId>) -> Result<()> {
+    pub async fn initialize_with(&self, node: NodeId, members: BTreeSet<NodeId>) -> Result<()> {
         tracing::info!({ node }, "initializing cluster from single node");
         let rt = self.routing_table.read().await;
         rt.get(&node)
@@ -207,7 +208,7 @@ impl RaftRouter {
     #[tracing::instrument(level = "info", skip(self))]
     pub async fn wait_for_log(
         &self,
-        node_ids: &HashSet<u64>,
+        node_ids: &BTreeSet<u64>,
         want_log: u64,
         timeout: Option<Duration>,
         msg: &str,
@@ -222,7 +223,7 @@ impl RaftRouter {
     #[tracing::instrument(level = "info", skip(self))]
     pub async fn wait_for_state(
         &self,
-        node_ids: &HashSet<u64>,
+        node_ids: &BTreeSet<u64>,
         want_state: State,
         timeout: Option<Duration>,
         msg: &str,
@@ -237,7 +238,7 @@ impl RaftRouter {
     #[tracing::instrument(level = "info", skip(self))]
     pub async fn wait_for_snapshot(
         &self,
-        node_ids: &HashSet<u64>,
+        node_ids: &BTreeSet<u64>,
         want: LogId,
         timeout: Option<Duration>,
         msg: &str,
@@ -277,7 +278,7 @@ impl RaftRouter {
         node.0.add_non_voter(target).await
     }
 
-    pub async fn change_membership(&self, leader: NodeId, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
+    pub async fn change_membership(&self, leader: NodeId, members: BTreeSet<NodeId>) -> Result<(), ChangeConfigError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.change_membership(members).await

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 mod fixtures;
 
@@ -41,7 +41,7 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
     fixtures::init_tracing();
 
     let timeout = Duration::from_millis(500);
-    let candidates = hashset![0, 1, 2];
+    let candidates = btreeset![0, 1, 2];
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
@@ -56,7 +56,7 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
         router.initialize_from_single_node(0).await?;
         want = 1;
 
-        wait_log(router.clone(), &hashset![0], want).await?;
+        wait_log(router.clone(), &btreeset![0], want).await?;
     }
 
     tracing::info!("--- adding two candidate nodes");
@@ -130,7 +130,7 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
 
 async fn wait_log(
     router: std::sync::Arc<fixtures::RaftRouter>,
-    node_ids: &HashSet<u64>,
+    node_ids: &BTreeSet<u64>,
     want_log: u64,
 ) -> anyhow::Result<()> {
     let timeout = Duration::from_millis(500);

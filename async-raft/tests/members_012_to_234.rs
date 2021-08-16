@@ -7,7 +7,7 @@ use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
 use futures::stream::StreamExt;
-use maplit::hashset;
+use maplit::btreeset;
 
 /// Replace membership with another one with only one common node.
 /// To reproduce the bug that new config does not actually examine the term/index of non-voter, but instead only
@@ -30,8 +30,8 @@ async fn members_012_to_234() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0], want, None, "empty").await?;
-    router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
+    router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -39,7 +39,7 @@ async fn members_012_to_234() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0], want, None, "init").await?;
+    router.wait_for_log(&btreeset![0], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     tracing::info!("--- adding 4 new nodes to cluster");
@@ -64,23 +64,23 @@ async fn members_012_to_234() -> Result<()> {
     router.isolate_node(4).await;
 
     tracing::info!("--- changing config to 0,1,2");
-    router.change_membership(0, hashset![0, 1, 2]).await?;
+    router.change_membership(0, btreeset![0, 1, 2]).await?;
     want += 2;
 
-    router.wait_for_log(&hashset![0, 1, 2], want, None, "cluster of 0,1,2").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], want, None, "cluster of 0,1,2").await?;
 
     tracing::info!("--- changing config to 2,3,4");
     {
         let router = router.clone();
         // this is expected to be blocked since 3 and 4 are isolated.
         tokio::spawn(async move {
-            router.change_membership(0, hashset![2, 3, 4]).await?;
+            router.change_membership(0, btreeset![2, 3, 4]).await?;
             Ok::<(), anyhow::Error>(())
         });
     }
     want += 1;
 
-    let wait_rst = router.wait_for_log(&hashset![0], want, None, "cluster of joint").await;
+    let wait_rst = router.wait_for_log(&btreeset![0], want, None, "cluster of joint").await;
 
     // the first step of joint should not pass because the new config can not constitute a quorum
     assert!(wait_rst.is_err());

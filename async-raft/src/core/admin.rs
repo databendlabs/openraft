@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 
 use futures::future::FutureExt;
@@ -29,7 +30,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn handle_init_with_config(
         &mut self,
-        mut members: HashSet<NodeId>,
+        mut members: BTreeSet<NodeId>,
     ) -> Result<(), InitializeError> {
         if self.core.last_log_id.index != 0 || self.core.current_term != 0 {
             tracing::error!({self.core.last_log_id.index, self.core.current_term}, "rejecting init_with_config request as last_log_index or current_term is 0");
@@ -97,7 +98,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn change_membership(&mut self, members: HashSet<NodeId>, tx: ChangeMembershipTx) {
+    pub(super) async fn change_membership(&mut self, members: BTreeSet<NodeId>, tx: ChangeMembershipTx) {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ChangeConfigError::InoperableConfig));
@@ -219,7 +220,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .all_nodes()
             .into_iter()
             .filter(|elem| elem != &self.core.id)
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
 
         let old_node_ids = self.core.membership.members.clone();
         let node_ids_to_add = new_node_ids.difference(&old_node_ids);

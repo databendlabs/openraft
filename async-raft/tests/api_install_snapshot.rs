@@ -9,7 +9,7 @@ use async_raft::LogId;
 use async_raft::SnapshotMeta;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 ///  API test: install_snapshot with various condition.
 ///
@@ -33,13 +33,13 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&hashset![0], want, None, "empty").await?;
-        router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+        router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
 
         router.initialize_from_single_node(0).await?;
         want += 1;
 
-        router.wait_for_log(&hashset![0], want, None, "init leader").await?;
+        router.wait_for_log(&btreeset![0], want, None, "init leader").await?;
         router.assert_stable_cluster(Some(1), Some(want)).await;
     }
 

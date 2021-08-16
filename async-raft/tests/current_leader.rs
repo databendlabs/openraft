@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 /// Current leader tests.
 ///
@@ -30,8 +30,8 @@ async fn current_leader() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0, 1, 2], want, None, "empty").await?;
-    router.wait_for_state(&hashset![0, 1, 2], State::NonVoter, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], want, None, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1, 2], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -39,7 +39,7 @@ async fn current_leader() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0, 1, 2], want, None, "init").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], want, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     // Get the ID of the leader, and assert that current_leader succeeds.

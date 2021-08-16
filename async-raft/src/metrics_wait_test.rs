@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use maplit::hashset;
+use maplit::btreeset;
 use tokio::sync::watch;
 use tokio::time::sleep;
 
@@ -73,14 +73,14 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config.members = hashset![1, 2];
+            update.membership_config.members = btreeset![1, 2];
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
-        let got = w.members(hashset![1, 2], "members").await?;
+        let got = w.members(btreeset![1, 2], "members").await?;
         h.await?;
 
-        assert_eq!(hashset![1, 2], got.membership_config.members);
+        assert_eq!(btreeset![1, 2], got.membership_config.members);
     }
 
     {
@@ -90,14 +90,14 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config.members_after_consensus = Some(hashset![1, 2]);
+            update.membership_config.members_after_consensus = Some(btreeset![1, 2]);
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
-        let got = w.next_members(Some(hashset![1, 2]), "next_members").await?;
+        let got = w.next_members(Some(btreeset![1, 2]), "next_members").await?;
         h.await?;
 
-        assert_eq!(Some(hashset![1, 2]), got.membership_config.members_after_consensus);
+        assert_eq!(Some(btreeset![1, 2]), got.membership_config.members_after_consensus);
     }
 
     tracing::info!("--- wait for snapshot, Ok");

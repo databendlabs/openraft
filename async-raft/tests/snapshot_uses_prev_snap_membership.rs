@@ -10,7 +10,7 @@ use async_raft::RaftStorage;
 use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 
 /// Test a second compaction should not lose membership.
 ///
@@ -43,21 +43,21 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&hashset![0], want, None, "empty").await?;
-        router.wait_for_state(&hashset![0], State::NonVoter, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+        router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
         router.initialize_from_single_node(0).await?;
         want += 1;
 
-        router.wait_for_log(&hashset![0], want, None, "init").await?;
-        router.wait_for_state(&hashset![0], State::Leader, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], want, None, "init").await?;
+        router.wait_for_state(&btreeset![0], State::Leader, None, "empty").await?;
 
         router.new_raft_node(1).await;
         router.add_non_voter(0, 1).await?;
 
-        router.change_membership(0, hashset![0, 1]).await?;
+        router.change_membership(0, btreeset![0, 1]).await?;
         want += 2;
 
-        router.wait_for_log(&hashset![0, 1], want, None, "cluster of 2").await?;
+        router.wait_for_log(&btreeset![0, 1], want, None, "cluster of 2").await?;
     }
 
     let sto = router.get_storage_handle(&0).await?;
@@ -67,13 +67,13 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
         want = snapshot_threshold;
 
-        router.wait_for_log(&hashset![0, 1], want, None, "send log to trigger snapshot").await?;
-        router.wait_for_snapshot(&hashset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
+        router.wait_for_log(&btreeset![0, 1], want, None, "send log to trigger snapshot").await?;
+        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
 
         let m = sto.get_membership_config().await?;
         assert_eq!(
             MembershipConfig {
-                members: hashset![0, 1],
+                members: btreeset![0, 1],
                 members_after_consensus: None
             },
             m,
@@ -91,7 +91,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         //         Some(0),
         //         want,
         //         Some((want.into(), 1, MembershipConfig {
-        //             members: hashset![0, 1],
+        //             members: btreeset![0, 1],
         //             members_after_consensus: None,
         //         })),
         //     )
@@ -103,8 +103,8 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold * 2 - want) as usize).await;
         want = snapshot_threshold * 2;
 
-        router.wait_for_log(&hashset![0, 1], want, None, "send log to trigger snapshot").await?;
-        router.wait_for_snapshot(&hashset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
+        router.wait_for_log(&btreeset![0, 1], want, None, "send log to trigger snapshot").await?;
+        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
     }
 
     tracing::info!("--- check membership");
@@ -112,7 +112,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         let m = sto.get_membership_config().await?;
         assert_eq!(
             MembershipConfig {
-                members: hashset![0, 1],
+                members: btreeset![0, 1],
                 members_after_consensus: None
             },
             m,

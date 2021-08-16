@@ -7,8 +7,8 @@
 //! Metrics are observed on a running Raft node via the `Raft::metrics()` method, which will
 //! return a stream of metrics.
 
+use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -171,7 +171,7 @@ impl Wait {
 
     /// Wait for `membership_config.members` to become expected node set or timeout.
     #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn members(&self, want_members: HashSet<NodeId>, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
+    pub async fn members(&self, want_members: BTreeSet<NodeId>, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
             |x| x.membership_config.members == want_members,
             &format!("{} .membership_config.members -> {:?}", msg.to_string(), want_members),
@@ -183,7 +183,7 @@ impl Wait {
     #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn next_members(
         &self,
-        want_members: Option<HashSet<NodeId>>,
+        want_members: Option<BTreeSet<NodeId>>,
         msg: impl ToString,
     ) -> Result<RaftMetrics, WaitError> {
         self.metrics(

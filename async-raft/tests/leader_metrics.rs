@@ -11,7 +11,7 @@ use async_raft::State;
 use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::hashmap;
-use maplit::hashset;
+use maplit::btreeset;
 
 mod fixtures;
 
@@ -32,8 +32,8 @@ async fn leader_metrics() -> Result<()> {
     fixtures::init_tracing();
 
     let timeout = Some(Duration::from_millis(1000));
-    let all_members = hashset![0, 1, 2, 3, 4];
-    let left_members = hashset![0, 1, 2, 3];
+    let all_members = btreeset![0, 1, 2, 3, 4];
+    let left_members = btreeset![0, 1, 2, 3];
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
@@ -42,8 +42,8 @@ async fn leader_metrics() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     let mut want = 0;
-    router.wait_for_log(&hashset![0], want, timeout, "init").await?;
-    router.wait_for_state(&hashset![0], State::NonVoter, timeout, "init").await?;
+    router.wait_for_log(&btreeset![0], want, timeout, "init").await?;
+    router.wait_for_state(&btreeset![0], State::NonVoter, timeout, "init").await?;
 
     router.assert_pristine_cluster().await;
 
@@ -52,7 +52,7 @@ async fn leader_metrics() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0], want, timeout, "init cluster").await?;
+    router.wait_for_log(&btreeset![0], want, timeout, "init cluster").await?;
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
     router
@@ -167,7 +167,7 @@ async fn leader_metrics() -> Result<()> {
         })
         .await?;
 
-    router.wait_for_state(&hashset![0], State::Candidate, timeout, "node 0 to candidate").await?;
+    router.wait_for_state(&btreeset![0], State::Candidate, timeout, "node 0 to candidate").await?;
 
     router
         .wait_for_metrics(

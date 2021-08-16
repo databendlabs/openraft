@@ -8,6 +8,7 @@ pub(crate) mod replication;
 mod vote;
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -778,7 +779,7 @@ pub enum ConsensusState {
         /// The set of non-voters nodes which are still being synced.
         awaiting: HashSet<NodeId>,
         /// The full membership change which has been proposed.
-        members: HashSet<NodeId>,
+        members: BTreeSet<NodeId>,
         /// The response channel to use once the consensus state is back into uniform state.
         tx: ChangeMembershipTx,
     },

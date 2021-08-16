@@ -7,7 +7,7 @@ use async_raft::LogId;
 use async_raft::State;
 use fixtures::RaftRouter;
 use futures::prelude::*;
-use maplit::hashset;
+use maplit::btreeset;
 
 mod fixtures;
 
@@ -34,8 +34,8 @@ async fn client_writes() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0, 1, 2], want, None, "empty").await?;
-    router.wait_for_state(&hashset![0, 1, 2], State::NonVoter, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], want, None, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1, 2], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -43,8 +43,8 @@ async fn client_writes() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     want += 1;
 
-    router.wait_for_log(&hashset![0, 1, 2], want, None, "leader init log").await?;
-    router.wait_for_state(&hashset![0], State::Leader, None, "init").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], want, None, "leader init log").await?;
+    router.wait_for_state(&btreeset![0], State::Leader, None, "init").await?;
 
     router.assert_stable_cluster(Some(1), Some(want)).await;
 
@@ -60,7 +60,7 @@ async fn client_writes() -> Result<()> {
     while clients.next().await.is_some() {}
 
     want = 6001;
-    router.wait_for_log(&hashset![0, 1, 2], want, None, "sync logs").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], want, None, "sync logs").await?;
 
     router.assert_stable_cluster(Some(1), Some(want)).await; // The extra 1 is from the leader's initial commit entry.
     router
@@ -70,7 +70,7 @@ async fn client_writes() -> Result<()> {
             Some(0),
             LogId { term: 1, index: want },
             Some(((5000..5100).into(), 1, MembershipConfig {
-                members: hashset![0, 1, 2],
+                members: btreeset![0, 1, 2],
                 members_after_consensus: None,
             })),
         )

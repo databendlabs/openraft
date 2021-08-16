@@ -7,7 +7,7 @@ use async_raft::NodeId;
 use async_raft::Raft;
 use async_raft::State;
 use fixtures::RaftRouter;
-use maplit::hashset;
+use maplit::btreeset;
 use tokio::time::sleep;
 
 use crate::fixtures::MemRaft;
@@ -40,20 +40,20 @@ async fn non_voter_restart() -> Result<()> {
     let mut want = 0;
 
     // Assert all nodes are in non-voter state & have no entries.
-    router.wait_for_log(&hashset![0, 1], want, None, "empty").await?;
-    router.wait_for_state(&hashset![0, 1], State::NonVoter, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1], want, None, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1], State::NonVoter, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     tracing::info!("--- initializing single node cluster");
 
-    router.initialize_with(0, hashset![0]).await?;
+    router.initialize_with(0, btreeset![0]).await?;
     want += 1;
 
     router.add_non_voter(0, 1).await?;
     router.client_request(0, "foo", 1).await;
     want += 1;
 
-    router.wait_for_log(&hashset![0, 1], want, None, "write one log").await?;
+    router.wait_for_log(&btreeset![0, 1], want, None, "write one log").await?;
 
     let (node0, _sto0) = router.remove_node(0).await.unwrap();
     assert_node_state(0, &node0, 1, 2, State::Leader);

@@ -1,6 +1,6 @@
 //! Public Raft interface and data types.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -214,7 +214,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// free, and Raft guarantees that the first node to become the cluster leader will propagate
     /// only its own config.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn initialize(&self, members: HashSet<NodeId>) -> Result<(), InitializeError> {
+    pub async fn initialize(&self, members: BTreeSet<NodeId>) -> Result<(), InitializeError> {
         let (tx, rx) = oneshot::channel();
         self.inner.tx_api.send(RaftMsg::Initialize { members, tx }).map_err(|_| RaftError::ShuttingDown)?;
         rx.await.map_err(|_| InitializeError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
@@ -251,7 +251,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// If this Raft node is not the cluster leader, then the proposed configuration change will be
     /// rejected.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn change_membership(&self, members: HashSet<NodeId>) -> Result<(), ChangeConfigError> {
+    pub async fn change_membership(&self, members: BTreeSet<NodeId>) -> Result<(), ChangeConfigError> {
         let (tx, rx) = oneshot::channel();
         self.inner
             .tx_api
@@ -339,7 +339,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         tx: ClientReadResponseTx,
     },
     Initialize {
-        members: HashSet<NodeId>,
+        members: BTreeSet<NodeId>,
         tx: oneshot::Sender<Result<(), InitializeError>>,
     },
     AddNonVoter {
@@ -347,7 +347,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         tx: ChangeMembershipTx,
     },
     ChangeMembership {
-        members: HashSet<NodeId>,
+        members: BTreeSet<NodeId>,
         tx: ChangeMembershipTx,
     },
 }
@@ -484,16 +484,16 @@ pub struct EntrySnapshotPointer {
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MembershipConfig {
     /// All members of the Raft cluster.
-    pub members: HashSet<NodeId>,
+    pub members: BTreeSet<NodeId>,
     /// All members of the Raft cluster after joint consensus is finalized.
     ///
     /// The presence of a value here indicates that the config is in joint consensus.
-    pub members_after_consensus: Option<HashSet<NodeId>>,
+    pub members_after_consensus: Option<BTreeSet<NodeId>>,
 }
 
 impl MembershipConfig {
     /// Get an iterator over all nodes in the current config.
-    pub fn all_nodes(&self) -> HashSet<u64> {
+    pub fn all_nodes(&self) -> BTreeSet<u64> {
         let mut all = self.members.clone();
         if let Some(members) = &self.members_after_consensus {
             all.extend(members);
@@ -520,7 +520,7 @@ impl MembershipConfig {
 
     /// Create a new initial config containing only the given node ID.
     pub fn new_initial(id: NodeId) -> Self {
-        let mut members = HashSet::new();
+        let mut members = BTreeSet::new();
         members.insert(id);
         Self {
             members,
