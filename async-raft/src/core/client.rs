@@ -278,23 +278,28 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Replicate the request if there are other cluster members. The client response will be
         // returned elsewhere after the entry has been committed to the cluster.
         let entry_arc = req.entry.clone();
+
+        if self.nodes.is_empty() && self.non_voters.is_empty() {
+            // Else, there are no voting nodes for replication, so the payload is now committed.
+            self.core.commit_index = entry_arc.log_id.index;
+            self.leader_report_metrics();
+            self.client_request_post_commit(req).await;
+            return;
+        }
+
+        self.awaiting_committed.push(req);
+
         if !self.nodes.is_empty() {
-            self.awaiting_committed.push(req);
             for node in self.nodes.values() {
                 let _ = node.replstream.repl_tx.send(RaftEvent::Replicate {
                     entry: entry_arc.clone(),
                     commit_index: self.core.commit_index,
                 });
             }
-        } else {
-            // Else, there are no voting nodes for replication, so the payload is now committed.
-            self.core.commit_index = entry_arc.log_id.index;
-            self.leader_report_metrics();
-            self.client_request_post_commit(req).await;
         }
 
-        // Replicate to non-voters.
         if !self.non_voters.is_empty() {
+            // Replicate to non-voters.
             for node in self.non_voters.values() {
                 let _ = node.state.replstream.repl_tx.send(RaftEvent::Replicate {
                     entry: entry_arc.clone(),

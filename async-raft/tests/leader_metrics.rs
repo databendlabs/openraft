@@ -10,8 +10,8 @@ use async_raft::ReplicationMetrics;
 use async_raft::State;
 use fixtures::RaftRouter;
 use futures::stream::StreamExt;
-use maplit::hashmap;
 use maplit::btreeset;
+use maplit::hashmap;
 
 mod fixtures;
 
