@@ -12,9 +12,9 @@ use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use async_raft::async_trait::async_trait;
-use async_raft::error::ChangeConfigError;
 use async_raft::error::ClientReadError;
 use async_raft::error::ClientWriteError;
+use async_raft::error::ResponseError;
 use async_raft::metrics::Wait;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::AppendEntriesResponse;
@@ -32,6 +32,7 @@ use async_raft::Raft;
 use async_raft::RaftMetrics;
 use async_raft::RaftNetwork;
 use async_raft::State;
+use maplit::btreeset;
 use memstore::ClientRequest as MemClientRequest;
 use memstore::ClientResponse as MemClientResponse;
 use memstore::MemStore;
@@ -113,12 +114,72 @@ impl RaftRouter {
         tokio::time::sleep(timeout).await;
     }
 
+    /// Create a cluster: 0 is the initial leader, others are voters non_voters
+    /// NOTE: it create a single node cluster first, then change it to a multi-voter cluster.
+    pub async fn new_nodes_from_single(
+        self: &Arc<Self>,
+        node_ids: BTreeSet<NodeId>,
+        non_voters: BTreeSet<NodeId>,
+    ) -> anyhow::Result<u64> {
+        assert!(node_ids.contains(&0));
+
+        self.new_raft_node(0).await;
+
+        let mut want = 0;
+
+        tracing::info!("--- wait for init node to ready");
+
+        self.wait_for_log(&btreeset![0], want, None, "empty").await?;
+        self.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+
+        tracing::info!("--- initializing single node cluster: {}", 0);
+
+        self.initialize_from_single_node(0).await?;
+        want += 1;
+
+        tracing::info!("--- wait for init node to become leader");
+
+        self.wait_for_log(&btreeset![0], want, None, "init").await?;
+        self.assert_stable_cluster(Some(1), Some(want)).await;
+
+        for id in node_ids.iter() {
+            if *id == 0 {
+                continue;
+            }
+            tracing::info!("--- add voter: {}", id);
+
+            self.new_raft_node(*id).await;
+            self.add_non_voter(0, *id).await?;
+        }
+
+        if node_ids.len() > 1 {
+            tracing::info!("--- change membership to setup voters: {:?}", node_ids);
+
+            self.change_membership(0, node_ids.clone()).await?;
+            want += 2;
+
+            self.wait_for_log(&node_ids, want, None, &format!("cluster of {:?}", node_ids)).await?;
+        }
+
+        for id in non_voters {
+            tracing::info!("--- add non-voter: {}", id);
+            self.new_raft_node(id).await;
+            self.add_non_voter(0, id).await?;
+        }
+
+        Ok(want)
+    }
+
     /// Create and register a new Raft node bearing the given ID.
     pub async fn new_raft_node(self: &Arc<Self>, id: NodeId) {
         let memstore = Arc::new(MemStore::new(id));
-        let node = Raft::new(id, self.config.clone(), self.clone(), memstore.clone());
+        self.new_raft_node_with_sto(id, memstore).await
+    }
+
+    pub async fn new_raft_node_with_sto(self: &Arc<Self>, id: NodeId, sto: Arc<MemStore>) {
+        let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone());
         let mut rt = self.routing_table.write().await;
-        rt.insert(id, (node, memstore));
+        rt.insert(id, (node, sto));
     }
 
     /// Remove the target node from the routing table & isolation.
@@ -272,13 +333,13 @@ impl RaftRouter {
         nodes.remove(&id);
     }
 
-    pub async fn add_non_voter(&self, leader: NodeId, target: NodeId) -> Result<(), ChangeConfigError> {
+    pub async fn add_non_voter(&self, leader: NodeId, target: NodeId) -> Result<(), ResponseError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.add_non_voter(target).await
     }
 
-    pub async fn change_membership(&self, leader: NodeId, members: BTreeSet<NodeId>) -> Result<(), ChangeConfigError> {
+    pub async fn change_membership(&self, leader: NodeId, members: BTreeSet<NodeId>) -> Result<(), ResponseError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.change_membership(members).await
@@ -477,7 +538,7 @@ impl RaftRouter {
                 .read_hard_state()
                 .await
                 .clone()
-                .unwrap_or_else(|| panic!("no hardstate found for node {}", id));
+                .unwrap_or_else(|| panic!("no hard state found for node {}", id));
             assert_eq!(
                 hs.current_term, expect_term,
                 "expected node {} to have term {}, got {}",

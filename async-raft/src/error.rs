@@ -139,3 +139,14 @@ impl<D: AppData> From<ClientWriteError<D>> for ChangeConfigError {
         }
     }
 }
+
+// A error wrapper of every type of error that will be sent to the caller.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum ResponseError {
+    #[error(transparent)]
+    ChangeConfig(#[from] ChangeConfigError),
+
+    #[error(transparent)]
+    Raft(#[from] RaftError),
+}

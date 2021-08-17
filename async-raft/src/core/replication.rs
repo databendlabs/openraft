@@ -25,7 +25,7 @@ use crate::ReplicationMetrics;
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(super) fn spawn_replication_stream(&self, target: NodeId) -> ReplicationState<D> {
         let replstream = ReplicationStream::new(
             self.core.id,
@@ -78,7 +78,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // Issue a response on the non-voters response channel if needed.
             if state.is_ready_to_join {
                 if let Some(tx) = state.tx.take() {
-                    let _ = tx.send(Ok(()));
+                    // TODO(xp): no log index to send
+                    let _ = tx.send(Ok(0));
                 }
                 // If we are in NonVoterSync state, and this is one of the nodes being awaiting, then update.
                 match std::mem::replace(&mut self.consensus_state, ConsensusState::Uniform) {

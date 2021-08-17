@@ -39,7 +39,6 @@ use crate::error::RaftError;
 use crate::error::RaftResult;
 use crate::metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
-use crate::raft::ChangeMembershipTx;
 use crate::raft::ClientReadResponseTx;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponseTx;
@@ -47,6 +46,7 @@ use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::MembershipConfig;
 use crate::raft::RaftMsg;
+use crate::raft::ResponseTx;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
@@ -492,8 +492,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Reject a proposed config change request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn reject_config_change_not_leader(&self, tx: oneshot::Sender<Result<(), ChangeConfigError>>) {
-        let _ = tx.send(Err(ChangeConfigError::NodeNotLeader(self.current_leader)));
+    fn reject_config_change_not_leader(&self, tx: ResponseTx) {
+        let _ = tx.send(Err(ChangeConfigError::NodeNotLeader(self.current_leader).into()));
     }
 
     /// Forward the given client write request to the leader.
@@ -619,13 +619,6 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     pub(super) awaiting_committed: Vec<ClientRequestEntry<D, R>>,
     /// A field tracking the cluster's current consensus state, which is used for dynamic membership.
     pub(super) consensus_state: ConsensusState,
-
-    /// An optional response channel for when a config change has been proposed, and is awaiting a response.
-    pub(super) propose_config_change_cb: Option<oneshot::Sender<Result<(), RaftError>>>,
-    /// An optional receiver for when a joint consensus config is committed.
-    pub(super) joint_consensus_cb: FuturesOrdered<oneshot::Receiver<Result<u64, RaftError>>>,
-    /// An optional receiver for when a uniform consensus config is committed.
-    pub(super) uniform_consensus_cb: FuturesOrdered<oneshot::Receiver<Result<u64, RaftError>>>,
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
@@ -647,9 +640,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             replicationrx,
             consensus_state,
             awaiting_committed: Vec::new(),
-            propose_config_change_cb: None,
-            joint_consensus_cb: FuturesOrdered::new(),
-            uniform_consensus_cb: FuturesOrdered::new(),
         }
     }
 
@@ -716,27 +706,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     }
                 },
                 Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
-                Some(Ok(res)) = self.joint_consensus_cb.next() => {
-                    match res {
-                        Ok(_) => self.handle_joint_consensus_committed().await?,
-                        Err(err) => if let Some(cb) = self.propose_config_change_cb.take() {
-                            let _ = cb.send(Err(err));
-                        }
-                    }
-                }
-                Some(Ok(res)) = self.uniform_consensus_cb.next() => {
-                    match res {
-                        Ok(index) => {
-                            let final_res = self.handle_uniform_consensus_committed(index).await;
-                            if let Some(cb) = self.propose_config_change_cb.take() {
-                                let _ = cb.send(final_res.map_err(From::from));
-                            }
-                        }
-                        Err(err) => if let Some(cb) = self.propose_config_change_cb.take() {
-                            let _ = cb.send(Err(err));
-                        }
-                    }
-                }
                 Some(event) = self.replicationrx.recv() => self.handle_replica_event(event).await,
                 Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
                     // Errors herein will trigger shutdown, so no need to process error.
@@ -767,8 +736,9 @@ struct NonVoterReplicationState<D: AppData> {
     pub state: ReplicationState<D>,
     /// A bool indicating if this non-voters is ready to join the cluster.
     pub is_ready_to_join: bool,
+
     /// The response channel to use for when this node has successfully synced with the cluster.
-    pub tx: Option<oneshot::Sender<Result<(), ChangeConfigError>>>,
+    pub tx: Option<ResponseTx>,
 }
 
 /// A state enum used by Raft leaders to navigate the joint consensus protocol.
@@ -780,8 +750,9 @@ pub enum ConsensusState {
         awaiting: HashSet<NodeId>,
         /// The full membership change which has been proposed.
         members: BTreeSet<NodeId>,
+
         /// The response channel to use once the consensus state is back into uniform state.
-        tx: ChangeMembershipTx,
+        tx: ResponseTx,
     },
     /// The cluster is in a joint consensus state and is syncing new nodes.
     Joint {

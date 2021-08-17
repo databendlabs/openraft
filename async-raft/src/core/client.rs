@@ -4,7 +4,6 @@ use anyhow::anyhow;
 use futures::future::TryFutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
-use tokio::sync::oneshot;
 use tokio::time::timeout;
 use tokio::time::Duration;
 
@@ -14,6 +13,7 @@ use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
+use crate::error::ResponseError;
 use crate::quorum;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientReadResponseTx;
@@ -22,6 +22,7 @@ use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteResponseTx;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
+use crate::raft::ResponseTx;
 use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -54,7 +55,7 @@ impl<D: AppData, R: AppDataResponse> ClientRequestEntry<D, R> {
 #[derive(derive_more::From)]
 pub enum ClientOrInternalResponseTx<D: AppData, R: AppDataResponse> {
     Client(ClientWriteResponseTx<D, R>),
-    Internal(oneshot::Sender<Result<u64, RaftError>>),
+    Internal(Option<ResponseTx>),
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
@@ -63,52 +64,50 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn commit_initial_leader_entry(&mut self) -> RaftResult<()> {
         // If the cluster has just formed, and the current index is 0, then commit the current
         // config, else a blank payload.
-        let req: ClientWriteRequest<D> = if self.core.last_log_id.index == 0 {
+        let last_index = self.core.last_log_id.index;
+
+        let req: ClientWriteRequest<D> = if last_index == 0 {
             ClientWriteRequest::new_config(self.core.membership.clone())
         } else {
-            ClientWriteRequest::new_blank_payload()
-        };
+            // Complete a partial member-change:
+            //
+            // Raft appends two consecutive membership change logs: the joint config and the final config,
+            // to impl a membership change.
+            //
+            // It is possible only the first one, the joint config log is written in to storage or replicated.
+            // Thus if a new leader sees only the first one, it needs to append the final config log to let
+            // the change-membership operation to finish.
 
-        // Check to see if we have any config change logs newer than our commit index. If so, then
-        // we need to drive the commitment of the config change to the cluster.
-        let mut pending_config = None; // The inner bool represents `is_in_joint_consensus`.
-        if self.core.last_log_id.index > self.core.commit_index {
-            let (stale_logs_start, stale_logs_stop) = (self.core.commit_index + 1, self.core.last_log_id.index + 1);
-            pending_config = self
+            let last_logs = self
                 .core
                 .storage
-                .get_log_entries(stale_logs_start, stale_logs_stop)
+                .get_log_entries(last_index, last_index + 1)
                 .await
-                .map_err(|err| self.core.map_fatal_storage_error(err))?
-                // Find the most recent config change.
-                .iter()
-                .rev()
-                .filter_map(|entry| match &entry.payload {
-                    EntryPayload::ConfigChange(cfg) => Some(cfg.membership.is_in_joint_consensus()),
-                    EntryPayload::SnapshotPointer(cfg) => Some(cfg.membership.is_in_joint_consensus()),
-                    _ => None,
-                })
-                .next();
-        }
+                .map_err(RaftError::RaftStorage)?;
+            let last_log = &last_logs[0];
+
+            let req = match last_log.payload {
+                EntryPayload::ConfigChange(ref mem) => {
+                    if mem.membership.members_after_consensus.is_some() {
+                        let final_config = mem.membership.to_final_config();
+                        Some(ClientWriteRequest::new_config(final_config))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+
+            req.unwrap_or_else(ClientWriteRequest::new_blank_payload)
+        };
 
         // Commit the initial payload to the cluster.
-        let (tx_payload_committed, rx_payload_committed) = oneshot::channel();
         let entry = self.append_payload_to_log(req.entry).await?;
         self.core.last_log_id.term = self.core.current_term; // This only ever needs to be updated once per term.
-        let cr_entry = ClientRequestEntry::from_entry(entry, tx_payload_committed);
-        self.replicate_client_request(cr_entry).await;
-        self.leader_report_metrics();
 
-        // Setup any callbacks needed for responding to commitment of a pending config.
-        if let Some(is_in_joint_consensus) = pending_config {
-            if is_in_joint_consensus {
-                self.joint_consensus_cb.push(rx_payload_committed); // Receiver for when the joint consensus is
-                                                                    // committed.
-            } else {
-                self.uniform_consensus_cb.push(rx_payload_committed); // Receiver for when the uniform consensus is
-                                                                      // committed.
-            }
-        }
+        let cr_entry = ClientRequestEntry::from_entry(entry, None);
+        self.replicate_client_request(cr_entry).await;
+
         Ok(())
     }
 
@@ -265,6 +264,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .await
             .map_err(|err| self.core.map_fatal_storage_error(err))?;
         self.core.last_log_id.index = entry.log_id.index;
+
+        self.leader_report_metrics();
+
         Ok(entry)
     }
 
@@ -339,20 +341,54 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 }
             }
             ClientOrInternalResponseTx::Internal(tx) => {
+                self.handle_special_log(entry);
+
                 // TODO(xp): copied from above, need refactor.
-                let res = match self.apply_entry_to_state_machine(&entry).await {
+                let res = self.apply_entry_to_state_machine(&entry).await;
+                let res = match res {
                     Ok(_data) => Ok(entry.log_id.index),
-                    Err(err) => Err(err),
+                    Err(err) => {
+                        tracing::error!("res of applying to state machine: {:?}", err);
+                        Err(err)
+                    }
                 };
+
+                // TODO(xp): if there is error, shall we go on?
 
                 self.core.last_applied = entry.log_id;
                 self.leader_report_metrics();
-                let _ = tx.send(res);
+
+                match tx {
+                    None => {
+                        tracing::debug!("no response tx to send res");
+                    }
+
+                    Some(tx) => {
+                        let send_res = tx.send(res.map_err(ResponseError::from));
+                        tracing::debug!("send internal response through tx, res: {:?}", send_res);
+                    }
+                }
             }
         }
 
         // Trigger log compaction if needed.
         self.core.trigger_log_compaction_if_needed(false);
+    }
+
+    pub fn handle_special_log(&mut self, entry: &Arc<Entry<D>>) {
+        match &entry.payload {
+            EntryPayload::ConfigChange(ref mem) => {
+                let m = &mem.membership;
+                if m.is_in_joint_consensus() {
+                    self.handle_joint_consensus_committed();
+                } else {
+                    self.handle_uniform_consensus_committed(entry.log_id.index);
+                }
+            }
+            EntryPayload::Blank => {}
+            EntryPayload::Normal(_) => {}
+            EntryPayload::SnapshotPointer(_) => {}
+        }
     }
 
     /// Apply the given log entry to the state machine.

@@ -20,6 +20,7 @@ use crate::error::ClientWriteError;
 use crate::error::InitializeError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
+use crate::error::ResponseError;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::AppData;
@@ -233,10 +234,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// If this Raft node is not the cluster leader, then this call will fail.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn add_non_voter(&self, id: NodeId) -> Result<(), ChangeConfigError> {
+    pub async fn add_non_voter(&self, id: NodeId) -> Result<(), ResponseError> {
         let (tx, rx) = oneshot::channel();
         self.inner.tx_api.send(RaftMsg::AddNonVoter { id, tx }).map_err(|_| RaftError::ShuttingDown)?;
-        rx.await.map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
+
+        let recv_res = rx.await;
+        let res = match recv_res {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("recv rx error: {}", e);
+                return Err(ChangeConfigError::RaftError(RaftError::ShuttingDown).into());
+            }
+        };
+
+        res?;
+
+        Ok(())
     }
 
     /// Propose a cluster configuration change (§6).
@@ -251,13 +264,25 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// If this Raft node is not the cluster leader, then the proposed configuration change will be
     /// rejected.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn change_membership(&self, members: BTreeSet<NodeId>) -> Result<(), ChangeConfigError> {
+    pub async fn change_membership(&self, members: BTreeSet<NodeId>) -> Result<(), ResponseError> {
         let (tx, rx) = oneshot::channel();
         self.inner
             .tx_api
             .send(RaftMsg::ChangeMembership { members, tx })
             .map_err(|_| RaftError::ShuttingDown)?;
-        rx.await.map_err(|_| ChangeConfigError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
+
+        let recv_res = rx.await;
+        let res = match recv_res {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("recv rx error: {}", e);
+                return Err(ChangeConfigError::RaftError(RaftError::ShuttingDown).into());
+            }
+        };
+
+        res?;
+
+        Ok(())
     }
 
     /// Get a handle to the metrics channel.
@@ -315,7 +340,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Cl
 
 pub(crate) type ClientWriteResponseTx<D, R> = oneshot::Sender<Result<ClientWriteResponse<R>, ClientWriteError<D>>>;
 pub(crate) type ClientReadResponseTx = oneshot::Sender<Result<(), ClientReadError>>;
-pub(crate) type ChangeMembershipTx = oneshot::Sender<Result<(), ChangeConfigError>>;
+pub(crate) type ResponseTx = oneshot::Sender<Result<u64, ResponseError>>;
 
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
@@ -344,11 +369,11 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     },
     AddNonVoter {
         id: NodeId,
-        tx: ChangeMembershipTx,
+        tx: ResponseTx,
     },
     ChangeMembership {
         members: BTreeSet<NodeId>,
-        tx: ChangeMembershipTx,
+        tx: ResponseTx,
     },
 }
 
@@ -525,6 +550,16 @@ impl MembershipConfig {
         Self {
             members,
             members_after_consensus: None,
+        }
+    }
+
+    pub fn to_final_config(&self) -> Self {
+        match self.members_after_consensus {
+            None => self.clone(),
+            Some(ref m) => MembershipConfig {
+                members: m.clone(),
+                members_after_consensus: None,
+            },
         }
     }
 }
