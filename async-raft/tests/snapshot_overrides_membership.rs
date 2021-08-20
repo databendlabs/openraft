@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -17,6 +15,9 @@ use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 
+#[macro_use]
+mod fixtures;
+
 /// Test membership info is sync correctly along with snapshot.
 ///
 /// What does this test do?
@@ -29,7 +30,8 @@ use maplit::btreeset;
 /// cargo test -p async-raft --test snapshot_overrides_membership
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn snapshot_overrides_membership() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     let snapshot_threshold: u64 = 10;
 
@@ -110,7 +112,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 assert_eq!(
                     MembershipConfig {
                         members: btreeset![2, 3],
-                        members_after_consensus: None
+                        members_after_consensus: None,
                     },
                     m
                 );
@@ -141,7 +143,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             assert_eq!(
                 MembershipConfig {
                     members: btreeset![0],
-                    members_after_consensus: None
+                    members_after_consensus: None,
                 },
                 m,
                 "membership should be overridden by the snapshot"

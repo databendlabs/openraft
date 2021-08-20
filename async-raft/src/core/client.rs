@@ -6,6 +6,7 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use tokio::time::timeout;
 use tokio::time::Duration;
+use tracing::Instrument;
 
 use crate::core::LeaderState;
 use crate::core::State;
@@ -172,13 +173,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let target = *id;
             let network = self.core.network.clone();
             let ttl = Duration::from_millis(self.core.config.heartbeat_interval);
-            let task = tokio::spawn(async move {
-                match timeout(ttl, network.append_entries(target, rpc)).await {
-                    Ok(Ok(data)) => Ok((target, data)),
-                    Ok(Err(err)) => Err((target, err)),
-                    Err(_timeout) => Err((target, anyhow!("timeout waiting for leadership confirmation"))),
+            let task = tokio::spawn(
+                async move {
+                    match timeout(ttl, network.append_entries(target, rpc)).await {
+                        Ok(Ok(data)) => Ok((target, data)),
+                        Ok(Err(err)) => Err((target, err)),
+                        Err(_timeout) => Err((target, anyhow!("timeout waiting for leadership confirmation"))),
+                    }
                 }
-            })
+                .instrument(tracing::debug_span!("spawn")),
+            )
             .map_err(move |err| (*id, err));
             pending.push(task);
         }
@@ -293,20 +297,26 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         if !self.nodes.is_empty() {
             for node in self.nodes.values() {
-                let _ = node.replstream.repl_tx.send(RaftEvent::Replicate {
-                    entry: entry_arc.clone(),
-                    commit_index: self.core.commit_index,
-                });
+                let _ = node.replstream.repl_tx.send((
+                    RaftEvent::Replicate {
+                        entry: entry_arc.clone(),
+                        commit_index: self.core.commit_index,
+                    },
+                    tracing::debug_span!("CH"),
+                ));
             }
         }
 
         if !self.non_voters.is_empty() {
             // Replicate to non-voters.
             for node in self.non_voters.values() {
-                let _ = node.state.replstream.repl_tx.send(RaftEvent::Replicate {
-                    entry: entry_arc.clone(),
-                    commit_index: self.core.commit_index,
-                });
+                let _ = node.state.replstream.repl_tx.send((
+                    RaftEvent::Replicate {
+                        entry: entry_arc.clone(),
+                        commit_index: self.core.commit_index,
+                    },
+                    tracing::debug_span!("CH"),
+                ));
             }
         }
     }

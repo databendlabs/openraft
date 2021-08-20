@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -7,6 +5,9 @@ use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+
+#[macro_use]
+mod fixtures;
 
 /// Lagging network test.
 ///
@@ -20,7 +21,8 @@ use maplit::btreeset;
 /// RUST_LOG=async_raft,memstore,lagging_network_write=trace cargo test -p async-raft --test lagging_network_write
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn lagging_network_write() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     let timeout = Some(tokio::time::Duration::from_millis(2000));
 

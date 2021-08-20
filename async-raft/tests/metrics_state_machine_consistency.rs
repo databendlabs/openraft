@@ -6,6 +6,7 @@ use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 
+#[macro_use]
 mod fixtures;
 
 /// Cluster metrics_state_machine_consistency test.
@@ -20,7 +21,8 @@ mod fixtures;
 /// metrics_state_machine_consistency
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn metrics_state_machine_consistency() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));

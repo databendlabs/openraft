@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -11,6 +9,9 @@ use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+
+#[macro_use]
+mod fixtures;
 
 /// Test a second compaction should not lose membership.
 ///
@@ -25,7 +26,8 @@ use maplit::btreeset;
 /// cargo test -p async-raft --test snapshot_uses_prev_snap_membership
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn snapshot_uses_prev_snap_membership() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     let snapshot_threshold: u64 = 10;
 
@@ -74,7 +76,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         assert_eq!(
             MembershipConfig {
                 members: btreeset![0, 1],
-                members_after_consensus: None
+                members_after_consensus: None,
             },
             m,
             "membership "
@@ -113,7 +115,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         assert_eq!(
             MembershipConfig {
                 members: btreeset![0, 1],
-                members_after_consensus: None
+                members_after_consensus: None,
             },
             m,
             "membership "

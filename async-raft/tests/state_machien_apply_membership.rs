@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -9,6 +7,9 @@ use async_raft::State;
 use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
+
+#[macro_use]
+mod fixtures;
 
 /// All log should be applied to state machine.
 ///
@@ -21,7 +22,8 @@ use maplit::btreeset;
 /// state_machine_apply_membership
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn state_machine_apply_membership() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
@@ -49,7 +51,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         assert_eq!(
             Some(MembershipConfig {
                 members: btreeset![0],
-                members_after_consensus: None
+                members_after_consensus: None,
             }),
             sm.last_membership
         );
@@ -84,7 +86,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         assert_eq!(
             Some(MembershipConfig {
                 members: btreeset![0, 1, 2],
-                members_after_consensus: None
+                members_after_consensus: None,
             }),
             sm.last_membership
         );

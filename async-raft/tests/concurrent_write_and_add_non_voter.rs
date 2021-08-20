@@ -7,7 +7,9 @@ use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+use tracing_futures::Instrument;
 
+#[macro_use]
 mod fixtures;
 
 /// Cluster concurrent_write_and_add_non_voter test.
@@ -38,7 +40,8 @@ mod fixtures;
 /// concurrent_write_and_add_non_voter
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn concurrent_write_and_add_non_voter() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     let timeout = Duration::from_millis(500);
     let candidates = btreeset![0, 1, 2];
@@ -93,10 +96,13 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
         let r = router.clone();
 
         let handle = {
-            tokio::spawn(async move {
-                r.add_non_voter(leader, 3).await.unwrap();
-                Ok::<(), anyhow::Error>(())
-            })
+            tokio::spawn(
+                async move {
+                    r.add_non_voter(leader, 3).await.unwrap();
+                    Ok::<(), anyhow::Error>(())
+                }
+                .instrument(tracing::debug_span!("spawn-add-non-voter")),
+            )
         };
 
         router.client_request_many(leader, "client", 1).await;

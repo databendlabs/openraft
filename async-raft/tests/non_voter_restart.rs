@@ -12,6 +12,7 @@ use tokio::time::sleep;
 
 use crate::fixtures::MemRaft;
 
+#[macro_use]
 mod fixtures;
 
 /// Cluster non_voter_restart test.
@@ -28,7 +29,8 @@ mod fixtures;
 /// RUST_LOG=async_raft,memstore,non_voter_restart=trace cargo test -p async-raft --test non_voter_restart
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn non_voter_restart() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));

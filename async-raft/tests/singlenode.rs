@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -8,6 +6,9 @@ use async_raft::LogId;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+
+#[macro_use]
+mod fixtures;
 
 /// Single-node cluster initialization test.
 ///
@@ -22,7 +23,8 @@ use maplit::btreeset;
 /// RUST_LOG=async_raft,memstore,singlenode=trace cargo test -p async-raft --test singlenode
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn singlenode() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));

@@ -12,6 +12,7 @@ use async_raft::RaftNetwork;
 use fixtures::RaftRouter;
 use memstore::ClientRequest;
 
+#[macro_use]
 mod fixtures;
 
 /// Cluster conflict_with_empty_entries test.
@@ -37,7 +38,8 @@ mod fixtures;
 /// conflict_with_empty_entries
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn conflict_with_empty_entries() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));

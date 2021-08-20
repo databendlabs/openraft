@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -10,6 +8,9 @@ use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+
+#[macro_use]
+mod fixtures;
 
 /// A leader should create and send snapshot when snapshot is old and is not that old to trigger a snapshot, i.e.:
 /// `threshold/2 < leader.last_log_index - snapshot.applied_index < threshold`
@@ -26,7 +27,8 @@ use maplit::btreeset;
 /// cargo test -p async-raft --test snapshot_ge_half_threshold
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn snapshot_ge_half_threshold() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     let snapshot_threshold: u64 = 10;
     let log_cnt = snapshot_threshold + 6;

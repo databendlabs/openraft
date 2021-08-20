@@ -8,6 +8,7 @@ use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 
+#[macro_use]
 mod fixtures;
 
 /// Test wait() utils
@@ -21,7 +22,8 @@ mod fixtures;
 /// RUST_LOG=async_raft,memstore,metrics_wait=trace cargo test -p async-raft --test metrics_wait
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn metrics_wait() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));

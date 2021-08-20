@@ -11,6 +11,7 @@ use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tracing::Span;
 
 use crate::config::Config;
 use crate::core::RaftCore;
@@ -32,7 +33,7 @@ use crate::RaftStorage;
 use crate::SnapshotMeta;
 
 struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
-    tx_api: mpsc::UnboundedSender<RaftMsg<D, R>>,
+    tx_api: mpsc::UnboundedSender<(RaftMsg<D, R>, Span)>,
     rx_metrics: watch::Receiver<RaftMetrics>,
     raft_handle: Mutex<Option<JoinHandle<RaftResult<()>>>>,
     tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
@@ -84,6 +85,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// ### `storage`
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
     /// See the docs on the `RaftStorage` trait for more details.
+    #[tracing::instrument(level="trace", skip(config, network, storage), fields(cluster=%config.cluster_name))]
     pub fn new(id: NodeId, config: Arc<Config>, network: Arc<N>, storage: Arc<S>) -> Self {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
@@ -104,20 +106,33 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
-    #[tracing::instrument(level = "debug", skip(self, rpc))]
+    #[tracing::instrument(level = "debug", skip(self, rpc),fields(rpc=%rpc.summary()))]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse, RaftError> {
+        let span = tracing::debug_span!("CH");
+
         let (tx, rx) = oneshot::channel();
-        self.inner.tx_api.send(RaftMsg::AppendEntries { rpc, tx }).map_err(|_| RaftError::ShuttingDown)?;
+
+        self.inner
+            .tx_api
+            .send((RaftMsg::AppendEntries { rpc, tx }, span))
+            .map_err(|_| RaftError::ShuttingDown)?;
+
         rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)
     }
 
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
-    #[tracing::instrument(level = "debug", skip(self, rpc))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, RaftError> {
+        let span = tracing::debug_span!("CH");
+
         let (tx, rx) = oneshot::channel();
-        self.inner.tx_api.send(RaftMsg::RequestVote { rpc, tx }).map_err(|_| RaftError::ShuttingDown)?;
+        self.inner
+            .tx_api
+            .send((RaftMsg::RequestVote { rpc, tx }, span))
+            .map_err(|_| RaftError::ShuttingDown)?;
+
         rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)
     }
 
@@ -125,10 +140,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node up-to-speed
     /// with the leader (§7).
-    #[tracing::instrument(level = "debug", skip(self, rpc))]
+    #[tracing::instrument(level = "debug", skip(self, rpc), fields(snapshot_id=%rpc.meta.last_log_id))]
     pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse, RaftError> {
+        let span = tracing::debug_span!("CH");
+
         let (tx, rx) = oneshot::channel();
-        self.inner.tx_api.send(RaftMsg::InstallSnapshot { rpc, tx }).map_err(|_| RaftError::ShuttingDown)?;
+
+        self.inner
+            .tx_api
+            .send((RaftMsg::InstallSnapshot { rpc, tx }, span))
+            .map_err(|_| RaftError::ShuttingDown)?;
+
         rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)
     }
 
@@ -148,11 +170,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// the read will not be stale.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn client_read(&self) -> Result<(), ClientReadError> {
+        let span = tracing::debug_span!("CH");
+
         let (tx, rx) = oneshot::channel();
+
         self.inner
             .tx_api
-            .send(RaftMsg::ClientReadRequest { tx })
+            .send((RaftMsg::ClientReadRequest { tx }, span))
             .map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
+
         rx.await.map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
     }
 
@@ -178,10 +204,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &self,
         rpc: ClientWriteRequest<D>,
     ) -> Result<ClientWriteResponse<R>, ClientWriteError<D>> {
+        let span = tracing::debug_span!("CH");
+
         let (tx, rx) = oneshot::channel();
+
         self.inner
             .tx_api
-            .send(RaftMsg::ClientWriteRequest { rpc, tx })
+            .send((RaftMsg::ClientWriteRequest { rpc, tx }, span))
             .map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown))?;
         rx.await.map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
     }
@@ -216,8 +245,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// only its own config.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize(&self, members: BTreeSet<NodeId>) -> Result<(), InitializeError> {
+        let span = tracing::debug_span!("CH");
+
         let (tx, rx) = oneshot::channel();
-        self.inner.tx_api.send(RaftMsg::Initialize { members, tx }).map_err(|_| RaftError::ShuttingDown)?;
+
+        self.inner
+            .tx_api
+            .send((RaftMsg::Initialize { members, tx }, span))
+            .map_err(|_| RaftError::ShuttingDown)?;
+
         rx.await.map_err(|_| InitializeError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
     }
 
@@ -233,10 +269,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// application to then call `change_membership` once all of the new nodes are synced.
     ///
     /// If this Raft node is not the cluster leader, then this call will fail.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self, id), fields(target=id))]
     pub async fn add_non_voter(&self, id: NodeId) -> Result<(), ResponseError> {
+        let span = tracing::debug_span!("CH");
+
         let (tx, rx) = oneshot::channel();
-        self.inner.tx_api.send(RaftMsg::AddNonVoter { id, tx }).map_err(|_| RaftError::ShuttingDown)?;
+
+        self.inner
+            .tx_api
+            .send((RaftMsg::AddNonVoter { id, tx }, span))
+            .map_err(|_| RaftError::ShuttingDown)?;
 
         let recv_res = rx.await;
         let res = match recv_res {
@@ -265,10 +307,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// rejected.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn change_membership(&self, members: BTreeSet<NodeId>) -> Result<(), ResponseError> {
+        let span = tracing::debug_span!("CH");
+
         let (tx, rx) = oneshot::channel();
         self.inner
             .tx_api
-            .send(RaftMsg::ChangeMembership { members, tx })
+            .send((RaftMsg::ChangeMembership { members, tx }, span))
             .map_err(|_| RaftError::ShuttingDown)?;
 
         let recv_res = rx.await;
@@ -403,8 +447,12 @@ pub struct AppendEntriesRequest<D: AppData> {
 impl<D: AppData> AppendEntriesRequest<D> {
     pub fn summary(&self) -> String {
         format!(
-            "term={}, leader_id={}, prev_log_id={}, leader_commit={}",
-            self.term, self.leader_id, self.prev_log_id, self.leader_commit
+            "term={}, leader_id={}, prev_log_id={}, leader_commit={}, n={}",
+            self.term,
+            self.leader_id,
+            self.prev_log_id,
+            self.leader_commit,
+            self.entries.len()
         )
     }
 }

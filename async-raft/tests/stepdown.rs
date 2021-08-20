@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,6 +8,9 @@ use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 use tokio::time::sleep;
+
+#[macro_use]
+mod fixtures;
 
 /// Client write tests.
 ///
@@ -23,7 +24,8 @@ use tokio::time::sleep;
 /// RUST_LOG=async_raft,memstore,stepdown=trace cargo test -p async-raft --test stepdown
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn stepdown() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));

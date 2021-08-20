@@ -39,6 +39,29 @@ use memstore::MemStore;
 use tokio::sync::RwLock;
 use tracing_subscriber::prelude::*;
 
+macro_rules! func_name {
+    () => {{
+        fn f() {}
+        fn type_name_of<T>(_: T) -> &'static str {
+            std::any::type_name::<T>()
+        }
+        let name = type_name_of(f);
+        let n = &name[..name.len() - 3];
+        let nn = n.replace("::{{closure}}", "");
+        nn
+    }};
+}
+
+macro_rules! init_ut {
+    () => {{
+        fixtures::init_tracing();
+
+        let name = func_name!();
+        let span = tracing::debug_span!("ut", "{}", name.split("::").last().unwrap());
+        ((), span)
+    }};
+}
+
 /// A concrete Raft type used during testing.
 pub type MemRaft = Raft<MemClientRequest, MemClientResponse, RaftRouter, MemStore>;
 

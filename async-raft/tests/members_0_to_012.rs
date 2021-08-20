@@ -5,7 +5,9 @@ use async_raft::Config;
 use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
+use tracing_futures::Instrument;
 
+#[macro_use]
 mod fixtures;
 
 /// A leader must wait for non-voter to commit member-change from [0] to [0,1,2].
@@ -19,7 +21,8 @@ mod fixtures;
 /// RUST_LOG=async_raft,memstore,members_0_to_012=trace cargo test -p async-raft --test members_0_to_012
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn members_0_to_012() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
@@ -64,6 +67,7 @@ async fn members_0_to_012() -> Result<()> {
         async move {
             let _x = router.change_membership(0, btreeset! {0,1,2}).await;
         }
+        .instrument(tracing::debug_span!("spawn-change-membership"))
     });
 
     let res = router

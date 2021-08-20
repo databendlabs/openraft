@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -10,6 +8,9 @@ use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+
+#[macro_use]
+mod fixtures;
 
 /// Compaction test.
 ///
@@ -22,7 +23,8 @@ use maplit::btreeset;
 /// RUST_LOG=async_raft,memstore,compaction=trace cargo test -p async-raft --test compaction
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn compaction() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     let snapshot_threshold: u64 = 50;
 

@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -10,6 +8,9 @@ use async_raft::SnapshotMeta;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+
+#[macro_use]
+mod fixtures;
 
 ///  API test: install_snapshot with various condition.
 ///
@@ -22,7 +23,8 @@ use maplit::btreeset;
 /// cargo test -p async-raft --test snapshot_ge_half_threshold
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn snapshot_ge_half_threshold() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));

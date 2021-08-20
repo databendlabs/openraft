@@ -1,3 +1,5 @@
+use tracing::Instrument;
+
 use crate::core::RaftCore;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
@@ -18,7 +20,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
     ///
     /// See `receiver implementation: AppendEntries RPC` in raft-essentials.md in this repo.
-    #[tracing::instrument(level="trace", skip(self, msg), fields(msg=msg.summary().as_str()))]
+    #[tracing::instrument(level="trace", skip(self, msg), fields(msg=%msg.summary()))]
     pub(super) async fn handle_append_entries_request(
         &mut self,
         msg: AppendEntriesRequest<D>,
@@ -245,13 +247,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // to ensure that only a single task can replicate data to the state machine, and that is
         // owned by a single task, not shared between multiple threads/tasks.
         let storage = self.storage.clone();
-        let handle = tokio::spawn(async move {
-            // Create a new vector of references to the entries data ... might have to change this
-            // interface a bit before 1.0.
-            let entries_refs: Vec<_> = entries.iter().collect();
-            storage.replicate_to_state_machine(&entries_refs).await?;
-            Ok(last_entry_seen)
-        });
+        let handle = tokio::spawn(
+            async move {
+                // Create a new vector of references to the entries data ... might have to change this
+                // interface a bit before 1.0.
+                let entries_refs: Vec<_> = entries.iter().collect();
+                storage.replicate_to_state_machine(&entries_refs).await?;
+                Ok(last_entry_seen)
+            }
+            .instrument(tracing::debug_span!("spawn")),
+        );
         self.replicate_to_sm_handle.push(handle);
     }
 
@@ -271,19 +276,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // Fetch the series of entries which must be applied to the state machine, then apply them.
-        let handle = tokio::spawn(async move {
-            let mut new_last_applied: Option<LogId> = None;
-            let entries = storage.get_log_entries(start, stop).await?;
-            if let Some(entry) = entries.last() {
-                new_last_applied = Some(entry.log_id);
+        let handle = tokio::spawn(
+            async move {
+                let mut new_last_applied: Option<LogId> = None;
+                let entries = storage.get_log_entries(start, stop).await?;
+                if let Some(entry) = entries.last() {
+                    new_last_applied = Some(entry.log_id);
+                }
+                let data_entries: Vec<_> = entries.iter().collect();
+                if data_entries.is_empty() {
+                    return Ok(new_last_applied);
+                }
+                storage.replicate_to_state_machine(&data_entries).await?;
+                Ok(new_last_applied)
             }
-            let data_entries: Vec<_> = entries.iter().collect();
-            if data_entries.is_empty() {
-                return Ok(new_last_applied);
-            }
-            storage.replicate_to_state_machine(&data_entries).await?;
-            Ok(new_last_applied)
-        });
+            .instrument(tracing::debug_span!("spawn-init-replicate-to-sm")),
+        );
         self.replicate_to_sm_handle.push(handle);
     }
 }

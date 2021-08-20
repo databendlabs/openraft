@@ -17,6 +17,8 @@ use tokio::time::interval;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tokio::time::Interval;
+use tracing::Instrument;
+use tracing::Span;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
@@ -43,7 +45,7 @@ pub(crate) struct ReplicationStream<D: AppData> {
     /// The spawn handle the `ReplicationCore` task.
     // pub handle: JoinHandle<()>,
     /// The channel used for communicating with the replication task.
-    pub repl_tx: mpsc::UnboundedSender<RaftEvent<D>>,
+    pub repl_tx: mpsc::UnboundedSender<(RaftEvent<D>, Span)>,
 }
 
 impl<D: AppData> ReplicationStream<D> {
@@ -58,7 +60,7 @@ impl<D: AppData> ReplicationStream<D> {
         commit_index: u64,
         network: Arc<N>,
         storage: Arc<S>,
-        replicationtx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
+        replicationtx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
     ) -> Self {
         ReplicationCore::spawn(
             id,
@@ -90,9 +92,9 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     /// The current term, which will never change during the lifetime of this task.
     term: u64,
     /// A channel for sending events to the Raft node.
-    raft_tx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
+    raft_tx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
     /// A channel for receiving events from the Raft node.
-    raft_rx: mpsc::UnboundedReceiver<RaftEvent<D>>,
+    raft_rx: mpsc::UnboundedReceiver<(RaftEvent<D>, Span)>,
     /// The `RaftNetwork` interface.
     network: Arc<N>,
     /// The `RaftStorage` interface.
@@ -167,7 +169,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         commit_index: u64,
         network: Arc<N>,
         storage: Arc<S>,
-        rafttx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
+        rafttx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
     ) -> ReplicationStream<D> {
         let (raft_tx, raft_rx) = mpsc::unbounded_channel();
         let heartbeat_timeout = Duration::from_millis(config.heartbeat_interval);
@@ -193,7 +195,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             replication_buffer: Vec::new(),
             outbound_buffer: Vec::new(),
         };
-        let _handle = tokio::spawn(this.main());
+
+        let _handle = tokio::spawn(this.main().instrument(tracing::debug_span!("spawn")));
         ReplicationStream {
             // handle,
             repl_tx: raft_tx,
@@ -279,10 +282,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             if let Some(log_id) = last_log_id {
                 self.next_index = log_id.index + 1; // This should always be the next expected index.
                 self.matched = log_id;
-                let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
-                    target: self.target,
-                    matched: log_id,
-                });
+                let _ = self.raft_tx.send((
+                    ReplicaEvent::UpdateMatchIndex {
+                        target: self.target,
+                        matched: log_id,
+                    },
+                    tracing::debug_span!("CH"),
+                ));
 
                 // If running at line rate, and our buffered outbound requests have accumulated too
                 // much, we need to purge and transition to a lagging state. The target is not able to
@@ -302,10 +308,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         // Replication was not successful, if a newer term has been returned, revert to follower.
         if res.term > self.term {
             tracing::trace!({ res.term }, "append entries failed, reverting to follower");
-            let _ = self.raft_tx.send(ReplicaEvent::RevertToFollower {
-                target: self.target,
-                term: res.term,
-            });
+            let _ = self.raft_tx.send((
+                ReplicaEvent::RevertToFollower {
+                    target: self.target,
+                    term: res.term,
+                },
+                tracing::debug_span!("CH"),
+            ));
             self.target_state = TargetReplState::Shutdown;
             return;
         }
@@ -326,10 +335,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // it will never exist. So instead, we just return, and accept the conflict data.
             if conflict.log_id.index == 0 {
                 self.target_state = TargetReplState::Lagging;
-                let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
-                    target: self.target,
-                    matched: self.matched,
-                });
+                let _ = self.raft_tx.send((
+                    ReplicaEvent::UpdateMatchIndex {
+                        target: self.target,
+                        matched: self.matched,
+                    },
+                    tracing::debug_span!("CH"),
+                ));
                 return;
             }
 
@@ -347,25 +359,31 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     // This condition would only ever be reached if the log has been removed due to
                     // log compaction (barring critical storage failure), so transition to snapshotting.
                     self.target_state = TargetReplState::Snapshotting;
-                    let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
-                        target: self.target,
-                        matched: self.matched,
-                    });
+                    let _ = self.raft_tx.send((
+                        ReplicaEvent::UpdateMatchIndex {
+                            target: self.target,
+                            matched: self.matched,
+                        },
+                        tracing::debug_span!("CH"),
+                    ));
                     return;
                 }
                 Err(err) => {
                     tracing::error!(error=%err, "error fetching log entry due to returned AppendEntries RPC conflict_opt");
-                    let _ = self.raft_tx.send(ReplicaEvent::Shutdown);
+                    let _ = self.raft_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
                     self.target_state = TargetReplState::Shutdown;
                     return;
                 }
             };
 
             // Check snapshot policy and handle conflict as needed.
-            let _ = self.raft_tx.send(ReplicaEvent::UpdateMatchIndex {
-                target: self.target,
-                matched: self.matched,
-            });
+            let _ = self.raft_tx.send((
+                ReplicaEvent::UpdateMatchIndex {
+                    target: self.target,
+                    matched: self.matched,
+                },
+                tracing::debug_span!("CH"),
+            ));
             match &self.config.snapshot_policy {
                 SnapshotPolicy::LogsSinceLast(threshold) => {
                     let diff = self.last_log_index - conflict.log_id.index; // NOTE WELL: underflow is guarded against above.
@@ -402,8 +420,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     /// Fully drain the channel coming in from the Raft node.
-    pub(self) fn drain_raft_rx(&mut self, first: RaftEvent<D>) {
-        let mut event_opt = Some(first);
+    pub(self) fn drain_raft_rx(&mut self, first: RaftEvent<D>, span: Span) {
+        let mut event_opt = Some((first, span));
         let mut iters = 0;
         loop {
             // Just ensure we don't get stuck draining a REALLY hot replication feed.
@@ -412,10 +430,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
 
             // Unpack the event opt, else return if we don't have one to process.
-            let event = match event_opt.take() {
+            let (event, span) = match event_opt.take() {
                 Some(event) => event,
                 None => return,
             };
+
+            let _ent = span.enter();
 
             // Process the event.
             match event {
@@ -438,8 +458,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
 
             // Attempt to unpack the next event for the next loop iteration.
-            if let Some(event) = self.raft_rx.recv().now_or_never() {
-                event_opt = event;
+            if let Some(event_span) = self.raft_rx.recv().now_or_never() {
+                event_opt = event_span;
             }
             iters += 1;
         }
@@ -557,7 +577,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             target: self.core.target,
             is_line_rate: true,
         };
-        let _ = self.core.raft_tx.send(event);
+        let _ = self.core.raft_tx.send((event, tracing::debug_span!("CH")));
         loop {
             if self.core.target_state != TargetReplState::LineRate {
                 return;
@@ -595,12 +615,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 continue;
             }
 
+            let span = tracing::debug_span!("CHrx:LineRate");
+            let _en = span.enter();
+
             tokio::select! {
                 _ = self.core.heartbeat.tick() => self.core.send_append_entries().await,
 
-                event = self.core.raft_rx.recv() => match event {
-                    Some(event) => self.core.drain_raft_rx(event),
-                    None => self.core.target_state = TargetReplState::Shutdown,
+                event_span = self.core.raft_rx.recv() => {
+                    match event_span {
+                        Some((event, span)) => self.core.drain_raft_rx(event, span),
+                        None => self.core.target_state = TargetReplState::Shutdown,
+                    }
                 }
             }
         }
@@ -613,7 +638,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             Ok(entries) => entries,
             Err(err) => {
                 tracing::error!(error=%err, "error while frontloading outbound buffer");
-                let _ = self.core.raft_tx.send(ReplicaEvent::Shutdown);
+                let _ = self.core.raft_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
                 return;
             }
         };
@@ -650,7 +675,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             target: self.core.target,
             is_line_rate: false,
         };
-        let _ = self.core.raft_tx.send(event);
+        let _ = self.core.raft_tx.send((event, tracing::debug_span!("CH")));
         self.core.replication_buffer.clear();
         self.core.outbound_buffer.clear();
         loop {
@@ -676,8 +701,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
-            if let Some(Some(event)) = self.core.raft_rx.recv().now_or_never() {
-                self.core.drain_raft_rx(event);
+            if let Some(Some((event, span))) = self.core.raft_rx.recv().now_or_never() {
+                self.core.drain_raft_rx(event, span);
             }
         }
     }
@@ -718,7 +743,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 Ok(entries) => entries,
                 Err(err) => {
                     tracing::error!(error=%err, "error fetching logs from storage");
-                    let _ = self.core.raft_tx.send(ReplicaEvent::Shutdown);
+                    let _ = self.core.raft_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
                     self.core.target_state = TargetReplState::Shutdown;
                     return;
                 }
@@ -760,7 +785,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             target: self.core.target,
             is_line_rate: false,
         };
-        let _ = self.core.raft_tx.send(event);
+        let _ = self.core.raft_tx.send((event, tracing::debug_span!("CH")));
         self.core.replication_buffer.clear();
         self.core.outbound_buffer.clear();
 
@@ -772,10 +797,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // If we don't have any of the components we need, fetch the current snapshot.
             if self.snapshot.is_none() && self.snapshot_fetch_rx.is_none() {
                 let (tx, rx) = oneshot::channel();
-                let _ = self.core.raft_tx.send(ReplicaEvent::NeedsSnapshot {
-                    target: self.core.target,
-                    tx,
-                });
+                let _ = self.core.raft_tx.send((
+                    ReplicaEvent::NeedsSnapshot {
+                        target: self.core.target,
+                        tx,
+                    },
+                    tracing::debug_span!("CH"),
+                ));
                 self.snapshot_fetch_rx = Some(rx);
             }
 
@@ -803,14 +831,20 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self, rx))]
     async fn wait_for_snapshot(&mut self, mut rx: oneshot::Receiver<CurrentSnapshotData<S::Snapshot>>) {
         loop {
+            let span = tracing::debug_span!("FFF:wait_for_snapshot");
+            let _ent = span.enter();
+
             tokio::select! {
                 _ = self.core.heartbeat.tick() => self.core.send_append_entries().await,
 
-                event = self.core.raft_rx.recv() => match event {
-                    Some(event) => self.core.drain_raft_rx(event),
-                    None => {
-                        self.core.target_state = TargetReplState::Shutdown;
-                        return;
+                event_span = self.core.raft_rx.recv() =>  {
+                    match event_span {
+
+                        Some((event, span)) => self.core.drain_raft_rx(event, span),
+                        None => {
+                            self.core.target_state = TargetReplState::Shutdown;
+                            return;
+                        }
                     }
                 },
 
@@ -877,10 +911,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Handle response conditions.
             if res.term > self.core.term {
-                let _ = self.core.raft_tx.send(ReplicaEvent::RevertToFollower {
-                    target: self.core.target,
-                    term: res.term,
-                });
+                let _ = self.core.raft_tx.send((
+                    ReplicaEvent::RevertToFollower {
+                        target: self.core.target,
+                        term: res.term,
+                    },
+                    tracing::debug_span!("CH"),
+                ));
                 self.core.target_state = TargetReplState::Shutdown;
                 return Ok(());
             }
@@ -895,8 +932,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             offset += nread as u64;
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
-            if let Some(Some(event)) = self.core.raft_rx.recv().now_or_never() {
-                self.core.drain_raft_rx(event);
+            if let Some(Some((event, span))) = self.core.raft_rx.recv().now_or_never() {
+                self.core.drain_raft_rx(event, span);
             }
         }
     }

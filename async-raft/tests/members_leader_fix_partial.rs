@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,6 +12,9 @@ use async_raft::Raft;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 
+#[macro_use]
+mod fixtures;
+
 /// Cluster members_leader_fix_partial test.
 ///
 /// - brings up 1 leader.
@@ -25,7 +26,8 @@ use maplit::btreeset;
 /// members_leader_fix_partial
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn members_leader_fix_partial() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));

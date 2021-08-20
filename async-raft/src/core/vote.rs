@@ -167,7 +167,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         Err(err) => tracing::error!({error=%err, peer=member}, "error while requesting vote from peer"),
                     }
                 }
-                .instrument(tracing::trace_span!("requesting vote from peer", target = member)),
+                .instrument(tracing::debug_span!("requesting vote from peer", target = member)),
             );
         }
         rx

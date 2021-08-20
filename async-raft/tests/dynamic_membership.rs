@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,6 +8,9 @@ use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
 use tokio::time::sleep;
+
+#[macro_use]
+mod fixtures;
 
 /// Dynamic membership test.
 ///
@@ -24,7 +25,11 @@ use tokio::time::sleep;
 /// RUST_LOG=async_raft,memstore,dynamic_membership=trace cargo test -p async-raft --test dynamic_membership
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn dynamic_membership() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
+
+    let span = tracing::debug_span!("ut-dynamic_membership");
+    let _ent = span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));

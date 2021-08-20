@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use tokio::sync::oneshot;
+use tracing_futures::Instrument;
 
 use crate::config::SnapshotPolicy;
 use crate::core::ConsensusState;
@@ -153,7 +154,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         //           here and that in handle_uniform_consensus_committed()
         if needs_removal {
             if let Some(node) = self.nodes.remove(&target) {
-                let _ = node.replstream.repl_tx.send(RaftEvent::Terminate);
+                let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
 
                 // remove metrics entry
                 self.leader_metrics.replication.remove(&target);
@@ -170,14 +171,20 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
-                let _ = node.replstream.repl_tx.send(RaftEvent::UpdateCommitIndex {
-                    commit_index: self.core.commit_index,
-                });
+                let _ = node.replstream.repl_tx.send((
+                    RaftEvent::UpdateCommitIndex {
+                        commit_index: self.core.commit_index,
+                    },
+                    tracing::debug_span!("CH"),
+                ));
             }
             for node in self.non_voters.values() {
-                let _ = node.state.replstream.repl_tx.send(RaftEvent::UpdateCommitIndex {
-                    commit_index: self.core.commit_index,
-                });
+                let _ = node.state.replstream.repl_tx.send((
+                    RaftEvent::UpdateCommitIndex {
+                        commit_index: self.core.commit_index,
+                    },
+                    tracing::debug_span!("CH"),
+                ));
             }
 
             // Check if there are any pending requests which need to be processed.
@@ -304,10 +311,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Else we just drop any other state and continue. Leaders never enter `Streaming` state.
         if let Some(SnapshotState::Snapshotting { handle, sender }) = self.core.snapshot_state.take() {
             let mut chan = sender.subscribe();
-            tokio::spawn(async move {
-                let _ = chan.recv().await;
-                drop(tx);
-            });
+            tokio::spawn(
+                async move {
+                    let _ = chan.recv().await;
+                    drop(tx);
+                }
+                .instrument(tracing::debug_span!("spawn-recv-and-drop")),
+            );
             self.core.snapshot_state = Some(SnapshotState::Snapshotting { handle, sender });
             return Ok(());
         }

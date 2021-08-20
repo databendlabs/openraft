@@ -26,6 +26,7 @@ use tokio::task::JoinHandle;
 use tokio::time::sleep_until;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use tracing::Span;
 use tracing_futures::Instrument;
 
 use crate::config::Config;
@@ -146,7 +147,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     tx_compaction: mpsc::Sender<SnapshotUpdate>,
     rx_compaction: mpsc::Receiver<SnapshotUpdate>,
 
-    rx_api: mpsc::UnboundedReceiver<RaftMsg<D, R>>,
+    rx_api: mpsc::UnboundedReceiver<(RaftMsg<D, R>, Span)>,
     tx_metrics: watch::Sender<RaftMetrics>,
     rx_shutdown: oneshot::Receiver<()>,
 }
@@ -157,7 +158,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         config: Arc<Config>,
         network: Arc<N>,
         storage: Arc<S>,
-        rx_api: mpsc::UnboundedReceiver<RaftMsg<D, R>>,
+        rx_api: mpsc::UnboundedReceiver<(RaftMsg<D, R>, Span)>,
         tx_metrics: watch::Sender<RaftMetrics>,
         rx_shutdown: oneshot::Receiver<()>,
     ) -> JoinHandle<RaftResult<()>> {
@@ -189,7 +190,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             tx_metrics,
             rx_shutdown,
         };
-        tokio::spawn(this.main())
+        tokio::spawn(this.main().instrument(tracing::debug_span!("spawn")))
     }
 
     /// The main loop of the Raft protocol.
@@ -612,9 +613,9 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     pub leader_metrics: LeaderMetrics,
 
     /// The stream of events coming from replication streams.
-    pub(super) replicationrx: mpsc::UnboundedReceiver<ReplicaEvent<S::Snapshot>>,
+    pub(super) replicationrx: mpsc::UnboundedReceiver<(ReplicaEvent<S::Snapshot>, Span)>,
     /// The clonable sender channel for replication stream events.
-    pub(super) replicationtx: mpsc::UnboundedSender<ReplicaEvent<S::Snapshot>>,
+    pub(super) replicationtx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
     /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
     pub(super) awaiting_committed: Vec<ClientRequestEntry<D, R>>,
     /// A field tracking the cluster's current consensus state, which is used for dynamic membership.
@@ -671,42 +672,52 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         loop {
             if !self.core.target_state.is_leader() {
                 for node in self.nodes.values() {
-                    let _ = node.replstream.repl_tx.send(RaftEvent::Terminate);
+                    let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
                 }
                 for node in self.non_voters.values() {
-                    let _ = node.state.replstream.repl_tx.send(RaftEvent::Terminate);
+                    let _ = node.state.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
                 }
                 return Ok(());
             }
+
+            let span = tracing::debug_span!("CHrx:LeaderState");
+            let _ent = span.enter();
+
             tokio::select! {
-                Some(msg) = self.core.rx_api.recv() => match msg {
-                    RaftMsg::AppendEntries{rpc, tx} => {
-                        let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
-                    }
-                    RaftMsg::RequestVote{rpc, tx} => {
-                        let _ = tx.send(self.core.handle_vote_request(rpc).await);
-                    }
-                    RaftMsg::InstallSnapshot{rpc, tx} => {
-                        let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
-                    }
-                    RaftMsg::ClientReadRequest{tx} => {
-                        self.handle_client_read_request(tx).await;
-                    }
-                    RaftMsg::ClientWriteRequest{rpc, tx} => {
-                        self.handle_client_write_request(rpc, tx).await;
-                    }
-                    RaftMsg::Initialize{tx, ..} => {
-                        self.core.reject_init_with_config(tx);
-                    }
-                    RaftMsg::AddNonVoter{id, tx} => {
-                        self.add_member(id, tx);
-                    }
-                    RaftMsg::ChangeMembership{members, tx} => {
-                        self.change_membership(members, tx).await;
+                Some((msg,span)) = self.core.rx_api.recv() => {
+                    let _ent = span.enter();
+                    match msg {
+                        RaftMsg::AppendEntries{rpc, tx} => {
+                            let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+                        }
+                        RaftMsg::RequestVote{rpc, tx} => {
+                            let _ = tx.send(self.core.handle_vote_request(rpc).await);
+                        }
+                        RaftMsg::InstallSnapshot{rpc, tx} => {
+                            let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+                        }
+                        RaftMsg::ClientReadRequest{tx} => {
+                            self.handle_client_read_request(tx).await;
+                        }
+                        RaftMsg::ClientWriteRequest{rpc, tx} => {
+                            self.handle_client_write_request(rpc, tx).await;
+                        }
+                        RaftMsg::Initialize{tx, ..} => {
+                            self.core.reject_init_with_config(tx);
+                        }
+                        RaftMsg::AddNonVoter{id, tx} => {
+                            self.add_member(id, tx);
+                        }
+                        RaftMsg::ChangeMembership{members, tx} => {
+                            self.change_membership(members, tx).await;
+                        }
                     }
                 },
                 Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
-                Some(event) = self.replicationrx.recv() => self.handle_replica_event(event).await,
+                Some((event, span)) = self.replicationrx.recv() => {
+                    let _ent = span.enter();
+                    self.handle_replica_event(event).await
+                }
                 Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
                     // Errors herein will trigger shutdown, so no need to process error.
                     let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
@@ -841,33 +852,42 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     return Ok(());
                 }
                 let timeout_fut = sleep_until(self.core.get_next_election_timeout());
+
+                let span = tracing::debug_span!("CHrx:CandidateState");
+                let _ent = span.enter();
+
                 tokio::select! {
                     _ = timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
                     Some((res, peer)) = pending_votes.recv() => self.handle_vote_response(res, peer).await?,
-                    Some(msg) = self.core.rx_api.recv() => match msg {
-                        RaftMsg::AppendEntries{rpc, tx} => {
-                            let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
-                        }
-                        RaftMsg::RequestVote{rpc, tx} => {
-                            let _ = tx.send(self.core.handle_vote_request(rpc).await);
-                        }
-                        RaftMsg::InstallSnapshot{rpc, tx} => {
-                            let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
-                        }
-                        RaftMsg::ClientReadRequest{tx} => {
-                            self.core.forward_client_read_request(tx);
-                        }
-                        RaftMsg::ClientWriteRequest{rpc, tx} => {
-                            self.core.forward_client_write_request(rpc, tx);
-                        }
-                        RaftMsg::Initialize{tx, ..} => {
-                            self.core.reject_init_with_config(tx);
-                        }
-                        RaftMsg::AddNonVoter{tx, ..} => {
-                            self.core.reject_config_change_not_leader(tx);
-                        }
-                        RaftMsg::ChangeMembership{tx, ..} => {
-                            self.core.reject_config_change_not_leader(tx);
+                    Some((msg,span)) = self.core.rx_api.recv() => {
+
+                        let _ent = span.enter();
+
+                        match msg {
+                            RaftMsg::AppendEntries{rpc, tx} => {
+                                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+                            }
+                            RaftMsg::RequestVote{rpc, tx} => {
+                                let _ = tx.send(self.core.handle_vote_request(rpc).await);
+                            }
+                            RaftMsg::InstallSnapshot{rpc, tx} => {
+                                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+                            }
+                            RaftMsg::ClientReadRequest{tx} => {
+                                self.core.forward_client_read_request(tx);
+                            }
+                            RaftMsg::ClientWriteRequest{rpc, tx} => {
+                                self.core.forward_client_write_request(rpc, tx);
+                            }
+                            RaftMsg::Initialize{tx, ..} => {
+                                self.core.reject_init_with_config(tx);
+                            }
+                            RaftMsg::AddNonVoter{tx, ..} => {
+                                self.core.reject_config_change_not_leader(tx);
+                            }
+                            RaftMsg::ChangeMembership{tx, ..} => {
+                                self.core.reject_config_change_not_leader(tx);
+                            }
                         }
                     },
                     Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
@@ -903,33 +923,42 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 return Ok(());
             }
             let election_timeout = sleep_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
+
+            let span = tracing::debug_span!("CHrx:FollowerState");
+            let _ent = span.enter();
+
             tokio::select! {
                 // If an election timeout is hit, then we need to transition to candidate.
                 _ = election_timeout => self.core.set_target_state(State::Candidate),
-                Some(msg) = self.core.rx_api.recv() => match msg {
-                    RaftMsg::AppendEntries{rpc, tx} => {
-                        let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
-                    }
-                    RaftMsg::RequestVote{rpc, tx} => {
-                        let _ = tx.send(self.core.handle_vote_request(rpc).await);
-                    }
-                    RaftMsg::InstallSnapshot{rpc, tx} => {
-                        let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
-                    }
-                    RaftMsg::ClientReadRequest{tx} => {
-                        self.core.forward_client_read_request(tx);
-                    }
-                    RaftMsg::ClientWriteRequest{rpc, tx} => {
-                        self.core.forward_client_write_request(rpc, tx);
-                    }
-                    RaftMsg::Initialize{tx, ..} => {
-                        self.core.reject_init_with_config(tx);
-                    }
-                    RaftMsg::AddNonVoter{tx, ..} => {
-                        self.core.reject_config_change_not_leader(tx);
-                    }
-                    RaftMsg::ChangeMembership{tx, ..} => {
-                        self.core.reject_config_change_not_leader(tx);
+                Some((msg,span)) = self.core.rx_api.recv() => {
+
+                    let _ent = span.enter();
+
+                    match msg {
+                        RaftMsg::AppendEntries{rpc, tx} => {
+                            let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+                        }
+                        RaftMsg::RequestVote{rpc, tx} => {
+                            let _ = tx.send(self.core.handle_vote_request(rpc).await);
+                        }
+                        RaftMsg::InstallSnapshot{rpc, tx} => {
+                            let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+                        }
+                        RaftMsg::ClientReadRequest{tx} => {
+                            self.core.forward_client_read_request(tx);
+                        }
+                        RaftMsg::ClientWriteRequest{rpc, tx} => {
+                            self.core.forward_client_write_request(rpc, tx);
+                        }
+                        RaftMsg::Initialize{tx, ..} => {
+                            self.core.reject_init_with_config(tx);
+                        }
+                        RaftMsg::AddNonVoter{tx, ..} => {
+                            self.core.reject_config_change_not_leader(tx);
+                        }
+                        RaftMsg::ChangeMembership{tx, ..} => {
+                            self.core.reject_config_change_not_leader(tx);
+                        }
                     }
                 },
                 Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
@@ -963,31 +992,40 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             if !self.core.target_state.is_non_voter() {
                 return Ok(());
             }
+
+            let span = tracing::debug_span!("CHrx:NonVoterState");
+            let _ent = span.enter();
+
             tokio::select! {
-                Some(msg) = self.core.rx_api.recv() => match msg {
-                    RaftMsg::AppendEntries{rpc, tx} => {
-                        let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
-                    }
-                    RaftMsg::RequestVote{rpc, tx} => {
-                        let _ = tx.send(self.core.handle_vote_request(rpc).await);
-                    }
-                    RaftMsg::InstallSnapshot{rpc, tx} => {
-                        let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
-                    }
-                    RaftMsg::ClientReadRequest{tx} => {
-                        self.core.forward_client_read_request(tx);
-                    }
-                    RaftMsg::ClientWriteRequest{rpc, tx} => {
-                        self.core.forward_client_write_request(rpc, tx);
-                    }
-                    RaftMsg::Initialize{members, tx} => {
-                        let _ = tx.send(self.handle_init_with_config(members).await);
-                    }
-                    RaftMsg::AddNonVoter{tx, ..} => {
-                        self.core.reject_config_change_not_leader(tx);
-                    }
-                    RaftMsg::ChangeMembership{tx, ..} => {
-                        self.core.reject_config_change_not_leader(tx);
+                Some((msg,span)) = self.core.rx_api.recv() => {
+
+                    let _ent = span.enter();
+
+                    match msg {
+                        RaftMsg::AppendEntries{rpc, tx} => {
+                            let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+                        }
+                        RaftMsg::RequestVote{rpc, tx} => {
+                            let _ = tx.send(self.core.handle_vote_request(rpc).await);
+                        }
+                        RaftMsg::InstallSnapshot{rpc, tx} => {
+                            let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+                        }
+                        RaftMsg::ClientReadRequest{tx} => {
+                            self.core.forward_client_read_request(tx);
+                        }
+                        RaftMsg::ClientWriteRequest{rpc, tx} => {
+                            self.core.forward_client_write_request(rpc, tx);
+                        }
+                        RaftMsg::Initialize{members, tx} => {
+                            let _ = tx.send(self.handle_init_with_config(members).await);
+                        }
+                        RaftMsg::AddNonVoter{tx, ..} => {
+                            self.core.reject_config_change_not_leader(tx);
+                        }
+                        RaftMsg::ChangeMembership{tx, ..} => {
+                            self.core.reject_config_change_not_leader(tx);
+                        }
                     }
                 },
                 Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),

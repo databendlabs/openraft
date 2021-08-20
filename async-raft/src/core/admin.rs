@@ -324,7 +324,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         for target in nodes_to_remove {
             tracing::debug!(target, "removing target node from replication pool");
             if let Some(node) = self.nodes.remove(&target) {
-                let _ = node.replstream.repl_tx.send(RaftEvent::Terminate);
+                let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
 
                 // remove metrics entry
                 self.leader_metrics.replication.remove(&target);

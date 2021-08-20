@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -7,6 +5,9 @@ use async_raft::Config;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+
+#[macro_use]
+mod fixtures;
 
 /// Client read tests.
 ///
@@ -19,7 +20,8 @@ use maplit::btreeset;
 /// RUST_LOG=async_raft,memstore,client_reads=trace cargo test -p async-raft --test client_reads
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn client_reads() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));

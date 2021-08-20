@@ -1,5 +1,3 @@
-mod fixtures;
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -8,6 +6,10 @@ use async_raft::State;
 use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
+use tracing_futures::Instrument;
+
+#[macro_use]
+mod fixtures;
 
 /// Replace membership with another one with only one common node.
 /// To reproduce the bug that new config does not actually examine the term/index of non-voter, but instead only
@@ -20,7 +22,8 @@ use maplit::btreeset;
 /// RUST_LOG=async_raft,memstore,members_012_to_234=trace cargo test -p async-raft --test members_012_to_234
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn members_012_to_234() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     // Setup test dependencies.
     let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
@@ -73,10 +76,13 @@ async fn members_012_to_234() -> Result<()> {
     {
         let router = router.clone();
         // this is expected to be blocked since 3 and 4 are isolated.
-        tokio::spawn(async move {
-            router.change_membership(0, btreeset![2, 3, 4]).await?;
-            Ok::<(), anyhow::Error>(())
-        });
+        tokio::spawn(
+            async move {
+                router.change_membership(0, btreeset![2, 3, 4]).await?;
+                Ok::<(), anyhow::Error>(())
+            }
+            .instrument(tracing::debug_span!("spawn-change-membership")),
+        );
     }
     want += 1;
 

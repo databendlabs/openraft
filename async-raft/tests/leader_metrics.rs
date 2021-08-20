@@ -13,6 +13,7 @@ use futures::stream::StreamExt;
 use maplit::btreeset;
 use maplit::hashmap;
 
+#[macro_use]
 mod fixtures;
 
 /// Cluster leader_metrics test.
@@ -29,7 +30,11 @@ mod fixtures;
 /// RUST_LOG=async_raft,memstore,leader_metrics=trace cargo test -p async-raft --test leader_metrics
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn leader_metrics() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
+
+    let span = tracing::debug_span!("leader_metrics");
+    let _ent = span.enter();
 
     let timeout = Some(Duration::from_millis(1000));
     let all_members = btreeset![0, 1, 2, 3, 4];

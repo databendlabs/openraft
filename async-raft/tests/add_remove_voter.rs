@@ -9,6 +9,7 @@ use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
 
+#[macro_use]
 mod fixtures;
 
 /// Cluster add_remove_voter test.
@@ -25,7 +26,8 @@ mod fixtures;
 /// RUST_LOG=async_raft,memstore,add_remove_voter=trace cargo test -p async-raft --test add_remove_voter
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn add_remove_voter() -> Result<()> {
-    fixtures::init_tracing();
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
 
     let timeout = Duration::from_millis(500);
     let all_members = btreeset![0, 1, 2, 3, 4];
