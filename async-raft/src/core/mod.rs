@@ -55,6 +55,7 @@ use crate::storage::HardState;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -671,6 +672,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         loop {
             if !self.core.target_state.is_leader() {
+                tracing::info!("id={} state becomes: {:?}", self.core.id, self.core.target_state);
+
                 for node in self.nodes.values() {
                     let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
                 }
@@ -688,41 +691,58 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     let _ent = span.enter();
                     match msg {
                         RaftMsg::AppendEntries{rpc, tx} => {
+                            tracing::info!("leader recv from rx_api: AppendEntries, {}", rpc.summary());
                             let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
                         }
                         RaftMsg::RequestVote{rpc, tx} => {
+                            tracing::info!("leader recv from rx_api: RequestVote, {}", rpc.summary());
                             let _ = tx.send(self.core.handle_vote_request(rpc).await);
                         }
                         RaftMsg::InstallSnapshot{rpc, tx} => {
+                            tracing::info!("leader recv from rx_api: InstallSnapshot, {}", rpc.summary());
                             let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
                         }
                         RaftMsg::ClientReadRequest{tx} => {
+                            tracing::info!("leader recv from rx_api: ClientReadRequest");
                             self.handle_client_read_request(tx).await;
                         }
                         RaftMsg::ClientWriteRequest{rpc, tx} => {
+                            tracing::info!("leader recv from rx_api: ClientWriteRequest, {}", rpc.summary());
                             self.handle_client_write_request(rpc, tx).await;
                         }
                         RaftMsg::Initialize{tx, ..} => {
+                            tracing::info!("leader recv from rx_api: Initialize");
                             self.core.reject_init_with_config(tx);
                         }
                         RaftMsg::AddNonVoter{id, tx} => {
+                            tracing::info!("leader recv from rx_api: AddNonVoter, {}", id);
                             self.add_member(id, tx);
                         }
                         RaftMsg::ChangeMembership{members, tx} => {
+                            tracing::info!("leader recv from rx_api: ChangeMembership, {:?}", members);
                             self.change_membership(members, tx).await;
                         }
                     }
                 },
-                Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
+                Some(update) = self.core.rx_compaction.recv() => {
+                    tracing::info!("leader recv from rx_compaction: {:?}", update);
+                    self.core.update_snapshot_state(update);
+                }
                 Some((event, span)) = self.replicationrx.recv() => {
+                    tracing::info!("leader recv from replicationrx: {:?}", event.summary());
                     let _ent = span.enter();
-                    self.handle_replica_event(event).await
+                    self.handle_replica_event(event).await;
                 }
                 Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
+                    tracing::info!("leader recv from replicate_to_sm_handle: {:?}", repl_sm_result);
+
                     // Errors herein will trigger shutdown, so no need to process error.
                     let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
                 }
-                Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
+                Ok(_) = &mut self.core.rx_shutdown => {
+                    tracing::info!("leader recv from rx_shudown");
+                    self.core.set_target_state(State::Shutdown);
+                }
             }
         }
     }

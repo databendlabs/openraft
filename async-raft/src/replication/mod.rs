@@ -31,6 +31,7 @@ use crate::storage::CurrentSnapshotData;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -555,6 +556,32 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
     },
     /// Some critical error has taken place, and Raft needs to shutdown.
     Shutdown,
+}
+
+impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for ReplicaEvent<S> {
+    fn summary(&self) -> String {
+        match self {
+            ReplicaEvent::RateUpdate {
+                ref target,
+                is_line_rate,
+            } => {
+                format!("RateUpdate: target: {}, is_line_rate: {}", target, is_line_rate)
+            }
+            ReplicaEvent::UpdateMatchIndex {
+                ref target,
+                ref matched,
+            } => {
+                format!("UpdateMatchIndex: target: {}, matched: {}", target, matched)
+            }
+            ReplicaEvent::RevertToFollower { ref target, ref term } => {
+                format!("RevertToFollower: target: {}, term: {}", target, term)
+            }
+            ReplicaEvent::NeedsSnapshot { ref target, .. } => {
+                format!("NeedsSnapshot: target: {}", target)
+            }
+            ReplicaEvent::Shutdown => "Shutdown".to_string(),
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

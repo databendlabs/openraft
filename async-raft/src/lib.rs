@@ -12,6 +12,8 @@ pub mod raft;
 mod raft_types;
 mod replication;
 pub mod storage;
+mod summary;
+
 pub use async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -35,6 +37,7 @@ pub use crate::raft_types::Update;
 pub use crate::replication::ReplicationMetrics;
 pub use crate::storage::RaftStorage;
 pub use crate::storage::SnapshotMeta;
+pub use crate::summary::MessageSummary;
 
 /// A Raft node's ID.
 pub type NodeId = u64;

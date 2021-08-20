@@ -27,6 +27,7 @@ use crate::metrics::Wait;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -208,11 +209,26 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         let (tx, rx) = oneshot::channel();
 
-        self.inner
-            .tx_api
-            .send((RaftMsg::ClientWriteRequest { rpc, tx }, span))
-            .map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown))?;
-        rx.await.map_err(|_| ClientWriteError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
+        let res = self.inner.tx_api.send((RaftMsg::ClientWriteRequest { rpc, tx }, span));
+
+        if let Err(e) = res {
+            tracing::error!("error when Raft::client_write: send to tx_api: {}", e);
+            return Err(ClientWriteError::RaftError(RaftError::ShuttingDown));
+        }
+
+        let res = rx.await;
+        match res {
+            Ok(v) => {
+                if let Err(ref e) = v {
+                    tracing::error!("error Raft::client_write: {}", e);
+                }
+                v
+            }
+            Err(e) => {
+                tracing::error!("error when Raft::client_write: recv from rx: {}", e);
+                Err(ClientWriteError::RaftError(RaftError::ShuttingDown))
+            }
+        }
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -444,8 +460,8 @@ pub struct AppendEntriesRequest<D: AppData> {
     pub leader_commit: u64,
 }
 
-impl<D: AppData> AppendEntriesRequest<D> {
-    pub fn summary(&self) -> String {
+impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
+    fn summary(&self) -> String {
         format!(
             "term={}, leader_id={}, prev_log_id={}, leader_commit={}, n={}",
             self.term,
@@ -519,6 +535,21 @@ pub enum EntryPayload<D: AppData> {
     ConfigChange(EntryConfigChange),
     /// An entry which points to a snapshot.
     SnapshotPointer(EntrySnapshotPointer),
+}
+
+impl<D: AppData> MessageSummary for EntryPayload<D> {
+    fn summary(&self) -> String {
+        match self {
+            EntryPayload::Blank => "blank".to_string(),
+            EntryPayload::Normal(_n) => "normal".to_string(),
+            EntryPayload::ConfigChange(c) => {
+                format!("config-change: {:?}", c.membership)
+            }
+            EntryPayload::SnapshotPointer(sp) => {
+                format!("snapshot-pointer: {:?}", sp)
+            }
+        }
+    }
 }
 
 /// A normal log entry.
@@ -627,6 +658,12 @@ pub struct VoteRequest {
     pub last_log_term: u64,
 }
 
+impl MessageSummary for VoteRequest {
+    fn summary(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
 impl VoteRequest {
     /// Create a new instance.
     pub fn new(term: u64, candidate_id: u64, last_log_index: u64, last_log_term: u64) -> Self {
@@ -670,6 +707,15 @@ pub struct InstallSnapshotRequest {
     pub done: bool,
 }
 
+impl MessageSummary for InstallSnapshotRequest {
+    fn summary(&self) -> String {
+        format!(
+            "term={}, leader_id={}, meta={:?}, offset={}, done={}",
+            self.term, self.leader_id, self.meta, self.offset, self.done
+        )
+    }
+}
+
 /// The response to an `InstallSnapshotRequest`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InstallSnapshotResponse {
@@ -688,6 +734,12 @@ pub struct ClientWriteRequest<D: AppData> {
     /// The application specific contents of this client request.
     #[serde(bound = "D: AppData")]
     pub(crate) entry: EntryPayload<D>,
+}
+
+impl<D: AppData> MessageSummary for ClientWriteRequest<D> {
+    fn summary(&self) -> String {
+        self.entry.summary()
+    }
 }
 
 impl<D: AppData> ClientWriteRequest<D> {

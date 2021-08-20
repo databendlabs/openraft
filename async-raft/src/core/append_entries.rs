@@ -12,6 +12,7 @@ use crate::raft::EntryPayload;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::MessageSummary;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::Update;
