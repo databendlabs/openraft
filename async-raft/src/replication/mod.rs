@@ -154,8 +154,13 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     outbound_buffer: Vec<OutboundEntry<D>>,
     /// The heartbeat interval for ensuring that heartbeats are always delivered in a timely fashion.
     heartbeat: Interval,
+
+    // TODO(xp): collect configs in one struct.
     /// The timeout duration for heartbeats.
     heartbeat_timeout: Duration,
+
+    /// The timeout for sending snapshot segment.
+    install_snapshot_timeout: Duration,
 }
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
@@ -174,6 +179,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     ) -> ReplicationStream<D> {
         let (raft_tx, raft_rx) = mpsc::unbounded_channel();
         let heartbeat_timeout = Duration::from_millis(config.heartbeat_interval);
+        let install_snapshot_timeout = Duration::from_millis(config.install_snapshot_timeout);
+
         let max_payload_entries = config.max_payload_entries as usize;
         let this = Self {
             id,
@@ -193,6 +200,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             raft_rx,
             heartbeat: interval(heartbeat_timeout),
             heartbeat_timeout,
+            install_snapshot_timeout,
             replication_buffer: Vec::new(),
             outbound_buffer: Vec::new(),
         };
@@ -918,14 +926,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 "sending snapshot chunk"
             );
 
-            // TODO(xp): refine install_snapshot timeout
-
-            let res = match timeout(
-                self.core.heartbeat_timeout * 5,
+            let res = timeout(
+                self.core.install_snapshot_timeout,
                 self.core.network.install_snapshot(self.core.target, req),
             )
-            .await
-            {
+            .await;
+
+            let res = match res {
                 Ok(outer_res) => match outer_res {
                     Ok(res) => res,
                     Err(err) => {

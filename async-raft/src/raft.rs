@@ -710,8 +710,13 @@ pub struct InstallSnapshotRequest {
 impl MessageSummary for InstallSnapshotRequest {
     fn summary(&self) -> String {
         format!(
-            "term={}, leader_id={}, meta={:?}, offset={}, done={}",
-            self.term, self.leader_id, self.meta, self.offset, self.done
+            "term={}, leader_id={}, meta={:?}, offset={}, len={}, done={}",
+            self.term,
+            self.leader_id,
+            self.meta,
+            self.offset,
+            self.data.len(),
+            self.done
         )
     }
 }

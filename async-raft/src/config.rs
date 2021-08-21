@@ -84,6 +84,11 @@ pub struct Config {
     /// is performed for heartbeats, so the main item of concern here is network latency. This
     /// value is also used as the default timeout for sending heartbeats.
     pub heartbeat_interval: u64,
+
+    /// The timeout for sending a snapshot segment, in millisecond.
+    /// By default it is heartbeat_interval * 4
+    pub install_snapshot_timeout: u64,
+
     /// The maximum number of entries per payload allowed to be transmitted during replication.
     ///
     /// When configuring this value, it is important to note that setting this value too low could
@@ -118,6 +123,7 @@ impl Config {
             election_timeout_min: None,
             election_timeout_max: None,
             heartbeat_interval: None,
+            install_snapshot_timeout: None,
             max_payload_entries: None,
             replication_lag_threshold: None,
             snapshot_policy: None,
@@ -145,6 +151,10 @@ pub struct ConfigBuilder {
     pub election_timeout_max: Option<u64>,
     /// The interval at which leaders will send heartbeats to followers to avoid election timeout.
     pub heartbeat_interval: Option<u64>,
+
+    /// The timeout for sending a snapshot segment, in millisecond.
+    pub install_snapshot_timeout: Option<u64>,
+
     /// The maximum number of entries per payload allowed to be transmitted during replication.
     pub max_payload_entries: Option<u64>,
     /// The distance behind in log replication a follower must fall before it is considered "lagging".
@@ -171,6 +181,11 @@ impl ConfigBuilder {
     /// Set the desired value for `heartbeat_interval`.
     pub fn heartbeat_interval(mut self, val: u64) -> Self {
         self.heartbeat_interval = Some(val);
+        self
+    }
+
+    pub fn install_snapshot_timeout(mut self, val: u64) -> Self {
+        self.install_snapshot_timeout = Some(val);
         self
     }
 
@@ -211,6 +226,9 @@ impl ConfigBuilder {
         if election_timeout_min <= heartbeat_interval {
             return Err(ConfigError::InvalidElectionTimeoutMinMax);
         }
+
+        let install_snapshot_timeout = self.install_snapshot_timeout.unwrap_or(heartbeat_interval * 4);
+
         let max_payload_entries = self.max_payload_entries.unwrap_or(DEFAULT_MAX_PAYLOAD_ENTRIES);
         if max_payload_entries == 0 {
             return Err(ConfigError::MaxPayloadEntriesTooSmall);
@@ -223,6 +241,7 @@ impl ConfigBuilder {
             election_timeout_min,
             election_timeout_max,
             heartbeat_interval,
+            install_snapshot_timeout,
             max_payload_entries,
             replication_lag_threshold,
             snapshot_policy,

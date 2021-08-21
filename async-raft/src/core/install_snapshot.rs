@@ -12,6 +12,7 @@ use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::MessageSummary;
 use crate::RaftError;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -24,7 +25,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Leaders always send chunks in order. It is important to note that, according to the Raft spec,
     /// a log may only have one snapshot at any time. As snapshot contents are application specific,
     /// the Raft log will only store a pointer to the snapshot file along with the index & term.
-    #[tracing::instrument(level = "trace", skip(self, req))]
+    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
     pub(super) async fn handle_install_snapshot_request(
         &mut self,
         req: InstallSnapshotRequest,
@@ -68,7 +69,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //   to receive the new snapshot,
         // - Mismatched id with offset greater than 0 is an out of order message that should be rejected.
         match self.snapshot_state.take() {
-            None => return self.begin_installing_snapshot(req).await,
+            None => {
+                return self.begin_installing_snapshot(req).await;
+            }
             Some(SnapshotState::Snapshotting { handle, .. }) => {
                 handle.abort(); // Abort the current compaction in favor of installation from leader.
                 return self.begin_installing_snapshot(req).await;
@@ -93,10 +96,21 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, req))]
+    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
     async fn begin_installing_snapshot(&mut self, req: InstallSnapshotRequest) -> RaftResult<InstallSnapshotResponse> {
-        // Create a new snapshot and begin writing its contents.
         let id = req.meta.snapshot_id.clone();
+
+        if req.offset > 0 {
+            return Err(RaftError::SnapshotMismatch {
+                expect: SnapshotSegmentId {
+                    id: id.clone(),
+                    offset: 0,
+                },
+                got: SnapshotSegmentId { id, offset: req.offset },
+            });
+        }
+
+        // Create a new snapshot and begin writing its contents.
         let mut snapshot = self.storage.create_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?;
         snapshot.as_mut().write_all(&req.data).await?;
 
@@ -119,7 +133,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         })
     }
 
-    #[tracing::instrument(level = "trace", skip(self, req, snapshot))]
+    #[tracing::instrument(level = "debug", skip(self, req, snapshot), fields(req=%req.summary()))]
     async fn continue_installing_snapshot(
         &mut self,
         req: InstallSnapshotRequest,
@@ -158,7 +172,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Finalize the installation of a new snapshot.
     ///
     /// Any errors which come up from this routine will cause the Raft node to go into shutdown.
-    #[tracing::instrument(level = "trace", skip(self, req, snapshot))]
+    #[tracing::instrument(level = "debug", skip(self, req, snapshot), fields(req=%req.summary()))]
     async fn finalize_snapshot_installation(
         &mut self,
         req: InstallSnapshotRequest,
