@@ -28,7 +28,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ) -> RaftResult<AppendEntriesResponse> {
         // If message's term is less than most recent term, then we do not honor the request.
         if msg.term < self.current_term {
-            tracing::trace!({self.current_term, rpc_term=msg.term}, "AppendEntries RPC term is less than current term");
+            tracing::debug!({self.current_term, rpc_term=msg.term}, "AppendEntries RPC term is less than current term");
             return Ok(AppendEntriesResponse {
                 term: self.current_term,
                 success: false,
@@ -79,7 +79,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         /////////////////////////////////////
         //// Begin Log Consistency Check ////
-        tracing::trace!("begin log consistency check");
+        tracing::debug!("begin log consistency check");
 
         // Previous log info doesn't immediately line up, so perform log consistency check and proceed based on its
         // result.
@@ -151,7 +151,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         ///////////////////////////////////
         //// End Log Consistency Check ////
-        tracing::trace!("end log consistency check");
+        tracing::debug!("end log consistency check");
 
         self.append_log_entries(&msg.entries).await?;
         self.replicate_to_state_machine_if_needed(msg.entries).await;

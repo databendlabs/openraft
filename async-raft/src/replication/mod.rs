@@ -308,7 +308,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         // Replication was not successful, if a newer term has been returned, revert to follower.
         if res.term > self.term {
-            tracing::trace!({ res.term }, "append entries failed, reverting to follower");
+            tracing::debug!({ res.term }, "append entries failed, reverting to follower");
             let _ = self.raft_tx.send((
                 ReplicaEvent::RevertToFollower {
                     target: self.target,
@@ -322,7 +322,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
         if let Some(conflict) = res.conflict_opt {
-            tracing::trace!(?conflict, res.term, "append entries failed, handling conflict opt");
+            tracing::debug!(?conflict, res.term, "append entries failed, handling conflict opt");
 
             // If the returned conflict opt index is greater than last_log_index, then this is a
             // logical error, and no action should be taken. This represents a replication failure.
@@ -910,15 +910,18 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             buf.clear();
 
             // Send the RPC over to the target.
-            tracing::trace!(
+            tracing::debug!(
                 snapshot_size = req.data.len(),
                 nread,
                 req.done,
                 req.offset,
                 "sending snapshot chunk"
             );
+
+            // TODO(xp): refine install_snapshot timeout
+
             let res = match timeout(
-                self.core.heartbeat_timeout,
+                self.core.heartbeat_timeout * 5,
                 self.core.network.install_snapshot(self.core.target, req),
             )
             .await

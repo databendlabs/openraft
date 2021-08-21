@@ -197,7 +197,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// The main loop of the Raft protocol.
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
     async fn main(mut self) -> RaftResult<()> {
-        tracing::trace!("raft node is initializing");
+        tracing::debug!("raft node is initializing");
+
         let state = self.storage.get_initial_state().await.map_err(|err| self.map_fatal_storage_error(err))?;
         self.last_log_id = state.last_log_id;
         self.current_term = state.hard_state.current_term;
@@ -382,7 +383,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// interface.
     #[tracing::instrument(level = "trace", skip(self))]
     fn map_fatal_storage_error(&mut self, err: anyhow::Error) -> RaftError {
-        tracing::error!({error=%err, id=self.id}, "fatal storage error, shutting down");
+        tracing::error!({error=?err, id=self.id}, "fatal storage error, shutting down");
         self.set_target_state(State::Shutdown);
         RaftError::RaftStorage(err)
     }

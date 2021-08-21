@@ -378,7 +378,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             *current_snapshot = Some(snapshot);
         } // Release log & snapshot write locks.
 
-        tracing::trace!({ snapshot_size = snapshot_size }, "log compaction complete");
+        tracing::info!({ snapshot_size = snapshot_size }, "log compaction complete");
         Ok(CurrentSnapshotData {
             meta,
             snapshot: Box::new(Cursor::new(data)),
@@ -392,7 +392,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn finalize_snapshot_installation(&self, meta: &SnapshotMeta, snapshot: Box<Self::Snapshot>) -> Result<()> {
-        tracing::trace!(
+        tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
         );
