@@ -36,6 +36,10 @@ use maplit::btreeset;
 use memstore::ClientRequest as MemClientRequest;
 use memstore::ClientResponse as MemClientResponse;
 use memstore::MemStore;
+#[allow(unused_imports)]
+use pretty_assertions::assert_eq;
+#[allow(unused_imports)]
+use pretty_assertions::assert_ne;
 use tokio::sync::RwLock;
 use tracing_subscriber::prelude::*;
 

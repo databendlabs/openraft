@@ -12,6 +12,10 @@ use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
 use maplit::hashmap;
+#[allow(unused_imports)]
+use pretty_assertions::assert_eq;
+#[allow(unused_imports)]
+use pretty_assertions::assert_ne;
 
 #[macro_use]
 mod fixtures;

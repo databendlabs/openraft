@@ -910,21 +910,26 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::Snapshot>) -> RaftResult<()> {
+        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await?;
+
         let mut offset = 0;
+
         self.replication_core.next_index = snapshot.meta.last_log_id.index + 1;
         self.replication_core.matched = snapshot.meta.last_log_id;
         let mut buf = Vec::with_capacity(self.replication_core.config.snapshot_max_chunk_size as usize);
+
         loop {
             // Build the RPC.
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await?;
-            let nread = snapshot.snapshot.read_buf(&mut buf).await?;
-            let done = nread == 0; // If bytes read == 0, then we're done.
+            let n_read = snapshot.snapshot.read_buf(&mut buf).await?;
+
+            let done = (offset + n_read as u64) == end; // If bytes read == 0, then we're done.
             let req = InstallSnapshotRequest {
                 term: self.replication_core.term,
                 leader_id: self.replication_core.id,
                 meta: snapshot.meta.clone(),
                 offset,
-                data: Vec::from(&buf[..nread]),
+                data: Vec::from(&buf[..n_read]),
                 done,
             };
             buf.clear();
@@ -932,9 +937,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // Send the RPC over to the target.
             tracing::debug!(
                 snapshot_size = req.data.len(),
-                nread,
-                req.done,
                 req.offset,
+                end,
+                req.done,
                 "sending snapshot chunk"
             );
 
@@ -978,7 +983,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // Everything is good, so update offset for sending the next chunk.
-            offset += nread as u64;
+            offset += n_read as u64;
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
             if let Some(Some((event, span))) = self.replication_core.repl_rx.recv().now_or_never() {
