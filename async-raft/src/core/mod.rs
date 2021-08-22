@@ -218,7 +218,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.report_metrics(Update::Ignore);
         }
 
-        let has_log = self.last_log_id.index != u64::min_value();
+        let has_log = self.last_log_id.index != u64::MIN;
         let single = self.membership.members.len() == 1;
         let is_candidate = self.membership.contains(&self.id);
 
@@ -615,11 +615,14 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     pub leader_metrics: LeaderMetrics,
 
     /// The stream of events coming from replication streams.
-    pub(super) replicationrx: mpsc::UnboundedReceiver<(ReplicaEvent<S::Snapshot>, Span)>,
-    /// The clonable sender channel for replication stream events.
-    pub(super) replicationtx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
+    pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<S::Snapshot>, Span)>,
+
+    /// The cloneable sender channel for replication stream events.
+    pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
+
     /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
     pub(super) awaiting_committed: Vec<ClientRequestEntry<D, R>>,
+
     /// A field tracking the cluster's current consensus state, which is used for dynamic membership.
     pub(super) consensus_state: ConsensusState,
 }
@@ -632,15 +635,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         } else {
             ConsensusState::Uniform
         };
-        let (replicationtx, replicationrx) = mpsc::unbounded_channel();
+        let (replication_tx, replication_rx) = mpsc::unbounded_channel();
         Self {
             core,
             nodes: BTreeMap::new(),
             non_voters: BTreeMap::new(),
             is_stepping_down: false,
             leader_metrics: LeaderMetrics::default(),
-            replicationtx,
-            replicationrx,
+            replication_tx,
+            replication_rx,
             consensus_state,
             awaiting_committed: Vec::new(),
         }
@@ -657,6 +660,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .into_iter()
             .filter(|elem| elem != &self.core.id)
             .collect::<Vec<_>>();
+
         for target in targets {
             let state = self.spawn_replication_stream(target);
             self.nodes.insert(target, state);
@@ -729,8 +733,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     tracing::info!("leader recv from rx_compaction: {:?}", update);
                     self.core.update_snapshot_state(update);
                 }
-                Some((event, span)) = self.replicationrx.recv() => {
-                    tracing::info!("leader recv from replicationrx: {:?}", event.summary());
+                Some((event, span)) = self.replication_rx.recv() => {
+                    tracing::info!("leader recv from replication_rx: {:?}", event.summary());
                     let _ent = span.enter();
                     self.handle_replica_event(event).await;
                 }

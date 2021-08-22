@@ -26,11 +26,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 
-    let config = Arc::new(
-        Config::build("test".into())
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     let mut want = 0;
@@ -39,26 +35,17 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     {
         router.new_raft_node(0).await;
 
-        router
-            .wait_for_log(&btreeset![0], want, None, "empty")
-            .await?;
-        router
-            .wait_for_state(&btreeset![0], State::NonVoter, None, "empty")
-            .await?;
+        router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+        router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
 
         router.initialize_from_single_node(0).await?;
         want += 1;
 
-        router
-            .wait_for_log(&btreeset![0], want, None, "init leader")
-            .await?;
+        router.wait_for_log(&btreeset![0], want, None, "init leader").await?;
         router.assert_stable_cluster(Some(1), Some(want)).await;
     }
 
-    let n = router
-        .remove_node(0)
-        .await
-        .ok_or_else(|| anyhow::anyhow!("node not found"))?;
+    let n = router.remove_node(0).await.ok_or_else(|| anyhow::anyhow!("node not found"))?;
     let req0 = InstallSnapshotRequest {
         term: 1,
         leader_id: 0,

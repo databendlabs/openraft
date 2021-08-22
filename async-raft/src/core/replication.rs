@@ -38,7 +38,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.commit_index,
             self.core.network.clone(),
             self.core.storage.clone(),
-            self.replicationtx.clone(),
+            self.replication_tx.clone(),
         );
         ReplicationState {
             matched: (self.core.current_term, self.core.last_log_id.index).into(),
