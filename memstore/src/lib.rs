@@ -171,16 +171,21 @@ impl MemStore {
     /// Go backwards through the log to find the most recent membership config <= `upto_index`.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn get_membership_from_log(&self, upto_index: Option<u64>) -> Result<MembershipConfig> {
-        let log = self.log.read().await;
+        let membership = {
+            let log = self.log.read().await;
 
-        let reversed_logs = log.values().rev();
-        let membership = match upto_index {
-            Some(upto) => {
-                let skipped = reversed_logs.skip_while(|entry| entry.log_id.index > upto);
-                Self::find_first_membership_log(skipped)
+            let reversed_logs = log.values().rev();
+            match upto_index {
+                Some(upto) => {
+                    let skipped = reversed_logs.skip_while(|entry| entry.log_id.index > upto);
+                    Self::find_first_membership_log(skipped)
+                }
+                None => Self::find_first_membership_log(reversed_logs),
             }
-            None => Self::find_first_membership_log(reversed_logs),
         };
+
+        // Otherwise, create a default one.
+
         Ok(match membership {
             Some(cfg) => cfg,
             None => MembershipConfig::new_initial(self.id),
@@ -282,6 +287,10 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     #[tracing::instrument(level = "trace", skip(self, entry))]
     async fn apply_entry_to_state_machine(&self, entry: &Entry<ClientRequest>) -> Result<ClientResponse> {
         let mut sm = self.sm.write().await;
+
+        tracing::debug!("id:{} apply to sm index:{}", self.id, entry.log_id.index);
+        assert_eq!(sm.last_applied_log.index + 1, entry.log_id.index);
+
         sm.last_applied_log = entry.log_id;
 
         return match entry.payload {
@@ -309,6 +318,11 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     async fn replicate_to_state_machine(&self, entries: &[&Entry<ClientRequest>]) -> Result<()> {
         let mut sm = self.sm.write().await;
         for entry in entries {
+            tracing::debug!("id:{} replicate to sm index:{}", self.id, entry.log_id.index);
+
+            // TODO(xp) return error if there is out of order apply
+            assert_eq!(sm.last_applied_log.index + 1, entry.log_id.index);
+
             sm.last_applied_log = entry.log_id;
 
             match entry.payload {
@@ -356,7 +370,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         {
             let mut log = self.log.write().await;
             let mut current_snapshot = self.current_snapshot.write().await;
-            *log = log.split_off(&last_applied_log.index);
+            *log = log.split_off(&(last_applied_log.index + 1));
 
             let snapshot_id = format!("{}-{}-{}", last_applied_log.term, last_applied_log.index, snapshot_idx);
 

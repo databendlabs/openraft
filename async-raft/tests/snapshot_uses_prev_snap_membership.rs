@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::raft::MembershipConfig;
@@ -62,17 +63,21 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router.wait_for_log(&btreeset![0, 1], want, None, "cluster of 2").await?;
     }
 
-    let sto = router.get_storage_handle(&0).await?;
+    let sto0 = router.get_storage_handle(&0).await?;
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
         router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
         want = snapshot_threshold;
 
-        router.wait_for_log(&btreeset![0, 1], want, None, "send log to trigger snapshot").await?;
-        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
+        router.wait_for_log(&btreeset![0, 1], want, to(), "send log to trigger snapshot").await?;
+        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, to(), "snapshot").await?;
 
-        let m = sto.get_membership_config().await?;
+        {
+            let logs = sto0.get_log().await;
+            assert_eq!(1, logs.len(), "only one snapshot pointer log");
+        }
+        let m = sto0.get_membership_config().await?;
         assert_eq!(
             MembershipConfig {
                 members: btreeset![0, 1],
@@ -111,7 +116,11 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
     tracing::info!("--- check membership");
     {
-        let m = sto.get_membership_config().await?;
+        {
+            let logs = sto0.get_log().await;
+            assert_eq!(1, logs.len(), "only one snapshot pointer log");
+        }
+        let m = sto0.get_membership_config().await?;
         assert_eq!(
             MembershipConfig {
                 members: btreeset![0, 1],
@@ -123,4 +132,8 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn to() -> Option<Duration> {
+    Some(Duration::from_millis(500))
 }

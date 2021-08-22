@@ -25,7 +25,6 @@ use crate::config::SnapshotPolicy;
 use crate::error::RaftResult;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::Entry;
-use crate::raft::EntryPayload;
 use crate::raft::InstallSnapshotRequest;
 use crate::storage::CurrentSnapshotData;
 use crate::AppData;
@@ -684,12 +683,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 return;
             }
         };
-        for entry in entries.iter() {
-            if let EntryPayload::SnapshotPointer(_) = entry.payload {
-                self.replication_core.target_state = TargetReplState::Snapshotting;
-                return;
-            }
-        }
+
         // Prepend.
         self.replication_core.outbound_buffer.reverse();
         self.replication_core.outbound_buffer.extend(entries.into_iter().rev().map(OutboundEntry::Raw));
@@ -795,12 +789,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         return;
                     }
                 };
-            for entry in entries.iter() {
-                if let EntryPayload::SnapshotPointer(_) = entry.payload {
-                    self.replication_core.target_state = TargetReplState::Snapshotting;
-                    return;
-                }
-            }
+
             self.replication_core.outbound_buffer.extend(entries.into_iter().map(OutboundEntry::Raw));
         }
     }

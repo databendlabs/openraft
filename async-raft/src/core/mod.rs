@@ -43,7 +43,6 @@ use crate::metrics::RaftMetrics;
 use crate::raft::ClientReadResponseTx;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponseTx;
-use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::MembershipConfig;
 use crate::raft::RaftMsg;
@@ -121,14 +120,6 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
     snapshot_last_log_id: LogId,
 
-    /// A cache of entries which are waiting to be replicated to the state machine.
-    ///
-    /// It is important to note that this cache must only be populated from the AppendEntries RPC
-    /// handler, as these values must only ever represent the entries which have been sent from
-    /// the current cluster leader.
-    ///
-    /// Whenever there is a leadership change, this cache will be cleared.
-    entries_cache: BTreeMap<u64, Entry<D>>,
     /// The stream of join handles from state machine replication tasks. There will only ever be
     /// a maximum of 1 element at a time.
     ///
@@ -180,7 +171,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             last_log_id: LogId { term: 0, index: 0 },
             snapshot_state: None,
             snapshot_last_log_id: LogId { term: 0, index: 0 },
-            entries_cache: Default::default(),
             replicate_to_sm_handle: FuturesOrdered::new(),
             has_completed_initial_replication_to_sm: false,
             last_heartbeat: None,
@@ -353,7 +343,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Update the value of the `current_leader` property.
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_current_leader(&mut self, update: UpdateCurrentLeader) {
-        self.entries_cache.clear();
         match update {
             UpdateCurrentLeader::ThisNode => {
                 self.current_leader = Some(self.id);
@@ -479,9 +468,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self, res))]
     pub(self) fn handle_replicate_to_sm_result(&mut self, res: anyhow::Result<Option<LogId>>) -> RaftResult<()> {
         let last_applied_opt = res.map_err(|err| self.map_fatal_storage_error(err))?;
+
+        tracing::debug!("last_applied:{:?}", last_applied_opt);
+
         if let Some(last_applied) = last_applied_opt {
             self.last_applied = last_applied;
         }
+
         self.report_metrics(Update::Ignore);
         self.trigger_log_compaction_if_needed(false);
         Ok(())
