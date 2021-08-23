@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_raft::Config;
+use async_raft::RaftStorageDebug;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;

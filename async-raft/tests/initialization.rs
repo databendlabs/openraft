@@ -5,6 +5,7 @@ use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::RaftStorage;
+use async_raft::RaftStorageDebug;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;

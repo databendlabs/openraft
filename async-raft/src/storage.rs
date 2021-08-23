@@ -256,3 +256,14 @@ where
     /// Errors returned from this method will cause Raft to go into shutdown.
     async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>>;
 }
+
+/// APIs for debugging a store.
+#[async_trait]
+pub trait RaftStorageDebug<SM> {
+    /// Get a handle to the state machine for testing purposes.
+    async fn get_state_machine(&self) -> SM;
+
+    /// Get the current hard state for testing purposes.
+    async fn read_hard_state(&self) -> Option<HardState>;
+}
+

@@ -31,6 +31,7 @@ use async_raft::NodeId;
 use async_raft::Raft;
 use async_raft::RaftMetrics;
 use async_raft::RaftNetwork;
+use async_raft::RaftStorageDebug;
 use async_raft::State;
 use maplit::btreeset;
 use memstore::ClientRequest as MemClientRequest;

@@ -22,6 +22,7 @@ use async_raft::AppDataResponse;
 use async_raft::LogId;
 use async_raft::NodeId;
 use async_raft::RaftStorage;
+use async_raft::RaftStorageDebug;
 use async_raft::SnapshotMeta;
 use serde::Deserialize;
 use serde::Serialize;
@@ -136,14 +137,17 @@ impl MemStore {
             current_snapshot,
         }
     }
+}
 
+#[async_trait]
+impl RaftStorageDebug<MemStoreStateMachine> for MemStore {
     /// Get a handle to the state machine for testing purposes.
-    pub async fn get_state_machine(&self) -> MemStoreStateMachine {
+    async fn get_state_machine(&self) -> MemStoreStateMachine {
         self.sm.write().await.clone()
     }
 
     /// Get a handle to the current hard state for testing purposes.
-    pub async fn read_hard_state(&self) -> Option<HardState> {
+    async fn read_hard_state(&self) -> Option<HardState> {
         self.hs.read().await.clone()
     }
 }
