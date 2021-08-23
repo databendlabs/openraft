@@ -370,46 +370,12 @@ async fn test_replicate_to_state_machine() -> Result<()> {
 
 fn default_store_with_logs() -> MemStore {
     let mut log = BTreeMap::new();
-    log.insert(1, Entry {
-        log_id: (1, 1).into(),
-        payload: EntryPayload::Blank,
-    });
-    log.insert(2, Entry {
-        log_id: (1, 2).into(),
-        payload: EntryPayload::Blank,
-    });
-    log.insert(3, Entry {
-        log_id: (1, 3).into(),
-        payload: EntryPayload::Blank,
-    });
-    log.insert(4, Entry {
-        log_id: (1, 4).into(),
-        payload: EntryPayload::Blank,
-    });
-    log.insert(5, Entry {
-        log_id: (1, 5).into(),
-        payload: EntryPayload::Blank,
-    });
-    log.insert(6, Entry {
-        log_id: (1, 6).into(),
-        payload: EntryPayload::Blank,
-    });
-    log.insert(7, Entry {
-        log_id: (1, 7).into(),
-        payload: EntryPayload::Blank,
-    });
-    log.insert(8, Entry {
-        log_id: (1, 8).into(),
-        payload: EntryPayload::Blank,
-    });
-    log.insert(9, Entry {
-        log_id: (1, 9).into(),
-        payload: EntryPayload::Blank,
-    });
-    log.insert(10, Entry {
-        log_id: (1, 10).into(),
-        payload: EntryPayload::Blank,
-    });
+    for i in 1..=10 {
+        log.insert(i, Entry {
+            log_id: (1, i).into(),
+            payload: EntryPayload::Blank,
+        });
+    }
     let sm = MemStoreStateMachine::default();
     let hs = HardState {
         current_term: 1,
