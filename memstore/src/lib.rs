@@ -150,8 +150,8 @@ impl MemStore {
     }
 
     /// Get a handle to the current hard state for testing purposes.
-    pub async fn read_hard_state(&self) -> RwLockReadGuard<'_, Option<HardState>> {
-        self.hs.read().await
+    pub async fn read_hard_state(&self) -> Option<HardState> {
+        self.hs.read().await.clone()
     }
 }
 

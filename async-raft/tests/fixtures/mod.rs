@@ -561,11 +561,9 @@ impl RaftRouter {
                 "expected node {} to have last_log {}, got {}",
                 id, expect_last_log, last_log
             );
-            let hs = storage
-                .read_hard_state()
-                .await
-                .clone()
-                .unwrap_or_else(|| panic!("no hard state found for node {}", id));
+
+            let hs = storage.read_hard_state().await.unwrap_or_else(|| panic!("no hard state found for node {}", id));
+
             assert_eq!(
                 hs.current_term, expect_term,
                 "expected node {} to have term {}, got {}",
