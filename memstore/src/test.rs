@@ -270,7 +270,7 @@ async fn test_apply_entry_to_state_machine() -> Result<()> {
             },
         }),
     };
-    store.apply_entry_to_state_machine(&entry).await?;
+    store.replicate_to_state_machine(&[&entry]).await?;
     let sm = store.get_state_machine().await;
 
     assert_eq!(

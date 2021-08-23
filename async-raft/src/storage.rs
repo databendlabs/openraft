@@ -166,7 +166,7 @@ where
     /// Errors returned from this method will cause Raft to go into shutdown.
     async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<()>;
 
-    /// Apply the given log entry to the state machine.
+    /// Apply the given payload of entries to the state machine.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
     /// have been replicated to a majority of the cluster, will be applied to the state machine.
@@ -174,30 +174,22 @@ where
     /// This is where the business logic of interacting with your application's state machine
     /// should live. This is 100% application specific. Perhaps this is where an application
     /// specific transaction is being started, or perhaps committed. This may be where a key/value
-    /// is being stored. This may be where an entry is being appended to an immutable log.
+    /// is being stored.
     ///
     /// An impl should do:
     /// - Deal with the EntryPayload::Normal() log, which is business logic log.
-    /// - Optionally, deal with EntryPayload::ConfigChange or EntryPayload::SnapshotPointer log if they are concerned.
-    ///   E.g. when an impl need to track the membership changing.
+    /// - Deal with EntryPayload::ConfigChange
+    /// - A EntryPayload::SnapshotPointer log should never be seen.
     ///
+    /// TODO(xp): choose one of the following policy:
     /// Error handling for this method is note worthy. If an error is returned from a call to this
     /// method, the error will be inspected, and if the error is an instance of
     /// `RaftStorage::ShutdownError`, then Raft will go into shutdown in order to preserve the
     /// safety of the data and avoid corruption. Any other errors will be propagated back up to the
     /// `Raft.client_write` call point.
     ///
-    /// It is important to note that even in cases where an application specific error is returned,
-    /// implementations should still record that the entry has been applied to the state machine.
-    async fn apply_entry_to_state_machine(&self, data: &Entry<D>) -> Result<R>;
-
-    /// Apply the given payload of entries to the state machine, as part of replication.
-    ///
-    /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
-    /// have been replicated to a majority of the cluster, will be applied to the state machine.
-    ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn replicate_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<()>;
+    async fn replicate_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>>;
 
     /// Perform log compaction, returning a handle to the generated snapshot.
     ///
