@@ -113,7 +113,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     last_log_id: LogId,
 
     /// The node's current snapshot state.
-    snapshot_state: Option<SnapshotState<S::Snapshot>>,
+    snapshot_state: Option<SnapshotState<S::SnapshotData>>,
 
     /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
     ///
@@ -608,10 +608,10 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     pub leader_metrics: LeaderMetrics,
 
     /// The stream of events coming from replication streams.
-    pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<S::Snapshot>, Span)>,
+    pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<S::SnapshotData>, Span)>,
 
     /// The cloneable sender channel for replication stream events.
-    pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
+    pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
 
     /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
     pub(super) awaiting_committed: Vec<ClientRequestEntry<D, R>>,

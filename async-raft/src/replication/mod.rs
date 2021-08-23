@@ -60,7 +60,7 @@ impl<D: AppData> ReplicationStream<D> {
         commit_index: u64,
         network: Arc<N>,
         storage: Arc<S>,
-        replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
+        replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
     ) -> Self {
         ReplicationCore::spawn(
             id,
@@ -93,7 +93,7 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     term: u64,
 
     /// A channel for sending events to the Raft node.
-    raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
+    raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
 
     /// A channel for receiving events from the Raft node.
     repl_rx: mpsc::UnboundedReceiver<(RaftEvent<D>, Span)>,
@@ -179,7 +179,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         commit_index: u64,
         network: Arc<N>,
         storage: Arc<S>,
-        raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::Snapshot>, Span)>,
+        raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
     ) -> ReplicationStream<D> {
         // other component to ReplicationStream
         let (repl_tx, repl_rx) = mpsc::unbounded_channel();
@@ -801,8 +801,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 struct SnapshottingState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     /// An exclusive handle to the replication core.
     replication_core: &'a mut ReplicationCore<D, R, N, S>,
-    snapshot: Option<CurrentSnapshotData<S::Snapshot>>,
-    snapshot_fetch_rx: Option<oneshot::Receiver<CurrentSnapshotData<S::Snapshot>>>,
+    snapshot: Option<CurrentSnapshotData<S::SnapshotData>>,
+    snapshot_fetch_rx: Option<oneshot::Receiver<CurrentSnapshotData<S::SnapshotData>>>,
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> SnapshottingState<'a, D, R, N, S> {
@@ -865,7 +865,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// If an error comes up during processing, this routine should simple be called again after
     /// issuing a new request to the storage layer.
     #[tracing::instrument(level = "trace", skip(self, rx))]
-    async fn wait_for_snapshot(&mut self, mut rx: oneshot::Receiver<CurrentSnapshotData<S::Snapshot>>) {
+    async fn wait_for_snapshot(&mut self, mut rx: oneshot::Receiver<CurrentSnapshotData<S::SnapshotData>>) {
         loop {
             let span = tracing::debug_span!("FFF:wait_for_snapshot");
             let _ent = span.enter();
@@ -898,7 +898,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::Snapshot>) -> RaftResult<()> {
+    async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::SnapshotData>) -> RaftResult<()> {
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await?;
 
         let mut offset = 0;

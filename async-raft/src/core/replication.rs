@@ -49,7 +49,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Handle a replication event coming from one of the replication streams.
     #[tracing::instrument(level = "trace", skip(self, event))]
-    pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent<S::Snapshot>) {
+    pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent<S::SnapshotData>) {
         let res = match event {
             ReplicaEvent::RateUpdate { target, is_line_rate } => self.handle_rate_update(target, is_line_rate).await,
             ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
@@ -277,7 +277,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     async fn handle_needs_snapshot(
         &mut self,
         _: NodeId,
-        tx: oneshot::Sender<CurrentSnapshotData<S::Snapshot>>,
+        tx: oneshot::Sender<CurrentSnapshotData<S::SnapshotData>>,
     ) -> RaftResult<()> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {

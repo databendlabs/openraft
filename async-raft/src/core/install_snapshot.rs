@@ -138,7 +138,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &mut self,
         req: InstallSnapshotRequest,
         mut offset: u64,
-        mut snapshot: Box<S::Snapshot>,
+        mut snapshot: Box<S::SnapshotData>,
     ) -> RaftResult<InstallSnapshotResponse> {
         let id = req.meta.snapshot_id.clone();
 
@@ -176,7 +176,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn finalize_snapshot_installation(
         &mut self,
         req: InstallSnapshotRequest,
-        mut snapshot: Box<S::Snapshot>,
+        mut snapshot: Box<S::SnapshotData>,
     ) -> RaftResult<()> {
         snapshot.as_mut().shutdown().await.map_err(|err| self.map_fatal_storage_error(err.into()))?;
 

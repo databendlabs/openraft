@@ -26,6 +26,8 @@ pub struct SnapshotMeta {
     /// The latest membership configuration covered by the snapshot.
     pub membership: MembershipConfig,
 
+    /// To identify a snapshot when transferring.
+    /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be different in bytes.
     pub snapshot_id: SnapshotId,
 }
 
@@ -99,7 +101,8 @@ where
     ///
     /// See the [storage chapter of the guide](https://async-raft.github.io/async-raft/storage.html)
     /// for details on where and how this is used.
-    type Snapshot: AsyncRead + AsyncWrite + AsyncSeek + Send + Unpin + 'static;
+    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Unpin + 'static;
+
     /// The error type used to indicate to Raft that shutdown is needed when calling the
     /// `apply_entry_to_state_machine` method.
     ///
@@ -211,7 +214,7 @@ where
     /// log covered by the snapshot.
     ///
     /// Errors returned from this method will be logged and retried.
-    async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>>;
+    async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::SnapshotData>>;
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object.
     ///
@@ -220,7 +223,7 @@ where
     /// for details on log compaction / snapshotting.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn create_snapshot(&self) -> Result<Box<Self::Snapshot>>;
+    async fn create_snapshot(&self) -> Result<Box<Self::SnapshotData>>;
 
     /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
     ///
@@ -239,7 +242,11 @@ where
     /// made to the snapshot.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn finalize_snapshot_installation(&self, meta: &SnapshotMeta, snapshot: Box<Self::Snapshot>) -> Result<()>;
+    async fn finalize_snapshot_installation(
+        &self,
+        meta: &SnapshotMeta,
+        snapshot: Box<Self::SnapshotData>,
+    ) -> Result<()>;
 
     /// Get a readable handle to the current snapshot, along with its metadata.
     ///
@@ -254,7 +261,7 @@ where
     /// of the snapshot, which should be decoded for creating this method's response data.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>>;
+    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::SnapshotData>>>;
 }
 
 /// APIs for debugging a store.
@@ -266,4 +273,3 @@ pub trait RaftStorageDebug<SM> {
     /// Get the current hard state for testing purposes.
     async fn read_hard_state(&self) -> Option<HardState>;
 }
-

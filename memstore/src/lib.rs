@@ -192,7 +192,7 @@ impl MemStore {
 
 #[async_trait]
 impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
-    type Snapshot = Cursor<Vec<u8>>;
+    type SnapshotData = Cursor<Vec<u8>>;
     type ShutdownError = ShutdownError;
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -344,7 +344,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::Snapshot>> {
+    async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::SnapshotData>> {
         let (data, last_applied_log);
         let membership_config;
         {
@@ -397,12 +397,16 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn create_snapshot(&self) -> Result<Box<Self::Snapshot>> {
+    async fn create_snapshot(&self) -> Result<Box<Self::SnapshotData>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn finalize_snapshot_installation(&self, meta: &SnapshotMeta, snapshot: Box<Self::Snapshot>) -> Result<()> {
+    async fn finalize_snapshot_installation(
+        &self,
+        meta: &SnapshotMeta,
+        snapshot: Box<Self::SnapshotData>,
+    ) -> Result<()> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -444,7 +448,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::Snapshot>>> {
+    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::SnapshotData>>> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 // TODO(xp): try not to clone the entire data.
