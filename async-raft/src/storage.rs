@@ -32,7 +32,7 @@ pub struct SnapshotMeta {
 }
 
 /// The data associated with the current snapshot.
-pub struct CurrentSnapshotData<S>
+pub struct Snapshot<S>
 where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
     /// metadata of a snapshot
@@ -214,7 +214,7 @@ where
     /// log covered by the snapshot.
     ///
     /// Errors returned from this method will be logged and retried.
-    async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::SnapshotData>>;
+    async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>>;
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object.
     ///
@@ -261,7 +261,7 @@ where
     /// of the snapshot, which should be decoded for creating this method's response data.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::SnapshotData>>>;
+    async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>>;
 }
 
 /// APIs for debugging a store.

@@ -14,9 +14,9 @@ use async_raft::async_trait::async_trait;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
-use async_raft::storage::CurrentSnapshotData;
 use async_raft::storage::HardState;
 use async_raft::storage::InitialState;
+use async_raft::storage::Snapshot;
 use async_raft::AppData;
 use async_raft::AppDataResponse;
 use async_raft::LogId;
@@ -344,7 +344,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn do_log_compaction(&self) -> Result<CurrentSnapshotData<Self::SnapshotData>> {
+    async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>> {
         let (data, last_applied_log);
         let membership_config;
         {
@@ -390,7 +390,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         } // Release log & snapshot write locks.
 
         tracing::info!({ snapshot_size = snapshot_size }, "log compaction complete");
-        Ok(CurrentSnapshotData {
+        Ok(Snapshot {
             meta,
             snapshot: Box::new(Cursor::new(data)),
         })
@@ -448,13 +448,13 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&self) -> Result<Option<CurrentSnapshotData<Self::SnapshotData>>> {
+    async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 // TODO(xp): try not to clone the entire data.
                 //           If snapshot.data is Arc<T> that impl AsyncRead etc then the sharing can be done.
                 let data = snapshot.data.clone();
-                Ok(Some(CurrentSnapshotData {
+                Ok(Some(Snapshot {
                     meta: snapshot.meta.clone(),
                     snapshot: Box::new(Cursor::new(data)),
                 }))

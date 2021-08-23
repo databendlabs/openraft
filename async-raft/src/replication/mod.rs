@@ -26,7 +26,7 @@ use crate::error::RaftResult;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::Entry;
 use crate::raft::InstallSnapshotRequest;
-use crate::storage::CurrentSnapshotData;
+use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -566,7 +566,7 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
         /// The ID of the target node from which the event was sent.
         target: NodeId,
         /// The response channel for delivering the snapshot data.
-        tx: oneshot::Sender<CurrentSnapshotData<S>>,
+        tx: oneshot::Sender<Snapshot<S>>,
     },
     /// Some critical error has taken place, and Raft needs to shutdown.
     Shutdown,
@@ -801,8 +801,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 struct SnapshottingState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     /// An exclusive handle to the replication core.
     replication_core: &'a mut ReplicationCore<D, R, N, S>,
-    snapshot: Option<CurrentSnapshotData<S::SnapshotData>>,
-    snapshot_fetch_rx: Option<oneshot::Receiver<CurrentSnapshotData<S::SnapshotData>>>,
+    snapshot: Option<Snapshot<S::SnapshotData>>,
+    snapshot_fetch_rx: Option<oneshot::Receiver<Snapshot<S::SnapshotData>>>,
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> SnapshottingState<'a, D, R, N, S> {
@@ -865,7 +865,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// If an error comes up during processing, this routine should simple be called again after
     /// issuing a new request to the storage layer.
     #[tracing::instrument(level = "trace", skip(self, rx))]
-    async fn wait_for_snapshot(&mut self, mut rx: oneshot::Receiver<CurrentSnapshotData<S::SnapshotData>>) {
+    async fn wait_for_snapshot(&mut self, mut rx: oneshot::Receiver<Snapshot<S::SnapshotData>>) {
         loop {
             let span = tracing::debug_span!("FFF:wait_for_snapshot");
             let _ent = span.enter();
@@ -898,7 +898,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn stream_snapshot(&mut self, mut snapshot: CurrentSnapshotData<S::SnapshotData>) -> RaftResult<()> {
+    async fn stream_snapshot(&mut self, mut snapshot: Snapshot<S::SnapshotData>) -> RaftResult<()> {
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await?;
 
         let mut offset = 0;

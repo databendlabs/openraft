@@ -15,7 +15,7 @@ use crate::quorum;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
-use crate::storage::CurrentSnapshotData;
+use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -277,7 +277,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     async fn handle_needs_snapshot(
         &mut self,
         _: NodeId,
-        tx: oneshot::Sender<CurrentSnapshotData<S::SnapshotData>>,
+        tx: oneshot::Sender<Snapshot<S::SnapshotData>>,
     ) -> RaftResult<()> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {
