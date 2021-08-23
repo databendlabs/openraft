@@ -218,12 +218,14 @@ where
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object.
     ///
+    /// Raft will use this handle to receive snapshot data.
+    ///
     /// ### implementation guide
     /// See the [storage chapter of the guide](https://async-raft.github.io/async-raft/storage.html)
     /// for details on log compaction / snapshotting.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn create_snapshot(&self) -> Result<Box<Self::SnapshotData>>;
+    async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>>;
 
     /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
     ///

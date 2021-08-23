@@ -111,7 +111,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // Create a new snapshot and begin writing its contents.
-        let mut snapshot = self.storage.create_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let mut snapshot =
+            self.storage.begin_receiving_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?;
         snapshot.as_mut().write_all(&req.data).await?;
 
         // If this was a small snapshot, and it is already done, then finish up.

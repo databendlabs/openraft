@@ -397,7 +397,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn create_snapshot(&self) -> Result<Box<Self::SnapshotData>> {
+    async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
