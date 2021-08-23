@@ -265,18 +265,11 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self, entry))]
-    async fn append_entry_to_log(&self, entry: &Entry<ClientRequest>) -> Result<()> {
-        let mut log = self.log.write().await;
-        log.insert(entry.log_id.index, entry.clone());
-        Ok(())
-    }
-
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn replicate_to_log(&self, entries: &[Entry<ClientRequest>]) -> Result<()> {
+    async fn append_to_log(&self, entries: &[&Entry<ClientRequest>]) -> Result<()> {
         let mut log = self.log.write().await;
         for entry in entries {
-            log.insert(entry.log_id.index, entry.clone());
+            log.insert(entry.log_id.index, (*entry).clone());
         }
         Ok(())
     }

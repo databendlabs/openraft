@@ -40,7 +40,7 @@ async fn members_leader_fix_partial() -> Result<()> {
     router.remove_node(0).await;
 
     {
-        sto.append_entry_to_log(&Entry {
+        sto.append_to_log(&[&Entry {
             log_id: LogId {
                 term: 1,
                 index: want + 1,
@@ -51,7 +51,7 @@ async fn members_leader_fix_partial() -> Result<()> {
                     members_after_consensus: Some(btreeset! {0,1,2}),
                 },
             }),
-        })
+        }])
         .await?;
     }
 

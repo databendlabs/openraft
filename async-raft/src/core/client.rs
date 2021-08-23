@@ -264,7 +264,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         };
         self.core
             .storage
-            .append_entry_to_log(&entry)
+            .append_to_log(&[&entry])
             .await
             .map_err(|err| self.core.map_fatal_storage_error(err))?;
         self.core.last_log_id.index = entry.log_id.index;

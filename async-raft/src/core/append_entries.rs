@@ -190,7 +190,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         };
 
         // Replicate entries to log (same as append, but in follower mode).
-        self.storage.replicate_to_log(entries).await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let entry_refs = entries.iter().collect::<Vec<_>>();
+        self.storage.append_to_log(&entry_refs).await.map_err(|err| self.map_fatal_storage_error(err))?;
         if let Some(entry) = entries.last() {
             self.last_log_id = entry.log_id;
         }

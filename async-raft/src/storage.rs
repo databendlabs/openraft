@@ -158,18 +158,13 @@ where
     /// Errors returned from this method will cause Raft to go into shutdown.
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()>;
 
-    /// Append a new entry to the log.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn append_entry_to_log(&self, entry: &Entry<D>) -> Result<()>;
-
-    /// Replicate a payload of entries to the log.
+    /// Append a payload of entries to the log.
     ///
     /// Though the entries will always be presented in order, each entry's index should be used to
     /// determine its location to be written in the log.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn replicate_to_log(&self, entries: &[Entry<D>]) -> Result<()>;
+    async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<()>;
 
     /// Apply the given log entry to the state machine.
     ///

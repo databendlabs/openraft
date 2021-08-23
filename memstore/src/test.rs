@@ -220,10 +220,10 @@ async fn test_append_entry_to_log() -> Result<()> {
     let store = default_store_with_logs();
 
     store
-        .append_entry_to_log(&Entry {
+        .append_to_log(&[&Entry {
             log_id: (2, 10).into(),
             payload: EntryPayload::Blank,
-        })
+        }])
         .await?;
     let l = store.get_log_entries(0, 10_000).await?.len();
     let last = store.get_log_entries(0, 10_000).await?.last().unwrap().clone();
@@ -240,7 +240,7 @@ async fn test_replicate_to_log() -> Result<()> {
     let store = default_store_with_logs();
 
     store
-        .replicate_to_log(&[Entry {
+        .append_to_log(&[&Entry {
             log_id: (1, 11).into(),
             payload: EntryPayload::Blank,
         }])
