@@ -74,7 +74,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, to(), "snapshot").await?;
 
         {
-            let logs = sto0.get_log().await;
+            let logs = sto0.get_log_entries(0, 1000).await?;
             assert_eq!(1, logs.len(), "only one snapshot pointer log");
         }
         let m = sto0.get_membership_config().await?;
@@ -117,7 +117,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     tracing::info!("--- check membership");
     {
         {
-            let logs = sto0.get_log().await;
+            let logs = sto0.get_log_entries(0, 1000).await?;
             assert_eq!(1, logs.len(), "only one snapshot pointer log");
         }
         let m = sto0.get_membership_config().await?;

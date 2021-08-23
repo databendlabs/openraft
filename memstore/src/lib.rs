@@ -27,8 +27,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tokio::sync::RwLockReadGuard;
-use tokio::sync::RwLockWriteGuard;
 
 /// The application data request type which the `MemStore` works with.
 ///
@@ -139,14 +137,9 @@ impl MemStore {
         }
     }
 
-    /// Get a handle to the log for testing purposes.
-    pub async fn get_log(&self) -> RwLockWriteGuard<'_, BTreeMap<u64, Entry<ClientRequest>>> {
-        self.log.write().await
-    }
-
     /// Get a handle to the state machine for testing purposes.
-    pub async fn get_state_machine(&self) -> RwLockWriteGuard<'_, MemStoreStateMachine> {
-        self.sm.write().await
+    pub async fn get_state_machine(&self) -> MemStoreStateMachine {
+        self.sm.write().await.clone()
     }
 
     /// Get a handle to the current hard state for testing purposes.

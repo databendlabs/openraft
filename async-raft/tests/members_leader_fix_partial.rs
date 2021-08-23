@@ -9,6 +9,7 @@ use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::Raft;
+use async_raft::RaftStorage;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 
@@ -39,16 +40,19 @@ async fn members_leader_fix_partial() -> Result<()> {
     router.remove_node(0).await;
 
     {
-        let mut logs = sto.get_log().await;
-        logs.insert(want + 1, Entry {
-            log_id: LogId { term: 1, index: 2 },
+        sto.append_entry_to_log(&Entry {
+            log_id: LogId {
+                term: 1,
+                index: want + 1,
+            },
             payload: EntryPayload::ConfigChange(EntryConfigChange {
                 membership: MembershipConfig {
                     members: btreeset! {0},
                     members_after_consensus: Some(btreeset! {0,1,2}),
                 },
             }),
-        });
+        })
+        .await?;
     }
 
     // A joint log and the leader should add a new final config log.
@@ -67,10 +71,7 @@ async fn members_leader_fix_partial() -> Result<()> {
         )
         .await?;
 
-    let final_log = {
-        let logs = sto.get_log().await;
-        logs.get(&want).unwrap().clone()
-    };
+    let final_log = sto.get_log_entries(want, want + 1).await?[0].clone();
 
     let m = match final_log.payload {
         EntryPayload::ConfigChange(ref m) => m.membership.clone(),

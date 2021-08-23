@@ -4,6 +4,7 @@ use anyhow::Result;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
+use async_raft::RaftStorage;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
@@ -52,7 +53,7 @@ async fn initialization() -> Result<()> {
 
     for i in 0..3 {
         let sto = router.get_storage_handle(&1).await?;
-        let first = sto.get_log().await.get(&1).cloned();
+        let first = sto.get_log_entries(1, 2).await?.first().cloned();
 
         tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);
         let mem = match first.unwrap().payload {

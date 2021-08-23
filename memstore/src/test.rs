@@ -225,10 +225,11 @@ async fn test_append_entry_to_log() -> Result<()> {
             payload: EntryPayload::Blank,
         })
         .await?;
-    let log = store.get_log().await;
+    let l = store.get_log_entries(0, 10_000).await?.len();
+    let last = store.get_log_entries(0, 10_000).await?.last().unwrap().clone();
 
-    assert_eq!(log.len(), 10, "expected 10 entries to exist in the log");
-    assert_eq!(log[&10].log_id, (2, 10).into(), "unexpected log id");
+    assert_eq!(l, 10, "expected 10 entries to exist in the log");
+    assert_eq!(last.log_id, (2, 10).into(), "unexpected log id");
     Ok(())
 }
 
@@ -244,10 +245,11 @@ async fn test_replicate_to_log() -> Result<()> {
             payload: EntryPayload::Blank,
         }])
         .await?;
-    let log = store.get_log().await;
+    let l = store.get_log_entries(0, 10_000).await?.len();
+    let last = store.get_log_entries(0, 10_000).await?.last().unwrap().clone();
 
-    assert_eq!(log.len(), 11, "expected 11 entries to exist in the log");
-    assert_eq!(log[&11].log_id, (1, 11).into(), "unexpected log id");
+    assert_eq!(l, 11, "expected 11 entries to exist in the log");
+    assert_eq!(last.log_id, (1, 11).into(), "unexpected log id");
     Ok(())
 }
 
