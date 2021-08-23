@@ -266,7 +266,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         tracing::debug!("start sending append_entries, timeout: {:?}", self.heartbeat_timeout);
         let res = match timeout(
             self.heartbeat_timeout,
-            self.network.append_entries(self.target, payload),
+            self.network.send_append_entries(self.target, payload),
         )
         .await
         {
@@ -934,7 +934,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             let res = timeout(
                 self.replication_core.install_snapshot_timeout,
-                self.replication_core.network.install_snapshot(self.replication_core.target, req),
+                self.replication_core.network.send_install_snapshot(self.replication_core.target, req),
             )
             .await;
 

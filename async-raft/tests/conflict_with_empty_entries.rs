@@ -57,7 +57,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: 5,
     };
 
-    let resp = router.append_entries(0, rpc).await?;
+    let resp = router.send_append_entries(0, rpc).await?;
     assert!(!resp.success);
     assert!(resp.conflict_opt.is_some());
     let c = resp.conflict_opt.unwrap();
@@ -93,7 +93,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: 5,
     };
 
-    let resp = router.append_entries(0, rpc).await?;
+    let resp = router.send_append_entries(0, rpc).await?;
     assert!(resp.success);
     assert!(resp.conflict_opt.is_none());
 
@@ -107,7 +107,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: 5,
     };
 
-    let resp = router.append_entries(0, rpc).await?;
+    let resp = router.send_append_entries(0, rpc).await?;
     assert!(!resp.success);
     assert!(resp.conflict_opt.is_some());
     let c = resp.conflict_opt.unwrap();

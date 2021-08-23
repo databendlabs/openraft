@@ -104,7 +104,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 }],
                 leader_commit: 0,
             };
-            router.append_entries(1, req).await?;
+            router.send_append_entries(1, req).await?;
 
             tracing::info!("--- check that non-voter membership is affected");
             {

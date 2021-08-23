@@ -168,7 +168,7 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!("--- take leadership of node 0");
 
     router
-        .vote(0, VoteRequest {
+        .send_vote(0, VoteRequest {
             term: 100,
             candidate_id: 100,
             last_log_index: 100,

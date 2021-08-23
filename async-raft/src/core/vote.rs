@@ -160,7 +160,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let (network, tx_inner) = (self.core.network.clone(), tx.clone());
             let _ = tokio::spawn(
                 async move {
-                    match network.vote(member, rpc).await {
+                    match network.send_vote(member, rpc).await {
                         Ok(res) => {
                             let _ = tx_inner.send((res, member)).await;
                         }

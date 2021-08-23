@@ -626,7 +626,7 @@ impl RaftRouter {
 #[async_trait]
 impl RaftNetwork<MemClientRequest> for RaftRouter {
     /// Send an AppendEntries RPC to the target Raft node (§5).
-    async fn append_entries(
+    async fn send_append_entries(
         &self,
         target: u64,
         rpc: AppendEntriesRequest<MemClientRequest>,
@@ -647,7 +647,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
-    async fn install_snapshot(&self, target: u64, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse> {
+    async fn send_install_snapshot(&self, target: u64, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse> {
         self.rand_send_delay().await;
 
         let rt = self.routing_table.read().await;
@@ -660,7 +660,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn vote(&self, target: u64, rpc: VoteRequest) -> Result<VoteResponse> {
+    async fn send_vote(&self, target: u64, rpc: VoteRequest) -> Result<VoteResponse> {
         self.rand_send_delay().await;
 
         let rt = self.routing_table.read().await;

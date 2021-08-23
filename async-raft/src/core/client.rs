@@ -175,7 +175,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let ttl = Duration::from_millis(self.core.config.heartbeat_interval);
             let task = tokio::spawn(
                 async move {
-                    match timeout(ttl, network.append_entries(target, rpc)).await {
+                    match timeout(ttl, network.send_append_entries(target, rpc)).await {
                         Ok(Ok(data)) => Ok((target, data)),
                         Ok(Err(err)) => Err((target, err)),
                         Err(_timeout) => Err((target, anyhow!("timeout waiting for leadership confirmation"))),
