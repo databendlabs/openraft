@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod test;
 
+use std::cmp::max;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -153,13 +154,13 @@ impl RaftStorageDebug<MemStoreStateMachine> for MemStore {
 }
 
 impl MemStore {
-    fn find_first_membership_log<'a, T, D>(mut it: T) -> Option<MembershipConfig>
+    fn find_first_membership_log<'a, T, D>(mut it: T) -> Option<(LogId, MembershipConfig)>
     where
         T: 'a + Iterator<Item = &'a Entry<D>>,
         D: AppData,
     {
         it.find_map(|entry| match &entry.payload {
-            EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
+            EntryPayload::ConfigChange(cfg) => Some((entry.log_id,cfg.membership.clone())),
             _ => None,
         })
     }
@@ -182,9 +183,20 @@ impl MemStore {
 
         // Find membership stored in state machine.
 
+        let (sm_mem, last_applied) = {
+            let sm = self.sm.read().await;
+            (sm.last_membership.clone(), sm.last_applied_log)
+        };
+
         let membership = match membership {
-            None => self.sm.read().await.last_membership.clone(),
-            Some(x) => Some(x),
+            None => sm_mem,
+            Some((id, log_mem)) => {
+                if id < last_applied {
+                    sm_mem
+                } else {
+                    Some(log_mem)
+                }
+            }
         };
 
         // Otherwise, create a default one.
@@ -214,11 +226,20 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         let sm = self.sm.read().await;
         match &mut *hs {
             Some(inner) => {
-                let last_log_id = match log.values().rev().next() {
-                    Some(log) => log.log_id,
-                    None => (0, 0).into(),
-                };
+                // Search for two place and use the max one,
+                // because when a state machine is installed there could be logs
+                // included in the state machine that are not cleaned:
+                // - the last log id
+                // - the last_applied log id in state machine.
+                // TODO(xp): add test for RaftStore to ensure it looks for two places.
+
+                let last = log.values().rev().next();
+                let last = last.map(|x| x.log_id);
+                let last_in_log = last.unwrap_or(LogId::default());
                 let last_applied_log = sm.last_applied_log;
+ 
+                let last_log_id = max(last_in_log, last_applied_log);
+
                 Ok(InitialState {
                     last_log_id,
                     last_applied_log,
