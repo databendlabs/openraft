@@ -296,7 +296,9 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
             match entry.payload {
                 EntryPayload::Blank => res.push(ClientResponse(None)),
-                EntryPayload::PurgedMarker => res.push(ClientResponse(None)),
+                EntryPayload::PurgedMarker => {
+                    return Err(anyhow::anyhow!("PurgedMarker should never be passed to state machine"));
+                }
                 EntryPayload::Normal(ref norm) => {
                     let data = &norm.data;
                     if let Some((serial, r)) = sm.client_serial_responses.get(&data.client) {
