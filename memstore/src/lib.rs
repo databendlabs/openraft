@@ -296,7 +296,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
             match entry.payload {
                 EntryPayload::Blank => res.push(ClientResponse(None)),
-                EntryPayload::SnapshotPointer => res.push(ClientResponse(None)),
+                EntryPayload::PurgedMarker => res.push(ClientResponse(None)),
                 EntryPayload::Normal(ref norm) => {
                     let data = &norm.data;
                     if let Some((serial, r)) = sm.client_serial_responses.get(&data.client) {
@@ -406,7 +406,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             *log = log.split_off(&meta.last_log_id.index);
 
             // In case there are no log at all, a marker log need to be added to indicate the last log.
-            log.insert(meta.last_log_id.index, Entry::new_snapshot_pointer(&meta));
+            log.insert(meta.last_log_id.index, Entry::new_purged_marker(meta.last_log_id));
         }
 
         // Update the state machine.

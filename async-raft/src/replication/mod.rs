@@ -686,7 +686,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         };
 
         for entry in entries.iter() {
-            if let EntryPayload::SnapshotPointer = entry.payload {
+            if let EntryPayload::PurgedMarker = entry.payload {
                 self.replication_core.target_state = TargetReplState::Snapshotting;
                 return;
             }
@@ -799,7 +799,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 };
 
             for entry in entries.iter() {
-                if let EntryPayload::SnapshotPointer = entry.payload {
+                if let EntryPayload::PurgedMarker = entry.payload {
                     self.replication_core.target_state = TargetReplState::Snapshotting;
                     return;
                 }
