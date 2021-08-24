@@ -220,7 +220,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         match res {
             Ok(v) => {
                 if let Err(ref e) = v {
-                    tracing::error!("error Raft::client_write: {}", e);
+                    tracing::error!("error Raft::client_write: {:?}", e);
                 }
                 v
             }
@@ -515,10 +515,7 @@ impl<D: AppData> Entry<D> {
     pub fn new_snapshot_pointer(meta: &SnapshotMeta) -> Self {
         Entry {
             log_id: meta.last_log_id,
-            payload: EntryPayload::SnapshotPointer(EntrySnapshotPointer {
-                id: meta.snapshot_id.clone(),
-                membership: meta.membership.clone(),
-            }),
+            payload: EntryPayload::SnapshotPointer,
         }
     }
 }
@@ -534,7 +531,7 @@ pub enum EntryPayload<D: AppData> {
     /// A config change log entry.
     ConfigChange(EntryConfigChange),
     /// An entry which points to a snapshot.
-    SnapshotPointer(EntrySnapshotPointer),
+    SnapshotPointer,
 }
 
 impl<D: AppData> MessageSummary for EntryPayload<D> {
@@ -545,9 +542,7 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
             EntryPayload::ConfigChange(c) => {
                 format!("config-change: {:?}", c.membership)
             }
-            EntryPayload::SnapshotPointer(sp) => {
-                format!("snapshot-pointer: {:?}", sp)
-            }
+            EntryPayload::SnapshotPointer => "snapshot-pointer".to_string(),
         }
     }
 }
@@ -564,19 +559,6 @@ pub struct EntryNormal<D: AppData> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EntryConfigChange {
     /// Details on the cluster's membership configuration.
-    pub membership: MembershipConfig,
-}
-
-/// A log entry pointing to a snapshot.
-///
-/// This will only be present when read from storage. An entry of this type will never be
-/// transmitted from a leader during replication, an `InstallSnapshotRequest`
-/// RPC will be sent instead.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct EntrySnapshotPointer {
-    /// The ID of the snapshot, which is application specific, and probably only meaningful to the storage layer.
-    pub id: String,
-    /// The cluster's membership config covered by this snapshot.
     pub membership: MembershipConfig,
 }
 

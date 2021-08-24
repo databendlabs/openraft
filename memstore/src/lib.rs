@@ -160,7 +160,6 @@ impl MemStore {
     {
         it.find_map(|entry| match &entry.payload {
             EntryPayload::ConfigChange(cfg) => Some(cfg.membership.clone()),
-            EntryPayload::SnapshotPointer(snap) => Some(snap.membership.clone()),
             _ => None,
         })
     }
@@ -179,6 +178,13 @@ impl MemStore {
                 }
                 None => Self::find_first_membership_log(reversed_logs),
             }
+        };
+
+        // Find membership stored in state machine.
+
+        let membership = match membership {
+            None => self.sm.read().await.last_membership.clone(),
+            Some(x) => Some(x),
         };
 
         // Otherwise, create a default one.
@@ -247,6 +253,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
+        // TODO(xp): never delete the last applied log
         if stop.as_ref().map(|stop| &start > stop).unwrap_or(false) {
             tracing::error!("delete_logs_from: invalid request, start({}) > stop({:?})", start, stop);
             return Ok(());
@@ -289,7 +296,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
             match entry.payload {
                 EntryPayload::Blank => res.push(ClientResponse(None)),
-                EntryPayload::SnapshotPointer(_) => res.push(ClientResponse(None)),
+                EntryPayload::SnapshotPointer => res.push(ClientResponse(None)),
                 EntryPayload::Normal(ref norm) => {
                     let data = &norm.data;
                     if let Some((serial, r)) = sm.client_serial_responses.get(&data.client) {
@@ -335,7 +342,9 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         {
             let mut log = self.log.write().await;
             let mut current_snapshot = self.current_snapshot.write().await;
-            *log = log.split_off(&(last_applied_log.index + 1));
+
+            // Leaves at least one log or replication can not find out the mismatched log.
+            *log = log.split_off(&last_applied_log.index);
 
             let snapshot_id = format!("{}-{}-{}", last_applied_log.term, last_applied_log.index, snapshot_idx);
 
@@ -349,10 +358,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 meta: meta.clone(),
                 data: data.clone(),
             };
-            log.insert(
-                snapshot.meta.last_log_id.index,
-                Entry::new_snapshot_pointer(&snapshot.meta),
-            );
 
             *current_snapshot = Some(snapshot);
         } // Release log & snapshot write locks.
@@ -397,8 +402,10 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             let mut log = self.log.write().await;
 
             // Remove logs that are included in the snapshot.
-            *log = log.split_off(&(meta.last_log_id.index + 1));
+            // Leave at least one log or the replication can not find out the mismatched log.
+            *log = log.split_off(&meta.last_log_id.index);
 
+            // In case there are no log at all, a marker log need to be added to indicate the last log.
             log.insert(meta.last_log_id.index, Entry::new_snapshot_pointer(&meta));
         }
 
