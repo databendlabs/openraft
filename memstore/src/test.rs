@@ -270,7 +270,7 @@ async fn test_apply_entry_to_state_machine() -> Result<()> {
             },
         }),
     };
-    store.replicate_to_state_machine(&[&entry]).await?;
+    store.apply_to_state_machine(&[&entry]).await?;
     let sm = store.get_state_machine().await;
 
     assert_eq!(
@@ -326,7 +326,7 @@ async fn test_replicate_to_state_machine() -> Result<()> {
     })
     .collect::<Vec<_>>();
 
-    store.replicate_to_state_machine(&entries.iter().collect::<Vec<_>>()).await?;
+    store.apply_to_state_machine(&entries.iter().collect::<Vec<_>>()).await?;
     let sm = store.get_state_machine().await;
 
     assert_eq!(

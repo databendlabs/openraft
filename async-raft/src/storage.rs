@@ -189,7 +189,7 @@ where
     /// `Raft.client_write` call point.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn replicate_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>>;
+    async fn apply_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>>;
 
     /// Perform log compaction, returning a handle to the generated snapshot.
     ///

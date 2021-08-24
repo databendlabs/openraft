@@ -264,7 +264,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 // Create a new vector of references to the entries data ... might have to change this
                 // interface a bit before 1.0.
                 let entries_refs: Vec<_> = entries.iter().collect();
-                storage.replicate_to_state_machine(&entries_refs).await?;
+                storage.apply_to_state_machine(&entries_refs).await?;
                 Ok(last_log_id)
             }
             .instrument(tracing::debug_span!("spawn")),
@@ -301,7 +301,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 if data_entries.is_empty() {
                     return Ok(new_last_applied);
                 }
-                storage.replicate_to_state_machine(&data_entries).await?;
+                storage.apply_to_state_machine(&data_entries).await?;
                 Ok(new_last_applied)
             }
             .instrument(tracing::debug_span!("spawn-init-replicate-to-sm")),

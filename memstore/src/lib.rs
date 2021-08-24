@@ -282,7 +282,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn replicate_to_state_machine(&self, entries: &[&Entry<ClientRequest>]) -> Result<Vec<ClientResponse>> {
+    async fn apply_to_state_machine(&self, entries: &[&Entry<ClientRequest>]) -> Result<Vec<ClientResponse>> {
         let mut sm = self.sm.write().await;
         let mut res = Vec::with_capacity(entries.len());
 
