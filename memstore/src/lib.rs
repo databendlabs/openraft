@@ -160,7 +160,7 @@ impl MemStore {
         D: AppData,
     {
         it.find_map(|entry| match &entry.payload {
-            EntryPayload::ConfigChange(cfg) => Some((entry.log_id,cfg.membership.clone())),
+            EntryPayload::ConfigChange(cfg) => Some((entry.log_id, cfg.membership.clone())),
             _ => None,
         })
     }
@@ -235,9 +235,9 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
                 let last = log.values().rev().next();
                 let last = last.map(|x| x.log_id);
-                let last_in_log = last.unwrap_or(LogId::default());
+                let last_in_log = last.unwrap_or_default();
                 let last_applied_log = sm.last_applied_log;
- 
+
                 let last_log_id = max(last_in_log, last_applied_log);
 
                 Ok(InitialState {
