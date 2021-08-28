@@ -118,7 +118,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // with an index greater than this, then we must delete them per §5.3.
             if self.last_log_id.index > target_entry.log_id.index {
                 self.storage
-                    .delete_logs_from(target_entry.log_id.index + 1, None)
+                    .delete_logs_from(target_entry.log_id.index + 1..)
                     .await
                     .map_err(|err| self.map_fatal_storage_error(err))?;
                 let membership =

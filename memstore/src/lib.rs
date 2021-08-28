@@ -6,7 +6,9 @@ mod test;
 use std::cmp::max;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::io::Cursor;
+use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -305,6 +307,20 @@ impl MemStore {
         Ok(())
     }
 
+    pub async fn defensive_nonempty_range<RT, RNG: RangeBounds<RT> + Clone + Debug + Send + Iterator>(
+        &self,
+        range: RNG,
+    ) -> anyhow::Result<()> {
+        if !*self.defensive.read().await {
+            return Ok(());
+        }
+        for _ in range.clone() {
+            return Ok(());
+        }
+
+        Err(anyhow::anyhow!("range must be nonempty: {:?}", range))
+    }
+
     pub async fn defensive_apply_log_id_gt_last<D: AppData>(&self, entries: &[&Entry<D>]) -> anyhow::Result<()> {
         if !*self.defensive.read().await {
             return Ok(());
@@ -471,24 +487,20 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(log.range(start..stop).map(|(_, val)| val.clone()).collect())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()> {
-        // TODO(xp): never delete the last applied log
-        if stop.as_ref().map(|stop| &start > stop).unwrap_or(false) {
-            tracing::error!("delete_logs_from: invalid request, start({}) > stop({:?})", start, stop);
-            return Ok(());
-        }
+    #[tracing::instrument(level = "trace", skip(self, range), fields(range=?range))]
+    async fn delete_logs_from<R: RangeBounds<u64> + Clone + Debug + Send + Sync + Iterator>(
+        &self,
+        range: R,
+    ) -> Result<()> {
+        self.defensive_nonempty_range(range.clone()).await?;
+
         let mut log = self.log.write().await;
 
-        // If a stop point was specified, delete from start until the given stop point.
-        if let Some(stop) = stop.as_ref() {
-            for key in start..*stop {
-                log.remove(&key);
-            }
-            return Ok(());
+        let keys = log.range(range).map(|(k, _v)| *k).collect::<Vec<_>>();
+        for key in keys {
+            log.remove(&key);
         }
-        // Else, just split off the remainder.
-        log.split_off(&start);
+
         Ok(())
     }
 

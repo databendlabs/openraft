@@ -507,23 +507,12 @@ where
     }
 
     pub async fn delete_logs_from(builder: &B) -> Result<()> {
-        tracing::info!("--- delete start > stop");
-        {
-            let store = builder.new_store(NODE_ID).await;
-            Self::feed_10_logs_vote_self(&store).await?;
-
-            store.delete_logs_from(10, Some(1)).await?;
-
-            let logs = store.get_log_entries(1, 11).await?;
-            assert_eq!(logs.len(), 10, "expected all (10) logs to be preserved");
-        }
-
         tracing::info!("--- delete start == stop");
         {
             let store = builder.new_store(NODE_ID).await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_logs_from(1, Some(1)).await?;
+            store.delete_logs_from(1..1).await?;
 
             let logs = store.get_log_entries(1, 11).await?;
             assert_eq!(logs.len(), 10, "expected all (10) logs to be preserved");
@@ -534,7 +523,7 @@ where
             let store = builder.new_store(NODE_ID).await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_logs_from(1, Some(4)).await?;
+            store.delete_logs_from(1..4).await?;
 
             let logs = store.get_log_entries(0, 100).await?;
             assert_eq!(logs.len(), 7);
@@ -546,7 +535,7 @@ where
             let store = builder.new_store(NODE_ID).await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_logs_from(1, Some(1000)).await?;
+            store.delete_logs_from(1..1000).await?;
             let logs = store.get_log_entries(0, 100).await?;
 
             assert_eq!(logs.len(), 0);
@@ -557,7 +546,7 @@ where
             let store = builder.new_store(NODE_ID).await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_logs_from(1, None).await?;
+            store.delete_logs_from(1..).await?;
             let logs = store.get_log_entries(0, 100).await?;
 
             assert_eq!(logs.len(), 0);
@@ -734,7 +723,7 @@ where
         run_fut(Suite::df_get_membership_config_dirty_log(builder))?;
         run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
         run_fut(Suite::df_save_hard_state_ascending(builder))?;
-        run_fut(Suite::df_delete_logs_from(builder))?;
+        run_fut(Suite::df_delete_logs_from_nonempty_range(builder))?;
         run_fut(Suite::df_append_to_log_nonempty_input(builder))?;
         run_fut(Suite::df_append_to_log_nonconsecutive_input(builder))?;
         run_fut(Suite::df_append_to_log_eq_last_plus_one(builder))?;
@@ -930,8 +919,16 @@ where
         Ok(())
     }
 
-    pub async fn df_delete_logs_from(_builder: &B) -> Result<()> {
-        // TODO(xp): what should we test about this?
+    pub async fn df_delete_logs_from_nonempty_range(builder: &B) -> Result<()> {
+        let store = builder.new_store(NODE_ID).await;
+        Self::feed_10_logs_vote_self(&store).await?;
+
+        let res = store.delete_logs_from(10..1).await;
+        assert!(res.is_err());
+
+        let res = store.delete_logs_from(10..10).await;
+        assert!(res.is_err());
+
         Ok(())
     }
 
@@ -1039,7 +1036,7 @@ where
             ])
             .await?;
 
-        store.delete_logs_from(1, Some(2)).await?;
+        store.delete_logs_from(1..2).await?;
 
         let res = store
             .append_to_log(&[&Entry {
@@ -1115,7 +1112,7 @@ where
             ])
             .await?;
 
-        store.delete_logs_from(1, Some(2)).await?;
+        store.delete_logs_from(1..2).await?;
 
         let res = store
             .append_to_log(&[&Entry {

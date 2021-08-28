@@ -1,6 +1,8 @@
 //! The Raft storage interface and data types.
 
 use std::error::Error;
+use std::fmt::Debug;
+use std::ops::RangeBounds;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -159,11 +161,13 @@ where
     /// Errors returned from this method will cause Raft to go into shutdown.
     async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<D>>>;
 
-    /// Delete all logs starting from `start` and stopping at `stop`, else continuing to the end
-    /// of the log if `stop` is `None`.
+    /// Delete all logs in a `range`.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn delete_logs_from(&self, start: u64, stop: Option<u64>) -> Result<()>;
+    async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync + Iterator>(
+        &self,
+        range: RNG,
+    ) -> Result<()>;
 
     /// Append a payload of entries to the log.
     ///
