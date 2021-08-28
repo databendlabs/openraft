@@ -224,7 +224,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         // Proceed to the replication stream's inner loop.
         loop {
             match &self.target_state {
-                TargetReplState::LineRate => LineRateState::new(&mut self).run().await,
+                TargetReplState::LineRate => self.line_rate_loop().await,
                 TargetReplState::Lagging => LaggingState::new(&mut self).run().await,
                 TargetReplState::Snapshotting => SnapshottingState::new(&mut self).run().await,
                 TargetReplState::Shutdown => return,
@@ -597,39 +597,25 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
     }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// LineRate specific state.
-struct LineRateState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
-    /// An exclusive handle to the replication core.
-    replication_core: &'a mut ReplicationCore<D, R, N, S>,
-}
-
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LineRateState<'a, D, R, N, S> {
-    /// Create a new instance.
-    pub fn new(replication_core: &'a mut ReplicationCore<D, R, N, S>) -> Self {
-        Self { replication_core }
-    }
-
+impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
     #[tracing::instrument(level = "trace", skip(self), fields(state = "line-rate"))]
-    pub async fn run(mut self) {
+    pub async fn line_rate_loop(&mut self) {
         let event = ReplicaEvent::RateUpdate {
-            target: self.replication_core.target,
+            target: self.target,
             is_line_rate: true,
         };
-        let _ = self.replication_core.raft_core_tx.send((event, tracing::debug_span!("CH")));
+        let _ = self.raft_core_tx.send((event, tracing::debug_span!("CH")));
         loop {
-            if self.replication_core.target_state != TargetReplState::LineRate {
+            if self.target_state != TargetReplState::LineRate {
                 return;
             }
 
             // We always prioritize draining our buffers first.
             let next_buf_index = self
-                .replication_core
                 .outbound_buffer
                 .first()
                 .map(|entry| entry.as_ref().log_id.index)
-                .or_else(|| self.replication_core.replication_buffer.first().map(|entry| entry.log_id.index));
+                .or_else(|| self.replication_buffer.first().map(|entry| entry.log_id.index));
 
             // When converting to `LaggingState`, `outbound_buffer` and `replication_buffer` is cleared,
             // in which there may be uncommitted logs.
@@ -638,20 +624,20 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // Otherwise these logs have no chance to be replicated, unless a new log is written.
             let index = match next_buf_index {
                 Some(i) => i,
-                None => self.replication_core.last_log_index + 1,
+                None => self.last_log_index + 1,
             };
 
             // Ensure that our buffered data matches up with `next_index`. When transitioning to
             // line rate, it is always possible that new data has been sent for replication but has
             // skipped this replication stream during transition. In such cases, a single update from
             // storage will put this stream back on track.
-            if self.replication_core.next_index != index {
-                self.frontload_outbound_buffer(self.replication_core.next_index, index).await;
-                if self.replication_core.target_state != TargetReplState::LineRate {
+            if self.next_index != index {
+                self.frontload_outbound_buffer(self.next_index, index).await;
+                if self.target_state != TargetReplState::LineRate {
                     return;
                 }
 
-                self.replication_core.send_append_entries().await;
+                self.send_append_entries().await;
                 continue;
             }
 
@@ -659,12 +645,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let _en = span.enter();
 
             tokio::select! {
-                _ = self.replication_core.heartbeat.tick() => self.replication_core.send_append_entries().await,
+                _ = self.heartbeat.tick() => self.send_append_entries().await,
 
-                event_span = self.replication_core.repl_rx.recv() => {
+                event_span = self.repl_rx.recv() => {
                     match event_span {
-                        Some((event, span)) => self.replication_core.drain_raft_rx(event, span),
-                        None => self.replication_core.target_state = TargetReplState::Shutdown,
+                        Some((event, span)) => self.drain_raft_rx(event, span),
+                        None => self.target_state = TargetReplState::Shutdown,
                     }
                 }
             }
@@ -674,26 +660,26 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Ensure there are no gaps in the outbound buffer due to transition from lagging.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn frontload_outbound_buffer(&mut self, start: u64, stop: u64) {
-        let entries = match self.replication_core.storage.get_log_entries(start..stop).await {
+        let entries = match self.storage.get_log_entries(start..stop).await {
             Ok(entries) => entries,
             Err(err) => {
                 tracing::error!(error=%err, "error while frontloading outbound buffer");
-                let _ = self.replication_core.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
+                let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
                 return;
             }
         };
 
         for entry in entries.iter() {
             if let EntryPayload::PurgedMarker = entry.payload {
-                self.replication_core.target_state = TargetReplState::Snapshotting;
+                self.target_state = TargetReplState::Snapshotting;
                 return;
             }
         }
 
         // Prepend.
-        self.replication_core.outbound_buffer.reverse();
-        self.replication_core.outbound_buffer.extend(entries.into_iter().rev().map(OutboundEntry::Raw));
-        self.replication_core.outbound_buffer.reverse();
+        self.outbound_buffer.reverse();
+        self.outbound_buffer.extend(entries.into_iter().rev().map(OutboundEntry::Raw));
+        self.outbound_buffer.reverse();
     }
 }
 
