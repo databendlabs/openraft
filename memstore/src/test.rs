@@ -944,6 +944,9 @@ where
         let res = store.delete_logs_from(10..10).await;
         assert!(res.is_err());
 
+        let res = store.delete_logs_from(1..5).await;
+        assert!(res.is_err());
+
         Ok(())
     }
 
@@ -1051,7 +1054,7 @@ where
             ])
             .await?;
 
-        store.delete_logs_from(1..2).await?;
+        store.delete_logs_from(1..).await?;
 
         let res = store
             .append_to_log(&[&Entry {
@@ -1127,7 +1130,7 @@ where
             ])
             .await?;
 
-        store.delete_logs_from(1..2).await?;
+        store.delete_logs_from(1..).await?;
 
         let res = store
             .append_to_log(&[&Entry {

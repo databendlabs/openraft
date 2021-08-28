@@ -338,6 +338,26 @@ impl MemStore {
         Ok(())
     }
 
+    /// Requires a range must be at least half open: (-oo, n] or [n, +oo)
+    pub async fn defensive_half_open_range<RNG: RangeBounds<u64> + Clone + Debug + Send>(
+        &self,
+        range: RNG,
+    ) -> anyhow::Result<()> {
+        if !*self.defensive.read().await {
+            return Ok(());
+        }
+
+        if let Bound::Unbounded = range.start_bound() {
+            return Ok(());
+        };
+
+        if let Bound::Unbounded = range.end_bound() {
+            return Ok(());
+        };
+
+        Err(anyhow::anyhow!("range must be at least half open: {:?}", range))
+    }
+
     pub async fn defensive_range_hits_logs<T: AppData, RNG: RangeBounds<u64> + Debug + Send>(
         &self,
         range: RNG,
@@ -572,6 +592,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         range: R,
     ) -> Result<()> {
         self.defensive_nonempty_range(range.clone()).await?;
+        self.defensive_half_open_range(range.clone()).await?;
 
         let mut log = self.log.write().await;
 
