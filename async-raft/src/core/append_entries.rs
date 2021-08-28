@@ -87,11 +87,25 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //// Begin Log Consistency Check ////
         tracing::debug!("begin log consistency check");
 
+        if self.last_log_id.index < msg.prev_log_id.index {
+            if report_metrics {
+                self.report_metrics(Update::Ignore);
+            }
+
+            return Ok(AppendEntriesResponse {
+                term: self.current_term,
+                success: false,
+                conflict_opt: Some(ConflictOpt {
+                    log_id: self.last_log_id,
+                }),
+            });
+        }
+
         // Previous log info doesn't immediately line up, so perform log consistency check and proceed based on its
         // result.
         let entries = self
             .storage
-            .get_log_entries(msg.prev_log_id.index, msg.prev_log_id.index + 1)
+            .get_log_entries(msg.prev_log_id.index..=msg.prev_log_id.index)
             .await
             .map_err(|err| self.map_fatal_storage_error(err))?;
         let target_entry = match entries.first() {
@@ -136,7 +150,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             };
             let old_entries = self
                 .storage
-                .get_log_entries(start, msg.prev_log_id.index)
+                .get_log_entries(start..msg.prev_log_id.index)
                 .await
                 .map_err(|err| self.map_fatal_storage_error(err))?;
             let opt = match old_entries.iter().find(|entry| entry.log_id.term == msg.prev_log_id.term) {
@@ -236,7 +250,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // TODO(xp): logs in storage must be consecutive.
         let entries = self
             .storage
-            .get_log_entries(self.last_applied.index + 1, self.commit_index + 1)
+            .get_log_entries(self.last_applied.index + 1..=self.commit_index)
             .await
             .map_err(|e| self.map_fatal_storage_error(e))?;
 
@@ -290,11 +304,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return;
         }
 
+        assert!(start <= stop);
+        if start == stop {
+            return;
+        }
+
         // Fetch the series of entries which must be applied to the state machine, then apply them.
         let handle = tokio::spawn(
             async move {
                 let mut new_last_applied: Option<LogId> = None;
-                let entries = storage.get_log_entries(start, stop).await?;
+                let entries = storage.get_log_entries(start..stop).await?;
                 if let Some(entry) = entries.last() {
                     new_last_applied = Some(entry.log_id);
                 }

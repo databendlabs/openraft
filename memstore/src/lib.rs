@@ -5,6 +5,7 @@ mod test;
 
 use std::cmp::max;
 use std::collections::BTreeMap;
+use std::collections::Bound;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::io::Cursor;
@@ -307,18 +308,84 @@ impl MemStore {
         Ok(())
     }
 
-    pub async fn defensive_nonempty_range<RT, RNG: RangeBounds<RT> + Clone + Debug + Send + Iterator>(
+    pub async fn defensive_nonempty_range<RNG: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
         range: RNG,
     ) -> anyhow::Result<()> {
         if !*self.defensive.read().await {
             return Ok(());
         }
-        for _ in range.clone() {
+        let start = match range.start_bound() {
+            Bound::Included(i) => Some(*i),
+            Bound::Excluded(i) => Some(*i + 1),
+            Bound::Unbounded => None,
+        };
+
+        let end = match range.end_bound() {
+            Bound::Included(i) => Some(*i),
+            Bound::Excluded(i) => Some(*i - 1),
+            Bound::Unbounded => None,
+        };
+
+        if start.is_none() || end.is_none() {
             return Ok(());
         }
 
-        Err(anyhow::anyhow!("range must be nonempty: {:?}", range))
+        if start > end {
+            return Err(anyhow::anyhow!("range must be nonempty: {:?}", range));
+        }
+
+        Ok(())
+    }
+
+    pub async fn defensive_range_hits_logs<T: AppData, RNG: RangeBounds<u64> + Debug + Send>(
+        &self,
+        range: RNG,
+        logs: &[Entry<T>],
+    ) -> anyhow::Result<()> {
+        if !*self.defensive.read().await {
+            return Ok(());
+        }
+
+        {
+            let want_first = match range.start_bound() {
+                Bound::Included(i) => Some(*i),
+                Bound::Excluded(i) => Some(*i + 1),
+                Bound::Unbounded => None,
+            };
+
+            let first = logs.first().map(|x| x.log_id.index);
+
+            if want_first.is_some() && first != want_first {
+                return Err(anyhow::anyhow!(
+                    "{:?} want first: {:?}, but {:?}",
+                    range,
+                    want_first,
+                    first
+                ));
+            }
+        }
+
+        {
+            let want_last = match range.end_bound() {
+                Bound::Included(i) => Some(*i),
+                Bound::Excluded(i) => Some(*i - 1),
+                Bound::Unbounded => None,
+            };
+
+            let last = logs.last().map(|x| x.log_id.index);
+
+            if want_last.is_some() && last != want_last {
+                return Err(anyhow::anyhow!(
+                    "{:?} want last: {:?}, but {:?}",
+                    range,
+                    want_last,
+                    last
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn defensive_apply_log_id_gt_last<D: AppData>(&self, entries: &[&Entry<D>]) -> anyhow::Result<()> {
@@ -477,14 +544,26 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<ClientRequest>>> {
-        // Invalid request, return empty vec.
-        if start > stop {
-            tracing::error!("get_log_entries: invalid request, start({}) > stop({})", start, stop);
-            return Ok(vec![]);
-        }
+    async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+        &self,
+        range: RNG,
+    ) -> Result<Vec<Entry<ClientRequest>>> {
+        self.defensive_nonempty_range(range.clone()).await?;
+
+        let res = {
+            let log = self.log.read().await;
+            log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>()
+        };
+
+        self.defensive_range_hits_logs(range, &res).await?;
+
+        Ok(res)
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<ClientRequest>>> {
         let log = self.log.read().await;
-        Ok(log.range(start..stop).map(|(_, val)| val.clone()).collect())
+        Ok(log.get(&log_index).cloned())
     }
 
     #[tracing::instrument(level = "trace", skip(self, range), fields(range=?range))]

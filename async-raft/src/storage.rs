@@ -159,7 +159,14 @@ where
     /// The start value is inclusive in the search and the stop value is non-inclusive: `[start, stop)`.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_log_entries(&self, start: u64, stop: u64) -> Result<Vec<Entry<D>>>;
+    async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+        &self,
+        range: RNG,
+    ) -> Result<Vec<Entry<D>>>;
+
+    /// Try to get an log entry.
+    /// It does not return an error if in defensive mode and the log entry at `log_index` is not found.
+    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>>;
 
     /// Delete all logs in a `range`.
     ///

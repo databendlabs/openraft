@@ -54,7 +54,7 @@ async fn initialization() -> Result<()> {
 
     for i in 0..3 {
         let sto = router.get_storage_handle(&1).await?;
-        let first = sto.get_log_entries(1, 2).await?.first().cloned();
+        let first = sto.get_log_entries(1..2).await?.first().cloned();
 
         tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);
         let mem = match first.unwrap().payload {

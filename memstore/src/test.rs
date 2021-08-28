@@ -482,21 +482,15 @@ where
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
 
-        tracing::info!("--- get start > stop");
-        {
-            let logs = store.get_log_entries(10, 1).await?;
-            assert_eq!(logs.len(), 0, "expected no logs to be returned");
-        }
-
         tracing::info!("--- get start == stop");
         {
-            let logs = store.get_log_entries(10, 1).await?;
+            let logs = store.get_log_entries(3..3).await?;
             assert_eq!(logs.len(), 0, "expected no logs to be returned");
         }
 
         tracing::info!("--- get start < stop");
         {
-            let logs = store.get_log_entries(5, 7).await?;
+            let logs = store.get_log_entries(5..7).await?;
 
             assert_eq!(logs.len(), 2);
             assert_eq!(logs[0].log_id, (1, 5).into());
@@ -514,7 +508,7 @@ where
 
             store.delete_logs_from(1..1).await?;
 
-            let logs = store.get_log_entries(1, 11).await?;
+            let logs = store.get_log_entries(1..11).await?;
             assert_eq!(logs.len(), 10, "expected all (10) logs to be preserved");
         }
 
@@ -525,7 +519,7 @@ where
 
             store.delete_logs_from(1..4).await?;
 
-            let logs = store.get_log_entries(0, 100).await?;
+            let logs = store.get_log_entries(0..100).await?;
             assert_eq!(logs.len(), 7);
             assert_eq!(logs[0].log_id.index, 4);
         }
@@ -536,7 +530,7 @@ where
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.delete_logs_from(1..1000).await?;
-            let logs = store.get_log_entries(0, 100).await?;
+            let logs = store.get_log_entries(0..).await?;
 
             assert_eq!(logs.len(), 0);
         }
@@ -547,7 +541,7 @@ where
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.delete_logs_from(1..).await?;
-            let logs = store.get_log_entries(0, 100).await?;
+            let logs = store.get_log_entries(0..100).await?;
 
             assert_eq!(logs.len(), 0);
         }
@@ -566,8 +560,8 @@ where
             }])
             .await?;
 
-        let l = store.get_log_entries(0, 10_000).await?.len();
-        let last = store.get_log_entries(0, 10_000).await?.last().unwrap().clone();
+        let l = store.get_log_entries(0..).await?.len();
+        let last = store.get_log_entries(0..).await?.last().unwrap().clone();
 
         assert_eq!(l, 10, "expected 10 entries to exist in the log");
         assert_eq!(last.log_id, (2, 10).into(), "unexpected log id");
@@ -723,6 +717,7 @@ where
         run_fut(Suite::df_get_membership_config_dirty_log(builder))?;
         run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
         run_fut(Suite::df_save_hard_state_ascending(builder))?;
+        run_fut(Suite::df_get_log_entries(builder))?;
         run_fut(Suite::df_delete_logs_from_nonempty_range(builder))?;
         run_fut(Suite::df_append_to_log_nonempty_input(builder))?;
         run_fut(Suite::df_append_to_log_nonconsecutive_input(builder))?;
@@ -919,12 +914,32 @@ where
         Ok(())
     }
 
-    pub async fn df_delete_logs_from_nonempty_range(builder: &B) -> Result<()> {
+    pub async fn df_get_log_entries(builder: &B) -> Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
 
-        let res = store.delete_logs_from(10..1).await;
+        store.get_log_entries(..).await?;
+        store.get_log_entries(5..).await?;
+        store.get_log_entries(..5).await?;
+        store.get_log_entries(5..7).await?;
+
+        // mismatched bound.
+
+        let res = store.get_log_entries(11..).await;
         assert!(res.is_err());
+
+        let res = store.get_log_entries(1..1).await;
+        assert!(res.is_err());
+
+        let res = store.get_log_entries(0..1).await;
+        assert!(res.is_err());
+
+        Ok(())
+    }
+
+    pub async fn df_delete_logs_from_nonempty_range(builder: &B) -> Result<()> {
+        let store = builder.new_store(NODE_ID).await;
+        Self::feed_10_logs_vote_self(&store).await?;
 
         let res = store.delete_logs_from(10..10).await;
         assert!(res.is_err());

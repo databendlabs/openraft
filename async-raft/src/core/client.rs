@@ -79,12 +79,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // Thus if a new leader sees only the first one, it needs to append the final config log to let
             // the change-membership operation to finish.
 
-            let last_logs = self
-                .core
-                .storage
-                .get_log_entries(last_index, last_index + 1)
-                .await
-                .map_err(RaftError::RaftStorage)?;
+            let last_logs =
+                self.core.storage.get_log_entries(last_index..=last_index).await.map_err(RaftError::RaftStorage)?;
             let last_log = &last_logs[0];
 
             let req = match last_log.payload {
@@ -418,7 +414,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let entries = self
                 .core
                 .storage
-                .get_log_entries(expected_next_index, index)
+                .get_log_entries(expected_next_index..index)
                 .await
                 .map_err(|err| self.core.map_fatal_storage_error(err))?;
 

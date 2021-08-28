@@ -71,7 +71,7 @@ async fn members_leader_fix_partial() -> Result<()> {
         )
         .await?;
 
-    let final_log = sto.get_log_entries(want, want + 1).await?[0].clone();
+    let final_log = sto.get_log_entries(want..=want).await?[0].clone();
 
     let m = match final_log.payload {
         EntryPayload::ConfigChange(ref m) => m.membership.clone(),

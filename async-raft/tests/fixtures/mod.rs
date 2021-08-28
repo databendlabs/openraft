@@ -555,7 +555,7 @@ impl RaftRouter {
     ) {
         let rt = self.routing_table.read().await;
         for (id, (_node, storage)) in rt.iter() {
-            let last_log = storage.get_log_entries(0, 10_000).await.unwrap().last().unwrap().log_id.index;
+            let last_log = storage.get_log_entries(..).await.unwrap().last().unwrap().log_id.index;
             assert_eq!(
                 last_log, expect_last_log,
                 "expected node {} to have last_log {}, got {}",

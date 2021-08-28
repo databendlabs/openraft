@@ -362,16 +362,23 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
 
             // Fetch the entry at conflict index and use the term specified there.
-            match self
-                .storage
-                .get_log_entries(conflict.log_id.index, conflict.log_id.index + 1)
-                .await
-                .map(|entries| entries.get(0).map(|entry| entry.log_id.term))
-            {
-                Ok(Some(term)) => {
+            let ent = self.storage.try_get_log_entry(conflict.log_id.index).await;
+            let ent = match ent {
+                Ok(x) => x,
+                Err(err) => {
+                    tracing::error!(error=?err, "error fetching log entry due to returned AppendEntries RPC conflict_opt");
+                    let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
+                    self.target_state = TargetReplState::Shutdown;
+                    return;
+                }
+            };
+
+            let ent_term = ent.map(|entry| entry.log_id.term);
+            match ent_term {
+                Some(term) => {
                     self.matched.term = term; // If we have the specified log, ensure we use its term.
                 }
-                Ok(None) => {
+                None => {
                     // This condition would only ever be reached if the log has been removed due to
                     // log compaction (barring critical storage failure), so transition to snapshotting.
                     self.target_state = TargetReplState::Snapshotting;
@@ -382,12 +389,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                         },
                         tracing::debug_span!("CH"),
                     ));
-                    return;
-                }
-                Err(err) => {
-                    tracing::error!(error=%err, "error fetching log entry due to returned AppendEntries RPC conflict_opt");
-                    let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
-                    self.target_state = TargetReplState::Shutdown;
                     return;
                 }
             };
@@ -676,7 +677,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Ensure there are no gaps in the outbound buffer due to transition from lagging.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn frontload_outbound_buffer(&mut self, start: u64, stop: u64) {
-        let entries = match self.replication_core.storage.get_log_entries(start, stop).await {
+        let entries = match self.replication_core.storage.get_log_entries(start..stop).await {
             Ok(entries) => entries,
             Err(err) => {
                 tracing::error!(error=%err, "error while frontloading outbound buffer");
@@ -785,7 +786,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // Bringing the target up-to-date by fetching the largest possible payload of entries
             // from storage within permitted configuration & ensure no snapshot pointer was returned.
             let entries =
-                match self.replication_core.storage.get_log_entries(self.replication_core.next_index, stop_idx).await {
+                match self.replication_core.storage.get_log_entries(self.replication_core.next_index..stop_idx).await {
                     Ok(entries) => entries,
                     Err(err) => {
                         tracing::error!(error=%err, "error fetching logs from storage");
