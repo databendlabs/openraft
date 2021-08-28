@@ -46,7 +46,7 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 ///
 /// This model derives serde's traits for easily (de)serializing this
 /// model for storage & retrieval.
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Default)]
 pub struct HardState {
     /// The last recorded term observed by this system.
     pub current_term: u64,
@@ -111,6 +111,13 @@ where
     ///
     /// For all other methods of this trait, returning an error will cause Raft to shutdown.
     type ShutdownError: Error + Send + Sync + 'static;
+
+    /// Set if to turn on defensive check to unexpected input.
+    /// E.g. discontinuous log appending.
+    /// The default impl returns `false` to indicate it does impl any defensive check.
+    async fn defensive(&self, _d: bool) -> bool {
+        false
+    }
 
     /// Get the latest membership config found in the log.
     ///
