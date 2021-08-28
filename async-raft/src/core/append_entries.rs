@@ -38,6 +38,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // Update election timeout.
+        // TODO(xp): only update commit_index if the log present. e.g., append entries first, then update commit_index.
         self.update_next_election_timeout(true);
         let mut report_metrics = false;
         self.commit_index = msg.leader_commit; // The value for `self.commit_index` is only updated here when not the leader.

@@ -110,7 +110,7 @@ impl MemStore {
         let hs = RwLock::new(None);
         let current_snapshot = RwLock::new(None);
         Self {
-            defensive: RwLock::new(false),
+            defensive: RwLock::new(true),
             id,
             log,
             sm,
@@ -134,7 +134,7 @@ impl MemStore {
         let hs = RwLock::new(hs);
         let current_snapshot = RwLock::new(current_snapshot);
         Self {
-            defensive: RwLock::new(false),
+            defensive: RwLock::new(true),
             id,
             log,
             sm,
@@ -179,8 +179,13 @@ impl MemStore {
             return Err(anyhow::anyhow!("smaller term is now allowed"));
         }
 
-        if hs.current_term == curr.current_term && hs.voted_for != curr.voted_for {
-            return Err(anyhow::anyhow!("voted_for can not change in one term"));
+        if hs.current_term == curr.current_term && curr.voted_for.is_some() && hs.voted_for != curr.voted_for {
+            return Err(anyhow::anyhow!(
+                "voted_for can not change in one term({}) curr: {:?} change to {:?}",
+                hs.current_term,
+                curr.voted_for,
+                hs.voted_for
+            ));
         }
 
         Ok(())
