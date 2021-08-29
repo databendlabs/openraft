@@ -168,13 +168,29 @@ where
     /// It does not return an error if in defensive mode and the log entry at `log_index` is not found.
     async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>>;
 
+    /// Returns the last known log id.
+    /// It could be the id of the last entry in log, or the last applied id that is saved in state machine.
+    ///
+    /// When there is no log or state machine, it returns (0,0)
+    ///
+    /// Caveat: an impl must hold the log-state-machine consistency or must deal with the inconsistency when accessing
+    /// it:
+    ///
+    /// I.e.: if `logs.last().log_id.index > last_applied.index`, `logs.last().log_id > last_applied` must hold. E.g.,
+    /// `logs.last() == {term:1, index:2}` and `last_applied == {term:2, index:1}` is inconsistent:
+    ///
+    /// Log `{term:1, index:2}` can not be committed and should definitely be removed. The simplest way to achieve
+    /// consistency is to remove such inconsistent logs after a successful `append_entries` or `install_snapshot`
+    /// request.
+    ///
+    /// TODO(xp) test it
+    /// TODO(xp) defensive test about consistency
+    async fn get_last_log_id(&self) -> Result<LogId>;
+
     /// Delete all logs in a `range`.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync + Iterator>(
-        &self,
-        range: RNG,
-    ) -> Result<()>;
+    async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(&self, range: RNG) -> Result<()>;
 
     /// Append a payload of entries to the log.
     ///

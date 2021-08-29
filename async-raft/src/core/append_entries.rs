@@ -41,7 +41,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // TODO(xp): only update commit_index if the log present. e.g., append entries first, then update commit_index.
         self.update_next_election_timeout(true);
         let mut report_metrics = false;
-        self.commit_index = msg.leader_commit; // The value for `self.commit_index` is only updated here when not the leader.
+
+        // The value for `self.commit_index` is only updated here when not the leader.
+        self.commit_index = msg.leader_commit;
 
         // Update current term if needed.
         if self.current_term != msg.term {
@@ -101,21 +103,27 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             });
         }
 
+        // last_log_id.index >= prev_log_id.index
+
         // Previous log info doesn't immediately line up, so perform log consistency check and proceed based on its
         // result.
-        let entries = self
+        let prev_entry = self
             .storage
-            .get_log_entries(msg.prev_log_id.index..=msg.prev_log_id.index)
+            .try_get_log_entry(msg.prev_log_id.index)
             .await
             .map_err(|err| self.map_fatal_storage_error(err))?;
-        let target_entry = match entries.first() {
+
+        let target_entry = match prev_entry {
             Some(target_entry) => target_entry,
-            // The target entry was not found. This can only mean that we don't have the
-            // specified index yet. Use the last known index & term as a conflict opt.
             None => {
+                // This can only happen if the target entry is removed, e.g., when installing snapshot or log
+                // compaction.
+                // Use the last known index & term as a conflict opt.
+
                 if report_metrics {
                     self.report_metrics(Update::Ignore);
                 }
+
                 return Ok(AppendEntriesResponse {
                     term: self.current_term,
                     success: false,

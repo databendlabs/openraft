@@ -286,6 +286,27 @@ impl MemStore {
         std::cmp::max(log_last_id, sm_last_id)
     }
 
+    pub async fn defensive_consistent_log_sm(&self) -> anyhow::Result<()> {
+        let log_last_id = {
+            let log_last = self.log.read().await;
+            log_last.iter().last().map(|(_k, v)| v.log_id).unwrap_or_default()
+        };
+
+        let sm_last_id = self.sm.read().await.last_applied_log;
+
+        if (log_last_id.index == sm_last_id.index && log_last_id != sm_last_id)
+            || (log_last_id.index > sm_last_id.index && log_last_id < sm_last_id)
+        {
+            return Err(anyhow::anyhow!(
+                "inconsistent log.last({}) and sm.last_applied({})",
+                log_last_id,
+                sm_last_id
+            ));
+        }
+
+        Ok(())
+    }
+
     pub async fn defensive_apply_index_is_last_applied_plus_one<D: AppData>(
         &self,
         entries: &[&Entry<D>],
@@ -586,11 +607,18 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(log.get(&log_index).cloned())
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn get_last_log_id(&self) -> Result<LogId> {
+        self.defensive_consistent_log_sm().await?;
+        // TODO: log id must consistent:
+        let log_last_id = self.log.read().await.iter().last().map(|(_k, v)| v.log_id).unwrap_or_default();
+        let last_applied_id = self.sm.read().await.last_applied_log;
+
+        Ok(max(log_last_id, last_applied_id))
+    }
+
     #[tracing::instrument(level = "trace", skip(self, range), fields(range=?range))]
-    async fn delete_logs_from<R: RangeBounds<u64> + Clone + Debug + Send + Sync + Iterator>(
-        &self,
-        range: R,
-    ) -> Result<()> {
+    async fn delete_logs_from<R: RangeBounds<u64> + Clone + Debug + Send + Sync>(&self, range: R) -> Result<()> {
         self.defensive_nonempty_range(range.clone()).await?;
         self.defensive_half_open_range(range.clone()).await?;
 

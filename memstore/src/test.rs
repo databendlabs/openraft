@@ -113,6 +113,8 @@ where
         run_fut(Suite::get_initial_state_last_log_lt_sm(builder))?;
         run_fut(Suite::save_hard_state(builder))?;
         run_fut(Suite::get_log_entries(builder))?;
+        run_fut(Suite::try_get_log_entry(builder))?;
+        run_fut(Suite::get_last_log_id(builder))?;
         run_fut(Suite::delete_logs_from(builder))?;
         run_fut(Suite::append_to_log(builder))?;
         run_fut(Suite::apply_single(builder))?;
@@ -500,6 +502,94 @@ where
         Ok(())
     }
 
+    pub async fn try_get_log_entry(builder: &B) -> Result<()> {
+        let store = builder.new_store(NODE_ID).await;
+        Self::feed_10_logs_vote_self(&store).await?;
+
+        let ent = store.try_get_log_entry(3).await?;
+        assert_eq!(Some(LogId { term: 1, index: 3 }), ent.map(|x| x.log_id));
+
+        let ent = store.try_get_log_entry(0).await?;
+        assert_eq!(None, ent.map(|x| x.log_id));
+
+        let ent = store.try_get_log_entry(11).await?;
+        assert_eq!(None, ent.map(|x| x.log_id));
+
+        Ok(())
+    }
+
+    pub async fn get_last_log_id(builder: &B) -> Result<()> {
+        let store = builder.new_store(NODE_ID).await;
+
+        let log_id = store.get_last_log_id().await?;
+        assert_eq!(LogId { term: 0, index: 0 }, log_id);
+
+        tracing::info!("--- only logs");
+        {
+            store
+                .append_to_log(&[
+                    &Entry {
+                        log_id: LogId { term: 1, index: 1 },
+                        payload: EntryPayload::Blank,
+                    },
+                    &Entry {
+                        log_id: LogId { term: 1, index: 2 },
+                        payload: EntryPayload::Blank,
+                    },
+                ])
+                .await?;
+
+            let log_id = store.get_last_log_id().await?;
+            assert_eq!(LogId { term: 1, index: 2 }, log_id);
+        }
+
+        tracing::info!("--- last id in logs > last applied id in sm");
+        {
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 1 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+            let log_id = store.get_last_log_id().await?;
+            assert_eq!(LogId { term: 1, index: 2 }, log_id);
+        }
+
+        tracing::info!("--- last id in logs == last applied id in sm");
+        {
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 2 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+            let log_id = store.get_last_log_id().await?;
+            assert_eq!(LogId { term: 1, index: 2 }, log_id);
+        }
+
+        tracing::info!("--- last id in logs < last applied id in sm");
+        {
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 3 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+            let log_id = store.get_last_log_id().await?;
+            assert_eq!(LogId { term: 1, index: 3 }, log_id);
+        }
+
+        tracing::info!("--- no logs, only last applied id in sm");
+        {
+            store.delete_logs_from(..).await?;
+
+            let log_id = store.get_last_log_id().await?;
+            assert_eq!(LogId { term: 1, index: 3 }, log_id);
+        }
+
+        Ok(())
+    }
+
     pub async fn delete_logs_from(builder: &B) -> Result<()> {
         tracing::info!("--- delete start == stop");
         {
@@ -718,6 +808,7 @@ where
         run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
         run_fut(Suite::df_save_hard_state_ascending(builder))?;
         run_fut(Suite::df_get_log_entries(builder))?;
+        run_fut(Suite::df_get_last_log_id(builder))?;
         run_fut(Suite::df_delete_logs_from_nonempty_range(builder))?;
         run_fut(Suite::df_append_to_log_nonempty_input(builder))?;
         run_fut(Suite::df_append_to_log_nonconsecutive_input(builder))?;
@@ -933,6 +1024,47 @@ where
 
         let res = store.get_log_entries(0..1).await;
         assert!(res.is_err());
+
+        Ok(())
+    }
+
+    pub async fn df_get_last_log_id(builder: &B) -> Result<()> {
+        let store = builder.new_store(NODE_ID).await;
+
+        tracing::info!("--- last log_id.index == last_applied.index");
+        {
+            store
+                .append_to_log(&[&Entry {
+                    log_id: LogId { term: 1, index: 1 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 2, index: 1 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+
+            let res = store.get_last_log_id().await;
+            assert!(res.is_err());
+        }
+
+        tracing::info!("--- last log_id.index > last_applied.index => last log_id > last_applied");
+        {
+            store.defensive(false).await;
+            store
+                .append_to_log(&[&Entry {
+                    log_id: LogId { term: 1, index: 2 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+            store.defensive(true).await;
+
+            let res = store.get_last_log_id().await;
+            assert!(res.is_err());
+        }
 
         Ok(())
     }
