@@ -23,7 +23,7 @@ use crate::RaftStorage;
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> NonVoterState<'a, D, R, N, S> {
     /// Handle the admin `init_with_config` command.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_init_with_config(
         &mut self,
         mut members: BTreeSet<NodeId>,

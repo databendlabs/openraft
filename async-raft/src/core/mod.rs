@@ -185,7 +185,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// The main loop of the Raft protocol.
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
     async fn main(mut self) -> RaftResult<()> {
         tracing::debug!("raft node is initializing");
 
@@ -210,9 +210,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         let has_log = self.last_log_id.index != u64::MIN;
         let single = self.membership.members.len() == 1;
-        let is_candidate = self.membership.contains(&self.id);
+        let is_voter = self.membership.contains(&self.id);
 
-        self.target_state = match (has_log, single, is_candidate) {
+        self.target_state = match (has_log, single, is_voter) {
             // A restarted raft that already received some logs but was not yet added to a cluster.
             // It should remain in NonVoter state, not Follower.
             (true, true, false) => State::NonVoter,
@@ -239,7 +239,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // to ensure that restarted nodes don't disrupt a stable cluster by timing out and driving up their
             // term before network communication is established.
             let inst = Instant::now()
-                + Duration::from_secs(30)
+                + Duration::from_secs(2)
                 + Duration::from_millis(self.config.new_rand_election_timeout());
             self.next_election_timeout = Some(inst);
         }

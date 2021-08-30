@@ -27,6 +27,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &mut self,
         msg: AppendEntriesRequest<D>,
     ) -> RaftResult<AppendEntriesResponse> {
+        tracing::debug!(%self.last_log_id);
+
         // If message's term is less than most recent term, then we do not honor the request.
         if msg.term < self.current_term {
             tracing::debug!({self.current_term, rpc_term=msg.term}, "AppendEntries RPC term is less than current term");
@@ -151,21 +153,25 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // The target entry does not have the same term. Fetch the last 50 logs, and use the last
         // entry of that payload which is still in the target term for conflict optimization.
         else {
-            let start = if msg.prev_log_id.index >= 50 {
+            let mut start = if msg.prev_log_id.index >= 50 {
                 msg.prev_log_id.index - 50
             } else {
                 0
             };
+            if start == 0 {
+                start = 1
+            }
             let old_entries = self
                 .storage
                 .get_log_entries(start..msg.prev_log_id.index)
                 .await
                 .map_err(|err| self.map_fatal_storage_error(err))?;
-            let opt = match old_entries.iter().find(|entry| entry.log_id.term == msg.prev_log_id.term) {
+
+            let first = old_entries.first().map(|x| x.log_id).unwrap_or_default();
+
+            let opt = match old_entries.iter().rev().find(|entry| entry.log_id.term <= msg.prev_log_id.term) {
                 Some(entry) => Some(ConflictOpt { log_id: entry.log_id }),
-                None => Some(ConflictOpt {
-                    log_id: self.last_log_id,
-                }),
+                None => Some(ConflictOpt { log_id: first }),
             };
             if report_metrics {
                 self.report_metrics(Update::Ignore);
@@ -312,8 +318,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return;
         }
 
-        assert!(start <= stop);
-        if start == stop {
+        tracing::debug!(start, stop, self.commit_index, %self.last_log_id, "start stop");
+
+        // when self.commit_index is not initialized, e.g. the first heartbeat from leader always has a commit_index to
+        // be 0, because the leader needs one round of heartbeat to find out the commit index.
+        if start >= stop {
             return;
         }
 

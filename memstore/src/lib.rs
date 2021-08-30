@@ -574,7 +574,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn save_hard_state(&self, hs: &HardState) -> Result<()> {
         self.defensive_incremental_hard_state(hs).await?;
 
