@@ -32,6 +32,11 @@ They are well tested but it should still be considered as a beta.
 
 Bug fixes are:
 
+- fix: too many(50) inconsistent log should not live lock append-entries
+- fix: RaftCore.entries_cache is inconsistent with storage. removed it.
+- fix: snapshot replication does not need to send a last 0 size chunk
+- fix: install snapshot req with offset GE 0 should not start a new session.
+- fix: leader should not commit when there is no replication to voters.
 - fix: after 2 log compaction, membership should be able to be extract from prev compaction log
 - fix: when finalize_snapshot_installation, memstore should not load membership from its old log that are going to be overridden by snapshot.
 - fix: leader should re-create and send snapshot when `threshold/2 < last_log_index - snapshot < threshold`
