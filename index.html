@@ -185,6 +185,12 @@ to fit the latest <a href="https://github.com/datafuselabs/datafuse">datafuse</a
 They are well tested but it should still be considered as a beta.</p>
 <p>Bug fixes are:</p>
 <ul>
+<li>fix: when append-entries, deleting entries after prev-log-id causes committed entry to be lost</li>
+<li>fix: too many(50) inconsistent log should not live lock append-entries</li>
+<li>fix: RaftCore.entries_cache is inconsistent with storage. removed it.</li>
+<li>fix: snapshot replication does not need to send a last 0 size chunk</li>
+<li>fix: install snapshot req with offset GE 0 should not start a new session.</li>
+<li>fix: leader should not commit when there is no replication to voters.</li>
 <li>fix: after 2 log compaction, membership should be able to be extract from prev compaction log</li>
 <li>fix: when finalize_snapshot_installation, memstore should not load membership from its old log that are going to be overridden by snapshot.</li>
 <li>fix: leader should re-create and send snapshot when <code>threshold/2 &lt; last_log_index - snapshot &lt; threshold</code></li>
