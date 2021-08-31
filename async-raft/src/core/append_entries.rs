@@ -97,6 +97,18 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Lagging too much, let the leader to retry append_entries from my last_log.index
         if self.last_log_id.index < prev_log_id.index {
+            let last = self
+                .storage
+                .try_get_log_entry(self.last_log_id.index)
+                .await
+                .map_err(|e| self.map_fatal_storage_error(e))?
+                .summary();
+            tracing::debug!(
+                "conflict: last_log_id({}) < prev_log_id({}), conflict = last_log_id: {:?}",
+                self.last_log_id,
+                prev_log_id,
+                last
+            );
             return Ok(AppendEntriesResponse {
                 term: self.current_term,
                 success: false,
@@ -141,6 +153,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         let last_match = self.last_possible_matched(prev_log_id).await?;
+
+        tracing::debug!("conflict: search for last possible match, conflict = {}", last_match);
 
         Ok(AppendEntriesResponse {
             term: self.current_term,

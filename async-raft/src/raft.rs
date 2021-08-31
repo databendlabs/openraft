@@ -463,12 +463,12 @@ pub struct AppendEntriesRequest<D: AppData> {
 impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
     fn summary(&self) -> String {
         format!(
-            "term={}, leader_id={}, prev_log_id={}, leader_commit={}, n={}",
+            "term={}, leader_id={}, prev_log_id={}, leader_commit={}, entries={}",
             self.term,
             self.leader_id,
             self.prev_log_id,
             self.leader_commit,
-            self.entries.len()
+            self.entries.as_slice().summary()
         )
     }
 }
@@ -523,6 +523,15 @@ impl<D: AppData> Entry<D> {
 impl<D: AppData> MessageSummary for Entry<D> {
     fn summary(&self) -> String {
         format!("{}:{}", self.log_id, self.payload.summary())
+    }
+}
+
+impl<D: AppData> MessageSummary for Option<Entry<D>> {
+    fn summary(&self) -> String {
+        match self {
+            None => "None".to_string(),
+            Some(x) => format!("Some({})", x.summary()),
+        }
     }
 }
 
