@@ -32,6 +32,7 @@ They are well tested but it should still be considered as a beta.
 
 Bug fixes are:
 
+- fix: when append-entries, deleting entries after prev-log-id causes committed entry to be lost
 - fix: too many(50) inconsistent log should not live lock append-entries
 - fix: RaftCore.entries_cache is inconsistent with storage. removed it.
 - fix: snapshot replication does not need to send a last 0 size chunk
