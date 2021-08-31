@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -28,6 +29,7 @@ use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::MessageSummary;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 
@@ -49,6 +51,12 @@ impl<D: AppData, R: AppDataResponse> ClientRequestEntry<D, R> {
             entry: Arc::new(entry),
             tx: tx.into(),
         }
+    }
+}
+
+impl<D: AppData, R: AppDataResponse> MessageSummary for ClientRequestEntry<D, R> {
+    fn summary(&self) -> String {
+        format!("entry:{}", self.entry.summary())
     }
 }
 
@@ -232,7 +240,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle client write requests.
-    #[tracing::instrument(level = "trace", skip(self, rpc, tx))]
+    #[tracing::instrument(level = "trace", skip(self, tx), fields(rpc=%rpc.summary()))]
     pub(super) async fn handle_client_write_request(
         &mut self,
         rpc: ClientWriteRequest<D>,
@@ -275,21 +283,34 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// NOTE WELL: this routine does not wait for the request to actually finish replication, it
     /// merely beings the process. Once the request is committed to the cluster, its response will
     /// be generated asynchronously.
-    #[tracing::instrument(level = "trace", skip(self, req))]
+    #[tracing::instrument(level = "trace", skip(self, req), fields(req=%req.summary()))]
     pub(super) async fn replicate_client_request(&mut self, req: ClientRequestEntry<D, R>) {
         // Replicate the request if there are other cluster members. The client response will be
         // returned elsewhere after the entry has been committed to the cluster.
         let entry_arc = req.entry.clone();
 
-        if self.nodes.is_empty() && self.non_voters.is_empty() {
+        // TODO(xp): calculate nodes set that need to replicate to, when updating membership
+        // TODO(xp): Or add to-non-voter replication into self.nodes.
+
+        let all_members = self.core.membership.all_nodes();
+        let non_voter_ids = self.non_voters.keys().copied().collect::<BTreeSet<_>>();
+
+        let joint_non_voter_ids = all_members.intersection(&non_voter_ids).collect::<Vec<_>>();
+
+        let nodes = self.nodes.keys().collect::<Vec<_>>();
+        tracing::debug!(?nodes, ?joint_non_voter_ids, "replicate_client_request");
+
+        let await_quorum = !self.nodes.is_empty() || !joint_non_voter_ids.is_empty();
+
+        if await_quorum {
+            self.awaiting_committed.push(req);
+        } else {
             // Else, there are no voting nodes for replication, so the payload is now committed.
             self.core.commit_index = entry_arc.log_id.index;
+            tracing::debug!(self.core.commit_index, "update commit index, no need to replicate");
             self.leader_report_metrics();
             self.client_request_post_commit(req).await;
-            return;
         }
-
-        self.awaiting_committed.push(req);
 
         if !self.nodes.is_empty() {
             for node in self.nodes.values() {
