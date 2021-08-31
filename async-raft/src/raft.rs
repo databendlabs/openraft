@@ -520,6 +520,24 @@ impl<D: AppData> Entry<D> {
     }
 }
 
+impl<D: AppData> MessageSummary for Entry<D> {
+    fn summary(&self) -> String {
+        format!("{}:{}", self.log_id, self.payload.summary())
+    }
+}
+
+impl<D: AppData> MessageSummary for &[Entry<D>] {
+    fn summary(&self) -> String {
+        let mut res = Vec::with_capacity(self.len());
+        for x in self.iter() {
+            let e = format!("{}:{}", x.log_id, x.payload.summary());
+            res.push(e);
+        }
+
+        res.join(",")
+    }
+}
+
 /// Log entry payload variants.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum EntryPayload<D: AppData> {

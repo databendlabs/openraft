@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
@@ -49,12 +50,12 @@ async fn snapshot_overrides_membership() -> Result<()> {
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&btreeset![0], want, None, "empty").await?;
-        router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], want, timeout(), "empty").await?;
+        router.wait_for_state(&btreeset![0], State::NonVoter, timeout(), "empty").await?;
         router.initialize_from_single_node(0).await?;
         want += 1;
 
-        router.wait_for_log(&btreeset![0], want, None, "init leader").await?;
+        router.wait_for_log(&btreeset![0], want, timeout(), "init leader").await?;
         router.assert_stable_cluster(Some(1), Some(want)).await;
     }
 
@@ -63,10 +64,12 @@ async fn snapshot_overrides_membership() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
         want = snapshot_threshold;
 
-        router.wait_for_log(&btreeset![0], want, None, "send log to trigger snapshot").await?;
+        router.wait_for_log(&btreeset![0], want, timeout(), "send log to trigger snapshot").await?;
         router.assert_stable_cluster(Some(1), Some(want)).await;
 
-        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
+        router
+            .wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, timeout(), "snapshot")
+            .await?;
         router
             .assert_storage_state(
                 1,
@@ -123,12 +126,12 @@ async fn snapshot_overrides_membership() -> Result<()> {
         {
             router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
 
-            router.wait_for_log(&btreeset![0, 1], want, None, "add non-voter").await?;
+            router.wait_for_log(&btreeset![0, 1], want, timeout(), "add non-voter").await?;
             let expected_snap = Some((want.into(), 1, MembershipConfig {
                 members: btreeset![0u64],
                 members_after_consensus: None,
             }));
-            router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, None, "").await?;
+            router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, timeout(), "").await?;
             router
                 .assert_storage_state(
                     1,
@@ -152,4 +155,8 @@ async fn snapshot_overrides_membership() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(5000))
 }
