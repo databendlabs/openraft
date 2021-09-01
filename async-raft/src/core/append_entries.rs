@@ -1,5 +1,3 @@
-use tracing::Instrument;
-
 use crate::core::RaftCore;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
@@ -27,7 +25,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &mut self,
         msg: AppendEntriesRequest<D>,
     ) -> RaftResult<AppendEntriesResponse> {
-        tracing::debug!(%self.last_log_id);
+        tracing::debug!(%self.last_log_id, %self.last_applied);
 
         let mut msg_entries = msg.entries.as_slice();
         let mut prev_log_id = msg.prev_log_id;
@@ -323,7 +321,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// Very importantly, this routine must not block the main control loop main task, else it
     /// may cause the Raft leader to timeout the requests to this node.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), RaftError> {
         tracing::debug!("replicate_to_sm_if_needed: last_applied: {}", self.last_applied,);
 
@@ -331,13 +329,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if !self.has_completed_initial_replication_to_sm {
             // Optimistic update, as failures will cause shutdown.
             self.has_completed_initial_replication_to_sm = true;
-            self.initial_replicate_to_state_machine().await;
-            return Ok(());
-        }
-
-        // If we already have an active replication task, then do nothing.
-        if !self.replicate_to_sm_handle.is_empty() {
-            tracing::debug!("replicate_to_sm_handle is not empty, return");
+            self.initial_replicate_to_state_machine().await?;
             return Ok(());
         }
 
@@ -353,44 +345,27 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Drain entries from the beginning of the cache up to commit index.
 
-        // TODO(xp): logs in storage must be consecutive.
         let entries = self
             .storage
             .get_log_entries(self.last_applied.index + 1..=self.commit_index)
             .await
             .map_err(|e| self.map_fatal_storage_error(e))?;
 
-        let last_log_id = entries.last().map(|x| x.log_id);
+        let last_log_id = entries.last().map(|x| x.log_id).unwrap();
 
-        tracing::debug!("entries: {:?}", entries.iter().map(|x| x.log_id).collect::<Vec<_>>());
+        tracing::debug!("entries: {}", entries.as_slice().summary());
         tracing::debug!(?last_log_id);
 
-        // If we have no data entries to apply, then do nothing.
-        if entries.is_empty() {
-            if let Some(log_id) = last_log_id {
-                self.last_applied = log_id;
-                self.report_metrics(Update::Ignore);
-            }
-            tracing::debug!("entries is empty, return");
-            return Ok(());
-        }
+        let entries_refs: Vec<_> = entries.iter().collect();
+        self.storage
+            .apply_to_state_machine(&entries_refs)
+            .await
+            .map_err(|e| self.map_fatal_storage_error(e))?;
 
-        // Spawn task to replicate these entries to the state machine.
-        // Linearizability is guaranteed by `replicate_to_sm_handle`, which is the mechanism used
-        // to ensure that only a single task can replicate data to the state machine, and that is
-        // owned by a single task, not shared between multiple threads/tasks.
-        let storage = self.storage.clone();
-        let handle = tokio::spawn(
-            async move {
-                // Create a new vector of references to the entries data ... might have to change this
-                // interface a bit before 1.0.
-                let entries_refs: Vec<_> = entries.iter().collect();
-                storage.apply_to_state_machine(&entries_refs).await?;
-                Ok(last_log_id)
-            }
-            .instrument(tracing::debug_span!("spawn")),
-        );
-        self.replicate_to_sm_handle.push(handle);
+        self.last_applied = last_log_id;
+
+        self.report_metrics(Update::Ignore);
+        self.trigger_log_compaction_if_needed(false);
 
         Ok(())
     }
@@ -399,42 +374,33 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// This will only be executed once, and only in response to its first payload of entries
     /// from the AppendEntries RPC handler.
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn initial_replicate_to_state_machine(&mut self) {
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn initial_replicate_to_state_machine(&mut self) -> Result<(), RaftError> {
         let stop = std::cmp::min(self.commit_index, self.last_log_id.index) + 1;
         let start = self.last_applied.index + 1;
         let storage = self.storage.clone();
-
-        // If we already have an active replication task, then do nothing.
-        if !self.replicate_to_sm_handle.is_empty() {
-            return;
-        }
 
         tracing::debug!(start, stop, self.commit_index, %self.last_log_id, "start stop");
 
         // when self.commit_index is not initialized, e.g. the first heartbeat from leader always has a commit_index to
         // be 0, because the leader needs one round of heartbeat to find out the commit index.
         if start >= stop {
-            return;
+            return Ok(());
         }
 
         // Fetch the series of entries which must be applied to the state machine, then apply them.
-        let handle = tokio::spawn(
-            async move {
-                let mut new_last_applied: Option<LogId> = None;
-                let entries = storage.get_log_entries(start..stop).await?;
-                if let Some(entry) = entries.last() {
-                    new_last_applied = Some(entry.log_id);
-                }
-                let data_entries: Vec<_> = entries.iter().collect();
-                if data_entries.is_empty() {
-                    return Ok(new_last_applied);
-                }
-                storage.apply_to_state_machine(&data_entries).await?;
-                Ok(new_last_applied)
-            }
-            .instrument(tracing::debug_span!("spawn-init-replicate-to-sm")),
-        );
-        self.replicate_to_sm_handle.push(handle);
+
+        let entries = storage.get_log_entries(start..stop).await.map_err(|e| self.map_fatal_storage_error(e))?;
+
+        let new_last_applied = entries.last().unwrap();
+
+        let data_entries: Vec<_> = entries.iter().collect();
+        storage.apply_to_state_machine(&data_entries).await.map_err(|e| self.map_fatal_storage_error(e))?;
+
+        self.last_applied = new_last_applied.log_id;
+        self.report_metrics(Update::Ignore);
+        self.trigger_log_compaction_if_needed(false);
+
+        Ok(())
     }
 }

@@ -15,6 +15,7 @@ use tokio::io::AsyncWrite;
 use crate::raft::Entry;
 use crate::raft::MembershipConfig;
 use crate::raft_types::SnapshotId;
+use crate::raft_types::StateMachineChanges;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -269,7 +270,7 @@ where
         &self,
         meta: &SnapshotMeta,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<()>;
+    ) -> Result<StateMachineChanges>;
 
     /// Get a readable handle to the current snapshot, along with its metadata.
     ///

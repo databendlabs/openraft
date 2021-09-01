@@ -28,6 +28,7 @@ use async_raft::NodeId;
 use async_raft::RaftStorage;
 use async_raft::RaftStorageDebug;
 use async_raft::SnapshotMeta;
+use async_raft::StateMachineChanges;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -747,7 +748,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         &self,
         meta: &SnapshotMeta,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<()> {
+    ) -> Result<StateMachineChanges> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -787,7 +788,10 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         // Update current snapshot.
         let mut current_snapshot = self.current_snapshot.write().await;
         *current_snapshot = Some(new_snapshot);
-        Ok(())
+        Ok(StateMachineChanges {
+            last_applied: Some(meta.last_log_id),
+            is_snapshot: true,
+        })
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

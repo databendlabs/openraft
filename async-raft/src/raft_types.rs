@@ -55,3 +55,11 @@ pub enum Update<T> {
     Update(T),
     Ignore,
 }
+
+/// The changes of a state machine.
+/// E.g. when applying a log to state machine, or installing a state machine from snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateMachineChanges {
+    pub last_applied: Option<LogId>,
+    pub is_snapshot: bool,
+}

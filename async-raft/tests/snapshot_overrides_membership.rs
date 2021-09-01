@@ -29,7 +29,7 @@ mod fixtures;
 ///
 /// export RUST_LOG=async_raft,memstore,snapshot_overrides_membership=trace
 /// cargo test -p async-raft --test snapshot_overrides_membership
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 10)]
 async fn snapshot_overrides_membership() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();

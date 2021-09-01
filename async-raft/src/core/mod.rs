@@ -14,8 +14,6 @@ use std::sync::Arc;
 
 use futures::future::AbortHandle;
 use futures::future::Abortable;
-use futures::stream::FuturesOrdered;
-use futures::stream::StreamExt;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::broadcast;
@@ -120,13 +118,6 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
     snapshot_last_log_id: LogId,
 
-    /// The stream of join handles from state machine replication tasks. There will only ever be
-    /// a maximum of 1 element at a time.
-    ///
-    /// This abstraction is needed to ensure that replicating to the state machine does not block
-    /// the AppendEntries RPC flow, and to ensure that we have a smooth transition to becoming
-    /// leader without concern over duplicate application of entries to the state machine.
-    replicate_to_sm_handle: FuturesOrdered<JoinHandle<anyhow::Result<Option<LogId>>>>,
     /// A bool indicating if this system has performed its initial replication of
     /// outstanding entries to the state machine.
     has_completed_initial_replication_to_sm: bool,
@@ -171,7 +162,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             last_log_id: LogId { term: 0, index: 0 },
             snapshot_state: None,
             snapshot_last_log_id: LogId { term: 0, index: 0 },
-            replicate_to_sm_handle: FuturesOrdered::new(),
             has_completed_initial_replication_to_sm: false,
             last_heartbeat: None,
             next_election_timeout: None,
@@ -464,22 +454,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         );
     }
 
-    /// Handle the output of an async task replicating entries to the state machine.
-    #[tracing::instrument(level = "trace", skip(self, res))]
-    pub(self) fn handle_replicate_to_sm_result(&mut self, res: anyhow::Result<Option<LogId>>) -> RaftResult<()> {
-        let last_applied_opt = res.map_err(|err| self.map_fatal_storage_error(err))?;
-
-        tracing::debug!("last_applied:{:?}", last_applied_opt);
-
-        if let Some(last_applied) = last_applied_opt {
-            self.last_applied = last_applied;
-        }
-
-        self.report_metrics(Update::Ignore);
-        self.trigger_log_compaction_if_needed(false);
-        Ok(())
-    }
-
     /// Reject an init config request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     fn reject_init_with_config(&self, tx: oneshot::Sender<Result<(), InitializeError>>) {
@@ -731,12 +705,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     let _ent = span.enter();
                     self.handle_replica_event(event).await;
                 }
-                Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
-                    tracing::info!("leader recv from replicate_to_sm_handle: {:?}", repl_sm_result);
-
-                    // Errors herein will trigger shutdown, so no need to process error.
-                    let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
-                }
                 Ok(_) = &mut self.core.rx_shutdown => {
                     tracing::info!("leader recv from rx_shudown");
                     self.core.set_target_state(State::Shutdown);
@@ -909,10 +877,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         }
                     },
                     Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
-                    Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
-                        // Errors herein will trigger shutdown, so no need to process error.
-                        let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
-                    }
                     Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
                 }
             }
@@ -980,10 +944,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     }
                 },
                 Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
-                Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
-                    // Errors herein will trigger shutdown, so no need to process error.
-                    let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
-                }
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }
@@ -1047,10 +1007,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     }
                 },
                 Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
-                Some(Ok(repl_sm_result)) = self.core.replicate_to_sm_handle.next() => {
-                    // Errors herein will trigger shutdown, so no need to process error.
-                    let _ = self.core.handle_replicate_to_sm_result(repl_sm_result);
-                }
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }

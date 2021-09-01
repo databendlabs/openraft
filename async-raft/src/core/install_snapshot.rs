@@ -181,17 +181,52 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ) -> RaftResult<()> {
         snapshot.as_mut().shutdown().await.map_err(|err| self.map_fatal_storage_error(err.into()))?;
 
-        self.storage
+        // Caveat: All changes to state machine must be serialized
+        //
+        // If `finalize_snapshot_installation` is run in RaftCore thread,
+        // there is chance the last_applied being reset to a previous value:
+        //
+        // ```
+        // RaftCore: -.    install-snapc,            .-> replicate_to_sm_handle.next(),
+        //            |    update last_applied=5     |   update last_applied=2
+        //            |                              |
+        //            v                              |
+        // task:      apply 2------------------------'
+        // --------------------------------------------------------------------> time
+        // ```
+
+        let changes = self
+            .storage
             .finalize_snapshot_installation(&req.meta, snapshot)
             .await
-            .map_err(|err| self.map_fatal_storage_error(err))?;
+            .map_err(|e| self.map_fatal_storage_error(e))?;
 
-        let membership = self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
-        self.update_membership(membership)?;
-        self.last_log_id = req.meta.last_log_id;
-        self.last_applied = req.meta.last_log_id;
-        self.snapshot_last_log_id = req.meta.last_log_id;
-        self.report_metrics(Update::Ignore);
+        tracing::debug!("update after apply or install-snapshot: {:?}", changes);
+
+        // After installing snapshot, no inconsistent log is removed.
+        // This does not affect raft consistency.
+        // If you have any question about this, let me know: drdr.xp at gmail.com
+
+        if let Some(last_applied) = changes.last_applied {
+            // snapshot is installed
+            self.last_applied = last_applied;
+
+            if self.last_log_id < self.last_applied {
+                self.last_log_id = self.last_applied;
+            }
+
+            // There could be unknown membership in the snapshot.
+            let membership =
+                self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
+
+            self.update_membership(membership)?;
+
+            self.snapshot_last_log_id = self.last_applied;
+            self.report_metrics(Update::Ignore);
+        } else {
+            // snapshot not installed
+        }
+
         Ok(())
     }
 }

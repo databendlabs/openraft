@@ -339,7 +339,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle the post-commit logic for a client request.
-    #[tracing::instrument(level = "trace", skip(self, req))]
+    #[tracing::instrument(level = "debug", skip(self, req))]
     pub(super) async fn client_request_post_commit(&mut self, req: ClientRequestEntry<D, R>) {
         let entry = &req.entry;
 
@@ -419,7 +419,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Apply the given log entry to the state machine.
-    #[tracing::instrument(level = "trace", skip(self, entry))]
+    #[tracing::instrument(level = "debug", skip(self, entry))]
     pub(super) async fn apply_entry_to_state_machine(&mut self, entry: &Entry<D>) -> RaftResult<R> {
         // First, we just ensure that we apply any outstanding up to, but not including, the index
         // of the given entry. We need to be able to return the data response from applying this
@@ -453,14 +453,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         }
 
-        // Before we can safely apply this entry to the state machine, we need to ensure there is
-        // no pending task to replicate entries to the state machine. This is edge case, and would only
-        // happen once very early in a new leader's term.
-        if !self.core.replicate_to_sm_handle.is_empty() {
-            if let Some(Ok(replicate_to_sm_result)) = self.core.replicate_to_sm_handle.next().await {
-                self.core.handle_replicate_to_sm_result(replicate_to_sm_result)?;
-            }
-        }
         // Apply this entry to the state machine and return its data response.
         let res = self.core.storage.apply_to_state_machine(&[entry]).await.map_err(|err| {
             if err.downcast_ref::<S::ShutdownError>().is_some() {
