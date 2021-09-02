@@ -27,8 +27,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ) -> RaftResult<AppendEntriesResponse> {
         tracing::debug!(%self.last_log_id, %self.last_applied);
 
-        let mut msg_entries = msg.entries.as_slice();
-        let mut prev_log_id = msg.prev_log_id;
+        let msg_entries = msg.entries.as_slice();
+        let prev_log_id = msg.prev_log_id;
+
+        if !msg_entries.is_empty() {
+            assert_eq!(prev_log_id.index + 1, msg_entries.first().unwrap().log_id.index);
+        }
 
         // If message's term is less than most recent term, then we do not honor the request.
         if msg.term < self.current_term {
@@ -86,27 +90,48 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.set_target_state(State::Follower);
         }
 
-        if prev_log_id.index == u64::MIN || prev_log_id == self.last_log_id {
-            // Matches! Great!
-            return self.append_apply_log_entries(msg_entries, valid_commit_index).await;
-        }
-
         tracing::debug!("begin log consistency check");
 
-        // Lagging too much, let the leader to retry append_entries from my last_log.index
-        if self.last_log_id.index < prev_log_id.index {
-            let last = self
-                .storage
-                .try_get_log_entry(self.last_log_id.index)
-                .await
-                .map_err(|e| self.map_fatal_storage_error(e))?
-                .summary();
+        // There are 5 cases a prev_log_id could have:
+        // prev_log_id: 0       1        2            3           4           5
+        //              +----------------+------------------------+
+        //              ` 0              ` last_applied           ` last_log_id
+
+        // TODO(xp) test
+        // TODO(xp) test append/delete affects membership
+
+        // Case 0: prev == 0
+        if prev_log_id.index == u64::MIN {
+            if self.last_log_id.index == prev_log_id.index {
+                // Matches! Great!
+                tracing::debug!("append-entries case-0 OK: prev_log_id({}) == 0", prev_log_id,);
+                return self.append_apply_log_entries(prev_log_id.index + 1, msg_entries, valid_commit_index).await;
+            } else {
+                tracing::debug!(
+                    "append-entries case-0: prev_log_id({}) is 0, conflict = last_log_id: {:?}",
+                    prev_log_id,
+                    self.last_log_id
+                );
+
+                return Ok(AppendEntriesResponse {
+                    term: self.current_term,
+                    success: false,
+                    conflict_opt: Some(ConflictOpt {
+                        log_id: self.last_log_id,
+                    }),
+                });
+            }
+        }
+
+        // Case 1: 0 < prev < last_applied
+        if prev_log_id.index < self.last_applied.index {
             tracing::debug!(
-                "conflict: last_log_id({}) < prev_log_id({}), conflict = last_log_id: {:?}",
-                self.last_log_id,
+                "append-entries case-1: prev_log_id({}) < last_applied({}), conflict = last_log_id: {:?}",
                 prev_log_id,
-                last
+                self.last_applied,
+                self.last_log_id
             );
+
             return Ok(AppendEntriesResponse {
                 term: self.current_term,
                 success: false,
@@ -116,134 +141,193 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             });
         }
 
-        // prev_log_id.index <= last_log_id.index
+        // Case 2: prev == last_applied
+        if prev_log_id.index == self.last_applied.index {
+            // The applied entries are also committed thus always be consistent with the leader.
 
-        // Log entries upto last_applied may be removed.
-        // The applied entries are also committed thus always be consistent with the leader.
-        // Align the prev_log_id to last_applied.
-        let local_prev_log_id = self.earliest_log_id_since(prev_log_id.index).await?;
+            assert_eq!(prev_log_id, self.last_applied);
 
-        if prev_log_id.index < local_prev_log_id.index {
-            let distance = local_prev_log_id.index - prev_log_id.index;
+            tracing::debug!(
+                "append-entries case-2: prev_log_id({}) == last_applied({})",
+                prev_log_id,
+                self.last_applied,
+            );
 
-            prev_log_id = local_prev_log_id;
+            return self.append_apply_log_entries(prev_log_id.index + 1, msg_entries, valid_commit_index).await;
+        }
 
-            msg_entries = if msg_entries.len() > distance as usize {
-                &msg_entries[distance as usize..]
+        // Case 3, 4: last_applied < prev <= last_log_id
+        if prev_log_id.index <= self.last_log_id.index {
+            tracing::debug!(
+                "append-entries case-3,4: prev_log_id({}) <= last_log_id({})",
+                prev_log_id,
+                self.last_applied,
+            );
+
+            let local = self.get_log_id(prev_log_id.index).await?;
+
+            if prev_log_id == local {
+                return self.append_apply_log_entries(prev_log_id.index + 1, msg_entries, valid_commit_index).await;
             } else {
-                &[]
-            };
-        }
+                if prev_log_id.index <= self.last_log_id.index {
+                    self.delete_logs(prev_log_id.index).await?;
+                }
 
-        // last_applied.index <= prev_log_id.index <= last_log_id.index
+                let log_id = self.get_older_log_id(prev_log_id).await?;
 
-        // The target entry was found. Compare its term with target term to ensure everything is consistent.
-        if local_prev_log_id == prev_log_id {
-            // We've found a point of agreement with the leader. If we have any logs present
-            // with an index greater than this, then we must delete them per §5.3.
+                tracing::debug!(
+                    "append-entries case-3,4: prev_log_id({}) <= last_log_id({}), conflict = {}",
+                    prev_log_id,
+                    self.last_applied,
+                    log_id
+                );
 
-            if self.last_log_id.index > prev_log_id.index {
-                self.delete_inconsistent_log(prev_log_id, msg_entries).await?;
+                return Ok(AppendEntriesResponse {
+                    term: self.current_term,
+                    success: false,
+                    conflict_opt: Some(ConflictOpt { log_id }),
+                });
             }
-            tracing::debug!("end log consistency check");
-
-            return self.append_apply_log_entries(msg_entries, valid_commit_index).await;
         }
 
-        let last_match = self.last_possible_matched(prev_log_id).await?;
+        // Case 5: prev > last_log_id
 
-        tracing::debug!("conflict: search for last possible match, conflict = {}", last_match);
+        tracing::debug!(
+                "append-entries case-5 advanced last_log_id: prev_log_id({}) > last_log_id({}), conflict = last_log_id: {:?}",
+                prev_log_id,
+                self.last_log_id,
+                self.last_log_id
+            );
+
+        assert!(prev_log_id.index > self.last_log_id.index);
 
         Ok(AppendEntriesResponse {
             term: self.current_term,
             success: false,
-            conflict_opt: Some(ConflictOpt { log_id: last_match }),
+            conflict_opt: Some(ConflictOpt {
+                log_id: self.last_log_id,
+            }),
         })
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn earliest_log_id_since(&mut self, index: u64) -> RaftResult<LogId> {
-        if index <= self.last_applied.index {
+    async fn delete_logs(&mut self, start: u64) -> RaftResult<()> {
+        self.storage.delete_logs_from(start..).await.map_err(|err| self.map_fatal_storage_error(err))?;
+
+        self.last_log_id = self.get_log_id(start - 1).await?;
+
+        let membership = self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
+
+        self.update_membership(membership)?;
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn get_log_id(&mut self, index: u64) -> RaftResult<LogId> {
+        assert!(index >= self.last_applied.index);
+
+        if index == self.last_applied.index {
             return Ok(self.last_applied);
         }
 
-        // last_applied.index < prev_log_id.index <= last_log_id.index
+        let entries =
+            self.storage.get_log_entries(index..=index).await.map_err(|err| self.map_fatal_storage_error(err))?;
 
-        let x = self.storage.get_log_entries(index..=index).await.map_err(|err| self.map_fatal_storage_error(err))?;
-
-        let entry = x
+        let entry = entries
             .first()
             .ok_or_else(|| self.map_fatal_storage_error(anyhow::anyhow!("log entry not found at: {}", index)))?;
 
         Ok(entry.log_id)
     }
 
+    /// Skip log entries that have the same term as the entries the leader sent.
+    /// Delete entries since the first mismatching entry from local storage.
+    /// Returns a slice of entries that are not in local storage.
+    ///
+    /// Caveat: Deleting then appending entries are not atomic, thus deleting consistent entries may cause loss of
+    /// committed logs.
+    ///
+    /// E.g., the entries are as following and R1 now is the leader:
+    ///
+    /// ```text
+    /// R1 1,1  1,2  1,3
+    /// R2 1,1  1,2
+    /// R3
+    /// ```
+    ///
+    /// When the following steps take place, committed entry `{1,2}` is lost:
+    ///
+    /// - R1 to R2: `append_entries(entries=[{1,2}, {1,3}], prev_log_id={1,1})`
+    /// - R2 deletes `{1,2}`
+    /// - R2 crash
+    /// - R2 elected as leader and only see 1,1; the committed entry 1,2 is lost.
+    ///
+    /// **The safe way is to skip every entry that present in append-entries message then delete only the
+    /// inconsistent entries**.
+    ///
+    /// Why need to delete:
+    ///
+    /// The following diagram shows only log term.
+    ///
+    /// ```text
+    /// R1 5
+    /// R2 5
+    /// R3 5 3 3
+    /// R4
+    /// R5 2 4 4
+    /// ```
+    ///
+    /// If log 5 is committed by R1, and log 3 is not removed, R5 in future could become a new leader and overrides log
+    /// 5 on R3.
     #[tracing::instrument(level="debug", skip(self, msg_entries), fields(msg_entries=%msg_entries.summary()))]
-    async fn delete_inconsistent_log(&mut self, prev_log_id: LogId, msg_entries: &[Entry<D>]) -> RaftResult<()> {
-        // Caveat: Deleting then appending entries are not atomic, thus deleting consistent entries may cause loss of
-        // committed logs.
-        //
-        // E.g., the logs are as following and R1 now is the leader:
-        //
-        // ```
-        // R1 1,1  1,2  1,3
-        // R2 1,1  1,2
-        // R3
-        // ```
-        // When the following steps take place, committed entry `{1,2}` is lost:
-        //
-        // - R1 to R2: append_entries(entries=[{1,2}, {1,3}], prev_log_id={1,1})
-        // - R2 deletes 1,2
-        // - R2 crash
-        // - R2 elected as leader and only see 1,1; the committed entry 1,2 is lost.
-        //
-        // **The safe way is to skip every entry that present in append_entries message then delete only the
-        // inconsistent entries**.
+    async fn delete_inconsistent_log<'s, 'e>(
+        &'s mut self,
+        index: u64,
+        msg_entries: &'e [Entry<D>],
+    ) -> RaftResult<&'e [Entry<D>]> {
+        let end = std::cmp::min(index + msg_entries.len() as u64, self.last_log_id.index + 1);
 
-        let end = std::cmp::min(prev_log_id.index + msg_entries.len() as u64, self.last_log_id.index + 1);
+        if index == end {
+            return Ok(msg_entries);
+        }
 
         tracing::debug!(
             "find and delete inconsistent log entries [{}, {}), last_log_id: {}, entries: {}",
-            prev_log_id,
+            index,
             end,
             self.last_log_id,
             msg_entries.summary()
         );
 
-        let entries = self
-            .storage
-            .get_log_entries(prev_log_id.index..end)
-            .await
-            .map_err(|err| self.map_fatal_storage_error(err))?;
+        let entries =
+            self.storage.get_log_entries(index..end).await.map_err(|err| self.map_fatal_storage_error(err))?;
 
         for (i, ent) in entries.iter().enumerate() {
+            assert_eq!(msg_entries[i].log_id.index, ent.log_id.index);
+
             if ent.log_id.term != msg_entries[i].log_id.term {
-                tracing::debug!("delete inconsistent log entries from: {}", ent.log_id);
+                tracing::debug!(
+                    "delete inconsistent log entries from: {}-th msg.entries: {}",
+                    i,
+                    ent.log_id
+                );
 
-                self.storage
-                    .delete_logs_from(ent.log_id.index..)
-                    .await
-                    .map_err(|err| self.map_fatal_storage_error(err))?;
+                self.delete_logs(ent.log_id.index).await?;
 
-                let membership =
-                    self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
-
-                self.update_membership(membership)?;
-
-                break;
+                return Ok(&msg_entries[i..]);
             }
         }
-        Ok(())
+        Ok(&[])
     }
 
-    /// Walks backward 50 entries to find the last log entry that has the same `term` as `prev_log_id`, which is
-    /// consistent to the leader. Further replication will use this log id as `prev_log_id` to sync log.
+    /// Walks at most 50 entries backward to get an entry as the `prev_log_id` for next append-entries request.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn last_possible_matched(&mut self, prev_log_id: LogId) -> RaftResult<LogId> {
+    async fn get_older_log_id(&mut self, prev_log_id: LogId) -> RaftResult<LogId> {
         let start = prev_log_id.index.saturating_sub(50);
 
-        if start < self.last_applied.index {
-            // The applied log is always consistent to leader.
+        if start <= self.last_applied.index {
+            // The applied log is always consistent to any leader.
             return Ok(self.last_applied);
         }
 
@@ -252,29 +336,25 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(LogId { term: 0, index: 0 });
         }
 
-        let old_entries = self
-            .storage
-            .get_log_entries(start..=prev_log_id.index)
-            .await
-            .map_err(|err| self.map_fatal_storage_error(err))?;
+        let entries =
+            self.storage.get_log_entries(start..=start).await.map_err(|err| self.map_fatal_storage_error(err))?;
 
-        let last_matched = old_entries.iter().rev().find(|entry| entry.log_id.term == prev_log_id.term);
+        let log_id = entries.first().unwrap().log_id;
 
-        let first = old_entries.first().map(|x| x.log_id).unwrap();
-
-        let last_matched = last_matched.map(|x| x.log_id).unwrap_or_else(|| first);
-        Ok(last_matched)
+        Ok(log_id)
     }
 
     #[tracing::instrument(level="debug", skip(self, entries), fields(entries=%entries.summary()))]
     async fn append_apply_log_entries(
         &mut self,
+        index: u64,
         entries: &[Entry<D>],
         commit_index: u64,
     ) -> RaftResult<AppendEntriesResponse> {
-        if !entries.is_empty() {
-            self.append_log_entries(entries).await?;
-        }
+        // Before appending, if an entry overrides an inconsistent one, the entries after it must be deleted first.
+        let entries = self.delete_inconsistent_log(index, entries).await?;
+
+        self.append_log_entries(entries).await?;
 
         self.commit_index = commit_index;
 
@@ -293,8 +373,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// Configuration changes are also detected and applied here. See `configuration changes`
     /// in the raft-essentials.md in this repo.
-    #[tracing::instrument(level = "trace", skip(self, entries))]
+    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
     async fn append_log_entries(&mut self, entries: &[Entry<D>]) -> RaftResult<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
         // Check the given entries for any config changes and take the most recent.
         let last_conf_change = entries
             .iter()

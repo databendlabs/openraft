@@ -440,7 +440,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppendEntriesRequest<D: AppData> {
     /// The leader's current term.
     pub term: u64,
