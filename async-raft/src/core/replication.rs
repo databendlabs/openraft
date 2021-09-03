@@ -40,7 +40,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.replication_tx.clone(),
         );
         ReplicationState {
-            matched: (self.core.current_term, self.core.last_log_id.index).into(),
+            matched: LogId { term: 0, index: 0 },
             replstream,
             remove_after_commit: None,
         }
@@ -73,6 +73,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
         // Else, if this is a non-voter, then update as needed.
         if let Some(state) = self.non_voters.get_mut(&target) {
+            // the matched increments monotonically.
+            tracing::debug!("state.matched: {}, update to matched: {}", state.state.matched, matched);
+            assert!(matched >= state.state.matched);
+            state.state.matched = matched;
+
             // TODO(xp): use Vec<_> to replace the two membership configs.
 
             state.is_ready_to_join =
@@ -126,6 +131,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let mut found = false;
 
         if let Some(state) = self.non_voters.get_mut(&target) {
+            tracing::debug!("state.matched: {}, update to matched: {}", state.state.matched, matched);
+            assert!(matched >= state.state.matched);
+
             state.state.matched = matched;
             found = true;
         }

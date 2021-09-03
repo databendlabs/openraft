@@ -12,7 +12,6 @@ use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-// use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio::time::timeout;
 use tokio::time::Duration;
@@ -25,7 +24,6 @@ use crate::config::SnapshotPolicy;
 use crate::error::RaftResult;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::Entry;
-use crate::raft::EntryPayload;
 use crate::raft::InstallSnapshotRequest;
 use crate::storage::Snapshot;
 use crate::AppData;
@@ -33,6 +31,7 @@ use crate::AppDataResponse;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
+use crate::RaftError;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 
@@ -105,8 +104,7 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
 
     /// The Raft's runtime config.
     config: Arc<Config>,
-    /// The configured max payload entries, simply as a usize.
-    max_payload_entries: usize,
+
     marker_r: std::marker::PhantomData<R>,
 
     //////////////////////////////////////////////////////////////////////////
@@ -119,42 +117,16 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     /// The index of the highest log entry which is known to be committed in the cluster.
     commit_index: u64,
 
-    /// The index of the next log to send.
-    ///
-    /// This is initialized to leader's last log index + 1. Per the Raft protocol spec,
-    /// this value may be decremented as new nodes enter the cluster and need to catch-up per the
-    /// log consistency check.
-    ///
-    /// If a follower's log is inconsistent with the leader's, the AppendEntries consistency check
-    /// will fail in the next AppendEntries RPC. After a rejection, the leader decrements
-    /// `next_index` and retries the AppendEntries RPC. Eventually `next_index` will reach a point
-    /// where the leader and follower logs match. When this happens, AppendEntries will succeed,
-    /// which removes any conflicting entries in the follower's log and appends entries from the
-    /// leader's log (if any). Once AppendEntries succeeds, the follower’s log is consistent with
-    /// the leader's, and it will remain that way for the rest of the term.
+    /// The last know log to be successfully replicated on the target.
     ///
     /// This Raft implementation also uses a _conflict optimization_ pattern for reducing the
     /// number of RPCs which need to be sent back and forth between a peer which is lagging
     /// behind. This is defined in §5.3.
-    next_index: u64,
-    /// The last know log to be successfully replicated on the target.
-    ///
     /// This will be initialized to the leader's (last_log_term, last_log_index), and will be updated as
     /// replication proceeds.
     /// TODO(xp): initialize to last_log_index? should be a zero value?
     matched: LogId,
 
-    /// A buffer of data to replicate to the target follower.
-    ///
-    /// The buffered payload here will be expanded as more replication commands come in from the
-    /// Raft node. Data from this buffer will flow into the `outbound_buffer` in chunks.
-    replication_buffer: Vec<Arc<Entry<D>>>,
-    /// A buffer of data which is being sent to the follower.
-    ///
-    /// Data in this buffer comes directly from the `replication_buffer` in chunks, and will
-    /// remain here until it is confirmed that the payload has been successfully received by the
-    /// target node. This allows for retransmission of payloads in the face of transient errors.
-    outbound_buffer: Vec<OutboundEntry<D>>,
     /// The heartbeat interval for ensuring that heartbeats are always delivered in a timely fashion.
     heartbeat: Interval,
 
@@ -184,7 +156,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         let heartbeat_timeout = Duration::from_millis(config.heartbeat_interval);
         let install_snapshot_timeout = Duration::from_millis(config.install_snapshot_timeout);
 
-        let max_payload_entries = config.max_payload_entries as usize;
         let this = Self {
             id,
             target,
@@ -192,20 +163,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             network,
             storage,
             config,
-            max_payload_entries,
             marker_r: std::marker::PhantomData,
-            target_state: TargetReplState::Lagging,
+            target_state: TargetReplState::LineRate,
             last_log_index: last_log.index,
             commit_index,
-            next_index: last_log.index + 1,
-            matched: last_log,
+            matched: LogId { term: 0, index: 0 },
             raft_core_tx,
             repl_rx,
             heartbeat: interval(heartbeat_timeout),
             heartbeat_timeout,
             install_snapshot_timeout,
-            replication_buffer: Vec::new(),
-            outbound_buffer: Vec::new(),
         };
 
         let _handle = tokio::spawn(this.main().instrument(tracing::debug_span!("spawn")));
@@ -225,7 +192,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         loop {
             match &self.target_state {
                 TargetReplState::LineRate => self.line_rate_loop().await,
-                TargetReplState::Lagging => self.lagging_loop().await,
                 TargetReplState::Snapshotting => SnapshottingState::new(&mut self).run().await,
                 TargetReplState::Shutdown => return,
             }
@@ -238,18 +204,37 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     /// configured heartbeat interval.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn send_append_entries(&mut self) {
-        // Attempt to fill the send buffer from the replication buffer.
-        if self.outbound_buffer.is_empty() {
-            let repl_len = self.replication_buffer.len();
-            if repl_len > 0 {
-                let chunk_size = if repl_len < self.max_payload_entries {
-                    repl_len
-                } else {
-                    self.max_payload_entries
-                };
-                self.outbound_buffer.extend(self.replication_buffer.drain(..chunk_size).map(OutboundEntry::Arc));
-            }
+        let start = self.matched.index + 1;
+        let end = self.last_log_index + 1;
+
+        let chunk_size = std::cmp::min(self.config.max_payload_entries, end - start);
+        let end = start + chunk_size;
+
+        let logs;
+        if chunk_size == 0 {
+            // just a heartbeat
+            logs = vec![];
+        } else {
+            let res = self.load_log_entries(start, end).await;
+
+            let logs_opt = match res {
+                Ok(x) => x,
+                Err(err) => {
+                    tracing::warn!(error=%err, "storage.get_log_entries, [{}, {})", start,start+chunk_size as u64);
+                    self.set_target_state(TargetReplState::Shutdown);
+                    let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
+                    return;
+                }
+            };
+
+            logs = match logs_opt {
+                // state changed to snapshot
+                None => return,
+                Some(x) => x,
+            };
         }
+
+        let last_log_id = logs.last().map(|last| last.log_id);
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
@@ -257,17 +242,19 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             leader_id: self.id,
             prev_log_id: self.matched,
             leader_commit: self.commit_index,
-            entries: self.outbound_buffer.iter().map(|entry| entry.as_ref().clone()).collect(),
+            entries: logs,
         };
 
         // Send the payload.
         tracing::debug!("start sending append_entries, timeout: {:?}", self.heartbeat_timeout);
-        let res = match timeout(
+
+        let res = timeout(
             self.heartbeat_timeout,
             self.network.send_append_entries(self.target, payload),
         )
-        .await
-        {
+        .await;
+
+        let res = match res {
             Ok(outer_res) => match outer_res {
                 Ok(res) => res,
                 Err(err) => {
@@ -280,43 +267,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 return;
             }
         };
-        let last_log_id = self.outbound_buffer.last().map(|last| last.as_ref().log_id);
-
-        // Once we've successfully sent a payload of entries, don't send them again.
-        self.outbound_buffer.clear();
 
         tracing::debug!("append_entries last: {:?}", last_log_id);
 
         // Handle success conditions.
         if res.success {
-            tracing::debug!("append entries succeeded to {:?}", last_log_id);
-
+            tracing::debug!("append_entries success: last: {:?}", last_log_id);
             // If this was a proper replication event (last index & term were provided), then update state.
             if let Some(log_id) = last_log_id {
-                self.next_index = log_id.index + 1; // This should always be the next expected index.
                 self.matched = log_id;
-                let _ = self.raft_core_tx.send((
-                    ReplicaEvent::UpdateMatchIndex {
-                        target: self.target,
-                        matched: log_id,
-                    },
-                    tracing::debug_span!("CH"),
-                ));
-
-                // If running at line rate, and our buffered outbound requests have accumulated too
-                // much, we need to purge and transition to a lagging state. The target is not able to
-                // replicate data fast enough.
-                let is_lagging = self
-                    .last_log_index
-                    .checked_sub(self.matched.index)
-                    .map(|diff| diff > self.config.replication_lag_threshold)
-                    .unwrap_or(false);
-                if is_lagging {
-                    self.set_target_state(TargetReplState::Lagging);
-                }
+                self.update_matched();
+                self.update_rate();
             }
             return;
         }
+
+        // Failed
 
         // Replication was not successful, if a newer term has been returned, revert to follower.
         if res.term > self.term {
@@ -333,103 +299,92 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
 
         // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
-        if let Some(conflict) = res.conflict_opt {
-            tracing::debug!(?conflict, res.term, "append entries failed, handling conflict opt");
-
-            // If the returned conflict opt index is greater than last_log_index, then this is a
-            // logical error, and no action should be taken. This represents a replication failure.
-            if conflict.log_id.index > self.last_log_index {
-                return;
+        let conflict = match res.conflict_opt {
+            None => {
+                panic!("append_entries failed but without a reason: {:?}", res);
             }
-            self.next_index = conflict.log_id.index + 1;
-            self.matched = conflict.log_id;
+            Some(x) => x,
+        };
 
-            // If conflict index is 0, we will not be able to fetch that index from storage because
-            // it will never exist. So instead, we just return, and accept the conflict data.
-            if conflict.log_id.index == 0 {
-                self.set_target_state(TargetReplState::Lagging);
+        tracing::debug!(?conflict, res.term, "append entries failed, handling conflict opt");
 
-                let _ = self.raft_core_tx.send((
-                    ReplicaEvent::UpdateMatchIndex {
-                        target: self.target,
-                        matched: self.matched,
-                    },
-                    tracing::debug_span!("CH"),
-                ));
-                return;
-            }
-
-            // Fetch the entry at conflict index and use the term specified there.
-            let ent = self.storage.try_get_log_entry(conflict.log_id.index).await;
-            let ent = match ent {
-                Ok(x) => x,
-                Err(err) => {
-                    tracing::error!(error=?err, "error fetching log entry due to returned AppendEntries RPC conflict_opt");
-                    let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
-                    self.set_target_state(TargetReplState::Shutdown);
-                    return;
-                }
-            };
-
-            let ent_term = ent.map(|entry| entry.log_id.term);
-            match ent_term {
-                Some(term) => {
-                    self.matched.term = term; // If we have the specified log, ensure we use its term.
-                }
-                None => {
-                    // This condition would only ever be reached if the log has been removed due to
-                    // log compaction (barring critical storage failure), so transition to snapshotting.
-                    self.set_target_state(TargetReplState::Snapshotting);
-                    let _ = self.raft_core_tx.send((
-                        ReplicaEvent::UpdateMatchIndex {
-                            target: self.target,
-                            matched: self.matched,
-                        },
-                        tracing::debug_span!("CH"),
-                    ));
-                    return;
-                }
-            };
-
-            // Check snapshot policy and handle conflict as needed.
-            let _ = self.raft_core_tx.send((
-                ReplicaEvent::UpdateMatchIndex {
-                    target: self.target,
-                    matched: self.matched,
-                },
-                tracing::debug_span!("CH"),
-            ));
-            match &self.config.snapshot_policy {
-                SnapshotPolicy::LogsSinceLast(threshold) => {
-                    let diff = self.last_log_index - conflict.log_id.index; // NOTE WELL: underflow is guarded against above.
-                    if &diff >= threshold {
-                        // Follower is far behind and needs to receive an InstallSnapshot RPC.
-                        self.set_target_state(TargetReplState::Snapshotting);
-                        return;
-                    }
-                    // Follower is behind, but not too far behind to receive an InstallSnapshot RPC.
-                    self.set_target_state(TargetReplState::Lagging);
-                    return;
-                }
-            }
+        // If the returned conflict opt index is greater than last_log_index, then this is a
+        // logical error, and no action should be taken. This represents a replication failure.
+        if conflict.log_id.index > self.last_log_index {
+            panic!(
+                "impossible: conflict.log_it({}) > last_log_index({})",
+                conflict.log_id, self.last_log_index
+            );
         }
+
+        // If conflict index is 0, we will not be able to fetch that index from storage because
+        // it will never exist. So instead, we just return, and accept the conflict data.
+        if conflict.log_id.index == 0 {
+            self.matched = LogId { term: 0, index: 0 };
+            self.update_matched();
+            self.update_rate();
+
+            return;
+        }
+
+        // Fetch the entry at conflict index and use the term specified there.
+        let ent = self.storage.try_get_log_entry(conflict.log_id.index).await;
+        let ent = match ent {
+            Ok(x) => x,
+            Err(err) => {
+                tracing::error!(error=?err, "error fetching log entry due to returned AppendEntries RPC conflict_opt");
+                self.set_target_state(TargetReplState::Shutdown);
+                let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
+                return;
+            }
+        };
+
+        let ent_term = ent.map(|entry| entry.log_id.term);
+        match ent_term {
+            Some(term) => {
+                self.matched = LogId {
+                    term,
+                    index: conflict.log_id.index,
+                };
+
+                if term == conflict.log_id.term {
+                    self.update_matched();
+                    self.update_rate();
+                }
+            }
+            None => {
+                // This condition would only ever be reached if the log has been removed due to
+                // log compaction (barring critical storage failure), so transition to snapshotting.
+                self.set_target_state(TargetReplState::Snapshotting);
+                return;
+            }
+        };
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
     fn set_target_state(&mut self, state: TargetReplState) {
         self.target_state = state;
+    }
 
-        match self.target_state {
-            TargetReplState::LineRate => {}
-            TargetReplState::Lagging => {}
-            TargetReplState::Snapshotting => {}
-            TargetReplState::Shutdown => {
-                return;
-            }
-        }
+    #[tracing::instrument(level = "debug", skip(self))]
+    fn update_rate(&mut self) {
+        tracing::debug!(target=%self.target, matched=%self.matched, "update_rate");
 
         let _ = self.raft_core_tx.send((
             ReplicaEvent::RateUpdate {
+                target: self.target,
+                matched: self.matched,
+            },
+            tracing::debug_span!("CH"),
+        ));
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    fn update_matched(&mut self) {
+        tracing::debug!(target=%self.target, matched=%self.matched, "update_matched");
+
+        let _ = self.raft_core_tx.send((
+            ReplicaEvent::UpdateMatchIndex {
                 target: self.target,
                 matched: self.matched,
             },
@@ -445,13 +400,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             SnapshotPolicy::LogsSinceLast(threshold) => {
                 let needs_snap =
                     self.commit_index.checked_sub(self.matched.index).map(|diff| diff >= *threshold).unwrap_or(false);
-                if needs_snap {
-                    tracing::trace!("snapshot needed");
-                    true
-                } else {
-                    tracing::trace!("snapshot not needed");
-                    false
-                }
+
+                tracing::trace!("snapshot needed: {}", needs_snap);
+                needs_snap
             }
         }
     }
@@ -483,9 +434,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 RaftEvent::Replicate { entry, commit_index } => {
                     self.commit_index = commit_index;
                     self.last_log_index = entry.log_id.index;
-                    if self.target_state == TargetReplState::LineRate {
-                        self.replication_buffer.push(entry);
-                    }
                 }
 
                 RaftEvent::Terminate => {
@@ -503,23 +451,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 }
 
-/// A type which wraps two possible forms of an outbound entry for replication.
-enum OutboundEntry<D: AppData> {
-    /// An entry owned by an Arc, hot off the replication stream from the Raft leader.
-    Arc(Arc<Entry<D>>),
-    /// An entry which was fetched directly from storage.
-    Raw(Entry<D>),
-}
-
-impl<D: AppData> AsRef<Entry<D>> for OutboundEntry<D> {
-    fn as_ref(&self) -> &Entry<D> {
-        match self {
-            Self::Arc(inner) => inner.as_ref(),
-            Self::Raw(inner) => inner,
-        }
-    }
-}
-
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// The state of the replication stream.
@@ -527,8 +458,6 @@ impl<D: AppData> AsRef<Entry<D>> for OutboundEntry<D> {
 enum TargetReplState {
     /// The replication stream is running at line rate.
     LineRate,
-    /// The replication stream is lagging behind.
-    Lagging,
     /// The replication stream is streaming a snapshot over to the target node.
     Snapshotting,
     /// The replication stream is shutting down.
@@ -620,47 +549,23 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
     #[tracing::instrument(level = "trace", skip(self), fields(state = "line-rate"))]
     pub async fn line_rate_loop(&mut self) {
-        let _ = self.raft_core_tx.send((
-            ReplicaEvent::RateUpdate {
-                target: self.target,
-                matched: self.matched,
-            },
-            tracing::debug_span!("CH"),
-        ));
-
         loop {
             if self.target_state != TargetReplState::LineRate {
                 return;
             }
 
-            // We always prioritize draining our buffers first.
-            let next_buf_index = self
-                .outbound_buffer
-                .first()
-                .map(|entry| entry.as_ref().log_id.index)
-                .or_else(|| self.replication_buffer.first().map(|entry| entry.log_id.index));
+            if self.needs_snapshot() {
+                self.set_target_state(TargetReplState::Snapshotting);
+                return;
+            }
 
-            // When converting to `LaggingState`, `outbound_buffer` and `replication_buffer` is cleared,
-            // in which there may be uncommitted logs.
-            // Thus when converting back to `LineRateState`, when these two buffers are empty, we
-            // need to resend all uncommitted logs.
-            // Otherwise these logs have no chance to be replicated, unless a new log is written.
-            let index = match next_buf_index {
-                Some(i) => i,
-                None => self.last_log_index + 1,
-            };
+            if self.matched.index < self.last_log_index {
+                self.send_append_entries().await;
 
-            // Ensure that our buffered data matches up with `next_index`. When transitioning to
-            // line rate, it is always possible that new data has been sent for replication but has
-            // skipped this replication stream during transition. In such cases, a single update from
-            // storage will put this stream back on track.
-            if self.next_index != index {
-                self.frontload_outbound_buffer(self.next_index, index).await;
                 if self.target_state != TargetReplState::LineRate {
                     return;
                 }
 
-                self.send_append_entries().await;
                 continue;
             }
 
@@ -668,7 +573,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             let _en = span.enter();
 
             tokio::select! {
-                _ = self.heartbeat.tick() => self.send_append_entries().await,
+                _ = self.heartbeat.tick() => {
+                    self.send_append_entries().await;
+                }
 
                 event_span = self.repl_rx.recv() => {
                     match event_span {
@@ -684,130 +591,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
     /// Ensure there are no gaps in the outbound buffer due to transition from lagging.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn frontload_outbound_buffer(&mut self, start: u64, stop: u64) {
+    async fn load_log_entries(&mut self, start: u64, stop: u64) -> Result<Option<Vec<Entry<D>>>, RaftError> {
+        // TODO(xp): get_log_entries() should return an error that is programmable readable.
+        //           EntryNotFound
         let entries = match self.storage.get_log_entries(start..stop).await {
             Ok(entries) => entries,
             Err(err) => {
-                tracing::error!(error=%err, "error while frontloading outbound buffer");
-                let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
-                return;
+                // TODO non-EntryNotFound error should not shutdown raft core.
+                tracing::info!(error=%err, "loading log entries, switch to snapshot replication");
+                self.set_target_state(TargetReplState::Snapshotting);
+                return Ok(None);
             }
         };
 
-        tracing::debug!(entries=%entries.as_slice().summary(), "=== frontload_outbound_buffer");
+        tracing::debug!(entries=%entries.as_slice().summary(), "=== load_log_entries");
 
-        for entry in entries.iter() {
-            if let EntryPayload::PurgedMarker = entry.payload {
-                self.set_target_state(TargetReplState::Snapshotting);
-                return;
-            }
-        }
-
-        // Prepend.
-        self.outbound_buffer.reverse();
-        self.outbound_buffer.extend(entries.into_iter().rev().map(OutboundEntry::Raw));
-        self.outbound_buffer.reverse();
-    }
-
-    #[tracing::instrument(level = "trace", skip(self), fields(state = "lagging"))]
-    pub async fn lagging_loop(&mut self) {
-        let _ = self.raft_core_tx.send((
-            ReplicaEvent::RateUpdate {
-                target: self.target,
-                matched: self.matched,
-            },
-            tracing::debug_span!("CH"),
-        ));
-
-        self.replication_buffer.clear();
-        self.outbound_buffer.clear();
-        loop {
-            if self.target_state != TargetReplState::Lagging {
-                return;
-            }
-            // If this stream is far enough behind, then transition to snapshotting state.
-            if self.needs_snapshot() {
-                self.set_target_state(TargetReplState::Snapshotting);
-                return;
-            }
-
-            // Prep entries from storage and send them off for replication.
-            if self.is_up_to_speed() {
-                self.set_target_state(TargetReplState::LineRate);
-                return;
-            }
-            self.prep_outbound_buffer_from_storage().await;
-            self.send_append_entries().await;
-            if self.is_up_to_speed() {
-                self.set_target_state(TargetReplState::LineRate);
-                return;
-            }
-
-            // Check raft channel to ensure we are staying up-to-date, then loop.
-            if let Some(Some((event, span))) = self.repl_rx.recv().now_or_never() {
-                self.drain_raft_rx(event, span);
-            }
-        }
-    }
-
-    /// Check if this replication stream is now up-to-speed.
-    #[tracing::instrument(level="trace", skip(self), fields(self.core.next_index, self.core.commit_index))]
-    fn is_up_to_speed(&self) -> bool {
-        self.next_index > self.commit_index
-    }
-
-    /// Prep the outbound buffer with the next payload of entries to append.
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn prep_outbound_buffer_from_storage(&mut self) {
-        // If the send buffer is empty, we need to fill it.
-        if self.outbound_buffer.is_empty() {
-            // Determine an appropriate stop index for the storage fetch operation. Avoid underflow.
-            //
-            // Logs in storage:
-            // 0 ... next_index ... commit_index ... last_uncommitted_index
-
-            // Underflow is guarded against in the `is_up_to_speed` check in the outer loop.
-            let distance_behind = self.commit_index - self.next_index;
-
-            let is_within_payload_distance = distance_behind <= self.config.max_payload_entries;
-
-            let stop_idx = if is_within_payload_distance {
-                // If we have caught up to the line index, then that means we will be running at
-                // line rate after this payload is successfully replicated.
-
-                // Will continue in lagging state until the outer loop cycles.
-                self.set_target_state(TargetReplState::LineRate);
-
-                self.commit_index + 1 // +1 to ensure stop value is included.
-            } else {
-                self.next_index + self.config.max_payload_entries + 1 // +1 to ensure stop value is
-                                                                      // included.
-            };
-
-            // Bringing the target up-to-date by fetching the largest possible payload of entries
-            // from storage within permitted configuration & ensure no snapshot pointer was returned.
-            let entries = match self.storage.get_log_entries(self.next_index..stop_idx).await {
-                Ok(entries) => entries,
-                Err(err) => {
-                    tracing::error!(error=%err, "error fetching logs from storage");
-                    let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
-
-                    self.set_target_state(TargetReplState::Shutdown);
-                    return;
-                }
-            };
-
-            tracing::debug!(entries=%entries.as_slice().summary(), "=== prep_outbound_buffer_from_storage");
-
-            for entry in entries.iter() {
-                if let EntryPayload::PurgedMarker = entry.payload {
-                    self.set_target_state(TargetReplState::Snapshotting);
-                    return;
-                }
-            }
-
-            self.outbound_buffer.extend(entries.into_iter().map(OutboundEntry::Raw));
-        }
+        Ok(Some(entries))
     }
 }
 
@@ -833,14 +632,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     #[tracing::instrument(level = "trace", skip(self), fields(state = "snapshotting"))]
     pub async fn run(mut self) {
-        let event = ReplicaEvent::RateUpdate {
-            target: self.replication_core.target,
-            matched: self.replication_core.matched,
-        };
-        let _ = self.replication_core.raft_core_tx.send((event, tracing::debug_span!("CH")));
-        self.replication_core.replication_buffer.clear();
-        self.replication_core.outbound_buffer.clear();
-
         loop {
             if self.replication_core.target_state != TargetReplState::Snapshotting {
                 return;
@@ -887,6 +678,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let _ent = span.enter();
 
             tokio::select! {
+                // TODO: when waiting for snapshot, send empty entries
                 _ = self.replication_core.heartbeat.tick() => self.replication_core.send_append_entries().await,
 
                 event_span = self.replication_core.repl_rx.recv() =>  {
@@ -919,8 +711,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let mut offset = 0;
 
-        self.replication_core.next_index = snapshot.meta.last_log_id.index + 1;
-        self.replication_core.matched = snapshot.meta.last_log_id;
+        // self.replication_core.matched = snapshot.meta.last_log_id;
         let mut buf = Vec::with_capacity(self.replication_core.config.snapshot_max_chunk_size as usize);
 
         loop {
@@ -983,7 +774,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // If we just sent the final chunk of the snapshot, then transition to lagging state.
             if done {
-                self.replication_core.set_target_state(TargetReplState::Lagging);
+                self.replication_core.set_target_state(TargetReplState::LineRate);
+
+                tracing::debug!(
+                    "done install snapshot: snapshot last_log_id: {}, replication_core.matched: {}",
+                    snapshot.meta.last_log_id,
+                    self.replication_core.matched,
+                );
+
+                if snapshot.meta.last_log_id > self.replication_core.matched {
+                    self.replication_core.matched = snapshot.meta.last_log_id;
+                    self.replication_core.update_matched();
+                    self.replication_core.update_rate();
+                }
                 return Ok(());
             }
 

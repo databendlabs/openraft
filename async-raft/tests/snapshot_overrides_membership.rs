@@ -126,6 +126,8 @@ async fn snapshot_overrides_membership() -> Result<()> {
         {
             router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
 
+            tracing::info!("--- DONE add non-voter");
+
             router.wait_for_log(&btreeset![0, 1], want, timeout(), "add non-voter").await?;
             let expected_snap = Some((want.into(), 1, MembershipConfig {
                 members: btreeset![0u64],
