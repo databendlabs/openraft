@@ -50,7 +50,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self, event))]
     pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent<S::SnapshotData>) {
         let res = match event {
-            ReplicaEvent::RateUpdate { target, is_line_rate } => self.handle_rate_update(target, is_line_rate).await,
+            ReplicaEvent::RateUpdate { target, matched } => self.handle_rate_update(target, matched).await,
             ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
             ReplicaEvent::UpdateMatchIndex { target, matched } => self.handle_update_matched(target, matched).await,
             ReplicaEvent::NeedsSnapshot { target, tx } => self.handle_needs_snapshot(target, tx).await,
@@ -65,8 +65,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle events from replication streams updating their replication rate tracker.
-    #[tracing::instrument(level = "trace", skip(self, target, is_line_rate))]
-    async fn handle_rate_update(&mut self, target: NodeId, is_line_rate: bool) -> RaftResult<()> {
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn handle_rate_update(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
         // Get a handle the target's replication stat & update it as needed.
         if let Some(_state) = self.nodes.get_mut(&target) {
             return Ok(());
@@ -74,7 +74,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Else, if this is a non-voter, then update as needed.
         if let Some(state) = self.non_voters.get_mut(&target) {
             // TODO(xp): use Vec<_> to replace the two membership configs.
-            state.is_ready_to_join = is_line_rate;
+
+            state.is_ready_to_join =
+                self.core.last_log_id.index.saturating_sub(matched.index) < self.core.config.replication_lag_threshold;
+
             // Issue a response on the non-voters response channel if needed.
             if state.is_ready_to_join {
                 if let Some(tx) = state.tx.take() {

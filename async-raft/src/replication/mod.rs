@@ -312,7 +312,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     .map(|diff| diff > self.config.replication_lag_threshold)
                     .unwrap_or(false);
                 if is_lagging {
-                    self.target_state = TargetReplState::Lagging;
+                    self.set_target_state(TargetReplState::Lagging);
                 }
             }
             return;
@@ -328,7 +328,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 },
                 tracing::debug_span!("CH"),
             ));
-            self.target_state = TargetReplState::Shutdown;
+            self.set_target_state(TargetReplState::Shutdown);
             return;
         }
 
@@ -347,7 +347,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // If conflict index is 0, we will not be able to fetch that index from storage because
             // it will never exist. So instead, we just return, and accept the conflict data.
             if conflict.log_id.index == 0 {
-                self.target_state = TargetReplState::Lagging;
+                self.set_target_state(TargetReplState::Lagging);
+
                 let _ = self.raft_core_tx.send((
                     ReplicaEvent::UpdateMatchIndex {
                         target: self.target,
@@ -365,7 +366,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 Err(err) => {
                     tracing::error!(error=?err, "error fetching log entry due to returned AppendEntries RPC conflict_opt");
                     let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
-                    self.target_state = TargetReplState::Shutdown;
+                    self.set_target_state(TargetReplState::Shutdown);
                     return;
                 }
             };
@@ -378,7 +379,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 None => {
                     // This condition would only ever be reached if the log has been removed due to
                     // log compaction (barring critical storage failure), so transition to snapshotting.
-                    self.target_state = TargetReplState::Snapshotting;
+                    self.set_target_state(TargetReplState::Snapshotting);
                     let _ = self.raft_core_tx.send((
                         ReplicaEvent::UpdateMatchIndex {
                             target: self.target,
@@ -403,15 +404,37 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     let diff = self.last_log_index - conflict.log_id.index; // NOTE WELL: underflow is guarded against above.
                     if &diff >= threshold {
                         // Follower is far behind and needs to receive an InstallSnapshot RPC.
-                        self.target_state = TargetReplState::Snapshotting;
+                        self.set_target_state(TargetReplState::Snapshotting);
                         return;
                     }
                     // Follower is behind, but not too far behind to receive an InstallSnapshot RPC.
-                    self.target_state = TargetReplState::Lagging;
+                    self.set_target_state(TargetReplState::Lagging);
                     return;
                 }
             }
         }
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    fn set_target_state(&mut self, state: TargetReplState) {
+        self.target_state = state;
+
+        match self.target_state {
+            TargetReplState::LineRate => {}
+            TargetReplState::Lagging => {}
+            TargetReplState::Snapshotting => {}
+            TargetReplState::Shutdown => {
+                return;
+            }
+        }
+
+        let _ = self.raft_core_tx.send((
+            ReplicaEvent::RateUpdate {
+                target: self.target,
+                matched: self.matched,
+            },
+            tracing::debug_span!("CH"),
+        ));
     }
 
     /// Perform a check to see if this replication stream is lagging behind far enough that a
@@ -466,7 +489,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 }
 
                 RaftEvent::Terminate => {
-                    self.target_state = TargetReplState::Shutdown;
+                    self.set_target_state(TargetReplState::Shutdown);
                     return;
                 }
             }
@@ -500,7 +523,7 @@ impl<D: AppData> AsRef<Entry<D>> for OutboundEntry<D> {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// The state of the replication stream.
-#[derive(Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 enum TargetReplState {
     /// The replication stream is running at line rate.
     LineRate,
@@ -539,12 +562,9 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
     RateUpdate {
         /// The ID of the Raft node to which this event relates.
         target: NodeId,
-        /// A flag indicating if the corresponding target node is replicating at line rate.
-        ///
-        /// When replicating at line rate, the replication stream will receive log entries to
-        /// replicate as soon as they are ready. When not running at line rate, the Raft node will
-        /// only send over metadata without entries to replicate.
-        is_line_rate: bool,
+
+        /// The latest matching log id on the replication target.
+        matched: LogId,
     },
     /// An event from a replication stream which updates the target node's match index.
     UpdateMatchIndex {
@@ -576,9 +596,9 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
         match self {
             ReplicaEvent::RateUpdate {
                 ref target,
-                is_line_rate,
+                ref matched,
             } => {
-                format!("RateUpdate: target: {}, is_line_rate: {}", target, is_line_rate)
+                format!("RateUpdate: target: {}, matched: {}", target, matched)
             }
             ReplicaEvent::UpdateMatchIndex {
                 ref target,
@@ -600,11 +620,14 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
     #[tracing::instrument(level = "trace", skip(self), fields(state = "line-rate"))]
     pub async fn line_rate_loop(&mut self) {
-        let event = ReplicaEvent::RateUpdate {
-            target: self.target,
-            is_line_rate: true,
-        };
-        let _ = self.raft_core_tx.send((event, tracing::debug_span!("CH")));
+        let _ = self.raft_core_tx.send((
+            ReplicaEvent::RateUpdate {
+                target: self.target,
+                matched: self.matched,
+            },
+            tracing::debug_span!("CH"),
+        ));
+
         loop {
             if self.target_state != TargetReplState::LineRate {
                 return;
@@ -650,7 +673,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 event_span = self.repl_rx.recv() => {
                     match event_span {
                         Some((event, span)) => self.drain_raft_rx(event, span),
-                        None => self.target_state = TargetReplState::Shutdown,
+                        None => {
+                            self.set_target_state(TargetReplState::Shutdown);
+                        },
                     }
                 }
             }
@@ -658,7 +683,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     /// Ensure there are no gaps in the outbound buffer due to transition from lagging.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn frontload_outbound_buffer(&mut self, start: u64, stop: u64) {
         let entries = match self.storage.get_log_entries(start..stop).await {
             Ok(entries) => entries,
@@ -669,9 +694,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
         };
 
+        tracing::debug!(entries=%entries.as_slice().summary(), "=== frontload_outbound_buffer");
+
         for entry in entries.iter() {
             if let EntryPayload::PurgedMarker = entry.payload {
-                self.target_state = TargetReplState::Snapshotting;
+                self.set_target_state(TargetReplState::Snapshotting);
                 return;
             }
         }
@@ -684,11 +711,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
     #[tracing::instrument(level = "trace", skip(self), fields(state = "lagging"))]
     pub async fn lagging_loop(&mut self) {
-        let event = ReplicaEvent::RateUpdate {
-            target: self.target,
-            is_line_rate: false,
-        };
-        let _ = self.raft_core_tx.send((event, tracing::debug_span!("CH")));
+        let _ = self.raft_core_tx.send((
+            ReplicaEvent::RateUpdate {
+                target: self.target,
+                matched: self.matched,
+            },
+            tracing::debug_span!("CH"),
+        ));
+
         self.replication_buffer.clear();
         self.outbound_buffer.clear();
         loop {
@@ -697,19 +727,19 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
             // If this stream is far enough behind, then transition to snapshotting state.
             if self.needs_snapshot() {
-                self.target_state = TargetReplState::Snapshotting;
+                self.set_target_state(TargetReplState::Snapshotting);
                 return;
             }
 
             // Prep entries from storage and send them off for replication.
             if self.is_up_to_speed() {
-                self.target_state = TargetReplState::LineRate;
+                self.set_target_state(TargetReplState::LineRate);
                 return;
             }
             self.prep_outbound_buffer_from_storage().await;
             self.send_append_entries().await;
             if self.is_up_to_speed() {
-                self.target_state = TargetReplState::LineRate;
+                self.set_target_state(TargetReplState::LineRate);
                 return;
             }
 
@@ -727,7 +757,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     /// Prep the outbound buffer with the next payload of entries to append.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn prep_outbound_buffer_from_storage(&mut self) {
         // If the send buffer is empty, we need to fill it.
         if self.outbound_buffer.is_empty() {
@@ -744,7 +774,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             let stop_idx = if is_within_payload_distance {
                 // If we have caught up to the line index, then that means we will be running at
                 // line rate after this payload is successfully replicated.
-                self.target_state = TargetReplState::LineRate; // Will continue in lagging state until the outer loop cycles.
+
+                // Will continue in lagging state until the outer loop cycles.
+                self.set_target_state(TargetReplState::LineRate);
+
                 self.commit_index + 1 // +1 to ensure stop value is included.
             } else {
                 self.next_index + self.config.max_payload_entries + 1 // +1 to ensure stop value is
@@ -758,14 +791,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 Err(err) => {
                     tracing::error!(error=%err, "error fetching logs from storage");
                     let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
-                    self.target_state = TargetReplState::Shutdown;
+
+                    self.set_target_state(TargetReplState::Shutdown);
                     return;
                 }
             };
 
+            tracing::debug!(entries=%entries.as_slice().summary(), "=== prep_outbound_buffer_from_storage");
+
             for entry in entries.iter() {
                 if let EntryPayload::PurgedMarker = entry.payload {
-                    self.target_state = TargetReplState::Snapshotting;
+                    self.set_target_state(TargetReplState::Snapshotting);
                     return;
                 }
             }
@@ -799,7 +835,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub async fn run(mut self) {
         let event = ReplicaEvent::RateUpdate {
             target: self.replication_core.target,
-            is_line_rate: false,
+            matched: self.replication_core.matched,
         };
         let _ = self.replication_core.raft_core_tx.send((event, tracing::debug_span!("CH")));
         self.replication_core.replication_buffer.clear();
@@ -858,7 +894,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
                         Some((event, span)) => self.replication_core.drain_raft_rx(event, span),
                         None => {
-                            self.replication_core.target_state = TargetReplState::Shutdown;
+                            self.replication_core.set_target_state(TargetReplState::Shutdown);
                             return;
                         }
                     }
@@ -941,13 +977,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     },
                     tracing::debug_span!("CH"),
                 ));
-                self.replication_core.target_state = TargetReplState::Shutdown;
+                self.replication_core.set_target_state(TargetReplState::Shutdown);
                 return Ok(());
             }
 
             // If we just sent the final chunk of the snapshot, then transition to lagging state.
             if done {
-                self.replication_core.target_state = TargetReplState::Lagging;
+                self.replication_core.set_target_state(TargetReplState::Lagging);
                 return Ok(());
             }
 
