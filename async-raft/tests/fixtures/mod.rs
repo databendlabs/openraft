@@ -555,11 +555,11 @@ impl RaftRouter {
     ) {
         let rt = self.routing_table.read().await;
         for (id, (_node, storage)) in rt.iter() {
-            let last_log = storage.get_log_entries(..).await.unwrap().last().unwrap().log_id.index;
+            let last_log_id = storage.last_log_id().await;
             assert_eq!(
-                last_log, expect_last_log,
+                expect_last_log, last_log_id.index,
                 "expected node {} to have last_log {}, got {}",
-                id, expect_last_log, last_log
+                id, expect_last_log, last_log_id.index
             );
 
             let hs = storage.read_hard_state().await.unwrap_or_else(|| panic!("no hard state found for node {}", id));

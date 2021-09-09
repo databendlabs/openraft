@@ -510,16 +510,6 @@ pub struct Entry<D: AppData> {
     pub payload: EntryPayload<D>,
 }
 
-impl<D: AppData> Entry<D> {
-    /// Create a new snapshot pointer from the given snapshot meta.
-    pub fn new_purged_marker(log_id: LogId) -> Self {
-        Entry {
-            log_id,
-            payload: EntryPayload::PurgedMarker,
-        }
-    }
-}
-
 impl<D: AppData> MessageSummary for Entry<D> {
     fn summary(&self) -> String {
         format!("{}:{}", self.log_id, self.payload.summary())
@@ -557,8 +547,6 @@ pub enum EntryPayload<D: AppData> {
     Normal(EntryNormal<D>),
     /// A config change log entry.
     ConfigChange(EntryConfigChange),
-    /// An entry before which all logs are removed.
-    PurgedMarker,
 }
 
 impl<D: AppData> MessageSummary for EntryPayload<D> {
@@ -569,7 +557,6 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
             EntryPayload::ConfigChange(c) => {
                 format!("config-change: {:?}", c.membership)
             }
-            EntryPayload::PurgedMarker => "purged-marker".to_string(),
         }
     }
 }

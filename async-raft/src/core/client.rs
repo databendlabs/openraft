@@ -414,7 +414,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
             EntryPayload::Blank => {}
             EntryPayload::Normal(_) => {}
-            EntryPayload::PurgedMarker => {}
         }
     }
 

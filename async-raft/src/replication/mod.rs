@@ -356,7 +356,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 // This condition would only ever be reached if the log has been removed due to
                 // log compaction (barring critical storage failure), so transition to snapshotting.
                 self.set_target_state(TargetReplState::Snapshotting);
-                return;
             }
         };
     }

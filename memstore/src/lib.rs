@@ -663,9 +663,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
             match entry.payload {
                 EntryPayload::Blank => res.push(ClientResponse(None)),
-                EntryPayload::PurgedMarker => {
-                    return Err(anyhow::anyhow!("PurgedMarker should never be passed to state machine"));
-                }
                 EntryPayload::Normal(ref norm) => {
                     let data = &norm.data;
                     if let Some((serial, r)) = sm.client_serial_responses.get(&data.client) {
@@ -773,9 +770,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             // Remove logs that are included in the snapshot.
             // Leave at least one log or the replication can not find out the mismatched log.
             *log = log.split_off(&meta.last_log_id.index);
-
-            // In case there are no log at all, a marker log need to be added to indicate the last log.
-            log.insert(meta.last_log_id.index, Entry::new_purged_marker(meta.last_log_id));
         }
 
         // Update the state machine.
