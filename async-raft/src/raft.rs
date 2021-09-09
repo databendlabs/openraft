@@ -677,8 +677,12 @@ impl VoteRequest {
 pub struct VoteResponse {
     /// The current term of the responding node, for the candidate to update itself.
     pub term: u64,
+
     /// Will be true if the candidate received a vote from the responder.
     pub vote_granted: bool,
+
+    /// The last log id stored on the remote voter.
+    pub last_log_id: LogId,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

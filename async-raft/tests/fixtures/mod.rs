@@ -204,6 +204,10 @@ impl RaftRouter {
         self.new_raft_node_with_sto(id, memstore).await
     }
 
+    pub fn new_store(self: &Arc<Self>, id: u64) -> Arc<MemStore> {
+        Arc::new(MemStore::new(id))
+    }
+
     pub async fn new_raft_node_with_sto(self: &Arc<Self>, id: NodeId, sto: Arc<MemStore>) {
         let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone());
         let mut rt = self.routing_table.write().await;
