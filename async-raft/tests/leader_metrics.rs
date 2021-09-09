@@ -171,12 +171,19 @@ async fn leader_metrics() -> Result<()> {
         .send_vote(0, VoteRequest {
             term: 100,
             candidate_id: 100,
-            last_log_index: 100,
-            last_log_term: 10,
+            last_log_id: LogId { term: 10, index: 100 },
         })
         .await?;
 
-    router.wait_for_state(&btreeset![0], State::Candidate, timeout, "node 0 to candidate").await?;
+    // The next election may have finished before waiting.
+    router
+        .wait_for_metrics(
+            &0,
+            |x| x.state == State::Candidate || (x.state == State::Leader && x.current_term == 101),
+            timeout,
+            "node 0 becomes candidate or becomes a new leader",
+        )
+        .await?;
 
     router
         .wait_for_metrics(

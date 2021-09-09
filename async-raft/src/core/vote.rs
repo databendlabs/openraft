@@ -58,10 +58,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.save_hard_state().await?;
         }
 
+        // TODO: bug: (2,1), (1,2)
         // Check if candidate's log is at least as up-to-date as this node's.
         // If candidate's log is not at least as up-to-date as this node, then reject.
         let client_is_uptodate =
-            (msg.last_log_term >= self.last_log_id.term) && (msg.last_log_index >= self.last_log_id.index);
+            (msg.last_log_id.term >= self.last_log_id.term) && (msg.last_log_id.index >= self.last_log_id.index);
         if !client_is_uptodate {
             tracing::debug!(
                 { candidate = msg.candidate_id },

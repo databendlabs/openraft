@@ -648,10 +648,8 @@ pub struct VoteRequest {
     pub term: u64,
     /// The candidate's ID.
     pub candidate_id: u64,
-    /// The index of the candidate’s last log entry (§5.4).
-    pub last_log_index: u64,
-    /// The term of the candidate’s last log entry (§5.4).
-    pub last_log_term: u64,
+
+    pub last_log_id: LogId,
 }
 
 impl MessageSummary for VoteRequest {
@@ -666,8 +664,10 @@ impl VoteRequest {
         Self {
             term,
             candidate_id,
-            last_log_index,
-            last_log_term,
+            last_log_id: LogId {
+                term: last_log_term,
+                index: last_log_index,
+            },
         }
     }
 }
