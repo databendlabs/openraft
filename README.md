@@ -32,6 +32,9 @@ They are well tested but it should still be considered as a beta.
 
 Bug fixes are:
 
+- fix: handle-vote should compare last_log_id in dictionary order, not in vector order
+- fix: race condition of concurrent snapshot-install and apply.
+- fix: a non-voter not in joint config should not block replication
 - fix: when append-entries, deleting entries after prev-log-id causes committed entry to be lost
 - fix: too many(50) inconsistent log should not live lock append-entries
 - fix: RaftCore.entries_cache is inconsistent with storage. removed it.
