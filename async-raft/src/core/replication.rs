@@ -324,6 +324,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             tokio::spawn(
                 async move {
                     let _ = chan.recv().await;
+                    // TODO(xp): send another ReplicaEvent::NeedSnapshot to raft core
                     drop(tx);
                 }
                 .instrument(tracing::debug_span!("spawn-recv-and-drop")),
