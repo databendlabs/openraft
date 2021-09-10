@@ -583,19 +583,21 @@ impl RaftRouter {
         let rt = self.routing_table.read().await;
         for (id, (_node, storage)) in rt.iter() {
             let last_log_id = storage.last_log_id().await;
+
             assert_eq!(
                 expect_last_log, last_log_id.index,
                 "expected node {} to have last_log {}, got {}",
-                id, expect_last_log, last_log_id.index
+                id, expect_last_log, last_log_id
             );
 
             let hs = storage.read_hard_state().await.unwrap_or_else(|| panic!("no hard state found for node {}", id));
 
             assert_eq!(
                 hs.current_term, expect_term,
-                "expected node {} to have term {}, got {}",
-                id, expect_term, hs.current_term
+                "expected node {} to have term {}, got {:?}",
+                id, expect_term, hs
             );
+
             if let Some(voted_for) = &expect_voted_for {
                 assert_eq!(
                     hs.voted_for.as_ref(),
@@ -603,9 +605,10 @@ impl RaftRouter {
                     "expected node {} to have voted for {}, got {:?}",
                     id,
                     voted_for,
-                    hs.voted_for
+                    hs
                 );
             }
+
             if let Some((index_test, term, cfg)) = &expect_snapshot {
                 let snap = storage
                     .get_current_snapshot()
@@ -613,6 +616,7 @@ impl RaftRouter {
                     .map_err(|err| panic!("{}", err))
                     .unwrap()
                     .unwrap_or_else(|| panic!("no snapshot present for node {}", id));
+
                 match index_test {
                     ValueTest::Exact(index) => assert_eq!(
                         &snap.meta.last_log_id.index, index,
@@ -627,18 +631,22 @@ impl RaftRouter {
                         snap.meta.last_log_id.index
                     ),
                 }
+
                 assert_eq!(
                     &snap.meta.last_log_id.term, term,
                     "expected node {} to have snapshot with term {}, got {}",
                     id, term, snap.meta.last_log_id.term
                 );
+
                 assert_eq!(
                     &snap.meta.membership, cfg,
                     "expected node {} to have membership config {:?}, got {:?}",
                     id, cfg, snap.meta.membership
                 );
             }
+
             let sm = storage.get_state_machine().await;
+
             assert_eq!(
                 &sm.last_applied_log, &expect_sm_last_applied_log,
                 "expected node {} to have state machine last_applied_log {}, got {}",

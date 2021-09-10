@@ -16,6 +16,7 @@ use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::Snapshot;
+use crate::summary::MessageSummary;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -47,18 +48,20 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle a replication event coming from one of the replication streams.
-    #[tracing::instrument(level = "trace", skip(self, event))]
+    #[tracing::instrument(level = "trace", skip(self, event), fields(event=%event.summary()))]
     pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent<S::SnapshotData>) {
         let res = match event {
-            ReplicaEvent::RateUpdate { target, matched } => self.handle_rate_update(target, matched).await,
             ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
-            ReplicaEvent::UpdateMatchIndex { target, matched } => self.handle_update_matched(target, matched).await,
+            ReplicaEvent::UpdateMatchIndex { target, matched } => {
+                self.handle_update_mactched_and_rate(target, matched).await
+            }
             ReplicaEvent::NeedsSnapshot { target, tx } => self.handle_needs_snapshot(target, tx).await,
             ReplicaEvent::Shutdown => {
                 self.core.set_target_state(State::Shutdown);
                 return;
             }
         };
+
         if let Err(err) = res {
             tracing::error!({error=%err}, "error while processing event from replication stream");
         }
@@ -74,8 +77,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Else, if this is a non-voter, then update as needed.
         if let Some(state) = self.non_voters.get_mut(&target) {
             // the matched increments monotonically.
+
             tracing::debug!("state.matched: {}, update to matched: {}", state.state.matched, matched);
             assert!(matched >= state.state.matched);
+
             state.state.matched = matched;
 
             // TODO(xp): use Vec<_> to replace the two membership configs.
@@ -89,6 +94,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     // TODO(xp): no log index to send
                     let _ = tx.send(Ok(0));
                 }
+
                 // If we are in NonVoterSync state, and this is one of the nodes being awaiting, then update.
                 match std::mem::replace(&mut self.consensus_state, ConsensusState::Uniform) {
                     ConsensusState::NonVoterSync {
@@ -123,6 +129,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.set_target_state(State::Follower);
         }
         Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn handle_update_mactched_and_rate(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
+        self.handle_update_matched(target, matched).await?;
+        self.handle_rate_update(target, matched).await
     }
 
     /// Handle events from a replication stream which updates the target node's match index.

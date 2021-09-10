@@ -274,7 +274,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             if let Some(log_id) = last_log_id {
                 self.matched = log_id;
                 self.update_matched();
-                self.update_rate();
             }
             return;
         }
@@ -319,7 +318,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         if conflict.log_id.index == 0 {
             self.matched = LogId { term: 0, index: 0 };
             self.update_matched();
-            self.update_rate();
 
             return;
         }
@@ -346,7 +344,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
                 if term == conflict.log_id.term {
                     self.update_matched();
-                    self.update_rate();
                 }
             }
             None => {
@@ -360,19 +357,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     #[tracing::instrument(level = "debug", skip(self))]
     fn set_target_state(&mut self, state: TargetReplState) {
         self.target_state = state;
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    fn update_rate(&mut self) {
-        tracing::debug!(target=%self.target, matched=%self.matched, "update_rate");
-
-        let _ = self.raft_core_tx.send((
-            ReplicaEvent::RateUpdate {
-                target: self.target,
-                matched: self.matched,
-            },
-            tracing::debug_span!("CH"),
-        ));
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -483,14 +467,6 @@ pub(crate) enum RaftEvent<D: AppData> {
 pub(crate) enum ReplicaEvent<S>
 where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
-    /// An event representing an update to the replication rate of a replication stream.
-    RateUpdate {
-        /// The ID of the Raft node to which this event relates.
-        target: NodeId,
-
-        /// The latest matching log id on the replication target.
-        matched: LogId,
-    },
     /// An event from a replication stream which updates the target node's match index.
     UpdateMatchIndex {
         /// The ID of the target node for which the match index is to be updated.
@@ -519,12 +495,6 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for ReplicaEvent<S> {
     fn summary(&self) -> String {
         match self {
-            ReplicaEvent::RateUpdate {
-                ref target,
-                ref matched,
-            } => {
-                format!("RateUpdate: target: {}, matched: {}", target, matched)
-            }
             ReplicaEvent::UpdateMatchIndex {
                 ref target,
                 ref matched,
@@ -776,7 +746,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 if snapshot.meta.last_log_id > self.matched {
                     self.matched = snapshot.meta.last_log_id;
                     self.update_matched();
-                    self.update_rate();
                 }
                 return Ok(());
             }
