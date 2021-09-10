@@ -605,6 +605,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         tracing::debug!(entries=%entries.as_slice().summary(), "=== load_log_entries");
 
+        let first = entries.first().map(|x| x.log_id.index);
+        if first != Some(start) {
+            tracing::info!(
+                "entry {} to replicate not found, first: {:?}, switch to snapshot replication",
+                start,
+                first
+            );
+            self.set_target_state(TargetReplState::Snapshotting);
+            return Ok(None);
+        }
+
         Ok(Some(entries))
     }
 }

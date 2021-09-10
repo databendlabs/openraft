@@ -165,29 +165,35 @@ async fn leader_metrics() -> Result<()> {
         )
         .await?;
 
-    tracing::info!("--- take leadership of node 0");
+    let leader = router.current_leader(0).await.unwrap();
 
-    router
-        .send_vote(0, VoteRequest {
-            term: 100,
-            candidate_id: 100,
-            last_log_id: LogId { term: 10, index: 100 },
-        })
-        .await?;
+    tracing::info!("--- take leadership of node {}", leader);
+    {
+        router
+            .send_vote(leader, VoteRequest {
+                term: 100,
+                candidate_id: 100,
+                last_log_id: LogId { term: 10, index: 100 },
+            })
+            .await?;
 
-    // The next election may have finished before waiting.
+        // The next election may have finished before waiting.
+        router
+            .wait_for_metrics(
+                &leader,
+                |x| x.state != State::Leader || (x.state == State::Leader && x.current_term > 100),
+                timeout,
+                &format!("node {} becomes candidate or becomes a new leader", leader,),
+            )
+            .await?;
+    }
+
+    tracing::info!("--- check leader metrics after leadership transferred.");
+    let leader = router.current_leader(0).await.unwrap();
+
     router
         .wait_for_metrics(
-            &0,
-            |x| x.state == State::Candidate || (x.state == State::Leader && x.current_term == 101),
-            timeout,
-            "node 0 becomes candidate or becomes a new leader",
-        )
-        .await?;
-
-    router
-        .wait_for_metrics(
-            &0,
+            &leader,
             |x| x.leader_metrics.is_none(),
             timeout,
             "node 0 should close all replication",

@@ -4,6 +4,12 @@ jobs:
   build-async-raft:
     name: build async-raft
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        store_defensive:
+          - "on"
+          - "off"
+
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v2
@@ -14,7 +20,16 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      # unit tests
+      # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
+      # - Raft should not depend on defensive error to work correctly.
+      - name: Unit Tests, with and without defensive store
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+        env:
+          RUST_BACKTRACE: full
+          RAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
+
       - name: Unit Tests
         uses: actions-rs/cargo@v1
         with:

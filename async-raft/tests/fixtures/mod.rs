@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
+use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -200,12 +201,34 @@ impl RaftRouter {
 
     /// Create and register a new Raft node bearing the given ID.
     pub async fn new_raft_node(self: &Arc<Self>, id: NodeId) {
-        let memstore = Arc::new(MemStore::new(id));
+        let memstore = self.new_store(id).await;
         self.new_raft_node_with_sto(id, memstore).await
     }
 
-    pub fn new_store(self: &Arc<Self>, id: u64) -> Arc<MemStore> {
-        Arc::new(MemStore::new(id))
+    pub async fn new_store(self: &Arc<Self>, id: u64) -> Arc<MemStore> {
+        let defensive = env::var("RAFT_STORE_DEFENSIVE").ok();
+
+        let sto = Arc::new(MemStore::new(id));
+
+        if let Some(d) = defensive {
+            tracing::info!("RAFT_STORE_DEFENSIVE set store defensive to {}", d);
+
+            let want = if d == "on" {
+                true
+            } else if d == "off" {
+                false
+            } else {
+                tracing::warn!("unknown value of RAFT_STORE_DEFENSIVE: {}", d);
+                return sto;
+            };
+
+            let got = sto.defensive(want).await;
+            if got != want {
+                tracing::error!("failure to set store defensive to {}", want);
+            }
+        }
+
+        sto
     }
 
     pub async fn new_raft_node_with_sto(self: &Arc<Self>, id: NodeId, sto: Arc<MemStore>) {
