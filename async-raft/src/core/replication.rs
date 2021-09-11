@@ -70,51 +70,73 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Handle events from replication streams updating their replication rate tracker.
     #[tracing::instrument(level = "debug", skip(self))]
     async fn handle_rate_update(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
-        // Get a handle the target's replication stat & update it as needed.
-        if let Some(_state) = self.nodes.get_mut(&target) {
+        {
+            let voter = self.nodes.get(&target);
+            let non_voter = self.non_voters.get(&target);
+
+            assert!(
+                !(voter.is_some() && non_voter.is_some()),
+                "target {} can not be in both voter and non-voter",
+                target
+            );
+        }
+
+        // if let Some(_state) = self.nodes.get_mut(&target) {
+        //     return Ok(());
+        // }
+
+        let state = self.non_voters.get_mut(&target);
+        let state = match state {
+            None => {
+                return Ok(());
+            }
+            Some(x) => x,
+        };
+
+        // the matched increments monotonically.
+
+        tracing::debug!("state.matched: {}, update to matched: {}", state.state.matched, matched);
+        assert!(matched >= state.state.matched);
+
+        state.state.matched = matched;
+
+        // TODO(xp): use Vec<_> to replace the two membership configs.
+
+        state.is_ready_to_join =
+            self.core.last_log_id.index.saturating_sub(matched.index) < self.core.config.replication_lag_threshold;
+
+        // Issue a response on the non-voters response channel if needed.
+        if !state.is_ready_to_join {
             return Ok(());
         }
-        // Else, if this is a non-voter, then update as needed.
-        if let Some(state) = self.non_voters.get_mut(&target) {
-            // the matched increments monotonically.
 
-            tracing::debug!("state.matched: {}, update to matched: {}", state.state.matched, matched);
-            assert!(matched >= state.state.matched);
+        // ready to join
 
-            state.state.matched = matched;
+        if let Some(tx) = state.tx.take() {
+            // TODO(xp): no log index to send
+            let _ = tx.send(Ok(0));
+        }
 
-            // TODO(xp): use Vec<_> to replace the two membership configs.
+        // If we are in NonVoterSync state, and this is one of the nodes being awaiting, then update.
+        match std::mem::replace(&mut self.consensus_state, ConsensusState::Uniform) {
+            ConsensusState::NonVoterSync {
+                mut awaiting,
+                members,
+                tx,
+            } => {
+                awaiting.remove(&target);
 
-            state.is_ready_to_join =
-                self.core.last_log_id.index.saturating_sub(matched.index) < self.core.config.replication_lag_threshold;
-
-            // Issue a response on the non-voters response channel if needed.
-            if state.is_ready_to_join {
-                if let Some(tx) = state.tx.take() {
-                    // TODO(xp): no log index to send
-                    let _ = tx.send(Ok(0));
-                }
-
-                // If we are in NonVoterSync state, and this is one of the nodes being awaiting, then update.
-                match std::mem::replace(&mut self.consensus_state, ConsensusState::Uniform) {
-                    ConsensusState::NonVoterSync {
-                        mut awaiting,
-                        members,
-                        tx,
-                    } => {
-                        awaiting.remove(&target);
-                        if awaiting.is_empty() {
-                            // We are ready to move forward with entering joint consensus.
-                            self.consensus_state = ConsensusState::Uniform;
-                            self.change_membership(members, tx).await;
-                        } else {
-                            // We are still awaiting additional nodes, so replace our original state.
-                            self.consensus_state = ConsensusState::NonVoterSync { awaiting, members, tx };
-                        }
-                    }
-                    other => self.consensus_state = other, // Set the original value back to what it was.
+                if awaiting.is_empty() {
+                    // We are ready to move forward with entering joint consensus.
+                    self.consensus_state = ConsensusState::Uniform;
+                    self.change_membership(members, tx).await;
+                } else {
+                    // We are still awaiting additional nodes, so replace our original state.
+                    self.consensus_state = ConsensusState::NonVoterSync { awaiting, members, tx };
                 }
             }
+
+            other => self.consensus_state = other, // Set the original value back to what it was.
         }
         Ok(())
     }

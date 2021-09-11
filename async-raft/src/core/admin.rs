@@ -116,13 +116,18 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         //
         // Here, all we do is check to see which nodes still need to be synced, which determines
         // if we can proceed.
+
+        // TODO(xp): test change membership without adding as non-voter.
+
         let mut awaiting = HashSet::new();
         for new_node in members.difference(&self.core.membership.members) {
             match self.non_voters.get(&new_node) {
                 // Node is ready to join.
                 Some(node) if node.is_ready_to_join => continue,
+
                 // Node has repl stream, but is not yet ready to join.
                 Some(_) => (),
+
                 // Node does not yet have a repl stream, spawn one.
                 None => {
                     // Spawn a replication stream for the new member. Track state as a non-voter so that it
