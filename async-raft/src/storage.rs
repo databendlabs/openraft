@@ -1,10 +1,8 @@
 //! The Raft storage interface and data types.
 
-use std::error::Error;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
-use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde::Serialize;
@@ -20,8 +18,9 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
 use crate::NodeId;
+use crate::StorageError;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotMeta {
     // Log entries upto which this snapshot includes, inclusive.
     pub last_log_id: LogId,
@@ -106,15 +105,6 @@ where
     /// for details on where and how this is used.
     type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Unpin + 'static;
 
-    /// The error type used to indicate to Raft that shutdown is needed when calling the
-    /// `apply_entry_to_state_machine` method.
-    ///
-    /// This error type is only considered for the `apply_entry_to_state_machine` method as it is
-    /// the only method which is allowed to return errors normally as part of application logic.
-    ///
-    /// For all other methods of this trait, returning an error will cause Raft to shutdown.
-    type ShutdownError: Error + Send + Sync + 'static;
-
     /// Set if to turn on defensive check to unexpected input.
     /// E.g. discontinuous log appending.
     /// The default impl returns `false` to indicate it does impl any defensive check.
@@ -135,7 +125,7 @@ where
     /// the node's ID so that it is consistent across restarts.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_membership_config(&self) -> Result<MembershipConfig>;
+    async fn get_membership_config(&self) -> Result<MembershipConfig, StorageError>;
 
     /// Get Raft's state information from storage.
     ///
@@ -148,12 +138,12 @@ where
     /// the node's hard state record; and the index of the last log applied to the state machine.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_initial_state(&self) -> Result<InitialState>;
+    async fn get_initial_state(&self) -> Result<InitialState, StorageError>;
 
     /// Save Raft's hard-state.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn save_hard_state(&self, hs: &HardState) -> Result<()>;
+    async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError>;
 
     /// Get a series of log entries from storage.
     ///
@@ -163,11 +153,11 @@ where
     async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RNG,
-    ) -> Result<Vec<Entry<D>>>;
+    ) -> Result<Vec<Entry<D>>, StorageError>;
 
     /// Try to get an log entry.
     /// It does not return an error if in defensive mode and the log entry at `log_index` is not found.
-    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>>;
+    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>, StorageError>;
 
     /// Returns the last known log id.
     /// It could be the id of the last entry in log, or the last applied id that is saved in state machine.
@@ -186,12 +176,15 @@ where
     ///
     /// TODO(xp) test it
     /// TODO(xp) defensive test about consistency
-    async fn get_last_log_id(&self) -> Result<LogId>;
+    async fn get_last_log_id(&self) -> Result<LogId, StorageError>;
 
     /// Delete all logs in a `range`.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(&self, range: RNG) -> Result<()>;
+    async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+        &self,
+        range: RNG,
+    ) -> Result<(), StorageError>;
 
     /// Append a payload of entries to the log.
     ///
@@ -199,7 +192,7 @@ where
     /// determine its location to be written in the log.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<()>;
+    async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<(), StorageError>;
 
     /// Apply the given payload of entries to the state machine.
     ///
@@ -216,15 +209,8 @@ where
     /// - Deal with EntryPayload::ConfigChange
     /// - A EntryPayload::SnapshotPointer log should never be seen.
     ///
-    /// TODO(xp): choose one of the following policy:
-    /// Error handling for this method is note worthy. If an error is returned from a call to this
-    /// method, the error will be inspected, and if the error is an instance of
-    /// `RaftStorage::ShutdownError`, then Raft will go into shutdown in order to preserve the
-    /// safety of the data and avoid corruption. Any other errors will be propagated back up to the
-    /// `Raft.client_write` call point.
-    ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn apply_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>>;
+    async fn apply_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>, StorageError>;
 
     /// Perform log compaction, returning a handle to the generated snapshot.
     ///
@@ -236,7 +222,7 @@ where
     /// log covered by the snapshot.
     ///
     /// Errors returned from this method will be logged and retried.
-    async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>>;
+    async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError>;
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object.
     ///
@@ -247,7 +233,7 @@ where
     /// for details on log compaction / snapshotting.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>>;
+    async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>, StorageError>;
 
     /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
     ///
@@ -270,7 +256,7 @@ where
         &self,
         meta: &SnapshotMeta,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<StateMachineChanges>;
+    ) -> Result<StateMachineChanges, StorageError>;
 
     /// Get a readable handle to the current snapshot, along with its metadata.
     ///
@@ -285,7 +271,7 @@ where
     /// of the snapshot, which should be decoded for creating this method's response data.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>>;
+    async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError>;
 }
 
 /// APIs for debugging a store.

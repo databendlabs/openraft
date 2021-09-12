@@ -212,11 +212,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     #[tracing::instrument(level = "debug", skip(self))]
     async fn delete_logs(&mut self, start: u64) -> RaftResult<()> {
-        self.storage.delete_logs_from(start..).await.map_err(|err| self.map_fatal_storage_error(err))?;
+        self.storage.delete_logs_from(start..).await.map_err(|err| self.map_storage_error(err))?;
 
         self.last_log_id = self.get_log_id(start - 1).await?;
 
-        let membership = self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let membership = self.storage.get_membership_config().await.map_err(|err| self.map_storage_error(err))?;
 
         self.update_membership(membership)?;
 
@@ -231,8 +231,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(self.last_applied);
         }
 
-        let entries =
-            self.storage.get_log_entries(index..=index).await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let entries = self.storage.get_log_entries(index..=index).await.map_err(|err| self.map_storage_error(err))?;
 
         let entry = entries
             .first()
@@ -300,8 +299,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             msg_entries.summary()
         );
 
-        let entries =
-            self.storage.get_log_entries(index..end).await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let entries = self.storage.get_log_entries(index..end).await.map_err(|err| self.map_storage_error(err))?;
 
         for (i, ent) in entries.iter().enumerate() {
             assert_eq!(msg_entries[i].log_id.index, ent.log_id.index);
@@ -336,8 +334,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(LogId { term: 0, index: 0 });
         }
 
-        let entries =
-            self.storage.get_log_entries(start..=start).await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let entries = self.storage.get_log_entries(start..=start).await.map_err(|err| self.map_storage_error(err))?;
 
         let log_id = entries.first().unwrap().log_id;
 
@@ -394,7 +391,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Replicate entries to log (same as append, but in follower mode).
         let entry_refs = entries.iter().collect::<Vec<_>>();
-        self.storage.append_to_log(&entry_refs).await.map_err(|err| self.map_fatal_storage_error(err))?;
+        self.storage.append_to_log(&entry_refs).await.map_err(|err| self.map_storage_error(err))?;
         if let Some(entry) = entries.last() {
             self.last_log_id = entry.log_id;
         }
@@ -433,7 +430,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .storage
             .get_log_entries(self.last_applied.index + 1..=self.commit_index)
             .await
-            .map_err(|e| self.map_fatal_storage_error(e))?;
+            .map_err(|e| self.map_storage_error(e))?;
 
         let last_log_id = entries.last().map(|x| x.log_id).unwrap();
 
@@ -441,10 +438,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tracing::debug!(?last_log_id);
 
         let entries_refs: Vec<_> = entries.iter().collect();
-        self.storage
-            .apply_to_state_machine(&entries_refs)
-            .await
-            .map_err(|e| self.map_fatal_storage_error(e))?;
+        self.storage.apply_to_state_machine(&entries_refs).await.map_err(|e| self.map_storage_error(e))?;
 
         self.last_applied = last_log_id;
 
@@ -474,12 +468,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Fetch the series of entries which must be applied to the state machine, then apply them.
 
-        let entries = storage.get_log_entries(start..stop).await.map_err(|e| self.map_fatal_storage_error(e))?;
+        let entries = storage.get_log_entries(start..stop).await.map_err(|e| self.map_storage_error(e))?;
 
         let new_last_applied = entries.last().unwrap();
 
         let data_entries: Vec<_> = entries.iter().collect();
-        storage.apply_to_state_machine(&data_entries).await.map_err(|e| self.map_fatal_storage_error(e))?;
+        storage.apply_to_state_machine(&data_entries).await.map_err(|e| self.map_storage_error(e))?;
 
         self.last_applied = new_last_applied.log_id;
         self.report_metrics(Update::Ignore);

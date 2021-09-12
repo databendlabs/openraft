@@ -329,12 +329,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         };
 
         // Check for existence of current snapshot.
-        let current_snapshot_opt = self
-            .core
-            .storage
-            .get_current_snapshot()
-            .await
-            .map_err(|err| self.core.map_fatal_storage_error(err))?;
+        let current_snapshot_opt =
+            self.core.storage.get_current_snapshot().await.map_err(|err| self.core.map_storage_error(err))?;
 
         if let Some(snapshot) = current_snapshot_opt {
             // If snapshot exists, ensure its distance from the leader's last log index is <= half

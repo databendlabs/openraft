@@ -32,6 +32,7 @@ use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::StorageError;
 
 /// A wrapper around a ClientRequest which has been transformed into an Entry, along with its response channel.
 pub(super) struct ClientRequestEntry<D: AppData, R: AppDataResponse> {
@@ -87,8 +88,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // Thus if a new leader sees only the first one, it needs to append the final config log to let
             // the change-membership operation to finish.
 
-            let last_logs =
-                self.core.storage.get_log_entries(last_index..=last_index).await.map_err(RaftError::RaftStorage)?;
+            let last_logs = self
+                .core
+                .storage
+                .get_log_entries(last_index..=last_index)
+                .await
+                .map_err(|x| RaftError::RaftStorage(x.into()))?;
             let last_log = &last_logs[0];
 
             let req = match last_log.payload {
@@ -266,11 +271,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             },
             payload,
         };
-        self.core
-            .storage
-            .append_to_log(&[&entry])
-            .await
-            .map_err(|err| self.core.map_fatal_storage_error(err))?;
+        self.core.storage.append_to_log(&[&entry]).await.map_err(|err| self.core.map_storage_error(err))?;
         self.core.last_log_id.index = entry.log_id.index;
 
         self.leader_report_metrics();
@@ -436,7 +437,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .storage
                 .get_log_entries(expected_next_index..index)
                 .await
-                .map_err(|err| self.core.map_fatal_storage_error(err))?;
+                .map_err(|err| self.core.map_storage_error(err))?;
 
             if let Some(entry) = entries.last() {
                 self.core.last_applied = entry.log_id;
@@ -448,18 +449,18 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     .storage
                     .apply_to_state_machine(&data_entries)
                     .await
-                    .map_err(|err| self.core.map_fatal_storage_error(err))?;
+                    .map_err(|err| self.core.map_storage_error(err))?;
             }
         }
 
         // Apply this entry to the state machine and return its data response.
         let res = self.core.storage.apply_to_state_machine(&[entry]).await.map_err(|err| {
-            if err.downcast_ref::<S::ShutdownError>().is_some() {
+            if let StorageError::IO { .. } = err {
                 // If this is an instance of the storage impl's shutdown error, then trigger shutdown.
-                self.core.map_fatal_storage_error(err)
+                self.core.map_storage_error(err)
             } else {
                 // Else, we propagate normally.
-                RaftError::RaftStorage(err)
+                RaftError::RaftStorage(err.into())
             }
         });
 

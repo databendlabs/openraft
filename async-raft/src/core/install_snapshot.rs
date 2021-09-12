@@ -111,8 +111,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // Create a new snapshot and begin writing its contents.
-        let mut snapshot =
-            self.storage.begin_receiving_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let mut snapshot = self.storage.begin_receiving_snapshot().await.map_err(|err| self.map_storage_error(err))?;
         snapshot.as_mut().write_all(&req.data).await?;
 
         // If this was a small snapshot, and it is already done, then finish up.
@@ -199,7 +198,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .storage
             .finalize_snapshot_installation(&req.meta, snapshot)
             .await
-            .map_err(|e| self.map_fatal_storage_error(e))?;
+            .map_err(|e| self.map_storage_error(e))?;
 
         tracing::debug!("update after apply or install-snapshot: {:?}", changes);
 
@@ -216,8 +215,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             }
 
             // There could be unknown membership in the snapshot.
-            let membership =
-                self.storage.get_membership_config().await.map_err(|err| self.map_fatal_storage_error(err))?;
+            let membership = self.storage.get_membership_config().await.map_err(|err| self.map_storage_error(err))?;
 
             self.update_membership(membership)?;
 

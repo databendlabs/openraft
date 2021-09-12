@@ -61,14 +61,14 @@ where
 }
 
 #[test]
-pub fn test_mem_store() -> Result<()> {
+pub fn test_mem_store() -> anyhow::Result<()> {
     Suite::test_store(&MemStoreBuilder {})?;
 
     Ok(())
 }
 
 #[test]
-pub fn test_mem_store_defensive() -> Result<()> {
+pub fn test_mem_store_defensive() -> anyhow::Result<()> {
     Suite::test_store_defensive(&DefensiveBuilder {
         inner: MemStoreBuilder {},
         d: std::marker::PhantomData,
@@ -81,7 +81,7 @@ pub fn test_mem_store_defensive() -> Result<()> {
 
 /// Block until a future is finished.
 /// The future will be running in a clean tokio runtime, to prevent an unfinished task affecting the test.
-pub fn run_fut<F>(f: F) -> Result<()>
+pub fn run_fut<F>(f: F) -> anyhow::Result<()>
 where F: Future<Output = anyhow::Result<()>> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(f)?;
@@ -103,7 +103,7 @@ where
     S: RaftStorageDebug<MemStoreStateMachine> + RaftStorage<ClientRequest, ClientResponse>,
     B: StoreBuilder<ClientRequest, ClientResponse, S>,
 {
-    fn test_store(builder: &B) -> Result<()> {
+    fn test_store(builder: &B) -> anyhow::Result<()> {
         run_fut(Suite::get_membership_config_default(builder))?;
         run_fut(Suite::get_membership_config_from_log_and_sm(builder))?;
         run_fut(Suite::get_initial_state_default(builder))?;
@@ -123,7 +123,7 @@ where
         Ok(())
     }
 
-    pub async fn get_membership_config_default(builder: &B) -> Result<()> {
+    pub async fn get_membership_config_default(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let membership = store.get_membership_config().await?;
@@ -139,7 +139,7 @@ where
         Ok(())
     }
 
-    pub async fn get_membership_config_from_log_and_sm(builder: &B) -> Result<()> {
+    pub async fn get_membership_config_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         tracing::info!("--- no log, read membership from state machine");
@@ -226,7 +226,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_default(builder: &B) -> Result<()> {
+    pub async fn get_initial_state_default(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let expected_hs = HardState {
@@ -262,7 +262,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_with_state(builder: &B) -> Result<()> {
+    pub async fn get_initial_state_with_state(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::default_hard_state(&store).await?;
 
@@ -303,7 +303,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_membership_from_log_and_sm(builder: &B) -> Result<()> {
+    pub async fn get_initial_state_membership_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
         // It should never return membership from logs that are included in state machine present.
 
         let store = builder.new_store(NODE_ID).await;
@@ -395,7 +395,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_last_log_gt_sm(builder: &B) -> Result<()> {
+    pub async fn get_initial_state_last_log_gt_sm(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::default_hard_state(&store).await?;
 
@@ -429,7 +429,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> Result<()> {
+    pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> anyhow::Result<()> {
         // TODO(xp): check membership: read from log first, then state machine then default.
         let store = builder.new_store(NODE_ID).await;
         Self::default_hard_state(&store).await?;
@@ -458,7 +458,7 @@ where
         Ok(())
     }
 
-    pub async fn save_hard_state(builder: &B) -> Result<()> {
+    pub async fn save_hard_state(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         store
@@ -480,7 +480,7 @@ where
         Ok(())
     }
 
-    pub async fn get_log_entries(builder: &B) -> Result<()> {
+    pub async fn get_log_entries(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
 
@@ -502,7 +502,7 @@ where
         Ok(())
     }
 
-    pub async fn try_get_log_entry(builder: &B) -> Result<()> {
+    pub async fn try_get_log_entry(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
 
@@ -518,7 +518,7 @@ where
         Ok(())
     }
 
-    pub async fn get_last_log_id(builder: &B) -> Result<()> {
+    pub async fn get_last_log_id(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let log_id = store.get_last_log_id().await?;
@@ -590,7 +590,7 @@ where
         Ok(())
     }
 
-    pub async fn delete_logs_from(builder: &B) -> Result<()> {
+    pub async fn delete_logs_from(builder: &B) -> anyhow::Result<()> {
         tracing::info!("--- delete start == stop");
         {
             let store = builder.new_store(NODE_ID).await;
@@ -639,7 +639,7 @@ where
         Ok(())
     }
 
-    pub async fn append_to_log(builder: &B) -> Result<()> {
+    pub async fn append_to_log(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
 
@@ -658,7 +658,7 @@ where
         Ok(())
     }
 
-    pub async fn apply_single(builder: &B) -> Result<()> {
+    pub async fn apply_single(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let entry = Entry {
@@ -696,7 +696,7 @@ where
         Ok(())
     }
 
-    pub async fn apply_multi(builder: &B) -> Result<()> {
+    pub async fn apply_multi(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let req0 = ClientRequest {
@@ -803,7 +803,7 @@ where
     S: RaftStorageDebug<MemStoreStateMachine> + RaftStorage<ClientRequest, ClientResponse>,
     B: StoreBuilder<ClientRequest, ClientResponse, S>,
 {
-    fn test_store_defensive(builder: &B) -> Result<()> {
+    fn test_store_defensive(builder: &B) -> anyhow::Result<()> {
         run_fut(Suite::df_get_membership_config_dirty_log(builder))?;
         run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
         run_fut(Suite::df_save_hard_state_ascending(builder))?;
@@ -823,7 +823,7 @@ where
         Ok(())
     }
 
-    pub async fn df_get_membership_config_dirty_log(builder: &B) -> Result<()> {
+    pub async fn df_get_membership_config_dirty_log(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
@@ -867,14 +867,23 @@ where
                 ])
                 .await?;
 
-            let mem = store.get_membership_config().await;
-            assert!(mem.is_err());
+            let res = store.get_membership_config().await;
+
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert!(matches!(e, DefensiveError {
+                subject: ErrorSubject::Log(LogId { term: 1, index: 3 }),
+                violation: Violation::DirtyLog {
+                    higher_index_log_id: LogId { term: 1, index: 3 },
+                    lower_index_log_id: LogId { term: 2, index: 2 },
+                },
+                ..
+            }))
         }
 
         Ok(())
     }
 
-    pub async fn df_get_initial_state_dirty_log(builder: &B) -> Result<()> {
+    pub async fn df_get_initial_state_dirty_log(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
@@ -920,13 +929,22 @@ where
                 .await?;
 
             let state = store.get_initial_state().await;
-            assert!(state.is_err());
+            let e = state.unwrap_err().into_defensive().unwrap();
+
+            assert!(matches!(e, DefensiveError {
+                subject: ErrorSubject::Log(LogId { term: 1, index: 3 }),
+                violation: Violation::DirtyLog {
+                    higher_index_log_id: LogId { term: 1, index: 3 },
+                    lower_index_log_id: LogId { term: 2, index: 2 },
+                },
+                ..
+            }))
         }
 
         Ok(())
     }
 
-    pub async fn df_save_hard_state_ascending(builder: &B) -> Result<()> {
+    pub async fn df_save_hard_state_ascending(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         store
@@ -945,7 +963,12 @@ where
                 })
                 .await;
 
-            assert!(res.is_err());
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert!(matches!(e, DefensiveError {
+                subject: ErrorSubject::HardState,
+                violation: Violation::TermNotAscending { curr: 10, to: 9 },
+                ..
+            }));
 
             let state = store.get_initial_state().await?;
 
@@ -967,7 +990,21 @@ where
                 })
                 .await;
 
-            assert!(res.is_err());
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert!(matches!(e, DefensiveError {
+                subject: ErrorSubject::HardState,
+                violation: Violation::VotedForChanged {
+                    curr: HardState {
+                        current_term: 10,
+                        voted_for: Some(NODE_ID)
+                    },
+                    to: HardState {
+                        current_term: 10,
+                        voted_for: None
+                    }
+                },
+                ..
+            }));
 
             let state = store.get_initial_state().await?;
 
@@ -989,7 +1026,21 @@ where
                 })
                 .await;
 
-            assert!(res.is_err());
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert!(matches!(e, DefensiveError {
+                subject: ErrorSubject::HardState,
+                violation: Violation::VotedForChanged {
+                    curr: HardState {
+                        current_term: 10,
+                        voted_for: Some(NODE_ID)
+                    },
+                    to: HardState {
+                        current_term: 10,
+                        voted_for: Some(1000)
+                    }
+                },
+                ..
+            }));
 
             let state = store.get_initial_state().await?;
 
@@ -1005,7 +1056,7 @@ where
         Ok(())
     }
 
-    pub async fn df_get_log_entries(builder: &B) -> Result<()> {
+    pub async fn df_get_log_entries(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
 
@@ -1017,18 +1068,56 @@ where
         // mismatched bound.
 
         let res = store.get_log_entries(11..).await;
-        assert!(res.is_err());
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert!(matches!(e, DefensiveError {
+            subject: ErrorSubject::LogIndex(11),
+            violation: Violation::LogIndexNotFound { want: 11, got: None },
+            ..
+        }));
 
         let res = store.get_log_entries(1..1).await;
-        assert!(res.is_err());
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert!(matches!(e, DefensiveError {
+            subject: ErrorSubject::Logs,
+            violation: Violation::RangeEmpty {
+                start: Some(1),
+                end: Some(0)
+            },
+            ..
+        }));
 
         let res = store.get_log_entries(0..1).await;
-        assert!(res.is_err());
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert!(matches!(e, DefensiveError {
+            subject: ErrorSubject::LogIndex(0),
+            violation: Violation::LogIndexNotFound { want: 0, got: None },
+            ..
+        }));
+
+        let res = store.get_log_entries(0..2).await;
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert!(matches!(e, DefensiveError {
+            subject: ErrorSubject::LogIndex(0),
+            violation: Violation::LogIndexNotFound { want: 0, got: Some(1) },
+            ..
+        }));
+
+        let res = store.get_log_entries(10..12).await;
+        let e = res.unwrap_err().into_defensive().unwrap();
+        println!("{}", e);
+        assert!(matches!(e, DefensiveError {
+            subject: ErrorSubject::LogIndex(11),
+            violation: Violation::LogIndexNotFound {
+                want: 11,
+                got: Some(10)
+            },
+            ..
+        }));
 
         Ok(())
     }
 
-    pub async fn df_get_last_log_id(builder: &B) -> Result<()> {
+    pub async fn df_get_last_log_id(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         tracing::info!("--- last log_id.index == last_applied.index");
@@ -1048,7 +1137,16 @@ where
                 .await?;
 
             let res = store.get_last_log_id().await;
-            assert!(res.is_err());
+
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 1 }), e.subject);
+            assert_eq!(
+                Violation::DirtyLog {
+                    higher_index_log_id: LogId { term: 1, index: 1 },
+                    lower_index_log_id: LogId { term: 2, index: 1 }
+                },
+                e.violation
+            );
         }
 
         tracing::info!("--- last log_id.index > last_applied.index => last log_id > last_applied");
@@ -1063,35 +1161,65 @@ where
             store.defensive(true).await;
 
             let res = store.get_last_log_id().await;
-            assert!(res.is_err());
+
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 2 }), e.subject);
+            assert_eq!(
+                Violation::DirtyLog {
+                    higher_index_log_id: LogId { term: 1, index: 2 },
+                    lower_index_log_id: LogId { term: 2, index: 1 }
+                },
+                e.violation
+            );
         }
 
         Ok(())
     }
 
-    pub async fn df_delete_logs_from_nonempty_range(builder: &B) -> Result<()> {
+    pub async fn df_delete_logs_from_nonempty_range(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
 
         let res = store.delete_logs_from(10..10).await;
-        assert!(res.is_err());
+
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert_eq!(ErrorSubject::Logs, e.subject);
+        assert_eq!(
+            Violation::RangeEmpty {
+                start: Some(10),
+                end: Some(9),
+            },
+            e.violation
+        );
 
         let res = store.delete_logs_from(1..5).await;
-        assert!(res.is_err());
+
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert_eq!(ErrorSubject::Logs, e.subject);
+        assert_eq!(
+            Violation::RangeNotHalfOpen {
+                start: Bound::Included(1),
+                end: Bound::Excluded(5),
+            },
+            e.violation
+        );
 
         Ok(())
     }
 
-    pub async fn df_append_to_log_nonempty_input(builder: &B) -> Result<()> {
+    pub async fn df_append_to_log_nonempty_input(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let res = store.append_to_log(Vec::<&Entry<_>>::new().as_slice()).await;
-        assert!(res.is_err());
+
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert_eq!(ErrorSubject::Logs, e.subject);
+        assert_eq!(Violation::LogsEmpty, e.violation);
 
         Ok(())
     }
 
-    pub async fn df_append_to_log_nonconsecutive_input(builder: &B) -> Result<()> {
+    pub async fn df_append_to_log_nonconsecutive_input(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let res = store
@@ -1106,12 +1234,21 @@ where
                 },
             ])
             .await;
-        assert!(res.is_err());
+
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert_eq!(ErrorSubject::Logs, e.subject);
+        assert_eq!(
+            Violation::LogsNonConsecutive {
+                prev: LogId { term: 1, index: 1 },
+                next: LogId { term: 1, index: 3 },
+            },
+            e.violation
+        );
 
         Ok(())
     }
 
-    pub async fn df_append_to_log_eq_last_plus_one(builder: &B) -> Result<()> {
+    pub async fn df_append_to_log_eq_last_plus_one(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         tracing::info!("-- log_id <= last_applied");
@@ -1145,12 +1282,20 @@ where
             }])
             .await;
 
-        assert!(res.is_err());
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert_eq!(ErrorSubject::Log(LogId { term: 3, index: 4 }), e.subject);
+        assert_eq!(
+            Violation::LogsNonConsecutive {
+                prev: LogId { term: 1, index: 2 },
+                next: LogId { term: 3, index: 4 },
+            },
+            e.violation
+        );
 
         Ok(())
     }
 
-    pub async fn df_append_to_log_eq_last_applied_plus_one(builder: &B) -> Result<()> {
+    pub async fn df_append_to_log_eq_last_applied_plus_one(builder: &B) -> anyhow::Result<()> {
         // last_log: 1,1
         // last_applied: 1,2
         // append_to_log: 1,4
@@ -1195,12 +1340,20 @@ where
             }])
             .await;
 
-        assert!(res.is_err());
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 4 }), e.subject);
+        assert_eq!(
+            Violation::LogsNonConsecutive {
+                prev: LogId { term: 1, index: 2 },
+                next: LogId { term: 1, index: 4 },
+            },
+            e.violation
+        );
 
         Ok(())
     }
 
-    pub async fn df_append_to_log_gt_last_log_id(builder: &B) -> Result<()> {
+    pub async fn df_append_to_log_gt_last_log_id(builder: &B) -> anyhow::Result<()> {
         // last_log: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
         let store = builder.new_store(NODE_ID).await;
@@ -1225,12 +1378,20 @@ where
             }])
             .await;
 
-        assert!(res.is_err());
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 3 }), e.subject);
+        assert_eq!(
+            Violation::LogsNonConsecutive {
+                prev: LogId { term: 2, index: 2 },
+                next: LogId { term: 1, index: 3 },
+            },
+            e.violation
+        );
 
         Ok(())
     }
 
-    pub async fn df_append_to_log_gt_last_applied_id(builder: &B) -> Result<()> {
+    pub async fn df_append_to_log_gt_last_applied_id(builder: &B) -> anyhow::Result<()> {
         // last_log: 2,1
         // last_applied: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
@@ -1271,21 +1432,32 @@ where
             }])
             .await;
 
-        assert!(res.is_err());
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 3 }), e.subject);
+        assert_eq!(
+            Violation::LogsNonConsecutive {
+                prev: LogId { term: 2, index: 2 },
+                next: LogId { term: 1, index: 3 },
+            },
+            e.violation
+        );
 
         Ok(())
     }
 
-    pub async fn df_apply_nonempty_input(builder: &B) -> Result<()> {
+    pub async fn df_apply_nonempty_input(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let res = store.apply_to_state_machine(Vec::<&Entry<_>>::new().as_slice()).await;
-        assert!(res.is_err());
+
+        let e = res.unwrap_err().into_defensive().unwrap();
+        assert_eq!(ErrorSubject::Logs, e.subject);
+        assert_eq!(Violation::LogsEmpty, e.violation);
 
         Ok(())
     }
 
-    pub async fn df_apply_index_eq_last_applied_plus_one(builder: &B) -> Result<()> {
+    pub async fn df_apply_index_eq_last_applied_plus_one(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let entry = Entry {
@@ -1305,7 +1477,16 @@ where
         tracing::info!("--- re-apply 1th");
         {
             let res = store.apply_to_state_machine(&[&entry]).await;
-            assert!(res.is_err());
+
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert_eq!(ErrorSubject::Apply(LogId { term: 3, index: 1 }), e.subject);
+            assert_eq!(
+                Violation::ApplyNonConsecutive {
+                    prev: LogId { term: 3, index: 1 },
+                    next: LogId { term: 3, index: 1 },
+                },
+                e.violation
+            );
         }
 
         tracing::info!("--- apply 3rd when there is only 1st");
@@ -1322,13 +1503,22 @@ where
                 }),
             };
             let res = store.apply_to_state_machine(&[&entry]).await;
-            assert!(res.is_err());
+
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert_eq!(ErrorSubject::Apply(LogId { term: 3, index: 3 }), e.subject);
+            assert_eq!(
+                Violation::ApplyNonConsecutive {
+                    prev: LogId { term: 3, index: 1 },
+                    next: LogId { term: 3, index: 3 },
+                },
+                e.violation
+            );
         }
 
         Ok(())
     }
 
-    pub async fn df_apply_gt_last_applied_id(builder: &B) -> Result<()> {
+    pub async fn df_apply_gt_last_applied_id(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
         let entry = Entry {
@@ -1346,6 +1536,16 @@ where
             };
             let res = store.apply_to_state_machine(&[&entry]).await;
             assert!(res.is_err());
+
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert_eq!(ErrorSubject::Apply(LogId { term: 2, index: 2 }), e.subject);
+            assert_eq!(
+                Violation::ApplyNonConsecutive {
+                    prev: LogId { term: 3, index: 1 },
+                    next: LogId { term: 2, index: 2 },
+                },
+                e.violation
+            );
         }
 
         Ok(())

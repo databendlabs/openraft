@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![feature(backtrace)]
 
 pub mod config;
 mod core;
@@ -12,6 +13,7 @@ pub mod raft;
 mod raft_types;
 mod replication;
 pub mod storage;
+mod storage_error;
 mod summary;
 
 pub use async_trait;
@@ -39,6 +41,12 @@ pub use crate::replication::ReplicationMetrics;
 pub use crate::storage::RaftStorage;
 pub use crate::storage::RaftStorageDebug;
 pub use crate::storage::SnapshotMeta;
+pub use crate::storage_error::DefensiveError;
+pub use crate::storage_error::ErrorSubject;
+pub use crate::storage_error::ErrorVerb;
+pub use crate::storage_error::StorageError;
+pub use crate::storage_error::StorageIOError;
+pub use crate::storage_error::Violation;
 pub use crate::summary::MessageSummary;
 
 /// A Raft node's ID.

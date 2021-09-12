@@ -2,8 +2,6 @@
 
 use std::fmt;
 
-use thiserror::Error;
-
 use crate::raft_types::SnapshotSegmentId;
 use crate::AppData;
 use crate::NodeId;
@@ -12,7 +10,7 @@ use crate::NodeId;
 pub type RaftResult<T> = std::result::Result<T, RaftError>;
 
 /// Error variants related to the internals of Raft.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RaftError {
     // Streaming-snapshot encountered mismatched snapshot_id/offset
@@ -21,12 +19,15 @@ pub enum RaftError {
         expect: SnapshotSegmentId,
         got: SnapshotSegmentId,
     },
+
     /// An error which has come from the `RaftStorage` layer.
     #[error("{0}")]
     RaftStorage(anyhow::Error),
+
     /// An error which has come from the `RaftNetwork` layer.
     #[error("{0}")]
     RaftNetwork(anyhow::Error),
+
     /// An internal Raft error indicating that Raft is shutting down.
     #[error("Raft is shutting down")]
     ShuttingDown,
@@ -39,7 +40,7 @@ impl From<tokio::io::Error> for RaftError {
 }
 
 /// An error related to a client read request.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum ClientReadError {
     /// A Raft error.
     #[error("{0}")]
@@ -50,7 +51,7 @@ pub enum ClientReadError {
 }
 
 /// An error related to a client write request.
-#[derive(Error)]
+#[derive(thiserror::Error)]
 pub enum ClientWriteError<D: AppData> {
     /// A Raft error.
     #[error("{0}")]
@@ -72,13 +73,14 @@ impl<D: AppData> fmt::Debug for ClientWriteError<D> {
 }
 
 /// Error variants related to configuration.
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Debug, thiserror::Error, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum ConfigError {
     /// A configuration error indicating that the given values for election timeout min & max are invalid: max must be
     /// greater than min.
     #[error("given values for election timeout min & max are invalid: max must be greater than min")]
     InvalidElectionTimeoutMinMax,
+
     /// The given value for max_payload_entries is too small, must be > 0.
     #[error("the given value for max_payload_entries is too small, must be > 0")]
     MaxPayloadEntriesTooSmall,
@@ -90,19 +92,20 @@ pub enum ConfigError {
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum InitializeError {
     /// An internal error has taken place.
     #[error("{0}")]
     RaftError(#[from] RaftError),
+
     /// The requested action is not allowed due to the Raft node's current state.
     #[error("the requested action is not allowed due to the Raft node's current state")]
     NotAllowed,
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ChangeConfigError {
     /// An error related to the processing of the config change request.
@@ -111,19 +114,23 @@ pub enum ChangeConfigError {
     /// to the Raft log and the process related to that workflow.
     #[error("{0}")]
     RaftError(#[from] RaftError),
+
     /// The cluster is already undergoing a configuration change.
     #[error("the cluster is already undergoing a configuration change")]
     ConfigChangeInProgress,
+
     /// The given config would leave the cluster in an inoperable state.
     ///
     /// This error will be returned if the full set of changes, once fully applied, would leave
     /// the cluster in an inoperable state.
     #[error("the given config would leave the cluster in an inoperable state")]
     InoperableConfig,
+
     /// The node the config change proposal was sent to was not the leader of the cluster. The ID
     /// of the current leader is returned if known.
     #[error("this node is not the Raft leader")]
     NodeNotLeader(Option<NodeId>),
+
     /// The proposed config changes would make no difference to the current config.
     ///
     /// This takes into account a current joint consensus and the end result of the config.
@@ -141,7 +148,7 @@ impl<D: AppData> From<ClientWriteError<D>> for ChangeConfigError {
 }
 
 // A error wrapper of every type of error that will be sent to the caller.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ResponseError {
     #[error(transparent)]

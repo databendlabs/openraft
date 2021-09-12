@@ -56,6 +56,7 @@ use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::StorageError;
 use crate::Update;
 
 /// The core type implementing the Raft protocol.
@@ -179,7 +180,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn main(mut self) -> RaftResult<()> {
         tracing::debug!("raft node is initializing");
 
-        let state = self.storage.get_initial_state().await.map_err(|err| self.map_fatal_storage_error(err))?;
+        let state = self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))?;
         self.last_log_id = state.last_log_id;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
@@ -191,9 +192,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.commit_index = 0;
 
         // Fetch the most recent snapshot in the system.
-        if let Some(snapshot) =
-            self.storage.get_current_snapshot().await.map_err(|err| self.map_fatal_storage_error(err))?
-        {
+        if let Some(snapshot) = self.storage.get_current_snapshot().await.map_err(|err| self.map_storage_error(err))? {
             self.snapshot_last_log_id = snapshot.meta.last_log_id;
             self.report_metrics(Update::Ignore);
         }
@@ -286,7 +285,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             current_term: self.current_term,
             voted_for: self.voted_for,
         };
-        self.storage.save_hard_state(&hs).await.map_err(|err| self.map_fatal_storage_error(err))
+        self.storage.save_hard_state(&hs).await.map_err(|err| self.map_storage_error(err))
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
@@ -365,6 +364,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tracing::error!({error=?err, id=self.id}, "fatal storage error, shutting down");
         self.set_target_state(State::Shutdown);
         RaftError::RaftStorage(err)
+    }
+
+    fn map_storage_error(&mut self, err: StorageError) -> RaftError {
+        tracing::error!({error=?err, id=self.id}, "fatal storage error, shutting down");
+        self.set_target_state(State::Shutdown);
+        RaftError::RaftStorage(err.into())
     }
 
     /// Update the node's current membership config & save hard state.
