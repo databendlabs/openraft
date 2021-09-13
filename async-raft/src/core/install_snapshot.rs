@@ -194,6 +194,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // --------------------------------------------------------------------> time
         // ```
 
+        // TODO(xp): do not install if self.last_applied >= snapshot.meta.last_applied
+
         let changes = self
             .storage
             .finalize_snapshot_installation(&req.meta, snapshot)
@@ -207,6 +209,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // If you have any question about this, let me know: drdr.xp at gmail.com
 
         if let Some(last_applied) = changes.last_applied {
+            // Applied logs are not needed.
+            self.storage.delete_logs_from(..=last_applied.index).await.map_err(|e| self.map_storage_error(e))?;
+
             // snapshot is installed
             self.last_applied = last_applied;
 

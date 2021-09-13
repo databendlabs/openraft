@@ -802,15 +802,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             tracing::debug!("JSON SNAP DATA:{}", y);
         }
 
-        // Update log.
-        {
-            let mut log = self.log.write().await;
-
-            // Remove logs that are included in the snapshot.
-            // Leave at least one log or the replication can not find out the mismatched log.
-            *log = log.split_off(&meta.last_log_id.index);
-        }
-
         // Update the state machine.
         {
             let new_sm: MemStoreStateMachine = serde_json::from_slice(&new_snapshot.data).map_err(|e| {

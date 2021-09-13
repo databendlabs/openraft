@@ -120,6 +120,8 @@ where
         run_fut(Suite::apply_single(builder))?;
         run_fut(Suite::apply_multi(builder))?;
 
+        // TODO(xp): test: finalized_snapshot, do_log_compaction, begin_receiving_snapshot, get_current_snapshot
+
         Ok(())
     }
 

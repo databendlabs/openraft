@@ -237,19 +237,10 @@ where
 
     /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
     ///
-    /// Delete all entries in the log through `meta.last_log_id.index`.
-    ///
-    /// Write a new snapshot pointer to the log at the given `meta.last_log_id.index`. The snapshot pointer should be
-    /// constructed via the `Entry::new_snapshot_pointer` constructor and the other parameters
-    /// provided to this method.
-    ///
     /// All other snapshots should be deleted at this point.
     ///
     /// ### snapshot
-    /// A snapshot created from an earlier call to `created_snapshot` which provided the snapshot.
-    /// By the time ownership of the snapshot object is returned here, its
-    /// `AsyncWriteExt.shutdown()` method will have been called, so no additional writes should be
-    /// made to the snapshot.
+    /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the snapshot.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
     async fn finalize_snapshot_installation(
