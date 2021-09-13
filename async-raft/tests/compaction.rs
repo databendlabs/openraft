@@ -4,7 +4,6 @@ use anyhow::Result;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::LogId;
-use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
@@ -29,12 +28,8 @@ async fn compaction() -> Result<()> {
     let snapshot_threshold: u64 = 50;
 
     // Setup test dependencies.
-    let config = Arc::new(
-        Config::build("test".into())
-            .snapshot_policy(SnapshotPolicy::LogsSinceLast(snapshot_threshold))
-            .validate()
-            .expect("failed to build Raft config"),
-    );
+    let config =
+        Arc::new(Config::build(&["foo", "--snapshot-policy", "since_last:50"]).expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 

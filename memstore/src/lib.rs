@@ -726,14 +726,16 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError> {
         let (data, last_applied_log);
         let membership_config;
+
         {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
             data = serde_json::to_vec(&*sm)
                 .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, e.into()))?;
+
             last_applied_log = sm.last_applied_log;
             membership_config = sm.last_membership.clone().unwrap_or_else(|| MembershipConfig::new_initial(self.id));
-        } // Release state machine read lock.
+        }
 
         let snapshot_size = data.len();
 

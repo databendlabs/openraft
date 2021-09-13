@@ -15,12 +15,14 @@ readme = "../README.md"
 [dependencies]
 anyhow = "1.0.32"
 async-trait = "0.1.36"
+byte-unit = "4.0.12"
 bytes = "1.0"
 derive_more = { version="0.99.9", default-features=false, features=["from"] }
 futures = "0.3"
 log = "0.4"
 rand = "0.8"
 serde = { version="1", features=["derive"] }
+structopt = "0.3"
 thiserror = "1.0.29"
 tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1.26"

@@ -21,7 +21,6 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 pub use crate::config::Config;
-pub use crate::config::ConfigBuilder;
 pub use crate::config::SnapshotPolicy;
 pub use crate::core::State;
 pub use crate::error::ChangeConfigError;

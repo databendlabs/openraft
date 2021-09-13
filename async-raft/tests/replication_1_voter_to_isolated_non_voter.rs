@@ -24,7 +24,7 @@ async fn replication_1_voter_to_isolated_non_voter() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 
-    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
+    let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;

@@ -4,23 +4,9 @@ use rand::thread_rng;
 use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
+use structopt::StructOpt;
 
 use crate::error::ConfigError;
-
-/// Default election timeout minimum, in milliseconds.
-pub const DEFAULT_ELECTION_TIMEOUT_MIN: u64 = 150;
-/// Default election timeout maximum, in milliseconds.
-pub const DEFAULT_ELECTION_TIMEOUT_MAX: u64 = 300;
-/// Default heartbeat interval.
-pub const DEFAULT_HEARTBEAT_INTERVAL: u64 = 50;
-/// Default threshold for when to trigger a snapshot.
-pub const DEFAULT_LOGS_SINCE_LAST: u64 = 5000;
-/// Default maximum number of entries per replication payload.
-pub const DEFAULT_MAX_PAYLOAD_ENTRIES: u64 = 300;
-/// Default replication lag threshold.
-pub const DEFAULT_REPLICATION_LAG_THRESHOLD: u64 = 1000;
-/// Default snapshot chunksize.
-pub const DEFAULT_SNAPSHOT_CHUNKSIZE: u64 = 1024 * 1024 * 3;
 
 /// Log compaction and snapshot policy.
 ///
@@ -35,10 +21,29 @@ pub enum SnapshotPolicy {
     LogsSinceLast(u64),
 }
 
-impl Default for SnapshotPolicy {
-    fn default() -> Self {
-        SnapshotPolicy::LogsSinceLast(DEFAULT_LOGS_SINCE_LAST)
+/// Parse number with unit such as 5.3 KB
+fn parse_bytes_with_unit(src: &str) -> anyhow::Result<u64> {
+    let res = byte_unit::Byte::from_str(src)?;
+
+    Ok(res.get_bytes() as u64)
+}
+
+fn parse_snapshot_policy(src: &str) -> anyhow::Result<SnapshotPolicy> {
+    let elts = src.split(':').collect::<Vec<_>>();
+    if elts.len() != 2 {
+        return Err(anyhow::anyhow!(
+            "snapshot policy should be in form of 'since_last:<num>'"
+        ));
     }
+
+    if elts[0] != "since_last" {
+        return Err(anyhow::anyhow!(
+            "snapshot policy should be in form of 'since_last:<num>'"
+        ));
+    }
+
+    let n_logs = elts[1].parse::<u64>()?;
+    Ok(SnapshotPolicy::LogsSinceLast(n_logs))
 }
 
 /// The runtime configuration for a Raft node.
@@ -65,188 +70,94 @@ impl Default for SnapshotPolicy {
 /// What does all of this mean? Simply keep your election timeout settings high enough that the
 /// performance of your network will not cause election timeouts, but don't keep it so high that
 /// a real leader crash would cause prolonged downtime. See the Raft spec §5.6 for more details.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, StructOpt)]
 pub struct Config {
-    /// The application specific name of this Raft cluster.
-    ///
-    /// This does not influence the Raft protocol in any way, but is useful for observability.
+    /// The application specific name of this Raft cluster
+    #[structopt(long, env = "RAFT_CLUSTER_NAME", default_value = "foo")]
     pub cluster_name: String,
-    /// The minimum election timeout in milliseconds.
+
+    /// The minimum election timeout in milliseconds
+    #[structopt(long, env = "RAFT_ELECTION_TIMEOUT_MIN", default_value = "150")]
     pub election_timeout_min: u64,
-    /// The maximum election timeout in milliseconds.
+
+    /// The maximum election timeout in milliseconds
+    #[structopt(long, env = "RAFT_ELECTION_TIMEOUT_MAX", default_value = "300")]
     pub election_timeout_max: u64,
-    /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers.
-    ///
-    /// Defaults to 50 milliseconds.
-    ///
-    /// **NOTE WELL:** it is very important that this value be greater than the amount if time
-    /// it will take on average for heartbeat frames to be sent between nodes. No data processing
-    /// is performed for heartbeats, so the main item of concern here is network latency. This
-    /// value is also used as the default timeout for sending heartbeats.
+
+    /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
+    #[structopt(long, env = "RAFT_HEARTBEAT_INTERVAL", default_value = "50")]
     pub heartbeat_interval: u64,
 
-    /// The timeout for sending a snapshot segment, in millisecond.
-    /// By default it is heartbeat_interval * 4
+    /// The timeout for sending a snapshot segment, in millisecond
+    #[structopt(long, env = "RAFT_INSTALL_SNAPSHOT_TIMEOUT", default_value = "200")]
     pub install_snapshot_timeout: u64,
 
-    /// The maximum number of entries per payload allowed to be transmitted during replication.
+    /// The maximum number of entries per payload allowed to be transmitted during replication
     ///
-    /// When configuring this value, it is important to note that setting this value too low could
-    /// cause sub-optimal performance. This will primarily impact the speed at which slow nodes,
-    /// nodes which have been offline, or nodes which are new to the cluster, are brought
-    /// up-to-speed. If this is too low, it will take longer for the nodes to be brought up to
+    /// If this is too low, it will take longer for the nodes to be brought up to
     /// consistency with the rest of the cluster.
+    #[structopt(long, env = "RAFT_MAX_PAYLOAD_ENTRIES", default_value = "300")]
     pub max_payload_entries: u64,
-    /// The distance behind in log replication a follower must fall before it is considered "lagging".
+
+    /// The distance behind in log replication a follower must fall before it is considered lagging
     ///
-    /// This configuration parameter controls replication streams from the leader to followers in
+    /// TODO: This configuration parameter controls replication streams from the leader to followers in
     /// the cluster. Once a replication stream is considered lagging, it will stop buffering
     /// entries being replicated, and instead will fetch entries directly from the log until it is
     /// up-to-speed, at which time it will transition out of "lagging" state back into "line-rate" state.
+    #[structopt(long, env = "RAFT_REPLICATION_LAG_THRESHOLD", default_value = "1000")]
     pub replication_lag_threshold: u64,
+
     /// The snapshot policy to use for a Raft node.
+    #[structopt(
+        long,
+        env = "RAFT_SNAPSHOT_POLICY",
+        default_value = "since_last:5000",
+        parse(try_from_str=parse_snapshot_policy)
+    )]
     pub snapshot_policy: SnapshotPolicy,
-    /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes).
-    ///
-    /// Defaults to 3Mib.
+
+    /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes)
+    #[structopt(long, env = "RAFT_SNAPSHOT_MAX_CHUNK_SIZE", default_value = "3MiB", parse(try_from_str=parse_bytes_with_unit))]
     pub snapshot_max_chunk_size: u64,
+
+    /// The maximum number of applied logs to keep before purging
+    #[structopt(long, env = "RAFT_MAX_APPLIED_LOG_TO_KEEP", default_value = "1000")]
+    pub max_applied_log_to_keep: u64,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        <Self as StructOpt>::from_iter(&Vec::<&'static str>::new())
+    }
 }
 
 impl Config {
-    /// Start the builder process for a new `Config` instance. Call `validate` when done.
-    ///
-    /// The directory where the log snapshots are to be kept for a Raft node is required and must
-    /// be specified to start the config builder process.
-    pub fn build(cluster_name: String) -> ConfigBuilder {
-        ConfigBuilder {
-            cluster_name,
-            election_timeout_min: None,
-            election_timeout_max: None,
-            heartbeat_interval: None,
-            install_snapshot_timeout: None,
-            max_payload_entries: None,
-            replication_lag_threshold: None,
-            snapshot_policy: None,
-            snapshot_max_chunk_size: None,
-        }
-    }
-
     /// Generate a new random election timeout within the configured min & max.
     pub fn new_rand_election_timeout(&self) -> u64 {
         thread_rng().gen_range(self.election_timeout_min..self.election_timeout_max)
     }
-}
 
-/// A configuration builder to ensure that runtime config is valid.
-///
-/// For election timeout config & heartbeat interval configuration, it is recommended that §5.6 of
-/// the Raft spec is considered in order to set the appropriate values.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConfigBuilder {
-    /// The application specific name of this Raft cluster.
-    pub cluster_name: String,
-    /// The minimum election timeout, in milliseconds.
-    pub election_timeout_min: Option<u64>,
-    /// The maximum election timeout, in milliseconds.
-    pub election_timeout_max: Option<u64>,
-    /// The interval at which leaders will send heartbeats to followers to avoid election timeout.
-    pub heartbeat_interval: Option<u64>,
-
-    /// The timeout for sending a snapshot segment, in millisecond.
-    pub install_snapshot_timeout: Option<u64>,
-
-    /// The maximum number of entries per payload allowed to be transmitted during replication.
-    pub max_payload_entries: Option<u64>,
-    /// The distance behind in log replication a follower must fall before it is considered "lagging".
-    pub replication_lag_threshold: Option<u64>,
-    /// The snapshot policy.
-    pub snapshot_policy: Option<SnapshotPolicy>,
-    /// The maximum snapshot chunk size.
-    pub snapshot_max_chunk_size: Option<u64>,
-}
-
-impl ConfigBuilder {
-    /// Set the desired value for `election_timeout_min`.
-    pub fn election_timeout_min(mut self, val: u64) -> Self {
-        self.election_timeout_min = Some(val);
-        self
+    pub fn build(args: &[&str]) -> Result<Config, ConfigError> {
+        let config = <Self as StructOpt>::from_iter(args);
+        config.validate()
     }
 
-    /// Set the desired value for `election_timeout_max`.
-    pub fn election_timeout_max(mut self, val: u64) -> Self {
-        self.election_timeout_max = Some(val);
-        self
-    }
-
-    /// Set the desired value for `heartbeat_interval`.
-    pub fn heartbeat_interval(mut self, val: u64) -> Self {
-        self.heartbeat_interval = Some(val);
-        self
-    }
-
-    pub fn install_snapshot_timeout(mut self, val: u64) -> Self {
-        self.install_snapshot_timeout = Some(val);
-        self
-    }
-
-    /// Set the desired value for `max_payload_entries`.
-    pub fn max_payload_entries(mut self, val: u64) -> Self {
-        self.max_payload_entries = Some(val);
-        self
-    }
-
-    /// Set the desired value for `replication_lag_threshold`.
-    pub fn replication_lag_threshold(mut self, val: u64) -> Self {
-        self.replication_lag_threshold = Some(val);
-        self
-    }
-
-    /// Set the desired value for `snapshot_policy`.
-    pub fn snapshot_policy(mut self, val: SnapshotPolicy) -> Self {
-        self.snapshot_policy = Some(val);
-        self
-    }
-
-    /// Set the desired value for `snapshot_max_chunk_size`.
-    pub fn snapshot_max_chunk_size(mut self, val: u64) -> Self {
-        self.snapshot_max_chunk_size = Some(val);
-        self
-    }
-
-    /// Validate the state of this builder and produce a new `Config` instance if valid.
+    /// Validate the state of this config.
     pub fn validate(self) -> Result<Config, ConfigError> {
-        // Roll a random election time out based on the configured min & max or their respective defaults.
-        let election_timeout_min = self.election_timeout_min.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MIN);
-        let election_timeout_max = self.election_timeout_max.unwrap_or(DEFAULT_ELECTION_TIMEOUT_MAX);
-        if election_timeout_min >= election_timeout_max {
-            return Err(ConfigError::InvalidElectionTimeoutMinMax);
-        }
-        // Get other values or their defaults.
-        let heartbeat_interval = self.heartbeat_interval.unwrap_or(DEFAULT_HEARTBEAT_INTERVAL);
-        if election_timeout_min <= heartbeat_interval {
+        if self.election_timeout_min >= self.election_timeout_max {
             return Err(ConfigError::InvalidElectionTimeoutMinMax);
         }
 
-        let install_snapshot_timeout = self.install_snapshot_timeout.unwrap_or(heartbeat_interval * 4);
+        if self.election_timeout_min <= self.heartbeat_interval {
+            return Err(ConfigError::ElectionTimeoutLessThanHeartBeatInterval);
+        }
 
-        let max_payload_entries = self.max_payload_entries.unwrap_or(DEFAULT_MAX_PAYLOAD_ENTRIES);
-        if max_payload_entries == 0 {
+        if self.max_payload_entries == 0 {
             return Err(ConfigError::MaxPayloadEntriesTooSmall);
         }
-        let replication_lag_threshold = self.replication_lag_threshold.unwrap_or(DEFAULT_REPLICATION_LAG_THRESHOLD);
-        let snapshot_policy = self.snapshot_policy.unwrap_or_else(SnapshotPolicy::default);
-        let snapshot_max_chunk_size = self.snapshot_max_chunk_size.unwrap_or(DEFAULT_SNAPSHOT_CHUNKSIZE);
-        Ok(Config {
-            cluster_name: self.cluster_name,
-            election_timeout_min,
-            election_timeout_max,
-            heartbeat_interval,
-            install_snapshot_timeout,
-            max_payload_entries,
-            replication_lag_threshold,
-            snapshot_policy,
-            snapshot_max_chunk_size,
-        })
+
+        Ok(self)
     }
 }
 
@@ -259,44 +170,69 @@ mod tests {
 
     #[test]
     fn test_config_defaults() {
-        let cfg = Config::build("cluster0".into()).validate().unwrap();
+        let cfg = Config::default();
 
-        assert!(cfg.election_timeout_min >= DEFAULT_ELECTION_TIMEOUT_MIN as u64);
-        assert!(cfg.election_timeout_max <= DEFAULT_ELECTION_TIMEOUT_MAX as u64);
-        assert!(cfg.heartbeat_interval == DEFAULT_HEARTBEAT_INTERVAL as u64);
-        assert!(cfg.max_payload_entries == DEFAULT_MAX_PAYLOAD_ENTRIES);
-        assert!(cfg.replication_lag_threshold == DEFAULT_REPLICATION_LAG_THRESHOLD);
-        assert!(cfg.snapshot_max_chunk_size == DEFAULT_SNAPSHOT_CHUNKSIZE);
-        assert!(cfg.snapshot_policy == SnapshotPolicy::LogsSinceLast(DEFAULT_LOGS_SINCE_LAST));
-    }
+        assert!(cfg.election_timeout_min >= 150);
+        assert!(cfg.election_timeout_max <= 300);
 
-    #[test]
-    fn test_config_with_specified_values() {
-        let cfg = Config::build("cluster0".into())
-            .election_timeout_max(200)
-            .election_timeout_min(100)
-            .heartbeat_interval(10)
-            .max_payload_entries(100)
-            .replication_lag_threshold(100)
-            .snapshot_max_chunk_size(200)
-            .snapshot_policy(SnapshotPolicy::LogsSinceLast(10000))
-            .validate()
-            .unwrap();
+        assert_eq!(50, cfg.heartbeat_interval);
+        assert_eq!(300, cfg.max_payload_entries);
+        assert_eq!(1000, cfg.replication_lag_threshold);
 
-        assert!(cfg.election_timeout_min >= 100);
-        assert!(cfg.election_timeout_max <= 200);
-        assert!(cfg.heartbeat_interval == 10);
-        assert!(cfg.max_payload_entries == 100);
-        assert!(cfg.replication_lag_threshold == 100);
-        assert!(cfg.snapshot_max_chunk_size == 200);
-        assert!(cfg.snapshot_policy == SnapshotPolicy::LogsSinceLast(10000));
+        assert_eq!(3 * 1024 * 1024, cfg.snapshot_max_chunk_size);
+        assert_eq!(SnapshotPolicy::LogsSinceLast(5000), cfg.snapshot_policy);
     }
 
     #[test]
     fn test_invalid_election_timeout_config_produces_expected_error() {
-        let res = Config::build("cluster0".into()).election_timeout_min(1000).election_timeout_max(700).validate();
-        assert!(res.is_err());
+        let config = Config {
+            election_timeout_min: 1000,
+            election_timeout_max: 700,
+            ..Default::default()
+        };
+
+        let res = config.validate();
         let err = res.unwrap_err();
         assert_eq!(err, ConfigError::InvalidElectionTimeoutMinMax);
+    }
+
+    #[test]
+    fn test_build() -> anyhow::Result<()> {
+        let config = Config::build(&vec![
+            "foo",
+            "--cluster-name",
+            "bar",
+            "--election-timeout-min",
+            "10",
+            "--election-timeout-max",
+            "20",
+            "--heartbeat-interval",
+            "5",
+            "--install-snapshot-timeout",
+            "200",
+            "--max-payload-entries",
+            "201",
+            "--replication-lag-threshold",
+            "202",
+            "--snapshot-policy",
+            "since_last:203",
+            "--snapshot-max-chunk-size",
+            "204",
+            "--max-applied-log-to-keep",
+            "205",
+        ])?;
+
+        assert_eq!("bar", config.cluster_name);
+        assert_eq!(10, config.election_timeout_min);
+        assert_eq!(20, config.election_timeout_max);
+        assert_eq!(5, config.heartbeat_interval);
+        assert_eq!(200, config.install_snapshot_timeout);
+        assert_eq!(201, config.max_payload_entries);
+        assert_eq!(202, config.replication_lag_threshold);
+        assert_eq!(SnapshotPolicy::LogsSinceLast(203), config.snapshot_policy);
+        assert_eq!(204, config.snapshot_max_chunk_size);
+        assert_eq!(205, config.max_applied_log_to_keep);
+
+        Ok(())
     }
 }

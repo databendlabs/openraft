@@ -24,7 +24,7 @@ async fn client_reads() -> Result<()> {
     let _ent = ut_span.enter();
 
     // Setup test dependencies.
-    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
+    let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;

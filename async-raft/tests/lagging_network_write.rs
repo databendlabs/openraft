@@ -27,12 +27,16 @@ async fn lagging_network_write() -> Result<()> {
     let timeout = Some(tokio::time::Duration::from_millis(2000));
 
     let config = Arc::new(
-        Config::build("test".into())
-            .heartbeat_interval(100)
-            .election_timeout_min(300)
-            .election_timeout_max(600)
-            .validate()
-            .expect("failed to build Raft config"),
+        Config::build(&[
+            "foo",
+            "--heartbeat-interval",
+            "100",
+            "--election-timeout-min",
+            "300",
+            "--election-timeout-max",
+            "600",
+        ])
+        .expect("failed to build Raft config"),
     );
     let router = RaftRouter::builder(config).send_delay(50).build();
     let router = Arc::new(router);

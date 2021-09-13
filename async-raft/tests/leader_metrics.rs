@@ -45,7 +45,7 @@ async fn leader_metrics() -> Result<()> {
     let left_members = btreeset![0, 1, 2, 3];
 
     // Setup test dependencies.
-    let config = Arc::new(Config::build("test".into()).validate().expect("failed to build Raft config"));
+    let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
