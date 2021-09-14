@@ -593,7 +593,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
                 Ok(InitialState {
                     last_log_id,
-                    last_applied_log,
+                    last_applied: last_applied_log,
                     hard_state: inner.clone(),
                     membership,
                 })

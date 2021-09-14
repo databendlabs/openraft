@@ -63,9 +63,11 @@ pub struct InitialState {
     pub last_log_id: LogId,
 
     /// The LogId of the last log applied to the state machine.
-    pub last_applied_log: LogId,
+    pub last_applied: LogId,
+
     /// The saved hard state of the node.
     pub hard_state: HardState,
+
     /// The latest cluster membership configuration found in the log, else a new initial
     /// membership config consisting only of this node's ID.
     pub membership: MembershipConfig,
@@ -79,7 +81,7 @@ impl InitialState {
     pub fn new_initial(id: NodeId) -> Self {
         Self {
             last_log_id: LogId { term: 0, index: 0 },
-            last_applied_log: LogId { term: 0, index: 0 },
+            last_applied: LogId { term: 0, index: 0 },
             hard_state: HardState {
                 current_term: 0,
                 voted_for: None,

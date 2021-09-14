@@ -244,7 +244,7 @@ where
             "unexpected default value for last log"
         );
         assert_eq!(
-            initial.last_applied_log,
+            initial.last_applied,
             LogId { term: 0, index: 0 },
             "unexpected value for last applied log"
         );
@@ -290,7 +290,7 @@ where
             "state machine has higher log"
         );
         assert_eq!(
-            initial.last_applied_log,
+            initial.last_applied,
             LogId { term: 3, index: 1 },
             "unexpected value for last applied log"
         );
