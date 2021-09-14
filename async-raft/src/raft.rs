@@ -527,6 +527,13 @@ impl<D: AppData> MessageSummary for Option<Entry<D>> {
 
 impl<D: AppData> MessageSummary for &[Entry<D>] {
     fn summary(&self) -> String {
+        let entry_refs: Vec<_> = self.iter().collect();
+        entry_refs.as_slice().summary()
+    }
+}
+
+impl<D: AppData> MessageSummary for &[&Entry<D>] {
+    fn summary(&self) -> String {
         let mut res = Vec::with_capacity(self.len());
         for x in self.iter() {
             let e = format!("{}:{}", x.log_id, x.payload.summary());

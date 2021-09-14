@@ -3,6 +3,7 @@ use std::io::SeekFrom;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 
+use crate::core::delete_applied_logs;
 use crate::core::RaftCore;
 use crate::core::SnapshotState;
 use crate::core::State;
@@ -203,6 +204,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .map_err(|e| self.map_storage_error(e))?;
 
         tracing::debug!("update after apply or install-snapshot: {:?}", changes);
+        println!("update after apply or install-snapshot: {:?}", changes);
 
         // After installing snapshot, no inconsistent log is removed.
         // This does not affect raft consistency.
@@ -210,7 +212,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         if let Some(last_applied) = changes.last_applied {
             // Applied logs are not needed.
-            self.storage.delete_logs_from(..=last_applied.index).await.map_err(|e| self.map_storage_error(e))?;
+            delete_applied_logs(self.storage.clone(), &last_applied, self.config.max_applied_log_to_keep)
+                .await
+                .map_err(|e| self.map_storage_error(e))?;
 
             // snapshot is installed
             self.last_applied = last_applied;
@@ -221,6 +225,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
             // There could be unknown membership in the snapshot.
             let membership = self.storage.get_membership_config().await.map_err(|err| self.map_storage_error(err))?;
+            println!("storage membership: {:?}", membership);
 
             self.update_membership(membership)?;
 

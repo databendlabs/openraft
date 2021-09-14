@@ -41,6 +41,7 @@ use crate::metrics::RaftMetrics;
 use crate::raft::ClientReadResponseTx;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponseTx;
+use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::MembershipConfig;
 use crate::raft::RaftMsg;
@@ -435,6 +436,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             handle,
             sender: chan_tx.clone(),
         });
+
         tokio::spawn(
             async move {
                 let f = storage.do_log_compaction();
@@ -493,6 +495,41 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn forward_client_read_request(&self, tx: ClientReadResponseTx) {
         let _ = tx.send(Err(ClientReadError::ForwardToLeader(self.current_leader)));
     }
+}
+
+#[tracing::instrument(level = "debug", skip(sto), fields(entries=%entries.summary()))]
+async fn apply_to_state_machine<D, R, S>(
+    sto: Arc<S>,
+    entries: &[&Entry<D>],
+    max_keep: u64,
+) -> Result<Vec<R>, StorageError>
+where
+    D: AppData,
+    R: AppDataResponse,
+    S: RaftStorage<D, R>,
+{
+    let last = entries.last().map(|x| x.log_id);
+
+    if let Some(last_applied) = last {
+        // TODO(xp): apply_to_state_machine should return the last applied
+        let res = sto.apply_to_state_machine(entries).await?;
+        delete_applied_logs(sto, &last_applied, max_keep).await?;
+        Ok(res)
+    } else {
+        Ok(vec![])
+    }
+}
+
+#[tracing::instrument(level = "debug", skip(sto))]
+async fn delete_applied_logs<D, R, S>(sto: Arc<S>, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
+where
+    D: AppData,
+    R: AppDataResponse,
+    S: RaftStorage<D, R>,
+{
+    // TODO(xp): periodically batch delete
+    let x = last_applied.index.saturating_sub(max_keep);
+    sto.delete_logs_from(..=x).await
 }
 
 /// An enum describing the way the current leader property is to be updated.

@@ -747,11 +747,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
         let meta;
         {
-            let mut log = self.log.write().await;
             let mut current_snapshot = self.current_snapshot.write().await;
-
-            // Leaves at least one log or replication can not find out the mismatched log.
-            *log = log.split_off(&last_applied_log.index);
 
             let snapshot_id = format!("{}-{}-{}", last_applied_log.term, last_applied_log.index, snapshot_idx);
 

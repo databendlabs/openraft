@@ -39,6 +39,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+            max_applied_log_to_keep: 0,
             ..Default::default()
         }
         .validate()?,
@@ -130,11 +131,13 @@ async fn snapshot_overrides_membership() -> Result<()> {
             tracing::info!("--- DONE add non-voter");
 
             router.wait_for_log(&btreeset![0, 1], want, timeout(), "add non-voter").await?;
+            router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, timeout(), "").await?;
+
             let expected_snap = Some((want.into(), 1, MembershipConfig {
                 members: btreeset![0u64],
                 members_after_consensus: None,
             }));
-            router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, timeout(), "").await?;
+
             router
                 .assert_storage_state(
                     1,

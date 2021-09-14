@@ -9,6 +9,7 @@ use tokio::time::timeout;
 use tokio::time::Duration;
 use tracing::Instrument;
 
+use crate::core::apply_to_state_machine;
 use crate::core::LeaderState;
 use crate::core::State;
 use crate::error::ClientReadError;
@@ -445,20 +446,30 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             let data_entries: Vec<_> = entries.iter().collect();
             if !data_entries.is_empty() {
-                self.core
-                    .storage
-                    .apply_to_state_machine(&data_entries)
-                    .await
-                    .map_err(|err| self.core.map_storage_error(err))?;
+                apply_to_state_machine(
+                    self.core.storage.clone(),
+                    &data_entries,
+                    self.core.config.max_applied_log_to_keep,
+                )
+                .await
+                .map_err(|err| self.core.map_storage_error(err))?;
             }
         }
 
         // Apply this entry to the state machine and return its data response.
-        let res = self.core.storage.apply_to_state_machine(&[entry]).await.map_err(|err| {
+        let apply_res = apply_to_state_machine(
+            self.core.storage.clone(),
+            &[entry],
+            self.core.config.max_applied_log_to_keep,
+        )
+        .await;
+
+        let res = apply_res.map_err(|err| {
             if let StorageError::IO { .. } = err {
                 // If this is an instance of the storage impl's shutdown error, then trigger shutdown.
                 self.core.map_storage_error(err)
             } else {
+                // TODO(xp): remove this
                 // Else, we propagate normally.
                 RaftError::RaftStorage(err.into())
             }

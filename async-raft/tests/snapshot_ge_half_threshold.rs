@@ -36,6 +36,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+            max_applied_log_to_keep: 6,
             ..Default::default()
         }
         .validate()?,

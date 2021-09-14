@@ -1,3 +1,4 @@
+use crate::core::apply_to_state_machine;
 use crate::core::RaftCore;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
@@ -438,7 +439,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tracing::debug!(?last_log_id);
 
         let entries_refs: Vec<_> = entries.iter().collect();
-        self.storage.apply_to_state_machine(&entries_refs).await.map_err(|e| self.map_storage_error(e))?;
+
+        apply_to_state_machine(self.storage.clone(), &entries_refs, self.config.max_applied_log_to_keep)
+            .await
+            .map_err(|e| self.map_storage_error(e))?;
 
         self.last_applied = last_log_id;
 
@@ -473,7 +477,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let new_last_applied = entries.last().unwrap();
 
         let data_entries: Vec<_> = entries.iter().collect();
-        storage.apply_to_state_machine(&data_entries).await.map_err(|e| self.map_storage_error(e))?;
+
+        apply_to_state_machine(storage, &data_entries, self.config.max_applied_log_to_keep)
+            .await
+            .map_err(|e| self.map_storage_error(e))?;
 
         self.last_applied = new_last_applied.log_id;
         self.report_metrics(Update::Ignore);

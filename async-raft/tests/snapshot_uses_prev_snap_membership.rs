@@ -5,6 +5,7 @@ use anyhow::Result;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::LogId;
+use async_raft::MessageSummary;
 use async_raft::RaftStorage;
 use async_raft::SnapshotPolicy;
 use async_raft::State;
@@ -35,6 +36,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+            max_applied_log_to_keep: 1,
             ..Default::default()
         }
         .validate()?,
@@ -76,7 +78,8 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
         {
             let logs = sto0.get_log_entries(..).await?;
-            assert_eq!(1, logs.len(), "only one snapshot pointer log");
+            println!("{}", logs.as_slice().summary());
+            assert_eq!(1, logs.len(), "only one applied log is kept");
         }
         let m = sto0.get_membership_config().await?;
         assert_eq!(
@@ -119,7 +122,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     {
         {
             let logs = sto0.get_log_entries(..).await?;
-            assert_eq!(1, logs.len(), "only one snapshot pointer log");
+            assert_eq!(1, logs.len(), "only one applied log");
         }
         let m = sto0.get_membership_config().await?;
         assert_eq!(
