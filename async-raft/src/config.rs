@@ -101,10 +101,8 @@ pub struct Config {
 
     /// The distance behind in log replication a follower must fall before it is considered lagging
     ///
-    /// TODO: This configuration parameter controls replication streams from the leader to followers in
-    /// the cluster. Once a replication stream is considered lagging, it will stop buffering
-    /// entries being replicated, and instead will fetch entries directly from the log until it is
-    /// up-to-speed, at which time it will transition out of "lagging" state back into "line-rate" state.
+    /// Once a replication stream transition into line-rate state, the target node will be considered safe to join a
+    /// cluster.
     #[structopt(long, env = "RAFT_REPLICATION_LAG_THRESHOLD", default_value = "1000")]
     pub replication_lag_threshold: u64,
 
@@ -198,28 +196,18 @@ mod tests {
 
     #[test]
     fn test_build() -> anyhow::Result<()> {
-        let config = Config::build(&vec![
+        let config = Config::build(&[
             "foo",
-            "--cluster-name",
-            "bar",
-            "--election-timeout-min",
-            "10",
-            "--election-timeout-max",
-            "20",
-            "--heartbeat-interval",
-            "5",
-            "--install-snapshot-timeout",
-            "200",
-            "--max-payload-entries",
-            "201",
-            "--replication-lag-threshold",
-            "202",
-            "--snapshot-policy",
-            "since_last:203",
-            "--snapshot-max-chunk-size",
-            "204",
-            "--max-applied-log-to-keep",
-            "205",
+            "--cluster-name=bar",
+            "--election-timeout-min=10",
+            "--election-timeout-max=20",
+            "--heartbeat-interval=5",
+            "--install-snapshot-timeout=200",
+            "--max-payload-entries=201",
+            "--replication-lag-threshold=202",
+            "--snapshot-policy=since_last:203",
+            "--snapshot-max-chunk-size=204",
+            "--max-applied-log-to-keep=205",
         ])?;
 
         assert_eq!("bar", config.cluster_name);

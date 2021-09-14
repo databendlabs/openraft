@@ -4,6 +4,7 @@ use anyhow::Result;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::LogId;
+use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
@@ -29,14 +30,12 @@ async fn snapshot_chunk_size() -> Result<()> {
     let snapshot_threshold: u64 = 10;
 
     let config = Arc::new(
-        Config::build(&[
-            "foo",
-            "--snapshot-policy",
-            "since_last:10",
-            "--snapshot-max-chunk-size",
-            "10",
-        ])
-        .expect("failed to build Raft config"),
+        Config {
+            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+            snapshot_max_chunk_size: 10,
+            ..Default::default()
+        }
+        .validate()?,
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 

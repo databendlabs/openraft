@@ -4,6 +4,7 @@ use anyhow::Result;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::LogId;
+use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
@@ -32,8 +33,13 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     let snapshot_threshold: u64 = 10;
     let log_cnt = snapshot_threshold + 6;
 
-    let config =
-        Arc::new(Config::build(&["foo", "--snapshot-policy", "since_last:10"]).expect("failed to build Raft config"));
+    let config = Arc::new(
+        Config {
+            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     let mut want = 0;

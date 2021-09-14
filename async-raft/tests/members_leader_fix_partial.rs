@@ -31,7 +31,7 @@ async fn members_leader_fix_partial() -> Result<()> {
     let _ent = ut_span.enter();
 
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
+    let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     let mut want = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;

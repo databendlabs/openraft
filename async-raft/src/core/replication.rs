@@ -81,13 +81,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             );
         }
 
-        // if let Some(_state) = self.nodes.get_mut(&target) {
-        //     return Ok(());
-        // }
-
         let state = self.non_voters.get_mut(&target);
         let state = match state {
             None => {
+                // target is a follower.
                 return Ok(());
             }
             Some(x) => x,

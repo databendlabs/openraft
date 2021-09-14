@@ -47,7 +47,7 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
     let candidates = btreeset![0, 1, 2];
 
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
+    let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     router.new_raft_node(0).await;

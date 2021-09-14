@@ -34,7 +34,7 @@ async fn add_remove_voter() -> Result<()> {
     let left_members = btreeset![0, 1, 2, 3];
 
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
+    let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 

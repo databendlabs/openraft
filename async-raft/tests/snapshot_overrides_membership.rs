@@ -11,6 +11,7 @@ use async_raft::Config;
 use async_raft::LogId;
 use async_raft::RaftNetwork;
 use async_raft::RaftStorage;
+use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
@@ -35,8 +36,13 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
     let snapshot_threshold: u64 = 10;
 
-    let config =
-        Arc::new(Config::build(&["foo", "--snapshot-policy", "since_last:10"]).expect("failed to build Raft config"));
+    let config = Arc::new(
+        Config {
+            snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     let mut want = 0;

@@ -29,7 +29,7 @@ async fn elect_compare_last_log() -> Result<()> {
     let _ent = ut_span.enter();
 
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
+    let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
     let sto0 = router.new_store(0).await;
