@@ -148,7 +148,6 @@ impl MemStore {
     }
 }
 
-// TODO(xp): elaborate errors
 impl MemStore {
     /// Ensure that logs that have greater index than last_applied should have greater log_id.
     /// Invariant must hold: `log.log_id.index > last_applied.index` implies `log.log_id > last_applied`.

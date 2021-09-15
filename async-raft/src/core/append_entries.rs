@@ -98,9 +98,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //              +----------------+------------------------+
         //              ` 0              ` last_applied           ` last_log_id
 
-        // TODO(xp) test
-        // TODO(xp) test append/delete affects membership
-
         // Case 0: prev == 0
         if prev_log_id.index == u64::MIN {
             if self.last_log_id.index == prev_log_id.index {

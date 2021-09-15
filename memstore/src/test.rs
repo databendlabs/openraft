@@ -433,7 +433,6 @@ where
     }
 
     pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> anyhow::Result<()> {
-        // TODO(xp): check membership: read from log first, then state machine then default.
         let store = builder.new_store(NODE_ID).await;
         Self::default_hard_state(&store).await?;
 
