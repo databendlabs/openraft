@@ -83,7 +83,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                     members_after_consensus: None,
                 })),
             )
-            .await;
+            .await?;
     }
 
     tracing::info!("--- create non-voter");
@@ -146,7 +146,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                     LogId { term: 1, index: want },
                     expected_snap,
                 )
-                .await;
+                .await?;
 
             let m = sto.get_membership_config().await?;
             assert_eq!(

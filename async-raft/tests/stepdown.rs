@@ -131,7 +131,7 @@ async fn stepdown() -> Result<()> {
     router.assert_stable_cluster(Some(metrics.current_term), Some(want)).await;
     router
         .assert_storage_state(metrics.current_term, want, None, LogId { term: 2, index: 4 }, None)
-        .await;
+        .await?;
     // ----------------------------------- ^^^ this is `0` instead of `4` because blank payloads from new leaders
     //                                         and config change entries are never applied to the state machine.
 

@@ -579,7 +579,7 @@ impl RaftRouter {
         expect_voted_for: Option<u64>,
         expect_sm_last_applied_log: LogId,
         expect_snapshot: Option<(ValueTest<u64>, u64, MembershipConfig)>,
-    ) {
+    ) -> anyhow::Result<()> {
         let rt = self.routing_table.read().await;
         for (id, (_node, storage)) in rt.iter() {
             let last_log_id = storage.last_log_id().await;
@@ -645,14 +645,16 @@ impl RaftRouter {
                 );
             }
 
-            let sm = storage.get_state_machine().await;
+            let (last_applied, _) = storage.last_applied_state().await?;
 
             assert_eq!(
-                &sm.last_applied_log, &expect_sm_last_applied_log,
+                &last_applied, &expect_sm_last_applied_log,
                 "expected node {} to have state machine last_applied_log {}, got {}",
-                id, expect_sm_last_applied_log, sm.last_applied_log
+                id, expect_sm_last_applied_log, last_applied
             );
         }
+
+        Ok(())
     }
 }
 

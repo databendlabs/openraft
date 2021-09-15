@@ -114,7 +114,8 @@ where
         run_fut(Suite::save_hard_state(builder))?;
         run_fut(Suite::get_log_entries(builder))?;
         run_fut(Suite::try_get_log_entry(builder))?;
-        run_fut(Suite::get_last_log_id(builder))?;
+        run_fut(Suite::last_id_in_log(builder))?;
+        run_fut(Suite::last_applied_state(builder))?;
         run_fut(Suite::delete_logs_from(builder))?;
         run_fut(Suite::append_to_log(builder))?;
         run_fut(Suite::apply_single(builder))?;
@@ -520,10 +521,10 @@ where
         Ok(())
     }
 
-    pub async fn get_last_log_id(builder: &B) -> anyhow::Result<()> {
+    pub async fn last_id_in_log(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
 
-        let log_id = store.get_last_log_id().await?;
+        let log_id = store.last_id_in_log().await?;
         assert_eq!(LogId { term: 0, index: 0 }, log_id);
 
         tracing::info!("--- only logs");
@@ -541,35 +542,11 @@ where
                 ])
                 .await?;
 
-            let log_id = store.get_last_log_id().await?;
+            let log_id = store.last_id_in_log().await?;
             assert_eq!(LogId { term: 1, index: 2 }, log_id);
         }
 
-        tracing::info!("--- last id in logs > last applied id in sm");
-        {
-            store
-                .apply_to_state_machine(&[&Entry {
-                    log_id: LogId { term: 1, index: 1 },
-                    payload: EntryPayload::Blank,
-                }])
-                .await?;
-            let log_id = store.get_last_log_id().await?;
-            assert_eq!(LogId { term: 1, index: 2 }, log_id);
-        }
-
-        tracing::info!("--- last id in logs == last applied id in sm");
-        {
-            store
-                .apply_to_state_machine(&[&Entry {
-                    log_id: LogId { term: 1, index: 2 },
-                    payload: EntryPayload::Blank,
-                }])
-                .await?;
-            let log_id = store.get_last_log_id().await?;
-            assert_eq!(LogId { term: 1, index: 2 }, log_id);
-        }
-
-        tracing::info!("--- last id in logs < last applied id in sm");
+        tracing::info!("--- last id in logs < last applied id in sm, only return the id in logs");
         {
             store
                 .apply_to_state_machine(&[&Entry {
@@ -577,16 +554,71 @@ where
                     payload: EntryPayload::Blank,
                 }])
                 .await?;
-            let log_id = store.get_last_log_id().await?;
-            assert_eq!(LogId { term: 1, index: 3 }, log_id);
+            let log_id = store.last_id_in_log().await?;
+            assert_eq!(LogId { term: 1, index: 2 }, log_id);
         }
 
-        tracing::info!("--- no logs, only last applied id in sm");
+        tracing::info!("--- no logs, return default");
         {
             store.delete_logs_from(..).await?;
 
-            let log_id = store.get_last_log_id().await?;
-            assert_eq!(LogId { term: 1, index: 3 }, log_id);
+            let log_id = store.last_id_in_log().await?;
+            assert_eq!(LogId { term: 0, index: 0 }, log_id);
+        }
+
+        Ok(())
+    }
+
+    pub async fn last_applied_state(builder: &B) -> anyhow::Result<()> {
+        let store = builder.new_store(NODE_ID).await;
+
+        let (applied, membership) = store.last_applied_state().await?;
+        assert_eq!(LogId { term: 0, index: 0 }, applied);
+        assert_eq!(None, membership);
+
+        tracing::info!("--- with last_applied and last_membership");
+        {
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 3 },
+                    payload: EntryPayload::ConfigChange(EntryConfigChange {
+                        membership: MembershipConfig {
+                            members: btreeset! {1,2},
+                            members_after_consensus: None,
+                        },
+                    }),
+                }])
+                .await?;
+
+            let (applied, membership) = store.last_applied_state().await?;
+            assert_eq!(LogId { term: 1, index: 3 }, applied);
+            assert_eq!(
+                Some((LogId { term: 1, index: 3 }, MembershipConfig {
+                    members: btreeset! {1,2},
+                    members_after_consensus: None
+                })),
+                membership
+            );
+        }
+
+        tracing::info!("--- no logs, return default");
+        {
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 5 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+
+            let (applied, membership) = store.last_applied_state().await?;
+            assert_eq!(LogId { term: 1, index: 5 }, applied);
+            assert_eq!(
+                Some((LogId { term: 1, index: 3 }, MembershipConfig {
+                    members: btreeset! {1,2},
+                    members_after_consensus: None
+                })),
+                membership
+            );
         }
 
         Ok(())
@@ -676,15 +708,16 @@ where
         };
 
         store.apply_to_state_machine(&[&entry]).await?;
-        let sm = store.get_state_machine().await;
+        let (last_applied, _) = store.last_applied_state().await?;
 
         assert_eq!(
-            sm.last_applied_log,
+            last_applied,
             LogId { term: 3, index: 1 },
             "expected last_applied_log to be 1, got {}",
-            sm.last_applied_log
+            last_applied
         );
 
+        let sm = store.get_state_machine().await;
         let client_serial =
             sm.client_serial_responses.get("0").expect("expected entry to exist in client_serial_responses");
         assert_eq!(client_serial, &(0, None), "unexpected client serial response");
@@ -730,14 +763,17 @@ where
         .collect::<Vec<_>>();
 
         store.apply_to_state_machine(&entries.iter().collect::<Vec<_>>()).await?;
-        let sm = store.get_state_machine().await;
+
+        let (last_applied, _) = store.last_applied_state().await?;
 
         assert_eq!(
-            sm.last_applied_log,
+            last_applied,
             LogId { term: 3, index: 3 },
             "expected last_applied_log to be 3, got {}",
-            sm.last_applied_log
+            last_applied
         );
+
+        let sm = store.get_state_machine().await;
 
         let client_serial1 = sm
             .client_serial_responses
@@ -810,7 +846,6 @@ where
         run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
         run_fut(Suite::df_save_hard_state_ascending(builder))?;
         run_fut(Suite::df_get_log_entries(builder))?;
-        run_fut(Suite::df_get_last_log_id(builder))?;
         run_fut(Suite::df_delete_logs_from_nonempty_range(builder))?;
         run_fut(Suite::df_append_to_log_nonempty_input(builder))?;
         run_fut(Suite::df_append_to_log_nonconsecutive_input(builder))?;
@@ -1115,65 +1150,6 @@ where
             },
             ..
         }));
-
-        Ok(())
-    }
-
-    pub async fn df_get_last_log_id(builder: &B) -> anyhow::Result<()> {
-        let store = builder.new_store(NODE_ID).await;
-
-        tracing::info!("--- last log_id.index == last_applied.index");
-        {
-            store
-                .append_to_log(&[&Entry {
-                    log_id: LogId { term: 1, index: 1 },
-                    payload: EntryPayload::Blank,
-                }])
-                .await?;
-
-            store
-                .apply_to_state_machine(&[&Entry {
-                    log_id: LogId { term: 2, index: 1 },
-                    payload: EntryPayload::Blank,
-                }])
-                .await?;
-
-            let res = store.get_last_log_id().await;
-
-            let e = res.unwrap_err().into_defensive().unwrap();
-            assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 1 }), e.subject);
-            assert_eq!(
-                Violation::DirtyLog {
-                    higher_index_log_id: LogId { term: 1, index: 1 },
-                    lower_index_log_id: LogId { term: 2, index: 1 }
-                },
-                e.violation
-            );
-        }
-
-        tracing::info!("--- last log_id.index > last_applied.index => last log_id > last_applied");
-        {
-            store.defensive(false).await;
-            store
-                .append_to_log(&[&Entry {
-                    log_id: LogId { term: 1, index: 2 },
-                    payload: EntryPayload::Blank,
-                }])
-                .await?;
-            store.defensive(true).await;
-
-            let res = store.get_last_log_id().await;
-
-            let e = res.unwrap_err().into_defensive().unwrap();
-            assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 2 }), e.subject);
-            assert_eq!(
-                Violation::DirtyLog {
-                    higher_index_log_id: LogId { term: 1, index: 2 },
-                    lower_index_log_id: LogId { term: 2, index: 1 }
-                },
-                e.violation
-            );
-        }
 
         Ok(())
     }

@@ -4,8 +4,8 @@ use anyhow::Result;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
+use async_raft::LogId;
 use async_raft::RaftStorage;
-use async_raft::RaftStorageDebug;
 use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
@@ -65,12 +65,12 @@ async fn initialization() -> Result<()> {
         };
         assert_eq!(btreeset![0, 1, 2], mem.members);
 
-        let sm_mem = sto.get_state_machine().await.last_membership.clone();
+        let sm_mem = sto.last_applied_state().await?.1;
         assert_eq!(
-            Some(MembershipConfig {
+            Some((LogId { term: 1, index: 1 }, MembershipConfig {
                 members: btreeset![0, 1, 2],
                 members_after_consensus: None,
-            }),
+            })),
             sm_mem
         );
     }

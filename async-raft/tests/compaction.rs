@@ -79,7 +79,7 @@ async fn compaction() -> Result<()> {
                 members_after_consensus: None,
             })),
         )
-        .await;
+        .await?;
 
     // Add a new node and assert that it received the same snapshot.
     let sto1 = router.new_store(1).await;
@@ -120,7 +120,7 @@ async fn compaction() -> Result<()> {
             LogId { term: 1, index: n_logs },
             expected_snap,
         )
-        .await;
+        .await?;
 
     Ok(())
 }

@@ -78,7 +78,7 @@ pub struct MemStoreSnapshot {
 pub struct MemStoreStateMachine {
     pub last_applied_log: LogId,
 
-    pub last_membership: Option<MembershipConfig>,
+    pub last_membership: Option<(LogId, MembershipConfig)>,
 
     /// A mapping of client IDs to their state info.
     pub client_serial_responses: HashMap<String, (u64, Option<String>)>,
@@ -302,29 +302,6 @@ impl MemStore {
         std::cmp::max(log_last_id, sm_last_id)
     }
 
-    pub async fn defensive_consistent_log_sm(&self) -> Result<(), DefensiveError> {
-        let log_last_id = {
-            let log_last = self.log.read().await;
-            log_last.iter().last().map(|(_k, v)| v.log_id).unwrap_or_default()
-        };
-
-        let sm_last_id = self.sm.read().await.last_applied_log;
-
-        if (log_last_id.index == sm_last_id.index && log_last_id != sm_last_id)
-            || (log_last_id.index > sm_last_id.index && log_last_id < sm_last_id)
-        {
-            return Err(DefensiveError::new(
-                ErrorSubject::Log(log_last_id),
-                Violation::DirtyLog {
-                    higher_index_log_id: log_last_id,
-                    lower_index_log_id: sm_last_id,
-                },
-            ));
-        }
-
-        Ok(())
-    }
-
     pub async fn defensive_apply_index_is_last_applied_plus_one<D: AppData>(
         &self,
         entries: &[&Entry<D>],
@@ -512,7 +489,7 @@ impl MemStore {
     pub async fn get_membership_from_log(&self, upto_index: Option<u64>) -> Result<MembershipConfig, StorageError> {
         self.defensive_no_dirty_log().await?;
 
-        let membership = {
+        let membership_in_log = {
             let log = self.log.read().await;
 
             let reversed_logs = log.values().rev();
@@ -527,26 +504,19 @@ impl MemStore {
 
         // Find membership stored in state machine.
 
-        let (sm_mem, last_applied) = {
-            let sm = self.sm.read().await;
-            (sm.last_membership.clone(), sm.last_applied_log)
-        };
+        let (_, membership_in_sm) = self.last_applied_state().await?;
 
-        let membership = match membership {
-            None => sm_mem,
-            Some((id, log_mem)) => {
-                if id < last_applied {
-                    sm_mem
-                } else {
-                    Some(log_mem)
-                }
-            }
-        };
+        let membership =
+            if membership_in_log.as_ref().map(|(id, _)| id.index) > membership_in_sm.as_ref().map(|(id, _)| id.index) {
+                membership_in_log
+            } else {
+                membership_in_sm
+            };
 
-        // Otherwise, create a default one.
+        // Create a default one if both are None.
 
         Ok(match membership {
-            Some(cfg) => cfg,
+            Some((_id, cfg)) => cfg,
             None => MembershipConfig::new_initial(self.id),
         })
     }
@@ -573,8 +543,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
         let membership = self.get_membership_config().await?;
         let mut hs = self.hs.write().await;
-        let log = self.log.read().await;
-        let sm = self.sm.read().await;
         match &mut *hs {
             Some(inner) => {
                 // Search for two place and use the max one,
@@ -582,18 +550,15 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 // included in the state machine that are not cleaned:
                 // - the last log id
                 // - the last_applied log id in state machine.
-                // TODO(xp): add test for RaftStore to ensure it looks for two places.
 
-                let last = log.values().rev().next();
-                let last = last.map(|x| x.log_id);
-                let last_in_log = last.unwrap_or_default();
-                let last_applied_log = sm.last_applied_log;
+                let last_in_log = self.last_id_in_log().await?;
+                let (last_applied, _) = self.last_applied_state().await?;
 
-                let last_log_id = max(last_in_log, last_applied_log);
+                let last_log_id = max(last_in_log, last_applied);
 
                 Ok(InitialState {
                     last_log_id,
-                    last_applied: last_applied_log,
+                    last_applied,
                     hard_state: inner.clone(),
                     membership,
                 })
@@ -639,15 +604,15 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(log.get(&log_index).cloned())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_last_log_id(&self) -> Result<LogId, StorageError> {
-        self.defensive_consistent_log_sm().await?;
+    async fn last_id_in_log(&self) -> Result<LogId, StorageError> {
+        let log = self.log.read().await;
+        let last = log.iter().last().map(|(_, ent)| ent.log_id).unwrap_or_default();
+        Ok(last)
+    }
 
-        // TODO: log id must consistent:
-        let log_last_id = self.log.read().await.iter().last().map(|(_k, v)| v.log_id).unwrap_or_default();
-        let last_applied_id = self.sm.read().await.last_applied_log;
-
-        Ok(max(log_last_id, last_applied_id))
+    async fn last_applied_state(&self) -> Result<(LogId, Option<(LogId, MembershipConfig)>), StorageError> {
+        let sm = self.sm.read().await;
+        Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, range), fields(range=?range))]
@@ -714,7 +679,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                     res.push(ClientResponse(previous));
                 }
                 EntryPayload::ConfigChange(ref mem) => {
-                    sm.last_membership = Some(mem.membership.clone());
+                    sm.last_membership = Some((entry.log_id, mem.membership.clone()));
                     res.push(ClientResponse(None))
                 }
             };
@@ -734,7 +699,11 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, e.into()))?;
 
             last_applied_log = sm.last_applied_log;
-            membership_config = sm.last_membership.clone().unwrap_or_else(|| MembershipConfig::new_initial(self.id));
+            membership_config = sm
+                .last_membership
+                .clone()
+                .map(|(_id, mem)| mem)
+                .unwrap_or_else(|| MembershipConfig::new_initial(self.id));
         }
 
         let snapshot_size = data.len();

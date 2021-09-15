@@ -3,7 +3,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
-use async_raft::RaftStorageDebug;
+use async_raft::LogId;
+use async_raft::RaftStorage;
 use async_raft::State;
 use fixtures::RaftRouter;
 use futures::stream::StreamExt;
@@ -48,13 +49,12 @@ async fn state_machine_apply_membership() -> Result<()> {
 
     for i in 0..=0 {
         let sto = router.get_storage_handle(&i).await?;
-        let sm = sto.get_state_machine().await;
         assert_eq!(
-            Some(MembershipConfig {
+            Some((LogId { term: 1, index: 1 }, MembershipConfig {
                 members: btreeset![0],
                 members_after_consensus: None,
-            }),
-            sm.last_membership
+            })),
+            sto.last_applied_state().await?.1
         );
     }
 
@@ -83,13 +83,13 @@ async fn state_machine_apply_membership() -> Result<()> {
     tracing::info!("--- check applied membership config");
     for i in 0..5 {
         let sto = router.get_storage_handle(&i).await?;
-        let sm = sto.get_state_machine().await;
+        let (_, last_membership) = sto.last_applied_state().await?;
         assert_eq!(
-            Some(MembershipConfig {
+            Some((LogId { term: 1, index: 3 }, MembershipConfig {
                 members: btreeset![0, 1, 2],
                 members_after_consensus: None,
-            }),
-            sm.last_membership
+            })),
+            last_membership
         );
     }
 

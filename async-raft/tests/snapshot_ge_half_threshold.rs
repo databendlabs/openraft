@@ -78,7 +78,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
                     members_after_consensus: None,
                 })),
             )
-            .await;
+            .await?;
     }
 
     tracing::info!("--- send logs to make distance between snapshot index and last_log_index");
@@ -106,7 +106,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
                 LogId { term: 1, index: want },
                 expected_snap,
             )
-            .await;
+            .await?;
     }
 
     Ok(())

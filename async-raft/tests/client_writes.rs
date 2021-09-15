@@ -111,7 +111,7 @@ async fn client_writes() -> Result<()> {
                 members_after_consensus: None,
             })),
         )
-        .await;
+        .await?;
 
     Ok(())
 }
