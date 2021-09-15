@@ -87,7 +87,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
                 members: btreeset![0, 1],
                 members_after_consensus: None,
             },
-            m,
+            m.membership,
             "membership "
         );
 
@@ -130,7 +130,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
                 members: btreeset![0, 1],
                 members_after_consensus: None,
             },
-            m,
+            m.membership,
             "membership "
         );
     }

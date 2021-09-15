@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
+use std::sync::Once;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -23,6 +24,7 @@ use async_raft::raft::ClientWriteRequest;
 use async_raft::raft::InstallSnapshotRequest;
 use async_raft::raft::InstallSnapshotResponse;
 use async_raft::raft::MembershipConfig;
+use async_raft::raft::RaftResponse;
 use async_raft::raft::VoteRequest;
 use async_raft::raft::VoteResponse;
 use async_raft::storage::RaftStorage;
@@ -73,6 +75,14 @@ pub type MemRaft = Raft<MemClientRequest, MemClientResponse, RaftRouter, MemStor
 
 /// Initialize the tracing system.
 pub fn init_tracing() {
+    static START: Once = Once::new();
+
+    START.call_once(|| {
+        do_init_tracing();
+    });
+}
+
+pub fn do_init_tracing() {
     let fmt_layer = tracing_subscriber::fmt::Layer::default()
         .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
         .with_ansi(false);
@@ -388,16 +398,42 @@ impl RaftRouter {
         nodes.remove(&id);
     }
 
-    pub async fn add_non_voter(&self, leader: NodeId, target: NodeId) -> Result<(), ResponseError> {
+    pub async fn add_non_voter(&self, leader: NodeId, target: NodeId) -> Result<RaftResponse, ResponseError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
-        node.0.add_non_voter(target).await
+        node.0.add_non_voter(target, true).await
     }
 
-    pub async fn change_membership(&self, leader: NodeId, members: BTreeSet<NodeId>) -> Result<(), ResponseError> {
+    pub async fn add_non_voter_with_blocking(
+        &self,
+        leader: NodeId,
+        target: NodeId,
+        blocking: bool,
+    ) -> Result<RaftResponse, ResponseError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
-        node.0.change_membership(members).await
+        node.0.add_non_voter(target, blocking).await
+    }
+
+    pub async fn change_membership(
+        &self,
+        leader: NodeId,
+        members: BTreeSet<NodeId>,
+    ) -> Result<RaftResponse, ResponseError> {
+        let rt = self.routing_table.read().await;
+        let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
+        node.0.change_membership(members, true).await
+    }
+
+    pub async fn change_membership_with_blocking(
+        &self,
+        leader: NodeId,
+        members: BTreeSet<NodeId>,
+        blocking: bool,
+    ) -> Result<RaftResponse, ResponseError> {
+        let rt = self.routing_table.read().await;
+        let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
+        node.0.change_membership(members, blocking).await
     }
 
     /// Send a client read request to the target node.
@@ -476,7 +512,7 @@ impl RaftRouter {
                 "node {} has last_log_index {}, expected 0",
                 node.id, node.last_log_index
             );
-            let members = node.membership_config.members.iter().collect::<Vec<_>>();
+            let members = node.membership_config.membership.members.iter().collect::<Vec<_>>();
             assert_eq!(
                 members,
                 vec![&node.id],
@@ -485,7 +521,7 @@ impl RaftRouter {
                 members
             );
             assert!(
-                node.membership_config.members_after_consensus.is_none(),
+                node.membership_config.membership.members_after_consensus.is_none(),
                 "node {} is in joint consensus, expected uniform consensus",
                 node.id
             );
@@ -556,7 +592,7 @@ impl RaftRouter {
                 "node {} has last_log_index {}, expected {}",
                 node.id, node.last_log_index, expected_last_log
             );
-            let mut members = node.membership_config.members.iter().cloned().collect::<Vec<_>>();
+            let mut members = node.membership_config.membership.members.iter().cloned().collect::<Vec<_>>();
             members.sort_unstable();
             assert_eq!(
                 members, all_nodes,
@@ -564,7 +600,7 @@ impl RaftRouter {
                 node.id, members, all_nodes
             );
             assert!(
-                node.membership_config.members_after_consensus.is_none(),
+                node.membership_config.membership.members_after_consensus.is_none(),
                 "node {} was not in uniform consensus state",
                 node.id
             );

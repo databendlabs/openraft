@@ -1,9 +1,12 @@
 //! Error types exposed by this crate.
 
+use std::collections::BTreeSet;
 use std::fmt;
 
+use crate::raft::MembershipConfig;
 use crate::raft_types::SnapshotSegmentId;
 use crate::AppData;
+use crate::LogId;
 use crate::NodeId;
 
 /// A result type where the error variant is always a `RaftError`.
@@ -73,7 +76,7 @@ impl<D: AppData> fmt::Debug for ClientWriteError<D> {
 }
 
 /// Error variants related to configuration.
-#[derive(Debug, thiserror::Error, Eq, PartialEq)]
+#[derive(Debug, thiserror::Error, PartialEq)]
 #[non_exhaustive]
 pub enum ConfigError {
     /// A configuration error indicating that the given values for election timeout min & max are invalid: max must be
@@ -116,8 +119,8 @@ pub enum ChangeConfigError {
     RaftError(#[from] RaftError),
 
     /// The cluster is already undergoing a configuration change.
-    #[error("the cluster is already undergoing a configuration change")]
-    ConfigChangeInProgress,
+    #[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
+    ConfigChangeInProgress { membership_log_id: LogId },
 
     /// The given config would leave the cluster in an inoperable state.
     ///
@@ -130,6 +133,20 @@ pub enum ChangeConfigError {
     /// of the current leader is returned if known.
     #[error("this node is not the Raft leader")]
     NodeNotLeader(Option<NodeId>),
+
+    #[error("to add a member {node_id} first need to add it as non-voter")]
+    NonVoterNotFound { node_id: NodeId },
+
+    #[error("replication to non voter {node_id} is lagging {distance}, can not add as member")]
+    NonVoterIsLagging { node_id: NodeId, distance: u64 },
+
+    // TODO(xp): test it in unittest
+    // TOOO(xp): rename this error to some elaborated name.
+    #[error("now allowed to change from {curr:?} to {to:?}")]
+    Incompatible {
+        curr: MembershipConfig,
+        to: BTreeSet<NodeId>,
+    },
 
     /// The proposed config changes would make no difference to the current config.
     ///

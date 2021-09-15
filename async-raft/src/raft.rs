@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio::sync::oneshot::Receiver;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -273,76 +274,130 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         rx.await.map_err(|_| InitializeError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
     }
 
-    /// Synchronize a new Raft node, bringing it up-to-speed (§6).
+    /// Synchronize a new Raft node, optionally, blocking until up-to-speed (§6).
     ///
-    /// Applications built on top of Raft will typically have some peer discovery mechanism for
-    /// detecting when new nodes come online and need to be added to the cluster. This API
-    /// facilitates the ability to request that a new node be synchronized with the leader, so
-    /// that it is up-to-date and ready to be added to the cluster.
+    /// - Add a node as non-voter into the cluster.
+    /// - Setup replication from leader to it.
     ///
-    /// Calling this API will add the target node as a non-voter, starting the syncing process.
-    /// Once the node is up-to-speed, this function will return. It is the responsibility of the
-    /// application to then call `change_membership` once all of the new nodes are synced.
+    /// If blocking is true, this function blocks until the leader believes the logs on the new node is up to date,
+    /// i.e., ready to join the cluster, as a voter, by calling `change_membership`.
+    /// When finished, it returns the last log id on the new node, in a `RaftResponse::LogId`.
     ///
-    /// If this Raft node is not the cluster leader, then this call will fail.
+    /// If blocking is false, this function returns at once as successfully setting up the replication.
+    ///
+    /// If the node to add is already a voter or non-voter, it returns `RaftResponse::NoChange` at once.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=id))]
-    pub async fn add_non_voter(&self, id: NodeId) -> Result<(), ResponseError> {
-        let span = tracing::debug_span!("CH");
-
+    pub async fn add_non_voter(&self, id: NodeId, blocking: bool) -> Result<RaftResponse, ResponseError> {
         let (tx, rx) = oneshot::channel();
-
-        self.inner
-            .tx_api
-            .send((RaftMsg::AddNonVoter { id, tx }, span))
-            .map_err(|_| RaftError::ShuttingDown)?;
-
-        let recv_res = rx.await;
-        let res = match recv_res {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::error!("recv rx error: {}", e);
-                return Err(ChangeConfigError::RaftError(RaftError::ShuttingDown).into());
-            }
-        };
-
-        res?;
-
-        Ok(())
+        self.call_core(RaftMsg::AddNonVoter { id, blocking, tx }, rx).await
     }
 
     /// Propose a cluster configuration change (§6).
     ///
-    /// This will cause the leader to begin a cluster membership configuration change. If there
-    /// are new nodes in the proposed config which are not already registered as non-voters — from
-    /// an earlier call to `add_non_voter` — then the new nodes will first be synced as non-voters
-    /// before moving the cluster into joint consensus. As this process may take some time, it is
-    /// recommended that `add_non_voter` be called first for new nodes, and then once all new nodes
-    /// have been synchronized, call this method to start reconfiguration.
+    /// If a node in the proposed config but is not yet a voter or non-voter, it first calls `add_non_voter` to setup
+    /// replication to the new node.
     ///
-    /// If this Raft node is not the cluster leader, then the proposed configuration change will be
-    /// rejected.
+    /// Internal:
+    /// - It proposes a **joint** config.
+    /// - When the **joint** config is committed, it proposes a uniform config.
+    ///
+    /// If blocking is true, it blocks until every non-voter becomes up to date.
+    /// Otherwise it returns error `ChangeConfigError::NonVoterIsLagging` if there is a lagging non-voter.
+    ///
+    /// If it lost leadership or crashed before committing the second **uniform** config log, the cluster is left in the
+    /// **joint** config.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn change_membership(&self, members: BTreeSet<NodeId>) -> Result<(), ResponseError> {
-        let span = tracing::debug_span!("CH");
+    pub async fn change_membership(
+        &self,
+        members: BTreeSet<NodeId>,
+        blocking: bool,
+    ) -> Result<RaftResponse, ResponseError> {
+        tracing::info!(?members, "change_membership: add every member as non-voter");
+
+        for id in members.iter() {
+            let (tx, rx) = oneshot::channel();
+            let res = self.call_core(RaftMsg::AddNonVoter { id: *id, blocking, tx }, rx).await;
+
+            let res_err = match res {
+                Ok(_) => {
+                    continue;
+                }
+                Err(e) => e,
+            };
+
+            if matches!(res_err, ResponseError::ChangeConfig(ChangeConfigError::Noop)) {
+                tracing::info!(%res_err, "add non_voter: already exists");
+                // this node is already a non-voter
+                continue;
+            }
+
+            tracing::error!(%res_err, "add non_voter");
+
+            // unhandle-able error
+            return Err(res_err);
+        }
+
+        tracing::info!("change_membership: start to commit joint config");
 
         let (tx, rx) = oneshot::channel();
-        self.inner
-            .tx_api
-            .send((RaftMsg::ChangeMembership { members, tx }, span))
-            .map_err(|_| RaftError::ShuttingDown)?;
+        // res is error if membership can not be changed.
+        // If it is not error, it will go into a joint state
+        let res = self
+            .call_core(
+                RaftMsg::ChangeMembership {
+                    members: members.clone(),
+                    blocking,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
 
-        let recv_res = rx.await;
-        let res = match recv_res {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::error!("recv rx error: {}", e);
-                return Err(ChangeConfigError::RaftError(RaftError::ShuttingDown).into());
+        tracing::info!("res of first change_membership: {:?}", res);
+
+        let (log_id, joint) = match res {
+            RaftResponse::Membership { log_id, membership } => {
+                // There is a previously in progress joint state and it becomes the membership config we want.
+                if !membership.is_in_joint_consensus() {
+                    return Ok(RaftResponse::Membership { log_id, membership });
+                }
+
+                (log_id, membership)
+            }
+            _ => {
+                panic!("expect membership response")
             }
         };
 
-        res?;
+        tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
+        tracing::debug!("the second step is to change to uniform config: {:?}", members);
 
-        Ok(())
+        let (tx, rx) = oneshot::channel();
+        let res = self.call_core(RaftMsg::ChangeMembership { members, blocking, tx }, rx).await?;
+
+        tracing::info!("res of second change_membership: {:?}", res);
+
+        Ok(res)
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, mes, rx))]
+    pub(crate) async fn call_core(
+        &self,
+        mes: RaftMsg<D, R>,
+        rx: Receiver<Result<RaftResponse, ResponseError>>,
+    ) -> Result<RaftResponse, ResponseError> {
+        let span = tracing::debug_span!("CH");
+
+        self.inner.tx_api.send((mes, span)).map_err(|_| RaftError::ShuttingDown)?;
+
+        let recv_res = rx.await;
+        match recv_res {
+            Ok(x) => x,
+            Err(e) => {
+                tracing::error!("recv rx error: {}", e);
+                Err(ChangeConfigError::RaftError(RaftError::ShuttingDown).into())
+            }
+        }
     }
 
     /// Get a handle to the metrics channel.
@@ -400,7 +455,25 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Cl
 
 pub(crate) type ClientWriteResponseTx<D, R> = oneshot::Sender<Result<ClientWriteResponse<R>, ClientWriteError<D>>>;
 pub(crate) type ClientReadResponseTx = oneshot::Sender<Result<(), ClientReadError>>;
-pub(crate) type ResponseTx = oneshot::Sender<Result<u64, ResponseError>>;
+pub(crate) type ResponseTx = oneshot::Sender<Result<RaftResponse, ResponseError>>;
+
+/// Response type to send back to a caller
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RaftResponse {
+    LogIndex {
+        log_index: u64,
+    },
+    LogId {
+        log_id: LogId,
+    },
+    Membership {
+        log_id: LogId,
+        membership: MembershipConfig,
+    },
+
+    /// An Ok response indicating nothing is affected.
+    NoChange,
+}
 
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
@@ -427,12 +500,24 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         members: BTreeSet<NodeId>,
         tx: oneshot::Sender<Result<(), InitializeError>>,
     },
+    // TODO(xp): make tx a field of a struct
+    /// Request raft core to setup a new replication to a non-voter.
     AddNonVoter {
         id: NodeId,
+
+        /// If block until the newly added non-voter becomes line-rate.
+        blocking: bool,
+
+        /// Send the log id when the replication becomes line-rate.
         tx: ResponseTx,
     },
     ChangeMembership {
         members: BTreeSet<NodeId>,
+        /// with blocking==false, respond to client a ChangeConfigError::NonVoterIsLagging error at once if a
+        /// non-member is lagging.
+        ///
+        /// Otherwise, wait for commit of the member change log.
+        blocking: bool,
         tx: ResponseTx,
     },
 }
@@ -625,6 +710,7 @@ impl MembershipConfig {
         self.members_after_consensus.is_some()
     }
 
+    // TODO(xp): rename this
     /// Create a new initial config containing only the given node ID.
     pub fn new_initial(id: NodeId) -> Self {
         let mut members = BTreeSet::new();

@@ -119,7 +119,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                         members: btreeset![2, 3],
                         members_after_consensus: None,
                     },
-                    m
+                    m.membership
                 );
             }
         }
@@ -154,7 +154,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                     members: btreeset![0],
                     members_after_consensus: None,
                 },
-                m,
+                m.membership,
                 "membership should be overridden by the snapshot"
             );
         }

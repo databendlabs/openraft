@@ -83,7 +83,7 @@ async fn stepdown() -> Result<()> {
             .into_iter()
             .find(|node| node.id == 0)
             .expect("expected to find metrics on original leader node");
-        let cfg = metrics.membership_config;
+        let cfg = metrics.membership_config.membership;
         assert!(
             metrics.state != State::Leader,
             "expected old leader to have stepped down"

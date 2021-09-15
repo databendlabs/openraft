@@ -4,6 +4,7 @@ use maplit::btreeset;
 use tokio::sync::watch;
 use tokio::time::sleep;
 
+use crate::core::ActiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::raft::MembershipConfig;
@@ -73,14 +74,14 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config.members = btreeset![1, 2];
+            update.membership_config.membership.members = btreeset![1, 2];
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
         let got = w.members(btreeset![1, 2], "members").await?;
         h.await?;
 
-        assert_eq!(btreeset![1, 2], got.membership_config.members);
+        assert_eq!(btreeset![1, 2], got.membership_config.membership.members);
     }
 
     {
@@ -90,14 +91,17 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config.members_after_consensus = Some(btreeset![1, 2]);
+            update.membership_config.membership.members_after_consensus = Some(btreeset![1, 2]);
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
         let got = w.next_members(Some(btreeset![1, 2]), "next_members").await?;
         h.await?;
 
-        assert_eq!(Some(btreeset![1, 2]), got.membership_config.members_after_consensus);
+        assert_eq!(
+            Some(btreeset![1, 2]),
+            got.membership_config.membership.members_after_consensus
+        );
     }
 
     tracing::info!("--- wait for snapshot, Ok");
@@ -175,10 +179,14 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
         last_log_index: 0,
         last_applied: 0,
         current_leader: None,
-        membership_config: MembershipConfig {
-            members: Default::default(),
-            members_after_consensus: None,
+        membership_config: ActiveMembership {
+            log_id: LogId::default(),
+            membership: MembershipConfig {
+                members: Default::default(),
+                members_after_consensus: None,
+            },
         },
+
         snapshot: LogId { term: 0, index: 0 },
         leader_metrics: None,
     };

@@ -16,6 +16,7 @@ use thiserror::Error;
 use tokio::sync::watch;
 use tokio::time::Duration;
 
+use crate::core::ActiveMembership;
 use crate::core::State;
 use crate::raft::MembershipConfig;
 use crate::LogId;
@@ -39,7 +40,7 @@ pub struct RaftMetrics {
     /// The current cluster leader.
     pub current_leader: Option<NodeId>,
     /// The current membership config of the cluster.
-    pub membership_config: MembershipConfig,
+    pub membership_config: ActiveMembership,
 
     /// The id of the last log included in snapshot.
     /// If there is no snapshot, it is (0,0).
@@ -66,7 +67,10 @@ impl RaftMetrics {
             last_log_index: 0,
             last_applied: 0,
             current_leader: None,
-            membership_config,
+            membership_config: ActiveMembership {
+                log_id: LogId::default(),
+                membership: membership_config,
+            },
             snapshot: LogId { term: 0, index: 0 },
             leader_metrics: None,
         }
@@ -173,7 +177,7 @@ impl Wait {
     #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn members(&self, want_members: BTreeSet<NodeId>, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
-            |x| x.membership_config.members == want_members,
+            |x| x.membership_config.membership.members == want_members,
             &format!("{} .membership_config.members -> {:?}", msg.to_string(), want_members),
         )
         .await
@@ -187,7 +191,7 @@ impl Wait {
         msg: impl ToString,
     ) -> Result<RaftMetrics, WaitError> {
         self.metrics(
-            |x| x.membership_config.members_after_consensus == want_members,
+            |x| x.membership_config.membership.members_after_consensus == want_members,
             &format!(
                 "{} .membership_config.members_after_consensus -> {:?}",
                 msg.to_string(),

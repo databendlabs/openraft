@@ -8,6 +8,7 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::ConflictOpt;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
+use crate::ActiveMembership;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -378,13 +379,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let last_conf_change = entries
             .iter()
             .filter_map(|ent| match &ent.payload {
-                EntryPayload::ConfigChange(conf) => Some(conf),
+                EntryPayload::ConfigChange(conf) => Some(ActiveMembership {
+                    log_id: ent.log_id,
+                    membership: conf.membership.clone(),
+                }),
                 _ => None,
             })
             .last();
+
         if let Some(conf) = last_conf_change {
             tracing::debug!({membership=?conf}, "applying new membership config received from leader");
-            self.update_membership(conf.membership.clone())?;
+            self.update_membership(conf)?;
         };
 
         // Replicate entries to log (same as append, but in follower mode).

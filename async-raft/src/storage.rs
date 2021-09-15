@@ -10,6 +10,7 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
+use crate::core::ActiveMembership;
 use crate::raft::Entry;
 use crate::raft::MembershipConfig;
 use crate::raft_types::SnapshotId;
@@ -68,9 +69,9 @@ pub struct InitialState {
     /// The saved hard state of the node.
     pub hard_state: HardState,
 
-    /// The latest cluster membership configuration found in the log, else a new initial
+    /// The latest cluster membership configuration found, in log or in state machine, else a new initial
     /// membership config consisting only of this node's ID.
-    pub membership: MembershipConfig,
+    pub last_membership: ActiveMembership,
 }
 
 impl InitialState {
@@ -86,7 +87,10 @@ impl InitialState {
                 current_term: 0,
                 voted_for: None,
             },
-            membership: MembershipConfig::new_initial(id),
+            last_membership: ActiveMembership {
+                log_id: LogId { term: 0, index: 0 },
+                membership: MembershipConfig::new_initial(id),
+            },
         }
     }
 }
@@ -114,7 +118,7 @@ where
         false
     }
 
-    /// Get the latest membership config found in the log.
+    /// Get the latest membership config found in the log or in state machine.
     ///
     /// This must always be implemented as a reverse search through the log to find the most
     /// recent membership config to be appended to the log.
@@ -127,7 +131,7 @@ where
     /// the node's ID so that it is consistent across restarts.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_membership_config(&self) -> Result<MembershipConfig, StorageError>;
+    async fn get_membership_config(&self) -> Result<ActiveMembership, StorageError>;
 
     /// Get Raft's state information from storage.
     ///
@@ -168,7 +172,7 @@ where
 
     /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
     /// membership config.
-    async fn last_applied_state(&self) -> Result<(LogId, Option<(LogId, MembershipConfig)>), StorageError>;
+    async fn last_applied_state(&self) -> Result<(LogId, Option<ActiveMembership>), StorageError>;
 
     /// Delete all logs in a `range`.
     ///

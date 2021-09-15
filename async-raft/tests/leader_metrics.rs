@@ -131,39 +131,51 @@ async fn leader_metrics() -> Result<()> {
     want += 10;
 
     tracing::info!("--- remove n{}", 4);
+    {
+        router.change_membership(0, left_members.clone()).await?;
+        want += 2; // two member-change logs
 
-    router.change_membership(0, left_members.clone()).await?;
-    want += 2; // two member-change logs
+        tracing::info!("--- n{} should revert to non-voter", 4);
+        router
+            .wait_for_metrics(
+                &4,
+                |x| x.state == State::NonVoter,
+                timeout,
+                &format!("n{}.state -> {:?}", 4, State::NonVoter),
+            )
+            .await?;
 
-    router
-        .wait_for_metrics(
-            &4,
-            |x| x.state == State::NonVoter,
-            timeout,
-            &format!("n{}.state -> {:?}", 4, State::NonVoter),
-        )
-        .await?;
+        router
+            .wait_for_log(
+                &left_members,
+                want,
+                timeout,
+                "other nodes should commit the membership change log",
+            )
+            .await?;
+    }
 
-    router.wait_for_log(&left_members, want, timeout, "removed node 4").await?;
-
-    let ww = ReplicationMetrics {
-        matched: LogId { term: 1, index: want },
-    };
-    let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone()};
-    router
-        .wait_for_metrics(
-            &0,
-            |x| {
-                if let Some(ref q) = x.leader_metrics {
-                    q.replication == want_repl
-                } else {
-                    false
-                }
-            },
-            timeout,
-            "replication metrics to 3 nodes",
-        )
-        .await?;
+    tracing::info!("--- replication metrics should reflect the replication state");
+    {
+        let ww = ReplicationMetrics {
+            matched: LogId { term: 1, index: want },
+        };
+        let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone()};
+        router
+            .wait_for_metrics(
+                &0,
+                |x| {
+                    if let Some(ref q) = x.leader_metrics {
+                        q.replication == want_repl
+                    } else {
+                        false
+                    }
+                },
+                timeout,
+                "replication metrics to 3 nodes",
+            )
+            .await?;
+    }
 
     let leader = router.current_leader(0).await.unwrap();
 

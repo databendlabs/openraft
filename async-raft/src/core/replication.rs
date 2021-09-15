@@ -4,7 +4,6 @@ use tokio::sync::oneshot;
 use tracing_futures::Instrument;
 
 use crate::config::SnapshotPolicy;
-use crate::core::ConsensusState;
 use crate::core::LeaderState;
 use crate::core::ReplicationState;
 use crate::core::SnapshotState;
@@ -12,6 +11,8 @@ use crate::core::State;
 use crate::core::UpdateCurrentLeader;
 use crate::error::RaftResult;
 use crate::quorum;
+use crate::raft::RaftResponse;
+use crate::raft::ResponseTx;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
@@ -27,8 +28,12 @@ use crate::ReplicationMetrics;
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) fn spawn_replication_stream(&self, target: NodeId) -> ReplicationState<D> {
+    #[tracing::instrument(level = "debug", skip(self, caller_tx))]
+    pub(super) fn spawn_replication_stream(
+        &self,
+        target: NodeId,
+        caller_tx: Option<ResponseTx>,
+    ) -> ReplicationState<D> {
         let replstream = ReplicationStream::new(
             self.core.id,
             target,
@@ -44,6 +49,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             matched: LogId { term: 0, index: 0 },
             replstream,
             remove_after_commit: None,
+            tx: caller_tx,
         }
     }
 
@@ -67,77 +73,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
     }
 
-    /// Handle events from replication streams updating their replication rate tracker.
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn handle_rate_update(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
-        {
-            let voter = self.nodes.get(&target);
-            let non_voter = self.non_voters.get(&target);
-
-            assert!(
-                !(voter.is_some() && non_voter.is_some()),
-                "target {} can not be in both voter and non-voter",
-                target
-            );
-        }
-
-        let state = self.non_voters.get_mut(&target);
-        let state = match state {
-            None => {
-                // target is a follower.
-                return Ok(());
-            }
-            Some(x) => x,
-        };
-
-        // the matched increments monotonically.
-
-        tracing::debug!("state.matched: {}, update to matched: {}", state.state.matched, matched);
-        assert!(matched >= state.state.matched);
-
-        state.state.matched = matched;
-
-        // TODO(xp): use Vec<_> to replace the two membership configs.
-
-        state.is_ready_to_join =
-            self.core.last_log_id.index.saturating_sub(matched.index) < self.core.config.replication_lag_threshold;
-
-        // Issue a response on the non-voters response channel if needed.
-        if !state.is_ready_to_join {
-            return Ok(());
-        }
-
-        // ready to join
-
-        if let Some(tx) = state.tx.take() {
-            // TODO(xp): no log index to send
-            let _ = tx.send(Ok(0));
-        }
-
-        // If we are in NonVoterSync state, and this is one of the nodes being awaiting, then update.
-        match std::mem::replace(&mut self.consensus_state, ConsensusState::Uniform) {
-            ConsensusState::NonVoterSync {
-                mut awaiting,
-                members,
-                tx,
-            } => {
-                awaiting.remove(&target);
-
-                if awaiting.is_empty() {
-                    // We are ready to move forward with entering joint consensus.
-                    self.consensus_state = ConsensusState::Uniform;
-                    self.change_membership(members, tx).await;
-                } else {
-                    // We are still awaiting additional nodes, so replace our original state.
-                    self.consensus_state = ConsensusState::NonVoterSync { awaiting, members, tx };
-                }
-            }
-
-            other => self.consensus_state = other, // Set the original value back to what it was.
-        }
-        Ok(())
-    }
-
     /// Handle events from replication streams for when this node needs to revert to follower state.
     #[tracing::instrument(level = "trace", skip(self, term))]
     async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> RaftResult<()> {
@@ -150,56 +85,51 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn handle_update_mactched_and_rate(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
-        self.handle_update_matched(target, matched).await?;
-        self.handle_rate_update(target, matched).await
-    }
-
-    /// Handle events from a replication stream which updates the target node's match index.
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn handle_update_matched(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
-        let mut found = false;
-
-        if let Some(state) = self.non_voters.get_mut(&target) {
-            tracing::debug!("state.matched: {}, update to matched: {}", state.state.matched, matched);
-            assert!(matched >= state.state.matched);
-
-            state.state.matched = matched;
-            found = true;
-        }
-
         // Update target's match index & check if it is awaiting removal.
         let mut needs_removal = false;
 
         if let Some(state) = self.nodes.get_mut(&target) {
-            state.matched = matched;
-            found = true;
+            tracing::debug!("state.matched: {}, update to matched: {}", state.matched, matched);
 
+            assert!(matched >= state.matched, "the matched increments monotonically");
+
+            state.matched = matched;
+
+            // Issue a response on the non-voters response channel if needed.
+            if state.is_line_rate(&self.core.last_log_id, &self.core.config) {
+                // This replication became line rate.
+
+                // When adding a non-voter, it blocks until the replication becomes line-rate.
+                if let Some(tx) = state.tx.take() {
+                    // TODO(xp): define a specific response type for non-voter matched event.
+                    let x = RaftResponse::LogId { log_id: state.matched };
+                    let _ = tx.send(Ok(x));
+                }
+            }
+
+            // TODO(xp): stop replication only when commit index is replicated?
             if let Some(threshold) = &state.remove_after_commit {
                 if &matched.index >= threshold {
                     needs_removal = true;
                 }
             }
-        }
-
-        if !found {
+        } else {
+            panic!("repliation is removed: {}", target);
             // no such node
-            return Ok(());
+            // return Ok(());
         }
 
-        self.update_leader_metrics(target, matched);
-
+        // TODO(xp): use Vec<_> to replace the two membership configs.
         // Drop replication stream if needed.
-        // TODO(xp): is it possible to merge the two node remove routines?
-        //           here and that in handle_uniform_consensus_committed()
         if needs_removal {
             if let Some(node) = self.nodes.remove(&target) {
                 let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
-
-                // remove metrics entry
                 self.leader_metrics.replication.remove(&target);
             }
+        } else {
+            self.update_leader_metrics(target, matched);
         }
 
         let commit_index = self.calc_commit_index();
@@ -213,14 +143,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
                 let _ = node.replstream.repl_tx.send((
-                    RaftEvent::UpdateCommitIndex {
-                        commit_index: self.core.commit_index,
-                    },
-                    tracing::debug_span!("CH"),
-                ));
-            }
-            for node in self.non_voters.values() {
-                let _ = node.state.replstream.repl_tx.send((
                     RaftEvent::UpdateCommitIndex {
                         commit_index: self.core.commit_index,
                     },
@@ -258,12 +180,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     #[tracing::instrument(level = "trace", skip(self))]
     fn calc_commit_index(&self) -> u64 {
-        let c0_index = self.calc_members_commit_index(&self.core.membership.members, "c0");
+        let c0_index = self.calc_members_commit_index(&self.core.membership.membership.members, "c0");
 
         // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
         let mut c1_index = c0_index; // Defaults to just matching C0.
 
-        if let Some(members) = &self.core.membership.members_after_consensus {
+        if let Some(members) = &self.core.membership.membership.members_after_consensus {
             c1_index = self.calc_members_commit_index(members, "c1");
         }
 
@@ -300,12 +222,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 continue;
             }
 
-            // this node is a non-voter
-            let repl_state = self.non_voters.get(id);
-            if let Some(x) = repl_state {
-                rst.push(x.state.matched);
-                continue;
-            }
             panic!("node {} not found in nodes or non-voters", id);
         }
 

@@ -86,32 +86,37 @@ async fn add_remove_voter() -> Result<()> {
     wait_log(router.clone(), &all_members, want).await?;
 
     tracing::info!("--- changing cluster config");
-    router.change_membership(0, all_members.clone()).await?;
-    want += 2; // 2 member-change logs
+    {
+        router.change_membership(0, all_members.clone()).await?;
+        want += 2; // 2 member-change logs
 
-    wait_log(router.clone(), &all_members, want).await?;
-    router.assert_stable_cluster(Some(1), Some(want)).await; // Still in term 1, so leader is still node 0.
+        wait_log(router.clone(), &all_members, want).await?;
+        router.assert_stable_cluster(Some(1), Some(want)).await; // Still in term 1, so leader is still node 0.
+    }
 
-    // Send some requests
-    router.client_request_many(0, "client", 100).await;
-    want += 100;
+    tracing::info!("--- write 100 logs");
+    {
+        router.client_request_many(0, "client", 100).await;
+        want += 100;
 
-    wait_log(router.clone(), &all_members, want).await?;
+        wait_log(router.clone(), &all_members, want).await?;
+    }
 
-    // Remove Node 4
     tracing::info!("--- remove n{}", 4);
-    router.change_membership(0, left_members.clone()).await?;
-    want += 2; // two member-change logs
+    {
+        router.change_membership(0, left_members.clone()).await?;
+        want += 2; // two member-change logs
 
-    wait_log(router.clone(), &left_members, want).await?;
-    router
-        .wait_for_metrics(
-            &4u64,
-            |x| x.state == State::NonVoter,
-            Some(timeout),
-            &format!("n{}.state -> {:?}", 4, State::NonVoter),
-        )
-        .await?;
+        wait_log(router.clone(), &left_members, want).await?;
+        router
+            .wait_for_metrics(
+                &4u64,
+                |x| x.state == State::NonVoter,
+                Some(timeout),
+                &format!("n{}.state -> {:?}", 4, State::NonVoter),
+            )
+            .await?;
+    }
 
     // Send some requests
     router.client_request_many(0, "client", 100).await;

@@ -136,7 +136,7 @@ where
                 members: btreeset! {NODE_ID},
                 members_after_consensus: None,
             },
-            membership,
+            membership.membership,
         );
 
         Ok(())
@@ -172,7 +172,7 @@ where
                     members: btreeset! {3,4,5},
                     members_after_consensus: None,
                 },
-                mem,
+                mem.membership,
             );
         }
 
@@ -197,7 +197,7 @@ where
                     members: btreeset! {3, 4, 5},
                     members_after_consensus: None,
                 },
-                mem,
+                mem.membership,
             );
         }
 
@@ -222,7 +222,7 @@ where
                     members: btreeset! {1,2,3},
                     members_after_consensus: None,
                 },
-                mem,
+                mem.membership,
             );
         }
 
@@ -255,7 +255,7 @@ where
                 members: btreeset! {NODE_ID},
                 members_after_consensus: None,
             },
-            initial.membership,
+            initial.last_membership.membership,
         );
 
         assert_eq!(
@@ -341,7 +341,7 @@ where
                     members: btreeset! {3,4,5},
                     members_after_consensus: None,
                 },
-                initial.membership,
+                initial.last_membership.membership,
             );
         }
 
@@ -366,7 +366,7 @@ where
                     members: btreeset! {3, 4, 5},
                     members_after_consensus: None,
                 },
-                initial.membership,
+                initial.last_membership.membership,
             );
         }
 
@@ -391,7 +391,7 @@ where
                     members: btreeset! {1,2,3},
                     members_after_consensus: None,
                 },
-                initial.membership,
+                initial.last_membership.membership,
             );
         }
 
@@ -592,10 +592,13 @@ where
             let (applied, membership) = store.last_applied_state().await?;
             assert_eq!(LogId { term: 1, index: 3 }, applied);
             assert_eq!(
-                Some((LogId { term: 1, index: 3 }, MembershipConfig {
-                    members: btreeset! {1,2},
-                    members_after_consensus: None
-                })),
+                Some(ActiveMembership {
+                    log_id: LogId { term: 1, index: 3 },
+                    membership: MembershipConfig {
+                        members: btreeset! {1,2},
+                        members_after_consensus: None
+                    }
+                }),
                 membership
             );
         }
@@ -612,10 +615,13 @@ where
             let (applied, membership) = store.last_applied_state().await?;
             assert_eq!(LogId { term: 1, index: 5 }, applied);
             assert_eq!(
-                Some((LogId { term: 1, index: 3 }, MembershipConfig {
-                    members: btreeset! {1,2},
-                    members_after_consensus: None
-                })),
+                Some(ActiveMembership {
+                    log_id: LogId { term: 1, index: 3 },
+                    membership: MembershipConfig {
+                        members: btreeset! {1,2},
+                        members_after_consensus: None
+                    }
+                }),
                 membership
             );
         }

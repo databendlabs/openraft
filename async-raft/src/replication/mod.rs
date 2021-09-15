@@ -295,7 +295,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
 
         // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
-        let conflict = match res.conflict_opt {
+        let mut conflict = match res.conflict_opt {
             None => {
                 panic!("append_entries failed but without a reason: {:?}", res);
             }
@@ -304,15 +304,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         tracing::debug!(?conflict, res.term, "append entries failed, handling conflict opt");
 
-        // If the returned conflict opt index is greater than last_log_index, then this is a
-        // logical error, and no action should be taken. This represents a replication failure.
-        if conflict.log_id.index > self.last_log_index {
-            panic!(
-                "impossible: conflict.log_it({}) > last_log_index({})",
-                conflict.log_id, self.last_log_index
-            );
-        }
-
         // If conflict index is 0, we will not be able to fetch that index from storage because
         // it will never exist. So instead, we just return, and accept the conflict data.
         if conflict.log_id.index == 0 {
@@ -320,6 +311,19 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             self.update_matched();
 
             return;
+        }
+
+        // The follower has more log and set the conflict.log_id to its last_log_id if:
+        // - req.prev_log_id.index is 0
+        // - req.prev_log_id.index is applied, in which case the follower does not know if the prev_log_id is valid.
+        //
+        // In such case, fake a conflict log_id that never matches the log term in local store, in order to not
+        // update_matched().
+        if conflict.log_id.index > self.last_log_index {
+            conflict.log_id = LogId {
+                term: 0,
+                index: self.last_log_index,
+            };
         }
 
         // Fetch the entry at conflict index and use the term specified there.
@@ -334,24 +338,24 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
         };
 
-        let ent_term = ent.map(|entry| entry.log_id.term);
-        match ent_term {
-            Some(term) => {
-                self.matched = LogId {
-                    term,
-                    index: conflict.log_id.index,
-                };
-
-                if term == conflict.log_id.term {
-                    self.update_matched();
-                }
-            }
+        let ent = match ent {
+            Some(x) => x,
             None => {
                 // This condition would only ever be reached if the log has been removed due to
                 // log compaction (barring critical storage failure), so transition to snapshotting.
                 self.set_target_state(TargetReplState::Snapshotting);
+                return;
             }
         };
+
+        let term = ent.log_id.term;
+
+        // Next time try sending from the log at conflict.log_id.index.
+        self.matched = ent.log_id;
+
+        if term == conflict.log_id.term {
+            self.update_matched();
+        }
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
