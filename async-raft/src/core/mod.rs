@@ -288,6 +288,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             last_log_index: self.last_log_id.index,
             last_applied: self.last_applied.index,
             current_leader: self.current_leader,
+            // TODO(xp): 111 metrics should also track the membership log id
             membership_config: self.membership.clone(),
             snapshot: self.snapshot_last_log_id,
             leader_metrics,

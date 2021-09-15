@@ -72,7 +72,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// on the given channel.
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) fn add_member(&mut self, target: NodeId, tx: ResponseTx, blocking: bool) {
-        // Ensure the node doesn't already exist in the replication.
+        // TODO(xp): 111 a blocking change_membership can be done in Raft::change_membership: it add the replication
+        //           stream and wait for it to become line-rate.
+
+        // Ensure the node doesn't already exist in the current
+        // config, in the set of new nodes alreading being synced, or in the nodes being removed.
         if target == self.core.id || self.nodes.contains_key(&target) {
             tracing::debug!("target node is already a cluster member or is being synced");
             let _ = tx.send(Ok(RaftResponse::NoChange));
@@ -145,6 +149,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Here, all we do is check to see which nodes still need to be synced, which determines
         // if we can proceed.
 
+        // TODO(xp): test change membership without adding as non-voter.
+
+        // TODO(xp): 111 test adding a node that is not non-voter.
+        // TODO(xp): 111 test adding a node that is lagging.
         for new_node in members.difference(&self.core.membership.membership.members) {
             match self.nodes.get(&new_node) {
                 // Node is ready to join.
@@ -166,13 +174,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
                 // Node does not yet have a repl stream, spawn one.
                 None => {
+                    // TODO(xp): 111 distance
                     let _ = tx.send(Err(ChangeConfigError::NonVoterNotFound { node_id: *new_node }.into()));
                     return;
                 }
             }
         }
 
+        // TODO(xp): 111 report metrics?
         let res = self.append_membership_log(new_config, Some(tx)).await;
+
         if let Err(e) = res {
             tracing::error!("append joint log error: {:?}", e);
         }
@@ -225,6 +236,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) fn handle_uniform_consensus_committed(&mut self, log_id: &LogId) {
         let index = log_id.index;
+        // TODO(xp): 111 when membership config log is committed, there is nothing has to do.
+        // TODO(xp): removed follower should be able to receive the message that commits a joint log.
 
         // Step down if needed.
         if !self.core.membership.membership.contains(&self.core.id) {

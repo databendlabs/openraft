@@ -195,7 +195,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// leader, causing it to be executed a second time. As such, clients should assign unique serial
     /// numbers to every command. Then, the state machine should track the latest serial number
     /// processed for each client, along with the associated response. If it receives a command whose
-    /// serial number has already been executed, it responds immediately without reexecuting the
+    /// serial number has already been executed, it responds immediately without re-executing the
     /// request (§8). The `RaftStorage::apply_entry_to_state_machine` method is the perfect place
     /// to implement this.
     ///
@@ -327,7 +327,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
             if matches!(res_err, ResponseError::ChangeConfig(ChangeConfigError::Noop)) {
                 tracing::info!(%res_err, "add non_voter: already exists");
-                // this node is already a non-voter
                 continue;
             }
 
@@ -388,6 +387,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ) -> Result<RaftResponse, ResponseError> {
         let span = tracing::debug_span!("CH");
 
+        // TODO(xp): if non-voters is lagging, return a corresponding error, instead of waiting.
         self.inner.tx_api.send((mes, span)).map_err(|_| RaftError::ShuttingDown)?;
 
         let recv_res = rx.await;

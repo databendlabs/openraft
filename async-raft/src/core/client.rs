@@ -345,6 +345,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 );
             }
             ClientOrInternalResponseTx::Internal(tx) => {
+
                 // TODO(xp): if there is error, shall we go on?
 
                 let tx = match tx {

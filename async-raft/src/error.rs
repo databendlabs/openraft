@@ -185,14 +185,17 @@ pub enum ChangeConfigError {
     #[error("this node is not the Raft leader")]
     NodeNotLeader(Option<NodeId>),
 
+    // TODO(xp): 111 test it
     #[error("to add a member {node_id} first need to add it as non-voter")]
     NonVoterNotFound { node_id: NodeId },
 
+    // TODO(xp): 111 test it
     #[error("replication to non voter {node_id} is lagging {distance}, can not add as member")]
     NonVoterIsLagging { node_id: NodeId, distance: u64 },
 
     // TODO(xp): test it in unittest
     // TOOO(xp): rename this error to some elaborated name.
+    // TODO(xp): 111 test it
     #[error("now allowed to change from {curr:?} to {to:?}")]
     Incompatible {
         curr: MembershipConfig,
