@@ -31,7 +31,7 @@ tracing-futures = "0.2.4"
 [dev-dependencies]
 maplit = "1.0.2"
 memstore = { version="0.2.0", path="../memstore" }
-pretty_assertions = "0.7.2"
+pretty_assertions = "1.0.0"
 tracing-subscriber = "0.2.10"
 
 [features]
