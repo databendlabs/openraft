@@ -14,6 +14,8 @@ use std::sync::Arc;
 
 use futures::future::AbortHandle;
 use futures::future::Abortable;
+use rand::thread_rng;
+use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::broadcast;
@@ -246,9 +248,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // Here we use a 30 second overhead on the initial next_election_timeout. This is because we need
             // to ensure that restarted nodes don't disrupt a stable cluster by timing out and driving up their
             // term before network communication is established.
-            let inst = Instant::now()
-                + Duration::from_secs(2)
-                + Duration::from_millis(self.config.new_rand_election_timeout());
+            let inst =
+                Instant::now() + Duration::from_millis(thread_rng().gen_range(1..3) * self.config.heartbeat_interval);
             self.next_election_timeout = Some(inst);
         }
 
