@@ -219,6 +219,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // snapshot is installed
             self.last_applied = last_applied;
 
+            if self.commit_index < self.last_applied.index {
+                self.commit_index = self.last_applied.index;
+            }
             if self.last_log_id < self.last_applied {
                 self.last_log_id = self.last_applied;
             }

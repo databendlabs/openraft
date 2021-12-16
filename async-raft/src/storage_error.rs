@@ -96,8 +96,12 @@ pub enum Violation {
     #[error("range is not half-open: start: {start:?}, end: {end:?}")]
     RangeNotHalfOpen { start: Bound<u64>, end: Bound<u64> },
 
+    // TODO(xp): rename this to some input related error name.
     #[error("empty log vector")]
     LogsEmpty,
+
+    #[error("all logs are removed. It requires at least one log to track continuity")]
+    StoreLogsEmpty,
 
     #[error("logs are not consecutive, prev: {prev}, next: {next}")]
     LogsNonConsecutive { prev: LogId, next: LogId },

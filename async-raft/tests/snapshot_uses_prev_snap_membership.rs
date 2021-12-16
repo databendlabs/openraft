@@ -16,6 +16,9 @@ use maplit::btreeset;
 mod fixtures;
 
 /// Test a second compaction should not lose membership.
+/// To ensure the bug is fixed:
+/// - Snapshot stores membership when compaction.
+/// - But compaction does not extract membership config from Snapshot entry, only from MembershipConfig entry.
 ///
 /// What does this test do?
 ///
@@ -36,7 +39,9 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            max_applied_log_to_keep: 1,
+            // Use 2, with 1 it triggers a compaction when replicating ent-1,
+            // because ent-0 is removed.
+            max_applied_log_to_keep: 2,
             ..Default::default()
         }
         .validate()?,
@@ -79,7 +84,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         {
             let logs = sto0.get_log_entries(..).await?;
             println!("{}", logs.as_slice().summary());
-            assert_eq!(1, logs.len(), "only one applied log is kept");
+            assert_eq!(2, logs.len(), "only one applied log is kept");
         }
         let m = sto0.get_membership_config().await?;
         assert_eq!(
@@ -122,7 +127,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     {
         {
             let logs = sto0.get_log_entries(..).await?;
-            assert_eq!(1, logs.len(), "only one applied log");
+            assert_eq!(2, logs.len(), "only one applied log");
         }
         let m = sto0.get_membership_config().await?;
         assert_eq!(

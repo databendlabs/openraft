@@ -105,11 +105,13 @@ where
     D: AppData,
     R: AppDataResponse,
 {
+    // TODO(xp): simplify storage API
+
     /// The storage engine's associated type used for exposing a snapshot for reading & writing.
     ///
     /// See the [storage chapter of the guide](https://async-raft.github.io/async-raft/storage.html)
     /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Unpin + 'static;
+    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
 
     /// Set if to turn on defensive check to unexpected input.
     /// E.g. discontinuous log appending.
@@ -161,9 +163,24 @@ where
         range: RNG,
     ) -> Result<Vec<Entry<D>>, StorageError>;
 
+    /// Get a series of log entries from storage.
+    ///
+    /// Entry not found is allowed
+    async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+        &self,
+        range: RNG,
+    ) -> Result<Vec<Entry<D>>, StorageError>;
+
     /// Try to get an log entry.
     /// It does not return an error if in defensive mode and the log entry at `log_index` is not found.
     async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>, StorageError>;
+
+    /// Returns the first log id in log.
+    ///
+    /// The impl should not consider the applied log id in state machine.
+    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError>;
+
+    async fn first_known_log_id(&self) -> Result<LogId, StorageError>;
 
     /// Returns the last log id in log.
     ///

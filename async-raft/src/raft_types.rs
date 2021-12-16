@@ -24,6 +24,12 @@ impl Display for LogId {
     }
 }
 
+impl LogId {
+    pub fn new(term: u64, index: u64) -> Self {
+        LogId { term, index }
+    }
+}
+
 // Everytime a snapshot is created, it is assigned with a globally unique id.
 pub type SnapshotId = String;
 

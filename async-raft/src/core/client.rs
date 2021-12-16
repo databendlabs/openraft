@@ -245,7 +245,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Transform the given payload into an entry, assign an index and term, and append the entry to the log.
-    #[tracing::instrument(level = "trace", skip(self, payload))]
+    #[tracing::instrument(level = "debug", skip(self, payload))]
     pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> RaftResult<Entry<D>> {
         let entry = Entry {
             log_id: LogId {
@@ -255,6 +255,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             payload,
         };
         self.core.storage.append_to_log(&[&entry]).await.map_err(|err| self.core.map_storage_error(err))?;
+
+        tracing::debug!("append log: {}", entry.summary());
         self.core.last_log_id.index = entry.log_id.index;
 
         Ok(entry)
@@ -265,7 +267,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// NOTE WELL: this routine does not wait for the request to actually finish replication, it
     /// merely beings the process. Once the request is committed to the cluster, its response will
     /// be generated asynchronously.
-    #[tracing::instrument(level = "trace", skip(self, req), fields(req=%req.summary()))]
+    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
     pub(super) async fn replicate_client_request(&mut self, req: ClientRequestEntry<D, R>) {
         // Replicate the request if there are other cluster members. The client response will be
         // returned elsewhere after the entry has been committed to the cluster.

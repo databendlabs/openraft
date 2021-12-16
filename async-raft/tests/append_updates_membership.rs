@@ -17,7 +17,7 @@ use maplit::btreeset;
 #[macro_use]
 mod fixtures;
 
-/// append-entries should update membership correctlly when adding new logs and deleting
+/// append-entries should update membership correctly when adding new logs and deleting
 /// inconsistent logs.
 ///
 /// - bring up a non-voter and send to it append_entries request. Check the membership updated.
@@ -48,7 +48,7 @@ async fn append_updates_membership() -> Result<()> {
         let req = AppendEntriesRequest {
             term: 1,
             leader_id: 0,
-            prev_log_id: LogId { term: 1, index: 0 },
+            prev_log_id: LogId::new(0, 0),
             entries: vec![
                 ent(1, 1),
                 Entry {
@@ -87,7 +87,7 @@ async fn append_updates_membership() -> Result<()> {
         let req = AppendEntriesRequest {
             term: 1,
             leader_id: 0,
-            prev_log_id: LogId { term: 1, index: 2 },
+            prev_log_id: LogId::new(1, 2),
             entries: vec![ent(2, 3)],
             leader_commit: 0,
         };

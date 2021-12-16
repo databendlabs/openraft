@@ -29,6 +29,7 @@ pub use crate::error::ClientWriteError;
 pub use crate::error::ConfigError;
 pub use crate::error::InitializeError;
 pub use crate::error::RaftError;
+pub use crate::error::ReplicationError;
 pub use crate::metrics::RaftMetrics;
 pub use crate::network::RaftNetwork;
 pub use crate::raft::Raft;

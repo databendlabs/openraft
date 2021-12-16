@@ -15,6 +15,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tokio::sync::watch;
 use tokio::time::Duration;
+use tokio::time::Instant;
 
 use crate::core::ActiveMembership;
 use crate::core::State;
@@ -98,6 +99,8 @@ impl Wait {
     #[tracing::instrument(level = "debug", skip(self, func), fields(msg=msg.to_string().as_str()))]
     pub async fn metrics<T>(&self, func: T, msg: impl ToString) -> Result<RaftMetrics, WaitError>
     where T: Fn(&RaftMetrics) -> bool + Send {
+        let timeout_at = Instant::now() + self.timeout;
+
         let mut rx = self.rx.clone();
         loop {
             let latest = rx.borrow().clone();
@@ -109,7 +112,17 @@ impl Wait {
                 return Ok(latest);
             }
 
-            let delay = tokio::time::sleep(self.timeout);
+            let now = Instant::now();
+            if now >= timeout_at {
+                return Err(WaitError::Timeout(
+                    self.timeout,
+                    format!("{} latest: {:?}", msg.to_string(), latest),
+                ));
+            }
+
+            let sleep_time = timeout_at - now;
+            tracing::debug!(?sleep_time, "wait timeout");
+            let delay = tokio::time::sleep(sleep_time);
 
             tokio::select! {
                 _ = delay => {

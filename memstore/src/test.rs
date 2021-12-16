@@ -25,7 +25,7 @@ struct MemStoreBuilder {}
 #[async_trait]
 impl StoreBuilder<ClientRequest, ClientResponse, MemStore> for MemStoreBuilder {
     async fn new_store(&self, id: NodeId) -> MemStore {
-        let sto = MemStore::new(id);
+        let sto = MemStore::new(id).await;
         sto.defensive(false).await;
         sto
     }
@@ -114,6 +114,9 @@ where
         run_fut(Suite::save_hard_state(builder))?;
         run_fut(Suite::get_log_entries(builder))?;
         run_fut(Suite::try_get_log_entry(builder))?;
+        run_fut(Suite::initial_logs(builder))?;
+        run_fut(Suite::first_known_log_id(builder))?;
+        run_fut(Suite::first_id_in_log(builder))?;
         run_fut(Suite::last_id_in_log(builder))?;
         run_fut(Suite::last_applied_state(builder))?;
         run_fut(Suite::delete_logs_from(builder))?;
@@ -508,6 +511,8 @@ where
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
 
+        store.delete_logs_from(0..=0).await?;
+
         let ent = store.try_get_log_entry(3).await?;
         assert_eq!(Some(LogId { term: 1, index: 3 }), ent.map(|x| x.log_id));
 
@@ -516,6 +521,118 @@ where
 
         let ent = store.try_get_log_entry(11).await?;
         assert_eq!(None, ent.map(|x| x.log_id));
+
+        Ok(())
+    }
+
+    pub async fn initial_logs(builder: &B) -> anyhow::Result<()> {
+        let store = builder.new_store(NODE_ID).await;
+
+        let ent = store.try_get_log_entry(0).await?.unwrap();
+        assert_eq!(
+            LogId { term: 0, index: 0 },
+            ent.log_id,
+            "store initialized with a log at 0"
+        );
+
+        tracing::info!("--- no logs, return None");
+        {
+            store.delete_logs_from(..).await?;
+
+            let ent = store.try_get_log_entry(0).await?;
+            assert!(ent.is_none());
+        }
+
+        Ok(())
+    }
+
+    pub async fn first_known_log_id(builder: &B) -> anyhow::Result<()> {
+        let store = builder.new_store(NODE_ID).await;
+
+        let log_id = store.first_known_log_id().await?;
+        assert_eq!(LogId::new(0, 0), log_id, "store initialized with a log at 0");
+
+        tracing::info!("--- only logs");
+        {
+            store
+                .append_to_log(&[
+                    &Entry {
+                        log_id: LogId { term: 1, index: 1 },
+                        payload: EntryPayload::Blank,
+                    },
+                    &Entry {
+                        log_id: LogId { term: 1, index: 2 },
+                        payload: EntryPayload::Blank,
+                    },
+                ])
+                .await?;
+
+            store.delete_logs_from(0..2).await?;
+
+            // NOTE: it assumes non applied logs always exist.
+            let log_id = store.first_known_log_id().await?;
+            assert_eq!(LogId::new(1, 2), log_id);
+        }
+
+        tracing::info!("--- return applied_log_id only when there is no log at all");
+        {
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 1 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+
+            // NOTE: it assumes non applied logs always exist.
+            let log_id = store.first_known_log_id().await?;
+            assert_eq!(LogId { term: 1, index: 2 }, log_id);
+
+            // When there is no logs, return applied_log_id
+            store.delete_logs_from(0..3).await?;
+            let log_id = store.first_known_log_id().await?;
+            assert_eq!(LogId { term: 1, index: 1 }, log_id);
+        }
+
+        Ok(())
+    }
+
+    pub async fn first_id_in_log(builder: &B) -> anyhow::Result<()> {
+        let store = builder.new_store(NODE_ID).await;
+
+        let log_id = store.first_id_in_log().await?;
+        assert_eq!(Some(LogId::new(0, 0)), log_id, "store initialized with a log at 0");
+
+        tracing::info!("--- only logs");
+        {
+            store
+                .append_to_log(&[
+                    &Entry {
+                        log_id: LogId { term: 1, index: 1 },
+                        payload: EntryPayload::Blank,
+                    },
+                    &Entry {
+                        log_id: LogId { term: 1, index: 2 },
+                        payload: EntryPayload::Blank,
+                    },
+                ])
+                .await?;
+
+            let log_id = store.first_id_in_log().await?;
+            assert_eq!(Some(LogId::new(0, 0)), log_id);
+
+            store.delete_logs_from(0..1).await?;
+
+            let log_id = store.first_id_in_log().await?;
+            assert_eq!(Some(LogId::new(1, 1)), log_id);
+        }
+
+        tracing::info!("--- no logs, return default");
+        {
+            store.delete_logs_from(..).await?;
+
+            let log_id = store.first_id_in_log().await?;
+            assert_eq!(None, log_id);
+        }
 
         Ok(())
     }
@@ -646,6 +763,8 @@ where
             let store = builder.new_store(NODE_ID).await;
             Self::feed_10_logs_vote_self(&store).await?;
 
+            store.delete_logs_from(..=0).await?;
+
             store.delete_logs_from(1..4).await?;
 
             let logs = store.get_log_entries(0..100).await?;
@@ -658,6 +777,8 @@ where
             let store = builder.new_store(NODE_ID).await;
             Self::feed_10_logs_vote_self(&store).await?;
 
+            store.delete_logs_from(..=0).await?;
+
             store.delete_logs_from(1..1000).await?;
             let logs = store.get_log_entries(0..).await?;
 
@@ -668,6 +789,8 @@ where
         {
             let store = builder.new_store(NODE_ID).await;
             Self::feed_10_logs_vote_self(&store).await?;
+
+            store.delete_logs_from(..=0).await?;
 
             store.delete_logs_from(1..).await?;
             let logs = store.get_log_entries(0..100).await?;
@@ -681,6 +804,8 @@ where
     pub async fn append_to_log(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
+
+        store.delete_logs_from(..=0).await?;
 
         store
             .append_to_log(&[&Entry {
@@ -1101,6 +1226,8 @@ where
     pub async fn df_get_log_entries(builder: &B) -> anyhow::Result<()> {
         let store = builder.new_store(NODE_ID).await;
         Self::feed_10_logs_vote_self(&store).await?;
+
+        store.delete_logs_from(..=0).await?;
 
         store.get_log_entries(..).await?;
         store.get_log_entries(5..).await?;

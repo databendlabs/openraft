@@ -26,6 +26,7 @@ async fn non_voter_add_readd() -> Result<()> {
     let config = Arc::new(
         Config {
             replication_lag_threshold: 0,
+            max_applied_log_to_keep: 2000, // prevent snapshot
             ..Default::default()
         }
         .validate()?,
@@ -56,7 +57,12 @@ async fn non_voter_add_readd() -> Result<()> {
 
         tracing::info!("--- add_non_voter blocks until the replication catches up");
         let sto1 = router.get_storage_handle(&1).await?;
-        assert_eq!(n_logs, sto1.get_log_entries(..).await?.len() as u64);
+
+        let logs = sto1.get_log_entries(..).await?;
+
+        assert_eq!(n_logs, logs[logs.len() - 1].log_id.index);
+        // 0-th log
+        assert_eq!(n_logs + 1, logs.len() as u64);
 
         router.wait_for_log(&btreeset! {0,1}, n_logs, timeout(), "replication to non_voter").await?;
     }

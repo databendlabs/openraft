@@ -52,7 +52,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log_id: LogId { term: 1, index: 5 },
+        prev_log_id: LogId::new(1, 5),
         entries: vec![],
         leader_commit: 5,
     };
@@ -63,7 +63,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let c = resp.conflict_opt.unwrap();
     assert_eq!(
         ConflictOpt {
-            log_id: LogId { term: 0, index: 0 }
+            log_id: LogId { term: 1, index: 5 }
         },
         c
     );
@@ -73,7 +73,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log_id: LogId { term: 1, index: 0 },
+        prev_log_id: LogId::new(0, 0),
         entries: vec![
             Entry {
                 log_id: (1, 1).into(),
@@ -102,7 +102,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log_id: LogId { term: 1, index: 3 },
+        prev_log_id: LogId::new(1, 3),
         entries: vec![],
         leader_commit: 5,
     };
@@ -113,7 +113,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let c = resp.conflict_opt.unwrap();
     assert_eq!(
         ConflictOpt {
-            log_id: LogId { term: 1, index: 2 }
+            log_id: LogId { term: 1, index: 3 }
         },
         c
     );

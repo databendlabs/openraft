@@ -6,13 +6,14 @@ use async_raft::Config;
 use async_raft::RaftStorage;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+use tokio::time::sleep;
 
 #[macro_use]
 mod fixtures;
 
 /// Logs should be deleted by raft after applying them, on leader and non-voter.
 ///
-/// - assert logs are deleted on leader aftre applying them.
+/// - assert logs are deleted on leader after applying them.
 /// - assert logs are deleted on replication target after installing a snapshot.
 ///
 /// RUST_LOG=async_raft,memstore,clean_applied_logs=trace cargo test -p async-raft --test clean_applied_logs
@@ -33,7 +34,14 @@ async fn clean_applied_logs() -> Result<()> {
 
     let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
-    router.client_request_many(0, "0", (10 - n_logs) as usize).await;
+    let count = (10 - n_logs) as usize;
+    for idx in 0..count {
+        router.client_request(0, "0", idx as u64).await;
+        // raft commit at once with a single leader cluster.
+        // If we send too fast, logs are removed before forwarding to non-voter.
+        // Then it triggers snapshot replication, which is not expected.
+        sleep(Duration::from_millis(50)).await;
+    }
     n_logs = 10;
 
     router.wait_for_log(&btreeset! {0,1}, n_logs, timeout(), "write upto 10 logs").await?;

@@ -115,7 +115,9 @@ async fn members_add_absent_non_voter_blocking() -> Result<()> {
         for node_id in 0..2 {
             let sto = router.get_storage_handle(&node_id).await?;
             let logs = sto.get_log_entries(..).await?;
-            assert_eq!(n_logs, logs.len() as u64);
+            assert_eq!(n_logs, logs[logs.len() - 1].log_id.index);
+            // 0-th log
+            assert_eq!(n_logs + 1, logs.len() as u64);
         }
     }
 

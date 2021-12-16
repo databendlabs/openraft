@@ -97,7 +97,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             let req = AppendEntriesRequest {
                 term: 1,
                 leader_id: 0,
-                prev_log_id: Default::default(),
+                prev_log_id: LogId::new(0, 0),
                 entries: vec![Entry {
                     log_id: LogId { term: 1, index: 1 },
                     payload: EntryPayload::ConfigChange(EntryConfigChange {

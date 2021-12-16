@@ -18,6 +18,7 @@ use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftError;
 use crate::RaftNetwork;
@@ -92,7 +93,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, tx))]
+    #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(&mut self, members: BTreeSet<NodeId>, wait: bool, tx: ResponseTx) {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
@@ -177,7 +178,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, resp_tx), fields(id=self.core.id))]
+    #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=self.core.id))]
     pub async fn append_membership_log(
         &mut self,
         mem: MembershipConfig,
@@ -243,11 +244,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .nodes
             .iter_mut()
             .filter(|(id, _)| !membership.contains(id))
-            .filter_map(|(idx, replstate)| {
-                if replstate.matched.index >= index {
+            .filter_map(|(idx, repl_state)| {
+                if repl_state.matched.index >= index {
                     Some(*idx)
                 } else {
-                    replstate.remove_after_commit = Some(index);
+                    repl_state.remove_after_commit = Some(index);
                     None
                 }
             })
@@ -261,10 +262,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         for target in nodes_to_remove {
             tracing::debug!(target, "removing target node from replication pool");
             // TODO(xp): just drop the replication then the task will be terminated.
-            if let Some(node) = self.nodes.remove(&target) {
-                let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
+            let removed = self.nodes.remove(&target);
+            assert!(removed.is_some());
 
-                // remove metrics entry
+            tracing::info!(
+                "handle_uniform_consensus_committed: removed replication node: {} {:?}",
+                target,
+                removed.as_ref().map(|x| (*x).summary())
+            );
+
+            if let Some(node) = removed {
+                let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
                 self.leader_metrics.replication.remove(&target);
             }
         }

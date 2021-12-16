@@ -21,7 +21,7 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
-use crate::error::RaftResult;
+use crate::error::LackEntry;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::Entry;
 use crate::raft::InstallSnapshotRequest;
@@ -31,9 +31,9 @@ use crate::AppDataResponse;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
-use crate::RaftError;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::ReplicationError;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReplicationMetrics {
@@ -110,9 +110,10 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     //////////////////////////////////////////////////////////////////////////
     // Dynamic Fields ////////////////////////////////////////////////////////
     /// The target state of this replication stream.
-    target_state: TargetReplState,
+    target_repl_state: TargetReplState,
 
     /// The index of the log entry to most recently be appended to the log by the leader.
+    /// TODO(xp): remove this
     last_log_index: u64,
     /// The index of the highest log entry which is known to be committed in the cluster.
     commit_index: u64,
@@ -125,6 +126,9 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     /// This will be initialized to the leader's (last_log_term, last_log_index), and will be updated as
     /// replication proceeds.
     matched: LogId,
+
+    // The last possible matching entry on a follower.
+    max_possible_matched_index: u64,
 
     /// The heartbeat interval for ensuring that heartbeats are always delivered in a timely fashion.
     heartbeat: Interval,
@@ -159,10 +163,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             storage,
             config,
             marker_r: std::marker::PhantomData,
-            target_state: TargetReplState::LineRate,
+            target_repl_state: TargetReplState::LineRate,
             last_log_index: last_log.index,
             commit_index,
             matched: LogId { term: 0, index: 0 },
+            max_possible_matched_index: last_log.index,
             raft_core_tx,
             repl_rx,
             heartbeat: interval(heartbeat_timeout),
@@ -179,16 +184,61 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, target=self.target, cluster=%self.config.cluster_name))]
     async fn main(mut self) {
-        // Perform an initial heartbeat.
-        self.send_append_entries().await;
-
-        // Proceed to the replication stream's inner loop.
         loop {
-            match &self.target_state {
+            // If it returns Ok(), always go back to LineRate state.
+            let res = match &self.target_repl_state {
                 TargetReplState::LineRate => self.line_rate_loop().await,
                 TargetReplState::Snapshotting => self.replicate_snapshot().await,
                 TargetReplState::Shutdown => return,
-            }
+            };
+
+            let err = match res {
+                Ok(_) => {
+                    self.set_target_repl_state(TargetReplState::LineRate);
+                    continue;
+                }
+                Err(err) => err,
+            };
+
+            tracing::warn!(error=%err, "error replication to target={}", self.target);
+
+            match err {
+                ReplicationError::Closed => {
+                    self.set_target_repl_state(TargetReplState::Shutdown);
+                }
+                ReplicationError::HigherTerm { higher, mine: _ } => {
+                    let _ = self.raft_core_tx.send((
+                        ReplicaEvent::RevertToFollower {
+                            target: self.target,
+                            term: higher,
+                        },
+                        tracing::debug_span!("CH"),
+                    ));
+                    return;
+                }
+                ReplicationError::IO { .. } => {
+                    tracing::error!(error=%err, "error replication to target={}", self.target);
+                    // TODO(xp): tell core to quit?
+                    return;
+                }
+                ReplicationError::LackEntry(_) => {
+                    self.set_target_repl_state(TargetReplState::Snapshotting);
+                }
+                ReplicationError::CommittedAdvanceTooMany { .. } => {
+                    self.set_target_repl_state(TargetReplState::Snapshotting);
+                }
+                ReplicationError::StorageError(_err) => {
+                    self.set_target_repl_state(TargetReplState::Shutdown);
+                    let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
+                    return;
+                }
+                ReplicationError::Timeout { .. } => {
+                    // nothing to do
+                }
+                ReplicationError::Network { .. } => {
+                    // nothing to do
+                }
+            };
         }
     }
 
@@ -196,171 +246,167 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     ///
     /// This request will timeout if no response is received within the
     /// configured heartbeat interval.
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn send_append_entries(&mut self) {
-        let start = self.matched.index + 1;
-        let end = self.last_log_index + 1;
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn send_append_entries(&mut self) -> Result<(), ReplicationError> {
+        // find the mid position aligning to 8
+        let diff = self.max_possible_matched_index - self.matched.index;
+        let mut prev_index = self.matched.index + diff / 16 * 8;
 
-        let chunk_size = std::cmp::min(self.config.max_payload_entries, end - start);
-        let end = start + chunk_size;
+        // TODO(xp): make this part a job of StorageAdaptor.
+        let (prev_log_id, logs) = loop {
+            // It is last_applied_id or the id of the first present log.
+            let first_log_id = self.storage.first_known_log_id().await?;
 
-        let logs;
-        if chunk_size == 0 {
-            // just a heartbeat
-            logs = vec![];
-        } else {
-            let res = self.load_log_entries(start, end).await;
+            self.check_consecutive(first_log_id.index)?;
 
-            let logs_opt = match res {
-                Ok(x) => x,
-                Err(err) => {
-                    tracing::warn!(error=%err, "storage.get_log_entries, [{}, {})", start,start+chunk_size as u64);
-                    self.set_target_state(TargetReplState::Shutdown);
-                    let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
-                    return;
+            if prev_index < first_log_id.index {
+                prev_index = first_log_id.index;
+            }
+
+            let start = prev_index + 1;
+            let end = std::cmp::min(start + self.config.max_payload_entries, self.last_log_index + 1);
+
+            tracing::debug!(
+                "load entries: matched: {}, send_prev_log_index: {} first_log: {} prev_index: {}, end: {}",
+                self.matched,
+                self.max_possible_matched_index,
+                first_log_id,
+                prev_index,
+                end,
+            );
+
+            assert!(end - prev_index > 0);
+
+            let prev_log_id = if prev_index == first_log_id.index {
+                first_log_id
+            } else {
+                let first = self.storage.try_get_log_entry(prev_index).await?;
+                match first {
+                    Some(f) => f.log_id,
+                    None => {
+                        tracing::info!("can not load first entry: at {}, retry loading logs", prev_index);
+                        continue;
+                    }
                 }
             };
 
-            logs = match logs_opt {
-                // state changed to snapshot
-                None => return,
-                Some(x) => x,
-            };
-        }
+            let logs = if start == end {
+                vec![]
+            } else {
+                let logs = self.storage.try_get_log_entries(start..end).await?;
+                if !logs.is_empty() && logs[0].log_id.index > prev_log_id.index + 1 {
+                    // There is still chance the first log is removed.
+                    // log entry is just deleted after fetching first_log_id.
+                    // Without consecutive logs, we have to retry loading.
+                    continue;
+                }
 
-        let last_log_id = logs.last().map(|last| last.log_id);
+                logs
+            };
+
+            break (prev_log_id, logs);
+        };
+
+        let last_log_id = if logs.is_empty() {
+            prev_log_id
+        } else {
+            logs[logs.len() - 1].log_id
+        };
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
             term: self.term,
             leader_id: self.id,
-            prev_log_id: self.matched,
+            prev_log_id,
             leader_commit: self.commit_index,
             entries: logs,
         };
 
         // Send the payload.
         tracing::debug!(
+            payload=%payload.summary(),
             "start sending append_entries, timeout: {:?}",
             self.config.heartbeat_interval
         );
 
-        let res = timeout(
-            Duration::from_millis(self.config.heartbeat_interval),
-            self.network.send_append_entries(self.target, payload),
-        )
-        .await;
+        let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
+        let res = timeout(the_timeout, self.network.send_append_entries(self.target, payload)).await;
 
-        let res = match res {
-            Ok(outer_res) => match outer_res {
+        let append_resp = match res {
+            Ok(append_res) => match append_res {
                 Ok(res) => res,
                 Err(err) => {
                     tracing::warn!(error=%err, "error sending AppendEntries RPC to target");
-                    return;
+                    return Err(ReplicationError::Network { source: err });
                 }
             },
-            Err(err) => {
-                tracing::warn!(error=%err, "timeout while sending AppendEntries RPC to target");
-                return;
+            Err(timeout_err) => {
+                tracing::warn!(error=%timeout_err, "timeout while sending AppendEntries RPC to target");
+                return Err(ReplicationError::Timeout {
+                    id: self.id,
+                    target: self.target,
+                    timeout: the_timeout,
+                });
             }
         };
 
-        tracing::debug!("append_entries last: {:?}", last_log_id);
+        tracing::debug!(%last_log_id, "append_entries resp: {:?}", append_resp);
 
         // Handle success conditions.
-        if res.success {
-            tracing::debug!("append_entries success: last: {:?}", last_log_id);
-            // If this was a proper replication event (last index & term were provided), then update state.
-            if let Some(log_id) = last_log_id {
-                self.matched = log_id;
-                self.update_matched();
-            }
-            return;
+        if append_resp.success {
+            self.matched = last_log_id;
+            // TODO(xp): if matched does not change, do not bother the core.
+            self.update_max_possible_matched_index(last_log_id.index);
+            self.update_matched();
+
+            return Ok(());
         }
 
         // Failed
 
         // Replication was not successful, if a newer term has been returned, revert to follower.
-        if res.term > self.term {
-            tracing::debug!({ res.term }, "append entries failed, reverting to follower");
-            let _ = self.raft_core_tx.send((
-                ReplicaEvent::RevertToFollower {
-                    target: self.target,
-                    term: res.term,
-                },
-                tracing::debug_span!("CH"),
-            ));
-            self.set_target_state(TargetReplState::Shutdown);
-            return;
+        if append_resp.term > self.term {
+            tracing::debug!({ append_resp.term }, "append entries failed, reverting to follower");
+
+            return Err(ReplicationError::HigherTerm {
+                higher: append_resp.term,
+                mine: self.term,
+            });
         }
 
         // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
-        let mut conflict = match res.conflict_opt {
-            None => {
-                panic!("append_entries failed but without a reason: {:?}", res);
-            }
-            Some(x) => x,
-        };
+        let conflict = append_resp.conflict_opt.unwrap();
 
-        tracing::debug!(?conflict, res.term, "append entries failed, handling conflict opt");
+        tracing::debug!(
+            ?conflict,
+            append_resp.term,
+            "append entries failed, handling conflict opt"
+        );
 
-        // If conflict index is 0, we will not be able to fetch that index from storage because
-        // it will never exist. So instead, we just return, and accept the conflict data.
-        if conflict.log_id.index == 0 {
-            self.matched = LogId { term: 0, index: 0 };
-            self.update_matched();
+        assert_eq!(
+            conflict.log_id, prev_log_id,
+            "if conflict, it is always the prev_log_id"
+        );
 
-            return;
+        // Continue to find the matching log id on follower.
+        self.max_possible_matched_index = conflict.log_id.index - 1;
+        Ok(())
+    }
+
+    /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
+    fn check_consecutive(&self, first_log_index: u64) -> Result<(), ReplicationError> {
+        if first_log_index > self.max_possible_matched_index {
+            return Err(ReplicationError::LackEntry(LackEntry {
+                index: self.max_possible_matched_index,
+            }));
         }
 
-        // The follower has more log and set the conflict.log_id to its last_log_id if:
-        // - req.prev_log_id.index is 0
-        // - req.prev_log_id.index is applied, in which case the follower does not know if the prev_log_id is valid.
-        //
-        // In such case, fake a conflict log_id that never matches the log term in local store, in order to not
-        // update_matched().
-        if conflict.log_id.index > self.last_log_index {
-            conflict.log_id = LogId {
-                term: 0,
-                index: self.last_log_index,
-            };
-        }
-
-        // Fetch the entry at conflict index and use the term specified there.
-        let ent = self.storage.try_get_log_entry(conflict.log_id.index).await;
-        let ent = match ent {
-            Ok(x) => x,
-            Err(err) => {
-                tracing::error!(error=?err, "error fetching log entry due to returned AppendEntries RPC conflict_opt");
-                self.set_target_state(TargetReplState::Shutdown);
-                let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
-                return;
-            }
-        };
-
-        let ent = match ent {
-            Some(x) => x,
-            None => {
-                // This condition would only ever be reached if the log has been removed due to
-                // log compaction (barring critical storage failure), so transition to snapshotting.
-                self.set_target_state(TargetReplState::Snapshotting);
-                return;
-            }
-        };
-
-        let term = ent.log_id.term;
-
-        // Next time try sending from the log at conflict.log_id.index.
-        self.matched = ent.log_id;
-
-        if term == conflict.log_id.term {
-            self.update_matched();
-        }
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    fn set_target_state(&mut self, state: TargetReplState) {
-        self.target_state = state;
+    fn set_target_repl_state(&mut self, state: TargetReplState) {
+        self.target_repl_state = state;
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -391,47 +437,55 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
     }
 
-    /// Fully drain the channel coming in from the Raft node.
-    pub(self) fn drain_raft_rx(&mut self, first: RaftEvent<D>, span: Span) {
-        let mut event_opt = Some((first, span));
-        let mut iters = 0;
-        loop {
-            // Just ensure we don't get stuck draining a REALLY hot replication feed.
-            if iters > self.config.max_payload_entries {
-                return;
-            }
-
-            // Unpack the event opt, else return if we don't have one to process.
-            let (event, span) = match event_opt.take() {
-                Some(event) => event,
-                None => return,
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError> {
+        for _i in 0..self.config.max_payload_entries {
+            let ev = self.repl_rx.recv().now_or_never();
+            let ev = match ev {
+                None => {
+                    // no event in self.repl_rx
+                    return Ok(());
+                }
+                Some(x) => x,
             };
 
-            let _ent = span.enter();
-
-            // Process the event.
-            match event {
-                RaftEvent::UpdateCommitIndex { commit_index } => {
-                    self.commit_index = commit_index;
+            let ev_and_span = match ev {
+                None => {
+                    // channel is closed, Leader quited.
+                    return Err(ReplicationError::Closed);
                 }
+                Some(x) => x,
+            };
 
-                RaftEvent::Replicate { entry, commit_index } => {
-                    self.commit_index = commit_index;
-                    self.last_log_index = entry.log_id.index;
-                }
-
-                RaftEvent::Terminate => {
-                    self.set_target_state(TargetReplState::Shutdown);
-                    return;
-                }
-            }
-
-            // Attempt to unpack the next event for the next loop iteration.
-            if let Some(event_span) = self.repl_rx.recv().now_or_never() {
-                event_opt = event_span;
-            }
-            iters += 1;
+            // TODO(xp): the span is not used. remove it from event.
+            self.process_raft_event(ev_and_span.0)?;
         }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self), fields(event=%event.summary()))]
+    pub fn process_raft_event(&mut self, event: RaftEvent<D>) -> Result<(), ReplicationError> {
+        match event {
+            RaftEvent::UpdateCommitIndex { commit_index } => {
+                self.commit_index = commit_index;
+            }
+
+            RaftEvent::Replicate { entry, commit_index } => {
+                // TODO(xp): Message Replicate does not need to send an entry.
+                self.commit_index = commit_index;
+                self.last_log_index = entry.log_id.index;
+            }
+
+            RaftEvent::Terminate => {
+                tracing::debug!("received: RaftEvent::Terminate");
+                // TODO(xp): just close the channel to shut replication down.
+                self.set_target_repl_state(TargetReplState::Shutdown);
+                return Err(ReplicationError::Closed);
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -448,6 +502,7 @@ enum TargetReplState {
     Shutdown,
 }
 
+// TODO(xp): remove Replicate
 /// An event from the Raft node.
 pub(crate) enum RaftEvent<D: AppData> {
     Replicate {
@@ -465,6 +520,20 @@ pub(crate) enum RaftEvent<D: AppData> {
         commit_index: u64,
     },
     Terminate,
+}
+
+impl<D: AppData> MessageSummary for RaftEvent<D> {
+    fn summary(&self) -> String {
+        match self {
+            RaftEvent::Replicate { entry: _, commit_index } => {
+                format!("Replicate: commit_index: {}", commit_index)
+            }
+            RaftEvent::UpdateCommitIndex { commit_index } => {
+                format!("UpdateCommitIndex: commit_index: {}", commit_index)
+            }
+            RaftEvent::Terminate => "Terminate".to_string(),
+        }
+    }
 }
 
 /// An event coming from a replication stream.
@@ -517,26 +586,46 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
 }
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
-    #[tracing::instrument(level = "trace", skip(self), fields(state = "line-rate"))]
-    pub async fn line_rate_loop(&mut self) {
+    #[tracing::instrument(level = "debug", skip(self), fields(state = "line-rate"))]
+    pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError> {
         loop {
-            if self.target_state != TargetReplState::LineRate {
-                return;
+            loop {
+                tracing::debug!(
+                    "current matched: {} send_prev_log_index: {}",
+                    self.matched,
+                    self.max_possible_matched_index
+                );
+
+                let res = self.send_append_entries().await;
+
+                if let Err(err) = res {
+                    tracing::error!(error=%err, "error replication to target={}", self.target);
+
+                    // For transport error, just keep retrying.
+                    match err {
+                        ReplicationError::Timeout { .. } => {
+                            break;
+                        }
+                        ReplicationError::Network { .. } => {
+                            break;
+                        }
+                        _ => {
+                            return Err(err);
+                        }
+                    }
+                }
+
+                if self.matched.index == self.max_possible_matched_index {
+                    break;
+                }
             }
 
             if self.needs_snapshot() {
-                self.set_target_state(TargetReplState::Snapshotting);
-                return;
-            }
-
-            if self.matched.index < self.last_log_index {
-                self.send_append_entries().await;
-
-                if self.target_state != TargetReplState::LineRate {
-                    return;
-                }
-
-                continue;
+                return Err(ReplicationError::CommittedAdvanceTooMany {
+                    // TODO(xp) fill them
+                    committed_index: 0,
+                    target_index: 0,
+                });
             }
 
             let span = tracing::debug_span!("CHrx:LineRate");
@@ -544,14 +633,19 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             tokio::select! {
                 _ = self.heartbeat.tick() => {
-                    self.send_append_entries().await;
+                    tracing::debug!("heartbeat triggered");
+                    // continue
                 }
 
                 event_span = self.repl_rx.recv() => {
                     match event_span {
-                        Some((event, span)) => self.drain_raft_rx(event, span),
+                        Some((event, _span)) => {
+                            self.process_raft_event(event)?;
+                            self.try_drain_raft_rx().await?;
+                        },
                         None => {
-                            self.set_target_state(TargetReplState::Shutdown);
+                            tracing::debug!("received: RaftEvent::Terminate: closed");
+                            return Err(ReplicationError::Closed);
                         },
                     }
                 }
@@ -559,63 +653,20 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
     }
 
-    /// Ensure there are no gaps in the outbound buffer due to transition from lagging.
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn load_log_entries(&mut self, start: u64, stop: u64) -> Result<Option<Vec<Entry<D>>>, RaftError> {
-        // TODO(xp): get_log_entries() should return an error that is programmable readable.
-        //           EntryNotFound
-        let entries = match self.storage.get_log_entries(start..stop).await {
-            Ok(entries) => entries,
-            Err(err) => {
-                // TODO non-EntryNotFound error should not shutdown raft core.
-                tracing::info!(error=%err, "loading log entries, switch to snapshot replication");
-                self.set_target_state(TargetReplState::Snapshotting);
-                return Ok(None);
-            }
-        };
+    #[tracing::instrument(level = "debug", skip(self), fields(state = "snapshotting"))]
+    pub async fn replicate_snapshot(&mut self) -> Result<(), ReplicationError> {
+        let snapshot = self.wait_for_snapshot().await?;
+        self.stream_snapshot(snapshot).await?;
 
-        tracing::debug!(entries=%entries.as_slice().summary(), "load_log_entries");
-
-        let first = entries.first().map(|x| x.log_id.index);
-        if first != Some(start) {
-            tracing::info!(
-                "entry {} to replicate not found, first: {:?}, switch to snapshot replication",
-                start,
-                first
-            );
-            self.set_target_state(TargetReplState::Snapshotting);
-            return Ok(None);
-        }
-
-        Ok(Some(entries))
-    }
-
-    #[tracing::instrument(level = "trace", skip(self), fields(state = "snapshotting"))]
-    pub async fn replicate_snapshot(&mut self) {
-        let res = self.wait_for_snapshot().await;
-
-        // TODO(xp): bad impl: res is error only when replication is closed.
-        //           use specific error to describe these behavior.
-
-        let snapshot = match res {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::error!(error=%e, "replication shutting down");
-                return;
-            }
-        };
-
-        if let Err(err) = self.stream_snapshot(snapshot).await {
-            tracing::warn!(error=%err, "error streaming snapshot to target");
-        }
+        Ok(())
     }
 
     /// Wait for a response from the storage layer for the current snapshot.
     ///
     /// If an error comes up during processing, this routine should simple be called again after
     /// issuing a new request to the storage layer.
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn wait_for_snapshot(&mut self) -> Result<Snapshot<S::SnapshotData>, RaftError> {
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn wait_for_snapshot(&mut self) -> Result<Snapshot<S::SnapshotData>, ReplicationError> {
         // Ask raft core for a snapshot.
         // - If raft core has a ready snapshot, it sends back through tx.
         // - Otherwise raft core starts a new task taking snapshot, and **close** `tx` when finished. Thus there has to
@@ -625,7 +676,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // channel to communicate with raft-core
             let (tx, mut rx) = oneshot::channel();
 
-            // TODO(xp): handle sending error.
+            // TODO(xp): handle sending error. If channel is closed, quite replication by returning
+            // ReplicationError::Closed.
             let _ = self.raft_core_tx.send((
                 ReplicaEvent::NeedsSnapshot {
                     target: self.target,
@@ -636,19 +688,43 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             let mut waiting_for_snapshot = true;
 
+            // TODO(xp): use a watch channel to let the core to send one of the 3 event:
+            //           heartbeat, new-log, or snapshot is ready.
             while waiting_for_snapshot {
                 tokio::select! {
-                    _ = self.heartbeat.tick() => self.send_append_entries().await,
+                    _ = self.heartbeat.tick() => {
+                        // TODO(xp): just heartbeat:
+                        let res = self.send_append_entries().await;
+                        match res {
+                            Ok(_) => {
+                                //
+                            },
+                            Err(err) => {
+                                match err {
+                                    ReplicationError::StorageError(_) => {
+                                        return Err(err);
+                                    },
+                                    ReplicationError::IO {..} => {
+                                        return Err(err);
+                                    }
+                                    _=> {
+                                        // nothing to do
+                                    }
+                                }
+                            }
+                        }
+                    },
 
                     event_span = self.repl_rx.recv() =>  {
                         match event_span {
 
-                            Some((event, span)) => self.drain_raft_rx(event, span),
+                            Some((event, _span)) => {
+                                self.process_raft_event(event)?;
+                                self.try_drain_raft_rx().await?
+                            },
                             None => {
-                                tracing::error!("repl_rx is closed");
-                                self.set_target_state(TargetReplState::Shutdown);
-                                // TODO: make it two errors: ReplicationShutdown and CoreShutdown
-                                return Err(RaftError::ShuttingDown);
+                                tracing::info!("repl_rx is closed");
+                                return Err(ReplicationError::Closed);
                             }
                         }
                     },
@@ -660,6 +736,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                             }
                             Err(_) => {
                                 // TODO(xp): This channel is closed to notify an in progress snapshotting is completed.
+                                //           Start a new round to get the snapshot.
 
                                 tracing::info!("rx for waiting for snapshot is closed, may be snapshot is ready. re-send need-snapshot.");
                                 waiting_for_snapshot = false;
@@ -672,7 +749,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn stream_snapshot(&mut self, mut snapshot: Snapshot<S::SnapshotData>) -> RaftResult<()> {
+    async fn stream_snapshot(&mut self, mut snapshot: Snapshot<S::SnapshotData>) -> Result<(), ReplicationError> {
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await?;
 
         let mut offset = 0;
@@ -726,31 +803,28 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             // Handle response conditions.
             if res.term > self.term {
-                let _ = self.raft_core_tx.send((
-                    ReplicaEvent::RevertToFollower {
-                        target: self.target,
-                        term: res.term,
-                    },
-                    tracing::debug_span!("CH"),
-                ));
-                self.set_target_state(TargetReplState::Shutdown);
-                return Ok(());
+                return Err(ReplicationError::HigherTerm {
+                    higher: res.term,
+                    mine: self.term,
+                });
             }
 
             // If we just sent the final chunk of the snapshot, then transition to lagging state.
             if done {
-                self.set_target_state(TargetReplState::LineRate);
-
                 tracing::debug!(
                     "done install snapshot: snapshot last_log_id: {}, matched: {}",
                     snapshot.meta.last_log_id,
                     self.matched,
                 );
 
+                // TODO(xp): combine update_matched() and update_max_possible_matched_index()?
                 if snapshot.meta.last_log_id > self.matched {
                     self.matched = snapshot.meta.last_log_id;
                     self.update_matched();
                 }
+
+                self.update_max_possible_matched_index(snapshot.meta.last_log_id.index);
+
                 return Ok(());
             }
 
@@ -758,9 +832,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             offset += n_read as u64;
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
-            if let Some(Some((event, span))) = self.repl_rx.recv().now_or_never() {
-                self.drain_raft_rx(event, span);
-            }
+            self.try_drain_raft_rx().await?;
+        }
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    fn update_max_possible_matched_index(&mut self, i: u64) {
+        if self.max_possible_matched_index < i {
+            self.max_possible_matched_index = i;
         }
     }
 }

@@ -116,15 +116,28 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 }
             }
         } else {
-            panic!("repliation is removed: {}", target);
-            // no such node
-            // return Ok(());
+            // TODO(xp): this should be get rid of.
+            //           handle_update_mactched_and_rate() and send_append_entries() runs async-ly.
+            //           There is chance another update-matched event is sent just before the replication node is
+            //           removed.
+            //           It is not a bug.
+            // panic!("replication is removed: {}", target);
+
+            return Ok(());
         }
 
         // TODO(xp): use Vec<_> to replace the two membership configs.
         // Drop replication stream if needed.
         if needs_removal {
-            if let Some(node) = self.nodes.remove(&target) {
+            let removed = self.nodes.remove(&target);
+            tracing::info!(
+                "handle_update_matched_and_rate: removed replication node: {} {:?}",
+                target,
+                removed.as_ref().map(|x| x.summary())
+            );
+
+            if let Some(node) = removed {
+                // TODO(xp): do not need to send, just close.
                 let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
                 self.leader_metrics.replication.remove(&target);
             }

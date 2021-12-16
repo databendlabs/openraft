@@ -21,6 +21,8 @@ use async_raft::metrics::Wait;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::AppendEntriesResponse;
 use async_raft::raft::ClientWriteRequest;
+use async_raft::raft::Entry;
+use async_raft::raft::EntryPayload;
 use async_raft::raft::InstallSnapshotRequest;
 use async_raft::raft::InstallSnapshotResponse;
 use async_raft::raft::MembershipConfig;
@@ -28,6 +30,7 @@ use async_raft::raft::RaftResponse;
 use async_raft::raft::VoteRequest;
 use async_raft::raft::VoteResponse;
 use async_raft::storage::RaftStorage;
+use async_raft::AppData;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::NodeId;
@@ -155,6 +158,7 @@ impl RaftRouter {
 
     /// Create a cluster: 0 is the initial leader, others are voters non_voters
     /// NOTE: it create a single node cluster first, then change it to a multi-voter cluster.
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn new_nodes_from_single(
         self: &Arc<Self>,
         node_ids: BTreeSet<NodeId>,
@@ -168,8 +172,8 @@ impl RaftRouter {
 
         tracing::info!("--- wait for init node to ready");
 
-        self.wait_for_log(&btreeset![0], want, None, "empty").await?;
-        self.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+        self.wait_for_log(&btreeset![0], want, timeout(), "empty").await?;
+        self.wait_for_state(&btreeset![0], State::NonVoter, timeout(), "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
@@ -178,7 +182,7 @@ impl RaftRouter {
 
         tracing::info!("--- wait for init node to become leader");
 
-        self.wait_for_log(&btreeset![0], want, None, "init").await?;
+        self.wait_for_log(&btreeset![0], want, timeout(), "init").await?;
         self.assert_stable_cluster(Some(1), Some(want)).await;
 
         for id in node_ids.iter() {
@@ -197,7 +201,7 @@ impl RaftRouter {
             self.change_membership(0, node_ids.clone()).await?;
             want += 2;
 
-            self.wait_for_log(&node_ids, want, None, &format!("cluster of {:?}", node_ids)).await?;
+            self.wait_for_log(&node_ids, want, timeout(), &format!("cluster of {:?}", node_ids)).await?;
         }
 
         for id in non_voters {
@@ -218,7 +222,7 @@ impl RaftRouter {
     pub async fn new_store(self: &Arc<Self>, id: u64) -> Arc<MemStore> {
         let defensive = env::var("RAFT_STORE_DEFENSIVE").ok();
 
-        let sto = Arc::new(MemStore::new(id));
+        let sto = Arc::new(MemStore::new(id).await);
 
         if let Some(d) = defensive {
             tracing::info!("RAFT_STORE_DEFENSIVE set store defensive to {}", d);
@@ -241,6 +245,7 @@ impl RaftRouter {
         sto
     }
 
+    #[tracing::instrument(level = "debug", skip(self, sto))]
     pub async fn new_raft_node_with_sto(self: &Arc<Self>, id: NodeId, sto: Arc<MemStore>) {
         let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone());
         let mut rt = self.routing_table.write().await;
@@ -758,5 +763,17 @@ impl<T> From<T> for ValueTest<T> {
 impl<T> From<std::ops::Range<T>> for ValueTest<T> {
     fn from(src: std::ops::Range<T>) -> Self {
         Self::Range(src)
+    }
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(5000))
+}
+
+/// Create a blank log entry for test.
+pub fn ent<T: AppData>(term: u64, index: u64) -> Entry<T> {
+    Entry {
+        log_id: LogId { term, index },
+        payload: EntryPayload::Blank,
     }
 }

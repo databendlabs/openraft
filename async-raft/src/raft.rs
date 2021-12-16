@@ -87,7 +87,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// ### `storage`
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
     /// See the docs on the `RaftStorage` trait for more details.
-    #[tracing::instrument(level="trace", skip(config, network, storage), fields(cluster=%config.cluster_name))]
+    #[tracing::instrument(level="debug", skip(config, network, storage), fields(cluster=%config.cluster_name))]
     pub fn new(id: NodeId, config: Arc<Config>, network: Arc<N>, storage: Arc<S>) -> Self {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
@@ -529,10 +529,10 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
 pub struct AppendEntriesRequest<D: AppData> {
     /// The leader's current term.
     pub term: u64,
+
     /// The leader's ID. Useful in redirecting clients.
     pub leader_id: u64,
 
-    /// The log entry immediately preceding the new entries.
     pub prev_log_id: LogId,
 
     /// The new log entries to store.
@@ -541,6 +541,7 @@ pub struct AppendEntriesRequest<D: AppData> {
     /// are batched for efficiency.
     #[serde(bound = "D: AppData")]
     pub entries: Vec<Entry<D>>,
+
     /// The leader's commit index.
     pub leader_commit: u64,
 }

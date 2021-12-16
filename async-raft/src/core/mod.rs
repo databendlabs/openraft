@@ -191,7 +191,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             tx_metrics,
             rx_shutdown,
         };
-        tokio::spawn(this.main().instrument(tracing::debug_span!("spawn")))
+        tokio::spawn(this.main())
     }
 
     /// The main loop of the Raft protocol.
@@ -273,7 +273,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Report a metrics payload on the current state of the Raft node.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     fn report_metrics(&mut self, leader_metrics: Update<Option<&LeaderMetrics>>) {
         let leader_metrics = match leader_metrics {
             Update::Update(v) => v.cloned(),
@@ -546,8 +546,13 @@ where
     S: RaftStorage<D, R>,
 {
     // TODO(xp): periodically batch delete
-    let x = last_applied.index.saturating_sub(max_keep);
-    sto.delete_logs_from(..=x).await
+    let x = last_applied.index + 1;
+    let x = x.saturating_sub(max_keep);
+    if x > 0 {
+        sto.delete_logs_from(..x).await
+    } else {
+        Ok(())
+    }
 }
 
 /// An enum describing the way the current leader property is to be updated.
@@ -758,7 +763,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Report metrics with leader specific states.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub fn leader_report_metrics(&mut self) {
         self.core.report_metrics(Update::Update(Some(&self.leader_metrics)));
     }
@@ -772,6 +777,15 @@ struct ReplicationState<D: AppData> {
 
     /// The response channel to use for when this node has successfully synced with the cluster.
     pub tx: Option<ResponseTx>,
+}
+
+impl<D: AppData> MessageSummary for ReplicationState<D> {
+    fn summary(&self) -> String {
+        format!(
+            "matched: {}, remove_after_commit: {:?}",
+            self.matched, self.remove_after_commit
+        )
+    }
 }
 
 impl<D> ReplicationState<D>

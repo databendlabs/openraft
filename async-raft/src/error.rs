@@ -2,12 +2,14 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
+use std::time::Duration;
 
 use crate::raft::MembershipConfig;
 use crate::raft_types::SnapshotSegmentId;
 use crate::AppData;
 use crate::LogId;
 use crate::NodeId;
+use crate::StorageError;
 
 /// A result type where the error variant is always a `RaftError`.
 pub type RaftResult<T> = std::result::Result<T, RaftError>;
@@ -34,6 +36,55 @@ pub enum RaftError {
     /// An internal Raft error indicating that Raft is shutting down.
     #[error("Raft is shutting down")]
     ShuttingDown,
+}
+
+/// Error variants related to the Replication.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+#[allow(clippy::large_enum_variant)]
+pub enum ReplicationError {
+    #[error("seen a higher term: {higher} GT mine: {mine}")]
+    HigherTerm { higher: u64, mine: u64 },
+
+    #[error("Replication is closed")]
+    Closed,
+
+    #[error("{0}")]
+    LackEntry(#[from] LackEntry),
+
+    #[error("leader committed index {committed_index} advances target log index {target_index} too many")]
+    CommittedAdvanceTooMany { committed_index: u64, target_index: u64 },
+
+    // TODO(xp): two sub type: StorageError / TransportError
+    // TODO(xp): a sub error for just send_append_entries()
+    #[error("{0}")]
+    StorageError(#[from] StorageError),
+
+    #[error(transparent)]
+    IO {
+        #[backtrace]
+        #[from]
+        source: std::io::Error,
+    },
+
+    #[error("timeout after {timeout:?} to replicate {id}->{target}")]
+    Timeout {
+        id: NodeId,
+        target: NodeId,
+        timeout: Duration,
+    },
+
+    #[error(transparent)]
+    Network {
+        #[backtrace]
+        source: anyhow::Error,
+    },
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("store has no log at: {index}")]
+pub struct LackEntry {
+    pub index: u64,
 }
 
 impl From<tokio::io::Error> for RaftError {

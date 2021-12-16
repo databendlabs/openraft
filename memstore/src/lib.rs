@@ -108,11 +108,20 @@ pub struct MemStore {
 
 impl MemStore {
     /// Create a new `MemStore` instance.
-    pub fn new(id: NodeId) -> Self {
+    pub async fn new(id: NodeId) -> Self {
         let log = RwLock::new(BTreeMap::new());
         let sm = RwLock::new(MemStoreStateMachine::default());
         let hs = RwLock::new(None);
         let current_snapshot = RwLock::new(None);
+
+        {
+            let mut l = log.write().await;
+            l.insert(0, Entry {
+                log_id: LogId::default(),
+                payload: EntryPayload::Blank,
+            });
+        }
+
         Self {
             defensive: RwLock::new(true),
             id,
@@ -359,7 +368,8 @@ impl MemStore {
         Ok(())
     }
 
-    /// Requires a range must be at least half open: (-oo, n] or [n, +oo)
+    /// Requires a range must be at least half open: (-oo, n] or [n, +oo);
+    /// In order to keep logs continuity.
     pub async fn defensive_half_open_range<RNG: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
         range: RNG,
@@ -604,10 +614,40 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(res)
     }
 
+    async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+        &self,
+        range: RNG,
+    ) -> Result<Vec<Entry<ClientRequest>>, StorageError> {
+        self.defensive_nonempty_range(range.clone()).await?;
+
+        let res = {
+            let log = self.log.read().await;
+            log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>()
+        };
+
+        Ok(res)
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<ClientRequest>>, StorageError> {
         let log = self.log.read().await;
         Ok(log.get(&log_index).cloned())
+    }
+
+    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
+        let log = self.log.read().await;
+        let first = log.iter().next().map(|(_, ent)| ent.log_id);
+        Ok(first)
+    }
+
+    async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
+        let first = self.first_id_in_log().await?;
+        if let Some(x) = first {
+            return Ok(x);
+        }
+
+        let (last_applied, _) = self.last_applied_state().await?;
+        Ok(last_applied)
     }
 
     async fn last_id_in_log(&self) -> Result<LogId, StorageError> {
@@ -621,7 +661,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
 
-    #[tracing::instrument(level = "trace", skip(self, range), fields(range=?range))]
+    #[tracing::instrument(level = "debug", skip(self, range), fields(range=?range))]
     async fn delete_logs_from<R: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: R,
@@ -629,11 +669,13 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         self.defensive_nonempty_range(range.clone()).await?;
         self.defensive_half_open_range(range.clone()).await?;
 
-        let mut log = self.log.write().await;
+        {
+            let mut log = self.log.write().await;
 
-        let keys = log.range(range).map(|(k, _v)| *k).collect::<Vec<_>>();
-        for key in keys {
-            log.remove(&key);
+            let keys = log.range(range).map(|(k, _v)| *k).collect::<Vec<_>>();
+            for key in keys {
+                log.remove(&key);
+            }
         }
 
         Ok(())

@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::LogId;
+use async_raft::RaftNetwork;
 use async_raft::RaftStorage;
 use async_raft::SnapshotPolicy;
 use async_raft::State;
@@ -121,6 +123,24 @@ async fn compaction() -> Result<()> {
             expected_snap,
         )
         .await?;
+
+    tracing::info!(
+        "--- send a heartbeat with prev_log_id to be some value <= last_applied to ensure the commit index is updated"
+    );
+    {
+        let res = router
+            .send_append_entries(1, AppendEntriesRequest {
+                term: 1,
+                leader_id: 0,
+                prev_log_id: LogId::new(1, 2),
+                entries: vec![],
+                leader_commit: 0,
+            })
+            .await?;
+
+        assert!(res.success);
+        assert_eq!(None, res.conflict_opt);
+    }
 
     Ok(())
 }
