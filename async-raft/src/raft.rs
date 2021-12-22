@@ -2,7 +2,6 @@
 
 use std::collections::BTreeSet;
 use std::fmt::Debug;
-use std::fmt::Formatter;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -321,14 +320,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
-    #[tracing::instrument(level = "debug", skip(self, mes, rx))]
+    #[tracing::instrument(level = "debug", skip(self, mes, rx), fields(mes=%mes.summary()))]
     pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<D, R>, rx: RaftRespRx<T, E>) -> Result<T, E>
     where E: From<RaftError> {
         let span = tracing::debug_span!("CH_call_core");
 
+        let sum = mes.summary();
+
         let send_res = self.inner.tx_api.send((mes, span));
         if let Err(send_err) = send_res {
-            tracing::error!(%send_err, "error send tx to RaftCore");
+            tracing::error!(%send_err, mes=%sum, "error send tx to RaftCore");
             return Err(RaftError::ShuttingDown.into());
         }
 
@@ -336,7 +337,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let res = match recv_res {
             Ok(x) => x,
             Err(e) => {
-                tracing::error!(%e, "error recv rx from RaftCore");
+                tracing::error!(%e, mes=%sum, "error recv rx from RaftCore");
                 Err(RaftError::ShuttingDown.into())
             }
         };
@@ -467,36 +468,36 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     },
 }
 
-impl<D, R> Debug for RaftMsg<D, R>
+impl<D, R> MessageSummary for RaftMsg<D, R>
 where
-    D: AppData + Debug,
+    D: AppData,
     R: AppDataResponse,
 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn summary(&self) -> String {
         match self {
             RaftMsg::AppendEntries { rpc, .. } => {
-                write!(f, "AppendEntries: {:?}", rpc)
+                format!("AppendEntries: {}", rpc.summary())
             }
             RaftMsg::RequestVote { rpc, .. } => {
-                write!(f, "RequestVote: {:?}", rpc)
+                format!("RequestVote: {}", rpc.summary())
             }
             RaftMsg::InstallSnapshot { rpc, .. } => {
-                write!(f, "InstallSnapshot: {:?}", rpc)
+                format!("InstallSnapshot: {}", rpc.summary())
             }
             RaftMsg::ClientWriteRequest { rpc, .. } => {
-                write!(f, "ClientWriteRequest: {:?}", rpc)
+                format!("ClientWriteRequest: {}", rpc.summary())
             }
             RaftMsg::ClientReadRequest { .. } => {
-                write!(f, "ClientReadRequest")
+                format!("ClientReadRequest")
             }
             RaftMsg::Initialize { members, .. } => {
-                write!(f, "Initialize: {:?}", members)
+                format!("Initialize: {:?}", members)
             }
             RaftMsg::AddNonVoter { id, blocking, .. } => {
-                write!(f, "AddNonVoter: id: {}, blocking: {}", id, blocking)
+                format!("AddNonVoter: id: {}, blocking: {}", id, blocking)
             }
             RaftMsg::ChangeMembership { members, blocking, .. } => {
-                write!(f, "ChangeMembership: members: {:?}, blocking: {}", members, blocking)
+                format!("ChangeMembership: members: {:?}, blocking: {}", members, blocking)
             }
         }
     }
