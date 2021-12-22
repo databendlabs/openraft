@@ -135,8 +135,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 let _ = tx.send(Err(ChangeConfigError::Incompatible {
                     curr: curr.clone(),
                     to: members,
-                }
-                .into()));
+                }));
                 return;
             } else {
                 new_config = MembershipConfig {
@@ -176,8 +175,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         let _ = tx.send(Err(ChangeConfigError::NonVoterIsLagging {
                             node_id: *new_node,
                             distance: self.core.last_log_id.index.saturating_sub(node.matched.index),
-                        }
-                        .into()));
+                        }));
                         return;
                     }
                 }
@@ -185,7 +183,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // Node does not yet have a repl stream, spawn one.
                 None => {
                     // TODO(xp): 111 distance
-                    let _ = tx.send(Err(ChangeConfigError::NonVoterNotFound { node_id: *new_node }.into()));
+                    let _ = tx.send(Err(ChangeConfigError::NonVoterNotFound { node_id: *new_node }));
                     return;
                 }
             }

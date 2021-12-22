@@ -1,6 +1,8 @@
 //! Public Raft interface and data types.
 
 use std::collections::BTreeSet;
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -109,16 +111,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// used as heartbeats (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc),fields(rpc=%rpc.summary()))]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse, RaftError> {
-        let span = tracing::debug_span!("CH");
-
         let (tx, rx) = oneshot::channel();
-
-        self.inner
-            .tx_api
-            .send((RaftMsg::AppendEntries { rpc, tx }, span))
-            .map_err(|_| RaftError::ShuttingDown)?;
-
-        rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)
+        self.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
     }
 
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.
@@ -126,15 +120,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, RaftError> {
-        let span = tracing::debug_span!("CH");
-
         let (tx, rx) = oneshot::channel();
-        self.inner
-            .tx_api
-            .send((RaftMsg::RequestVote { rpc, tx }, span))
-            .map_err(|_| RaftError::ShuttingDown)?;
-
-        rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)
+        self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
 
     /// Submit an InstallSnapshot RPC to this Raft node.
@@ -143,16 +130,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// with the leader (§7).
     #[tracing::instrument(level = "debug", skip(self, rpc), fields(snapshot_id=%rpc.meta.last_log_id))]
     pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse, RaftError> {
-        let span = tracing::debug_span!("CH");
-
         let (tx, rx) = oneshot::channel();
-
-        self.inner
-            .tx_api
-            .send((RaftMsg::InstallSnapshot { rpc, tx }, span))
-            .map_err(|_| RaftError::ShuttingDown)?;
-
-        rx.await.map_err(|_| RaftError::ShuttingDown).and_then(|res| res)
+        self.call_core(RaftMsg::InstallSnapshot { rpc, tx }, rx).await
     }
 
     /// Get the ID of the current leader from this Raft node.
@@ -171,18 +150,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// the read will not be stale.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn client_read(&self) -> Result<(), ClientReadError> {
-        let span = tracing::debug_span!("CH");
-
         let (tx, rx) = oneshot::channel();
-
-        self.inner
-            .tx_api
-            .send((RaftMsg::ClientReadRequest { tx }, span))
-            .map_err(|_| RaftError::ShuttingDown)?;
-
-        let recv_res = rx.await.map_err(|_| RaftError::ShuttingDown)?;
-        let _raft_resp = recv_res?;
-        Ok(())
+        self.call_core(RaftMsg::ClientReadRequest { tx }, rx).await
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).
@@ -204,22 +173,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// being built on top of Raft.
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn client_write(&self, rpc: ClientWriteRequest<D>) -> Result<ClientWriteResponse<R>, ClientWriteError> {
-        let span = tracing::debug_span!("CH");
-
         let (tx, rx) = oneshot::channel();
-
-        let res = self.inner.tx_api.send((RaftMsg::ClientWriteRequest { rpc, tx }, span));
-
-        if let Err(e) = res {
-            tracing::error!("error when Raft::client_write: send to tx_api: {}", e);
-            return Err(ClientWriteError::RaftError(RaftError::ShuttingDown));
-        }
-
-        let res = rx.await.map_err(|_| RaftError::ShuttingDown)?;
-        if let Err(ref e) = res {
-            tracing::error!("error Raft::client_write: {:?}", e);
-        }
-        res
+        self.call_core(RaftMsg::ClientWriteRequest { rpc, tx }, rx).await
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -252,17 +207,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// only its own config.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize(&self, members: BTreeSet<NodeId>) -> Result<(), InitializeError> {
-        let span = tracing::debug_span!("CH");
-
         let (tx, rx) = oneshot::channel();
-
-        self.inner
-            .tx_api
-            .send((RaftMsg::Initialize { members, tx }, span))
-            .map_err(|_| RaftError::ShuttingDown)?;
-
-        let res = rx.await.map_err(|_| RaftError::ShuttingDown)?;
-        res
+        self.call_core(RaftMsg::Initialize { members, tx }, rx).await
     }
 
     /// Synchronize a new Raft node, optionally, blocking until up-to-speed (§6).
@@ -374,12 +320,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         Ok(res)
     }
 
+    /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<D, R>, rx: RaftRespRx<T, E>) -> Result<T, E>
     where E: From<RaftError> {
         let span = tracing::debug_span!("CH_call_core");
-
-        // TODO(xp): if non-voters is lagging, return a corresponding error, instead of waiting.
 
         let send_res = self.inner.tx_api.send((mes, span));
         if let Err(send_err) = send_res {
@@ -520,6 +465,41 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         blocking: bool,
         tx: RaftRespTx<RaftResponse, ChangeConfigError>,
     },
+}
+
+impl<D, R> Debug for RaftMsg<D, R>
+where
+    D: AppData + Debug,
+    R: AppDataResponse,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RaftMsg::AppendEntries { rpc, .. } => {
+                write!(f, "AppendEntries: {:?}", rpc)
+            }
+            RaftMsg::RequestVote { rpc, .. } => {
+                write!(f, "RequestVote: {:?}", rpc)
+            }
+            RaftMsg::InstallSnapshot { rpc, .. } => {
+                write!(f, "InstallSnapshot: {:?}", rpc)
+            }
+            RaftMsg::ClientWriteRequest { rpc, .. } => {
+                write!(f, "ClientWriteRequest: {:?}", rpc)
+            }
+            RaftMsg::ClientReadRequest { .. } => {
+                write!(f, "ClientReadRequest")
+            }
+            RaftMsg::Initialize { members, .. } => {
+                write!(f, "Initialize: {:?}", members)
+            }
+            RaftMsg::AddNonVoter { id, blocking, .. } => {
+                write!(f, "AddNonVoter: id: {}, blocking: {}", id, blocking)
+            }
+            RaftMsg::ChangeMembership { members, blocking, .. } => {
+                write!(f, "ChangeMembership: members: {:?}, blocking: {}", members, blocking)
+            }
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

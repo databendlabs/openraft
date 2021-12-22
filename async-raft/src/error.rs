@@ -101,7 +101,6 @@ impl From<tokio::io::Error> for RaftError {
 /// An error related to a client read request.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientReadError {
-    /// A Raft error.
     #[error(transparent)]
     RaftError(#[from] RaftError),
 
@@ -112,7 +111,6 @@ pub enum ClientReadError {
 /// An error related to a client write request.
 #[derive(thiserror::Error, Debug)]
 pub enum ClientWriteError {
-    /// A Raft error.
     #[error("{0}")]
     RaftError(#[from] RaftError),
 
