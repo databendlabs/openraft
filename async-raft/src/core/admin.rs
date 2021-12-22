@@ -10,10 +10,11 @@ use crate::core::State;
 use crate::core::UpdateCurrentLeader;
 use crate::error::ChangeConfigError;
 use crate::error::InitializeError;
+use crate::error::ResponseError;
 use crate::raft::ClientWriteRequest;
 use crate::raft::MembershipConfig;
+use crate::raft::RaftRespTx;
 use crate::raft::RaftResponse;
-use crate::raft::ResponseTx;
 use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -71,7 +72,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Add a new node to the cluster as a non-voter, bringing it up-to-speed, and then responding
     /// on the given channel.
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) fn add_member(&mut self, target: NodeId, tx: ResponseTx, blocking: bool) {
+    pub(super) fn add_member(&mut self, target: NodeId, tx: RaftRespTx<RaftResponse, ResponseError>, blocking: bool) {
         // TODO(xp): 111 a blocking change_membership can be done in Raft::change_membership: it add the replication
         //           stream and wait for it to become line-rate.
 
@@ -98,7 +99,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) async fn change_membership(&mut self, members: BTreeSet<NodeId>, wait: bool, tx: ResponseTx) {
+    pub(super) async fn change_membership(
+        &mut self,
+        members: BTreeSet<NodeId>,
+        wait: bool,
+        tx: RaftRespTx<RaftResponse, ResponseError>,
+    ) {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ChangeConfigError::InoperableConfig.into()));
@@ -193,7 +199,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub async fn append_membership_log(
         &mut self,
         mem: MembershipConfig,
-        resp_tx: Option<ResponseTx>,
+        resp_tx: Option<RaftRespTx<RaftResponse, ResponseError>>,
     ) -> Result<(), RaftError> {
         let payload = ClientWriteRequest::<D>::new_config(mem.clone());
         let res = self.append_payload_to_log(payload.entry).await;

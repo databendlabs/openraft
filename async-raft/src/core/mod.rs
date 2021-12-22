@@ -38,16 +38,17 @@ use crate::error::ClientWriteError;
 use crate::error::InitializeError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
+use crate::error::ResponseError;
 use crate::metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
-use crate::raft::ClientReadResponseTx;
 use crate::raft::ClientWriteRequest;
-use crate::raft::ClientWriteResponseTx;
+use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::MembershipConfig;
 use crate::raft::RaftMsg;
-use crate::raft::ResponseTx;
+use crate::raft::RaftRespTx;
+use crate::raft::RaftResponse;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
@@ -489,13 +490,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Reject a proposed config change request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn reject_config_change_not_leader(&self, tx: ResponseTx) {
+    fn reject_config_change_not_leader(&self, tx: RaftRespTx<RaftResponse, ResponseError>) {
         let _ = tx.send(Err(ChangeConfigError::NodeNotLeader(self.current_leader).into()));
     }
 
     /// Forward the given client write request to the leader.
     #[tracing::instrument(level = "trace", skip(self, req, tx))]
-    fn forward_client_write_request(&self, req: ClientWriteRequest<D>, tx: ClientWriteResponseTx<D, R>) {
+    fn forward_client_write_request(
+        &self,
+        req: ClientWriteRequest<D>,
+        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError<D>>,
+    ) {
         match req.entry {
             EntryPayload::Normal(entry) => {
                 let _ = tx.send(Err(ClientWriteError::ForwardToLeader(entry.data, self.current_leader)));
@@ -512,7 +517,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Forward the given client read request to the leader.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn forward_client_read_request(&self, tx: ClientReadResponseTx) {
+    fn forward_client_read_request(&self, tx: RaftRespTx<(), ClientReadError>) {
         let _ = tx.send(Err(ClientReadError::ForwardToLeader(self.current_leader)));
     }
 }
@@ -778,7 +783,7 @@ struct ReplicationState<D: AppData> {
     pub replstream: ReplicationStream<D>,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
-    pub tx: Option<ResponseTx>,
+    pub tx: Option<RaftRespTx<RaftResponse, ResponseError>>,
 }
 
 impl<D: AppData> MessageSummary for ReplicationState<D> {

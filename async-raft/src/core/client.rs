@@ -18,14 +18,12 @@ use crate::error::RaftResult;
 use crate::error::ResponseError;
 use crate::quorum;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::ClientReadResponseTx;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
-use crate::raft::ClientWriteResponseTx;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
+use crate::raft::RaftRespTx;
 use crate::raft::RaftResponse;
-use crate::raft::ResponseTx;
 use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -57,8 +55,8 @@ impl<D: AppData, R: AppDataResponse> MessageSummary for ClientRequestEntry<D, R>
 /// An enum type wrapping either a client response channel or an internal Raft response channel.
 #[derive(derive_more::From)]
 pub enum ClientOrInternalResponseTx<D: AppData, R: AppDataResponse> {
-    Client(ClientWriteResponseTx<D, R>),
-    Internal(Option<ResponseTx>),
+    Client(RaftRespTx<ClientWriteResponse<R>, ClientWriteError<D>>),
+    Internal(Option<RaftRespTx<RaftResponse, ResponseError>>),
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
@@ -103,7 +101,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// handles this by having the leader exchange heartbeat messages with a majority of the
     /// cluster before responding to read-only requests.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_client_read_request(&mut self, tx: ClientReadResponseTx) {
+    pub(super) async fn handle_client_read_request(&mut self, tx: RaftRespTx<(), ClientReadError>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
         let mut c0_confirmed = 0usize;
         // Will never be zero, as we don't allow it when proposing config changes.
@@ -225,7 +223,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn handle_client_write_request(
         &mut self,
         rpc: ClientWriteRequest<D>,
-        tx: ClientWriteResponseTx<D, R>,
+        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError<D>>,
     ) {
         let entry = match self.append_payload_to_log(rpc.entry).await {
             Ok(entry) => ClientRequestEntry {
@@ -345,7 +343,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 );
             }
             ClientOrInternalResponseTx::Internal(tx) => {
-
                 // TODO(xp): if there is error, shall we go on?
 
                 let tx = match tx {

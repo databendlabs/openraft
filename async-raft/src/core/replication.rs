@@ -10,9 +10,10 @@ use crate::core::SnapshotState;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
 use crate::error::RaftResult;
+use crate::error::ResponseError;
 use crate::quorum;
+use crate::raft::RaftRespTx;
 use crate::raft::RaftResponse;
-use crate::raft::ResponseTx;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
@@ -32,7 +33,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) fn spawn_replication_stream(
         &self,
         target: NodeId,
-        caller_tx: Option<ResponseTx>,
+        caller_tx: Option<RaftRespTx<RaftResponse, ResponseError>>,
     ) -> ReplicationState<D> {
         let replstream = ReplicationStream::new(
             self.core.id,

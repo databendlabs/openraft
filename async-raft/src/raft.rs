@@ -181,7 +181,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .send((RaftMsg::ClientReadRequest { tx }, span))
             .map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
 
-        rx.await.map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
+        let recv_res = rx.await.map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
+        let _raft_resp = recv_res?;
+        Ok(())
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).
@@ -453,9 +455,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Cl
     }
 }
 
-pub(crate) type ClientWriteResponseTx<D, R> = oneshot::Sender<Result<ClientWriteResponse<R>, ClientWriteError<D>>>;
-pub(crate) type ClientReadResponseTx = oneshot::Sender<Result<(), ClientReadError>>;
-pub(crate) type ResponseTx = oneshot::Sender<Result<RaftResponse, ResponseError>>;
+pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 
 /// Response type to send back to a caller
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -473,32 +473,34 @@ pub enum RaftResponse {
 
     /// An Ok response indicating nothing is affected.
     NoChange,
+
+    None,
 }
 
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     AppendEntries {
         rpc: AppendEntriesRequest<D>,
-        tx: oneshot::Sender<Result<AppendEntriesResponse, RaftError>>,
+        tx: RaftRespTx<AppendEntriesResponse, RaftError>,
     },
     RequestVote {
         rpc: VoteRequest,
-        tx: oneshot::Sender<Result<VoteResponse, RaftError>>,
+        tx: RaftRespTx<VoteResponse, RaftError>,
     },
     InstallSnapshot {
         rpc: InstallSnapshotRequest,
-        tx: oneshot::Sender<Result<InstallSnapshotResponse, RaftError>>,
+        tx: RaftRespTx<InstallSnapshotResponse, RaftError>,
     },
     ClientWriteRequest {
         rpc: ClientWriteRequest<D>,
-        tx: ClientWriteResponseTx<D, R>,
+        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError<D>>,
     },
     ClientReadRequest {
-        tx: ClientReadResponseTx,
+        tx: RaftRespTx<(), ClientReadError>,
     },
     Initialize {
         members: BTreeSet<NodeId>,
-        tx: oneshot::Sender<Result<(), InitializeError>>,
+        tx: RaftRespTx<(), InitializeError>,
     },
     // TODO(xp): make tx a field of a struct
     /// Request raft core to setup a new replication to a non-voter.
@@ -509,7 +511,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         blocking: bool,
 
         /// Send the log id when the replication becomes line-rate.
-        tx: ResponseTx,
+        tx: RaftRespTx<RaftResponse, ResponseError>,
     },
     ChangeMembership {
         members: BTreeSet<NodeId>,
@@ -518,7 +520,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         ///
         /// Otherwise, wait for commit of the member change log.
         blocking: bool,
-        tx: ResponseTx,
+        tx: RaftRespTx<RaftResponse, ResponseError>,
     },
 }
 

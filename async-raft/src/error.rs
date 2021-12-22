@@ -218,7 +218,7 @@ impl<D: AppData> From<ClientWriteError<D>> for ChangeConfigError {
     }
 }
 
-// A error wrapper of every type of error that will be sent to the caller.
+// A error wrapper of every type of error sent by RaftCore to the Raft(the user API layer).
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ResponseError {
