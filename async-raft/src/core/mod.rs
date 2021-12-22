@@ -41,6 +41,7 @@ use crate::error::RaftError;
 use crate::error::RaftResult;
 use crate::metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
+use crate::raft::AddNonVoterResponse;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
@@ -48,7 +49,6 @@ use crate::raft::EntryPayload;
 use crate::raft::MembershipConfig;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
-use crate::raft::RaftResponse;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
@@ -490,7 +490,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Reject a proposed config change request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn reject_config_change_not_leader<E>(&self, tx: RaftRespTx<RaftResponse, E>)
+    fn reject_config_change_not_leader<T, E>(&self, tx: RaftRespTx<T, E>)
     where E: From<ForwardToLeader> {
         let err = ForwardToLeader {
             leader_id: self.current_leader,
@@ -715,7 +715,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 tracing::info!("id={} state becomes: {:?}", self.core.id, self.core.target_state);
 
                 for node in self.nodes.values() {
-                    let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
+                    let _ = node.repl_stream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
                 }
                 return Ok(());
             }
@@ -753,7 +753,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         }
                         RaftMsg::AddNonVoter{id, tx, blocking} => {
                             tracing::info!("leader recv from rx_api: AddNonVoter, {}", id);
-                            self.add_member(id, tx, blocking);
+                            self.add_non_voter(id, tx, blocking);
                         }
                         RaftMsg::ChangeMembership{members, blocking, tx} => {
                             tracing::info!("leader recv from rx_api: ChangeMembership, {:?}", members);
@@ -789,10 +789,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 struct ReplicationState<D: AppData> {
     pub matched: LogId,
     pub remove_after_commit: Option<u64>,
-    pub replstream: ReplicationStream<D>,
+    pub repl_stream: ReplicationStream<D>,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
-    pub tx: Option<RaftRespTx<RaftResponse, AddNonVoterError>>,
+    pub tx: Option<RaftRespTx<AddNonVoterResponse, AddNonVoterError>>,
 }
 
 impl<D: AppData> MessageSummary for ReplicationState<D> {

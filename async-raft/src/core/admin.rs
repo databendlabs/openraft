@@ -11,6 +11,7 @@ use crate::core::UpdateCurrentLeader;
 use crate::error::AddNonVoterError;
 use crate::error::ChangeConfigError;
 use crate::error::InitializeError;
+use crate::raft::AddNonVoterResponse;
 use crate::raft::ClientWriteRequest;
 use crate::raft::MembershipConfig;
 use crate::raft::RaftRespTx;
@@ -72,20 +73,26 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Add a new node to the cluster as a non-voter, bringing it up-to-speed, and then responding
     /// on the given channel.
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) fn add_member(
+    pub(super) fn add_non_voter(
         &mut self,
         target: NodeId,
-        tx: RaftRespTx<RaftResponse, AddNonVoterError>,
+        tx: RaftRespTx<AddNonVoterResponse, AddNonVoterError>,
         blocking: bool,
     ) {
         // TODO(xp): 111 a blocking change_membership can be done in Raft::change_membership: it add the replication
         //           stream and wait for it to become line-rate.
 
         // Ensure the node doesn't already exist in the current
-        // config, in the set of new nodes alreading being synced, or in the nodes being removed.
+        // config, in the set of new nodes already being synced, or in the nodes being removed.
         if target == self.core.id || self.nodes.contains_key(&target) {
             tracing::debug!("target node is already a cluster member or is being synced");
-            let _ = tx.send(Ok(RaftResponse::NoChange));
+            let x = self.nodes.get(&target);
+            let matched = match x {
+                None => self.core.last_log_id,
+                Some(x) => x.matched,
+            };
+
+            let _ = tx.send(Ok(AddNonVoterResponse { matched }));
             return;
         }
 
@@ -97,8 +104,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.nodes.insert(target, state);
 
             // non-blocking mode, do not know about the replication stat.
-            let _ = tx.send(Ok(RaftResponse::LogId {
-                log_id: LogId { term: 0, index: 0 },
+            let _ = tx.send(Ok(AddNonVoterResponse {
+                matched: LogId::new(0, 0),
             }));
         }
     }
@@ -293,7 +300,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             );
 
             if let Some(node) = removed {
-                let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
+                let _ = node.repl_stream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
                 self.leader_metrics.replication.remove(&target);
             }
         }

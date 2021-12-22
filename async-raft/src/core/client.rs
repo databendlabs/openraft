@@ -293,7 +293,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         for node in self.nodes.values() {
-            let _ = node.replstream.repl_tx.send((
+            let _ = node.repl_stream.repl_tx.send((
                 RaftEvent::Replicate {
                     entry: entry_arc.clone(),
                     commit_index: self.core.commit_index,

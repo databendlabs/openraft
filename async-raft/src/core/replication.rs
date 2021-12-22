@@ -12,8 +12,8 @@ use crate::core::UpdateCurrentLeader;
 use crate::error::AddNonVoterError;
 use crate::error::RaftResult;
 use crate::quorum;
+use crate::raft::AddNonVoterResponse;
 use crate::raft::RaftRespTx;
-use crate::raft::RaftResponse;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
@@ -33,7 +33,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) fn spawn_replication_stream(
         &self,
         target: NodeId,
-        caller_tx: Option<RaftRespTx<RaftResponse, AddNonVoterError>>,
+        caller_tx: Option<RaftRespTx<AddNonVoterResponse, AddNonVoterError>>,
     ) -> ReplicationState<D> {
         let replstream = ReplicationStream::new(
             self.core.id,
@@ -48,7 +48,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         );
         ReplicationState {
             matched: LogId { term: 0, index: 0 },
-            replstream,
+            repl_stream: replstream,
             remove_after_commit: None,
             tx: caller_tx,
         }
@@ -60,7 +60,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let res = match event {
             ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
             ReplicaEvent::UpdateMatchIndex { target, matched } => {
-                self.handle_update_mactched_and_rate(target, matched).await
+                self.handle_update_matched_and_rate(target, matched).await
             }
             ReplicaEvent::NeedsSnapshot { target, tx } => self.handle_needs_snapshot(target, tx).await,
             ReplicaEvent::Shutdown => {
@@ -87,7 +87,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn handle_update_mactched_and_rate(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
+    async fn handle_update_matched_and_rate(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
         // Update target's match index & check if it is awaiting removal.
         let mut needs_removal = false;
 
@@ -105,7 +105,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // When adding a non-voter, it blocks until the replication becomes line-rate.
                 if let Some(tx) = state.tx.take() {
                     // TODO(xp): define a specific response type for non-voter matched event.
-                    let x = RaftResponse::LogId { log_id: state.matched };
+                    let x = AddNonVoterResponse { matched: state.matched };
                     let _ = tx.send(Ok(x));
                 }
             }
@@ -139,7 +139,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             if let Some(node) = removed {
                 // TODO(xp): do not need to send, just close.
-                let _ = node.replstream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
+                let _ = node.repl_stream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
                 self.leader_metrics.replication.remove(&target);
             }
         } else {
@@ -156,7 +156,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
-                let _ = node.replstream.repl_tx.send((
+                let _ = node.repl_stream.repl_tx.send((
                     RaftEvent::UpdateCommitIndex {
                         commit_index: self.core.commit_index,
                     },

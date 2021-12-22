@@ -223,7 +223,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// If the node to add is already a voter or non-voter, it returns `RaftResponse::NoChange` at once.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=id))]
-    pub async fn add_non_voter(&self, id: NodeId, blocking: bool) -> Result<RaftResponse, AddNonVoterError> {
+    pub async fn add_non_voter(&self, id: NodeId, blocking: bool) -> Result<AddNonVoterResponse, AddNonVoterError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AddNonVoter { id, blocking, tx }, rx).await
     }
@@ -421,6 +421,11 @@ pub enum RaftResponse {
     None,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddNonVoterResponse {
+    pub matched: LogId,
+}
+
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     AppendEntries {
@@ -455,7 +460,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         blocking: bool,
 
         /// Send the log id when the replication becomes line-rate.
-        tx: RaftRespTx<RaftResponse, AddNonVoterError>,
+        tx: RaftRespTx<AddNonVoterResponse, AddNonVoterError>,
     },
     ChangeMembership {
         members: BTreeSet<NodeId>,
@@ -487,9 +492,7 @@ where
             RaftMsg::ClientWriteRequest { rpc, .. } => {
                 format!("ClientWriteRequest: {}", rpc.summary())
             }
-            RaftMsg::ClientReadRequest { .. } => {
-                format!("ClientReadRequest")
-            }
+            RaftMsg::ClientReadRequest { .. } => "ClientReadRequest".to_string(),
             RaftMsg::Initialize { members, .. } => {
                 format!("Initialize: {:?}", members)
             }

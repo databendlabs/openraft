@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use async_raft::raft::RaftResponse;
+use async_raft::raft::AddNonVoterResponse;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::RaftStorage;
@@ -38,7 +38,12 @@ async fn non_voter_add_readd() -> Result<()> {
     tracing::info!("--- re-adding leader does nothing");
     {
         let res = router.add_non_voter(0, 0).await?;
-        assert_eq!(RaftResponse::NoChange, res);
+        assert_eq!(
+            AddNonVoterResponse {
+                matched: LogId::new(1, n_logs)
+            },
+            res
+        );
     }
 
     tracing::info!("--- add new node node-1");
@@ -70,7 +75,12 @@ async fn non_voter_add_readd() -> Result<()> {
     tracing::info!("--- re-add node-1, expect error");
     {
         let res = router.add_non_voter(0, 1).await?;
-        assert_eq!(RaftResponse::NoChange, res);
+        assert_eq!(
+            AddNonVoterResponse {
+                matched: LogId::new(1, n_logs)
+            },
+            res
+        );
     }
 
     Ok(())
@@ -110,8 +120,8 @@ async fn non_voter_add_non_blocking() -> Result<()> {
         let res = router.add_non_voter_with_blocking(0, 1, false).await?;
 
         assert_eq!(
-            RaftResponse::LogId {
-                log_id: LogId { term: 0, index: 0 }
+            AddNonVoterResponse {
+                matched: LogId::new(0, 0)
             },
             res
         );
