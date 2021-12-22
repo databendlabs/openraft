@@ -14,6 +14,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use async_raft::async_trait::async_trait;
+use async_raft::error::AddNonVoterError;
 use async_raft::error::ClientReadError;
 use async_raft::error::ClientWriteError;
 use async_raft::error::ResponseError;
@@ -403,7 +404,7 @@ impl RaftRouter {
         nodes.remove(&id);
     }
 
-    pub async fn add_non_voter(&self, leader: NodeId, target: NodeId) -> Result<RaftResponse, ResponseError> {
+    pub async fn add_non_voter(&self, leader: NodeId, target: NodeId) -> Result<RaftResponse, AddNonVoterError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.add_non_voter(target, true).await
@@ -414,7 +415,7 @@ impl RaftRouter {
         leader: NodeId,
         target: NodeId,
         blocking: bool,
-    ) -> Result<RaftResponse, ResponseError> {
+    ) -> Result<RaftResponse, AddNonVoterError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.add_non_voter(target, blocking).await

@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 use std::fmt;
+use std::fmt::Debug;
 use std::time::Duration;
 
 use crate::raft::MembershipConfig;
@@ -85,6 +86,12 @@ pub enum ReplicationError {
 #[error("store has no log at: {index}")]
 pub struct LackEntry {
     pub index: u64,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("has to forward request to: {leader_id:?}")]
+pub struct ForwardToLeader {
+    pub leader_id: Option<NodeId>,
 }
 
 impl From<tokio::io::Error> for RaftError {
@@ -209,6 +216,18 @@ pub enum ChangeConfigError {
     Noop,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum AddNonVoterError {
+    #[error("{0}")]
+    RaftError(#[from] RaftError),
+
+    #[error(transparent)]
+    ForwardToLeader(#[from] ForwardToLeader),
+
+    #[error("node {0} is already a non-voter")]
+    Exists(NodeId),
+}
+
 impl<D: AppData> From<ClientWriteError<D>> for ChangeConfigError {
     fn from(src: ClientWriteError<D>) -> Self {
         match src {
@@ -224,6 +243,9 @@ impl<D: AppData> From<ClientWriteError<D>> for ChangeConfigError {
 pub enum ResponseError {
     #[error(transparent)]
     ChangeConfig(#[from] ChangeConfigError),
+
+    #[error(transparent)]
+    ForwardToLeader(#[from] ForwardToLeader),
 
     #[error(transparent)]
     Raft(#[from] RaftError),

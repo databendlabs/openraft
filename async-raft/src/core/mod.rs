@@ -32,13 +32,13 @@ use tracing_futures::Instrument;
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::core::client::ClientRequestEntry;
-use crate::error::ChangeConfigError;
+use crate::error::AddNonVoterError;
 use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
+use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
-use crate::error::ResponseError;
 use crate::metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
 use crate::raft::ClientWriteRequest;
@@ -490,8 +490,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Reject a proposed config change request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn reject_config_change_not_leader(&self, tx: RaftRespTx<RaftResponse, ResponseError>) {
-        let _ = tx.send(Err(ChangeConfigError::NodeNotLeader(self.current_leader).into()));
+    fn reject_config_change_not_leader<E>(&self, tx: RaftRespTx<RaftResponse, E>)
+    where E: From<ForwardToLeader> {
+        let err = ForwardToLeader {
+            leader_id: self.current_leader,
+        };
+
+        let _ = tx.send(Err(err.into()));
     }
 
     /// Forward the given client write request to the leader.
@@ -783,7 +788,7 @@ struct ReplicationState<D: AppData> {
     pub replstream: ReplicationStream<D>,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
-    pub tx: Option<RaftRespTx<RaftResponse, ResponseError>>,
+    pub tx: Option<RaftRespTx<RaftResponse, AddNonVoterError>>,
 }
 
 impl<D: AppData> MessageSummary for ReplicationState<D> {

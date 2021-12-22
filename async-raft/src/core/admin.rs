@@ -8,6 +8,7 @@ use crate::core::LeaderState;
 use crate::core::NonVoterState;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
+use crate::error::AddNonVoterError;
 use crate::error::ChangeConfigError;
 use crate::error::InitializeError;
 use crate::error::ResponseError;
@@ -72,7 +73,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Add a new node to the cluster as a non-voter, bringing it up-to-speed, and then responding
     /// on the given channel.
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) fn add_member(&mut self, target: NodeId, tx: RaftRespTx<RaftResponse, ResponseError>, blocking: bool) {
+    pub(super) fn add_member(
+        &mut self,
+        target: NodeId,
+        tx: RaftRespTx<RaftResponse, AddNonVoterError>,
+        blocking: bool,
+    ) {
         // TODO(xp): 111 a blocking change_membership can be done in Raft::change_membership: it add the replication
         //           stream and wait for it to become line-rate.
 
@@ -102,7 +108,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn change_membership(
         &mut self,
         members: BTreeSet<NodeId>,
-        wait: bool,
+        blocking: bool,
         tx: RaftRespTx<RaftResponse, ResponseError>,
     ) {
         // Ensure cluster will have at least one node.
@@ -167,7 +173,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         continue;
                     }
 
-                    if !wait {
+                    if !blocking {
                         // Node has repl stream, but is not yet ready to join.
                         let _ = tx.send(Err(ChangeConfigError::NonVoterIsLagging {
                             node_id: *new_node,

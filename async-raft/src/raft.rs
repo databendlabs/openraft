@@ -8,7 +8,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tokio::sync::oneshot::Receiver;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -16,7 +15,7 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::core::RaftCore;
-use crate::error::ChangeConfigError;
+use crate::error::AddNonVoterError;
 use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::InitializeError;
@@ -179,9 +178,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.inner
             .tx_api
             .send((RaftMsg::ClientReadRequest { tx }, span))
-            .map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
+            .map_err(|_| RaftError::ShuttingDown)?;
 
-        let recv_res = rx.await.map_err(|_| ClientReadError::RaftError(RaftError::ShuttingDown))?;
+        let recv_res = rx.await.map_err(|_| RaftError::ShuttingDown)?;
         let _raft_resp = recv_res?;
         Ok(())
     }
@@ -219,19 +218,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Err(ClientWriteError::RaftError(RaftError::ShuttingDown));
         }
 
-        let res = rx.await;
-        match res {
-            Ok(v) => {
-                if let Err(ref e) = v {
-                    tracing::error!("error Raft::client_write: {:?}", e);
-                }
-                v
-            }
-            Err(e) => {
-                tracing::error!("error when Raft::client_write: recv from rx: {}", e);
-                Err(ClientWriteError::RaftError(RaftError::ShuttingDown))
-            }
+        let res = rx.await.map_err(|_| RaftError::ShuttingDown)?;
+        if let Err(ref e) = res {
+            tracing::error!("error Raft::client_write: {:?}", e);
         }
+        res
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -273,7 +264,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .send((RaftMsg::Initialize { members, tx }, span))
             .map_err(|_| RaftError::ShuttingDown)?;
 
-        rx.await.map_err(|_| InitializeError::RaftError(RaftError::ShuttingDown)).and_then(|res| res)
+        let res = rx.await.map_err(|_| RaftError::ShuttingDown)?;
+        res
     }
 
     /// Synchronize a new Raft node, optionally, blocking until up-to-speed (§6).
@@ -289,12 +281,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// If the node to add is already a voter or non-voter, it returns `RaftResponse::NoChange` at once.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=id))]
-    pub async fn add_non_voter(&self, id: NodeId, blocking: bool) -> Result<RaftResponse, ResponseError> {
+    pub async fn add_non_voter(&self, id: NodeId, blocking: bool) -> Result<RaftResponse, AddNonVoterError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AddNonVoter { id, blocking, tx }, rx).await
     }
 
-    /// Propose a cluster configuration change (§6).
+    /// Propose a cluster configuration change.
     ///
     /// If a node in the proposed config but is not yet a voter or non-voter, it first calls `add_non_voter` to setup
     /// replication to the new node.
@@ -317,9 +309,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tracing::info!(?members, "change_membership: add every member as non-voter");
 
         for id in members.iter() {
-            let (tx, rx) = oneshot::channel();
-            let res = self.call_core(RaftMsg::AddNonVoter { id: *id, blocking, tx }, rx).await;
-
+            let res = self.add_non_voter(*id, blocking).await;
             let res_err = match res {
                 Ok(_) => {
                     continue;
@@ -327,15 +317,21 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 Err(e) => e,
             };
 
-            if matches!(res_err, ResponseError::ChangeConfig(ChangeConfigError::Noop)) {
-                tracing::info!(%res_err, "add non_voter: already exists");
-                continue;
+            tracing::info!(%res_err, "add non_voter: already exists");
+
+            match res_err {
+                AddNonVoterError::RaftError(raft_err) => {
+                    return Err(raft_err.into());
+                }
+                // TODO(xp): test add non voter on non-leader
+                AddNonVoterError::ForwardToLeader(forward_err) => {
+                    return Err(ResponseError::ForwardToLeader(forward_err))
+                }
+                AddNonVoterError::Exists(node_id) => {
+                    tracing::info!(%node_id, "add non_voter: already exists");
+                    continue;
+                }
             }
-
-            tracing::error!(%res_err, "add non_voter");
-
-            // unhandle-able error
-            return Err(res_err);
         }
 
         tracing::info!("change_membership: start to commit joint config");
@@ -382,24 +378,28 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
-    pub(crate) async fn call_core(
-        &self,
-        mes: RaftMsg<D, R>,
-        rx: Receiver<Result<RaftResponse, ResponseError>>,
-    ) -> Result<RaftResponse, ResponseError> {
-        let span = tracing::debug_span!("CH");
+    pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<D, R>, rx: RaftRespRx<T, E>) -> Result<T, E>
+    where E: From<RaftError> {
+        let span = tracing::debug_span!("CH_call_core");
 
         // TODO(xp): if non-voters is lagging, return a corresponding error, instead of waiting.
-        self.inner.tx_api.send((mes, span)).map_err(|_| RaftError::ShuttingDown)?;
+
+        let send_res = self.inner.tx_api.send((mes, span));
+        if let Err(send_err) = send_res {
+            tracing::error!(%send_err, "error send tx to RaftCore");
+            return Err(RaftError::ShuttingDown.into());
+        }
 
         let recv_res = rx.await;
-        match recv_res {
+        let res = match recv_res {
             Ok(x) => x,
             Err(e) => {
-                tracing::error!("recv rx error: {}", e);
-                Err(ChangeConfigError::RaftError(RaftError::ShuttingDown).into())
+                tracing::error!(%e, "error recv rx from RaftCore");
+                Err(RaftError::ShuttingDown.into())
             }
-        }
+        };
+
+        res
     }
 
     /// Get a handle to the metrics channel.
@@ -456,6 +456,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Cl
 }
 
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
+pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
 /// Response type to send back to a caller
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -511,7 +512,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         blocking: bool,
 
         /// Send the log id when the replication becomes line-rate.
-        tx: RaftRespTx<RaftResponse, ResponseError>,
+        tx: RaftRespTx<RaftResponse, AddNonVoterError>,
     },
     ChangeMembership {
         members: BTreeSet<NodeId>,
