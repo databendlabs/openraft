@@ -21,11 +21,11 @@ use crate::error::ClientWriteError;
 use crate::error::InitializeError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
-use crate::error::ResponseError;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::ChangeConfigError;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -305,7 +305,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &self,
         members: BTreeSet<NodeId>,
         blocking: bool,
-    ) -> Result<RaftResponse, ResponseError> {
+    ) -> Result<RaftResponse, ChangeConfigError> {
         tracing::info!(?members, "change_membership: add every member as non-voter");
 
         for id in members.iter() {
@@ -325,7 +325,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 }
                 // TODO(xp): test add non voter on non-leader
                 AddNonVoterError::ForwardToLeader(forward_err) => {
-                    return Err(ResponseError::ForwardToLeader(forward_err))
+                    return Err(ChangeConfigError::ForwardToLeader(forward_err))
                 }
                 AddNonVoterError::Exists(node_id) => {
                     tracing::info!(%node_id, "add non_voter: already exists");
@@ -521,7 +521,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         ///
         /// Otherwise, wait for commit of the member change log.
         blocking: bool,
-        tx: RaftRespTx<RaftResponse, ResponseError>,
+        tx: RaftRespTx<RaftResponse, ChangeConfigError>,
     },
 }
 

@@ -15,7 +15,6 @@ use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
-use crate::error::ResponseError;
 use crate::quorum;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteRequest;
@@ -27,6 +26,7 @@ use crate::raft::RaftResponse;
 use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::ChangeConfigError;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftNetwork;
@@ -56,7 +56,7 @@ impl<D: AppData, R: AppDataResponse> MessageSummary for ClientRequestEntry<D, R>
 #[derive(derive_more::From)]
 pub enum ClientOrInternalResponseTx<D: AppData, R: AppDataResponse> {
     Client(RaftRespTx<ClientWriteResponse<R>, ClientWriteError<D>>),
-    Internal(Option<RaftRespTx<RaftResponse, ResponseError>>),
+    Internal(Option<RaftRespTx<RaftResponse, ChangeConfigError>>),
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
@@ -366,9 +366,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                             }),
                         }
                     }
-                    Err(err) => {
-                        tracing::error!("res of applying to state machine: {:?}", err);
-                        Err(ResponseError::from(err))
+                    Err(raft_err) => {
+                        tracing::error!("res of applying to state machine: {:?}", raft_err);
+                        Err(ChangeConfigError::RaftError(raft_err))
                     }
                 };
 

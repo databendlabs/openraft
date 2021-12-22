@@ -11,7 +11,6 @@ use crate::core::UpdateCurrentLeader;
 use crate::error::AddNonVoterError;
 use crate::error::ChangeConfigError;
 use crate::error::InitializeError;
-use crate::error::ResponseError;
 use crate::raft::ClientWriteRequest;
 use crate::raft::MembershipConfig;
 use crate::raft::RaftRespTx;
@@ -109,11 +108,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         members: BTreeSet<NodeId>,
         blocking: bool,
-        tx: RaftRespTx<RaftResponse, ResponseError>,
+        tx: RaftRespTx<RaftResponse, ChangeConfigError>,
     ) {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
-            let _ = tx.send(Err(ChangeConfigError::InoperableConfig.into()));
+            let _ = tx.send(Err(ChangeConfigError::InoperableConfig));
             return;
         }
 
@@ -122,8 +121,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if self.core.commit_index < self.core.membership.log_id.index {
             let _ = tx.send(Err(ChangeConfigError::ConfigChangeInProgress {
                 membership_log_id: self.core.membership.log_id,
-            }
-            .into()));
+            }));
             return;
         }
 
@@ -205,7 +203,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub async fn append_membership_log(
         &mut self,
         mem: MembershipConfig,
-        resp_tx: Option<RaftRespTx<RaftResponse, ResponseError>>,
+        resp_tx: Option<RaftRespTx<RaftResponse, ChangeConfigError>>,
     ) -> Result<(), RaftError> {
         let payload = ClientWriteRequest::<D>::new_config(mem.clone());
         let res = self.append_payload_to_log(payload.entry).await;

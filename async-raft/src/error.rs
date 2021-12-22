@@ -187,10 +187,8 @@ pub enum ChangeConfigError {
     #[error("the given config would leave the cluster in an inoperable state")]
     InoperableConfig,
 
-    /// The node the config change proposal was sent to was not the leader of the cluster. The ID
-    /// of the current leader is returned if known.
-    #[error("this node is not the Raft leader")]
-    NodeNotLeader(Option<NodeId>),
+    #[error(transparent)]
+    ForwardToLeader(#[from] ForwardToLeader),
 
     // TODO(xp): 111 test it
     #[error("to add a member {node_id} first need to add it as non-voter")]
@@ -232,21 +230,7 @@ impl<D: AppData> From<ClientWriteError<D>> for ChangeConfigError {
     fn from(src: ClientWriteError<D>) -> Self {
         match src {
             ClientWriteError::RaftError(err) => Self::RaftError(err),
-            ClientWriteError::ForwardToLeader(_, id) => Self::NodeNotLeader(id),
+            ClientWriteError::ForwardToLeader(_, id) => Self::ForwardToLeader(ForwardToLeader { leader_id: id }),
         }
     }
-}
-
-// A error wrapper of every type of error sent by RaftCore to the Raft(the user API layer).
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum ResponseError {
-    #[error(transparent)]
-    ChangeConfig(#[from] ChangeConfigError),
-
-    #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader),
-
-    #[error(transparent)]
-    Raft(#[from] RaftError),
 }

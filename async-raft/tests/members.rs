@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::error::ChangeConfigError;
-use async_raft::error::ResponseError;
 use async_raft::Config;
 use async_raft::RaftStorage;
 use fixtures::RaftRouter;
@@ -56,19 +55,14 @@ async fn members_add_lagging_non_voter_non_blocking() -> Result<()> {
         let err = res.unwrap_err();
 
         match err {
-            ResponseError::ChangeConfig(e) => match e {
-                ChangeConfigError::NonVoterIsLagging { node_id, distance } => {
-                    tracing::info!(distance, "--- distance");
-                    assert_eq!(1, node_id);
-                    assert!(distance >= lag_threshold);
-                    assert!(distance < 500);
-                }
-                _ => {
-                    panic!("expect ChangeConfigError::NonVoterNotFound");
-                }
-            },
+            ChangeConfigError::NonVoterIsLagging { node_id, distance } => {
+                tracing::info!(distance, "--- distance");
+                assert_eq!(1, node_id);
+                assert!(distance >= lag_threshold);
+                assert!(distance < 500);
+            }
             _ => {
-                panic!("expect ResponseError::ChangeConfig");
+                panic!("expect ChangeConfigError::NonVoterNotFound");
             }
         }
     }
