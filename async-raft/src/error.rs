@@ -1,13 +1,11 @@
 //! Error types exposed by this crate.
 
 use std::collections::BTreeSet;
-use std::fmt;
 use std::fmt::Debug;
 use std::time::Duration;
 
 use crate::raft::MembershipConfig;
 use crate::raft_types::SnapshotSegmentId;
-use crate::AppData;
 use crate::LogId;
 use crate::NodeId;
 use crate::StorageError;
@@ -104,33 +102,22 @@ impl From<tokio::io::Error> for RaftError {
 #[derive(Debug, thiserror::Error)]
 pub enum ClientReadError {
     /// A Raft error.
-    #[error("{0}")]
+    #[error(transparent)]
     RaftError(#[from] RaftError),
-    /// The client read request must be forwarded to the cluster leader.
-    #[error("the client read request must be forwarded to the cluster leader")]
-    ForwardToLeader(Option<NodeId>),
+
+    #[error(transparent)]
+    ForwardToLeader(#[from] ForwardToLeader),
 }
 
 /// An error related to a client write request.
-#[derive(thiserror::Error)]
-pub enum ClientWriteError<D: AppData> {
+#[derive(thiserror::Error, Debug)]
+pub enum ClientWriteError {
     /// A Raft error.
     #[error("{0}")]
     RaftError(#[from] RaftError),
-    /// The client write request must be forwarded to the cluster leader.
-    #[error("the client write request must be forwarded to the cluster leader")]
-    ForwardToLeader(D, Option<NodeId>),
-}
 
-impl<D: AppData> fmt::Debug for ClientWriteError<D> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ClientWriteError::RaftError(err) => f.debug_tuple("RaftError").field(err).finish(),
-            ClientWriteError::ForwardToLeader(_req, node_id) => {
-                f.debug_tuple("ForwardToLeader").field(node_id).finish()
-            }
-        }
-    }
+    #[error(transparent)]
+    ForwardToLeader(#[from] ForwardToLeader),
 }
 
 /// Error variants related to configuration.
@@ -199,7 +186,7 @@ pub enum ChangeConfigError {
     NonVoterIsLagging { node_id: NodeId, distance: u64 },
 
     // TODO(xp): test it in unittest
-    // TOOO(xp): rename this error to some elaborated name.
+    // TODO(xp): rename this error to some elaborated name.
     // TODO(xp): 111 test it
     #[error("now allowed to change from {curr:?} to {to:?}")]
     Incompatible {
@@ -224,13 +211,4 @@ pub enum AddNonVoterError {
 
     #[error("node {0} is already a non-voter")]
     Exists(NodeId),
-}
-
-impl<D: AppData> From<ClientWriteError<D>> for ChangeConfigError {
-    fn from(src: ClientWriteError<D>) -> Self {
-        match src {
-            ClientWriteError::RaftError(err) => Self::RaftError(err),
-            ClientWriteError::ForwardToLeader(_, id) => Self::ForwardToLeader(ForwardToLeader { leader_id: id }),
-        }
-    }
 }

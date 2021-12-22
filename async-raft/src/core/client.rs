@@ -43,7 +43,7 @@ pub(super) struct ClientRequestEntry<D: AppData, R: AppDataResponse> {
 
     /// The response channel for the request.
     /// TODO(xp): make it an Option
-    pub tx: ClientOrInternalResponseTx<D, R>,
+    pub tx: ClientOrInternalResponseTx<R>,
 }
 
 impl<D: AppData, R: AppDataResponse> MessageSummary for ClientRequestEntry<D, R> {
@@ -54,8 +54,8 @@ impl<D: AppData, R: AppDataResponse> MessageSummary for ClientRequestEntry<D, R>
 
 /// An enum type wrapping either a client response channel or an internal Raft response channel.
 #[derive(derive_more::From)]
-pub enum ClientOrInternalResponseTx<D: AppData, R: AppDataResponse> {
-    Client(RaftRespTx<ClientWriteResponse<R>, ClientWriteError<D>>),
+pub enum ClientOrInternalResponseTx<R: AppDataResponse> {
+    Client(RaftRespTx<ClientWriteResponse<R>, ClientWriteError>),
     Internal(Option<RaftRespTx<RaftResponse, ChangeConfigError>>),
 }
 
@@ -223,7 +223,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn handle_client_write_request(
         &mut self,
         rpc: ClientWriteRequest<D>,
-        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError<D>>,
+        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) {
         let entry = match self.append_payload_to_log(rpc.entry).await {
             Ok(entry) => ClientRequestEntry {
@@ -321,7 +321,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         entry: &Entry<D>,
         resp: RaftResult<R>,
-        tx: ClientOrInternalResponseTx<D, R>,
+        tx: ClientOrInternalResponseTx<R>,
     ) {
         match tx {
             ClientOrInternalResponseTx::Client(tx) => {

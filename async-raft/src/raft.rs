@@ -203,10 +203,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
     #[tracing::instrument(level = "debug", skip(self, rpc))]
-    pub async fn client_write(
-        &self,
-        rpc: ClientWriteRequest<D>,
-    ) -> Result<ClientWriteResponse<R>, ClientWriteError<D>> {
+    pub async fn client_write(&self, rpc: ClientWriteRequest<D>) -> Result<ClientWriteResponse<R>, ClientWriteError> {
         let span = tracing::debug_span!("CH");
 
         let (tx, rx) = oneshot::channel();
@@ -494,7 +491,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     },
     ClientWriteRequest {
         rpc: ClientWriteRequest<D>,
-        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError<D>>,
+        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     },
     ClientReadRequest {
         tx: RaftRespTx<(), ClientReadError>,

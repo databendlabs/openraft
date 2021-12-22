@@ -504,11 +504,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn forward_client_write_request(
         &self,
         req: ClientWriteRequest<D>,
-        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError<D>>,
+        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) {
         match req.entry {
-            EntryPayload::Normal(entry) => {
-                let _ = tx.send(Err(ClientWriteError::ForwardToLeader(entry.data, self.current_leader)));
+            EntryPayload::Normal(_entry) => {
+                let _ = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                    leader_id: self.current_leader,
+                })));
             }
             _ => {
                 // This is unreachable, and well controlled by the type system, but let's log an
@@ -523,7 +525,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Forward the given client read request to the leader.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     fn forward_client_read_request(&self, tx: RaftRespTx<(), ClientReadError>) {
-        let _ = tx.send(Err(ClientReadError::ForwardToLeader(self.current_leader)));
+        let _ = tx.send(Err(ClientReadError::ForwardToLeader(ForwardToLeader {
+            leader_id: self.current_leader,
+        })));
     }
 }
 
