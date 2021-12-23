@@ -26,7 +26,6 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::AppData;
 use crate::AppDataResponse;
-use crate::ChangeConfigError;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -247,7 +246,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &self,
         members: BTreeSet<NodeId>,
         blocking: bool,
-    ) -> Result<RaftResponse, ChangeConfigError> {
+    ) -> Result<ClientWriteResponse<R>, ClientWriteError> {
         tracing::info!(?members, "change_membership: add every member as non-voter");
 
         for id in members.iter() {
@@ -263,11 +262,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
             match res_err {
                 AddNonVoterError::RaftError(raft_err) => {
-                    return Err(raft_err.into());
+                    return Err(ClientWriteError::RaftError(raft_err));
                 }
                 // TODO(xp): test add non voter on non-leader
                 AddNonVoterError::ForwardToLeader(forward_err) => {
-                    return Err(ChangeConfigError::ForwardToLeader(forward_err))
+                    return Err(ClientWriteError::ForwardToLeader(forward_err))
                 }
                 AddNonVoterError::Exists(node_id) => {
                     tracing::info!(%node_id, "add non_voter: already exists");
@@ -292,21 +291,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             )
             .await?;
 
-        tracing::info!("res of first change_membership: {:?}", res);
+        tracing::info!("res of first change_membership: {:?}", res.summary());
 
-        let (log_id, joint) = match res {
-            RaftResponse::Membership { log_id, membership } => {
-                // There is a previously in progress joint state and it becomes the membership config we want.
-                if !membership.is_in_joint_consensus() {
-                    return Ok(RaftResponse::Membership { log_id, membership });
-                }
+        let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
 
-                (log_id, membership)
-            }
-            _ => {
-                panic!("expect membership response")
-            }
-        };
+        // There is a previously in progress joint state and it becomes the membership config we want.
+        if !joint.is_in_joint_consensus() {
+            return Ok(res);
+        }
 
         tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
         tracing::debug!("the second step is to change to uniform config: {:?}", members);
@@ -314,7 +306,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let (tx, rx) = oneshot::channel();
         let res = self.call_core(RaftMsg::ChangeMembership { members, blocking, tx }, rx).await?;
 
-        tracing::info!("res of second change_membership: {:?}", res);
+        tracing::info!("res of second change_membership: {}", res.summary());
 
         Ok(res)
     }
@@ -401,26 +393,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Cl
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
-/// Response type to send back to a caller
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RaftResponse {
-    LogIndex {
-        log_index: u64,
-    },
-    LogId {
-        log_id: LogId,
-    },
-    Membership {
-        log_id: LogId,
-        membership: MembershipConfig,
-    },
-
-    /// An Ok response indicating nothing is affected.
-    NoChange,
-
-    None,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddNonVoterResponse {
     pub matched: LogId,
@@ -469,7 +441,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         ///
         /// Otherwise, wait for commit of the member change log.
         blocking: bool,
-        tx: RaftRespTx<RaftResponse, ChangeConfigError>,
+        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     },
 }
 
@@ -852,9 +824,18 @@ impl<D: AppData> ClientWriteRequest<D> {
 /// The response to a `ClientRequest`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientWriteResponse<R: AppDataResponse> {
-    /// The log index of the successfully processed client request.
-    pub index: u64,
+    pub log_id: LogId,
+
     /// Application specific response data.
     #[serde(bound = "R: AppDataResponse")]
     pub data: R,
+
+    /// If the log entry is a change-membership entry.
+    pub membership: Option<MembershipConfig>,
+}
+
+impl<R: AppDataResponse> MessageSummary for ClientWriteResponse<R> {
+    fn summary(&self) -> String {
+        format!("log_id: {}, membership: {:?}", self.log_id, self.membership)
+    }
 }

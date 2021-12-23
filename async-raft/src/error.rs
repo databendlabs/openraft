@@ -109,13 +109,17 @@ pub enum ClientReadError {
 }
 
 /// An error related to a client write request.
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, derive_more::TryInto)]
 pub enum ClientWriteError {
     #[error("{0}")]
     RaftError(#[from] RaftError),
 
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
+
+    /// When writing a change-membership entry.
+    #[error(transparent)]
+    ChangeConfigError(#[from] ChangeConfigError),
 }
 
 /// Error variants related to configuration.
@@ -152,15 +156,7 @@ pub enum InitializeError {
 
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 pub enum ChangeConfigError {
-    /// An error related to the processing of the config change request.
-    ///
-    /// Errors of this type will only come about from the internals of applying the config change
-    /// to the Raft log and the process related to that workflow.
-    #[error("{0}")]
-    RaftError(#[from] RaftError),
-
     /// The cluster is already undergoing a configuration change.
     #[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
     ConfigChangeInProgress { membership_log_id: LogId },
@@ -171,9 +167,6 @@ pub enum ChangeConfigError {
     /// the cluster in an inoperable state.
     #[error("the given config would leave the cluster in an inoperable state")]
     InoperableConfig,
-
-    #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader),
 
     // TODO(xp): 111 test it
     #[error("to add a member {node_id} first need to add it as non-voter")]
@@ -191,12 +184,6 @@ pub enum ChangeConfigError {
         curr: MembershipConfig,
         to: BTreeSet<NodeId>,
     },
-
-    /// The proposed config changes would make no difference to the current config.
-    ///
-    /// This takes into account a current joint consensus and the end result of the config.
-    #[error("the proposed config change would have no effect, this is a no-op")]
-    Noop,
 }
 
 #[derive(Debug, thiserror::Error)]

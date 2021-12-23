@@ -17,7 +17,7 @@ anyhow = "1.0.32"
 async-trait = "0.1.36"
 byte-unit = "4.0.12"
 bytes = "1.0"
-derive_more = { version="0.99.9", default-features=false, features=["from"] }
+derive_more = { version="0.99.9" }
 futures = "0.3"
 log = "0.4"
 rand = "0.8"

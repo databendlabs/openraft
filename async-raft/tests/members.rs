@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -53,6 +54,8 @@ async fn members_add_lagging_non_voter_non_blocking() -> Result<()> {
         tracing::info!("--- got res: {:?}", res);
 
         let err = res.unwrap_err();
+
+        let err: ChangeConfigError = err.try_into().unwrap();
 
         match err {
             ChangeConfigError::NonVoterIsLagging { node_id, distance } => {

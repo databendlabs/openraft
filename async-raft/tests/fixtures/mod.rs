@@ -22,17 +22,16 @@ use async_raft::raft::AddNonVoterResponse;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::AppendEntriesResponse;
 use async_raft::raft::ClientWriteRequest;
+use async_raft::raft::ClientWriteResponse;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::InstallSnapshotRequest;
 use async_raft::raft::InstallSnapshotResponse;
 use async_raft::raft::MembershipConfig;
-use async_raft::raft::RaftResponse;
 use async_raft::raft::VoteRequest;
 use async_raft::raft::VoteResponse;
 use async_raft::storage::RaftStorage;
 use async_raft::AppData;
-use async_raft::ChangeConfigError;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::NodeId;
@@ -426,7 +425,7 @@ impl RaftRouter {
         &self,
         leader: NodeId,
         members: BTreeSet<NodeId>,
-    ) -> Result<RaftResponse, ChangeConfigError> {
+    ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.change_membership(members, true).await
@@ -437,7 +436,7 @@ impl RaftRouter {
         leader: NodeId,
         members: BTreeSet<NodeId>,
         blocking: bool,
-    ) -> Result<RaftResponse, ChangeConfigError> {
+    ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.change_membership(members, blocking).await

@@ -22,11 +22,9 @@ use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::RaftRespTx;
-use crate::raft::RaftResponse;
 use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
-use crate::ChangeConfigError;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftNetwork;
@@ -42,21 +40,13 @@ pub(super) struct ClientRequestEntry<D: AppData, R: AppDataResponse> {
     pub entry: Arc<Entry<D>>,
 
     /// The response channel for the request.
-    /// TODO(xp): make it an Option
-    pub tx: ClientOrInternalResponseTx<R>,
+    pub tx: Option<RaftRespTx<ClientWriteResponse<R>, ClientWriteError>>,
 }
 
 impl<D: AppData, R: AppDataResponse> MessageSummary for ClientRequestEntry<D, R> {
     fn summary(&self) -> String {
         format!("entry:{}", self.entry.summary())
     }
-}
-
-/// An enum type wrapping either a client response channel or an internal Raft response channel.
-#[derive(derive_more::From)]
-pub enum ClientOrInternalResponseTx<R: AppDataResponse> {
-    Client(RaftRespTx<ClientWriteResponse<R>, ClientWriteError>),
-    Internal(Option<RaftRespTx<RaftResponse, ChangeConfigError>>),
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
@@ -81,7 +71,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let cr_entry = ClientRequestEntry {
             entry: Arc::new(entry),
-            tx: ClientOrInternalResponseTx::Internal(None),
+            tx: None,
         };
         self.replicate_client_request(cr_entry).await;
 
@@ -228,7 +218,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let entry = match self.append_payload_to_log(rpc.entry).await {
             Ok(entry) => ClientRequestEntry {
                 entry: Arc::new(entry),
-                tx: ClientOrInternalResponseTx::Client(tx),
+                tx: Some(tx),
             },
 
             Err(err) => {
@@ -321,63 +311,38 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         entry: &Entry<D>,
         resp: RaftResult<R>,
-        tx: ClientOrInternalResponseTx<R>,
+        tx: Option<RaftRespTx<ClientWriteResponse<R>, ClientWriteError>>,
     ) {
-        match tx {
-            ClientOrInternalResponseTx::Client(tx) => {
-                let res = match resp {
-                    Ok(data) => Ok(ClientWriteResponse {
-                        index: entry.log_id.index,
-                        data,
-                    }),
-                    Err(err) => {
-                        tracing::error!(err=?err, entry=%entry.summary(), "apply client entry");
-                        Err(ClientWriteError::RaftError(err))
-                    }
+        let tx = match tx {
+            None => return,
+            Some(x) => x,
+        };
+
+        let res = match resp {
+            Ok(data) => {
+                let membership = if let EntryPayload::ConfigChange(ref c) = entry.payload {
+                    Some(c.membership.clone())
+                } else {
+                    None
                 };
 
-                let send_res = tx.send(res);
-                tracing::debug!(
-                    "send client response through tx, send_res is error: {}",
-                    send_res.is_err()
-                );
+                Ok(ClientWriteResponse {
+                    log_id: entry.log_id,
+                    data,
+                    membership,
+                })
             }
-            ClientOrInternalResponseTx::Internal(tx) => {
-                // TODO(xp): if there is error, shall we go on?
-
-                let tx = match tx {
-                    None => {
-                        tracing::debug!("no response tx to send res");
-                        return;
-                    }
-
-                    Some(tx) => tx,
-                };
-
-                let res = match resp {
-                    Ok(_data) => {
-                        //
-                        match entry.payload {
-                            EntryPayload::Blank => Ok(RaftResponse::LogId { log_id: entry.log_id }),
-                            EntryPayload::Normal(_) => Ok(RaftResponse::LogId { log_id: entry.log_id }),
-                            EntryPayload::ConfigChange(ref c) => Ok(RaftResponse::Membership {
-                                log_id: entry.log_id,
-                                membership: c.membership.clone(),
-                            }),
-                        }
-                    }
-                    Err(raft_err) => {
-                        tracing::error!("res of applying to state machine: {:?}", raft_err);
-                        Err(ChangeConfigError::RaftError(raft_err))
-                    }
-                };
-
-                // let resp = res.map_err(ResponseError::from).map(|x| RaftResponse::LogIndex { log_index: x.index });
-
-                let send_res = tx.send(res);
-                tracing::debug!("send internal response through tx, res: {:?}", send_res);
+            Err(raft_err) => {
+                tracing::error!(err=?raft_err, entry=%entry.summary(), "apply client entry");
+                Err(ClientWriteError::RaftError(raft_err))
             }
-        }
+        };
+
+        let send_res = tx.send(res);
+        tracing::debug!(
+            "send client response through tx, send_res is error: {}",
+            send_res.is_err()
+        );
     }
 
     pub fn handle_special_log(&mut self, entry: &Entry<D>) {

@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::core::client::ClientOrInternalResponseTx;
 use crate::core::client::ClientRequestEntry;
 use crate::core::ActiveMembership;
 use crate::core::LeaderState;
@@ -10,12 +9,13 @@ use crate::core::State;
 use crate::core::UpdateCurrentLeader;
 use crate::error::AddNonVoterError;
 use crate::error::ChangeConfigError;
+use crate::error::ClientWriteError;
 use crate::error::InitializeError;
 use crate::raft::AddNonVoterResponse;
 use crate::raft::ClientWriteRequest;
+use crate::raft::ClientWriteResponse;
 use crate::raft::MembershipConfig;
 use crate::raft::RaftRespTx;
-use crate::raft::RaftResponse;
 use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -84,15 +84,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
-        if target == self.core.id || self.nodes.contains_key(&target) {
-            tracing::debug!("target node is already a cluster member or is being synced");
-            let x = self.nodes.get(&target);
-            let matched = match x {
-                None => self.core.last_log_id,
-                Some(x) => x.matched,
-            };
+        if target == self.core.id {
+            tracing::debug!("target node is this node");
+            let _ = tx.send(Ok(AddNonVoterResponse {
+                matched: self.core.last_log_id,
+            }));
+            return;
+        }
 
-            let _ = tx.send(Ok(AddNonVoterResponse { matched }));
+        if let Some(t) = self.nodes.get(&target) {
+            tracing::debug!("target node is already a cluster member or is being synced");
+            let _ = tx.send(Ok(AddNonVoterResponse { matched: t.matched }));
             return;
         }
 
@@ -115,20 +117,24 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         members: BTreeSet<NodeId>,
         blocking: bool,
-        tx: RaftRespTx<RaftResponse, ChangeConfigError>,
+        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
-            let _ = tx.send(Err(ChangeConfigError::InoperableConfig));
+            let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
+                ChangeConfigError::InoperableConfig,
+            )));
             return;
         }
 
         // The last membership config is not committed yet.
         // Can not process the next one.
         if self.core.commit_index < self.core.membership.log_id.index {
-            let _ = tx.send(Err(ChangeConfigError::ConfigChangeInProgress {
-                membership_log_id: self.core.membership.log_id,
-            }));
+            let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
+                ChangeConfigError::ConfigChangeInProgress {
+                    membership_log_id: self.core.membership.log_id,
+                },
+            )));
             return;
         }
 
@@ -139,10 +145,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if let Some(ref next_membership) = curr.members_after_consensus {
             // When it is in joint state, it is only allowed to change to the `members_after_consensus`
             if &members != next_membership {
-                let _ = tx.send(Err(ChangeConfigError::Incompatible {
-                    curr: curr.clone(),
-                    to: members,
-                }));
+                let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
+                    ChangeConfigError::Incompatible {
+                        curr: curr.clone(),
+                        to: members,
+                    },
+                )));
                 return;
             } else {
                 new_config = MembershipConfig {
@@ -179,10 +187,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
                     if !blocking {
                         // Node has repl stream, but is not yet ready to join.
-                        let _ = tx.send(Err(ChangeConfigError::NonVoterIsLagging {
-                            node_id: *new_node,
-                            distance: self.core.last_log_id.index.saturating_sub(node.matched.index),
-                        }));
+                        let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
+                            ChangeConfigError::NonVoterIsLagging {
+                                node_id: *new_node,
+                                distance: self.core.last_log_id.index.saturating_sub(node.matched.index),
+                            },
+                        )));
                         return;
                     }
                 }
@@ -190,7 +200,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // Node does not yet have a repl stream, spawn one.
                 None => {
                     // TODO(xp): 111 distance
-                    let _ = tx.send(Err(ChangeConfigError::NonVoterNotFound { node_id: *new_node }));
+                    let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
+                        ChangeConfigError::NonVoterNotFound { node_id: *new_node },
+                    )));
                     return;
                 }
             }
@@ -208,7 +220,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub async fn append_membership_log(
         &mut self,
         mem: MembershipConfig,
-        resp_tx: Option<RaftRespTx<RaftResponse, ChangeConfigError>>,
+        resp_tx: Option<RaftRespTx<ClientWriteResponse<R>, ClientWriteError>>,
     ) -> Result<(), RaftError> {
         let payload = ClientWriteRequest::<D>::new_config(mem.clone());
         let res = self.append_payload_to_log(payload.entry).await;
@@ -227,8 +239,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 let err_str = err.to_string();
                 if let Some(tx) = resp_tx {
                     let send_res = tx.send(Err(err.into()));
-                    if let Err(e) = send_res {
-                        tracing::error!("send response res error: {:?}", e);
+                    if let Err(_e) = send_res {
+                        tracing::error!("send response res error");
                     }
                 }
                 return Err(RaftError::RaftStorage(anyhow::anyhow!(err_str)));
@@ -237,7 +249,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let cr_entry = ClientRequestEntry {
             entry: Arc::new(entry),
-            tx: ClientOrInternalResponseTx::Internal(resp_tx),
+            tx: resp_tx,
         };
 
         self.replicate_client_request(cr_entry).await;
