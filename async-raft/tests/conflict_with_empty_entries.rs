@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
-use async_raft::raft::ConflictOpt;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
 use async_raft::Config;
@@ -57,15 +56,10 @@ async fn conflict_with_empty_entries() -> Result<()> {
     };
 
     let resp = router.send_append_entries(0, rpc).await?;
-    assert!(!resp.success);
-    assert!(resp.conflict_opt.is_some());
-    let c = resp.conflict_opt.unwrap();
-    assert_eq!(
-        ConflictOpt {
-            log_id: LogId { term: 1, index: 5 }
-        },
-        c
-    );
+    assert!(!resp.success());
+    assert!(resp.conflict.is_some());
+    let c = resp.conflict.unwrap();
+    assert_eq!(LogId { term: 1, index: 5 }, c);
 
     // Feed 2 logs
 
@@ -91,8 +85,8 @@ async fn conflict_with_empty_entries() -> Result<()> {
     };
 
     let resp = router.send_append_entries(0, rpc).await?;
-    assert!(resp.success);
-    assert!(resp.conflict_opt.is_none());
+    assert!(resp.success());
+    assert!(resp.conflict.is_none());
 
     // Expect a conflict with prev_log_index == 3
 
@@ -105,15 +99,10 @@ async fn conflict_with_empty_entries() -> Result<()> {
     };
 
     let resp = router.send_append_entries(0, rpc).await?;
-    assert!(!resp.success);
-    assert!(resp.conflict_opt.is_some());
-    let c = resp.conflict_opt.unwrap();
-    assert_eq!(
-        ConflictOpt {
-            log_id: LogId { term: 1, index: 3 }
-        },
-        c
-    );
+    assert!(!resp.success());
+    assert!(resp.conflict.is_some());
+    let c = resp.conflict.unwrap();
+    assert_eq!(LogId::new(1, 3), c);
 
     Ok(())
 }

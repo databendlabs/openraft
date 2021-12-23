@@ -5,7 +5,6 @@ use crate::core::UpdateCurrentLeader;
 use crate::error::RaftResult;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::ConflictOpt;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::ActiveMembership;
@@ -36,8 +35,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             tracing::debug!({self.current_term, rpc_term=msg.term}, "AppendEntries RPC term is less than current term");
             return Ok(AppendEntriesResponse {
                 term: self.current_term,
-                success: false,
-                conflict_opt: None,
+                matched: None,
+                conflict: None,
             });
         }
 
@@ -247,10 +246,18 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
             return Ok(AppendEntriesResponse {
                 term: self.current_term,
-                success: false,
-                conflict_opt: Some(ConflictOpt { log_id: *prev_log_id }),
+                matched: None,
+                conflict: Some(*prev_log_id),
             });
         }
+
+        // If prev_log_id matches local entry, then every inconsistent entries will be removed.
+        // Thus the last known matching log id has to be the last entry id.
+        let matched = Some(if entries.is_empty() {
+            *prev_log_id
+        } else {
+            entries[entries.len() - 1].log_id
+        });
 
         // The entries left are all inconsistent log or absent
         let (n_matching, entries) = self.skip_matching_entries(entries).await?;
@@ -279,8 +286,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         Ok(AppendEntriesResponse {
             term: self.current_term,
-            success: true,
-            conflict_opt: None,
+            matched,
+            conflict: None,
         })
     }
 

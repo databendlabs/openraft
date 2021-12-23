@@ -138,8 +138,8 @@ async fn compaction() -> Result<()> {
             })
             .await?;
 
-        assert!(res.success);
-        assert_eq!(None, res.conflict_opt);
+        assert!(res.success());
+        assert_eq!(None, res.conflict);
     }
 
     Ok(())

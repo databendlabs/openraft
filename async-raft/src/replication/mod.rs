@@ -307,12 +307,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             break (prev_log_id, logs);
         };
 
-        let last_log_id = if logs.is_empty() {
-            prev_log_id
-        } else {
-            logs[logs.len() - 1].log_id
-        };
-
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
             term: self.term,
@@ -350,13 +344,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
         };
 
-        tracing::debug!(%last_log_id, "append_entries resp: {:?}", append_resp);
+        tracing::debug!("append_entries resp: {:?}", append_resp);
 
         // Handle success conditions.
-        if append_resp.success {
-            self.matched = last_log_id;
+        if append_resp.success() {
+            self.matched = append_resp.matched.unwrap();
             // TODO(xp): if matched does not change, do not bother the core.
-            self.update_max_possible_matched_index(last_log_id.index);
+            self.update_max_possible_matched_index(self.matched.index);
             self.update_matched();
 
             return Ok(());
@@ -375,7 +369,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
 
         // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
-        let conflict = append_resp.conflict_opt.unwrap();
+        let conflict = append_resp.conflict.unwrap();
 
         tracing::debug!(
             ?conflict,
@@ -383,13 +377,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             "append entries failed, handling conflict opt"
         );
 
-        assert_eq!(
-            conflict.log_id, prev_log_id,
-            "if conflict, it is always the prev_log_id"
-        );
+        assert_eq!(conflict, prev_log_id, "if conflict, it is always the prev_log_id");
 
         // Continue to find the matching log id on follower.
-        self.max_possible_matched_index = conflict.log_id.index - 1;
+        self.max_possible_matched_index = conflict.index - 1;
         Ok(())
     }
 

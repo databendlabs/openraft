@@ -520,26 +520,23 @@ impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
 pub struct AppendEntriesResponse {
     /// The responding node's current term, for leader to update itself.
     pub term: u64,
-    /// Will be true if follower contained entry matching `prev_log_index` and `prev_log_term`.
-    pub success: bool,
-    /// A value used to implement the _conflicting term_ optimization outlined in §5.3.
+
+    /// The last matching log id on follower.
     ///
-    /// This value will only be present, and should only be considered, when `success` is `false`.
-    pub conflict_opt: Option<ConflictOpt>,
+    /// It is a successful append-entry iff `matched` is `Some()`.
+    pub matched: Option<LogId>,
+
+    /// The log id that is different from the leader on follower.
+    ///
+    /// `conflict` is None if `matched` is `Some()`, because if there is a matching entry, all following inconsistent
+    /// entries will be deleted.
+    pub conflict: Option<LogId>,
 }
 
-/// A struct used to implement the _conflicting term_ optimization outlined in §5.3 for log replication.
-///
-/// This value will only be present, and should only be considered, when an `AppendEntriesResponse`
-/// object has a `success` value of `false`.
-///
-/// This implementation of Raft uses this value to more quickly synchronize a leader with its
-/// followers which may be some distance behind in replication, may have conflicting entries, or
-/// which may be new to the cluster.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct ConflictOpt {
-    /// The most recent entry which does not conflict with the received request.
-    pub log_id: LogId,
+impl AppendEntriesResponse {
+    pub fn success(&self) -> bool {
+        self.matched.is_some()
+    }
 }
 
 /// A Raft log entry.
@@ -683,6 +680,7 @@ impl MembershipConfig {
 pub struct VoteRequest {
     /// The candidate's current term.
     pub term: u64,
+
     /// The candidate's ID.
     pub candidate_id: u64,
 

@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
-use async_raft::raft::ConflictOpt;
 use async_raft::raft::Entry;
 use async_raft::Config;
 use async_raft::LogId;
@@ -55,8 +54,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req.clone()).await?;
-    assert!(resp.success);
-    assert_eq!(None, resp.conflict_opt);
+    assert!(resp.success());
+    assert_eq!(None, resp.conflict);
 
     check_logs(&sto0, vec![0]).await?;
 
@@ -72,16 +71,16 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req.clone()).await?;
-    assert!(resp.success);
-    assert_eq!(None, resp.conflict_opt);
+    assert!(resp.success());
+    assert_eq!(None, resp.conflict);
 
     check_logs(&sto0, vec![0, 1, 1, 1, 1]).await?;
 
     tracing::info!("--- case 0: prev_log_id.index == 0, last_log_id mismatch");
 
     let resp = r0.append_entries(req.clone()).await?;
-    assert!(resp.success);
-    assert_eq!(None, resp.conflict_opt);
+    assert!(resp.success());
+    assert_eq!(None, resp.conflict);
 
     check_logs(&sto0, vec![0, 1, 1, 1, 1]).await?;
 
@@ -97,8 +96,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(resp.success);
-    assert_eq!(None, resp.conflict_opt);
+    assert!(resp.success());
+    assert_eq!(None, resp.conflict);
 
     check_logs(&sto0, vec![0, 1, 1, 1, 1]).await?;
 
@@ -114,8 +113,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(resp.success);
-    assert_eq!(None, resp.conflict_opt);
+    assert!(resp.success());
+    assert_eq!(None, resp.conflict);
 
     check_logs(&sto0, vec![0, 1, 1, 2]).await?;
 
@@ -129,13 +128,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(!resp.success);
-    assert_eq!(
-        Some(ConflictOpt {
-            log_id: LogId { term: 1, index: 2000 }
-        }),
-        resp.conflict_opt
-    );
+    assert!(!resp.success());
+    assert_eq!(Some(LogId::new(1, 2000)), resp.conflict);
 
     check_logs(&sto0, vec![0, 1, 1, 2]).await?;
 
@@ -150,14 +144,9 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(!resp.success);
+    assert!(!resp.success());
     // returns the id just before prev_log_id.index
-    assert_eq!(
-        Some(ConflictOpt {
-            log_id: LogId { term: 3, index: 3 }
-        }),
-        resp.conflict_opt
-    );
+    assert_eq!(Some(LogId::new(3, 3)), resp.conflict);
 
     check_logs(&sto0, vec![0, 1, 1]).await?;
 
@@ -172,8 +161,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(resp.success);
-    assert_eq!(None, resp.conflict_opt);
+    assert!(resp.success());
+    assert_eq!(None, resp.conflict);
 
     // check prepared store
     check_logs(&sto0, vec![0, 1, 1, 2, 2, 2]).await?;
@@ -188,8 +177,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(resp.success);
-    assert_eq!(None, resp.conflict_opt);
+    assert!(resp.success());
+    assert_eq!(None, resp.conflict);
 
     check_logs(&sto0, vec![0, 1, 1, 2, 3]).await?;
 
@@ -205,13 +194,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(!resp.success);
-    assert_eq!(
-        Some(ConflictOpt {
-            log_id: LogId { term: 1, index: 200 }
-        }),
-        resp.conflict_opt
-    );
+    assert!(!resp.success());
+    assert_eq!(Some(LogId::new(1, 200)), resp.conflict);
 
     Ok(())
 }
