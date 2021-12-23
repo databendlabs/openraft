@@ -64,16 +64,13 @@ async fn initialization() -> Result<()> {
                 panic!("expect Membership payload")
             }
         };
-        assert_eq!(btreeset![0, 1, 2], mem.members);
+        assert_eq!(btreeset![0, 1, 2], mem.get_ith_config(0).cloned().unwrap());
 
         let sm_mem = sto.last_applied_state().await?.1;
         assert_eq!(
             Some(EffectiveMembership {
                 log_id: LogId { term: 1, index: 1 },
-                membership: MembershipConfig {
-                    members: btreeset![0, 1, 2],
-                    members_after_consensus: None,
-                }
+                membership: MembershipConfig::new_single(btreeset! {0,1,2})
             }),
             sm_mem
         );

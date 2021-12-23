@@ -94,32 +94,30 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn handle_client_read_request(&mut self, tx: RaftRespTx<(), ClientReadError>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
         let mut c0_confirmed = 0usize;
+
+        let mems = &self.core.membership.membership;
+
         // Will never be zero, as we don't allow it when proposing config changes.
-        let len_members = self.core.membership.membership.members.len();
+        let len_members = mems.get_ith_config(0).unwrap().len();
 
         let c0_needed = quorum::majority_of(len_members);
 
         let mut c1_confirmed = 0usize;
         let mut c1_needed = 0usize;
-        if let Some(joint_members) = &self.core.membership.membership.members_after_consensus {
+
+        let second = mems.get_ith_config(1);
+
+        if let Some(joint_members) = second {
             let len = joint_members.len(); // Will never be zero, as we don't allow it when proposing config changes.
             c1_needed = quorum::majority_of(len);
+
+            if joint_members.contains(&self.core.id) {
+                c1_confirmed += 1;
+            }
         }
 
         // Increment confirmations for self, including post-joint-consensus config if applicable.
         c0_confirmed += 1;
-        let is_in_post_join_consensus_config = self
-            .core
-            .membership
-            .membership
-            .members_after_consensus
-            .as_ref()
-            .map(|members| members.contains(&self.core.id))
-            .unwrap_or(false);
-
-        if is_in_post_join_consensus_config {
-            c1_confirmed += 1;
-        }
 
         // If we already have all needed confirmations — which would be the case for single node
         // clusters — then respond.
@@ -181,20 +179,18 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // If the term is the same, then it means we are still the leader.
-            if self.core.membership.membership.members.contains(&target) {
+            if self.core.membership.membership.get_ith_config(0).unwrap().contains(&target) {
                 c0_confirmed += 1;
             }
-            if self
-                .core
-                .membership
-                .membership
-                .members_after_consensus
-                .as_ref()
-                .map(|members| members.contains(&target))
-                .unwrap_or(false)
-            {
-                c1_confirmed += 1;
+
+            let second = self.core.membership.membership.get_ith_config(1);
+
+            if let Some(joint) = second {
+                if joint.contains(&target) {
+                    c1_confirmed += 1;
+                }
             }
+
             if c0_confirmed >= c0_needed && c1_confirmed >= c1_needed {
                 let _ = tx.send(Ok(()));
                 return;

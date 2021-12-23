@@ -43,10 +43,7 @@ async fn members_leader_fix_partial() -> Result<()> {
                 term: 1,
                 index: want + 1,
             },
-            payload: EntryPayload::Membership(MembershipConfig {
-                members: btreeset! {0},
-                members_after_consensus: Some(btreeset! {0,1,2}),
-            }),
+            payload: EntryPayload::Membership(MembershipConfig::new_multi(vec![btreeset! {0}, btreeset! {0,1,2}])),
         }])
         .await?;
     }

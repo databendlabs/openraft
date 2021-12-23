@@ -76,10 +76,7 @@ async fn compaction() -> Result<()> {
             n_logs,
             Some(0),
             LogId { term: 1, index: n_logs },
-            Some((n_logs.into(), 1, MembershipConfig {
-                members: btreeset![0],
-                members_after_consensus: None,
-            })),
+            Some((n_logs.into(), 1, MembershipConfig::new_single(btreeset! {0}))),
         )
         .await?;
 
@@ -110,10 +107,11 @@ async fn compaction() -> Result<()> {
         assert_eq!(LogId { term: 1, index: 51 }, logs[0].log_id)
     }
 
-    let expected_snap = Some((snapshot_threshold.into(), 1, MembershipConfig {
-        members: btreeset![0u64],
-        members_after_consensus: None,
-    }));
+    let expected_snap = Some((
+        snapshot_threshold.into(),
+        1,
+        MembershipConfig::new_single(btreeset! {0}),
+    ));
     router
         .assert_storage_state(
             1,

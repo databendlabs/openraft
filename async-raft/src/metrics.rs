@@ -190,7 +190,7 @@ impl Wait {
     #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn members(&self, want_members: BTreeSet<NodeId>, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
-            |x| x.membership_config.membership.members == want_members,
+            |x| x.membership_config.membership.get_ith_config(0).cloned().unwrap() == want_members,
             &format!("{} .membership_config.members -> {:?}", msg.to_string(), want_members),
         )
         .await
@@ -204,12 +204,8 @@ impl Wait {
         msg: impl ToString,
     ) -> Result<RaftMetrics, WaitError> {
         self.metrics(
-            |x| x.membership_config.membership.members_after_consensus == want_members,
-            &format!(
-                "{} .membership_config.members_after_consensus -> {:?}",
-                msg.to_string(),
-                want_members
-            ),
+            |x| x.membership_config.membership.get_ith_config(1) == want_members.as_ref(),
+            &format!("{} .membership_config.next -> {:?}", msg.to_string(), want_members),
         )
         .await
     }

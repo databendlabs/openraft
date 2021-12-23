@@ -9,6 +9,9 @@ pub(crate) mod replication;
 mod replication_state_test;
 mod vote;
 
+#[cfg(test)]
+mod startup_test;
+
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -223,7 +226,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         let has_log = self.last_log_id.index != u64::MIN;
-        let single = self.membership.membership.members.len() == 1;
+        let single = self.membership.membership.all_nodes().len() == 1;
         let is_voter = self.membership.membership.contains(&self.id);
 
         self.target_state = match (has_log, single, is_voter) {
@@ -408,12 +411,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // transition to the non-voter state as a signal for when it is safe to shutdown a node
         // being removed.
         self.membership = cfg;
-        if !self.membership.membership.contains(&self.id) {
+        if self.membership.membership.contains(&self.id) {
+            if self.target_state == State::NonVoter {
+                // The node is a NonVoter and the new config has it configured as a normal member.
+                // Transition to follower.
+                self.set_target_state(State::Follower);
+            }
+        } else {
             self.set_target_state(State::NonVoter);
-        } else if self.target_state == State::NonVoter && self.membership.membership.members.contains(&self.id) {
-            // The node is a NonVoter and the new config has it configured as a normal member.
-            // Transition to follower.
-            self.set_target_state(State::Follower);
         }
         Ok(())
     }
@@ -695,13 +700,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .membership
             .membership
             .all_nodes()
-            .into_iter()
-            .filter(|elem| elem != &self.core.id)
+            .iter()
+            .filter(|elem| *elem != &self.core.id)
             .collect::<Vec<_>>();
 
         for target in targets {
-            let state = self.spawn_replication_stream(target, None);
-            self.nodes.insert(target, state);
+            let state = self.spawn_replication_stream(*target, None);
+            self.nodes.insert(*target, state);
         }
 
         // Setup state as leader.
@@ -859,8 +864,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Setup initial state per term.
             self.votes_granted_old = 1; // We must vote for ourselves per the Raft spec.
-            self.votes_needed_old = ((self.core.membership.membership.members.len() / 2) + 1) as u64; // Just need a majority.
-            if let Some(nodes) = &self.core.membership.membership.members_after_consensus {
+            self.votes_needed_old = ((self.core.membership.membership.get_ith_config(0).unwrap().len() / 2) + 1) as u64; // Just need a majority.
+            if let Some(nodes) = self.core.membership.membership.get_ith_config(1) {
                 self.votes_granted_new = 1; // We must vote for ourselves per the Raft spec.
                 self.votes_needed_new = ((nodes.len() / 2) + 1) as u64; // Just need a majority.
             }

@@ -143,19 +143,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // If peer granted vote, then update campaign state.
         if res.vote_granted {
             // Handle vote responses from the C0 config group.
-            if self.core.membership.membership.members.contains(&target) {
+            if self.core.membership.membership.is_in_ith_config(0, &target) {
                 self.votes_granted_old += 1;
             }
             // Handle vote responses from members of C1 config group.
-            if self
-                .core
-                .membership
-                .membership
-                .members_after_consensus
-                .as_ref()
-                .map(|members| members.contains(&target))
-                .unwrap_or(false)
-            {
+            if self.core.membership.membership.is_in_ith_config(1, &target) {
                 self.votes_granted_new += 1;
             }
             // If we've received enough votes from both config groups, then transition to leader state`.
@@ -173,7 +165,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) fn spawn_parallel_vote_requests(&self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
-        let all_members = self.core.membership.membership.all_nodes();
+        let all_members = self.core.membership.membership.all_nodes().clone();
         let (tx, rx) = mpsc::channel(all_members.len());
         for member in all_members.into_iter().filter(|member| member != &self.core.id) {
             let rpc = VoteRequest::new(

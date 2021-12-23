@@ -167,12 +167,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     #[tracing::instrument(level = "trace", skip(self))]
     fn calc_commit_index(&self) -> u64 {
-        let c0_index = self.calc_members_commit_index(&self.core.membership.membership.members, "c0");
+        let c0_index = self.calc_members_commit_index(self.core.membership.membership.get_ith_config(0).unwrap(), "c0");
 
         // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
         let mut c1_index = c0_index; // Defaults to just matching C0.
 
-        if let Some(members) = &self.core.membership.membership.members_after_consensus {
+        if let Some(members) = &self.core.membership.membership.get_ith_config(1) {
             c1_index = self.calc_members_commit_index(members, "c1");
         }
 

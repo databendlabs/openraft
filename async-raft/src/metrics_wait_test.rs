@@ -74,14 +74,17 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config.membership.members = btreeset![1, 2];
+            update.membership_config.membership.replace(vec![btreeset![1, 2]]);
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
         let got = w.members(btreeset![1, 2], "members").await?;
         h.await?;
 
-        assert_eq!(btreeset![1, 2], got.membership_config.membership.members);
+        assert_eq!(
+            btreeset![1, 2],
+            got.membership_config.membership.get_ith_config(0).unwrap().clone()
+        );
     }
 
     {
@@ -91,7 +94,7 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config.membership.members_after_consensus = Some(btreeset![1, 2]);
+            update.membership_config.membership.push(btreeset![1, 2]);
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
@@ -100,7 +103,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
         assert_eq!(
             Some(btreeset![1, 2]),
-            got.membership_config.membership.members_after_consensus
+            got.membership_config.membership.get_ith_config(1).cloned()
         );
     }
 
@@ -181,10 +184,7 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
         current_leader: None,
         membership_config: EffectiveMembership {
             log_id: LogId::default(),
-            membership: MembershipConfig {
-                members: Default::default(),
-                members_after_consensus: None,
-            },
+            membership: MembershipConfig::new_single(btreeset! {}),
         },
 
         snapshot: LogId { term: 0, index: 0 },

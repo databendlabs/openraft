@@ -104,13 +104,13 @@ async fn stepdown() -> Result<()> {
             metrics.last_applied
         );
         assert_eq!(
-            cfg.members,
-            btreeset![1, 2, 3],
+            cfg.get_configs().clone(),
+            vec![btreeset![1, 2, 3]],
             "expected old leader to have membership of [1, 2, 3], got {:?}",
-            cfg.members
+            cfg.get_configs()
         );
         assert!(
-            cfg.members_after_consensus.is_none(),
+            !cfg.is_in_joint_consensus(),
             "expected old leader to be out of joint consensus"
         );
     }

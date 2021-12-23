@@ -106,10 +106,7 @@ async fn client_writes() -> Result<()> {
             want,
             Some(0),
             LogId { term: 1, index: want },
-            Some(((5000..5100).into(), 1, MembershipConfig {
-                members: btreeset![0, 1, 2],
-                members_after_consensus: None,
-            })),
+            Some(((5000..5100).into(), 1, MembershipConfig::new_single(btreeset! {0,1,2}))),
         )
         .await?;
 

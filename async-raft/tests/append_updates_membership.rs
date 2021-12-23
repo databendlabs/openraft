@@ -52,18 +52,12 @@ async fn append_updates_membership() -> Result<()> {
                 ent(1, 1),
                 Entry {
                     log_id: LogId { term: 1, index: 2 },
-                    payload: EntryPayload::Membership(MembershipConfig {
-                        members: btreeset! {1,2},
-                        members_after_consensus: None,
-                    }),
+                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2})),
                 },
                 ent(1, 3),
                 Entry {
                     log_id: LogId { term: 1, index: 4 },
-                    payload: EntryPayload::Membership(MembershipConfig {
-                        members: btreeset! {1,2,3,4},
-                        members_after_consensus: None,
-                    }),
+                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2,3,4})),
                 },
                 ent(1, 5),
             ],

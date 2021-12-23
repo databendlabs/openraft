@@ -45,16 +45,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // membership config in memory only.
         self.core.membership = EffectiveMembership {
             log_id: LogId { term: 1, index: 1 },
-            membership: MembershipConfig {
-                members,
-                members_after_consensus: None,
-            },
+            membership: MembershipConfig::new_single(members),
         };
 
         // Become a candidate and start campaigning for leadership. If this node is the only node
         // in the cluster, then become leader without holding an election. If members len == 1, we
         // know it is our ID due to the above code where we ensure our own ID is present.
-        if self.core.membership.membership.members.len() == 1 {
+        if self.core.membership.membership.all_nodes().len() == 1 {
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
             self.core.set_target_state(State::Leader);
@@ -137,7 +134,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let curr = &self.core.membership.membership;
 
-        if let Some(ref next_membership) = curr.members_after_consensus {
+        if let Some(next_membership) = curr.get_ith_config(1) {
             // When it is in joint state, it is only allowed to change to the `members_after_consensus`
             if &members != next_membership {
                 let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
@@ -148,18 +145,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 )));
                 return;
             } else {
-                new_config = MembershipConfig {
-                    members: next_membership.clone(),
-                    members_after_consensus: None,
-                };
+                new_config = MembershipConfig::new_single(next_membership.clone());
             }
         } else {
             // currently it is uniform config, enter joint state
-            new_config = MembershipConfig {
-                members: curr.members.clone(),
-                members_after_consensus: Some(members.clone()),
-            };
+            new_config = MembershipConfig::new_multi(vec![curr.get_ith_config(0).unwrap().clone(), members.clone()]);
         }
+
+        tracing::debug!(?new_config, "new_config");
 
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
         // streams AND are ready to join, then we can immediately proceed with entering joint
@@ -172,7 +165,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // TODO(xp): 111 test adding a node that is not non-voter.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in members.difference(&self.core.membership.membership.members) {
+        for new_node in members.difference(&self.core.membership.membership.get_ith_config(0).unwrap()) {
             match self.nodes.get(&new_node) {
                 // Node is ready to join.
                 Some(node) => {

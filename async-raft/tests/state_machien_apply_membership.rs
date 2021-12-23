@@ -53,10 +53,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         assert_eq!(
             Some(EffectiveMembership {
                 log_id: LogId { term: 1, index: 1 },
-                membership: MembershipConfig {
-                    members: btreeset![0],
-                    members_after_consensus: None,
-                }
+                membership: MembershipConfig::new_single(btreeset! {0})
             }),
             sto.last_applied_state().await?.1
         );
@@ -98,10 +95,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         assert_eq!(
             Some(EffectiveMembership {
                 log_id: LogId { term: 1, index: 3 },
-                membership: MembershipConfig {
-                    members: btreeset![0, 1, 2],
-                    members_after_consensus: None,
-                }
+                membership: MembershipConfig::new_single(btreeset! {0,1,2})
             }),
             last_membership
         );

@@ -558,16 +558,16 @@ impl RaftRouter {
                 "node {} has last_log_index {}, expected 0",
                 node.id, node.last_log_index
             );
-            let members = node.membership_config.membership.members.iter().collect::<Vec<_>>();
+            let members = node.membership_config.membership.ith_config(0);
             assert_eq!(
                 members,
-                vec![&node.id],
+                vec![node.id],
                 "node {0} has membership {1:?}, expected [{0}]",
                 node.id,
                 members
             );
             assert!(
-                node.membership_config.membership.members_after_consensus.is_none(),
+                !node.membership_config.membership.is_in_joint_consensus(),
                 "node {} is in joint consensus, expected uniform consensus",
                 node.id
             );
@@ -638,7 +638,7 @@ impl RaftRouter {
                 "node {} has last_log_index {}, expected {}",
                 node.id, node.last_log_index, expected_last_log
             );
-            let mut members = node.membership_config.membership.members.iter().cloned().collect::<Vec<_>>();
+            let mut members = node.membership_config.membership.ith_config(0);
             members.sort_unstable();
             assert_eq!(
                 members, all_nodes,
@@ -646,7 +646,7 @@ impl RaftRouter {
                 node.id, members, all_nodes
             );
             assert!(
-                node.membership_config.membership.members_after_consensus.is_none(),
+                !node.membership_config.membership.is_in_joint_consensus(),
                 "node {} was not in uniform consensus state",
                 node.id
             );

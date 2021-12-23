@@ -88,10 +88,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         }
         let m = sto0.get_membership_config().await?;
         assert_eq!(
-            MembershipConfig {
-                members: btreeset![0, 1],
-                members_after_consensus: None,
-            },
+            MembershipConfig::new_single(btreeset! {0,1}),
             m.membership,
             "membership "
         );
@@ -131,10 +128,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         }
         let m = sto0.get_membership_config().await?;
         assert_eq!(
-            MembershipConfig {
-                members: btreeset![0, 1],
-                members_after_consensus: None,
-            },
+            MembershipConfig::new_single(btreeset! {0,1}),
             m.membership,
             "membership "
         );

@@ -16,6 +16,9 @@ pub mod storage;
 mod storage_error;
 mod summary;
 
+#[cfg(test)]
+mod membership_test;
+
 pub use async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;

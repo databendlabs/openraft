@@ -5,6 +5,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
+use maplit::btreeset;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc;
@@ -615,61 +616,95 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
 /// It could be a joint of one, two or more members, i.e., a quorum requires a majority of every members
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MembershipConfig {
-    /// All members of the Raft cluster.
-    pub members: BTreeSet<NodeId>,
+    /// Multi configs.
+    configs: Vec<BTreeSet<NodeId>>,
 
-    /// All members of the Raft cluster after joint consensus is finalized.
-    ///
-    /// The presence of a value here indicates that the config is in joint consensus.
-    pub members_after_consensus: Option<BTreeSet<NodeId>>,
+    /// Cache of all node ids.
+    all_nodes: BTreeSet<NodeId>,
 }
 
 impl MembershipConfig {
-    /// Get an iterator over all nodes in the current config.
-    pub fn all_nodes(&self) -> BTreeSet<u64> {
-        let mut all = self.members.clone();
-        if let Some(members) = &self.members_after_consensus {
-            all.extend(members);
+    pub fn new_single(members: BTreeSet<NodeId>) -> Self {
+        let configs = vec![members];
+        let all_nodes = Self::build_all_nodes(&configs);
+        MembershipConfig { configs, all_nodes }
+    }
+
+    pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
+        let all_nodes = Self::build_all_nodes(&configs);
+        MembershipConfig { configs, all_nodes }
+    }
+
+    pub fn all_nodes(&self) -> &BTreeSet<NodeId> {
+        &self.all_nodes
+    }
+
+    pub fn replace(&mut self, new_configs: Vec<BTreeSet<NodeId>>) {
+        self.configs = new_configs;
+        self.all_nodes = Self::build_all_nodes(&self.configs);
+    }
+
+    pub fn push(&mut self, new_config: BTreeSet<NodeId>) {
+        self.configs.push(new_config);
+        self.all_nodes = Self::build_all_nodes(&self.configs);
+    }
+
+    pub fn get_configs(&self) -> &Vec<BTreeSet<NodeId>> {
+        &self.configs
+    }
+
+    pub fn get_ith_config(&self, i: usize) -> Option<&BTreeSet<NodeId>> {
+        self.configs.get(i)
+    }
+
+    pub fn is_in_ith_config(&self, i: usize, id: &u64) -> bool {
+        if let Some(c) = self.configs.get(i) {
+            c.contains(id)
+        } else {
+            false
         }
-        all
+    }
+
+    pub fn ith_config(&self, i: usize) -> Vec<NodeId> {
+        self.configs[i].iter().cloned().collect()
     }
 
     /// Check if the given NodeId exists in this membership config.
     ///
     /// When in joint consensus, this will check both config groups.
     pub fn contains(&self, x: &NodeId) -> bool {
-        self.members.contains(x)
-            || if let Some(members) = &self.members_after_consensus {
-                members.contains(x)
-            } else {
-                false
+        for c in self.configs.iter() {
+            if c.contains(x) {
+                return true;
             }
+        }
+        false
     }
 
     /// Check to see if the config is currently in joint consensus.
     pub fn is_in_joint_consensus(&self) -> bool {
-        self.members_after_consensus.is_some()
+        self.configs.len() > 1
     }
 
     // TODO(xp): rename this
     /// Create a new initial config containing only the given node ID.
     pub fn new_initial(id: NodeId) -> Self {
-        let mut members = BTreeSet::new();
-        members.insert(id);
-        Self {
-            members,
-            members_after_consensus: None,
-        }
+        MembershipConfig::new_single(btreeset! {id})
     }
 
     pub fn to_final_config(&self) -> Self {
-        match self.members_after_consensus {
-            None => self.clone(),
-            Some(ref m) => MembershipConfig {
-                members: m.clone(),
-                members_after_consensus: None,
-            },
+        assert!(!self.configs.is_empty());
+
+        let last = self.configs.last().cloned().unwrap();
+        MembershipConfig::new_single(last)
+    }
+
+    fn build_all_nodes(configs: &[BTreeSet<NodeId>]) -> BTreeSet<NodeId> {
+        let mut nodes = BTreeSet::new();
+        for config in configs.iter() {
+            nodes.extend(config)
         }
+        nodes
     }
 }
 
