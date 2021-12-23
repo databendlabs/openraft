@@ -68,7 +68,7 @@ It is important to note that 0.6.0 does include two breaking changes from 0.5: t
 
 ## 0.5.1
 ### changed
-- `ChangeConfigError::NodeNotLeader` now returns the ID of the current cluster leader if known.
+- `ChangeMembershipError::NodeNotLeader` now returns the ID of the current cluster leader if known.
 - Fix off-by-one error in `get_log_entries` during the replication process.
 - Added `#[derive(Serialize, Deserialize)]` to `Config`, `ConfigBuilder` & `SnapshotPolicy`.
 

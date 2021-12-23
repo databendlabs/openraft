@@ -59,9 +59,9 @@ async fn initialization() -> Result<()> {
 
         tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);
         let mem = match first.unwrap().payload {
-            EntryPayload::ConfigChange(ref x) => x.membership.clone(),
+            EntryPayload::Membership(ref x) => x.membership.clone(),
             _ => {
-                panic!("expect ConfigChange payload")
+                panic!("expect Membership payload")
             }
         };
         assert_eq!(btreeset![0, 1, 2], mem.members);

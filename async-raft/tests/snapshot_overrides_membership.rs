@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::Entry;
-use async_raft::raft::EntryConfigChange;
+use async_raft::raft::EntryMembership;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
@@ -100,7 +100,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 prev_log_id: LogId::new(0, 0),
                 entries: vec![Entry {
                     log_id: LogId { term: 1, index: 1 },
-                    payload: EntryPayload::ConfigChange(EntryConfigChange {
+                    payload: EntryPayload::Membership(EntryMembership {
                         membership: MembershipConfig {
                             members: btreeset![2, 3],
                             members_after_consensus: None,

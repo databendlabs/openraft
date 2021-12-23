@@ -219,7 +219,7 @@ where
     ///
     /// An impl should do:
     /// - Deal with the EntryPayload::Normal() log, which is business logic log.
-    /// - Deal with EntryPayload::ConfigChange
+    /// - Deal with EntryPayload::Membership
     /// - A EntryPayload::SnapshotPointer log should never be seen.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.

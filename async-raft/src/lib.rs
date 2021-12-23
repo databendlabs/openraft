@@ -24,7 +24,7 @@ pub use crate::config::Config;
 pub use crate::config::SnapshotPolicy;
 pub use crate::core::ActiveMembership;
 pub use crate::core::State;
-pub use crate::error::ChangeConfigError;
+pub use crate::error::ChangeMembershipError;
 pub use crate::error::ClientWriteError;
 pub use crate::error::ConfigError;
 pub use crate::error::InitializeError;

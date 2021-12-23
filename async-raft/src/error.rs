@@ -119,7 +119,7 @@ pub enum ClientWriteError {
 
     /// When writing a change-membership entry.
     #[error(transparent)]
-    ChangeConfigError(#[from] ChangeConfigError),
+    ChangeMembershipError(#[from] ChangeMembershipError),
 }
 
 /// Error variants related to configuration.
@@ -156,25 +156,24 @@ pub enum InitializeError {
 
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug, thiserror::Error)]
-pub enum ChangeConfigError {
-    /// The cluster is already undergoing a configuration change.
+pub enum ChangeMembershipError {
     #[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
-    ConfigChangeInProgress { membership_log_id: LogId },
+    InProgress { membership_log_id: LogId },
 
-    /// The given config would leave the cluster in an inoperable state.
-    ///
-    /// This error will be returned if the full set of changes, once fully applied, would leave
-    /// the cluster in an inoperable state.
-    #[error("the given config would leave the cluster in an inoperable state")]
-    InoperableConfig,
+    #[error("new membership can not be empty")]
+    EmptyMembership,
 
     // TODO(xp): 111 test it
     #[error("to add a member {node_id} first need to add it as non-voter")]
     NonVoterNotFound { node_id: NodeId },
 
     // TODO(xp): 111 test it
-    #[error("replication to non voter {node_id} is lagging {distance}, can not add as member")]
-    NonVoterIsLagging { node_id: NodeId, distance: u64 },
+    #[error("replication to non voter {node_id} is lagging {distance}, matched: {matched}, can not add as member")]
+    NonVoterIsLagging {
+        node_id: NodeId,
+        matched: LogId,
+        distance: u64,
+    },
 
     // TODO(xp): test it in unittest
     // TODO(xp): rename this error to some elaborated name.

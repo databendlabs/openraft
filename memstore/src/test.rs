@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::marker::PhantomData;
 
-use async_raft::raft::EntryConfigChange;
+use async_raft::raft::EntryMembership;
 use async_raft::raft::EntryNormal;
 use async_trait::async_trait;
 use maplit::btreeset;
@@ -158,7 +158,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 1, index: 2 },
-                        payload: EntryPayload::ConfigChange(EntryConfigChange {
+                        payload: EntryPayload::Membership(EntryMembership {
                             membership: MembershipConfig {
                                 members: btreeset! {3,4,5},
                                 members_after_consensus: None,
@@ -184,7 +184,7 @@ where
             store
                 .append_to_log(&[&Entry {
                     log_id: (1, 1).into(),
-                    payload: EntryPayload::ConfigChange(EntryConfigChange {
+                    payload: EntryPayload::Membership(EntryMembership {
                         membership: MembershipConfig {
                             members: btreeset! {1,2,3},
                             members_after_consensus: None,
@@ -209,7 +209,7 @@ where
             store
                 .append_to_log(&[&Entry {
                     log_id: LogId { term: 1, index: 3 },
-                    payload: EntryPayload::ConfigChange(EntryConfigChange {
+                    payload: EntryPayload::Membership(EntryMembership {
                         membership: MembershipConfig {
                             members: btreeset! {1,2,3},
                             members_after_consensus: None,
@@ -327,7 +327,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 1, index: 2 },
-                        payload: EntryPayload::ConfigChange(EntryConfigChange {
+                        payload: EntryPayload::Membership(EntryMembership {
                             membership: MembershipConfig {
                                 members: btreeset! {3,4,5},
                                 members_after_consensus: None,
@@ -353,7 +353,7 @@ where
             store
                 .append_to_log(&[&Entry {
                     log_id: (1, 1).into(),
-                    payload: EntryPayload::ConfigChange(EntryConfigChange {
+                    payload: EntryPayload::Membership(EntryMembership {
                         membership: MembershipConfig {
                             members: btreeset! {1,2,3},
                             members_after_consensus: None,
@@ -378,7 +378,7 @@ where
             store
                 .append_to_log(&[&Entry {
                     log_id: LogId { term: 1, index: 3 },
-                    payload: EntryPayload::ConfigChange(EntryConfigChange {
+                    payload: EntryPayload::Membership(EntryMembership {
                         membership: MembershipConfig {
                             members: btreeset! {1,2,3},
                             members_after_consensus: None,
@@ -697,7 +697,7 @@ where
             store
                 .apply_to_state_machine(&[&Entry {
                     log_id: LogId { term: 1, index: 3 },
-                    payload: EntryPayload::ConfigChange(EntryConfigChange {
+                    payload: EntryPayload::Membership(EntryMembership {
                         membership: MembershipConfig {
                             members: btreeset! {1,2},
                             members_after_consensus: None,
@@ -1007,7 +1007,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 1, index: 3 },
-                        payload: EntryPayload::ConfigChange(EntryConfigChange {
+                        payload: EntryPayload::Membership(EntryMembership {
                             membership: MembershipConfig {
                                 members: btreeset! {1,2,3},
                                 members_after_consensus: None,
@@ -1024,7 +1024,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 2, index: 2 },
-                        payload: EntryPayload::ConfigChange(EntryConfigChange {
+                        payload: EntryPayload::Membership(EntryMembership {
                             membership: MembershipConfig {
                                 members: btreeset! {3,4,5},
                                 members_after_consensus: None,
@@ -1067,7 +1067,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 1, index: 3 },
-                        payload: EntryPayload::ConfigChange(EntryConfigChange {
+                        payload: EntryPayload::Membership(EntryMembership {
                             membership: MembershipConfig {
                                 members: btreeset! {1,2,3},
                                 members_after_consensus: None,
@@ -1085,7 +1085,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 2, index: 2 },
-                        payload: EntryPayload::ConfigChange(EntryConfigChange {
+                        payload: EntryPayload::Membership(EntryMembership {
                             membership: MembershipConfig {
                                 members: btreeset! {3,4,5},
                                 members_after_consensus: None,

@@ -489,7 +489,7 @@ impl MemStore {
         D: AppData,
     {
         it.find_map(|entry| match &entry.payload {
-            EntryPayload::ConfigChange(cfg) => Some(ActiveMembership {
+            EntryPayload::Membership(cfg) => Some(ActiveMembership {
                 log_id: entry.log_id,
                 membership: cfg.membership.clone(),
             }),
@@ -726,7 +726,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                     sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
                     res.push(ClientResponse(previous));
                 }
-                EntryPayload::ConfigChange(ref mem) => {
+                EntryPayload::Membership(ref mem) => {
                     sm.last_membership = Some(ActiveMembership {
                         log_id: entry.log_id,
                         membership: mem.membership.clone(),

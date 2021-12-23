@@ -237,7 +237,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
     /// If blocking is true, it blocks until every non-voter becomes up to date.
-    /// Otherwise it returns error `ChangeConfigError::NonVoterIsLagging` if there is a lagging non-voter.
+    /// Otherwise it returns error `ChangeMembershipError::NonVoterIsLagging` if there is a lagging non-voter.
     ///
     /// If it lost leadership or crashed before committing the second **uniform** config log, the cluster is left in the
     /// **joint** config.
@@ -436,7 +436,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     },
     ChangeMembership {
         members: BTreeSet<NodeId>,
-        /// with blocking==false, respond to client a ChangeConfigError::NonVoterIsLagging error at once if a
+        /// with blocking==false, respond to client a ChangeMembershipError::NonVoterIsLagging error at once if a
         /// non-member is lagging.
         ///
         /// Otherwise, wait for commit of the member change log.
@@ -595,7 +595,7 @@ pub enum EntryPayload<D: AppData> {
     #[serde(bound = "D: AppData")]
     Normal(EntryNormal<D>),
     /// A config change log entry.
-    ConfigChange(EntryConfigChange),
+    Membership(EntryMembership),
 }
 
 impl<D: AppData> MessageSummary for EntryPayload<D> {
@@ -603,7 +603,7 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
         match self {
             EntryPayload::Blank => "blank".to_string(),
             EntryPayload::Normal(_n) => "normal".to_string(),
-            EntryPayload::ConfigChange(c) => {
+            EntryPayload::Membership(c) => {
                 format!("config-change: {:?}", c.membership)
             }
         }
@@ -620,7 +620,7 @@ pub struct EntryNormal<D: AppData> {
 
 /// A log entry holding a config change.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct EntryConfigChange {
+pub struct EntryMembership {
     /// Details on the cluster's membership configuration.
     pub membership: MembershipConfig,
 }
@@ -810,7 +810,7 @@ impl<D: AppData> ClientWriteRequest<D> {
 
     /// Generate a new payload holding a config change.
     pub(crate) fn new_config(membership: MembershipConfig) -> Self {
-        Self::new_base(EntryPayload::ConfigChange(EntryConfigChange { membership }))
+        Self::new_base(EntryPayload::Membership(EntryMembership { membership }))
     }
 
     /// Generate a new blank payload.

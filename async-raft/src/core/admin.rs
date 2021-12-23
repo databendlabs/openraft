@@ -8,7 +8,7 @@ use crate::core::NonVoterState;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
 use crate::error::AddNonVoterError;
-use crate::error::ChangeConfigError;
+use crate::error::ChangeMembershipError;
 use crate::error::ClientWriteError;
 use crate::error::InitializeError;
 use crate::raft::AddNonVoterResponse;
@@ -121,8 +121,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     ) {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
-            let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
-                ChangeConfigError::InoperableConfig,
+            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                ChangeMembershipError::EmptyMembership,
             )));
             return;
         }
@@ -130,8 +130,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // The last membership config is not committed yet.
         // Can not process the next one.
         if self.core.commit_index < self.core.membership.log_id.index {
-            let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
-                ChangeConfigError::ConfigChangeInProgress {
+            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                ChangeMembershipError::InProgress {
                     membership_log_id: self.core.membership.log_id,
                 },
             )));
@@ -145,8 +145,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if let Some(ref next_membership) = curr.members_after_consensus {
             // When it is in joint state, it is only allowed to change to the `members_after_consensus`
             if &members != next_membership {
-                let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
-                    ChangeConfigError::Incompatible {
+                let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                    ChangeMembershipError::Incompatible {
                         curr: curr.clone(),
                         to: members,
                     },
@@ -187,9 +187,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
                     if !blocking {
                         // Node has repl stream, but is not yet ready to join.
-                        let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
-                            ChangeConfigError::NonVoterIsLagging {
+                        let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                            ChangeMembershipError::NonVoterIsLagging {
                                 node_id: *new_node,
+                                matched: node.matched,
                                 distance: self.core.last_log_id.index.saturating_sub(node.matched.index),
                             },
                         )));
@@ -200,8 +201,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // Node does not yet have a repl stream, spawn one.
                 None => {
                     // TODO(xp): 111 distance
-                    let _ = tx.send(Err(ClientWriteError::ChangeConfigError(
-                        ChangeConfigError::NonVoterNotFound { node_id: *new_node },
+                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                        ChangeMembershipError::NonVoterNotFound { node_id: *new_node },
                     )));
                     return;
                 }

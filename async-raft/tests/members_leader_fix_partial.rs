@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_raft::raft::Entry;
-use async_raft::raft::EntryConfigChange;
+use async_raft::raft::EntryMembership;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
@@ -44,7 +44,7 @@ async fn members_leader_fix_partial() -> Result<()> {
                 term: 1,
                 index: want + 1,
             },
-            payload: EntryPayload::ConfigChange(EntryConfigChange {
+            payload: EntryPayload::Membership(EntryMembership {
                 membership: MembershipConfig {
                     members: btreeset! {0},
                     members_after_consensus: Some(btreeset! {0,1,2}),
@@ -77,7 +77,7 @@ async fn members_leader_fix_partial() -> Result<()> {
     // let final_log = sto.get_log_entries(want..=want).await?[0].clone();
     //
     // let m = match final_log.payload {
-    //     EntryPayload::ConfigChange(ref m) => m.membership.clone(),
+    //     EntryPayload::Membership(ref m) => m.membership.clone(),
     //     _ => {
     //         panic!("expect membership config log")
     //     }
