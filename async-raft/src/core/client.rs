@@ -321,7 +321,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let res = match resp {
             Ok(data) => {
                 let membership = if let EntryPayload::Membership(ref c) = entry.payload {
-                    Some(c.membership.clone())
+                    Some(c.clone())
                 } else {
                     None
                 };
@@ -347,8 +347,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     pub fn handle_special_log(&mut self, entry: &Entry<D>) {
         match &entry.payload {
-            EntryPayload::Membership(ref mem) => {
-                let m = &mem.membership;
+            EntryPayload::Membership(ref m) => {
                 if m.is_in_joint_consensus() {
                     // nothing to do
                 } else {

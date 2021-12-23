@@ -362,7 +362,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .filter_map(|ent| match &ent.payload {
                 EntryPayload::Membership(conf) => Some(ActiveMembership {
                     log_id: ent.log_id,
-                    membership: conf.membership.clone(),
+                    membership: conf.clone(),
                 }),
                 _ => None,
             })

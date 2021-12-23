@@ -491,7 +491,7 @@ impl MemStore {
         it.find_map(|entry| match &entry.payload {
             EntryPayload::Membership(cfg) => Some(ActiveMembership {
                 log_id: entry.log_id,
-                membership: cfg.membership.clone(),
+                membership: cfg.clone(),
             }),
             _ => None,
         })
@@ -728,7 +728,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 EntryPayload::Membership(ref mem) => {
                     sm.last_membership = Some(ActiveMembership {
                         log_id: entry.log_id,
-                        membership: mem.membership.clone(),
+                        membership: mem.clone(),
                     });
                     res.push(ClientResponse(None))
                 }

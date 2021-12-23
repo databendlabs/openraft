@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::raft::Entry;
-use async_raft::raft::EntryMembership;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
 use async_raft::storage::HardState;
@@ -45,11 +44,9 @@ async fn elect_compare_last_log() -> Result<()> {
 
         sto0.append_to_log(&[&Entry {
             log_id: LogId { term: 2, index: 1 },
-            payload: EntryPayload::Membership(EntryMembership {
-                membership: MembershipConfig {
-                    members: btreeset! {0,1},
-                    members_after_consensus: None,
-                },
+            payload: EntryPayload::Membership(MembershipConfig {
+                members: btreeset! {0,1},
+                members_after_consensus: None,
             }),
         }])
         .await?;
@@ -66,11 +63,9 @@ async fn elect_compare_last_log() -> Result<()> {
         sto1.append_to_log(&[
             &Entry {
                 log_id: LogId { term: 1, index: 1 },
-                payload: EntryPayload::Membership(EntryMembership {
-                    membership: MembershipConfig {
-                        members: btreeset! {0,1},
-                        members_after_consensus: None,
-                    },
+                payload: EntryPayload::Membership(MembershipConfig {
+                    members: btreeset! {0,1},
+                    members_after_consensus: None,
                 }),
             },
             &Entry {

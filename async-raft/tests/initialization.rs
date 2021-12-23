@@ -59,7 +59,7 @@ async fn initialization() -> Result<()> {
 
         tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);
         let mem = match first.unwrap().payload {
-            EntryPayload::Membership(ref x) => x.membership.clone(),
+            EntryPayload::Membership(ref x) => x.clone(),
             _ => {
                 panic!("expect Membership payload")
             }

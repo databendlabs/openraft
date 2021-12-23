@@ -597,7 +597,7 @@ pub enum EntryPayload<D: AppData> {
     Normal(D),
 
     /// A config change log entry.
-    Membership(EntryMembership),
+    Membership(MembershipConfig),
 }
 
 impl<D: AppData> MessageSummary for EntryPayload<D> {
@@ -606,17 +606,10 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
             EntryPayload::Blank => "blank".to_string(),
             EntryPayload::Normal(_n) => "normal".to_string(),
             EntryPayload::Membership(c) => {
-                format!("config-change: {:?}", c.membership)
+                format!("config-change: {:?}", c)
             }
         }
     }
-}
-
-/// A log entry holding a config change.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct EntryMembership {
-    /// Details on the cluster's membership configuration.
-    pub membership: MembershipConfig,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -804,7 +797,7 @@ impl<D: AppData> ClientWriteRequest<D> {
 
     /// Generate a new payload holding a config change.
     pub(crate) fn new_config(membership: MembershipConfig) -> Self {
-        Self::new_base(EntryPayload::Membership(EntryMembership { membership }))
+        Self::new_base(EntryPayload::Membership(membership))
     }
 
     /// Generate a new blank payload.

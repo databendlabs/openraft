@@ -4,7 +4,6 @@ use std::time::Duration;
 use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::Entry;
-use async_raft::raft::EntryMembership;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
 use async_raft::AppData;
@@ -53,21 +52,17 @@ async fn append_updates_membership() -> Result<()> {
                 ent(1, 1),
                 Entry {
                     log_id: LogId { term: 1, index: 2 },
-                    payload: EntryPayload::Membership(EntryMembership {
-                        membership: MembershipConfig {
-                            members: btreeset! {1,2},
-                            members_after_consensus: None,
-                        },
+                    payload: EntryPayload::Membership(MembershipConfig {
+                        members: btreeset! {1,2},
+                        members_after_consensus: None,
                     }),
                 },
                 ent(1, 3),
                 Entry {
                     log_id: LogId { term: 1, index: 4 },
-                    payload: EntryPayload::Membership(EntryMembership {
-                        membership: MembershipConfig {
-                            members: btreeset! {1,2,3,4},
-                            members_after_consensus: None,
-                        },
+                    payload: EntryPayload::Membership(MembershipConfig {
+                        members: btreeset! {1,2,3,4},
+                        members_after_consensus: None,
                     }),
                 },
                 ent(1, 5),

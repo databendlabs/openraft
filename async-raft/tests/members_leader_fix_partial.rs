@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_raft::raft::Entry;
-use async_raft::raft::EntryMembership;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
 use async_raft::Config;
@@ -44,11 +43,9 @@ async fn members_leader_fix_partial() -> Result<()> {
                 term: 1,
                 index: want + 1,
             },
-            payload: EntryPayload::Membership(EntryMembership {
-                membership: MembershipConfig {
-                    members: btreeset! {0},
-                    members_after_consensus: Some(btreeset! {0,1,2}),
-                },
+            payload: EntryPayload::Membership(MembershipConfig {
+                members: btreeset! {0},
+                members_after_consensus: Some(btreeset! {0,1,2}),
             }),
         }])
         .await?;
