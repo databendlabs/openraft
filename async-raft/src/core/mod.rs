@@ -791,7 +791,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 struct ReplicationState<D: AppData> {
     pub matched: LogId,
-    pub remove_after_commit: Option<u64>,
+    pub remove_since: Option<u64>,
     pub repl_stream: ReplicationStream<D>,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
@@ -802,7 +802,7 @@ impl<D: AppData> MessageSummary for ReplicationState<D> {
     fn summary(&self) -> String {
         format!(
             "matched: {}, remove_after_commit: {:?}",
-            self.matched, self.remove_after_commit
+            self.matched, self.remove_since
         )
     }
 }

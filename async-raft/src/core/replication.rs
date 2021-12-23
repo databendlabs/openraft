@@ -49,7 +49,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         ReplicationState {
             matched: LogId { term: 0, index: 0 },
             repl_stream: replstream,
-            remove_after_commit: None,
+            remove_since: None,
             tx: caller_tx,
         }
     }
@@ -87,7 +87,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "debug", skip(self))]
     async fn handle_update_matched(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
         // Update target's match index & check if it is awaiting removal.
-        let mut needs_removal = false;
 
         if let Some(state) = self.nodes.get_mut(&target) {
             tracing::debug!("state.matched: {}, update to matched: {}", state.matched, matched);
@@ -107,39 +106,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     let _ = tx.send(Ok(x));
                 }
             }
-
-            // TODO(xp): stop replication only when commit index is replicated?
-            if let Some(threshold) = &state.remove_after_commit {
-                if &matched.index >= threshold {
-                    needs_removal = true;
-                }
-            }
         } else {
-            // TODO(xp): this should be get rid of.
-            //           handle_update_mactched_and_rate() and send_append_entries() runs async-ly.
-            //           There is chance another update-matched event is sent just before the replication node is
-            //           removed.
-            //           It is not a bug.
-            // panic!("replication is removed: {}", target);
-
             return Ok(());
         }
 
         // TODO(xp): use Vec<_> to replace the two membership configs.
-        // Drop replication stream if needed.
-        if needs_removal {
-            let removed = self.nodes.remove(&target);
-            tracing::info!(
-                "handle_update_matched_and_rate: removed replication node: {} {:?}",
-                target,
-                removed.as_ref().map(|x| x.summary())
-            );
 
-            if let Some(node) = removed {
-                // TODO(xp): do not need to send, just close.
-                let _ = node.repl_stream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
-                self.leader_metrics.replication.remove(&target);
-            }
+        // Drop replication stream if needed.
+        if self.try_remove_replication(target) {
+            // nothing to do
         } else {
             self.update_leader_metrics(target, matched);
         }

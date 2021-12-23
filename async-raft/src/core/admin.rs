@@ -16,11 +16,9 @@ use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
 use crate::raft::MembershipConfig;
 use crate::raft::RaftRespTx;
-use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
-use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftError;
 use crate::RaftNetwork;
@@ -260,8 +258,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) fn handle_uniform_consensus_committed(&mut self, log_id: &LogId) {
         let index = log_id.index;
-        // TODO(xp): 111 when membership config log is committed, there is nothing has to do.
-        // TODO(xp): removed follower should be able to receive the message that commits a joint log.
 
         // Step down if needed.
         if !self.core.membership.membership.contains(&self.core.id) {
@@ -273,9 +269,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return;
         }
 
-        // Remove any replication streams which have replicated this config & which are no longer
-        // cluster members. All other replication streams which are no longer cluster members, but
-        // which have not yet replicated this config will be marked for removal.
         let membership = &self.core.membership.membership;
 
         let all = membership.all_nodes();
@@ -283,45 +276,50 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             if all.contains(id) {
                 continue;
             }
-            state.remove_after_commit = Some(index)
-        }
-
-        let nodes_to_remove: Vec<_> = self
-            .nodes
-            .iter_mut()
-            .filter(|(id, _)| !membership.contains(id))
-            .filter_map(|(idx, repl_state)| {
-                if repl_state.matched.index >= index {
-                    Some(*idx)
-                } else {
-                    repl_state.remove_after_commit = Some(index);
-                    None
-                }
-            })
-            .collect();
-
-        let follower_ids: Vec<u64> = self.nodes.keys().cloned().collect();
-        tracing::debug!("nodes: {:?}", follower_ids);
-        tracing::debug!("membership: {:?}", self.core.membership);
-        tracing::debug!("nodes_to_remove: {:?}", nodes_to_remove);
-
-        for target in nodes_to_remove {
-            tracing::debug!(target, "removing target node from replication pool");
-            // TODO(xp): just drop the replication then the task will be terminated.
-            let removed = self.nodes.remove(&target);
-            assert!(removed.is_some());
 
             tracing::info!(
-                "handle_uniform_consensus_committed: removed replication node: {} {:?}",
-                target,
-                removed.as_ref().map(|x| (*x).summary())
+                "set remove_after_commit for {} = {}, membership: {:?}",
+                id,
+                index,
+                self.core.membership
             );
 
-            if let Some(node) = removed {
-                let _ = node.repl_stream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
-                self.leader_metrics.replication.remove(&target);
+            state.remove_since = Some(index)
+        }
+
+        let targets = self.nodes.keys().cloned().collect::<Vec<_>>();
+        for target in targets {
+            self.try_remove_replication(target);
+        }
+
+        self.leader_report_metrics();
+    }
+
+    /// Remove a replication if the membership that does not include it has committed.
+    ///
+    /// Return true if removed.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub fn try_remove_replication(&mut self, target: u64) -> bool {
+        {
+            let n = self.nodes.get(&target);
+
+            if let Some(n) = n {
+                if let Some(since) = n.remove_since {
+                    if n.matched.index < since {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            } else {
+                tracing::warn!("trying to remove absent replication to {}", target);
+                return false;
             }
         }
-        self.leader_report_metrics();
+
+        tracing::info!("removed replication to: {}", target);
+        self.nodes.remove(&target);
+        self.leader_metrics.replication.remove(&target);
+        true
     }
 }

@@ -3,12 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::Config;
-use async_raft::State;
 use fixtures::RaftRouter;
-use futures::stream::StreamExt;
 use maplit::btreeset;
-use tracing_futures::Instrument;
-
 #[macro_use]
 mod fixtures;
 
@@ -30,8 +26,8 @@ async fn members_stop_repl_to_removed() -> Result<()> {
     router.new_raft_node(3).await;
     router.new_raft_node(4).await;
 
-    router.add_non_voter(0, 3).await;
-    router.add_non_voter(0, 4).await;
+    router.add_non_voter(0, 3).await?;
+    router.add_non_voter(0, 4).await?;
 
     tracing::info!("--- changing config to 2,3,4");
     {
@@ -42,15 +38,16 @@ async fn members_stop_repl_to_removed() -> Result<()> {
             router
                 .wait(&i, timeout())
                 .await?
-                .metrics(|x| x.last_applied >= n_logs, "all nodes recv change-membership logs")
+                .metrics(|x| x.last_log_index >= n_logs, "all nodes recv change-membership logs")
                 .await?;
         }
     }
 
-    tracing::info!("--- write to new cluster");
+    tracing::info!("--- write to new cluster, cuurent log={}", n_logs);
     {
-        router.client_request_many(0, "after_change", 5).await;
-        n_logs += 5;
+        let n = 10;
+        router.client_request_many(0, "after_change", n).await;
+        n_logs += n as u64;
 
         for i in &[0, 3, 4] {
             router
