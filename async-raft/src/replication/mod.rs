@@ -348,10 +348,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         // Handle success conditions.
         if append_resp.success() {
-            self.matched = append_resp.matched.unwrap();
-            // TODO(xp): if matched does not change, do not bother the core.
-            self.update_max_possible_matched_index(self.matched.index);
-            self.update_matched();
+            let matched = append_resp.matched.unwrap();
+            self.update_matched(matched);
 
             return Ok(());
         }
@@ -400,17 +398,28 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         self.target_repl_state = state;
     }
 
+    /// Update the `matched` and `max_possible_matched_index`, which both are for tracking
+    /// follower replication(the left and right cursor in a bsearch).
+    /// And also report the matched log id to RaftCore to commit an entry etc.
     #[tracing::instrument(level = "debug", skip(self))]
-    fn update_matched(&mut self) {
-        tracing::debug!(target=%self.target, matched=%self.matched, "update_matched");
+    fn update_matched(&mut self, new_matched: LogId) {
+        if self.max_possible_matched_index < new_matched.index {
+            self.max_possible_matched_index = new_matched.index;
+        }
 
-        let _ = self.raft_core_tx.send((
-            ReplicaEvent::UpdateMatchIndex {
-                target: self.target,
-                matched: self.matched,
-            },
-            tracing::debug_span!("CH"),
-        ));
+        if self.matched < new_matched {
+            self.matched = new_matched;
+
+            tracing::debug!(target=%self.target, matched=%self.matched, "matched updated");
+
+            let _ = self.raft_core_tx.send((
+                ReplicaEvent::UpdateMatched {
+                    target: self.target,
+                    matched: self.matched,
+                },
+                tracing::debug_span!("CH"),
+            ));
+        }
     }
 
     /// Perform a check to see if this replication stream is lagging behind far enough that a
@@ -532,7 +541,7 @@ pub(crate) enum ReplicaEvent<S>
 where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
     /// An event from a replication stream which updates the target node's match index.
-    UpdateMatchIndex {
+    UpdateMatched {
         /// The ID of the target node for which the match index is to be updated.
         target: NodeId,
         /// The log of the most recent log known to have been successfully replicated on the target.
@@ -559,7 +568,7 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for ReplicaEvent<S> {
     fn summary(&self) -> String {
         match self {
-            ReplicaEvent::UpdateMatchIndex {
+            ReplicaEvent::UpdateMatched {
                 ref target,
                 ref matched,
             } => {
@@ -808,13 +817,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     self.matched,
                 );
 
-                // TODO(xp): combine update_matched() and update_max_possible_matched_index()?
-                if snapshot.meta.last_log_id > self.matched {
-                    self.matched = snapshot.meta.last_log_id;
-                    self.update_matched();
-                }
-
-                self.update_max_possible_matched_index(snapshot.meta.last_log_id.index);
+                self.update_matched(snapshot.meta.last_log_id);
 
                 return Ok(());
             }
@@ -824,13 +827,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
             self.try_drain_raft_rx().await?;
-        }
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    fn update_max_possible_matched_index(&mut self, i: u64) {
-        if self.max_possible_matched_index < i {
-            self.max_possible_matched_index = i;
         }
     }
 }
