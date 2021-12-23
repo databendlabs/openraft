@@ -59,9 +59,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent<S::SnapshotData>) {
         let res = match event {
             ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
-            ReplicaEvent::UpdateMatched { target, matched } => {
-                self.handle_update_matched_and_rate(target, matched).await
-            }
+            ReplicaEvent::UpdateMatched { target, matched } => self.handle_update_matched(target, matched).await,
             ReplicaEvent::NeedsSnapshot { target, tx } => self.handle_needs_snapshot(target, tx).await,
             ReplicaEvent::Shutdown => {
                 self.core.set_target_state(State::Shutdown);
@@ -87,7 +85,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn handle_update_matched_and_rate(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
+    async fn handle_update_matched(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
         // Update target's match index & check if it is awaiting removal.
         let mut needs_removal = false;
 

@@ -79,9 +79,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         tx: RaftRespTx<AddNonVoterResponse, AddNonVoterError>,
         blocking: bool,
     ) {
-        // TODO(xp): 111 a blocking change_membership can be done in Raft::change_membership: it add the replication
-        //           stream and wait for it to become line-rate.
-
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
         if target == self.core.id {
@@ -200,7 +197,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
                 // Node does not yet have a repl stream, spawn one.
                 None => {
-                    // TODO(xp): 111 distance
                     let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                         ChangeMembershipError::NonVoterNotFound { node_id: *new_node },
                     )));
@@ -269,9 +265,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Step down if needed.
         if !self.core.membership.membership.contains(&self.core.id) {
-            // }
-            // if self.is_stepping_down {
             tracing::debug!("raft node is stepping down");
+
+            // TODO(xp): transfer leadership
             self.core.set_target_state(State::NonVoter);
             self.core.update_current_leader(UpdateCurrentLeader::Unknown);
             return;
@@ -281,6 +277,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // cluster members. All other replication streams which are no longer cluster members, but
         // which have not yet replicated this config will be marked for removal.
         let membership = &self.core.membership.membership;
+
+        let all = membership.all_nodes();
+        for (id, state) in self.nodes.iter_mut() {
+            if all.contains(id) {
+                continue;
+            }
+            state.remove_after_commit = Some(index)
+        }
+
         let nodes_to_remove: Vec<_> = self
             .nodes
             .iter_mut()
