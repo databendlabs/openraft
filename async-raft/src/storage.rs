@@ -10,7 +10,7 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
-use crate::core::ActiveMembership;
+use crate::core::EffectiveMembership;
 use crate::raft::Entry;
 use crate::raft::MembershipConfig;
 use crate::raft_types::SnapshotId;
@@ -71,7 +71,7 @@ pub struct InitialState {
 
     /// The latest cluster membership configuration found, in log or in state machine, else a new initial
     /// membership config consisting only of this node's ID.
-    pub last_membership: ActiveMembership,
+    pub last_membership: EffectiveMembership,
 }
 
 impl InitialState {
@@ -87,7 +87,7 @@ impl InitialState {
                 current_term: 0,
                 voted_for: None,
             },
-            last_membership: ActiveMembership {
+            last_membership: EffectiveMembership {
                 log_id: LogId { term: 0, index: 0 },
                 membership: MembershipConfig::new_initial(id),
             },
@@ -133,7 +133,7 @@ where
     /// the node's ID so that it is consistent across restarts.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_membership_config(&self) -> Result<ActiveMembership, StorageError>;
+    async fn get_membership_config(&self) -> Result<EffectiveMembership, StorageError>;
 
     /// Get Raft's state information from storage.
     ///
@@ -189,7 +189,7 @@ where
 
     /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
     /// membership config.
-    async fn last_applied_state(&self) -> Result<(LogId, Option<ActiveMembership>), StorageError>;
+    async fn last_applied_state(&self) -> Result<(LogId, Option<EffectiveMembership>), StorageError>;
 
     /// Delete all logs in a `range`.
     ///

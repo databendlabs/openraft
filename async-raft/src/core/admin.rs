@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::core::client::ClientRequestEntry;
-use crate::core::ActiveMembership;
+use crate::core::EffectiveMembership;
 use crate::core::LeaderState;
 use crate::core::NonVoterState;
 use crate::core::State;
@@ -45,7 +45,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Build a new membership config from given init data & assign it as the new cluster
         // membership config in memory only.
-        self.core.membership = ActiveMembership {
+        self.core.membership = EffectiveMembership {
             log_id: LogId { term: 1, index: 1 },
             membership: MembershipConfig {
                 members,
@@ -227,7 +227,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let res = self.append_payload_to_log(payload.entry).await;
 
         // Caveat: membership must be updated before commit check is done with the new config.
-        self.core.membership = ActiveMembership {
+        self.core.membership = EffectiveMembership {
             log_id: self.core.last_log_id,
             membership: mem,
         };

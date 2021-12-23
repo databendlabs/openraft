@@ -7,9 +7,9 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
-use crate::ActiveMembership;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::EffectiveMembership;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftError;
@@ -367,7 +367,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let last_conf_change = entries
             .iter()
             .filter_map(|ent| match &ent.payload {
-                EntryPayload::Membership(conf) => Some(ActiveMembership {
+                EntryPayload::Membership(conf) => Some(EffectiveMembership {
                     log_id: ent.log_id,
                     membership: conf.clone(),
                 }),

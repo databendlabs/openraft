@@ -22,10 +22,10 @@ use async_raft::raft::MembershipConfig;
 use async_raft::storage::HardState;
 use async_raft::storage::InitialState;
 use async_raft::storage::Snapshot;
-use async_raft::ActiveMembership;
 use async_raft::AppData;
 use async_raft::AppDataResponse;
 use async_raft::DefensiveError;
+use async_raft::EffectiveMembership;
 use async_raft::ErrorSubject;
 use async_raft::ErrorVerb;
 use async_raft::LogId;
@@ -79,7 +79,7 @@ pub struct MemStoreSnapshot {
 pub struct MemStoreStateMachine {
     pub last_applied_log: LogId,
 
-    pub last_membership: Option<ActiveMembership>,
+    pub last_membership: Option<EffectiveMembership>,
 
     /// A mapping of client IDs to their state info.
     pub client_serial_responses: HashMap<String, (u64, Option<String>)>,
@@ -483,13 +483,13 @@ impl RaftStorageDebug<MemStoreStateMachine> for MemStore {
 }
 
 impl MemStore {
-    fn find_first_membership_log<'a, T, D>(mut it: T) -> Option<ActiveMembership>
+    fn find_first_membership_log<'a, T, D>(mut it: T) -> Option<EffectiveMembership>
     where
         T: 'a + Iterator<Item = &'a Entry<D>>,
         D: AppData,
     {
         it.find_map(|entry| match &entry.payload {
-            EntryPayload::Membership(cfg) => Some(ActiveMembership {
+            EntryPayload::Membership(cfg) => Some(EffectiveMembership {
                 log_id: entry.log_id,
                 membership: cfg.clone(),
             }),
@@ -499,7 +499,7 @@ impl MemStore {
 
     /// Go backwards through the log to find the most recent membership config <= `upto_index`.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn get_membership_from_log(&self, upto_index: Option<u64>) -> Result<ActiveMembership, StorageError> {
+    pub async fn get_membership_from_log(&self, upto_index: Option<u64>) -> Result<EffectiveMembership, StorageError> {
         self.defensive_no_dirty_log().await?;
 
         let membership_in_log = {
@@ -530,7 +530,7 @@ impl MemStore {
 
         Ok(match membership {
             Some(x) => x,
-            None => ActiveMembership {
+            None => EffectiveMembership {
                 log_id: LogId { term: 0, index: 0 },
                 membership: MembershipConfig::new_initial(self.id),
             },
@@ -549,7 +549,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_membership_config(&self) -> Result<ActiveMembership, StorageError> {
+    async fn get_membership_config(&self) -> Result<EffectiveMembership, StorageError> {
         self.get_membership_from_log(None).await
     }
 
@@ -656,7 +656,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(last)
     }
 
-    async fn last_applied_state(&self) -> Result<(LogId, Option<ActiveMembership>), StorageError> {
+    async fn last_applied_state(&self) -> Result<(LogId, Option<EffectiveMembership>), StorageError> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
@@ -726,7 +726,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                     res.push(ClientResponse(previous));
                 }
                 EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = Some(ActiveMembership {
+                    sm.last_membership = Some(EffectiveMembership {
                         log_id: entry.log_id,
                         membership: mem.clone(),
                     });

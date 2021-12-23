@@ -71,7 +71,7 @@ use crate::Update;
 ///
 /// An active config is just the last seen config in raft spec.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ActiveMembership {
+pub struct EffectiveMembership {
     /// The id of the log that applies this membership config
     pub log_id: LogId,
 
@@ -84,10 +84,13 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     id: NodeId,
     /// This node's runtime config.
     config: Arc<Config>,
+
     /// The cluster's current membership configuration.
-    membership: ActiveMembership,
+    membership: EffectiveMembership,
+
     /// The `RaftNetwork` implementation.
     network: Arc<N>,
+
     /// The `RaftStorage` implementation.
     storage: Arc<S>,
 
@@ -170,7 +173,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let this = Self {
             id,
             config,
-            membership: ActiveMembership {
+            membership: EffectiveMembership {
                 log_id: LogId::default(),
                 membership,
             },
@@ -396,7 +399,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Update the node's current membership config & save hard state.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_membership(&mut self, cfg: ActiveMembership) -> RaftResult<()> {
+    fn update_membership(&mut self, cfg: EffectiveMembership) -> RaftResult<()> {
         // If the given config does not contain this node's ID, it means one of the following:
         //
         // - the node is currently a non-voter and is replicating an old config to which it has

@@ -693,7 +693,7 @@ where
             let (applied, membership) = store.last_applied_state().await?;
             assert_eq!(LogId { term: 1, index: 3 }, applied);
             assert_eq!(
-                Some(ActiveMembership {
+                Some(EffectiveMembership {
                     log_id: LogId { term: 1, index: 3 },
                     membership: MembershipConfig {
                         members: btreeset! {1,2},
@@ -716,7 +716,7 @@ where
             let (applied, membership) = store.last_applied_state().await?;
             assert_eq!(LogId { term: 1, index: 5 }, applied);
             assert_eq!(
-                Some(ActiveMembership {
+                Some(EffectiveMembership {
                     log_id: LogId { term: 1, index: 3 },
                     membership: MembershipConfig {
                         members: btreeset! {1,2},

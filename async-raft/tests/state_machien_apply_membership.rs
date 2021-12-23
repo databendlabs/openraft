@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_raft::raft::MembershipConfig;
-use async_raft::ActiveMembership;
 use async_raft::Config;
+use async_raft::EffectiveMembership;
 use async_raft::LogId;
 use async_raft::RaftStorage;
 use async_raft::State;
@@ -51,7 +51,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     for i in 0..=0 {
         let sto = router.get_storage_handle(&i).await?;
         assert_eq!(
-            Some(ActiveMembership {
+            Some(EffectiveMembership {
                 log_id: LogId { term: 1, index: 1 },
                 membership: MembershipConfig {
                     members: btreeset![0],
@@ -96,7 +96,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         let sto = router.get_storage_handle(&i).await?;
         let (_, last_membership) = sto.last_applied_state().await?;
         assert_eq!(
-            Some(ActiveMembership {
+            Some(EffectiveMembership {
                 log_id: LogId { term: 1, index: 3 },
                 membership: MembershipConfig {
                     members: btreeset![0, 1, 2],

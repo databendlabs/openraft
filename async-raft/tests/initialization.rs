@@ -3,8 +3,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::MembershipConfig;
-use async_raft::ActiveMembership;
 use async_raft::Config;
+use async_raft::EffectiveMembership;
 use async_raft::LogId;
 use async_raft::RaftStorage;
 use async_raft::State;
@@ -68,7 +68,7 @@ async fn initialization() -> Result<()> {
 
         let sm_mem = sto.last_applied_state().await?.1;
         assert_eq!(
-            Some(ActiveMembership {
+            Some(EffectiveMembership {
                 log_id: LogId { term: 1, index: 1 },
                 membership: MembershipConfig {
                     members: btreeset![0, 1, 2],

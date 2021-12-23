@@ -589,11 +589,10 @@ pub enum EntryPayload<D: AppData> {
     /// An empty payload committed by a new cluster leader.
     Blank,
 
-    /// A normal log entry.
     #[serde(bound = "D: AppData")]
     Normal(D),
 
-    /// A config change log entry.
+    /// A change-membership log entry.
     Membership(MembershipConfig),
 }
 
@@ -618,6 +617,7 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
 pub struct MembershipConfig {
     /// All members of the Raft cluster.
     pub members: BTreeSet<NodeId>,
+
     /// All members of the Raft cluster after joint consensus is finalized.
     ///
     /// The presence of a value here indicates that the config is in joint consensus.
