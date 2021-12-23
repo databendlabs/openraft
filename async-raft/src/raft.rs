@@ -591,9 +591,11 @@ impl<D: AppData> MessageSummary for &[&Entry<D>] {
 pub enum EntryPayload<D: AppData> {
     /// An empty payload committed by a new cluster leader.
     Blank,
+
     /// A normal log entry.
     #[serde(bound = "D: AppData")]
-    Normal(EntryNormal<D>),
+    Normal(D),
+
     /// A config change log entry.
     Membership(EntryMembership),
 }
@@ -608,14 +610,6 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
             }
         }
     }
-}
-
-/// A normal log entry.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct EntryNormal<D: AppData> {
-    /// The contents of this entry.
-    #[serde(bound = "D: AppData")]
-    pub data: D,
 }
 
 /// A log entry holding a config change.
@@ -800,7 +794,7 @@ impl<D: AppData> MessageSummary for ClientWriteRequest<D> {
 impl<D: AppData> ClientWriteRequest<D> {
     /// Create a new client payload instance with a normal entry type.
     pub fn new(entry: D) -> Self {
-        Self::new_base(EntryPayload::Normal(EntryNormal { data: entry }))
+        Self::new_base(EntryPayload::Normal(entry))
     }
 
     /// Create a new instance.

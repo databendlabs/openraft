@@ -4,7 +4,6 @@ use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::ConflictOpt;
 use async_raft::raft::Entry;
-use async_raft::raft::EntryNormal;
 use async_raft::raft::EntryPayload;
 use async_raft::Config;
 use async_raft::LogId;
@@ -81,12 +80,10 @@ async fn conflict_with_empty_entries() -> Result<()> {
             },
             Entry {
                 log_id: (1, 2).into(),
-                payload: EntryPayload::Normal(EntryNormal {
-                    data: ClientRequest {
-                        client: "foo".to_string(),
-                        serial: 1,
-                        status: "bar".to_string(),
-                    },
+                payload: EntryPayload::Normal(ClientRequest {
+                    client: "foo".to_string(),
+                    serial: 1,
+                    status: "bar".to_string(),
                 }),
             },
         ],

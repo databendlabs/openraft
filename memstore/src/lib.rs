@@ -714,8 +714,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
             match entry.payload {
                 EntryPayload::Blank => res.push(ClientResponse(None)),
-                EntryPayload::Normal(ref norm) => {
-                    let data = &norm.data;
+                EntryPayload::Normal(ref data) => {
                     if let Some((serial, r)) = sm.client_serial_responses.get(&data.client) {
                         if serial == &data.serial {
                             res.push(ClientResponse(r.clone()));

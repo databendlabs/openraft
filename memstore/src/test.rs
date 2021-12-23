@@ -2,7 +2,6 @@ use std::future::Future;
 use std::marker::PhantomData;
 
 use async_raft::raft::EntryMembership;
-use async_raft::raft::EntryNormal;
 use async_trait::async_trait;
 use maplit::btreeset;
 
@@ -828,12 +827,10 @@ where
         let entry = Entry {
             log_id: LogId { term: 3, index: 1 },
 
-            payload: EntryPayload::Normal(EntryNormal {
-                data: ClientRequest {
-                    client: "0".into(),
-                    serial: 0,
-                    status: "lit".into(),
-                },
+            payload: EntryPayload::Normal(ClientRequest {
+                client: "0".into(),
+                serial: 0,
+                status: "lit".into(),
             }),
         };
 
@@ -888,7 +885,7 @@ where
         .into_iter()
         .map(|(id, req)| Entry {
             log_id: *id,
-            payload: EntryPayload::Normal(EntryNormal { data: req.clone() }),
+            payload: EntryPayload::Normal(req.clone()),
         })
         .collect::<Vec<_>>();
 
@@ -1573,12 +1570,10 @@ where
         let entry = Entry {
             log_id: LogId { term: 3, index: 1 },
 
-            payload: EntryPayload::Normal(EntryNormal {
-                data: ClientRequest {
-                    client: "0".into(),
-                    serial: 0,
-                    status: "lit".into(),
-                },
+            payload: EntryPayload::Normal(ClientRequest {
+                client: "0".into(),
+                serial: 0,
+                status: "lit".into(),
             }),
         };
 
@@ -1604,12 +1599,10 @@ where
             let entry = Entry {
                 log_id: LogId { term: 3, index: 3 },
 
-                payload: EntryPayload::Normal(EntryNormal {
-                    data: ClientRequest {
-                        client: "0".into(),
-                        serial: 0,
-                        status: "lit".into(),
-                    },
+                payload: EntryPayload::Normal(ClientRequest {
+                    client: "0".into(),
+                    serial: 0,
+                    status: "lit".into(),
                 }),
             };
             let res = store.apply_to_state_machine(&[&entry]).await;
