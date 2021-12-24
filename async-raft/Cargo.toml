@@ -19,7 +19,6 @@ byte-unit = "4.0.12"
 bytes = "1.0"
 derive_more = { version="0.99.9" }
 futures = "0.3"
-log = "0.4"
 rand = "0.8"
 serde = { version="1", features=["derive"] }
 structopt = "0.3"
@@ -29,10 +28,13 @@ tracing = "0.1.26"
 tracing-futures = "0.2.4"
 
 [dev-dependencies]
+lazy_static = "1.4.0"
 maplit = "1.0.2"
 memstore = { version="0.2.0", path="../memstore" }
 pretty_assertions = "1.0.0"
+tracing-appender = "0.2.0"
 tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
+
 
 
 [features]

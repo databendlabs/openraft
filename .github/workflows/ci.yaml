@@ -27,15 +27,9 @@ jobs:
         with:
           command: test
         env:
+          RUST_LOG: debug
           RUST_BACKTRACE: full
           RAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
-
-      - name: Unit Tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-        env:
-          RUST_BACKTRACE: full
 
       # release build
       - name: Build | Release Mode
@@ -49,3 +43,10 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-targets -- -D warnings -A clippy::bool-assert-comparison
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        if: failure()
+        with:
+          path: |
+            async-raft/_log/

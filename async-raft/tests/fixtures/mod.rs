@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::env;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::Once;
 use std::time::Duration;
 
@@ -40,6 +41,7 @@ use async_raft::RaftMetrics;
 use async_raft::RaftNetwork;
 use async_raft::RaftStorageDebug;
 use async_raft::State;
+use lazy_static::lazy_static;
 use maplit::btreeset;
 use memstore::ClientRequest as MemClientRequest;
 use memstore::ClientResponse as MemClientResponse;
@@ -49,7 +51,15 @@ use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
 use pretty_assertions::assert_ne;
 use tokio::sync::RwLock;
+use tracing::Subscriber;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_appender::rolling::RollingFileAppender;
+use tracing_appender::rolling::Rotation;
+use tracing_subscriber::fmt;
+use tracing_subscriber::fmt::Layer;
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Registry;
 
 macro_rules! func_name {
     () => {{
@@ -66,34 +76,64 @@ macro_rules! func_name {
 
 macro_rules! init_ut {
     () => {{
-        fixtures::init_tracing();
-
         let name = func_name!();
-        let span = tracing::debug_span!("ut", "{}", name.split("::").last().unwrap());
-        ((), span)
+        let last = name.split("::").last().unwrap();
+
+        let g = fixtures::init_default_ut_tracing();
+
+        let span = tracing::debug_span!("ut", "{}", last);
+        (g, span)
     }};
 }
 
 /// A concrete Raft type used during testing.
 pub type MemRaft = Raft<MemClientRequest, MemClientResponse, RaftRouter, MemStore>;
 
-/// Initialize the tracing system.
-pub fn init_tracing() {
+pub fn init_default_ut_tracing() {
     static START: Once = Once::new();
 
     START.call_once(|| {
-        do_init_tracing();
+        let mut g = GLOBAL_UT_LOG_GUARD.as_ref().lock().unwrap();
+        *g = Some(init_global_tracing("ut", "_log", "DEBUG"));
     });
 }
 
-pub fn do_init_tracing() {
-    let fmt_layer = tracing_subscriber::fmt::Layer::default()
-        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
-        .with_ansi(false);
-    let subscriber = tracing_subscriber::Registry::default()
-        .with(tracing_subscriber::EnvFilter::from_default_env())
-        .with(fmt_layer);
-    tracing::subscriber::set_global_default(subscriber).expect("error setting global tracing subscriber");
+lazy_static! {
+    static ref GLOBAL_UT_LOG_GUARD: Arc<Mutex<Option<WorkerGuard>>> = Arc::new(Mutex::new(None));
+}
+
+pub fn init_global_tracing(app_name: &str, dir: &str, level: &str) -> WorkerGuard {
+    let (g, sub) = init_file_subscriber(app_name, dir, level);
+    tracing::subscriber::set_global_default(sub).expect("error setting global tracing subscriber");
+
+    tracing::info!("initialized global tracing: in {}/{} at {}", dir, app_name, level);
+    g
+}
+
+pub fn init_file_subscriber(app_name: &str, dir: &str, level: &str) -> (WorkerGuard, impl Subscriber) {
+    // open log file
+
+    let f = RollingFileAppender::new(Rotation::HOURLY, dir, app_name);
+
+    // build subscriber
+
+    let (writer, writer_guard) = tracing_appender::non_blocking(f);
+
+    let f_layer = Layer::new()
+        .with_writer(writer)
+        .with_thread_ids(true)
+        .with_thread_names(false)
+        .with_ansi(false)
+        .with_span_events(fmt::format::FmtSpan::FULL);
+
+    // Use env RUST_LOG to initialize log if present.
+    // Otherwise use the specified level.
+    let directives = env::var(EnvFilter::DEFAULT_ENV).unwrap_or_else(|_x| level.to_string());
+    let env_filter = EnvFilter::new(directives);
+
+    let subscriber = Registry::default().with(env_filter).with(f_layer);
+
+    (writer_guard, subscriber)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
