@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use tokio::sync::oneshot;
 use tracing_futures::Instrument;
@@ -11,7 +11,6 @@ use crate::core::State;
 use crate::core::UpdateCurrentLeader;
 use crate::error::AddNonVoterError;
 use crate::error::RaftResult;
-use crate::quorum;
 use crate::raft::AddNonVoterResponse;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
@@ -110,13 +109,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return Ok(());
         }
 
-        // TODO(xp): use Vec<_> to replace the two membership configs.
-
         // Drop replication stream if needed.
         if self.try_remove_replication(target) {
             // nothing to do
         } else {
             self.update_leader_metrics(target, matched);
+        }
+
+        if matched.index <= self.core.commit_index {
+            self.leader_report_metrics();
+            return Ok(());
         }
 
         let commit_index = self.calc_commit_index();
@@ -167,53 +169,35 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     #[tracing::instrument(level = "trace", skip(self))]
     fn calc_commit_index(&self) -> u64 {
-        let c0_index = self.calc_members_commit_index(self.core.membership.membership.get_ith_config(0).unwrap(), "c0");
-
-        // If we are in joint consensus, then calculate the new commit index of the new membership config nodes.
-        let mut c1_index = c0_index; // Defaults to just matching C0.
-
-        if let Some(members) = &self.core.membership.membership.get_ith_config(1) {
-            c1_index = self.calc_members_commit_index(members, "c1");
-        }
-
-        std::cmp::min(c0_index, c1_index)
+        let repl_indexes = self.get_match_log_indexes();
+        let committed = self.core.membership.membership.greatest_majority_value(&repl_indexes);
+        *committed.unwrap_or(&self.core.commit_index)
     }
 
-    fn calc_members_commit_index(&self, mem: &BTreeSet<NodeId>, msg: &str) -> u64 {
-        let log_ids = self.get_match_log_ids(mem);
-        tracing::debug!("{} matched log_ids: {:?}", msg, log_ids);
+    fn get_match_log_indexes(&self) -> BTreeMap<NodeId, u64> {
+        let node_ids = self.core.membership.membership.all_nodes();
 
-        let commit_index = calculate_new_commit_index(log_ids, self.core.commit_index, self.core.current_term);
-        tracing::debug!("{} commit_index: {}", msg, commit_index);
+        let mut res = BTreeMap::new();
 
-        commit_index
-    }
-
-    /// Extract the matching index/term of the replication state of specified nodes.
-    fn get_match_log_ids(&self, node_ids: &BTreeSet<NodeId>) -> Vec<LogId> {
-        tracing::debug!("to get match log ids of nodes: {:?}", node_ids);
-
-        let mut rst = Vec::with_capacity(node_ids.len());
         for id in node_ids.iter() {
             // this node is me, the leader
-            if *id == self.core.id {
-                // TODO: can it be sure that self.core.last_log_term is the term of this leader?
-                rst.push(self.core.last_log_id);
-                continue;
-            }
+            let matched = if *id == self.core.id {
+                self.core.last_log_id
+            } else {
+                let repl_state = self.nodes.get(id);
+                if let Some(x) = repl_state {
+                    x.matched
+                } else {
+                    LogId::new(0, 0)
+                }
+            };
 
-            // this node is a follower
-            let repl_state = self.nodes.get(id);
-            if let Some(x) = repl_state {
-                rst.push(x.matched);
-                continue;
+            if matched.term == self.core.current_term {
+                res.insert(*id, matched.index);
             }
-
-            panic!("node {} not found in nodes or non-voters", id);
         }
 
-        tracing::debug!("match indexes of nodes: {:?}: {:?}", node_ids, rst);
-        rst
+        res
     }
 
     /// Handle events from replication streams requesting for snapshot info.
@@ -277,37 +261,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 }
 
-/// Determine the value for `current_commit` based on all known indices of the cluster members.
-///
-/// - `log_ids`: is a vector of all of the highest known log ids to be replicated on a target node,
-/// one per node of the cluster, including the leader as long as the leader is not stepping down.
-/// - `current_commit`: is the Raft node's `current_commit` value before invoking this function.
-/// The output of this function will never be less than this value.
-/// - `leader_term`: the current leader term, only log entries from the leader’s current term are committed
-/// by counting replicas.
-///
-/// NOTE: there are a few edge cases accounted for in this routine which will never practically
-/// be hit, but they are accounted for in the name of good measure.
-fn calculate_new_commit_index(mut log_ids: Vec<LogId>, current_commit: u64, leader_term: u64) -> u64 {
-    // TODO(xp): this should never happen
-    if log_ids.is_empty() {
-        return current_commit;
-    }
-
-    log_ids.sort_unstable_by(|a, b| a.index.cmp(&b.index));
-
-    let majority = quorum::majority_of(log_ids.len());
-    let offset = log_ids.len() - majority;
-
-    let new_val = log_ids[offset];
-
-    if new_val.index > current_commit && new_val.term == leader_term {
-        new_val.index
-    } else {
-        current_commit
-    }
-}
-
 /// Check if the given snapshot data is within half of the configured threshold.
 fn snapshot_is_within_half_of_threshold(snapshot_last_index: &u64, last_log_index: &u64, threshold: &u64) -> bool {
     // Calculate distance from actor's last log index.
@@ -352,72 +305,5 @@ mod tests {
             test=>guards_against_underflow,
             snapshot_last_index=>&200, last_log_index=>&100, threshold=>&500, expected=>true
         });
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // calculate_new_commit_index ////////////////////////////////////////////
-
-    mod calculate_new_commit_index {
-        use super::*;
-
-        macro_rules! test_calculate_new_commit_index {
-            ($name:ident, $expected:literal, $current:literal, $leader_term:literal, $entries:expr) => {
-                #[test]
-                fn $name() {
-                    let mut entries = $entries;
-                    let output = calculate_new_commit_index(entries.clone(), $current, $leader_term);
-                    entries.sort_unstable_by(|a, b| a.index.cmp(&b.index));
-                    assert_eq!(output, $expected, "Sorted values: {:?}", entries);
-                }
-            };
-        }
-
-        test_calculate_new_commit_index!(basic_values, 10, 5, 3, vec![
-            (3, 20,).into(),
-            (2, 5,).into(),
-            (2, 0,).into(),
-            (3, 15,).into(),
-            (3, 10,).into()
-        ]);
-
-        test_calculate_new_commit_index!(len_zero_should_return_current_commit, 20, 20, 10, vec![]);
-
-        test_calculate_new_commit_index!(len_one_where_greater_than_current, 100, 0, 3, vec![(3, 100).into()]);
-
-        test_calculate_new_commit_index!(len_one_where_greater_than_current_but_smaller_term, 0, 0, 3, vec![(
-            2, 100
-        )
-            .into()]);
-
-        test_calculate_new_commit_index!(len_one_where_less_than_current, 100, 100, 3, vec![(3, 50).into()]);
-
-        test_calculate_new_commit_index!(even_number_of_nodes, 0, 0, 3, vec![
-            (3, 0,).into(),
-            (3, 100,).into(),
-            (3, 0,).into(),
-            (3, 100,).into(),
-            (3, 0,).into(),
-            (3, 100,).into()
-        ]);
-
-        test_calculate_new_commit_index!(majority_wins, 100, 0, 3, vec![
-            (3, 0,).into(),
-            (3, 100,).into(),
-            (3, 0,).into(),
-            (3, 100,).into(),
-            (3, 0,).into(),
-            (3, 100,).into(),
-            (3, 100,).into()
-        ]);
-
-        test_calculate_new_commit_index!(majority_entries_wins_but_not_current_term, 0, 0, 3, vec![
-            (2, 0,).into(),
-            (2, 100,).into(),
-            (2, 0,).into(),
-            (3, 101,).into(),
-            (2, 0,).into(),
-            (3, 101,).into(),
-            (3, 101,).into()
-        ]);
     }
 }

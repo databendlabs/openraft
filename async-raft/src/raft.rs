@@ -1,5 +1,6 @@
 //! Public Raft interface and data types.
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -658,6 +659,7 @@ impl MembershipConfig {
         self.configs.get(i)
     }
 
+    // TODO(xp): remove this
     pub fn ith_config(&self, i: usize) -> Vec<NodeId> {
         self.configs[i].iter().cloned().collect()
     }
@@ -703,6 +705,42 @@ impl MembershipConfig {
         }
 
         true
+    }
+
+    /// Returns the greatest value that presents in `values` that constitutes a joint majority.
+    ///
+    /// E.g., for a given membership: [{1,2,3}, {4,5,6}], and a value set: {1:10, 2:20, 5:20, 6:20},
+    /// `10` constitutes a majoirty in the first config {1,2,3}.
+    /// `20` constitutes a majority in the second config {4,5,6}.
+    /// Thus the minimal value `10` is the greatest joint majority for this membership config.
+    pub fn greatest_majority_value<'v, V>(&self, values: &'v BTreeMap<NodeId, V>) -> Option<&'v V>
+    where V: Ord {
+        let mut res = vec![];
+        for config in self.configs.iter() {
+            let mut vs = Vec::with_capacity(config.len());
+
+            for id in config.iter() {
+                let v = values.get(id);
+                if let Some(v) = v {
+                    vs.push(v)
+                }
+            }
+
+            let majority = quorum::majority_of(config.len());
+
+            if vs.len() < majority {
+                res.push(None);
+                continue;
+            }
+
+            vs.sort_unstable();
+
+            let majority_greatest = Some(vs[vs.len() - majority]);
+            res.push(majority_greatest);
+        }
+
+        let min_greatest = res.into_iter().min();
+        min_greatest.unwrap_or(None)
     }
 
     fn is_majority_of_single_config(granted: &BTreeSet<NodeId>, single_config: &BTreeSet<NodeId>) -> bool {
