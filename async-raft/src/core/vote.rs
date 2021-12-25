@@ -140,18 +140,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return Ok(());
         }
 
-        // If peer granted vote, then update campaign state.
         if res.vote_granted {
-            // Handle vote responses from the C0 config group.
-            if self.core.membership.membership.is_in_ith_config(0, &target) {
-                self.votes_granted_old += 1;
-            }
-            // Handle vote responses from members of C1 config group.
-            if self.core.membership.membership.is_in_ith_config(1, &target) {
-                self.votes_granted_new += 1;
-            }
-            // If we've received enough votes from both config groups, then transition to leader state`.
-            if self.votes_granted_old >= self.votes_needed_old && self.votes_granted_new >= self.votes_needed_new {
+            self.granted.insert(target);
+
+            if self.core.membership.membership.is_majority(&self.granted) {
                 tracing::debug!("transitioning to leader state as minimum number of votes have been received");
                 self.core.set_target_state(State::Leader);
                 return Ok(());

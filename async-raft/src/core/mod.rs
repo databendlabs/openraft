@@ -13,10 +13,12 @@ mod vote;
 mod startup_test;
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use futures::future::AbortHandle;
 use futures::future::Abortable;
+use maplit::btreeset;
 use rand::thread_rng;
 use rand::Rng;
 use serde::Deserialize;
@@ -832,24 +834,18 @@ pub fn is_matched_upto_date(matched: &LogId, last_log_id: &LogId, config: &Confi
 /// Volatile state specific to a Raft node in candidate state.
 struct CandidateState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     core: &'a mut RaftCore<D, R, N, S>,
-    /// The number of votes which have been granted by peer nodes of the old (current) config group.
-    votes_granted_old: u64,
-    /// The number of votes needed from the old (current) config group in order to become the Raft leader.
-    votes_needed_old: u64,
-    /// The number of votes which have been granted by peer nodes of the new config group (if applicable).
-    votes_granted_new: u64,
-    /// The number of votes needed from the new config group in order to become the Raft leader (if applicable).
-    votes_needed_new: u64,
+
+    /// Ids of the nodes that has granted our vote request.
+    granted: BTreeSet<NodeId>,
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
+        let id = core.id;
         Self {
             core,
-            votes_granted_old: 0,
-            votes_needed_old: 0,
-            votes_granted_new: 0,
-            votes_needed_new: 0,
+            // vote for itself.
+            granted: btreeset! {id},
         }
     }
 
@@ -860,14 +856,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         loop {
             if !self.core.target_state.is_candidate() {
                 return Ok(());
-            }
-
-            // Setup initial state per term.
-            self.votes_granted_old = 1; // We must vote for ourselves per the Raft spec.
-            self.votes_needed_old = ((self.core.membership.membership.get_ith_config(0).unwrap().len() / 2) + 1) as u64; // Just need a majority.
-            if let Some(nodes) = self.core.membership.membership.get_ith_config(1) {
-                self.votes_granted_new = 1; // We must vote for ourselves per the Raft spec.
-                self.votes_needed_new = ((nodes.len() / 2) + 1) as u64; // Just need a majority.
             }
 
             // Setup new term.

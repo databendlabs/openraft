@@ -25,6 +25,7 @@ use crate::error::RaftError;
 use crate::error::RaftResult;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
+use crate::quorum;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -657,14 +658,6 @@ impl MembershipConfig {
         self.configs.get(i)
     }
 
-    pub fn is_in_ith_config(&self, i: usize, id: &u64) -> bool {
-        if let Some(c) = self.configs.get(i) {
-            c.contains(id)
-        } else {
-            false
-        }
-    }
-
     pub fn ith_config(&self, i: usize) -> Vec<NodeId> {
         self.configs[i].iter().cloned().collect()
     }
@@ -697,6 +690,27 @@ impl MembershipConfig {
 
         let last = self.configs.last().cloned().unwrap();
         MembershipConfig::new_single(last)
+    }
+
+    /// Return true if the given set of ids constitutes a majority.
+    ///
+    /// I.e. the id set includes a majority of every config.
+    pub fn is_majority(&self, granted: &BTreeSet<NodeId>) -> bool {
+        for config in self.configs.iter() {
+            if !Self::is_majority_of_single_config(granted, config) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn is_majority_of_single_config(granted: &BTreeSet<NodeId>, single_config: &BTreeSet<NodeId>) -> bool {
+        let d = granted.intersection(single_config);
+        let n_granted = d.fold(0, |a, _x| a + 1);
+
+        let majority = quorum::majority_of(single_config.len());
+        n_granted >= majority
     }
 
     fn build_all_nodes(configs: &[BTreeSet<NodeId>]) -> BTreeSet<NodeId> {
