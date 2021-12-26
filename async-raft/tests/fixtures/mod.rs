@@ -34,15 +34,19 @@ use async_raft::raft::VoteResponse;
 use async_raft::storage::RaftStorage;
 use async_raft::AppData;
 use async_raft::Config;
+use async_raft::DefensiveCheck;
 use async_raft::LogId;
 use async_raft::NodeId;
 use async_raft::Raft;
 use async_raft::RaftMetrics;
 use async_raft::RaftNetwork;
 use async_raft::State;
+use async_raft::StoreExt;
 use lazy_static::lazy_static;
 use maplit::btreeset;
 use memstore::ClientRequest as MemClientRequest;
+use memstore::ClientRequest;
+use memstore::ClientResponse;
 use memstore::ClientResponse as MemClientResponse;
 use memstore::MemStore;
 #[allow(unused_imports)]
@@ -85,8 +89,10 @@ macro_rules! init_ut {
     }};
 }
 
+pub type StoreWithDefensive = StoreExt<ClientRequest, ClientResponse, MemStore>;
+
 /// A concrete Raft type used during testing.
-pub type MemRaft = Raft<MemClientRequest, MemClientResponse, RaftRouter, MemStore>;
+pub type MemRaft = Raft<MemClientRequest, MemClientResponse, RaftRouter, StoreWithDefensive>;
 
 pub fn init_default_ut_tracing() {
     static START: Once = Once::new();
@@ -142,7 +148,7 @@ pub struct RaftRouter {
     /// The Raft runtime config which all nodes are using.
     config: Arc<Config>,
     /// The table of all nodes currently known to this router instance.
-    routing_table: RwLock<BTreeMap<NodeId, (MemRaft, Arc<MemStore>)>>,
+    routing_table: RwLock<BTreeMap<NodeId, (MemRaft, Arc<StoreWithDefensive>)>>,
     /// Nodes which are isolated can neither send nor receive frames.
     isolated_nodes: RwLock<HashSet<NodeId>>,
 
@@ -259,10 +265,10 @@ impl RaftRouter {
         self.new_raft_node_with_sto(id, memstore).await
     }
 
-    pub async fn new_store(self: &Arc<Self>, id: u64) -> Arc<MemStore> {
+    pub async fn new_store(self: &Arc<Self>, id: u64) -> Arc<StoreWithDefensive> {
         let defensive = env::var("RAFT_STORE_DEFENSIVE").ok();
 
-        let sto = Arc::new(MemStore::new(id).await);
+        let sto = Arc::new(StoreExt::new(MemStore::new(id).await));
 
         if let Some(d) = defensive {
             tracing::info!("RAFT_STORE_DEFENSIVE set store defensive to {}", d);
@@ -276,8 +282,8 @@ impl RaftRouter {
                 return sto;
             };
 
-            let got = sto.defensive(want).await;
-            if got != want {
+            sto.set_defensive(want);
+            if sto.is_defensive() != want {
                 tracing::error!("failure to set store defensive to {}", want);
             }
         }
@@ -286,14 +292,14 @@ impl RaftRouter {
     }
 
     #[tracing::instrument(level = "debug", skip(self, sto))]
-    pub async fn new_raft_node_with_sto(self: &Arc<Self>, id: NodeId, sto: Arc<MemStore>) {
+    pub async fn new_raft_node_with_sto(self: &Arc<Self>, id: NodeId, sto: Arc<StoreWithDefensive>) {
         let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone());
         let mut rt = self.routing_table.write().await;
         rt.insert(id, (node, sto));
     }
 
     /// Remove the target node from the routing table & isolation.
-    pub async fn remove_node(&self, id: NodeId) -> Option<(MemRaft, Arc<MemStore>)> {
+    pub async fn remove_node(&self, id: NodeId) -> Option<(MemRaft, Arc<StoreWithDefensive>)> {
         let mut rt = self.routing_table.write().await;
         let opt_handles = rt.remove(&id);
         let mut isolated = self.isolated_nodes.write().await;
@@ -344,7 +350,7 @@ impl RaftRouter {
     }
 
     /// Get a handle to the storage backend for the target node.
-    pub async fn get_storage_handle(&self, node_id: &NodeId) -> Result<Arc<MemStore>> {
+    pub async fn get_storage_handle(&self, node_id: &NodeId) -> Result<Arc<StoreWithDefensive>> {
         let rt = self.routing_table.read().await;
         let addr = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
         let sto = addr.clone().1;
@@ -663,7 +669,10 @@ impl RaftRouter {
     ) -> anyhow::Result<()> {
         let rt = self.routing_table.read().await;
         for (id, (_node, storage)) in rt.iter() {
-            let last_log_id = storage.last_log_id().await;
+            let log_last_id = storage.last_id_in_log().await?;
+            let (sm_last_id, _) = storage.last_applied_state().await?;
+
+            let last_log_id = std::cmp::max(log_last_id, sm_last_id);
 
             assert_eq!(
                 expect_last_log, last_log_id.index,

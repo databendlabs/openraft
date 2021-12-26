@@ -113,13 +113,6 @@ where
     /// for details on where and how this is used.
     type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
 
-    /// Set if to turn on defensive check to unexpected input.
-    /// E.g. discontinuous log appending.
-    /// The default impl returns `false` to indicate it does impl any defensive check.
-    async fn defensive(&self, _d: bool) -> bool {
-        false
-    }
-
     /// Get the latest membership config found in the log or in state machine.
     ///
     /// This must always be implemented as a reverse search through the log to find the most

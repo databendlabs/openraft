@@ -3,6 +3,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::Entry;
+use async_raft::AppData;
+use async_raft::AppDataResponse;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::MessageSummary;
@@ -11,7 +13,6 @@ use async_raft::State;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 use memstore::ClientRequest;
-use memstore::MemStore;
 
 use crate::fixtures::ent;
 
@@ -201,7 +202,12 @@ async fn append_conflicts() -> Result<()> {
 }
 
 /// To check if logs is as expected.
-async fn check_logs(sto: &Arc<MemStore>, terms: Vec<u64>) -> Result<()> {
+async fn check_logs<D, R, Sto>(sto: &Arc<Sto>, terms: Vec<u64>) -> Result<()>
+where
+    D: AppData,
+    R: AppDataResponse,
+    Sto: RaftStorage<D, R>,
+{
     let logs = sto.get_log_entries(..).await?;
     let want: Vec<Entry<ClientRequest>> =
         terms.iter().enumerate().map(|(i, term)| ent(*term, (i) as u64)).collect::<Vec<_>>();

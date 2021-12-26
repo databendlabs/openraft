@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![feature(backtrace)]
+#![feature(bound_cloned)]
 
 pub mod config;
 mod core;
@@ -16,17 +17,23 @@ pub mod storage;
 mod storage_error;
 mod summary;
 
+mod defensive;
 #[cfg(test)]
 mod membership_test;
+mod store_ext;
+mod store_wrapper;
 
 pub use async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+pub use store_ext::StoreExt;
+pub use store_wrapper::Wrapper;
 
 pub use crate::config::Config;
 pub use crate::config::SnapshotPolicy;
 pub use crate::core::EffectiveMembership;
 pub use crate::core::State;
+pub use crate::defensive::DefensiveCheck;
 pub use crate::error::ChangeMembershipError;
 pub use crate::error::ClientWriteError;
 pub use crate::error::ConfigError;
