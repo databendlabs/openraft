@@ -159,61 +159,67 @@ impl MemStore {
 }
 
 impl MemStore {
+    // TODO: state: API only
     /// Ensure that logs that have greater index than last_applied should have greater log_id.
     /// Invariant must hold: `log.log_id.index > last_applied.index` implies `log.log_id > last_applied`.
-    pub async fn defensive_no_dirty_log(&self) -> Result<(), DefensiveError> {
+    pub async fn defensive_no_dirty_log(&self) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
 
-        let log = self.log.read().await;
-        let sm = self.sm.read().await;
-        let last_log_id = log.iter().last().map(|(_index, entry)| entry.log_id).unwrap_or_default();
-        let last_applied = sm.last_applied_log;
+        let (last_applied, _) = self.last_applied_state().await?;
+        let last_log_id = self.last_id_in_log().await?;
 
         if last_log_id.index > last_applied.index && last_log_id < last_applied {
-            return Err(DefensiveError::new(
-                ErrorSubject::Log(last_log_id),
-                Violation::DirtyLog {
+            return Err(
+                DefensiveError::new(ErrorSubject::Log(last_log_id), Violation::DirtyLog {
                     higher_index_log_id: last_log_id,
                     lower_index_log_id: last_applied,
-                },
-            ));
+                })
+                .into(),
+            );
         }
 
         Ok(())
     }
 
+    // TODO: state + input: API only
     /// Ensure that current_term must increment for every update, and for every term there could be only one value for
     /// voted_for.
-    pub async fn defensive_incremental_hard_state(&self, hs: &HardState) -> Result<(), DefensiveError> {
+    pub async fn defensive_incremental_hard_state(&self, hs: &HardState) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
 
-        let h = self.hs.write().await;
-        let curr = h.clone().unwrap_or_default();
+        let h = self.read_hard_state().await?;
+
+        let curr = h.unwrap_or_default();
+
         if hs.current_term < curr.current_term {
-            return Err(DefensiveError::new(
-                ErrorSubject::HardState,
-                Violation::TermNotAscending {
+            return Err(
+                DefensiveError::new(ErrorSubject::HardState, Violation::TermNotAscending {
                     curr: curr.current_term,
                     to: hs.current_term,
-                },
-            ));
+                })
+                .into(),
+            );
         }
 
         if hs.current_term == curr.current_term && curr.voted_for.is_some() && hs.voted_for != curr.voted_for {
-            return Err(DefensiveError::new(
-                ErrorSubject::HardState,
-                Violation::VotedForChanged { curr, to: hs.clone() },
-            ));
+            return Err(
+                DefensiveError::new(ErrorSubject::HardState, Violation::VotedForChanged {
+                    curr,
+                    to: hs.clone(),
+                })
+                .into(),
+            );
         }
 
         Ok(())
     }
 
-    pub async fn defensive_consecutive_input<D: AppData>(&self, entries: &[&Entry<D>]) -> Result<(), DefensiveError> {
+    // TODO: input: API only
+    pub async fn defensive_consecutive_input<D: AppData>(&self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
@@ -229,7 +235,8 @@ impl MemStore {
                 return Err(DefensiveError::new(ErrorSubject::Logs, Violation::LogsNonConsecutive {
                     prev: prev_log_id,
                     next: e.log_id,
-                }));
+                })
+                .into());
             }
 
             prev_log_id = e.log_id;
@@ -238,22 +245,24 @@ impl MemStore {
         Ok(())
     }
 
-    pub async fn defensive_nonempty_input<D: AppData>(&self, entries: &[&Entry<D>]) -> Result<(), DefensiveError> {
+    // TODO: input: API only
+    pub async fn defensive_nonempty_input<D: AppData>(&self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
 
         if entries.is_empty() {
-            return Err(DefensiveError::new(ErrorSubject::Logs, Violation::LogsEmpty));
+            return Err(DefensiveError::new(ErrorSubject::Logs, Violation::LogsEmpty).into());
         }
 
         Ok(())
     }
 
+    // TODO: state + input: API only
     pub async fn defensive_append_log_index_is_last_plus_one<D: AppData>(
         &self,
         entries: &[&Entry<D>],
-    ) -> Result<(), DefensiveError> {
+    ) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
@@ -262,22 +271,20 @@ impl MemStore {
 
         let first_id = entries[0].log_id;
         if last_id.index + 1 != first_id.index {
-            return Err(DefensiveError::new(
-                ErrorSubject::Log(first_id),
-                Violation::LogsNonConsecutive {
+            return Err(
+                DefensiveError::new(ErrorSubject::Log(first_id), Violation::LogsNonConsecutive {
                     prev: last_id,
                     next: first_id,
-                },
-            ));
+                })
+                .into(),
+            );
         }
 
         Ok(())
     }
 
-    pub async fn defensive_append_log_id_gt_last<D: AppData>(
-        &self,
-        entries: &[&Entry<D>],
-    ) -> Result<(), DefensiveError> {
+    // TODO: state + input: API only
+    pub async fn defensive_append_log_id_gt_last<D: AppData>(&self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
@@ -286,13 +293,13 @@ impl MemStore {
 
         let first_id = entries[0].log_id;
         if first_id < last_id {
-            return Err(DefensiveError::new(
-                ErrorSubject::Log(first_id),
-                Violation::LogsNonConsecutive {
+            return Err(
+                DefensiveError::new(ErrorSubject::Log(first_id), Violation::LogsNonConsecutive {
                     prev: last_id,
                     next: first_id,
-                },
-            ));
+                })
+                .into(),
+            );
         }
 
         Ok(())
@@ -311,34 +318,36 @@ impl MemStore {
         std::cmp::max(log_last_id, sm_last_id)
     }
 
+    // TODO: state + input: API only
     pub async fn defensive_apply_index_is_last_applied_plus_one<D: AppData>(
         &self,
         entries: &[&Entry<D>],
-    ) -> Result<(), DefensiveError> {
+    ) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
 
-        let last_id = self.sm.read().await.last_applied_log;
+        let (last_id, _) = self.last_applied_state().await?;
 
         let first_id = entries[0].log_id;
         if last_id.index + 1 != first_id.index {
-            return Err(DefensiveError::new(
-                ErrorSubject::Apply(first_id),
-                Violation::ApplyNonConsecutive {
+            return Err(
+                DefensiveError::new(ErrorSubject::Apply(first_id), Violation::ApplyNonConsecutive {
                     prev: last_id,
                     next: first_id,
-                },
-            ));
+                })
+                .into(),
+            );
         }
 
         Ok(())
     }
 
+    // TODO: input: API only
     pub async fn defensive_nonempty_range<RNG: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
         range: RNG,
-    ) -> Result<(), DefensiveError> {
+    ) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
@@ -359,21 +368,19 @@ impl MemStore {
         }
 
         if start > end {
-            return Err(DefensiveError::new(ErrorSubject::Logs, Violation::RangeEmpty {
-                start,
-                end,
-            }));
+            return Err(DefensiveError::new(ErrorSubject::Logs, Violation::RangeEmpty { start, end }).into());
         }
 
         Ok(())
     }
 
+    // TODO: input: API only
     /// Requires a range must be at least half open: (-oo, n] or [n, +oo);
     /// In order to keep logs continuity.
     pub async fn defensive_half_open_range<RNG: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
         range: RNG,
-    ) -> Result<(), DefensiveError> {
+    ) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
@@ -389,14 +396,16 @@ impl MemStore {
         Err(DefensiveError::new(ErrorSubject::Logs, Violation::RangeNotHalfOpen {
             start: range.start_bound().cloned(),
             end: range.end_bound().cloned(),
-        }))
+        })
+        .into())
     }
 
+    // TODO: input + output: API only
     pub async fn defensive_range_hits_logs<T: AppData, RNG: RangeBounds<u64> + Debug + Send>(
         &self,
         range: RNG,
         logs: &[Entry<T>],
-    ) -> Result<(), DefensiveError> {
+    ) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
@@ -417,7 +426,8 @@ impl MemStore {
                         want: want_first.unwrap(),
                         got: first,
                     },
-                ));
+                )
+                .into());
             }
         }
 
@@ -437,32 +447,31 @@ impl MemStore {
                         want: want_last.unwrap(),
                         got: last,
                     },
-                ));
+                )
+                .into());
             }
         }
 
         Ok(())
     }
 
-    pub async fn defensive_apply_log_id_gt_last<D: AppData>(
-        &self,
-        entries: &[&Entry<D>],
-    ) -> Result<(), DefensiveError> {
+    // TODO: state + input: API only
+    pub async fn defensive_apply_log_id_gt_last<D: AppData>(&self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
         if !*self.defensive.read().await {
             return Ok(());
         }
 
-        let last_id = self.sm.read().await.last_applied_log;
+        let (last_id, _) = self.last_applied_state().await?;
 
         let first_id = entries[0].log_id;
         if first_id < last_id {
-            return Err(DefensiveError::new(
-                ErrorSubject::Apply(first_id),
-                Violation::ApplyNonConsecutive {
+            return Err(
+                DefensiveError::new(ErrorSubject::Apply(first_id), Violation::ApplyNonConsecutive {
                     prev: last_id,
                     next: first_id,
-                },
-            ));
+                })
+                .into(),
+            );
         }
 
         Ok(())
@@ -474,11 +483,6 @@ impl RaftStorageDebug<MemStoreStateMachine> for MemStore {
     /// Get a handle to the state machine for testing purposes.
     async fn get_state_machine(&self) -> MemStoreStateMachine {
         self.sm.write().await.clone()
-    }
-
-    /// Get a handle to the current hard state for testing purposes.
-    async fn read_hard_state(&self) -> Option<HardState> {
-        self.hs.read().await.clone()
     }
 }
 
@@ -595,6 +599,10 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
         *h = Some(hs.clone());
         Ok(())
+    }
+
+    async fn read_hard_state(&self) -> Result<Option<HardState>, StorageError> {
+        Ok(self.hs.read().await.clone())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

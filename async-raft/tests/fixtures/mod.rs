@@ -39,7 +39,6 @@ use async_raft::NodeId;
 use async_raft::Raft;
 use async_raft::RaftMetrics;
 use async_raft::RaftNetwork;
-use async_raft::RaftStorageDebug;
 use async_raft::State;
 use lazy_static::lazy_static;
 use maplit::btreeset;
@@ -672,7 +671,7 @@ impl RaftRouter {
                 id, expect_last_log, last_log_id
             );
 
-            let hs = storage.read_hard_state().await.unwrap_or_else(|| panic!("no hard state found for node {}", id));
+            let hs = storage.read_hard_state().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
 
             assert_eq!(
                 hs.current_term, expect_term,

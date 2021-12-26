@@ -153,6 +153,8 @@ where
     /// Errors returned from this method will cause Raft to go into shutdown.
     async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError>;
 
+    async fn read_hard_state(&self) -> Result<Option<HardState>, StorageError>;
+
     /// Get a series of log entries from storage.
     ///
     /// The start value is inclusive in the search and the stop value is non-inclusive: `[start, stop)`.
@@ -283,7 +285,4 @@ where
 pub trait RaftStorageDebug<SM> {
     /// Get a handle to the state machine for testing purposes.
     async fn get_state_machine(&self) -> SM;
-
-    /// Get the current hard state for testing purposes.
-    async fn read_hard_state(&self) -> Option<HardState>;
 }
