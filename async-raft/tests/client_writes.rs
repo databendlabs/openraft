@@ -46,7 +46,8 @@ async fn client_writes() -> Result<()> {
     want += 1;
 
     router.wait_for_log(&btreeset![0, 1, 2], want, None, "leader init log").await?;
-    router.wait_for_state(&btreeset![0], State::Leader, None, "init").await?;
+    router.wait_for_state(&btreeset![0], State::Leader, None, "cluster leader").await?;
+    router.wait_for_state(&btreeset![1, 2], State::Follower, None, "cluster follower").await?;
 
     router.assert_stable_cluster(Some(1), Some(want)).await;
 

@@ -319,7 +319,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self), fields(id=self.id))]
     fn set_target_state(&mut self, target_state: State) {
         if target_state == State::Follower && !self.membership.membership.contains(&self.id) {
             self.target_state = State::NonVoter;
@@ -346,7 +346,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Set a value for the next election timeout.
     ///
     /// If `heartbeat=true`, then also update the value of `last_heartbeat`.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     fn update_next_election_timeout(&mut self, heartbeat: bool) {
         let now = Instant::now();
 
@@ -694,7 +694,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Transition to the Raft leader state.
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.core.id, raft_state="leader"))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="leader"))]
     pub(self) async fn run(mut self) -> RaftResult<()> {
         // Spawn replication streams.
         let targets = self
@@ -850,7 +850,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Run the candidate loop.
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.core.id, raft_state="candidate"))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="candidate"))]
     pub(self) async fn run(mut self) -> RaftResult<()> {
         // Each iteration of the outer loop represents a new term.
         loop {
@@ -934,7 +934,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Run the follower loop.
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.core.id, raft_state="follower"))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="follower"))]
     pub(self) async fn run(self) -> RaftResult<()> {
         self.core.report_metrics(Update::Update(None));
         loop {
@@ -1000,7 +1000,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Run the non-voter loop.
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.core.id, raft_state="non-voter"))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="non-voter"))]
     pub(self) async fn run(mut self) -> RaftResult<()> {
         self.core.report_metrics(Update::Update(None));
         loop {
