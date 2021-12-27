@@ -51,7 +51,7 @@ use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
-use crate::raft::MembershipConfig;
+use crate::raft::Membership;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
@@ -80,18 +80,19 @@ pub struct EffectiveMembership {
     /// The id of the log that applies this membership config
     pub log_id: LogId,
 
-    pub membership: MembershipConfig,
+    pub membership: Membership,
 }
 
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     /// This node's ID.
     id: NodeId,
+
     /// This node's runtime config.
     config: Arc<Config>,
 
     /// The cluster's current membership configuration.
-    membership: EffectiveMembership,
+    effective_membership: EffectiveMembership,
 
     /// The `RaftNetwork` implementation.
     network: Arc<N>,
@@ -102,23 +103,14 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// The target state of the system.
     target_state: State,
 
-    /// The index of the highest log entry known to be committed cluster-wide.
+    /// The index of the last known committed entry.
     ///
-    /// The definition of a committed log is that the leader which has created the log has
-    /// successfully replicated the log to a majority of the cluster. This value is updated via
-    /// AppendEntries RPC from the leader, or if a node is the leader, it will update this value
-    /// as new entries have been successfully replicated to a majority of the cluster.
-    ///
-    /// Is initialized to 0, and increases monotonically. This is always based on the leader's
-    /// commit index which is communicated to other members via the AppendEntries protocol.
+    /// I.e.:
+    /// - a log that is replicated to a quorum of the cluster and it is of the term of the leader.
+    /// - A quorum could be a joint quorum.
     commit_index: u64,
 
     /// The log id of the highest log entry which has been applied to the local state machine.
-    ///
-    /// Is initialized to 0,0 for a pristine node; else, for nodes with existing state it is
-    /// is initialized to the value returned from the `RaftStorage::get_initial_state` on startup.
-    /// This value increases following the `commit_index` as logs are applied to the state
-    /// machine (via the storage interface).
     last_applied: LogId,
 
     /// The current term.
@@ -127,8 +119,10 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// the leader's term which is communicated to other members via the AppendEntries protocol,
     /// but this may also be incremented when a follower becomes a candidate.
     current_term: u64,
+
     /// The ID of the current leader of the Raft cluster.
     current_leader: Option<NodeId>,
+
     /// The ID of the candidate which received this node's vote for the current term.
     ///
     /// Each server will vote for at most one candidate in a given term, on a
@@ -152,6 +146,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
 
     /// The last time a heartbeat was received.
     last_heartbeat: Option<Instant>,
+
     /// The duration until the next election timeout.
     next_election_timeout: Option<Instant>,
 
@@ -159,7 +154,9 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     rx_compaction: mpsc::Receiver<SnapshotUpdate>,
 
     rx_api: mpsc::UnboundedReceiver<(RaftMsg<D, R>, Span)>,
+
     tx_metrics: watch::Sender<RaftMetrics>,
+
     rx_shutdown: oneshot::Receiver<()>,
 }
 
@@ -173,12 +170,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tx_metrics: watch::Sender<RaftMetrics>,
         rx_shutdown: oneshot::Receiver<()>,
     ) -> JoinHandle<RaftResult<()>> {
-        let membership = MembershipConfig::new_initial(id); // This is updated from storage in the main loop.
+        let membership = Membership::new_initial(id); // This is updated from storage in the main loop.
         let (tx_compaction, rx_compaction) = mpsc::channel(1);
         let this = Self {
             id,
             config,
-            membership: EffectiveMembership {
+            effective_membership: EffectiveMembership {
                 log_id: LogId::default(),
                 membership,
             },
@@ -214,7 +211,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.last_log_id = state.last_log_id;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
-        self.membership = state.last_membership.clone();
+        self.effective_membership = state.last_membership.clone();
         self.last_applied = state.last_applied;
         // NOTE: this is repeated here for clarity. It is unsafe to initialize the node's commit
         // index to any other value. The commit index must be determined by a leader after
@@ -228,8 +225,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         let has_log = self.last_log_id.index != u64::MIN;
-        let single = self.membership.membership.all_nodes().len() == 1;
-        let is_voter = self.membership.membership.contains(&self.id);
+        let single = self.effective_membership.membership.all_nodes().len() == 1;
+        let is_voter = self.effective_membership.membership.contains(&self.id);
 
         self.target_state = match (has_log, single, is_voter) {
             // A restarted raft that already received some logs but was not yet added to a cluster.
@@ -298,7 +295,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             last_applied: self.last_applied.index,
             current_leader: self.current_leader,
             // TODO(xp): 111 metrics should also track the membership log id
-            membership_config: self.membership.clone(),
+            membership_config: self.effective_membership.clone(),
             snapshot: self.snapshot_last_log_id,
             leader_metrics,
         });
@@ -321,7 +318,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Update core's target state, ensuring all invariants are upheld.
     #[tracing::instrument(level = "debug", skip(self), fields(id=self.id))]
     fn set_target_state(&mut self, target_state: State) {
-        if target_state == State::Follower && !self.membership.membership.contains(&self.id) {
+        if target_state == State::Follower && !self.effective_membership.membership.contains(&self.id) {
             self.target_state = State::NonVoter;
         } else {
             self.target_state = target_state;
@@ -412,8 +409,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // - the node has been removed from the cluster. The parent application can observe the
         // transition to the non-voter state as a signal for when it is safe to shutdown a node
         // being removed.
-        self.membership = cfg;
-        if self.membership.membership.contains(&self.id) {
+        self.effective_membership = cfg;
+        if self.effective_membership.membership.contains(&self.id) {
             if self.target_state == State::NonVoter {
                 // The node is a NonVoter and the new config has it configured as a normal member.
                 // Transition to follower.
@@ -699,7 +696,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Spawn replication streams.
         let targets = self
             .core
-            .membership
+            .effective_membership
             .membership
             .all_nodes()
             .iter()

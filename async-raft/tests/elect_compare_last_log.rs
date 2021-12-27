@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::storage::HardState;
 use async_raft::Config;
 use async_raft::LogId;
@@ -44,7 +44,7 @@ async fn elect_compare_last_log() -> Result<()> {
 
         sto0.append_to_log(&[&Entry {
             log_id: LogId { term: 2, index: 1 },
-            payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {0,1})),
+            payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
         }])
         .await?;
     }
@@ -60,7 +60,7 @@ async fn elect_compare_last_log() -> Result<()> {
         sto1.append_to_log(&[
             &Entry {
                 log_id: LogId { term: 1, index: 1 },
-                payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {0,1})),
+                payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
             },
             &Entry {
                 log_id: LogId { term: 1, index: 2 },

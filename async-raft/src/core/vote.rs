@@ -143,7 +143,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if res.vote_granted {
             self.granted.insert(target);
 
-            if self.core.membership.membership.is_majority(&self.granted) {
+            if self.core.effective_membership.membership.is_majority(&self.granted) {
                 tracing::debug!("transitioning to leader state as minimum number of votes have been received");
                 self.core.set_target_state(State::Leader);
                 return Ok(());
@@ -157,7 +157,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) fn spawn_parallel_vote_requests(&self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
-        let all_members = self.core.membership.membership.all_nodes().clone();
+        let all_members = self.core.effective_membership.membership.all_nodes().clone();
         let (tx, rx) = mpsc::channel(all_members.len());
         for member in all_members.into_iter().filter(|member| member != &self.core.id) {
             let rpc = VoteRequest::new(

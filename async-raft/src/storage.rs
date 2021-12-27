@@ -12,7 +12,7 @@ use tokio::io::AsyncWrite;
 
 use crate::core::EffectiveMembership;
 use crate::raft::Entry;
-use crate::raft::MembershipConfig;
+use crate::raft::Membership;
 use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
 use crate::AppData;
@@ -27,7 +27,7 @@ pub struct SnapshotMeta {
     pub last_log_id: LogId,
 
     /// The latest membership configuration covered by the snapshot.
-    pub membership: MembershipConfig,
+    pub membership: Membership,
 
     /// To identify a snapshot when transferring.
     /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be different in bytes.
@@ -89,7 +89,7 @@ impl InitialState {
             },
             last_membership: EffectiveMembership {
                 log_id: LogId { term: 0, index: 0 },
-                membership: MembershipConfig::new_initial(id),
+                membership: Membership::new_initial(id),
             },
         }
     }

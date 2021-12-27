@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_raft::raft::EntryPayload;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::Config;
 use async_raft::EffectiveMembership;
 use async_raft::LogId;
@@ -70,7 +70,7 @@ async fn initialization() -> Result<()> {
         assert_eq!(
             Some(EffectiveMembership {
                 log_id: LogId { term: 1, index: 1 },
-                membership: MembershipConfig::new_single(btreeset! {0,1,2})
+                membership: Membership::new_single(btreeset! {0,1,2})
             }),
             sm_mem
         );

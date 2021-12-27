@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::Config;
 use async_raft::EffectiveMembership;
 use async_raft::LogId;
@@ -53,7 +53,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         assert_eq!(
             Some(EffectiveMembership {
                 log_id: LogId { term: 1, index: 1 },
-                membership: MembershipConfig::new_single(btreeset! {0})
+                membership: Membership::new_single(btreeset! {0})
             }),
             sto.last_applied_state().await?.1
         );
@@ -95,7 +95,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         assert_eq!(
             Some(EffectiveMembership {
                 log_id: LogId { term: 1, index: 3 },
-                membership: MembershipConfig::new_single(btreeset! {0,1,2})
+                membership: Membership::new_single(btreeset! {0,1,2})
             }),
             last_membership
         );

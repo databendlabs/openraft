@@ -596,7 +596,7 @@ pub enum EntryPayload<D: AppData> {
     Normal(D),
 
     /// A change-membership log entry.
-    Membership(MembershipConfig),
+    Membership(Membership),
 }
 
 impl<D: AppData> MessageSummary for EntryPayload<D> {
@@ -617,7 +617,7 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
 /// Unlike original raft, the membership always a joint.
 /// It could be a joint of one, two or more members, i.e., a quorum requires a majority of every members
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MembershipConfig {
+pub struct Membership {
     /// Multi configs.
     configs: Vec<BTreeSet<NodeId>>,
 
@@ -625,16 +625,16 @@ pub struct MembershipConfig {
     all_nodes: BTreeSet<NodeId>,
 }
 
-impl MembershipConfig {
+impl Membership {
     pub fn new_single(members: BTreeSet<NodeId>) -> Self {
         let configs = vec![members];
         let all_nodes = Self::build_all_nodes(&configs);
-        MembershipConfig { configs, all_nodes }
+        Membership { configs, all_nodes }
     }
 
     pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
         let all_nodes = Self::build_all_nodes(&configs);
-        MembershipConfig { configs, all_nodes }
+        Membership { configs, all_nodes }
     }
 
     pub fn all_nodes(&self) -> &BTreeSet<NodeId> {
@@ -684,14 +684,14 @@ impl MembershipConfig {
     // TODO(xp): rename this
     /// Create a new initial config containing only the given node ID.
     pub fn new_initial(id: NodeId) -> Self {
-        MembershipConfig::new_single(btreeset! {id})
+        Membership::new_single(btreeset! {id})
     }
 
     pub fn to_final_config(&self) -> Self {
         assert!(!self.configs.is_empty());
 
         let last = self.configs.last().cloned().unwrap();
-        MembershipConfig::new_single(last)
+        Membership::new_single(last)
     }
 
     /// Return true if the given set of ids constitutes a majority.
@@ -881,7 +881,7 @@ impl<D: AppData> ClientWriteRequest<D> {
     }
 
     /// Generate a new payload holding a config change.
-    pub(crate) fn new_config(membership: MembershipConfig) -> Self {
+    pub(crate) fn new_config(membership: Membership) -> Self {
         Self::new_base(EntryPayload::Membership(membership))
     }
 
@@ -903,7 +903,7 @@ pub struct ClientWriteResponse<R: AppDataResponse> {
     pub data: R,
 
     /// If the log entry is a change-membership entry.
-    pub membership: Option<MembershipConfig>,
+    pub membership: Option<Membership>,
 }
 
 impl<R: AppDataResponse> MessageSummary for ClientWriteResponse<R> {

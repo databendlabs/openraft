@@ -34,7 +34,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         target: NodeId,
         caller_tx: Option<RaftRespTx<AddNonVoterResponse, AddNonVoterError>>,
     ) -> ReplicationState<D> {
-        let replstream = ReplicationStream::new(
+        let repl_stream = ReplicationStream::new(
             self.core.id,
             target,
             self.core.current_term,
@@ -47,7 +47,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         );
         ReplicationState {
             matched: LogId { term: 0, index: 0 },
-            repl_stream: replstream,
+            repl_stream,
             remove_since: None,
             tx: caller_tx,
         }
@@ -170,28 +170,29 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self))]
     fn calc_commit_index(&self) -> u64 {
         let repl_indexes = self.get_match_log_indexes();
-        let committed = self.core.membership.membership.greatest_majority_value(&repl_indexes);
+
+        let committed = self.core.effective_membership.membership.greatest_majority_value(&repl_indexes);
+
         *committed.unwrap_or(&self.core.commit_index)
     }
 
+    /// Collect indexes of the greatest matching log on every replica(include the leader itself)
     fn get_match_log_indexes(&self) -> BTreeMap<NodeId, u64> {
-        let node_ids = self.core.membership.membership.all_nodes();
+        let node_ids = self.core.effective_membership.membership.all_nodes();
 
         let mut res = BTreeMap::new();
 
         for id in node_ids.iter() {
-            // this node is me, the leader
             let matched = if *id == self.core.id {
                 self.core.last_log_id
             } else {
                 let repl_state = self.nodes.get(id);
-                if let Some(x) = repl_state {
-                    x.matched
-                } else {
-                    LogId::new(0, 0)
-                }
+                repl_state.map(|x| x.matched).unwrap_or_default()
             };
 
+            // Mismatching term can not prevent other replica with higher term log from being chosen as leader,
+            // and that new leader may overrides any lower term logs.
+            // Thus it is not considered as committed.
             if matched.term == self.core.current_term {
                 res.insert(*id, matched.index);
             }
@@ -200,8 +201,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         res
     }
 
-    /// Handle events from replication streams requesting for snapshot info.
-    #[tracing::instrument(level = "trace", skip(self, tx))]
+    /// A replication streams requesting for snapshot info.
+    #[tracing::instrument(level = "debug", skip(self, tx))]
     async fn handle_needs_snapshot(
         &mut self,
         _: NodeId,
@@ -269,14 +270,9 @@ fn snapshot_is_within_half_of_threshold(snapshot_last_index: &u64, last_log_inde
     distance_from_line <= threshold / 2
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    //////////////////////////////////////////////////////////////////////////
-    // snapshot_is_within_half_of_threshold //////////////////////////////////
 
     mod snapshot_is_within_half_of_threshold {
         use super::*;

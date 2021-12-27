@@ -7,7 +7,7 @@ use tokio::time::sleep;
 use crate::core::EffectiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
-use crate::raft::MembershipConfig;
+use crate::raft::Membership;
 use crate::LogId;
 use crate::RaftMetrics;
 use crate::State;
@@ -184,7 +184,7 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
         current_leader: None,
         membership_config: EffectiveMembership {
             log_id: LogId::default(),
-            membership: MembershipConfig::new_single(btreeset! {}),
+            membership: Membership::new_single(btreeset! {}),
         },
 
         snapshot: LogId { term: 0, index: 0 },

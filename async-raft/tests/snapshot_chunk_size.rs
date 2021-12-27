@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::SnapshotPolicy;
@@ -59,7 +59,7 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
         want = snapshot_threshold;
 
-        let want_snap = Some((want.into(), 1, MembershipConfig::new_single(btreeset! {0})));
+        let want_snap = Some((want.into(), 1, Membership::new_single(btreeset! {0})));
 
         router.wait_for_log(&btreeset![0], want, None, "send log to trigger snapshot").await?;
         router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
@@ -71,7 +71,7 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.new_raft_node(1).await;
         router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
 
-        let want_snap = Some((want.into(), 1, MembershipConfig::new_single(btreeset! {0})));
+        let want_snap = Some((want.into(), 1, Membership::new_single(btreeset! {0})));
 
         router.wait_for_log(&btreeset![0, 1], want, None, "add non-voter").await?;
         router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, None, "").await?;

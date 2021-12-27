@@ -58,7 +58,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let last_index = self.core.last_log_id.index;
 
         let req: ClientWriteRequest<D> = if last_index == 0 {
-            ClientWriteRequest::new_config(self.core.membership.membership.clone())
+            ClientWriteRequest::new_config(self.core.effective_membership.membership.clone())
         } else {
             ClientWriteRequest::new_blank_payload()
         };
@@ -95,7 +95,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Setup sentinel values to track when we've received majority confirmation of leadership.
         let mut c0_confirmed = 0usize;
 
-        let mems = &self.core.membership.membership;
+        let mems = &self.core.effective_membership.membership;
 
         // Will never be zero, as we don't allow it when proposing config changes.
         let len_members = mems.get_ith_config(0).unwrap().len();
@@ -128,7 +128,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Spawn parallel requests, all with the standard timeout for heartbeats.
         let mut pending = FuturesUnordered::new();
-        let all_members = self.core.membership.membership.all_nodes();
+        let all_members = self.core.effective_membership.membership.all_nodes();
         for (id, node) in self.nodes.iter() {
             if !all_members.contains(id) {
                 continue;
@@ -179,11 +179,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // If the term is the same, then it means we are still the leader.
-            if self.core.membership.membership.get_ith_config(0).unwrap().contains(&target) {
+            if self.core.effective_membership.membership.get_ith_config(0).unwrap().contains(&target) {
                 c0_confirmed += 1;
             }
 
-            let second = self.core.membership.membership.get_ith_config(1);
+            let second = self.core.effective_membership.membership.get_ith_config(1);
 
             if let Some(joint) = second {
                 if joint.contains(&target) {
@@ -260,7 +260,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // TODO(xp): calculate nodes set that need to replicate to, when updating membership
         // TODO(xp): Or add to-non-voter replication into self.nodes.
 
-        let all_members = self.core.membership.membership.all_nodes();
+        let all_members = self.core.effective_membership.membership.all_nodes();
 
         let nodes = self.nodes.keys().collect::<Vec<_>>();
         tracing::debug!(?nodes, ?all_members, "replicate_client_request");

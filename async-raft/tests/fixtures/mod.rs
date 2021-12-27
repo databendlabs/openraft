@@ -28,7 +28,7 @@ use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::InstallSnapshotRequest;
 use async_raft::raft::InstallSnapshotResponse;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::raft::VoteRequest;
 use async_raft::raft::VoteResponse;
 use async_raft::storage::RaftStorage;
@@ -665,7 +665,7 @@ impl RaftRouter {
         expect_last_log: u64,
         expect_voted_for: Option<u64>,
         expect_sm_last_applied_log: LogId,
-        expect_snapshot: Option<(ValueTest<u64>, u64, MembershipConfig)>,
+        expect_snapshot: Option<(ValueTest<u64>, u64, Membership)>,
     ) -> anyhow::Result<()> {
         let rt = self.routing_table.read().await;
         for (id, (_node, storage)) in rt.iter() {

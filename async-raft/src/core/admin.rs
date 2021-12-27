@@ -14,7 +14,7 @@ use crate::error::InitializeError;
 use crate::raft::AddNonVoterResponse;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
-use crate::raft::MembershipConfig;
+use crate::raft::Membership;
 use crate::raft::RaftRespTx;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -43,15 +43,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Build a new membership config from given init data & assign it as the new cluster
         // membership config in memory only.
-        self.core.membership = EffectiveMembership {
+        self.core.effective_membership = EffectiveMembership {
             log_id: LogId { term: 1, index: 1 },
-            membership: MembershipConfig::new_single(members),
+            membership: Membership::new_single(members),
         };
 
         // Become a candidate and start campaigning for leadership. If this node is the only node
         // in the cluster, then become leader without holding an election. If members len == 1, we
         // know it is our ID due to the above code where we ensure our own ID is present.
-        if self.core.membership.membership.all_nodes().len() == 1 {
+        if self.core.effective_membership.membership.all_nodes().len() == 1 {
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
             self.core.set_target_state(State::Leader);
@@ -121,10 +121,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // The last membership config is not committed yet.
         // Can not process the next one.
-        if self.core.commit_index < self.core.membership.log_id.index {
+        if self.core.commit_index < self.core.effective_membership.log_id.index {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::InProgress {
-                    membership_log_id: self.core.membership.log_id,
+                    membership_log_id: self.core.effective_membership.log_id,
                 },
             )));
             return;
@@ -132,7 +132,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let new_config;
 
-        let curr = &self.core.membership.membership;
+        let curr = &self.core.effective_membership.membership;
 
         if let Some(next_membership) = curr.get_ith_config(1) {
             // When it is in joint state, it is only allowed to change to the `members_after_consensus`
@@ -145,11 +145,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 )));
                 return;
             } else {
-                new_config = MembershipConfig::new_single(next_membership.clone());
+                new_config = Membership::new_single(next_membership.clone());
             }
         } else {
             // currently it is uniform config, enter joint state
-            new_config = MembershipConfig::new_multi(vec![curr.get_ith_config(0).unwrap().clone(), members.clone()]);
+            new_config = Membership::new_multi(vec![curr.get_ith_config(0).unwrap().clone(), members.clone()]);
         }
 
         tracing::debug!(?new_config, "new_config");
@@ -165,7 +165,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // TODO(xp): 111 test adding a node that is not non-voter.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in members.difference(&self.core.membership.membership.get_ith_config(0).unwrap()) {
+        for new_node in members.difference(&self.core.effective_membership.membership.get_ith_config(0).unwrap()) {
             match self.nodes.get(&new_node) {
                 // Node is ready to join.
                 Some(node) => {
@@ -207,14 +207,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=self.core.id))]
     pub async fn append_membership_log(
         &mut self,
-        mem: MembershipConfig,
+        mem: Membership,
         resp_tx: Option<RaftRespTx<ClientWriteResponse<R>, ClientWriteError>>,
     ) -> Result<(), RaftError> {
         let payload = ClientWriteRequest::<D>::new_config(mem.clone());
         let res = self.append_payload_to_log(payload.entry).await;
 
         // Caveat: membership must be updated before commit check is done with the new config.
-        self.core.membership = EffectiveMembership {
+        self.core.effective_membership = EffectiveMembership {
             log_id: self.core.last_log_id,
             membership: mem,
         };
@@ -253,7 +253,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let index = log_id.index;
 
         // Step down if needed.
-        if !self.core.membership.membership.contains(&self.core.id) {
+        if !self.core.effective_membership.membership.contains(&self.core.id) {
             tracing::debug!("raft node is stepping down");
 
             // TODO(xp): transfer leadership
@@ -262,7 +262,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return;
         }
 
-        let membership = &self.core.membership.membership;
+        let membership = &self.core.effective_membership.membership;
 
         let all = membership.all_nodes();
         for (id, state) in self.nodes.iter_mut() {
@@ -274,7 +274,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 "set remove_after_commit for {} = {}, membership: {:?}",
                 id,
                 index,
-                self.core.membership
+                self.core.effective_membership
             );
 
             state.remove_since = Some(index)

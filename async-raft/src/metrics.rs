@@ -19,7 +19,7 @@ use tokio::time::Instant;
 
 use crate::core::EffectiveMembership;
 use crate::core::State;
-use crate::raft::MembershipConfig;
+use crate::raft::Membership;
 use crate::LogId;
 use crate::NodeId;
 use crate::RaftError;
@@ -60,7 +60,7 @@ pub struct LeaderMetrics {
 
 impl RaftMetrics {
     pub(crate) fn new_initial(id: NodeId) -> Self {
-        let membership_config = MembershipConfig::new_initial(id);
+        let membership_config = Membership::new_initial(id);
         Self {
             id,
             state: State::Follower,

@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use async_raft::async_trait::async_trait;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::storage::HardState;
 use async_raft::storage::InitialState;
 use async_raft::storage::Snapshot;
@@ -207,7 +207,7 @@ impl MemStore {
             Some(x) => x,
             None => EffectiveMembership {
                 log_id: LogId { term: 0, index: 0 },
-                membership: MembershipConfig::new_initial(self.id),
+                membership: Membership::new_initial(self.id),
             },
         })
     }
@@ -400,11 +400,8 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, e.into()))?;
 
             last_applied_log = sm.last_applied_log;
-            membership_config = sm
-                .last_membership
-                .clone()
-                .map(|x| x.membership)
-                .unwrap_or_else(|| MembershipConfig::new_initial(self.id));
+            membership_config =
+                sm.last_membership.clone().map(|x| x.membership).unwrap_or_else(|| Membership::new_initial(self.id));
         }
 
         let snapshot_size = data.len();
