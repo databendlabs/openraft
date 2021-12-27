@@ -466,7 +466,7 @@ where
         let log_id = store.first_known_log_id().await?;
         assert_eq!(LogId::new(0, 0), log_id, "store initialized with a log at 0");
 
-        tracing::info!("--- only logs");
+        tracing::info!("--- returns the min id");
         {
             store
                 .append_to_log(&[
@@ -485,26 +485,34 @@ where
 
             // NOTE: it assumes non applied logs always exist.
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId::new(1, 2), log_id);
-        }
+            assert_eq!(LogId::new(0, 0), log_id, "last_applied is 0-0");
 
-        tracing::info!("--- return applied_log_id only when there is no log at all");
-        {
             store
                 .apply_to_state_machine(&[&Entry {
                     log_id: LogId { term: 1, index: 1 },
                     payload: EntryPayload::Blank,
                 }])
                 .await?;
-
-            // NOTE: it assumes non applied logs always exist.
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId { term: 1, index: 2 }, log_id);
+            assert_eq!(LogId::new(1, 1), log_id);
 
-            // When there is no logs, return applied_log_id
-            store.delete_logs_from(0..3).await?;
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 2 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId { term: 1, index: 1 }, log_id);
+            assert_eq!(LogId::new(1, 2), log_id);
+
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 3 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+            let log_id = store.first_known_log_id().await?;
+            assert_eq!(LogId::new(1, 2), log_id, "least id is in log");
         }
 
         Ok(())
