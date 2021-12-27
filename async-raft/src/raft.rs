@@ -614,8 +614,61 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// The membership configuration of the cluster.
-/// Unlike original raft, the membership always a joint.
-/// It could be a joint of one, two or more members, i.e., a quorum requires a majority of every members
+///
+/// It could be a joint of one, two or more members list, i.e., a quorum requires a majority of every members.
+///
+/// The structure of membership is actually a log:
+/// ```text
+/// 2-3: [6,7,8]
+/// 1-2: [3,4,5]
+/// 1-1: [1,2,3]
+/// ```
+///
+/// Without any limitation, a node uses the **joint** of every config
+/// as the effective quorum.
+///
+/// But **raft** tries to eliminate the items in a membership config to at most 2, e.g.:
+/// single item config is the normal majority quorum,
+/// double items config is the raft joint membership config.
+///
+/// To achieve this, raft has to guarantee that a 2-entries config contains all valid quorum:
+/// E.g.: given the current config of node p and q as the following:
+///
+/// Node p:
+/// ```text
+/// A-B: [a,b,c]
+/// 1-2: [3,4,5] <- commit_index
+/// 1-1: [1,2,3]
+/// ```
+///
+/// Node q:
+/// ```text
+/// X-Y: [x,y,z]
+/// 1-1: [1,2,3] <- commit_index
+/// ```
+///
+/// ```text
+/// A-B <- p
+///  |
+/// 1-2   X-Y <- q
+///  |  /
+/// 1-1
+/// ```
+///
+/// If we knows about which log entry is committed,
+/// the effective membership can be reduced to the joint of the last committed membership and all uncommitted
+/// memberships, because:
+///
+/// - Two nodes has equal greatest committed membership always include the last committed membership in the joint config
+///   so that they won't both become a leader.
+///
+/// - A node has smaller committed membership will see a higher log thus it won't be a new leader, such as q.
+///
+/// This way, to keep at most 2 member list in the membership config:
+///
+/// - raft does not allow two uncommitted membership in its log,
+/// - and stores the last committed membership and the newly proposed membership in on log entry(because raft does not
+///   store committed index), which is the joint membership entry.
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Membership {
     /// Multi configs.
@@ -665,8 +718,6 @@ impl Membership {
     }
 
     /// Check if the given NodeId exists in this membership config.
-    ///
-    /// When in joint consensus, this will check both config groups.
     pub fn contains(&self, x: &NodeId) -> bool {
         for c in self.configs.iter() {
             if c.contains(x) {
@@ -768,7 +819,6 @@ pub struct VoteRequest {
     /// The candidate's current term.
     pub term: u64,
 
-    /// The candidate's ID.
     pub candidate_id: u64,
 
     pub last_log_id: LogId,
@@ -781,15 +831,11 @@ impl MessageSummary for VoteRequest {
 }
 
 impl VoteRequest {
-    /// Create a new instance.
-    pub fn new(term: u64, candidate_id: u64, last_log_index: u64, last_log_term: u64) -> Self {
+    pub fn new(term: u64, candidate_id: u64, last_log_id: LogId) -> Self {
         Self {
             term,
             candidate_id,
-            last_log_id: LogId {
-                term: last_log_term,
-                index: last_log_index,
-            },
+            last_log_id,
         }
     }
 }
