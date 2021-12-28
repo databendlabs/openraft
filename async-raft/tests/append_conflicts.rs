@@ -209,8 +209,13 @@ where
     Sto: RaftStorage<D, R>,
 {
     let logs = sto.get_log_entries(..).await?;
-    let want: Vec<Entry<ClientRequest>> =
-        terms.iter().enumerate().map(|(i, term)| ent(*term, (i) as u64)).collect::<Vec<_>>();
+    let skip = 0;
+    let want: Vec<Entry<ClientRequest>> = terms
+        .iter()
+        .skip(skip)
+        .enumerate()
+        .map(|(i, term)| ent(*term, (i + skip) as u64))
+        .collect::<Vec<_>>();
 
     assert_eq!(want.as_slice().summary(), logs.as_slice().summary());
 

@@ -139,6 +139,7 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
     /// Spawn a new replication task for the target node.
+    #[tracing::instrument(level = "debug", skip(config, network, storage, raft_core_tx))]
     pub(self) fn spawn(
         id: NodeId,
         target: NodeId,
@@ -383,6 +384,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
+    #[tracing::instrument(level = "debug", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
     fn check_consecutive(&self, first_log_index: u64) -> Result<(), ReplicationError> {
         if first_log_index > self.max_possible_matched_index {
             return Err(ReplicationError::LackEntry(LackEntry {

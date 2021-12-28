@@ -73,6 +73,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             entry: Arc::new(entry),
             tx: None,
         };
+        // TODO(xp): it should update the lost_log_id
         self.replicate_client_request(cr_entry).await;
 
         Ok(())

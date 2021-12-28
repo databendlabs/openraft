@@ -714,7 +714,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.core.update_current_leader(UpdateCurrentLeader::ThisNode);
         self.leader_report_metrics();
 
-        // Per §8, commit an initial entry as part of becoming the cluster leader.
         self.commit_initial_leader_entry().await?;
 
         loop {
