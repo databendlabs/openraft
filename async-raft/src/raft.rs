@@ -501,8 +501,8 @@ pub struct AppendEntriesRequest<D: AppData> {
     #[serde(bound = "D: AppData")]
     pub entries: Vec<Entry<D>>,
 
-    /// The leader's commit index.
-    pub leader_commit: u64,
+    /// The leader's committed log id.
+    pub leader_commit: LogId,
 }
 
 impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {

@@ -139,7 +139,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 leader_id: self.core.id,
                 prev_log_id: node.matched,
                 entries: vec![],
-                leader_commit: self.core.commit_index,
+                leader_commit: self.core.committed,
             };
             let target = *id;
             let network = self.core.network.clone();
@@ -273,8 +273,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.awaiting_committed.push(req);
         } else {
             // Else, there are no voting nodes for replication, so the payload is now committed.
-            self.core.commit_index = entry_arc.log_id.index;
-            tracing::debug!(self.core.commit_index, "update commit index, no need to replicate");
+            self.core.committed = entry_arc.log_id;
+            tracing::debug!(%self.core.committed, "update committed, no need to replicate");
+
             self.leader_report_metrics();
             self.client_request_post_commit(req).await;
         }
@@ -283,7 +284,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let _ = node.repl_stream.repl_tx.send((
                 RaftEvent::Replicate {
                     entry: entry_arc.clone(),
-                    commit_index: self.core.commit_index,
+                    committed: self.core.committed,
                 },
                 tracing::debug_span!("CH"),
             ));

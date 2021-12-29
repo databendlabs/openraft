@@ -121,7 +121,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // The last membership config is not committed yet.
         // Can not process the next one.
-        if self.core.commit_index < self.core.effective_membership.log_id.index {
+        if self.core.committed < self.core.effective_membership.log_id {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::InProgress {
                     membership_log_id: self.core.effective_membership.log_id,

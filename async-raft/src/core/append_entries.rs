@@ -58,8 +58,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //   Then it will update commit_index to 3 and apply {2,3}
 
         // TODO(xp): cleanup commit index at sender side.
-        let valid_commit_index = msg_entries.last().map(|x| x.log_id).unwrap_or_else(|| msg.prev_log_id).index;
-        let valid_commit_index = std::cmp::min(msg.leader_commit, valid_commit_index);
+        let valid_commit_index = msg_entries.last().map(|x| x.log_id).unwrap_or_else(|| msg.prev_log_id);
+        let valid_committed = std::cmp::min(msg.leader_commit, valid_commit_index);
 
         tracing::debug!("start to check and update to latest term/leader");
         {
@@ -94,7 +94,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //              +----------------+------------------------+
         //              ` 0              ` last_applied           ` last_log_id
 
-        return self.append_apply_log_entries(&msg.prev_log_id, msg_entries, valid_commit_index).await;
+        return self.append_apply_log_entries(&msg.prev_log_id, msg_entries, valid_committed).await;
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -227,13 +227,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &mut self,
         prev_log_id: &LogId,
         entries: &[Entry<D>],
-        commit_index: u64,
+        committed: LogId,
     ) -> RaftResult<AppendEntriesResponse> {
         let matching = self.does_log_id_match(prev_log_id).await?;
         tracing::debug!(
-            "check prev_log_id {} match: commit_index: {}, matches: {}",
+            "check prev_log_id {} match: committed: {}, matches: {}",
             prev_log_id,
-            self.commit_index,
+            self.committed,
             matching,
         );
 
@@ -263,7 +263,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let (n_matching, entries) = self.skip_matching_entries(entries).await?;
 
         tracing::debug!(
-            commit_index = self.commit_index,
+            %self.committed,
             n_matching,
             entries = %entries.summary(),
             "skip matching entries",
@@ -278,7 +278,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // commit index must not > last_log_id.index
         // This is guaranteed by caller.
-        self.commit_index = commit_index;
+        self.committed = committed;
 
         self.replicate_to_state_machine_if_needed().await?;
 
@@ -306,7 +306,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             let log_id = entries[i].log_id;
             let index = log_id.index;
 
-            if index <= self.commit_index {
+            if index <= self.committed.index {
                 continue;
             }
 
@@ -333,7 +333,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let index = remote_log_id.index;
 
         // Committed entries are always safe and are consistent to a valid leader.
-        if index <= self.commit_index {
+        if index <= self.committed.index {
             return Ok(true);
         }
 
@@ -410,10 +410,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // If we don't have any new entries to replicate, then do nothing.
-        if self.commit_index <= self.last_applied.index {
+        if self.committed <= self.last_applied {
             tracing::debug!(
-                "commit_index({}) <= last_applied({}), return",
-                self.commit_index,
+                "committed({}) <= last_applied({}), return",
+                self.committed,
                 self.last_applied
             );
             return Ok(());
@@ -423,7 +423,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         let entries = self
             .storage
-            .get_log_entries(self.last_applied.index + 1..=self.commit_index)
+            .get_log_entries(self.last_applied.index + 1..=self.committed.index)
             .await
             .map_err(|e| self.map_storage_error(e))?;
 
@@ -452,11 +452,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// from the AppendEntries RPC handler.
     #[tracing::instrument(level = "debug", skip(self))]
     async fn initial_replicate_to_state_machine(&mut self) -> Result<(), RaftError> {
-        let stop = std::cmp::min(self.commit_index, self.last_log_id.index) + 1;
+        let stop = std::cmp::min(self.committed.index, self.last_log_id.index) + 1;
         let start = self.last_applied.index + 1;
         let storage = self.storage.clone();
 
-        tracing::debug!(start, stop, self.commit_index, %self.last_log_id, "start stop");
+        tracing::debug!(start, stop, %self.committed, %self.last_log_id, "start stop");
 
         // when self.commit_index is not initialized, e.g. the first heartbeat from leader always has a commit_index to
         // be 0, because the leader needs one round of heartbeat to find out the commit index.

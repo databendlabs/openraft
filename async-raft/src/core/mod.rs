@@ -103,12 +103,12 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// The target state of the system.
     target_state: State,
 
-    /// The index of the last known committed entry.
+    /// The log id of the last known committed entry.
     ///
-    /// I.e.:
+    /// Committed means:
     /// - a log that is replicated to a quorum of the cluster and it is of the term of the leader.
     /// - A quorum could be a joint quorum.
-    commit_index: u64,
+    committed: LogId,
 
     /// The log id of the highest log entry which has been applied to the local state machine.
     last_applied: LogId,
@@ -182,14 +182,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             network,
             storage,
             target_state: State::Follower,
-            commit_index: 0,
-            last_applied: LogId { term: 0, index: 0 },
+            committed: LogId::new(0, 0),
+            last_applied: LogId::new(0, 0),
             current_term: 0,
             current_leader: None,
             voted_for: None,
-            last_log_id: LogId { term: 0, index: 0 },
+            last_log_id: LogId::new(0, 0),
             snapshot_state: None,
-            snapshot_last_log_id: LogId { term: 0, index: 0 },
+            snapshot_last_log_id: LogId::new(0, 0),
             has_completed_initial_replication_to_sm: false,
             last_heartbeat: None,
             next_election_timeout: None,
@@ -213,10 +213,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.voted_for = state.hard_state.voted_for;
         self.effective_membership = state.last_membership.clone();
         self.last_applied = state.last_applied;
+
         // NOTE: this is repeated here for clarity. It is unsafe to initialize the node's commit
         // index to any other value. The commit index must be determined by a leader after
         // successfully committing a new log to the cluster.
-        self.commit_index = 0;
+        self.committed = LogId::new(0, 0);
 
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await.map_err(|err| self.map_storage_error(err))? {

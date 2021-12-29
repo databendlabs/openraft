@@ -56,7 +56,7 @@ impl<D: AppData> ReplicationStream<D> {
         term: u64,
         config: Arc<Config>,
         last_log: LogId,
-        commit_index: u64,
+        committed: LogId,
         network: Arc<N>,
         storage: Arc<S>,
         replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
@@ -67,7 +67,7 @@ impl<D: AppData> ReplicationStream<D> {
             term,
             config,
             last_log,
-            commit_index,
+            committed,
             network,
             storage,
             replication_tx,
@@ -115,8 +115,9 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     /// The index of the log entry to most recently be appended to the log by the leader.
     /// TODO(xp): remove this
     last_log_index: u64,
-    /// The index of the highest log entry which is known to be committed in the cluster.
-    commit_index: u64,
+
+    /// The log id of the highest log entry which is known to be committed in the cluster.
+    committed: LogId,
 
     /// The last know log to be successfully replicated on the target.
     ///
@@ -146,7 +147,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         term: u64,
         config: Arc<Config>,
         last_log: LogId,
-        commit_index: u64,
+        committed: LogId,
         network: Arc<N>,
         storage: Arc<S>,
         raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
@@ -166,7 +167,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             marker_r: std::marker::PhantomData,
             target_repl_state: TargetReplState::LineRate,
             last_log_index: last_log.index,
-            commit_index,
+            committed,
             matched: LogId { term: 0, index: 0 },
             max_possible_matched_index: last_log.index,
             raft_core_tx,
@@ -313,7 +314,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             term: self.term,
             leader_id: self.id,
             prev_log_id,
-            leader_commit: self.commit_index,
+            leader_commit: self.committed,
             entries: logs,
         };
 
@@ -430,8 +431,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     pub(self) fn needs_snapshot(&self) -> bool {
         match &self.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => {
-                let needs_snap =
-                    self.commit_index.checked_sub(self.matched.index).map(|diff| diff >= *threshold).unwrap_or(false);
+                let needs_snap = self
+                    .committed
+                    .index
+                    .checked_sub(self.matched.index)
+                    .map(|diff| diff >= *threshold)
+                    .unwrap_or(false);
 
                 tracing::trace!("snapshot needed: {}", needs_snap);
                 needs_snap
@@ -469,13 +474,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     #[tracing::instrument(level = "debug", skip(self), fields(event=%event.summary()))]
     pub fn process_raft_event(&mut self, event: RaftEvent<D>) -> Result<(), ReplicationError> {
         match event {
-            RaftEvent::UpdateCommitIndex { commit_index } => {
-                self.commit_index = commit_index;
+            RaftEvent::UpdateCommittedLogId {
+                committed: commit_index,
+            } => {
+                self.committed = commit_index;
             }
 
-            RaftEvent::Replicate { entry, commit_index } => {
+            RaftEvent::Replicate { entry, committed } => {
                 // TODO(xp): Message Replicate does not need to send an entry.
-                self.commit_index = commit_index;
+                self.committed = committed;
                 self.last_log_index = entry.log_id.index;
             }
 
@@ -513,13 +520,14 @@ pub(crate) enum RaftEvent<D: AppData> {
         /// This entry will always be the most recent entry to have been appended to the log, so its
         /// index is the new last_log_index value.
         entry: Arc<Entry<D>>,
+
         /// The index of the highest log entry which is known to be committed in the cluster.
-        commit_index: u64,
+        committed: LogId,
     },
     /// A message from Raft indicating a new commit index value.
-    UpdateCommitIndex {
+    UpdateCommittedLogId {
         /// The index of the highest log entry which is known to be committed in the cluster.
-        commit_index: u64,
+        committed: LogId,
     },
     Terminate,
 }
@@ -527,10 +535,12 @@ pub(crate) enum RaftEvent<D: AppData> {
 impl<D: AppData> MessageSummary for RaftEvent<D> {
     fn summary(&self) -> String {
         match self {
-            RaftEvent::Replicate { entry: _, commit_index } => {
-                format!("Replicate: commit_index: {}", commit_index)
+            RaftEvent::Replicate { entry: _, committed } => {
+                format!("Replicate: committed: {}", committed)
             }
-            RaftEvent::UpdateCommitIndex { commit_index } => {
+            RaftEvent::UpdateCommittedLogId {
+                committed: commit_index,
+            } => {
                 format!("UpdateCommitIndex: commit_index: {}", commit_index)
             }
             RaftEvent::Terminate => "Terminate".to_string(),

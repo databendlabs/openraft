@@ -204,7 +204,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .map_err(|e| self.map_storage_error(e))?;
 
         tracing::debug!("update after apply or install-snapshot: {:?}", changes);
-        println!("update after apply or install-snapshot: {:?}", changes);
 
         // After installing snapshot, no inconsistent log is removed.
         // This does not affect raft consistency.
@@ -219,8 +218,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // snapshot is installed
             self.last_applied = last_applied;
 
-            if self.commit_index < self.last_applied.index {
-                self.commit_index = self.last_applied.index;
+            if self.committed < self.last_applied {
+                self.committed = self.last_applied;
             }
             if self.last_log_id < self.last_applied {
                 self.last_log_id = self.last_applied;
@@ -228,7 +227,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
             // There could be unknown membership in the snapshot.
             let membership = self.storage.get_membership_config().await.map_err(|err| self.map_storage_error(err))?;
-            println!("storage membership: {:?}", membership);
+            tracing::debug!("storage membership: {:?}", membership);
 
             self.update_membership(membership)?;
 

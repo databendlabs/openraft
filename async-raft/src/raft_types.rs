@@ -14,7 +14,7 @@ pub struct LogId {
 
 impl From<(u64, u64)> for LogId {
     fn from(v: (u64, u64)) -> Self {
-        LogId { term: v.0, index: v.1 }
+        LogId::new(v.0, v.1)
     }
 }
 
@@ -26,6 +26,10 @@ impl Display for LogId {
 
 impl LogId {
     pub fn new(term: u64, index: u64) -> Self {
+        if term == 0 || index == 0 {
+            assert_eq!(index, 0, "zero-th log entry must be (0,0), but {}, {}", term, index);
+            assert_eq!(term, 0, "zero-th log entry must be (0,0), but {}, {}", term, index);
+        }
         LogId { term, index }
     }
 }

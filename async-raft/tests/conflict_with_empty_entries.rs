@@ -52,7 +52,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_id: 1,
         prev_log_id: LogId::new(1, 5),
         entries: vec![],
-        leader_commit: 5,
+        leader_commit: LogId::new(1, 5),
     };
 
     let resp = router.send_append_entries(0, rpc).await?;
@@ -81,7 +81,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
                 }),
             },
         ],
-        leader_commit: 5,
+        leader_commit: LogId::new(1, 5),
     };
 
     let resp = router.send_append_entries(0, rpc).await?;
@@ -95,7 +95,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_id: 1,
         prev_log_id: LogId::new(1, 3),
         entries: vec![],
-        leader_commit: 5,
+        leader_commit: LogId::new(1, 5),
     };
 
     let resp = router.send_append_entries(0, rpc).await?;

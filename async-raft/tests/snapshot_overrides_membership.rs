@@ -98,7 +98,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                     log_id: LogId { term: 1, index: 1 },
                     payload: EntryPayload::Membership(Membership::new_single(btreeset! {2,3})),
                 }],
-                leader_commit: 0,
+                leader_commit: LogId::new(0, 0),
             };
             router.send_append_entries(1, req).await?;
 

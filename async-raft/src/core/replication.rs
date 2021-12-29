@@ -40,7 +40,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.current_term,
             self.core.config.clone(),
             self.core.last_log_id,
-            self.core.commit_index,
+            self.core.committed,
             self.core.network.clone(),
             self.core.storage.clone(),
             self.replication_tx.clone(),
@@ -116,24 +116,24 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.update_leader_metrics(target, matched);
         }
 
-        if matched.index <= self.core.commit_index {
+        if matched <= self.core.committed {
             self.leader_report_metrics();
             return Ok(());
         }
 
-        let commit_index = self.calc_commit_index();
+        let commit_index = self.calc_commit_log_id();
 
         // Determine if we have a new commit index, accounting for joint consensus.
         // If a new commit index has been established, then update a few needed elements.
 
-        if commit_index > self.core.commit_index {
-            self.core.commit_index = commit_index;
+        if commit_index > self.core.committed {
+            self.core.committed = commit_index;
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
                 let _ = node.repl_stream.repl_tx.send((
-                    RaftEvent::UpdateCommitIndex {
-                        commit_index: self.core.commit_index,
+                    RaftEvent::UpdateCommittedLogId {
+                        committed: self.core.committed,
                     },
                     tracing::debug_span!("CH"),
                 ));
@@ -144,7 +144,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .awaiting_committed
                 .iter()
                 .enumerate()
-                .take_while(|(_idx, elem)| elem.entry.log_id.index <= self.core.commit_index)
+                .take_while(|(_idx, elem)| elem.entry.log_id <= self.core.committed)
                 .last()
                 .map(|(idx, _)| idx);
 
@@ -168,16 +168,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn calc_commit_index(&self) -> u64 {
+    fn calc_commit_log_id(&self) -> LogId {
         let repl_indexes = self.get_match_log_indexes();
 
         let committed = self.core.effective_membership.membership.greatest_majority_value(&repl_indexes);
 
-        *committed.unwrap_or(&self.core.commit_index)
+        *committed.unwrap_or(&self.core.committed)
     }
 
     /// Collect indexes of the greatest matching log on every replica(include the leader itself)
-    fn get_match_log_indexes(&self) -> BTreeMap<NodeId, u64> {
+    fn get_match_log_indexes(&self) -> BTreeMap<NodeId, LogId> {
         let node_ids = self.core.effective_membership.membership.all_nodes();
 
         let mut res = BTreeMap::new();
@@ -194,7 +194,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // and that new leader may overrides any lower term logs.
             // Thus it is not considered as committed.
             if matched.term == self.core.current_term {
-                res.insert(*id, matched.index);
+                res.insert(*id, matched);
             }
         }
 

@@ -51,7 +51,7 @@ async fn append_conflicts() -> Result<()> {
         leader_id: 0,
         prev_log_id: LogId::new(0, 0),
         entries: vec![],
-        leader_commit: 2,
+        leader_commit: LogId::new(1, 2),
     };
 
     let resp = r0.append_entries(req.clone()).await?;
@@ -68,7 +68,7 @@ async fn append_conflicts() -> Result<()> {
         prev_log_id: LogId::new(0, 0),
         entries: vec![ent(1, 1), ent(1, 2), ent(1, 3), ent(1, 4)],
         // this set the last_applied to 2
-        leader_commit: 2,
+        leader_commit: LogId::new(1, 2),
     };
 
     let resp = r0.append_entries(req.clone()).await?;
@@ -93,7 +93,7 @@ async fn append_conflicts() -> Result<()> {
         leader_id: 0,
         prev_log_id: LogId::new(1, 1),
         entries: vec![ent(1, 2)],
-        leader_commit: 2,
+        leader_commit: LogId::new(1, 2),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -110,7 +110,7 @@ async fn append_conflicts() -> Result<()> {
         prev_log_id: LogId::new(1, 2),
         entries: vec![ent(2, 3)],
         // this set the last_applied to 2
-        leader_commit: 2,
+        leader_commit: LogId::new(1, 2),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -125,7 +125,7 @@ async fn append_conflicts() -> Result<()> {
         leader_id: 0,
         prev_log_id: LogId::new(1, 2000),
         entries: vec![],
-        leader_commit: 2,
+        leader_commit: LogId::new(1, 2),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -141,7 +141,7 @@ async fn append_conflicts() -> Result<()> {
         leader_id: 0,
         prev_log_id: LogId::new(3, 3),
         entries: vec![],
-        leader_commit: 2,
+        leader_commit: LogId::new(1, 2),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -158,7 +158,7 @@ async fn append_conflicts() -> Result<()> {
         leader_id: 0,
         prev_log_id: LogId::new(1, 2),
         entries: vec![ent(2, 3), ent(2, 4), ent(2, 5)],
-        leader_commit: 2,
+        leader_commit: LogId::new(1, 2),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -174,7 +174,7 @@ async fn append_conflicts() -> Result<()> {
         leader_id: 0,
         prev_log_id: LogId::new(2, 3),
         entries: vec![ent(3, 4)],
-        leader_commit: 2,
+        leader_commit: LogId::new(1, 2),
     };
 
     let resp = r0.append_entries(req).await?;
@@ -191,7 +191,7 @@ async fn append_conflicts() -> Result<()> {
         leader_id: 0,
         prev_log_id: LogId::new(1, 200),
         entries: vec![],
-        leader_commit: 2,
+        leader_commit: LogId::new(1, 2),
     };
 
     let resp = r0.append_entries(req).await?;

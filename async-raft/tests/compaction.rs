@@ -128,7 +128,7 @@ async fn compaction() -> Result<()> {
                 leader_id: 0,
                 prev_log_id: LogId::new(1, 2),
                 entries: vec![],
-                leader_commit: 0,
+                leader_commit: LogId::new(0, 0),
             })
             .await?;
 
