@@ -21,11 +21,11 @@
 ---
 
 
-## From datafuse developer:
+## From databend developer:
 
 **This fork fixed several bugs in the original async-raft, introduced new features
 and is matinained by datafuse team. The API and internal data structure has changed
-to fit the latest [datafuse](https://github.com/datafuselabs/datafuse) need.**
+to fit the latest [databend](https://github.com/datafuselabs/databend) need.**
 
 The tags in form of `v0.6.2-alpha.*` are datafuse maintained versions.
 They are well tested but it should still be considered as a beta.
