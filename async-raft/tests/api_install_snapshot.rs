@@ -52,7 +52,6 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         meta: SnapshotMeta {
             snapshot_id: "ss1".into(),
             last_log_id: LogId { term: 1, index: 0 },
-            membership: Default::default(),
         },
         offset: 0,
         data: vec![1, 2, 3],

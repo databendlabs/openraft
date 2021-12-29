@@ -4,7 +4,6 @@ use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
-use async_raft::raft::Membership;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::RaftNetwork;
@@ -76,7 +75,7 @@ async fn compaction() -> Result<()> {
             n_logs,
             Some(0),
             LogId { term: 1, index: n_logs },
-            Some((n_logs.into(), 1, Membership::new_single(btreeset! {0}))),
+            Some((n_logs.into(), 1)),
         )
         .await?;
 
@@ -107,7 +106,7 @@ async fn compaction() -> Result<()> {
         assert_eq!(LogId { term: 1, index: 51 }, logs[0].log_id)
     }
 
-    let expected_snap = Some((snapshot_threshold.into(), 1, Membership::new_single(btreeset! {0})));
+    let expected_snap = Some((snapshot_threshold.into(), 1));
     router
         .assert_storage_state(
             1,

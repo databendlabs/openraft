@@ -72,13 +72,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             .wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, timeout(), "snapshot")
             .await?;
         router
-            .assert_storage_state(
-                1,
-                want,
-                Some(0),
-                LogId { term: 1, index: want },
-                Some((want.into(), 1, Membership::new_single(btreeset! {0}))),
-            )
+            .assert_storage_state(1, want, Some(0), LogId { term: 1, index: want }, Some((want.into(), 1)))
             .await?;
     }
 
@@ -118,7 +112,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             router.wait_for_log(&btreeset![0, 1], want, timeout(), "add non-voter").await?;
             router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, timeout(), "").await?;
 
-            let expected_snap = Some((want.into(), 1, Membership::new_single(btreeset! {0})));
+            let expected_snap = Some((want.into(), 1));
 
             router
                 .assert_storage_state(

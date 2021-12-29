@@ -28,7 +28,6 @@ use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
 use async_raft::raft::InstallSnapshotRequest;
 use async_raft::raft::InstallSnapshotResponse;
-use async_raft::raft::Membership;
 use async_raft::raft::VoteRequest;
 use async_raft::raft::VoteResponse;
 use async_raft::storage::RaftStorage;
@@ -665,7 +664,7 @@ impl RaftRouter {
         expect_last_log: u64,
         expect_voted_for: Option<u64>,
         expect_sm_last_applied_log: LogId,
-        expect_snapshot: Option<(ValueTest<u64>, u64, Membership)>,
+        expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let rt = self.routing_table.read().await;
         for (id, (_node, storage)) in rt.iter() {
@@ -699,7 +698,7 @@ impl RaftRouter {
                 );
             }
 
-            if let Some((index_test, term, cfg)) = &expect_snapshot {
+            if let Some((index_test, term)) = &expect_snapshot {
                 let snap = storage
                     .get_current_snapshot()
                     .await
@@ -726,12 +725,6 @@ impl RaftRouter {
                     &snap.meta.last_log_id.term, term,
                     "expected node {} to have snapshot with term {}, got {}",
                     id, term, snap.meta.last_log_id.term
-                );
-
-                assert_eq!(
-                    &snap.meta.membership, cfg,
-                    "expected node {} to have membership config {:?}, got {:?}",
-                    id, cfg, snap.meta.membership
                 );
             }
 

@@ -26,9 +26,6 @@ pub struct SnapshotMeta {
     // Log entries upto which this snapshot includes, inclusive.
     pub last_log_id: LogId,
 
-    /// The latest membership configuration covered by the snapshot.
-    pub membership: Membership,
-
     /// To identify a snapshot when transferring.
     /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be different in bytes.
     pub snapshot_id: SnapshotId,
