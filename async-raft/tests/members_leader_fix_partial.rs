@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::Raft;
@@ -43,7 +43,7 @@ async fn members_leader_fix_partial() -> Result<()> {
                 term: 1,
                 index: want + 1,
             },
-            payload: EntryPayload::Membership(MembershipConfig::new_multi(vec![btreeset! {0}, btreeset! {0,1,2}])),
+            payload: EntryPayload::Membership(Membership::new_multi(vec![btreeset! {0}, btreeset! {0,1,2}])),
         }])
         .await?;
     }

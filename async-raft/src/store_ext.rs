@@ -8,6 +8,7 @@ use crate::raft::Entry;
 use crate::storage::HardState;
 use crate::storage::InitialState;
 use crate::storage::Snapshot;
+use crate::summary::MessageSummary;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::DefensiveCheck;
@@ -84,25 +85,30 @@ where
 {
     type SnapshotData = T::SnapshotData;
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn get_membership_config(&self) -> Result<EffectiveMembership, StorageError> {
         self.defensive_no_dirty_log().await?;
         self.inner().get_membership_config().await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn get_initial_state(&self) -> Result<InitialState, StorageError> {
         self.defensive_no_dirty_log().await?;
         self.inner().get_initial_state().await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError> {
         self.defensive_incremental_hard_state(hs).await?;
         self.inner().save_hard_state(hs).await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn read_hard_state(&self) -> Result<Option<HardState>, StorageError> {
         self.inner().read_hard_state().await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RNG,
@@ -116,6 +122,7 @@ where
         Ok(res)
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RNG,
@@ -125,26 +132,32 @@ where
         self.inner().try_get_log_entries(range).await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>, StorageError> {
         self.inner().try_get_log_entry(log_index).await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
         self.inner().first_id_in_log().await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
         self.inner().first_known_log_id().await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn last_id_in_log(&self) -> Result<LogId, StorageError> {
         self.inner().last_id_in_log().await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn last_applied_state(&self) -> Result<(LogId, Option<EffectiveMembership>), StorageError> {
         self.inner().last_applied_state().await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RNG,
@@ -155,6 +168,7 @@ where
         self.inner().delete_logs_from(range).await
     }
 
+    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
     async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_consecutive_input(entries).await?;
@@ -164,6 +178,7 @@ where
         self.inner().append_to_log(entries).await
     }
 
+    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
     async fn apply_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>, StorageError> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_apply_index_is_last_applied_plus_one(entries).await?;
@@ -172,14 +187,17 @@ where
         self.inner().apply_to_state_machine(entries).await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError> {
         self.inner().do_log_compaction().await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>, StorageError> {
         self.inner().begin_receiving_snapshot().await
     }
 
+    #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn finalize_snapshot_installation(
         &self,
         meta: &SnapshotMeta,
@@ -188,6 +206,7 @@ where
         self.inner().finalize_snapshot_installation(meta, snapshot).await
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError> {
         self.inner().get_current_snapshot().await
     }

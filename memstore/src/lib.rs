@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use async_raft::async_trait::async_trait;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::storage::HardState;
 use async_raft::storage::InitialState;
 use async_raft::storage::Snapshot;
@@ -207,7 +207,7 @@ impl MemStore {
             Some(x) => x,
             None => EffectiveMembership {
                 log_id: LogId { term: 0, index: 0 },
-                membership: MembershipConfig::new_initial(self.id),
+                membership: Membership::new_initial(self.id),
             },
         })
     }
@@ -305,11 +305,12 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
     async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
         let first = self.first_id_in_log().await?;
+        let (last_applied, _) = self.last_applied_state().await?;
+
         if let Some(x) = first {
-            return Ok(x);
+            return Ok(std::cmp::min(x, last_applied));
         }
 
-        let (last_applied, _) = self.last_applied_state().await?;
         Ok(last_applied)
     }
 
@@ -324,12 +325,14 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
 
-    #[tracing::instrument(level = "debug", skip(self, range), fields(range=?range))]
+    #[tracing::instrument(level = "trace", skip(self, range), fields(range=?range))]
     async fn delete_logs_from<R: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: R,
     ) -> Result<(), StorageError> {
         {
+            tracing::debug!("delete_logs_from: {:?}", range);
+
             let mut log = self.log.write().await;
 
             let keys = log.range(range).map(|(k, _v)| *k).collect::<Vec<_>>();
@@ -391,7 +394,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError> {
         let (data, last_applied_log);
-        let membership_config;
 
         {
             // Serialize the data of the state machine.
@@ -400,11 +402,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, e.into()))?;
 
             last_applied_log = sm.last_applied_log;
-            membership_config = sm
-                .last_membership
-                .clone()
-                .map(|x| x.membership)
-                .unwrap_or_else(|| MembershipConfig::new_initial(self.id));
         }
 
         let snapshot_size = data.len();
@@ -424,7 +421,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             meta = SnapshotMeta {
                 last_log_id: last_applied_log,
                 snapshot_id,
-                membership: membership_config.clone(),
             };
 
             let snapshot = MemStoreSnapshot {

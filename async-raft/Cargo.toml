@@ -25,7 +25,7 @@ serde = { version="1", features=["derive"] }
 structopt = "0.3"
 thiserror = "1.0.29"
 tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
-tracing = "0.1.26"
+tracing = "0.1.29"
 tracing-futures = "0.2.4"
 
 [dev-dependencies]

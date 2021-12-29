@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::MessageSummary;
@@ -87,11 +87,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             assert_eq!(2, logs.len(), "only one applied log is kept");
         }
         let m = sto0.get_membership_config().await?;
-        assert_eq!(
-            MembershipConfig::new_single(btreeset! {0,1}),
-            m.membership,
-            "membership "
-        );
+        assert_eq!(Membership::new_single(btreeset! {0,1}), m.membership, "membership ");
 
         // TODO(xp): this assertion fails because when change-membership, a append-entries request does not update
         //           voted_for and does not call save_hard_state.
@@ -127,11 +123,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             assert_eq!(2, logs.len(), "only one applied log");
         }
         let m = sto0.get_membership_config().await?;
-        assert_eq!(
-            MembershipConfig::new_single(btreeset! {0,1}),
-            m.membership,
-            "membership "
-        );
+        assert_eq!(Membership::new_single(btreeset! {0,1}), m.membership, "membership ");
     }
 
     Ok(())

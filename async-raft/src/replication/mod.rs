@@ -56,7 +56,7 @@ impl<D: AppData> ReplicationStream<D> {
         term: u64,
         config: Arc<Config>,
         last_log: LogId,
-        commit_index: u64,
+        committed: LogId,
         network: Arc<N>,
         storage: Arc<S>,
         replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
@@ -67,7 +67,7 @@ impl<D: AppData> ReplicationStream<D> {
             term,
             config,
             last_log,
-            commit_index,
+            committed,
             network,
             storage,
             replication_tx,
@@ -115,8 +115,9 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     /// The index of the log entry to most recently be appended to the log by the leader.
     /// TODO(xp): remove this
     last_log_index: u64,
-    /// The index of the highest log entry which is known to be committed in the cluster.
-    commit_index: u64,
+
+    /// The log id of the highest log entry which is known to be committed in the cluster.
+    committed: LogId,
 
     /// The last know log to be successfully replicated on the target.
     ///
@@ -139,13 +140,14 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
     /// Spawn a new replication task for the target node.
+    #[tracing::instrument(level = "trace", skip(config, network, storage, raft_core_tx))]
     pub(self) fn spawn(
         id: NodeId,
         target: NodeId,
         term: u64,
         config: Arc<Config>,
         last_log: LogId,
-        commit_index: u64,
+        committed: LogId,
         network: Arc<N>,
         storage: Arc<S>,
         raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
@@ -165,7 +167,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             marker_r: std::marker::PhantomData,
             target_repl_state: TargetReplState::LineRate,
             last_log_index: last_log.index,
-            commit_index,
+            committed,
             matched: LogId { term: 0, index: 0 },
             max_possible_matched_index: last_log.index,
             raft_core_tx,
@@ -174,7 +176,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             install_snapshot_timeout,
         };
 
-        let _handle = tokio::spawn(this.main().instrument(tracing::debug_span!("spawn")));
+        let _handle = tokio::spawn(this.main().instrument(tracing::trace_span!("spawn").or_current()));
 
         ReplicationStream {
             // handle,
@@ -312,7 +314,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             term: self.term,
             leader_id: self.id,
             prev_log_id,
-            leader_commit: self.commit_index,
+            leader_commit: self.committed,
             entries: logs,
         };
 
@@ -383,6 +385,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
+    #[tracing::instrument(level = "debug", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
     fn check_consecutive(&self, first_log_index: u64) -> Result<(), ReplicationError> {
         if first_log_index > self.max_possible_matched_index {
             return Err(ReplicationError::LackEntry(LackEntry {
@@ -393,16 +396,21 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     fn set_target_repl_state(&mut self, state: TargetReplState) {
+        tracing::debug!(?state, "set_target_repl_state");
         self.target_repl_state = state;
     }
 
     /// Update the `matched` and `max_possible_matched_index`, which both are for tracking
     /// follower replication(the left and right cursor in a bsearch).
     /// And also report the matched log id to RaftCore to commit an entry etc.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     fn update_matched(&mut self, new_matched: LogId) {
+        tracing::debug!(
+            self.max_possible_matched_index,
+            %self.matched,
+            %new_matched, "update_matched");
         if self.max_possible_matched_index < new_matched.index {
             self.max_possible_matched_index = new_matched.index;
         }
@@ -428,8 +436,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     pub(self) fn needs_snapshot(&self) -> bool {
         match &self.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => {
-                let needs_snap =
-                    self.commit_index.checked_sub(self.matched.index).map(|diff| diff >= *threshold).unwrap_or(false);
+                let needs_snap = self
+                    .committed
+                    .index
+                    .checked_sub(self.matched.index)
+                    .map(|diff| diff >= *threshold)
+                    .unwrap_or(false);
 
                 tracing::trace!("snapshot needed: {}", needs_snap);
                 needs_snap
@@ -467,13 +479,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     #[tracing::instrument(level = "debug", skip(self), fields(event=%event.summary()))]
     pub fn process_raft_event(&mut self, event: RaftEvent<D>) -> Result<(), ReplicationError> {
         match event {
-            RaftEvent::UpdateCommitIndex { commit_index } => {
-                self.commit_index = commit_index;
+            RaftEvent::UpdateCommittedLogId {
+                committed: commit_index,
+            } => {
+                self.committed = commit_index;
             }
 
-            RaftEvent::Replicate { entry, commit_index } => {
+            RaftEvent::Replicate { entry, committed } => {
                 // TODO(xp): Message Replicate does not need to send an entry.
-                self.commit_index = commit_index;
+                self.committed = committed;
                 self.last_log_index = entry.log_id.index;
             }
 
@@ -511,13 +525,14 @@ pub(crate) enum RaftEvent<D: AppData> {
         /// This entry will always be the most recent entry to have been appended to the log, so its
         /// index is the new last_log_index value.
         entry: Arc<Entry<D>>,
+
         /// The index of the highest log entry which is known to be committed in the cluster.
-        commit_index: u64,
+        committed: LogId,
     },
     /// A message from Raft indicating a new commit index value.
-    UpdateCommitIndex {
+    UpdateCommittedLogId {
         /// The index of the highest log entry which is known to be committed in the cluster.
-        commit_index: u64,
+        committed: LogId,
     },
     Terminate,
 }
@@ -525,10 +540,12 @@ pub(crate) enum RaftEvent<D: AppData> {
 impl<D: AppData> MessageSummary for RaftEvent<D> {
     fn summary(&self) -> String {
         match self {
-            RaftEvent::Replicate { entry: _, commit_index } => {
-                format!("Replicate: commit_index: {}", commit_index)
+            RaftEvent::Replicate { entry: _, committed } => {
+                format!("Replicate: committed: {}", committed)
             }
-            RaftEvent::UpdateCommitIndex { commit_index } => {
+            RaftEvent::UpdateCommittedLogId {
+                committed: commit_index,
+            } => {
                 format!("UpdateCommitIndex: commit_index: {}", commit_index)
             }
             RaftEvent::Terminate => "Terminate".to_string(),
@@ -586,7 +603,7 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
 }
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
-    #[tracing::instrument(level = "debug", skip(self), fields(state = "line-rate"))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError> {
         loop {
             loop {

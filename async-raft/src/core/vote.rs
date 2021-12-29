@@ -143,7 +143,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if res.vote_granted {
             self.granted.insert(target);
 
-            if self.core.membership.membership.is_majority(&self.granted) {
+            if self.core.effective_membership.membership.is_majority(&self.granted) {
                 tracing::debug!("transitioning to leader state as minimum number of votes have been received");
                 self.core.set_target_state(State::Leader);
                 return Ok(());
@@ -157,26 +157,25 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) fn spawn_parallel_vote_requests(&self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
-        let all_members = self.core.membership.membership.all_nodes().clone();
-        let (tx, rx) = mpsc::channel(all_members.len());
-        for member in all_members.into_iter().filter(|member| member != &self.core.id) {
-            let rpc = VoteRequest::new(
-                self.core.current_term,
-                self.core.id,
-                self.core.last_log_id.index,
-                self.core.last_log_id.term,
-            );
+        let all_nodes = self.core.effective_membership.membership.all_nodes().clone();
+        let (tx, rx) = mpsc::channel(all_nodes.len());
+
+        for member in all_nodes.into_iter().filter(|member| member != &self.core.id) {
+            let rpc = VoteRequest::new(self.core.current_term, self.core.id, self.core.last_log_id);
+
             let (network, tx_inner) = (self.core.network.clone(), tx.clone());
             let _ = tokio::spawn(
                 async move {
-                    match network.send_vote(member, rpc).await {
-                        Ok(res) => {
-                            let _ = tx_inner.send((res, member)).await;
+                    let res = network.send_vote(member, rpc).await;
+
+                    match res {
+                        Ok(vote_resp) => {
+                            let _ = tx_inner.send((vote_resp, member)).await;
                         }
-                        Err(err) => tracing::error!({error=%err, peer=member}, "error while requesting vote from peer"),
+                        Err(err) => tracing::error!({error=%err, target=member}, "while requesting vote"),
                     }
                 }
-                .instrument(tracing::debug_span!("requesting vote from peer", target = member)),
+                .instrument(tracing::debug_span!("send_vote_req", target = member)),
             );
         }
         rx

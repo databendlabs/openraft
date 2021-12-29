@@ -34,20 +34,20 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         target: NodeId,
         caller_tx: Option<RaftRespTx<AddNonVoterResponse, AddNonVoterError>>,
     ) -> ReplicationState<D> {
-        let replstream = ReplicationStream::new(
+        let repl_stream = ReplicationStream::new(
             self.core.id,
             target,
             self.core.current_term,
             self.core.config.clone(),
             self.core.last_log_id,
-            self.core.commit_index,
+            self.core.committed,
             self.core.network.clone(),
             self.core.storage.clone(),
             self.replication_tx.clone(),
         );
         ReplicationState {
             matched: LogId { term: 0, index: 0 },
-            repl_stream: replstream,
+            repl_stream,
             remove_since: None,
             tx: caller_tx,
         }
@@ -116,24 +116,24 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.update_leader_metrics(target, matched);
         }
 
-        if matched.index <= self.core.commit_index {
+        if matched <= self.core.committed {
             self.leader_report_metrics();
             return Ok(());
         }
 
-        let commit_index = self.calc_commit_index();
+        let commit_index = self.calc_commit_log_id();
 
         // Determine if we have a new commit index, accounting for joint consensus.
         // If a new commit index has been established, then update a few needed elements.
 
-        if commit_index > self.core.commit_index {
-            self.core.commit_index = commit_index;
+        if commit_index > self.core.committed {
+            self.core.committed = commit_index;
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
                 let _ = node.repl_stream.repl_tx.send((
-                    RaftEvent::UpdateCommitIndex {
-                        commit_index: self.core.commit_index,
+                    RaftEvent::UpdateCommittedLogId {
+                        committed: self.core.committed,
                     },
                     tracing::debug_span!("CH"),
                 ));
@@ -144,7 +144,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .awaiting_committed
                 .iter()
                 .enumerate()
-                .take_while(|(_idx, elem)| elem.entry.log_id.index <= self.core.commit_index)
+                .take_while(|(_idx, elem)| elem.entry.log_id <= self.core.committed)
                 .last()
                 .map(|(idx, _)| idx);
 
@@ -162,46 +162,48 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     fn update_leader_metrics(&mut self, target: NodeId, matched: LogId) {
+        tracing::debug!(%target, %matched, "update_leader_metrics");
         self.leader_metrics.replication.insert(target, ReplicationMetrics { matched });
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn calc_commit_index(&self) -> u64 {
+    fn calc_commit_log_id(&self) -> LogId {
         let repl_indexes = self.get_match_log_indexes();
-        let committed = self.core.membership.membership.greatest_majority_value(&repl_indexes);
-        *committed.unwrap_or(&self.core.commit_index)
+
+        let committed = self.core.effective_membership.membership.greatest_majority_value(&repl_indexes);
+
+        *committed.unwrap_or(&self.core.committed)
     }
 
-    fn get_match_log_indexes(&self) -> BTreeMap<NodeId, u64> {
-        let node_ids = self.core.membership.membership.all_nodes();
+    /// Collect indexes of the greatest matching log on every replica(include the leader itself)
+    fn get_match_log_indexes(&self) -> BTreeMap<NodeId, LogId> {
+        let node_ids = self.core.effective_membership.membership.all_nodes();
 
         let mut res = BTreeMap::new();
 
         for id in node_ids.iter() {
-            // this node is me, the leader
             let matched = if *id == self.core.id {
                 self.core.last_log_id
             } else {
                 let repl_state = self.nodes.get(id);
-                if let Some(x) = repl_state {
-                    x.matched
-                } else {
-                    LogId::new(0, 0)
-                }
+                repl_state.map(|x| x.matched).unwrap_or_default()
             };
 
+            // Mismatching term can not prevent other replica with higher term log from being chosen as leader,
+            // and that new leader may overrides any lower term logs.
+            // Thus it is not considered as committed.
             if matched.term == self.core.current_term {
-                res.insert(*id, matched.index);
+                res.insert(*id, matched);
             }
         }
 
         res
     }
 
-    /// Handle events from replication streams requesting for snapshot info.
-    #[tracing::instrument(level = "trace", skip(self, tx))]
+    /// A replication streams requesting for snapshot info.
+    #[tracing::instrument(level = "debug", skip(self, tx))]
     async fn handle_needs_snapshot(
         &mut self,
         _: NodeId,
@@ -269,14 +271,9 @@ fn snapshot_is_within_half_of_threshold(snapshot_last_index: &u64, last_log_inde
     distance_from_line <= threshold / 2
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    //////////////////////////////////////////////////////////////////////////
-    // snapshot_is_within_half_of_threshold //////////////////////////////////
 
     mod snapshot_is_within_half_of_threshold {
         use super::*;

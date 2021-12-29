@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::RaftNetwork;
@@ -72,13 +72,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             .wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, timeout(), "snapshot")
             .await?;
         router
-            .assert_storage_state(
-                1,
-                want,
-                Some(0),
-                LogId { term: 1, index: want },
-                Some((want.into(), 1, MembershipConfig::new_single(btreeset! {0}))),
-            )
+            .assert_storage_state(1, want, Some(0), LogId { term: 1, index: want }, Some((want.into(), 1)))
             .await?;
     }
 
@@ -96,16 +90,16 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 prev_log_id: LogId::new(0, 0),
                 entries: vec![Entry {
                     log_id: LogId { term: 1, index: 1 },
-                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {2,3})),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {2,3})),
                 }],
-                leader_commit: 0,
+                leader_commit: LogId::new(0, 0),
             };
             router.send_append_entries(1, req).await?;
 
             tracing::info!("--- check that non-voter membership is affected");
             {
                 let m = sto.get_membership_config().await?;
-                assert_eq!(MembershipConfig::new_single(btreeset! {2,3}), m.membership);
+                assert_eq!(Membership::new_single(btreeset! {2,3}), m.membership);
             }
         }
 
@@ -118,7 +112,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             router.wait_for_log(&btreeset![0, 1], want, timeout(), "add non-voter").await?;
             router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, timeout(), "").await?;
 
-            let expected_snap = Some((want.into(), 1, MembershipConfig::new_single(btreeset! {0})));
+            let expected_snap = Some((want.into(), 1));
 
             router
                 .assert_storage_state(
@@ -132,7 +126,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             let m = sto.get_membership_config().await?;
             assert_eq!(
-                MembershipConfig::new_single(btreeset! {0}),
+                Membership::new_single(btreeset! {0}),
                 m.membership,
                 "membership should be overridden by the snapshot"
             );

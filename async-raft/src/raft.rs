@@ -315,10 +315,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
-    #[tracing::instrument(level = "debug", skip(self, mes, rx), fields(mes=%mes.summary()))]
+    #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<D, R>, rx: RaftRespRx<T, E>) -> Result<T, E>
     where E: From<RaftError> {
-        let span = tracing::debug_span!("CH_call_core");
+        let span = tracing::Span::current();
 
         let sum = mes.summary();
 
@@ -501,8 +501,8 @@ pub struct AppendEntriesRequest<D: AppData> {
     #[serde(bound = "D: AppData")]
     pub entries: Vec<Entry<D>>,
 
-    /// The leader's commit index.
-    pub leader_commit: u64,
+    /// The leader's committed log id.
+    pub leader_commit: LogId,
 }
 
 impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
@@ -577,12 +577,19 @@ impl<D: AppData> MessageSummary for &[Entry<D>] {
 impl<D: AppData> MessageSummary for &[&Entry<D>] {
     fn summary(&self) -> String {
         let mut res = Vec::with_capacity(self.len());
-        for x in self.iter() {
-            let e = format!("{}:{}", x.log_id, x.payload.summary());
-            res.push(e);
-        }
+        if self.len() <= 5 {
+            for x in self.iter() {
+                let e = format!("{}:{}", x.log_id, x.payload.summary());
+                res.push(e);
+            }
 
-        res.join(",")
+            res.join(",")
+        } else {
+            let first = *self.first().unwrap();
+            let last = *self.last().unwrap();
+
+            format!("{} ... {}", first.summary(), last.summary())
+        }
     }
 }
 
@@ -596,7 +603,7 @@ pub enum EntryPayload<D: AppData> {
     Normal(D),
 
     /// A change-membership log entry.
-    Membership(MembershipConfig),
+    Membership(Membership),
 }
 
 impl<D: AppData> MessageSummary for EntryPayload<D> {
@@ -614,10 +621,63 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// The membership configuration of the cluster.
-/// Unlike original raft, the membership always a joint.
-/// It could be a joint of one, two or more members, i.e., a quorum requires a majority of every members
+///
+/// It could be a joint of one, two or more members list, i.e., a quorum requires a majority of every members.
+///
+/// The structure of membership is actually a log:
+/// ```text
+/// 2-3: [6,7,8]
+/// 1-2: [3,4,5]
+/// 1-1: [1,2,3]
+/// ```
+///
+/// Without any limitation, a node uses the **joint** of every config
+/// as the effective quorum.
+///
+/// But **raft** tries to eliminate the items in a membership config to at most 2, e.g.:
+/// single item config is the normal majority quorum,
+/// double items config is the raft joint membership config.
+///
+/// To achieve this, raft has to guarantee that a 2-entries config contains all valid quorum:
+/// E.g.: given the current config of node p and q as the following:
+///
+/// Node p:
+/// ```text
+/// A-B: [a,b,c]
+/// 1-2: [3,4,5] <- commit_index
+/// 1-1: [1,2,3]
+/// ```
+///
+/// Node q:
+/// ```text
+/// X-Y: [x,y,z]
+/// 1-1: [1,2,3] <- commit_index
+/// ```
+///
+/// ```text
+/// A-B <- p
+///  |
+/// 1-2   X-Y <- q
+///  |  /
+/// 1-1
+/// ```
+///
+/// If we knows about which log entry is committed,
+/// the effective membership can be reduced to the joint of the last committed membership and all uncommitted
+/// memberships, because:
+///
+/// - Two nodes has equal greatest committed membership always include the last committed membership in the joint config
+///   so that they won't both become a leader.
+///
+/// - A node has smaller committed membership will see a higher log thus it won't be a new leader, such as q.
+///
+/// This way, to keep at most 2 member list in the membership config:
+///
+/// - raft does not allow two uncommitted membership in its log,
+/// - and stores the last committed membership and the newly proposed membership in on log entry(because raft does not
+///   store committed index), which is the joint membership entry.
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MembershipConfig {
+pub struct Membership {
     /// Multi configs.
     configs: Vec<BTreeSet<NodeId>>,
 
@@ -625,16 +685,16 @@ pub struct MembershipConfig {
     all_nodes: BTreeSet<NodeId>,
 }
 
-impl MembershipConfig {
+impl Membership {
     pub fn new_single(members: BTreeSet<NodeId>) -> Self {
         let configs = vec![members];
         let all_nodes = Self::build_all_nodes(&configs);
-        MembershipConfig { configs, all_nodes }
+        Membership { configs, all_nodes }
     }
 
     pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
         let all_nodes = Self::build_all_nodes(&configs);
-        MembershipConfig { configs, all_nodes }
+        Membership { configs, all_nodes }
     }
 
     pub fn all_nodes(&self) -> &BTreeSet<NodeId> {
@@ -665,8 +725,6 @@ impl MembershipConfig {
     }
 
     /// Check if the given NodeId exists in this membership config.
-    ///
-    /// When in joint consensus, this will check both config groups.
     pub fn contains(&self, x: &NodeId) -> bool {
         for c in self.configs.iter() {
             if c.contains(x) {
@@ -684,14 +742,14 @@ impl MembershipConfig {
     // TODO(xp): rename this
     /// Create a new initial config containing only the given node ID.
     pub fn new_initial(id: NodeId) -> Self {
-        MembershipConfig::new_single(btreeset! {id})
+        Membership::new_single(btreeset! {id})
     }
 
     pub fn to_final_config(&self) -> Self {
         assert!(!self.configs.is_empty());
 
         let last = self.configs.last().cloned().unwrap();
-        MembershipConfig::new_single(last)
+        Membership::new_single(last)
     }
 
     /// Return true if the given set of ids constitutes a majority.
@@ -768,7 +826,6 @@ pub struct VoteRequest {
     /// The candidate's current term.
     pub term: u64,
 
-    /// The candidate's ID.
     pub candidate_id: u64,
 
     pub last_log_id: LogId,
@@ -781,15 +838,11 @@ impl MessageSummary for VoteRequest {
 }
 
 impl VoteRequest {
-    /// Create a new instance.
-    pub fn new(term: u64, candidate_id: u64, last_log_index: u64, last_log_term: u64) -> Self {
+    pub fn new(term: u64, candidate_id: u64, last_log_id: LogId) -> Self {
         Self {
             term,
             candidate_id,
-            last_log_id: LogId {
-                term: last_log_term,
-                index: last_log_index,
-            },
+            last_log_id,
         }
     }
 }
@@ -881,7 +934,7 @@ impl<D: AppData> ClientWriteRequest<D> {
     }
 
     /// Generate a new payload holding a config change.
-    pub(crate) fn new_config(membership: MembershipConfig) -> Self {
+    pub(crate) fn new_config(membership: Membership) -> Self {
         Self::new_base(EntryPayload::Membership(membership))
     }
 
@@ -903,7 +956,7 @@ pub struct ClientWriteResponse<R: AppDataResponse> {
     pub data: R,
 
     /// If the log entry is a change-membership entry.
-    pub membership: Option<MembershipConfig>,
+    pub membership: Option<Membership>,
 }
 
 impl<R: AppDataResponse> MessageSummary for ClientWriteResponse<R> {

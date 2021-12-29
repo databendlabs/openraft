@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::time::Duration;
 
-use crate::raft::MembershipConfig;
+use crate::raft::Membership;
 use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
 use crate::NodeId;
@@ -179,10 +179,7 @@ pub enum ChangeMembershipError {
     // TODO(xp): rename this error to some elaborated name.
     // TODO(xp): 111 test it
     #[error("now allowed to change from {curr:?} to {to:?}")]
-    Incompatible {
-        curr: MembershipConfig,
-        to: BTreeSet<NodeId>,
-    },
+    Incompatible { curr: Membership, to: BTreeSet<NodeId> },
 }
 
 #[derive(Debug, thiserror::Error)]

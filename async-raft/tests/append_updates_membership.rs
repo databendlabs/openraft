@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::Entry;
 use async_raft::raft::EntryPayload;
-use async_raft::raft::MembershipConfig;
+use async_raft::raft::Membership;
 use async_raft::AppData;
 use async_raft::Config;
 use async_raft::LogId;
@@ -52,16 +52,16 @@ async fn append_updates_membership() -> Result<()> {
                 ent(1, 1),
                 Entry {
                     log_id: LogId { term: 1, index: 2 },
-                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2})),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2})),
                 },
                 ent(1, 3),
                 Entry {
                     log_id: LogId { term: 1, index: 4 },
-                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2,3,4})),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3,4})),
                 },
                 ent(1, 5),
             ],
-            leader_commit: 0,
+            leader_commit: LogId::new(0, 0),
         };
 
         let resp = r0.append_entries(req.clone()).await?;
@@ -78,7 +78,7 @@ async fn append_updates_membership() -> Result<()> {
             leader_id: 0,
             prev_log_id: LogId::new(1, 2),
             entries: vec![ent(2, 3)],
-            leader_commit: 0,
+            leader_commit: LogId::new(0, 0),
         };
 
         let resp = r0.append_entries(req.clone()).await?;

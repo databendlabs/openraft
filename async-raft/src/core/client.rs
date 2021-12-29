@@ -58,7 +58,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let last_index = self.core.last_log_id.index;
 
         let req: ClientWriteRequest<D> = if last_index == 0 {
-            ClientWriteRequest::new_config(self.core.membership.membership.clone())
+            ClientWriteRequest::new_config(self.core.effective_membership.membership.clone())
         } else {
             ClientWriteRequest::new_blank_payload()
         };
@@ -73,6 +73,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             entry: Arc::new(entry),
             tx: None,
         };
+        // TODO(xp): it should update the lost_log_id
         self.replicate_client_request(cr_entry).await;
 
         Ok(())
@@ -95,7 +96,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Setup sentinel values to track when we've received majority confirmation of leadership.
         let mut c0_confirmed = 0usize;
 
-        let mems = &self.core.membership.membership;
+        let mems = &self.core.effective_membership.membership;
 
         // Will never be zero, as we don't allow it when proposing config changes.
         let len_members = mems.get_ith_config(0).unwrap().len();
@@ -128,7 +129,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Spawn parallel requests, all with the standard timeout for heartbeats.
         let mut pending = FuturesUnordered::new();
-        let all_members = self.core.membership.membership.all_nodes();
+        let all_members = self.core.effective_membership.membership.all_nodes();
         for (id, node) in self.nodes.iter() {
             if !all_members.contains(id) {
                 continue;
@@ -138,7 +139,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 leader_id: self.core.id,
                 prev_log_id: node.matched,
                 entries: vec![],
-                leader_commit: self.core.commit_index,
+                leader_commit: self.core.committed,
             };
             let target = *id;
             let network = self.core.network.clone();
@@ -179,11 +180,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // If the term is the same, then it means we are still the leader.
-            if self.core.membership.membership.get_ith_config(0).unwrap().contains(&target) {
+            if self.core.effective_membership.membership.get_ith_config(0).unwrap().contains(&target) {
                 c0_confirmed += 1;
             }
 
-            let second = self.core.membership.membership.get_ith_config(1);
+            let second = self.core.effective_membership.membership.get_ith_config(1);
 
             if let Some(joint) = second {
                 if joint.contains(&target) {
@@ -260,7 +261,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // TODO(xp): calculate nodes set that need to replicate to, when updating membership
         // TODO(xp): Or add to-non-voter replication into self.nodes.
 
-        let all_members = self.core.membership.membership.all_nodes();
+        let all_members = self.core.effective_membership.membership.all_nodes();
 
         let nodes = self.nodes.keys().collect::<Vec<_>>();
         tracing::debug!(?nodes, ?all_members, "replicate_client_request");
@@ -272,8 +273,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.awaiting_committed.push(req);
         } else {
             // Else, there are no voting nodes for replication, so the payload is now committed.
-            self.core.commit_index = entry_arc.log_id.index;
-            tracing::debug!(self.core.commit_index, "update commit index, no need to replicate");
+            self.core.committed = entry_arc.log_id;
+            tracing::debug!(%self.core.committed, "update committed, no need to replicate");
+
             self.leader_report_metrics();
             self.client_request_post_commit(req).await;
         }
@@ -282,7 +284,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let _ = node.repl_stream.repl_tx.send((
                 RaftEvent::Replicate {
                     entry: entry_arc.clone(),
-                    commit_index: self.core.commit_index,
+                    committed: self.core.committed,
                 },
                 tracing::debug_span!("CH"),
             ));

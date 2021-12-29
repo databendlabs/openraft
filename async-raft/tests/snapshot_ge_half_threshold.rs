@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use async_raft::raft::MembershipConfig;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::SnapshotPolicy;
@@ -68,13 +67,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
 
         router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
         router
-            .assert_storage_state(
-                1,
-                want,
-                Some(0),
-                LogId { term: 1, index: want },
-                Some((want.into(), 1, MembershipConfig::new_single(btreeset! {0}))),
-            )
+            .assert_storage_state(1, want, Some(0), LogId { term: 1, index: want }, Some((want.into(), 1)))
             .await?;
     }
 
@@ -90,7 +83,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
 
         router.wait_for_log(&btreeset![0, 1], want, None, "add non-voter").await?;
-        let expected_snap = Some((want.into(), 1, MembershipConfig::new_single(btreeset! {0})));
+        let expected_snap = Some((want.into(), 1));
         router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, None, "").await?;
         router
             .assert_storage_state(

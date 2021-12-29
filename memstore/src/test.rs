@@ -114,7 +114,7 @@ where
 
         let membership = store.get_membership_config().await?;
 
-        assert_eq!(MembershipConfig::new_single(btreeset! {NODE_ID}), membership.membership,);
+        assert_eq!(Membership::new_single(btreeset! {NODE_ID}), membership.membership,);
 
         Ok(())
     }
@@ -132,14 +132,14 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 1, index: 2 },
-                        payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {3,4,5})),
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {3,4,5})),
                     },
                 ])
                 .await?;
 
             let mem = store.get_membership_config().await?;
 
-            assert_eq!(MembershipConfig::new_single(btreeset! {3,4,5}), mem.membership,);
+            assert_eq!(Membership::new_single(btreeset! {3,4,5}), mem.membership,);
         }
 
         tracing::info!("--- membership presents in log, but smaller than last_applied, read from state machine");
@@ -147,13 +147,13 @@ where
             store
                 .append_to_log(&[&Entry {
                     log_id: (1, 1).into(),
-                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2,3})),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
                 }])
                 .await?;
 
             let mem = store.get_membership_config().await?;
 
-            assert_eq!(MembershipConfig::new_single(btreeset! {3, 4, 5}), mem.membership,);
+            assert_eq!(Membership::new_single(btreeset! {3, 4, 5}), mem.membership,);
         }
 
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log");
@@ -161,13 +161,13 @@ where
             store
                 .append_to_log(&[&Entry {
                     log_id: LogId { term: 1, index: 3 },
-                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2,3})),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
                 }])
                 .await?;
 
             let mem = store.get_membership_config().await?;
 
-            assert_eq!(MembershipConfig::new_single(btreeset! {1,2,3},), mem.membership,);
+            assert_eq!(Membership::new_single(btreeset! {1,2,3},), mem.membership,);
         }
 
         Ok(())
@@ -195,7 +195,7 @@ where
         );
 
         assert_eq!(
-            MembershipConfig::new_single(btreeset! {NODE_ID}),
+            Membership::new_single(btreeset! {NODE_ID}),
             initial.last_membership.membership,
         );
 
@@ -265,7 +265,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 1, index: 2 },
-                        payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {3,4,5})),
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {3,4,5})),
                     },
                 ])
                 .await?;
@@ -273,7 +273,7 @@ where
             let initial = store.get_initial_state().await?;
 
             assert_eq!(
-                MembershipConfig::new_single(btreeset! {3,4,5}),
+                Membership::new_single(btreeset! {3,4,5}),
                 initial.last_membership.membership,
             );
         }
@@ -283,14 +283,14 @@ where
             store
                 .append_to_log(&[&Entry {
                     log_id: (1, 1).into(),
-                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2,3})),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
                 }])
                 .await?;
 
             let initial = store.get_initial_state().await?;
 
             assert_eq!(
-                MembershipConfig::new_single(btreeset! {3,4,5}),
+                Membership::new_single(btreeset! {3,4,5}),
                 initial.last_membership.membership,
             );
         }
@@ -300,14 +300,14 @@ where
             store
                 .append_to_log(&[&Entry {
                     log_id: LogId { term: 1, index: 3 },
-                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2,3})),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
                 }])
                 .await?;
 
             let initial = store.get_initial_state().await?;
 
             assert_eq!(
-                MembershipConfig::new_single(btreeset! {1,2,3}),
+                Membership::new_single(btreeset! {1,2,3}),
                 initial.last_membership.membership,
             );
         }
@@ -466,7 +466,7 @@ where
         let log_id = store.first_known_log_id().await?;
         assert_eq!(LogId::new(0, 0), log_id, "store initialized with a log at 0");
 
-        tracing::info!("--- only logs");
+        tracing::info!("--- returns the min id");
         {
             store
                 .append_to_log(&[
@@ -485,26 +485,34 @@ where
 
             // NOTE: it assumes non applied logs always exist.
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId::new(1, 2), log_id);
-        }
+            assert_eq!(LogId::new(0, 0), log_id, "last_applied is 0-0");
 
-        tracing::info!("--- return applied_log_id only when there is no log at all");
-        {
             store
                 .apply_to_state_machine(&[&Entry {
                     log_id: LogId { term: 1, index: 1 },
                     payload: EntryPayload::Blank,
                 }])
                 .await?;
-
-            // NOTE: it assumes non applied logs always exist.
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId { term: 1, index: 2 }, log_id);
+            assert_eq!(LogId::new(1, 1), log_id);
 
-            // When there is no logs, return applied_log_id
-            store.delete_logs_from(0..3).await?;
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 2 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId { term: 1, index: 1 }, log_id);
+            assert_eq!(LogId::new(1, 2), log_id);
+
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 3 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+            let log_id = store.first_known_log_id().await?;
+            assert_eq!(LogId::new(1, 2), log_id, "least id is in log");
         }
 
         Ok(())
@@ -611,7 +619,7 @@ where
             store
                 .apply_to_state_machine(&[&Entry {
                     log_id: LogId { term: 1, index: 3 },
-                    payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2})),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2})),
                 }])
                 .await?;
 
@@ -620,7 +628,7 @@ where
             assert_eq!(
                 Some(EffectiveMembership {
                     log_id: LogId { term: 1, index: 3 },
-                    membership: MembershipConfig::new_single(btreeset! {1,2})
+                    membership: Membership::new_single(btreeset! {1,2})
                 }),
                 membership
             );
@@ -640,7 +648,7 @@ where
             assert_eq!(
                 Some(EffectiveMembership {
                     log_id: LogId { term: 1, index: 3 },
-                    membership: MembershipConfig::new_single(btreeset! {1,2})
+                    membership: Membership::new_single(btreeset! {1,2})
                 }),
                 membership
             );
@@ -908,7 +916,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 1, index: 3 },
-                        payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2,3})),
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
                     },
                 ])
                 .await?;
@@ -920,7 +928,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 2, index: 2 },
-                        payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {3,4,5})),
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {3,4,5})),
                     },
                 ])
                 .await?;
@@ -958,7 +966,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 1, index: 3 },
-                        payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {1,2,3})),
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
                     },
                 ])
                 .await?;
@@ -971,7 +979,7 @@ where
                     },
                     &Entry {
                         log_id: LogId { term: 2, index: 2 },
-                        payload: EntryPayload::Membership(MembershipConfig::new_single(btreeset! {3,4,5})),
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {3,4,5})),
                     },
                 ])
                 .await?;
