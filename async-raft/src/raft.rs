@@ -315,10 +315,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
-    #[tracing::instrument(level = "debug", skip(self, mes, rx), fields(mes=%mes.summary()))]
+    #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<D, R>, rx: RaftRespRx<T, E>) -> Result<T, E>
     where E: From<RaftError> {
-        let span = tracing::debug_span!("CH_call_core");
+        let span = tracing::Span::current();
 
         let sum = mes.summary();
 
@@ -577,12 +577,19 @@ impl<D: AppData> MessageSummary for &[Entry<D>] {
 impl<D: AppData> MessageSummary for &[&Entry<D>] {
     fn summary(&self) -> String {
         let mut res = Vec::with_capacity(self.len());
-        for x in self.iter() {
-            let e = format!("{}:{}", x.log_id, x.payload.summary());
-            res.push(e);
-        }
+        if self.len() <= 5 {
+            for x in self.iter() {
+                let e = format!("{}:{}", x.log_id, x.payload.summary());
+                res.push(e);
+            }
 
-        res.join(",")
+            res.join(",")
+        } else {
+            let first = *self.first().unwrap();
+            let last = *self.last().unwrap();
+
+            format!("{} ... {}", first.summary(), last.summary())
+        }
     }
 }
 

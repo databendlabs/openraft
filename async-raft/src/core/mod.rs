@@ -31,8 +31,9 @@ use tokio::task::JoinHandle;
 use tokio::time::sleep_until;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use tracing::trace_span;
+use tracing::Instrument;
 use tracing::Span;
-use tracing_futures::Instrument;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
@@ -199,11 +200,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             tx_metrics,
             rx_shutdown,
         };
-        tokio::spawn(this.main())
+        tokio::spawn(this.main().instrument(trace_span!("spawn").or_current()))
     }
 
     /// The main loop of the Raft protocol.
-    #[tracing::instrument(level="debug", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
     async fn main(mut self) -> RaftResult<()> {
         tracing::debug!("raft node is initializing");
 
@@ -281,25 +282,27 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Report a metrics payload on the current state of the Raft node.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     fn report_metrics(&mut self, leader_metrics: Update<Option<&LeaderMetrics>>) {
         let leader_metrics = match leader_metrics {
             Update::Update(v) => v.cloned(),
             Update::Ignore => self.tx_metrics.borrow().leader_metrics.clone(),
         };
 
-        let res = self.tx_metrics.send(RaftMetrics {
+        let m = RaftMetrics {
             id: self.id,
             state: self.target_state,
             current_term: self.current_term,
             last_log_index: self.last_log_id.index,
             last_applied: self.last_applied.index,
             current_leader: self.current_leader,
-            // TODO(xp): 111 metrics should also track the membership log id
             membership_config: self.effective_membership.clone(),
             snapshot: self.snapshot_last_log_id,
             leader_metrics,
-        });
+        };
+
+        tracing::debug!("report_metrics: {:?}", m);
+        let res = self.tx_metrics.send(m);
 
         if let Err(err) = res {
             tracing::error!(error=%err, id=self.id, "error reporting metrics");
@@ -344,7 +347,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Set a value for the next election timeout.
     ///
     /// If `heartbeat=true`, then also update the value of `last_heartbeat`.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     fn update_next_election_timeout(&mut self, heartbeat: bool) {
         let now = Instant::now();
 
@@ -539,7 +542,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 }
 
-#[tracing::instrument(level = "debug", skip(sto), fields(entries=%entries.summary()))]
+#[tracing::instrument(level = "trace", skip(sto), fields(entries=%entries.summary()))]
 async fn apply_to_state_machine<D, R, S>(
     sto: Arc<S>,
     entries: &[&Entry<D>],
@@ -550,6 +553,8 @@ where
     R: AppDataResponse,
     S: RaftStorage<D, R>,
 {
+    tracing::debug!(entries=%entries.summary(), max_keep, "apply_to_state_machine");
+
     let last = entries.last().map(|x| x.log_id);
 
     if let Some(last_applied) = last {
@@ -562,7 +567,7 @@ where
     }
 }
 
-#[tracing::instrument(level = "debug", skip(sto))]
+#[tracing::instrument(level = "trace", skip(sto))]
 async fn delete_applied_logs<D, R, S>(sto: Arc<S>, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
 where
     D: AppData,
@@ -572,6 +577,9 @@ where
     // TODO(xp): periodically batch delete
     let x = last_applied.index + 1;
     let x = x.saturating_sub(max_keep);
+
+    tracing::debug!(%last_applied, max_keep, delete_lt = x, "delete_applied_logs");
+
     if x > 0 {
         sto.delete_logs_from(..x).await
     } else {
@@ -717,6 +725,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         self.commit_initial_leader_entry().await?;
 
+        self.leader_loop().await
+    }
+
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id))]
+    pub(self) async fn leader_loop(mut self) -> RaftResult<()> {
         loop {
             if !self.core.target_state.is_leader() {
                 tracing::info!("id={} state becomes: {:?}", self.core.id, self.core.target_state);
@@ -732,41 +745,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {
-                    let _ent = span.enter();
-                    match msg {
-                        RaftMsg::AppendEntries{rpc, tx} => {
-                            tracing::info!("leader recv from rx_api: AppendEntries, {}", rpc.summary());
-                            let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
-                        }
-                        RaftMsg::RequestVote{rpc, tx} => {
-                            tracing::info!("leader recv from rx_api: RequestVote, {}", rpc.summary());
-                            let _ = tx.send(self.core.handle_vote_request(rpc).await);
-                        }
-                        RaftMsg::InstallSnapshot{rpc, tx} => {
-                            tracing::info!("leader recv from rx_api: InstallSnapshot, {}", rpc.summary());
-                            let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
-                        }
-                        RaftMsg::ClientReadRequest{tx} => {
-                            tracing::info!("leader recv from rx_api: ClientReadRequest");
-                            self.handle_client_read_request(tx).await;
-                        }
-                        RaftMsg::ClientWriteRequest{rpc, tx} => {
-                            tracing::info!("leader recv from rx_api: ClientWriteRequest, {}", rpc.summary());
-                            self.handle_client_write_request(rpc, tx).await;
-                        }
-                        RaftMsg::Initialize{tx, ..} => {
-                            tracing::info!("leader recv from rx_api: Initialize");
-                            self.core.reject_init_with_config(tx);
-                        }
-                        RaftMsg::AddNonVoter{id, tx, blocking} => {
-                            tracing::info!("leader recv from rx_api: AddNonVoter, {}", id);
-                            self.add_non_voter(id, tx, blocking);
-                        }
-                        RaftMsg::ChangeMembership{members, blocking, tx} => {
-                            tracing::info!("leader recv from rx_api: ChangeMembership, {:?}", members);
-                            self.change_membership(members, blocking, tx).await;
-                        }
-                    }
+                    self.handle_msg(msg).instrument(span).await;
                 },
                 Some(update) = self.core.rx_compaction.recv() => {
                     tracing::info!("leader recv from rx_compaction: {:?}", update);
@@ -785,8 +764,40 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
     }
 
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "leader", id=self.core.id))]
+    pub async fn handle_msg(&mut self, msg: RaftMsg<D, R>) {
+        tracing::debug!("recv from rx_api: {}", msg.summary());
+
+        match msg {
+            RaftMsg::AppendEntries { rpc, tx } => {
+                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+            }
+            RaftMsg::RequestVote { rpc, tx } => {
+                let _ = tx.send(self.core.handle_vote_request(rpc).await);
+            }
+            RaftMsg::InstallSnapshot { rpc, tx } => {
+                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+            }
+            RaftMsg::ClientReadRequest { tx } => {
+                self.handle_client_read_request(tx).await;
+            }
+            RaftMsg::ClientWriteRequest { rpc, tx } => {
+                self.handle_client_write_request(rpc, tx).await;
+            }
+            RaftMsg::Initialize { tx, .. } => {
+                self.core.reject_init_with_config(tx);
+            }
+            RaftMsg::AddNonVoter { id, tx, blocking } => {
+                self.add_non_voter(id, tx, blocking);
+            }
+            RaftMsg::ChangeMembership { members, blocking, tx } => {
+                self.change_membership(members, blocking, tx).await;
+            }
+        }
+    }
+
     /// Report metrics with leader specific states.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub fn leader_report_metrics(&mut self) {
         self.core.report_metrics(Update::Update(Some(&self.leader_metrics)));
     }
@@ -880,39 +891,42 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     _ = timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
                     Some((res, peer)) = pending_votes.recv() => self.handle_vote_response(res, peer).await?,
                     Some((msg,span)) = self.core.rx_api.recv() => {
-
-                        let _ent = span.enter();
-
-                        match msg {
-                            RaftMsg::AppendEntries{rpc, tx} => {
-                                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
-                            }
-                            RaftMsg::RequestVote{rpc, tx} => {
-                                let _ = tx.send(self.core.handle_vote_request(rpc).await);
-                            }
-                            RaftMsg::InstallSnapshot{rpc, tx} => {
-                                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
-                            }
-                            RaftMsg::ClientReadRequest{tx} => {
-                                self.core.forward_client_read_request(tx);
-                            }
-                            RaftMsg::ClientWriteRequest{rpc, tx} => {
-                                self.core.forward_client_write_request(rpc, tx);
-                            }
-                            RaftMsg::Initialize{tx, ..} => {
-                                self.core.reject_init_with_config(tx);
-                            }
-                            RaftMsg::AddNonVoter{tx, ..} => {
-                                self.core.reject_config_change_not_leader(tx);
-                            }
-                            RaftMsg::ChangeMembership{tx, ..} => {
-                                self.core.reject_config_change_not_leader(tx);
-                            }
-                        }
+                        self.handle_msg(msg).instrument(span).await;
                     },
                     Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
                     Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
                 }
+            }
+        }
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "candidate", id=self.core.id))]
+    pub async fn handle_msg(&mut self, msg: RaftMsg<D, R>) {
+        tracing::debug!("recv from rx_api: {}", msg.summary());
+        match msg {
+            RaftMsg::AppendEntries { rpc, tx } => {
+                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+            }
+            RaftMsg::RequestVote { rpc, tx } => {
+                let _ = tx.send(self.core.handle_vote_request(rpc).await);
+            }
+            RaftMsg::InstallSnapshot { rpc, tx } => {
+                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+            }
+            RaftMsg::ClientReadRequest { tx } => {
+                self.core.forward_client_read_request(tx);
+            }
+            RaftMsg::ClientWriteRequest { rpc, tx } => {
+                self.core.forward_client_write_request(rpc, tx);
+            }
+            RaftMsg::Initialize { tx, .. } => {
+                self.core.reject_init_with_config(tx);
+            }
+            RaftMsg::AddNonVoter { tx, .. } => {
+                self.core.reject_config_change_not_leader(tx);
+            }
+            RaftMsg::ChangeMembership { tx, .. } => {
+                self.core.reject_config_change_not_leader(tx);
             }
         }
     }
@@ -932,7 +946,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Run the follower loop.
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="follower"))]
-    pub(self) async fn run(self) -> RaftResult<()> {
+    pub(self) async fn run(mut self) -> RaftResult<()> {
         self.core.report_metrics(Update::Update(None));
         loop {
             if !self.core.target_state.is_follower() {
@@ -947,38 +961,42 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // If an election timeout is hit, then we need to transition to candidate.
                 _ = election_timeout => self.core.set_target_state(State::Candidate),
                 Some((msg,span)) = self.core.rx_api.recv() => {
-
-                    let _ent = span.enter();
-
-                    match msg {
-                        RaftMsg::AppendEntries{rpc, tx} => {
-                            let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
-                        }
-                        RaftMsg::RequestVote{rpc, tx} => {
-                            let _ = tx.send(self.core.handle_vote_request(rpc).await);
-                        }
-                        RaftMsg::InstallSnapshot{rpc, tx} => {
-                            let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
-                        }
-                        RaftMsg::ClientReadRequest{tx} => {
-                            self.core.forward_client_read_request(tx);
-                        }
-                        RaftMsg::ClientWriteRequest{rpc, tx} => {
-                            self.core.forward_client_write_request(rpc, tx);
-                        }
-                        RaftMsg::Initialize{tx, ..} => {
-                            self.core.reject_init_with_config(tx);
-                        }
-                        RaftMsg::AddNonVoter{tx, ..} => {
-                            self.core.reject_config_change_not_leader(tx);
-                        }
-                        RaftMsg::ChangeMembership{tx, ..} => {
-                            self.core.reject_config_change_not_leader(tx);
-                        }
-                    }
+                    self.handle_msg(msg).instrument(span).await;
                 },
                 Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
+            }
+        }
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "follower", id=self.core.id))]
+    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<D, R>) {
+        tracing::debug!("recv from rx_api: {}", msg.summary());
+
+        match msg {
+            RaftMsg::AppendEntries { rpc, tx } => {
+                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+            }
+            RaftMsg::RequestVote { rpc, tx } => {
+                let _ = tx.send(self.core.handle_vote_request(rpc).await);
+            }
+            RaftMsg::InstallSnapshot { rpc, tx } => {
+                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+            }
+            RaftMsg::ClientReadRequest { tx } => {
+                self.core.forward_client_read_request(tx);
+            }
+            RaftMsg::ClientWriteRequest { rpc, tx } => {
+                self.core.forward_client_write_request(rpc, tx);
+            }
+            RaftMsg::Initialize { tx, .. } => {
+                self.core.reject_init_with_config(tx);
+            }
+            RaftMsg::AddNonVoter { tx, .. } => {
+                self.core.reject_config_change_not_leader(tx);
+            }
+            RaftMsg::ChangeMembership { tx, .. } => {
+                self.core.reject_config_change_not_leader(tx);
             }
         }
     }
@@ -1010,38 +1028,42 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {
-
-                    let _ent = span.enter();
-
-                    match msg {
-                        RaftMsg::AppendEntries{rpc, tx} => {
-                            let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
-                        }
-                        RaftMsg::RequestVote{rpc, tx} => {
-                            let _ = tx.send(self.core.handle_vote_request(rpc).await);
-                        }
-                        RaftMsg::InstallSnapshot{rpc, tx} => {
-                            let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
-                        }
-                        RaftMsg::ClientReadRequest{tx} => {
-                            self.core.forward_client_read_request(tx);
-                        }
-                        RaftMsg::ClientWriteRequest{rpc, tx} => {
-                            self.core.forward_client_write_request(rpc, tx);
-                        }
-                        RaftMsg::Initialize{members, tx} => {
-                            let _ = tx.send(self.handle_init_with_config(members).await);
-                        }
-                        RaftMsg::AddNonVoter{tx, ..} => {
-                            self.core.reject_config_change_not_leader(tx);
-                        }
-                        RaftMsg::ChangeMembership{tx, ..} => {
-                            self.core.reject_config_change_not_leader(tx);
-                        }
-                    }
+                    self.handle_msg(msg).instrument(span).await;
                 },
                 Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
+            }
+        }
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "non_voter", id=self.core.id))]
+    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<D, R>) {
+        tracing::debug!("recv from rx_api: {}", msg.summary());
+
+        match msg {
+            RaftMsg::AppendEntries { rpc, tx } => {
+                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+            }
+            RaftMsg::RequestVote { rpc, tx } => {
+                let _ = tx.send(self.core.handle_vote_request(rpc).await);
+            }
+            RaftMsg::InstallSnapshot { rpc, tx } => {
+                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+            }
+            RaftMsg::ClientReadRequest { tx } => {
+                self.core.forward_client_read_request(tx);
+            }
+            RaftMsg::ClientWriteRequest { rpc, tx } => {
+                self.core.forward_client_write_request(rpc, tx);
+            }
+            RaftMsg::Initialize { members, tx } => {
+                let _ = tx.send(self.handle_init_with_config(members).await);
+            }
+            RaftMsg::AddNonVoter { tx, .. } => {
+                self.core.reject_config_change_not_leader(tx);
+            }
+            RaftMsg::ChangeMembership { tx, .. } => {
+                self.core.reject_config_change_not_leader(tx);
             }
         }
     }

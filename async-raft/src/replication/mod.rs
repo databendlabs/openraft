@@ -140,7 +140,7 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
     /// Spawn a new replication task for the target node.
-    #[tracing::instrument(level = "debug", skip(config, network, storage, raft_core_tx))]
+    #[tracing::instrument(level = "trace", skip(config, network, storage, raft_core_tx))]
     pub(self) fn spawn(
         id: NodeId,
         target: NodeId,
@@ -176,7 +176,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             install_snapshot_timeout,
         };
 
-        let _handle = tokio::spawn(this.main().instrument(tracing::debug_span!("spawn")));
+        let _handle = tokio::spawn(this.main().instrument(tracing::trace_span!("spawn").or_current()));
 
         ReplicationStream {
             // handle,
@@ -396,16 +396,21 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     fn set_target_repl_state(&mut self, state: TargetReplState) {
+        tracing::debug!(?state, "set_target_repl_state");
         self.target_repl_state = state;
     }
 
     /// Update the `matched` and `max_possible_matched_index`, which both are for tracking
     /// follower replication(the left and right cursor in a bsearch).
     /// And also report the matched log id to RaftCore to commit an entry etc.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     fn update_matched(&mut self, new_matched: LogId) {
+        tracing::debug!(
+            self.max_possible_matched_index,
+            %self.matched,
+            %new_matched, "update_matched");
         if self.max_possible_matched_index < new_matched.index {
             self.max_possible_matched_index = new_matched.index;
         }
@@ -598,7 +603,7 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
 }
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
-    #[tracing::instrument(level = "debug", skip(self), fields(state = "line-rate"))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError> {
         loop {
             loop {

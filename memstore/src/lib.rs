@@ -325,12 +325,14 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
 
-    #[tracing::instrument(level = "debug", skip(self, range), fields(range=?range))]
+    #[tracing::instrument(level = "trace", skip(self, range), fields(range=?range))]
     async fn delete_logs_from<R: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: R,
     ) -> Result<(), StorageError> {
         {
+            tracing::debug!("delete_logs_from: {:?}", range);
+
             let mut log = self.log.write().await;
 
             let keys = log.range(range).map(|(k, _v)| *k).collect::<Vec<_>>();

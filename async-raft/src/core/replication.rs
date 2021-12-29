@@ -162,8 +162,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     fn update_leader_metrics(&mut self, target: NodeId, matched: LogId) {
+        tracing::debug!(%target, %matched, "update_leader_metrics");
         self.leader_metrics.replication.insert(target, ReplicationMetrics { matched });
     }
 

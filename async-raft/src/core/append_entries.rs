@@ -222,7 +222,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Append logs only when the first entry(prev_log_id) matches local store
     /// This way we keeps the log continuity.
-    #[tracing::instrument(level="debug", skip(self, entries), fields(entries=%entries.summary()))]
+    #[tracing::instrument(level="trace", skip(self, entries), fields(entries=%entries.summary()))]
     async fn append_apply_log_entries(
         &mut self,
         prev_log_id: &LogId,
@@ -397,7 +397,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// Very importantly, this routine must not block the main control loop main task, else it
     /// may cause the Raft leader to timeout the requests to this node.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), RaftError> {
         tracing::debug!("replicate_to_sm_if_needed: last_applied: {}", self.last_applied,);
 
