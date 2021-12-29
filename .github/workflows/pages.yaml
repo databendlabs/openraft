@@ -1,23 +1,26 @@
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - 'guide/**'
       - 'book.toml'
       - 'README.md'
 jobs:
-  deploy:
+  deploy-guide:
     runs-on: ubuntu-18.04
     steps:
       - name: Setup | Checkout
         uses: actions/checkout@v2
+
       - name: Setup | mdbook
         uses: peaceiris/actions-mdbook@v1
         with:
-          mdbook-version: '0.4.2'
+          mdbook-version: '0.4.10'
+
       - name: Build
         run: mdbook build
+
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
         with:

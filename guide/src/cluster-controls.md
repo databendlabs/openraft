@@ -1,6 +1,32 @@
-Cluster Controls
-================
-Raft nodes may be controlled in various ways outside of the normal flow of the Raft protocol using some of the API methods of the `Raft` type. This allows the parent application — within which the Raft node is running — to influence the Raft node's behavior based on application level needs.
+# Cluster Controls
 
-### concepts
-In the world of Raft consensus, there are a few aspects of a Raft node's lifecycle which are not directly dictated in the Raft spec. Cluster formation and the preliminary details of what would lead to dynamic cluster membership changes are a few examples of concepts not directly detailed in the spec. This implementation of Raft offers as much flexibility as possible to deal with such details in a way which is safe according to the Raft specification, but also in a way which preserves flexibility for the many different types of applications which may be implemented using Raft.
+A raft cluster may be control in various ways using the API methods of the `Raft` type.
+This allows the application to influence the raft behavior.
+
+There are several concepts related to cluster control:
+
+- Voter: a raft node that is responsible to vote, elect itself for leadership(Candidate),
+    become Leader or Follower
+
+- Candidate: a node tries to elect itself as the Leader.
+
+- Leader: the only node in a cluster that deals with application request.
+
+- Follower: a node that believes there is a legal leader and just receives
+    replicated logs.
+
+- Learner: a node that is not allow to vote but only receives logs.
+
+
+Voter state transition:
+
+```
+                         vote granted by a quorum
+          .--> Candidate ----------------------> Leader
+heartbeat |     |                                  |
+timeout   |     | seen a higher Leader             | seen a higher Leader
+          |     v                                  |
+          '----Follower <--------------------------'
+```
+
+

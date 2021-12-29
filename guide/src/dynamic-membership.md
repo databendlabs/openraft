@@ -1,13 +1,67 @@
-Dynamic Membership
-==================
-Throughout the lifecycle of a Raft cluster, nodes will come and go. New nodes may need to be added to the cluster for various application specific reasons. Nodes may experience hardware failure and end up going offline. This implementation of Raft offers two mechanisms for controlling these lifecycle events.
+# Dynamic Membership
 
-#### `Raft.add_learner`
-This method will add a new non-voter to the cluster and will immediately begin syncing the node with the leader. This method may be called multiple times as needed. The `Future` returned by calling this method will resolve once the node is up-to-date and is ready to be added as a voting member of the cluster.
+This impl of `Raft` offers a more flexible way to deal with cluster management:
 
-#### `Raft.change_membership`
-This method will start a cluster membership change. If there are any new nodes in the given config which were not previously added as non-voters from an earlier call to `Raft.add_learner`, then those nodes will begin the sync process. It is recommended that applications always call `Raft.add_learner` first when adding new nodes to the cluster, as this offers a bit more flexibility. Once `Raft.change_membership` is called, it can not be called again until the reconfiguration process is complete (which is typically quite fast).
+It offers only one cluster membership: the **joint** membership.
+**Joint** membership is no more an ephemeral state but instead, a normal
+long lasting config for a cluster.
 
-Cluster auto-healing — where cluster members which have been offline for some period of time are automatically removed — is an application specific behavior, but is fully supported via this dynamic cluster membership system. Simply call `Raft.change_membership` with the dead node removed from the membership set.
+A uniform config is just a special case.
 
-Cluster leader stepdown is also fully supported. Nothing special needs to take place. Simply call `Raft.change_membership` with the ID of the leader removed from the membership set. The leader will recognize that it is being removed from the cluster, and will stepdown once it has committed the config change to the cluster according to the safety protocols defined in the Raft spec.
+> This way it offers flexible cluster management such as hierarchical
+> membership config that is aware of data-center layout, e.g., 
+> `[{a, b, c}, {u, v, w}, {x, y, z}]` is a cluster with 9 nodes, every 3 nodes
+> forms a group(which in real world, a data center.).
+> And the quorum of such a cluster is majority of 3 groups, in which
+> a majority is constituted, e.g, `[{a, b}, {u, v}]` is a quorum.
+
+---
+
+Openraft offers 2 mechanisms for controlling member node lifecycle.
+
+
+## `Raft::add_learner()`
+
+This method will add a learner to the cluster,
+and immediately begin syncing logs from the leader.
+
+- A **Learner** won't vote for leadership.
+
+- A **Learner** is not persistently stored by `Raft`, i.e., if a new leader is
+    elected, a Learner will no longer receive logs from the new leader.
+
+    TODO(xp): store learners in `MembershipConfig`.
+
+
+## `Raft::change_membership()`
+
+This method will initiate a membership change.
+
+If there are nodes in the given config is not a learner, this method will add it
+as Learner first.
+Thus it is recommended that application always call `Raft::add_learner` first.
+Otherwise `change_membership` may block for long before committing the
+given membership and return.
+
+The new membership config specified by this method will take effect at once.
+
+Once the new config is committed, a Voter that is no in the new config will
+revert to a Learner and is ready to remove.
+
+Correctness constrains:
+
+- There is no uncommitted membership config on the leader.
+
+- The new config has to contains a group that is the same as one of the last
+    committed config.
+
+    E.g., the last committed one is `[{a, b, c}]`, then a legal new config may be:
+    a joint config: `[{a, b, c}, {x, y, z}]`.
+
+    If the last committed one is `[{a, b, c}, {x, y, z}]`, a legal new config
+    may be: `[{a, b, c}]`, or `[{x, y, z}]`.
+
+If the constrains are not satisfied, an error is returned and nothing is done
+except the learner will not be removed.
+
+TODO(xp): these constrains can be loosen, if raft stores the commit index.

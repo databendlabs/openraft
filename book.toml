@@ -1,10 +1,10 @@
 [book]
-authors = ["Anthony Dodd"]
+authors = ["datafuselabs"]
 language = "en"
 multilingual = false
 src = "guide/src"
-title = "Async Raft"
-description = "The async-raft user guide."
+title = "openraft"
+description = "The openraft user guide."
 
 [build]
 build-dir = "guide/book"

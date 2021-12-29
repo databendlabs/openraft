@@ -1,62 +1,206 @@
-Getting Started
-===============
-Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients. Why use Raft? Among other things, it provides data storage systems with fault-tolerance, strong consistency and linearizability.
+# Getting Started
 
-A visual depiction of how Raft works (taken from the spec) can be seen below.
+Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients.
 
 <p>
     <img style="max-width:600px;" src="./images/raft-overview.png"/>
 </p>
 
-Raft is intended to run within some parent application, which traditionally will be some sort of data storage system (SQL, NoSQL, KV store, AMQP, Streaming, Graph, whatever). You can do whatever you want with your application, Raft will provide you with the consensus module.
+Raft includes two major parts:
 
-## first steps
-In order to start using Raft, you will need to declare the data types you will use for client requests and client responses. Let's do that now. Throughout this guide, we will be using the `memstore` crate, which is an in-memory implementation of the `RaftStorage` trait for demo and testing purposes (part of the same repo). This will give us a concrete set of examples to work with, which also happen to be used for all of the integration tests of `async-raft` itself.
+- How to replicate logs consistently among nodes,
+- and how to consume the logs, which is defined mainly in state machine.
 
-### `async_raft::AppData`
-This marker trait is used to declare an application's data type. It has the following constraints: `Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static`. Your data type represents the requests which will be sent to your application to create, update and delete data. Requests to read data should not be sent through Raft, only mutating requests. More on linearizable reads, and how to avoid stale reads, is discussed in the [Raft API chapter](./raft.md).
+To implement your own raft based application with openraft is quite easy, which
+includes: 
 
-The intention of this trait is that applications which are using this crate will be able to use their own concrete data types throughout their application without having to serialize and deserialize their data as it goes through Raft. Instead, applications can present their data models as-is to Raft, Raft will present it to the application's `RaftStorage` impl when ready, and the application may then deal with the data directly in the storage engine without having to do a preliminary deserialization.
+- Define client request and response;
+- Implement a storage to let raft store its state;
+- Implement a network layer for raft to transmit messages.
 
-##### impl
-Finishing up this step is easy, just `impl AppData for YourData {}` ... and in most cases, that's it. You'll need to be sure that the aforementioned constraints are satisfied on `YourData`. The following derivation should do the trick `#[derive(Clone, Debug, Serialize, Deserialize)]`.
+## Define client request and response
 
-In the `memstore` crate, here is a snippet of what the code looks like:
+A request is some data that modifies the raft state machine.
+A response is some data that the raft state machine returns to client.
+
+Request and response can be any types that impl `AppData` and `AppDataResponse`,
+e.g.:
+
+```rust
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClientRequest {/* fields */}
+impl AppData for ClientRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClientResponse(Result<Option<String>, ClientError>);
+impl AppDataResponse for ClientResponse {}
+```
+
+These two types are totally application specific, and are mainly related to the
+state machine implementation in `RaftStorage`.
+
+
+## Implement RaftStorage
+
+The trait `RaftStorage` defines the way that data is stored and consumed.
+It could be a wrapper of some local KV store such [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/),
+or a wrapper of a remote sql DB.
+
+`RaftStorage` defines 4 sets of APIs:
+
+- Read/write raft state, e.g., term or vote.
+- Read/write logs.
+- Apply log entry to the state machine.
+- Building and installing a snapshot.
+
+
+### How do I impl RaftStorage correctly
+
+- The APIs have been made quite obvious and there is a good example
+[`memstore`](https://github.com/datafuselabs/openraft/tree/main/memstore),
+which is a pure-in-memory implementation that shows what should be done when a
+method is called.
+
+- There is a test suite for `RaftStorage` impl, if an impl passes the test,
+  Openraft will work happily with it.
+
+  [Test suite for RaftStorage impl](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs)
+
+  TODO(xp): move this test suite to openraft crate so that users can include it.
+
+  ```rust
+  // TODO(xp): give a example how to test an impl of RaftStorage
+  ```
+
+### Race condition about RaftStorage
+
+In our design, there is at most one thread at a time writing data to it.
+But there may be several threads reading from it concurrently,
+e.g., more than one replication tasks reading log entries from store.
+
+
+### An implementation has to guarantee data durability
+
+The caller always assumes a completed write is persistent.
+The raft correctness highly depends on a reliable store.
+
+
+## impl `RaftNetwork`
+
+Raft nodes need to communicate with each other to achieve consensus about the
+logs.
+The trait `RaftNetwork` defines the data transmission requirements.
+
+An implementation of `RaftNetwork` can be considered as a wrapper that invokes the
+corresponding methods of a remote `Raft`.
+
+```rust
+pub trait RaftNetwork<D>: Send + Sync + 'static
+where D: AppData
+{
+    async fn send_append_entries(&self, target: NodeId, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse>;
+    async fn send_install_snapshot( &self, target: NodeId, rpc: InstallSnapshotRequest,) -> Result<InstallSnapshotResponse>;
+    async fn send_vote(&self, target: NodeId, rpc: VoteRequest) -> Result<VoteResponse>;
+}
+```
+
+A mock impl in our tests explains what the impl has to do:
+[fixture: mock impl RaftNetwork](https://github.com/datafuselabs/openraft/blob/main/async-raft/tests/fixtures/mod.rs)
+
+
+As a real world impl, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic).
+[databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) would be a nice real world example.
+
+
+## Put everything together
+
+Finally we put these part together and boot up a raft node:
 
 ```rust
 /// The application data request type which the `MemStore` works with.
 ///
 /// Conceptually, for demo purposes, this represents an update to a client's status info,
 /// returning the previously recorded status.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientRequest {
-    /* fields omitted */
+    /// The ID of the client which has sent the request.
+    pub client: String,
+    /// The serial number of this request.
+    pub serial: u64,
+    /// A string describing the status of the client. For a real application, this should probably
+    /// be an enum representing all of the various types of requests / operations which a client
+    /// can perform.
+    pub status: String,
 }
-
 impl AppData for ClientRequest {}
-```
-
-### `async_raft::AppDataResponse`
-This marker trait is used to declare an application's response data. It has the following constraints: `Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static`.
-
-The intention of this trait is that applications which are using this crate will be able to use their own concrete data types for returning response data from the storage layer when an entry is applied to the state machine as part of a client request (this is not used during replication). This allows applications to seamlessly return application specific data from their storage layer, up through Raft, and back into their application for returning data to clients.
-
-This type must encapsulate both success and error responses, as application specific logic related to the success or failure of a client request — application specific validation logic, enforcing of data constraints, and anything of that nature — are expressly out of the realm of the Raft consensus protocol.
-
-##### impl
-Finishing up this step is also easy: `impl AppDataResponse for YourDataResponse {}`. The aforementioned derivation applies here as well.
-
-In the `memstore` crate, here is a snippet of what the code looks like:
-
-```rust
 
 /// The application data response type which the `MemStore` works with.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientResponse(Result<Option<String>, ClientError>);
-
 impl AppDataResponse for ClientResponse {}
+
+/// A type which emulates a network transport and implements the `RaftNetwork` trait.
+pub struct RaftRouter {
+    // ... some internal state ...
+}
+
+#[async_trait]
+impl RaftNetwork<ClientRequest> for RaftRouter {
+    /// Send an AppendEntries RPC to the target Raft node (§5).
+    async fn append_entries(&self, target: u64, rpc: AppendEntriesRequest<ClientRequest>) -> Result<AppendEntriesResponse> {
+        // ... snip ...
+    }
+
+    /// Send an InstallSnapshot RPC to the target Raft node (§7).
+    async fn install_snapshot(&self, target: u64, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse> {
+        // ... snip ...
+    }
+
+    /// Send a RequestVote RPC to the target Raft node (§5).
+    async fn vote(&self, target: u64, rpc: VoteRequest) -> Result<VoteResponse> {
+        // ... snip ...
+    }
+}
+
+#[async_trait]
+impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
+    type Snapshot = Cursor<Vec<u8>>;
+
+    async fn get_membership_config(&self) -> Result<MembershipConfig> {
+        // ... snip ...
+    }
+
+    async fn get_initial_state(&self) -> Result<InitialState> {
+        // ... snip ...
+    }
+
+    // ... snip ...
+}
+
+#[tokio::main]
+async fn main() {
+    // Get our node's ID from stable storage.
+    let node_id = get_id_from_storage().await;
+
+    // Build our Raft runtime config, then instantiate our
+    // RaftNetwork & RaftStorage impls.
+    let config = Arc::new(Config::build("primary-raft-group".into())
+        .validate()
+        .expect("failed to build Raft config"));
+    let network = Arc::new(RaftRouter::new(config.clone()));
+    let storage = Arc::new(MemStore::new(node_id));
+
+    // Create a new Raft node, which spawns an async task which
+    // runs the Raft core logic. Keep this Raft instance around
+    // for calling API methods based on events in your app.
+    let raft = Raft::new(node_id, config, network, storage);
+
+    let resp = raft.client_write(ClientWriteRequest::new(req)).await?;
+}
+
 ```
 
----
+Now it is time to write something to the cluster.
+As we did in our tests with `Raft::client_write()`:
+[client_writes](https://github.com/datafuselabs/openraft/blob/main/async-raft/tests/client_writes.rs)
 
-Woot woot! Onward to the networking layer.
