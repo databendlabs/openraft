@@ -53,15 +53,11 @@ use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
 use pretty_assertions::assert_ne;
 use tokio::sync::RwLock;
-use tracing::Subscriber;
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_appender::rolling::RollingFileAppender;
-use tracing_appender::rolling::Rotation;
-use tracing_subscriber::fmt;
-use tracing_subscriber::fmt::Layer;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::Registry;
+
+use crate::fixtures::logging::init_file_logging;
+
+pub mod logging;
 
 macro_rules! func_name {
     () => {{
@@ -107,40 +103,12 @@ lazy_static! {
 }
 
 pub fn init_global_tracing(app_name: &str, dir: &str, level: &str) -> WorkerGuard {
-    let (g, sub) = init_file_subscriber(app_name, dir, level);
+    let (g, sub) = init_file_logging(app_name, dir, level);
     tracing::subscriber::set_global_default(sub).expect("error setting global tracing subscriber");
 
     tracing::info!("initialized global tracing: in {}/{} at {}", dir, app_name, level);
     g
 }
-
-pub fn init_file_subscriber(app_name: &str, dir: &str, level: &str) -> (WorkerGuard, impl Subscriber) {
-    // open log file
-
-    let f = RollingFileAppender::new(Rotation::HOURLY, dir, app_name);
-
-    // build subscriber
-
-    let (writer, writer_guard) = tracing_appender::non_blocking(f);
-
-    let f_layer = Layer::new()
-        .with_writer(writer)
-        .with_thread_ids(true)
-        .with_thread_names(false)
-        .with_ansi(false)
-        .with_span_events(fmt::format::FmtSpan::FULL);
-
-    // Use env RUST_LOG to initialize log if present.
-    // Otherwise use the specified level.
-    let directives = env::var(EnvFilter::DEFAULT_ENV).unwrap_or_else(|_x| level.to_string());
-    let env_filter = EnvFilter::new(directives);
-
-    let subscriber = Registry::default().with(env_filter).with(f_layer);
-
-    (writer_guard, subscriber)
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// A type which emulates a network transport and implements the `RaftNetwork` trait.
 pub struct RaftRouter {
