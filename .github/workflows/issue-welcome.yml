@@ -1,0 +1,29 @@
+# https://github.com/actions/github-script#comment-on-an-issue
+
+on:
+  issues:
+    types:
+      - opened
+
+jobs:
+  welcome:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v5
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: [
+                     '👋 Thanks for opening this issue!',
+                     '',
+                      'Get help or engage by:',
+                      '',
+                      '- `/help` : to print help messages.',
+                      '- `/assignme` : to assign this issue to you.',
+                    ].join('\n')
+            })
+
+
