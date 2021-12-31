@@ -254,8 +254,9 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         }
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError> {
+        tracing::debug!(?hs, "save_hard_state");
         let mut h = self.hs.write().await;
 
         *h = Some(hs.clone());

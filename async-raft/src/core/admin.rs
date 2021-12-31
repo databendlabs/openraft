@@ -291,8 +291,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Remove a replication if the membership that does not include it has committed.
     ///
     /// Return true if removed.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub fn try_remove_replication(&mut self, target: u64) -> bool {
+        tracing::debug!(target, "try_remove_replication");
+
         {
             let n = self.nodes.get(&target);
 

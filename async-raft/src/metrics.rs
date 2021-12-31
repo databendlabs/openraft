@@ -21,6 +21,7 @@ use crate::core::EffectiveMembership;
 use crate::core::State;
 use crate::raft::Membership;
 use crate::LogId;
+use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftError;
 use crate::ReplicationMetrics;
@@ -51,11 +52,42 @@ pub struct RaftMetrics {
     pub leader_metrics: Option<LeaderMetrics>,
 }
 
+impl MessageSummary for RaftMetrics {
+    fn summary(&self) -> String {
+        format!("Metrics{{id:{},{:?}, term:{}, last_log:{}, last_applied:{}, leader:{:?}, membership:{}, snapshot:{}, replication:{}",
+            self.id,
+            self.state,
+            self.current_term,
+            self.last_log_index,
+            self.last_applied,
+            self.current_leader,
+            self.membership_config.summary(),
+            self.snapshot,
+            self.leader_metrics.as_ref().map(|x| x.summary()).unwrap_or_default(),
+        )
+    }
+}
+
 /// The metrics about the leader. It is Some() only when this node is leader.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeaderMetrics {
     /// Replication metrics of all known replication target: voters and non-voters
     pub replication: HashMap<NodeId, ReplicationMetrics>,
+}
+
+impl MessageSummary for LeaderMetrics {
+    fn summary(&self) -> String {
+        let mut res = vec!["LeaderMetrics{".to_string()];
+        for (i, (k, v)) in self.replication.iter().enumerate() {
+            if i > 0 {
+                res.push(",".to_string());
+            }
+            res.push(format!("{}:{}", k, v.summary()));
+        }
+
+        res.push("}".to_string());
+        res.join("")
+    }
 }
 
 impl RaftMetrics {
@@ -96,7 +128,7 @@ pub struct Wait {
 
 impl Wait {
     /// Wait for metrics to satisfy some condition or timeout.
-    #[tracing::instrument(level = "debug", skip(self, func), fields(msg=msg.to_string().as_str()))]
+    #[tracing::instrument(level = "trace", skip(self, func), fields(msg=%msg.to_string()))]
     pub async fn metrics<T>(&self, func: T, msg: impl ToString) -> Result<RaftMetrics, WaitError>
     where T: Fn(&RaftMetrics) -> bool + Send {
         let timeout_at = Instant::now() + self.timeout;
@@ -105,10 +137,20 @@ impl Wait {
         loop {
             let latest = rx.borrow().clone();
 
-            tracing::debug!("id={} wait {:} latest: {:?}", latest.id, msg.to_string(), latest);
+            tracing::debug!(
+                "id={} wait {:} latest: {}",
+                latest.id,
+                msg.to_string(),
+                latest.summary()
+            );
 
             if func(&latest) {
-                tracing::debug!("id={} done wait {:} latest: {:?}", latest.id, msg.to_string(), latest);
+                tracing::debug!(
+                    "id={} done wait {:} latest: {}",
+                    latest.id,
+                    msg.to_string(),
+                    latest.summary()
+                );
                 return Ok(latest);
             }
 
@@ -126,8 +168,8 @@ impl Wait {
 
             tokio::select! {
                 _ = delay => {
-                tracing::debug!( "id={} timeout wait {:} latest: {:?}", latest.id, msg.to_string(), latest );
-                    return Err(WaitError::Timeout(self.timeout, format!("{} latest: {:?}", msg.to_string(), latest)));
+                tracing::debug!( "id={} timeout wait {:} latest: {}", latest.id, msg.to_string(), latest.summary() );
+                    return Err(WaitError::Timeout(self.timeout, format!("{} latest: {}", msg.to_string(), latest.summary())));
                 }
                 changed = rx.changed() => {
                     match changed {
@@ -151,7 +193,7 @@ impl Wait {
     }
 
     /// Wait for `current_leader` to become `Some(leader_id)` until timeout.
-    #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn current_leader(&self, leader_id: NodeId, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
             |x| x.current_leader == Some(leader_id),
@@ -161,7 +203,7 @@ impl Wait {
     }
 
     /// Wait until applied upto `want_log`(inclusive) logs or timeout.
-    #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log(&self, want_log: u64, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
             |x| x.last_log_index == want_log,
@@ -177,7 +219,7 @@ impl Wait {
     }
 
     /// Wait for `state` to become `want_state` or timeout.
-    #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn state(&self, want_state: State, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
             |x| x.state == want_state,
@@ -187,7 +229,7 @@ impl Wait {
     }
 
     /// Wait for `membership_config.members` to become expected node set or timeout.
-    #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn members(&self, want_members: BTreeSet<NodeId>, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
             |x| x.membership_config.membership.get_ith_config(0).cloned().unwrap() == want_members,
@@ -197,7 +239,7 @@ impl Wait {
     }
 
     /// Wait for `membership_config.members_after_consensus` to become expected node set or timeout.
-    #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn next_members(
         &self,
         want_members: Option<BTreeSet<NodeId>>,
@@ -211,7 +253,7 @@ impl Wait {
     }
 
     /// Wait for `snapshot` to become `want_snapshot` or timeout.
-    #[tracing::instrument(level = "debug", skip(self), fields(msg=msg.to_string().as_str()))]
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn snapshot(&self, want_snapshot: LogId, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
             |x| x.snapshot == want_snapshot,

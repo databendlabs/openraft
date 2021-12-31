@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_raft::Config;
 use async_raft::LogId;
+use async_raft::SnapshotPolicy;
 use async_raft::State;
 use fixtures::RaftRouter;
 use futures::prelude::*;
@@ -26,7 +27,13 @@ async fn client_writes() -> Result<()> {
     let _ent = ut_span.enter();
 
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            snapshot_policy: SnapshotPolicy::LogsSinceLast(2000),
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
@@ -53,15 +60,15 @@ async fn client_writes() -> Result<()> {
     // Write a bunch of data and assert that the cluster stayes stable.
     let leader = router.leader().await.expect("leader not found");
     let mut clients = futures::stream::FuturesUnordered::new();
-    clients.push(router.client_request_many(leader, "0", 1000));
-    clients.push(router.client_request_many(leader, "1", 1000));
-    clients.push(router.client_request_many(leader, "2", 1000));
-    clients.push(router.client_request_many(leader, "3", 1000));
-    clients.push(router.client_request_many(leader, "4", 1000));
-    clients.push(router.client_request_many(leader, "5", 1000));
+    clients.push(router.client_request_many(leader, "0", 500));
+    clients.push(router.client_request_many(leader, "1", 500));
+    clients.push(router.client_request_many(leader, "2", 500));
+    clients.push(router.client_request_many(leader, "3", 500));
+    clients.push(router.client_request_many(leader, "4", 500));
+    clients.push(router.client_request_many(leader, "5", 500));
     while clients.next().await.is_some() {}
 
-    want = 6001;
+    want += 500 * 6;
     router.wait_for_log(&btreeset![0, 1, 2], want, None, "sync logs").await?;
 
     router.assert_stable_cluster(Some(1), Some(want)).await; // The extra 1 is from the leader's initial commit entry.
@@ -101,13 +108,7 @@ async fn client_writes() -> Result<()> {
     // at /home/runner/work/async-raft/async-raft/async-raft/tests/client_writes.rs:25:7
 
     router
-        .assert_storage_state(
-            1,
-            want,
-            Some(0),
-            LogId { term: 1, index: want },
-            Some(((5000..5100).into(), 1)),
-        )
+        .assert_storage_state(1, want, Some(0), LogId::new(1, want), Some(((2000..2100).into(), 1)))
         .await?;
 
     Ok(())

@@ -21,12 +21,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
     ///
     /// See `receiver implementation: AppendEntries RPC` in raft-essentials.md in this repo.
-    #[tracing::instrument(level="debug", skip(self, msg), fields(msg=%msg.summary()))]
+    #[tracing::instrument(level = "debug", skip(self, msg))]
     pub(super) async fn handle_append_entries_request(
         &mut self,
         msg: AppendEntriesRequest<D>,
     ) -> RaftResult<AppendEntriesResponse> {
-        tracing::debug!(%self.last_log_id, %self.last_applied);
+        tracing::debug!(%self.last_log_id, %self.last_applied, msg=%msg.summary(), "handle_append_entries_request");
 
         let msg_entries = msg.entries.as_slice();
 

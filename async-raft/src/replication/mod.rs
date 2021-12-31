@@ -40,6 +40,12 @@ pub struct ReplicationMetrics {
     pub matched: LogId,
 }
 
+impl MessageSummary for ReplicationMetrics {
+    fn summary(&self) -> String {
+        format!("{}", self.matched)
+    }
+}
+
 /// The public handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<D: AppData> {
     /// The spawn handle the `ReplicationCore` task.
@@ -385,8 +391,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
-    #[tracing::instrument(level = "debug", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
+    #[tracing::instrument(level = "trace", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
     fn check_consecutive(&self, first_log_index: u64) -> Result<(), ReplicationError> {
+        tracing::debug!(first_log_index, self.max_possible_matched_index, "check_consecutive");
+
         if first_log_index > self.max_possible_matched_index {
             return Err(ReplicationError::LackEntry(LackEntry {
                 index: self.max_possible_matched_index,
@@ -449,8 +457,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError> {
+        tracing::debug!("try_drain_raft_rx");
+
         for _i in 0..self.config.max_payload_entries {
             let ev = self.repl_rx.recv().now_or_never();
             let ev = match ev {
@@ -476,8 +486,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self), fields(event=%event.summary()))]
+    #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
     pub fn process_raft_event(&mut self, event: RaftEvent<D>) -> Result<(), ReplicationError> {
+        tracing::debug!(event=%event.summary(), "process_raft_event");
+
         match event {
             RaftEvent::UpdateCommittedLogId {
                 committed: commit_index,

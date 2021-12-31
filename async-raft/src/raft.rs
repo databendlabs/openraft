@@ -110,7 +110,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
-    #[tracing::instrument(level = "debug", skip(self, rpc),fields(rpc=%rpc.summary()))]
+    #[tracing::instrument(level = "trace", skip(self, rpc), fields(rpc=%rpc.summary()))]
     pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
@@ -119,7 +119,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
     pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, RaftError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
@@ -508,7 +508,7 @@ pub struct AppendEntriesRequest<D: AppData> {
 impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
     fn summary(&self) -> String {
         format!(
-            "term={}, leader_id={}, prev_log_id={}, leader_commit={}, entries={}",
+            "leader={}-{}, prev_log_id={}, leader_commit={}, entries={}",
             self.term,
             self.leader_id,
             self.prev_log_id,
@@ -685,6 +685,20 @@ pub struct Membership {
     all_nodes: BTreeSet<NodeId>,
 }
 
+impl MessageSummary for Membership {
+    fn summary(&self) -> String {
+        let mut res = vec!["[".to_string()];
+        for (i, c) in self.configs.iter().enumerate() {
+            if i > 0 {
+                res.push(",".to_string());
+            }
+            res.push(format!("{:?}", c));
+        }
+        res.push("]".to_string());
+        res.join("")
+    }
+}
+
 impl Membership {
     pub fn new_single(members: BTreeSet<NodeId>) -> Self {
         let configs = vec![members];
@@ -833,7 +847,7 @@ pub struct VoteRequest {
 
 impl MessageSummary for VoteRequest {
     fn summary(&self) -> String {
-        format!("{:?}", self)
+        format!("{}-{}, last_log:{}", self.term, self.candidate_id, self.last_log_id)
     }
 }
 
