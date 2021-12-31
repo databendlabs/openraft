@@ -6,14 +6,11 @@ use async_raft::Config;
 use async_raft::NodeId;
 use async_raft::Raft;
 use async_raft::State;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use tokio::time::sleep;
 
 use crate::fixtures::MemRaft;
-
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Cluster learner_restart test.
 ///
@@ -23,10 +20,8 @@ mod fixtures;
 /// - write one log to the leader.
 /// - asserts that the leader was able to successfully commit its initial payload and that the non-voter has
 ///   successfully replicated the payload.
-/// - shutdown all and retstart the non-voter node.
+/// - shutdown all and restart the non-voter node.
 /// - asserts the non-voter stays in non-vtoer state.
-///
-/// RUST_LOG=async_raft,memstore,learner_restart=trace cargo test -p async-raft --test learner_restart
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn learner_restart() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();

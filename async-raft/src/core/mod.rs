@@ -960,14 +960,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             if !self.core.target_state.is_follower() {
                 return Ok(());
             }
-            let election_timeout = sleep_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
 
-            let span = tracing::debug_span!("CHrx:FollowerState");
-            let _ent = span.enter();
+            let election_timeout = sleep_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
 
             tokio::select! {
                 // If an election timeout is hit, then we need to transition to candidate.
-                _ = election_timeout => self.core.set_target_state(State::Candidate),
+                _ = election_timeout => {
+                    tracing::debug!("timeout to recv a event, change to CandidateState");
+                    self.core.set_target_state(State::Candidate)
+                },
                 Some((msg,span)) = self.core.rx_api.recv() => {
                     self.handle_msg(msg).instrument(span).await;
                 },

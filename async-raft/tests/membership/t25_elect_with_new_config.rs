@@ -4,13 +4,11 @@ use std::time::Duration;
 use anyhow::Result;
 use async_raft::Config;
 use async_raft::State;
-use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
 use tokio::time::sleep;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Dynamic membership test.
 ///
@@ -21,10 +19,8 @@ mod fixtures;
 /// - propose a new config change where the old master is not present, and assert that it steps down.
 /// - temporarily isolate the new master, and assert that a new master takes over.
 /// - restore the isolated node and assert that it becomes a follower.
-///
-/// RUST_LOG=async_raft,memstore,dynamic_membership=trace cargo test -p async-raft --test dynamic_membership
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
-async fn dynamic_membership() -> Result<()> {
+async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 

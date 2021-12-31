@@ -8,23 +8,20 @@ use async_raft::Config;
 use async_raft::LogId;
 use async_raft::Raft;
 use async_raft::RaftStorage;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Cluster members_leader_fix_partial test.
+/// TODO(xp): in discussion: whether a leader should auto commit a uniform membership config:
+/// https://github.com/datafuselabs/openraft/discussions/17
 ///
 /// - brings up 1 leader.
 /// - manually append a joint config log.
 /// - shutdown and restart, it should NOT add another final config log to complete the partial
 /// membership changing
-///
-/// RUST_LOG=async_raft,memstore,members_leader_fix_partial=trace cargo test -p async-raft --test
-/// members_leader_fix_partial
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn members_leader_fix_partial() -> Result<()> {
+async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 
