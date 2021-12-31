@@ -172,9 +172,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// If log 5 is committed by R1, and log 3 is not removed, R5 in future could become a new leader and overrides log
     /// 5 on R3.
-    #[tracing::instrument(level="debug", skip(self, msg_entries), fields(msg_entries=%msg_entries.summary()))]
+    #[tracing::instrument(level="trace", skip(self, msg_entries), fields(msg_entries=%msg_entries.summary()))]
     async fn delete_inconsistent_log<'s, 'e>(&'s mut self, msg_entries: &'e [Entry<D>]) -> RaftResult<()> {
         // all msg_entries are inconsistent logs
+
+        tracing::debug!(msg_entries=%msg_entries.summary(), "try to delete_inconsistent_log");
 
         let l = msg_entries.len();
         if l == 0 {
