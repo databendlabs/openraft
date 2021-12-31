@@ -34,7 +34,7 @@ async fn client_reads() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], want, None, "empty node").await?;
-    router.wait_for_state(&btreeset![0, 1, 2], State::NonVoter, None, "empty node").await?;
+    router.wait_for_state(&btreeset![0, 1, 2], State::Learner, None, "empty node").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.

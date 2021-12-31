@@ -52,7 +52,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         router.new_raft_node(0).await;
 
         router.wait_for_log(&btreeset![0], want, timeout(), "empty").await?;
-        router.wait_for_state(&btreeset![0], State::NonVoter, timeout(), "empty").await?;
+        router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
         router.initialize_from_single_node(0).await?;
         want += 1;
 
@@ -105,7 +105,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
         tracing::info!("--- add non-voter to the cluster to receive snapshot, which overrides the non-voter storage");
         {
-            router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
+            router.add_learner(0, 1).await.expect("failed to add new node as non-voter");
 
             tracing::info!("--- DONE add non-voter");
 

@@ -18,11 +18,11 @@ mod fixtures;
 /// `append_entries` should get a response with non-none ConflictOpt even if the entries in message
 /// is empty.
 /// Otherwise if no conflict is found the leader will never be able to sync logs to a new added
-/// NonVoter, until a next log is proposed on leader.
+/// Learner, until a next log is proposed on leader.
 ///
 /// What does this test do?
 ///
-/// - brings a 1 NonVoter node online.
+/// - brings a 1 Learner node online.
 ///
 /// - send `append_logs` message to it with empty `entries` and some non-zero `prev_log_index`.
 /// - asserts that a response with ConflictOpt set.

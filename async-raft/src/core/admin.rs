@@ -4,14 +4,14 @@ use std::sync::Arc;
 use crate::core::client::ClientRequestEntry;
 use crate::core::EffectiveMembership;
 use crate::core::LeaderState;
-use crate::core::NonVoterState;
+use crate::core::LearnerState;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
-use crate::error::AddNonVoterError;
+use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
 use crate::error::ClientWriteError;
 use crate::error::InitializeError;
-use crate::raft::AddNonVoterResponse;
+use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
 use crate::raft::Membership;
@@ -24,7 +24,7 @@ use crate::RaftError;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> NonVoterState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
     /// Handle the admin `init_with_config` command.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_init_with_config(
@@ -68,17 +68,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Add a new node to the cluster as a non-voter, bringing it up-to-speed, and then responding
     /// on the given channel.
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) fn add_non_voter(
+    pub(super) fn add_learner(
         &mut self,
         target: NodeId,
-        tx: RaftRespTx<AddNonVoterResponse, AddNonVoterError>,
+        tx: RaftRespTx<AddLearnerResponse, AddLearnerError>,
         blocking: bool,
     ) {
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
         if target == self.core.id {
             tracing::debug!("target node is this node");
-            let _ = tx.send(Ok(AddNonVoterResponse {
+            let _ = tx.send(Ok(AddLearnerResponse {
                 matched: self.core.last_log_id,
             }));
             return;
@@ -86,7 +86,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         if let Some(t) = self.nodes.get(&target) {
             tracing::debug!("target node is already a cluster member or is being synced");
-            let _ = tx.send(Ok(AddNonVoterResponse { matched: t.matched }));
+            let _ = tx.send(Ok(AddLearnerResponse { matched: t.matched }));
             return;
         }
 
@@ -98,7 +98,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.nodes.insert(target, state);
 
             // non-blocking mode, do not know about the replication stat.
-            let _ = tx.send(Ok(AddNonVoterResponse {
+            let _ = tx.send(Ok(AddLearnerResponse {
                 matched: LogId::new(0, 0),
             }));
         }
@@ -176,7 +176,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     if !blocking {
                         // Node has repl stream, but is not yet ready to join.
                         let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                            ChangeMembershipError::NonVoterIsLagging {
+                            ChangeMembershipError::LearnerIsLagging {
                                 node_id: *new_node,
                                 matched: node.matched,
                                 distance: self.core.last_log_id.index.saturating_sub(node.matched.index),
@@ -189,7 +189,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // Node does not yet have a repl stream, spawn one.
                 None => {
                     let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                        ChangeMembershipError::NonVoterNotFound { node_id: *new_node },
+                        ChangeMembershipError::LearnerNotFound { node_id: *new_node },
                     )));
                     return;
                 }
@@ -257,7 +257,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             tracing::debug!("raft node is stepping down");
 
             // TODO(xp): transfer leadership
-            self.core.set_target_state(State::NonVoter);
+            self.core.set_target_state(State::Learner);
             self.core.update_current_leader(UpdateCurrentLeader::Unknown);
             return;
         }

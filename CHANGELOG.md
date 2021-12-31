@@ -10,7 +10,7 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 
     `append_entries` should get a response with non-none ConflictOpt even if the entries in the message is empty.
     Otherwise if no conflict is found the leader will never be able to sync logs to a new added
-    NonVoter, until a next log, is proposed on the leader.
+    Learner, until a next log, is proposed on the leader.
 
 - Fixed [117](https://github.com/async-raft/async-raft/pull/117) `last_applied` should be updated only when logs actually applied.
 
@@ -18,7 +18,7 @@ This changelog follows the patterns described here: https://keepachangelog.com/e
 ### fixed
 - Fixed [#105](https://github.com/async-raft/async-raft/issues/105) where function `set_target_state` missing `else` condition.
 - Fixed [#106](https://github.com/async-raft/async-raft/issues/106) which ensures that counting of replicas to determine a new commit value only considers entries replicated as part of the current term.
-- Fixed a bug where NonVoter nodes could be restarted and come back as voting members.
+- Fixed a bug where Learner nodes could be restarted and come back as voting members.
 
 ## async-raft 0.6.0
 The big news for this release is that we are now based on Tokio 1.0! Big shoutout to @xu-cheng for doing all of the heavy lifting for the Tokio 1.0 update, along with many other changes which are part of this release.

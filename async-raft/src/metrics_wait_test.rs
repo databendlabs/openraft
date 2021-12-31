@@ -177,7 +177,7 @@ async fn test_wait() -> anyhow::Result<()> {
 fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
     let init = RaftMetrics {
         id: 0,
-        state: State::NonVoter,
+        state: State::Learner,
         current_term: 0,
         last_log_index: 0,
         last_applied: 0,

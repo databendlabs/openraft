@@ -12,10 +12,10 @@ use maplit::btreeset;
 #[macro_use]
 mod fixtures;
 
-/// RUST_LOG=async_raft,memstore,non_voter_add=trace cargo test -p async-raft --test non_voter_add
+/// RUST_LOG=async_raft,memstore,learner_add=trace cargo test -p async-raft --test learner_add
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn members_add_lagging_non_voter_non_blocking() -> Result<()> {
-    // Add a non-voter into membership config, expect error NonVoterIsLagging.
+async fn members_add_lagging_learner_non_blocking() -> Result<()> {
+    // Add a non-voter into membership config, expect error LearnerIsLagging.
 
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
@@ -40,13 +40,13 @@ async fn members_add_lagging_non_voter_non_blocking() -> Result<()> {
 
     tracing::info!("--- write up to 100 logs");
     {
-        router.client_request_many(0, "non_voter_add", 500 - n_logs as usize).await;
+        router.client_request_many(0, "learner_add", 500 - n_logs as usize).await;
         n_logs = 500;
 
         router.wait(&0, timeout()).await?.log(n_logs, "received 500 logs").await?;
     }
 
-    tracing::info!("--- restore replication and change membership at once, expect NonVoterIsLagging");
+    tracing::info!("--- restore replication and change membership at once, expect LearnerIsLagging");
     {
         router.restore_node(1).await;
         let res = router.change_membership_with_blocking(0, btreeset! {0,1}, false).await;
@@ -57,7 +57,7 @@ async fn members_add_lagging_non_voter_non_blocking() -> Result<()> {
         let err: ChangeMembershipError = err.try_into().unwrap();
 
         match err {
-            ChangeMembershipError::NonVoterIsLagging {
+            ChangeMembershipError::LearnerIsLagging {
                 node_id,
                 matched: _,
                 distance,
@@ -68,7 +68,7 @@ async fn members_add_lagging_non_voter_non_blocking() -> Result<()> {
                 assert!(distance < 500);
             }
             _ => {
-                panic!("expect ChangeMembershipError::NonVoterNotFound");
+                panic!("expect ChangeMembershipError::LearnerNotFound");
             }
         }
     }
@@ -77,7 +77,7 @@ async fn members_add_lagging_non_voter_non_blocking() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn members_add_absent_non_voter_blocking() -> Result<()> {
+async fn members_add_absent_learner_blocking() -> Result<()> {
     // Add a member without adding it as non-voter, in blocking mode it should finish successfully.
 
     let (_log_guard, ut_span) = init_ut!();
@@ -98,7 +98,7 @@ async fn members_add_absent_non_voter_blocking() -> Result<()> {
 
     tracing::info!("--- write up to 100 logs");
     {
-        router.client_request_many(0, "non_voter_add", 100 - n_logs as usize).await;
+        router.client_request_many(0, "learner_add", 100 - n_logs as usize).await;
         n_logs = 100;
 
         router.wait(&0, timeout()).await?.log(n_logs, "received 100 logs").await?;

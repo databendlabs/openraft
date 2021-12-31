@@ -38,7 +38,7 @@ async fn append_updates_membership() -> Result<()> {
     tracing::info!("--- wait for init node to ready");
 
     router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
-    router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
 
     let (r0, _sto0) = router.remove_node(0).await.unwrap();
 

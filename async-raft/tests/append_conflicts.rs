@@ -39,7 +39,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- wait for init node to ready");
 
     router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
-    router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
 
     let (r0, sto0) = router.remove_node(0).await.unwrap();
     check_logs(&sto0, vec![0]).await?;

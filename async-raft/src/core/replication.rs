@@ -9,9 +9,9 @@ use crate::core::ReplicationState;
 use crate::core::SnapshotState;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
-use crate::error::AddNonVoterError;
+use crate::error::AddLearnerError;
 use crate::error::RaftResult;
-use crate::raft::AddNonVoterResponse;
+use crate::raft::AddLearnerResponse;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
@@ -32,7 +32,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) fn spawn_replication_stream(
         &self,
         target: NodeId,
-        caller_tx: Option<RaftRespTx<AddNonVoterResponse, AddNonVoterError>>,
+        caller_tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
     ) -> ReplicationState<D> {
         let repl_stream = ReplicationStream::new(
             self.core.id,
@@ -101,7 +101,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // When adding a non-voter, it blocks until the replication becomes line-rate.
                 if let Some(tx) = state.tx.take() {
                     // TODO(xp): define a specific response type for non-voter matched event.
-                    let x = AddNonVoterResponse { matched: state.matched };
+                    let x = AddLearnerResponse { matched: state.matched };
                     let _ = tx.send(Ok(x));
                 }
             }

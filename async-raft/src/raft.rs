@@ -18,7 +18,7 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::core::RaftCore;
-use crate::error::AddNonVoterError;
+use crate::error::AddLearnerError;
 use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::InitializeError;
@@ -181,7 +181,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Initialize a pristine Raft node with the given config.
     ///
     /// This command should be called on pristine nodes — where the log index is 0 and the node is
-    /// in NonVoter state — as if either of those constraints are false, it indicates that the
+    /// in Learner state — as if either of those constraints are false, it indicates that the
     /// cluster is already formed and in motion. If `InitializeError::NotAllowed` is returned
     /// from this function, it is safe to ignore, as it simply indicates that the cluster is
     /// already up and running, which is ultimately the goal of this function.
@@ -225,14 +225,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// If the node to add is already a voter or non-voter, it returns `RaftResponse::NoChange` at once.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=id))]
-    pub async fn add_non_voter(&self, id: NodeId, blocking: bool) -> Result<AddNonVoterResponse, AddNonVoterError> {
+    pub async fn add_learner(&self, id: NodeId, blocking: bool) -> Result<AddLearnerResponse, AddLearnerError> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::AddNonVoter { id, blocking, tx }, rx).await
+        self.call_core(RaftMsg::AddLearner { id, blocking, tx }, rx).await
     }
 
     /// Propose a cluster configuration change.
     ///
-    /// If a node in the proposed config but is not yet a voter or non-voter, it first calls `add_non_voter` to setup
+    /// If a node in the proposed config but is not yet a voter or non-voter, it first calls `add_learner` to setup
     /// replication to the new node.
     ///
     /// Internal:
@@ -240,7 +240,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
     /// If blocking is true, it blocks until every non-voter becomes up to date.
-    /// Otherwise it returns error `ChangeMembershipError::NonVoterIsLagging` if there is a lagging non-voter.
+    /// Otherwise it returns error `ChangeMembershipError::LearnerIsLagging` if there is a lagging non-voter.
     ///
     /// If it lost leadership or crashed before committing the second **uniform** config log, the cluster is left in the
     /// **joint** config.
@@ -253,7 +253,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tracing::info!(?members, "change_membership: add every member as non-voter");
 
         for id in members.iter() {
-            let res = self.add_non_voter(*id, blocking).await;
+            let res = self.add_learner(*id, blocking).await;
             let res_err = match res {
                 Ok(_) => {
                     continue;
@@ -261,18 +261,18 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 Err(e) => e,
             };
 
-            tracing::info!(%res_err, "add non_voter: already exists");
+            tracing::info!(%res_err, "add learner: already exists");
 
             match res_err {
-                AddNonVoterError::RaftError(raft_err) => {
+                AddLearnerError::RaftError(raft_err) => {
                     return Err(ClientWriteError::RaftError(raft_err));
                 }
-                // TODO(xp): test add non voter on non-leader
-                AddNonVoterError::ForwardToLeader(forward_err) => {
+                // TODO(xp): test add learner on non-leader
+                AddLearnerError::ForwardToLeader(forward_err) => {
                     return Err(ClientWriteError::ForwardToLeader(forward_err))
                 }
-                AddNonVoterError::Exists(node_id) => {
-                    tracing::info!(%node_id, "add non_voter: already exists");
+                AddLearnerError::Exists(node_id) => {
+                    tracing::info!(%node_id, "add learner: already exists");
                     continue;
                 }
             }
@@ -397,7 +397,7 @@ pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AddNonVoterResponse {
+pub struct AddLearnerResponse {
     pub matched: LogId,
 }
 
@@ -428,18 +428,18 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     },
     // TODO(xp): make tx a field of a struct
     /// Request raft core to setup a new replication to a non-voter.
-    AddNonVoter {
+    AddLearner {
         id: NodeId,
 
         /// If block until the newly added non-voter becomes line-rate.
         blocking: bool,
 
         /// Send the log id when the replication becomes line-rate.
-        tx: RaftRespTx<AddNonVoterResponse, AddNonVoterError>,
+        tx: RaftRespTx<AddLearnerResponse, AddLearnerError>,
     },
     ChangeMembership {
         members: BTreeSet<NodeId>,
-        /// with blocking==false, respond to client a ChangeMembershipError::NonVoterIsLagging error at once if a
+        /// with blocking==false, respond to client a ChangeMembershipError::LearnerIsLagging error at once if a
         /// non-member is lagging.
         ///
         /// Otherwise, wait for commit of the member change log.
@@ -471,8 +471,8 @@ where
             RaftMsg::Initialize { members, .. } => {
                 format!("Initialize: {:?}", members)
             }
-            RaftMsg::AddNonVoter { id, blocking, .. } => {
-                format!("AddNonVoter: id: {}, blocking: {}", id, blocking)
+            RaftMsg::AddLearner { id, blocking, .. } => {
+                format!("AddLearner: id: {}, blocking: {}", id, blocking)
             }
             RaftMsg::ChangeMembership { members, blocking, .. } => {
                 format!("ChangeMembership: members: {:?}, blocking: {}", members, blocking)

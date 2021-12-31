@@ -48,7 +48,7 @@ async fn compaction() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
-    router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
 
     router.assert_pristine_cluster().await;
 
@@ -88,7 +88,7 @@ async fn compaction() -> Result<()> {
     .await?;
 
     router.new_raft_node_with_sto(1, sto1.clone()).await;
-    router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
+    router.add_learner(0, 1).await.expect("failed to add new node as non-voter");
 
     tracing::info!("--- add 1 log after snapshot");
     {

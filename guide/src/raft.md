@@ -29,7 +29,7 @@ These methods directly correspond to the `RaftNetwork` trait described in earlie
 All of these methods are intended for use directly by the parent application for managing various lifecycles of the cluster. Each of these lifecycles are discussed in more detail in the [Cluster Controls](https://async-raft.github.io/async-raft/cluster-controls.html) chapter.
 
 - [`async fn initialize(...) -> Result<...>`](https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.initialize): Initialize a pristine Raft node with the given config & start a campaign to become leader.
-- [`async fn add_non_voter(...) -> Result<...>`](https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.add_non_voter): Add a new node to the cluster as a non-voter, which will sync the node with the master so that it can later join the cluster as a voting member.
+- [`async fn add_learner(...) -> Result<...>`](https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.add_learner): Add a new node to the cluster as a non-voter, which will sync the node with the master so that it can later join the cluster as a voting member.
 - [`async fn change_membership(...) -> Result<...>`](https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.change_membership): Propose a new membership config change to a running cluster.
 
 #### Utility Methods

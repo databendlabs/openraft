@@ -37,7 +37,7 @@ async fn state_machine_apply_membership() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router.wait_for_log(&btreeset![0], want, None, "empty").await?;
-    router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -67,10 +67,10 @@ async fn state_machine_apply_membership() -> Result<()> {
 
     tracing::info!("--- adding new nodes to cluster");
     let mut new_nodes = futures::stream::FuturesUnordered::new();
-    new_nodes.push(router.add_non_voter(0, 1));
-    new_nodes.push(router.add_non_voter(0, 2));
-    new_nodes.push(router.add_non_voter(0, 3));
-    new_nodes.push(router.add_non_voter(0, 4));
+    new_nodes.push(router.add_learner(0, 1));
+    new_nodes.push(router.add_learner(0, 2));
+    new_nodes.push(router.add_learner(0, 3));
+    new_nodes.push(router.add_learner(0, 4));
     while let Some(inner) = new_nodes.next().await {
         inner?;
     }

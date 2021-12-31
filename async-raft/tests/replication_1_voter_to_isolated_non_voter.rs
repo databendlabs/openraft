@@ -17,10 +17,10 @@ mod fixtures;
 /// - isolate replication to node 1.
 /// - client write should not be blocked.
 ///
-/// export RUST_LOG=async_raft,memstore,replication_1_voter_to_isolated_non_voter=trace
-/// cargo test -p async-raft --test replication_1_voter_to_isolated_non_voter
+/// export RUST_LOG=async_raft,memstore,replication_1_voter_to_isolated_learner=trace
+/// cargo test -p async-raft --test replication_1_voter_to_isolated_learner
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn replication_1_voter_to_isolated_non_voter() -> Result<()> {
+async fn replication_1_voter_to_isolated_learner() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 

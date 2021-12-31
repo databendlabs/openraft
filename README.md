@@ -48,7 +48,7 @@ Bug fixes are:
 - fix: doc-include can only be used in nightly build
 - fix: when handle_update_match_index(), non-voter should also be considered, because when member change a non-voter is also count as a quorum member
 - fix: when calc quorum, the non-voter should be count
-- fix: a NonVoter should stay as NonVoter instead of Follower after restart
+- fix: a Learner should stay as Learner instead of Follower after restart
 - fix: discarded log in replication_buffer should be finally sent.
 - fix: a conflict is expected even when appending empty enties
 - fix: last_applied should be updated only when logs actually applied.

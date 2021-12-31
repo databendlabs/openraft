@@ -15,11 +15,11 @@ use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use async_raft::async_trait::async_trait;
-use async_raft::error::AddNonVoterError;
+use async_raft::error::AddLearnerError;
 use async_raft::error::ClientReadError;
 use async_raft::error::ClientWriteError;
 use async_raft::metrics::Wait;
-use async_raft::raft::AddNonVoterResponse;
+use async_raft::raft::AddLearnerResponse;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::AppendEntriesResponse;
 use async_raft::raft::ClientWriteRequest;
@@ -169,13 +169,13 @@ impl RaftRouter {
         tokio::time::sleep(timeout).await;
     }
 
-    /// Create a cluster: 0 is the initial leader, others are voters non_voters
+    /// Create a cluster: 0 is the initial leader, others are voters learners
     /// NOTE: it create a single node cluster first, then change it to a multi-voter cluster.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn new_nodes_from_single(
         self: &Arc<Self>,
         node_ids: BTreeSet<NodeId>,
-        non_voters: BTreeSet<NodeId>,
+        learners: BTreeSet<NodeId>,
     ) -> anyhow::Result<u64> {
         assert!(node_ids.contains(&0));
 
@@ -186,7 +186,7 @@ impl RaftRouter {
         tracing::info!("--- wait for init node to ready");
 
         self.wait_for_log(&btreeset![0], want, timeout(), "empty").await?;
-        self.wait_for_state(&btreeset![0], State::NonVoter, timeout(), "empty").await?;
+        self.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
@@ -205,7 +205,7 @@ impl RaftRouter {
             tracing::info!("--- add voter: {}", id);
 
             self.new_raft_node(*id).await;
-            self.add_non_voter(0, *id).await?;
+            self.add_learner(0, *id).await?;
         }
 
         if node_ids.len() > 1 {
@@ -217,10 +217,10 @@ impl RaftRouter {
             self.wait_for_log(&node_ids, want, timeout(), &format!("cluster of {:?}", node_ids)).await?;
         }
 
-        for id in non_voters {
+        for id in learners {
             tracing::info!("--- add non-voter: {}", id);
             self.new_raft_node(id).await;
-            self.add_non_voter(0, id).await?;
+            self.add_learner(0, id).await?;
         }
 
         Ok(want)
@@ -416,21 +416,21 @@ impl RaftRouter {
         nodes.remove(&id);
     }
 
-    pub async fn add_non_voter(&self, leader: NodeId, target: NodeId) -> Result<AddNonVoterResponse, AddNonVoterError> {
+    pub async fn add_learner(&self, leader: NodeId, target: NodeId) -> Result<AddLearnerResponse, AddLearnerError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
-        node.0.add_non_voter(target, true).await
+        node.0.add_learner(target, true).await
     }
 
-    pub async fn add_non_voter_with_blocking(
+    pub async fn add_learner_with_blocking(
         &self,
         leader: NodeId,
         target: NodeId,
         blocking: bool,
-    ) -> Result<AddNonVoterResponse, AddNonVoterError> {
+    ) -> Result<AddLearnerResponse, AddLearnerError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
-        node.0.add_non_voter(target, blocking).await
+        node.0.add_learner(target, blocking).await
     }
 
     pub async fn change_membership(
@@ -511,8 +511,8 @@ impl RaftRouter {
             );
             assert_eq!(
                 node.state,
-                State::NonVoter,
-                "node is in state {:?}, expected NonVoter",
+                State::Learner,
+                "node is in state {:?}, expected Learner",
                 node.state
             );
             assert_eq!(

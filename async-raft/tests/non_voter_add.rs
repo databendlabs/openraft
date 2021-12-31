@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use async_raft::raft::AddNonVoterResponse;
+use async_raft::raft::AddLearnerResponse;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::RaftStorage;
@@ -12,9 +12,9 @@ use maplit::btreeset;
 #[macro_use]
 mod fixtures;
 
-/// RUST_LOG=async_raft,memstore,non_voter_add=trace cargo test -p async-raft --test non_voter_add
+/// RUST_LOG=async_raft,memstore,learner_add=trace cargo test -p async-raft --test learner_add
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn non_voter_add_readd() -> Result<()> {
+async fn learner_add_readd() -> Result<()> {
     //
     // - Add leader, expect NoChange
     // - Add a non-voter, expect raft to block until catching up.
@@ -37,9 +37,9 @@ async fn non_voter_add_readd() -> Result<()> {
 
     tracing::info!("--- re-adding leader does nothing");
     {
-        let res = router.add_non_voter(0, 0).await?;
+        let res = router.add_learner(0, 0).await?;
         assert_eq!(
-            AddNonVoterResponse {
+            AddLearnerResponse {
                 matched: LogId::new(1, n_logs)
             },
             res
@@ -50,7 +50,7 @@ async fn non_voter_add_readd() -> Result<()> {
     {
         tracing::info!("--- write up to 1000 logs");
 
-        router.client_request_many(0, "non_voter_add", 1000 - n_logs as usize).await;
+        router.client_request_many(0, "learner_add", 1000 - n_logs as usize).await;
         n_logs = 1000;
 
         tracing::info!("--- write up to 1000 logs done");
@@ -58,9 +58,9 @@ async fn non_voter_add_readd() -> Result<()> {
         router.wait_for_log(&btreeset! {0}, n_logs, timeout(), "write 1000 logs to leader").await?;
 
         router.new_raft_node(1).await;
-        router.add_non_voter(0, 1).await?;
+        router.add_learner(0, 1).await?;
 
-        tracing::info!("--- add_non_voter blocks until the replication catches up");
+        tracing::info!("--- add_learner blocks until the replication catches up");
         let sto1 = router.get_storage_handle(&1).await?;
 
         let logs = sto1.get_log_entries(..).await?;
@@ -69,14 +69,14 @@ async fn non_voter_add_readd() -> Result<()> {
         // 0-th log
         assert_eq!(n_logs + 1, logs.len() as u64);
 
-        router.wait_for_log(&btreeset! {0,1}, n_logs, timeout(), "replication to non_voter").await?;
+        router.wait_for_log(&btreeset! {0,1}, n_logs, timeout(), "replication to learner").await?;
     }
 
     tracing::info!("--- re-add node-1, expect error");
     {
-        let res = router.add_non_voter(0, 1).await?;
+        let res = router.add_learner(0, 1).await?;
         assert_eq!(
-            AddNonVoterResponse {
+            AddLearnerResponse {
                 matched: LogId::new(1, n_logs)
             },
             res
@@ -87,7 +87,7 @@ async fn non_voter_add_readd() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn non_voter_add_non_blocking() -> Result<()> {
+async fn learner_add_non_blocking() -> Result<()> {
     //
     // - Add leader, expect NoChange
     // - Add a non-voter, expect raft to block until catching up.
@@ -111,16 +111,16 @@ async fn non_voter_add_non_blocking() -> Result<()> {
     {
         tracing::info!("--- write up to 100 logs");
 
-        router.client_request_many(0, "non_voter_add", 100 - n_logs as usize).await;
+        router.client_request_many(0, "learner_add", 100 - n_logs as usize).await;
         n_logs = 100;
 
         router.wait(&0, timeout()).await?.log(n_logs, "received 100 logs").await?;
 
         router.new_raft_node(1).await;
-        let res = router.add_non_voter_with_blocking(0, 1, false).await?;
+        let res = router.add_learner_with_blocking(0, 1, false).await?;
 
         assert_eq!(
-            AddNonVoterResponse {
+            AddLearnerResponse {
                 matched: LogId::new(0, 0)
             },
             res

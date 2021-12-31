@@ -165,11 +165,11 @@ pub enum ChangeMembershipError {
 
     // TODO(xp): 111 test it
     #[error("to add a member {node_id} first need to add it as non-voter")]
-    NonVoterNotFound { node_id: NodeId },
+    LearnerNotFound { node_id: NodeId },
 
     // TODO(xp): 111 test it
-    #[error("replication to non voter {node_id} is lagging {distance}, matched: {matched}, can not add as member")]
-    NonVoterIsLagging {
+    #[error("replication to learner {node_id} is lagging {distance}, matched: {matched}, can not add as member")]
+    LearnerIsLagging {
         node_id: NodeId,
         matched: LogId,
         distance: u64,
@@ -183,7 +183,7 @@ pub enum ChangeMembershipError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum AddNonVoterError {
+pub enum AddLearnerError {
     #[error("{0}")]
     RaftError(#[from] RaftError),
 

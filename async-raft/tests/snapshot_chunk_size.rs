@@ -45,7 +45,7 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.new_raft_node(0).await;
 
         router.wait_for_log(&btreeset![0], want, None, "empty").await?;
-        router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+        router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
 
         router.initialize_from_single_node(0).await?;
         want += 1;
@@ -68,7 +68,7 @@ async fn snapshot_chunk_size() -> Result<()> {
     tracing::info!("--- add non-voter to receive snapshot and logs");
     {
         router.new_raft_node(1).await;
-        router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
+        router.add_learner(0, 1).await.expect("failed to add new node as non-voter");
 
         let want_snap = Some((want.into(), 1));
 

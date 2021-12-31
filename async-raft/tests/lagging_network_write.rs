@@ -15,7 +15,7 @@ mod fixtures;
 ///
 /// - Setup a network with <=50 ms random delay of messages.
 /// - bring a single-node cluster online.
-/// - add two NonVoter and then try to commit one log.
+/// - add two Learner and then try to commit one log.
 /// - change config to a 3 members cluster and commit another log.
 ///
 /// RUST_LOG=async_raft,memstore,lagging_network_write=trace cargo test -p async-raft --test lagging_network_write
@@ -43,7 +43,7 @@ async fn lagging_network_write() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router.wait_for_log(&btreeset![0], want, timeout, "empty").await?;
-    router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -57,10 +57,10 @@ async fn lagging_network_write() -> Result<()> {
 
     // Sync some new nodes.
     router.new_raft_node(1).await;
-    router.add_non_voter(0, 1).await?;
+    router.add_learner(0, 1).await?;
 
     router.new_raft_node(2).await;
-    router.add_non_voter(0, 2).await?;
+    router.add_learner(0, 2).await?;
 
     router.wait_for_log(&btreeset![1, 2], want, timeout, "non-voter init").await?;
 

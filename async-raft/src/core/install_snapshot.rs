@@ -56,7 +56,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // If not follower, become follower.
-        if !self.target_state.is_follower() && !self.target_state.is_non_voter() {
+        if !self.target_state.is_follower() && !self.target_state.is_learner() {
             self.set_target_state(State::Follower); // State update will emit metrics.
         }
 
