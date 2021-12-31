@@ -643,7 +643,7 @@ pub enum State {
 
 impl State {
     /// Check if currently in non-voter state.
-    pub fn is_non_voter(&self) -> bool {
+    pub fn is_learner(&self) -> bool {
         matches!(self, Self::NonVoter)
     }
 
@@ -788,7 +788,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 self.core.reject_init_with_config(tx);
             }
             RaftMsg::AddNonVoter { id, tx, blocking } => {
-                self.add_non_voter(id, tx, blocking);
+                self.add_learner(id, tx, blocking);
             }
             RaftMsg::ChangeMembership { members, blocking, tx } => {
                 self.change_membership(members, blocking, tx).await;
@@ -1019,7 +1019,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(self) async fn run(mut self) -> RaftResult<()> {
         self.core.report_metrics(Update::Update(None));
         loop {
-            if !self.core.target_state.is_non_voter() {
+            if !self.core.target_state.is_learner() {
                 return Ok(());
             }
 
@@ -1036,7 +1036,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
     }
 
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "non_voter", id=self.core.id))]
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "learner", id=self.core.id))]
     pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<D, R>) {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 

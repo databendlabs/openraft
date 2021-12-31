@@ -168,7 +168,7 @@ pub enum ChangeMembershipError {
     NonVoterNotFound { node_id: NodeId },
 
     // TODO(xp): 111 test it
-    #[error("replication to non voter {node_id} is lagging {distance}, matched: {matched}, can not add as member")]
+    #[error("replication to learner {node_id} is lagging {distance}, matched: {matched}, can not add as member")]
     NonVoterIsLagging {
         node_id: NodeId,
         matched: LogId,

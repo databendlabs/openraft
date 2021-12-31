@@ -68,7 +68,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Add a new node to the cluster as a non-voter, bringing it up-to-speed, and then responding
     /// on the given channel.
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) fn add_non_voter(
+    pub(super) fn add_learner(
         &mut self,
         target: NodeId,
         tx: RaftRespTx<AddNonVoterResponse, AddNonVoterError>,

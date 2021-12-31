@@ -67,10 +67,10 @@ async fn state_machine_apply_membership() -> Result<()> {
 
     tracing::info!("--- adding new nodes to cluster");
     let mut new_nodes = futures::stream::FuturesUnordered::new();
-    new_nodes.push(router.add_non_voter(0, 1));
-    new_nodes.push(router.add_non_voter(0, 2));
-    new_nodes.push(router.add_non_voter(0, 3));
-    new_nodes.push(router.add_non_voter(0, 4));
+    new_nodes.push(router.add_learner(0, 1));
+    new_nodes.push(router.add_learner(0, 2));
+    new_nodes.push(router.add_learner(0, 3));
+    new_nodes.push(router.add_learner(0, 4));
     while let Some(inner) = new_nodes.next().await {
         inner?;
     }

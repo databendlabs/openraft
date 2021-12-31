@@ -39,7 +39,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     router.wait_for_state(&btreeset![0], State::Leader, None, "init").await?;
 
     tracing::info!("--- add one non-voter");
-    router.add_non_voter(0, 1).await?;
+    router.add_learner(0, 1).await?;
 
     tracing::info!("--- write one log");
     router.client_request(0, "foo", 1).await;

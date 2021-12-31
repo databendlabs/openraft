@@ -201,13 +201,13 @@ impl RaftRouter {
         tokio::time::sleep(timeout).await;
     }
 
-    /// Create a cluster: 0 is the initial leader, others are voters non_voters
+    /// Create a cluster: 0 is the initial leader, others are voters learners
     /// NOTE: it create a single node cluster first, then change it to a multi-voter cluster.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn new_nodes_from_single(
         self: &Arc<Self>,
         node_ids: BTreeSet<NodeId>,
-        non_voters: BTreeSet<NodeId>,
+        learners: BTreeSet<NodeId>,
     ) -> anyhow::Result<u64> {
         assert!(node_ids.contains(&0));
 
@@ -237,7 +237,7 @@ impl RaftRouter {
             tracing::info!("--- add voter: {}", id);
 
             self.new_raft_node(*id).await;
-            self.add_non_voter(0, *id).await?;
+            self.add_learner(0, *id).await?;
         }
 
         if node_ids.len() > 1 {
@@ -249,10 +249,10 @@ impl RaftRouter {
             self.wait_for_log(&node_ids, want, timeout(), &format!("cluster of {:?}", node_ids)).await?;
         }
 
-        for id in non_voters {
+        for id in learners {
             tracing::info!("--- add non-voter: {}", id);
             self.new_raft_node(id).await;
-            self.add_non_voter(0, id).await?;
+            self.add_learner(0, id).await?;
         }
 
         Ok(want)
@@ -448,13 +448,13 @@ impl RaftRouter {
         nodes.remove(&id);
     }
 
-    pub async fn add_non_voter(&self, leader: NodeId, target: NodeId) -> Result<AddNonVoterResponse, AddNonVoterError> {
+    pub async fn add_learner(&self, leader: NodeId, target: NodeId) -> Result<AddNonVoterResponse, AddNonVoterError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
-        node.0.add_non_voter(target, true).await
+        node.0.add_learner(target, true).await
     }
 
-    pub async fn add_non_voter_with_blocking(
+    pub async fn add_learner_with_blocking(
         &self,
         leader: NodeId,
         target: NodeId,
@@ -462,7 +462,7 @@ impl RaftRouter {
     ) -> Result<AddNonVoterResponse, AddNonVoterError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
-        node.0.add_non_voter(target, blocking).await
+        node.0.add_learner(target, blocking).await
     }
 
     pub async fn change_membership(

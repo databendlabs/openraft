@@ -105,7 +105,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
         tracing::info!("--- add non-voter to the cluster to receive snapshot, which overrides the non-voter storage");
         {
-            router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
+            router.add_learner(0, 1).await.expect("failed to add new node as non-voter");
 
             tracing::info!("--- DONE add non-voter");
 

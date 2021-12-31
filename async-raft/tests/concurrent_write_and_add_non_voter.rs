@@ -12,7 +12,7 @@ use tracing_futures::Instrument;
 #[macro_use]
 mod fixtures;
 
-/// Cluster concurrent_write_and_add_non_voter test.
+/// Cluster concurrent_write_and_add_learner test.
 ///
 /// Internally when replication goes to LaggingState(a non-leader lacks a lot logs), the
 /// ReplicationCore purges `outbound_buffer` and `replication_buffer` and then sends all
@@ -36,10 +36,10 @@ mod fixtures;
 /// - add another non-voter and at the same time write a log.
 /// - asserts that all of the leader, followers and the non-voter receives all logs.
 ///
-/// RUST_LOG=async_raft,memstore,concurrent_write_and_add_non_voter=trace cargo test -p async-raft --test
-/// concurrent_write_and_add_non_voter
+/// RUST_LOG=async_raft,memstore,concurrent_write_and_add_learner=trace cargo test -p async-raft --test
+/// concurrent_write_and_add_learner
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
-async fn concurrent_write_and_add_non_voter() -> Result<()> {
+async fn concurrent_write_and_add_learner() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 
@@ -67,8 +67,8 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
         // Sync some new nodes.
         router.new_raft_node(1).await;
         router.new_raft_node(2).await;
-        router.add_non_voter(0, 1).await?;
-        router.add_non_voter(0, 2).await?;
+        router.add_learner(0, 1).await?;
+        router.add_learner(0, 2).await?;
 
         tracing::info!("--- changing cluster config");
 
@@ -98,7 +98,7 @@ async fn concurrent_write_and_add_non_voter() -> Result<()> {
         let handle = {
             tokio::spawn(
                 async move {
-                    r.add_non_voter(leader, 3).await.unwrap();
+                    r.add_learner(leader, 3).await.unwrap();
                     Ok::<(), anyhow::Error>(())
                 }
                 .instrument(tracing::debug_span!("spawn-add-non-voter")),

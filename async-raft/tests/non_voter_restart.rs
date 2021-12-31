@@ -15,7 +15,7 @@ use crate::fixtures::MemRaft;
 #[macro_use]
 mod fixtures;
 
-/// Cluster non_voter_restart test.
+/// Cluster learner_restart test.
 ///
 /// What does this test do?
 ///
@@ -26,9 +26,9 @@ mod fixtures;
 /// - shutdown all and retstart the non-voter node.
 /// - asserts the non-voter stays in non-vtoer state.
 ///
-/// RUST_LOG=async_raft,memstore,non_voter_restart=trace cargo test -p async-raft --test non_voter_restart
+/// RUST_LOG=async_raft,memstore,learner_restart=trace cargo test -p async-raft --test learner_restart
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn non_voter_restart() -> Result<()> {
+async fn learner_restart() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 
@@ -51,7 +51,7 @@ async fn non_voter_restart() -> Result<()> {
     router.initialize_with(0, btreeset![0]).await?;
     want += 1;
 
-    router.add_non_voter(0, 1).await?;
+    router.add_learner(0, 1).await?;
     router.client_request(0, "foo", 1).await;
     want += 1;
 

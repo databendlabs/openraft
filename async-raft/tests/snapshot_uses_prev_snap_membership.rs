@@ -63,7 +63,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router.wait_for_state(&btreeset![0], State::Leader, None, "empty").await?;
 
         router.new_raft_node(1).await;
-        router.add_non_voter(0, 1).await?;
+        router.add_learner(0, 1).await?;
 
         router.change_membership(0, btreeset![0, 1]).await?;
         want += 2;

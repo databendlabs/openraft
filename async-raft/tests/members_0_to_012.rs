@@ -47,8 +47,8 @@ async fn members_0_to_012() -> Result<()> {
 
     tracing::info!("--- adding new nodes to cluster");
     let mut new_nodes = futures::stream::FuturesUnordered::new();
-    new_nodes.push(router.add_non_voter(0, 1));
-    new_nodes.push(router.add_non_voter(0, 2));
+    new_nodes.push(router.add_learner(0, 1));
+    new_nodes.push(router.add_learner(0, 2));
     while let Some(inner) = new_nodes.next().await {
         inner?;
     }

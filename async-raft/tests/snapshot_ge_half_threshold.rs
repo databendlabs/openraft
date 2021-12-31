@@ -80,7 +80,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     tracing::info!("--- add non-voter to receive snapshot and logs");
     {
         router.new_raft_node(1).await;
-        router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
+        router.add_learner(0, 1).await.expect("failed to add new node as non-voter");
 
         router.wait_for_log(&btreeset![0, 1], want, None, "add non-voter").await?;
         let expected_snap = Some((want.into(), 1));

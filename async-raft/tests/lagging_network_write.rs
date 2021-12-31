@@ -57,10 +57,10 @@ async fn lagging_network_write() -> Result<()> {
 
     // Sync some new nodes.
     router.new_raft_node(1).await;
-    router.add_non_voter(0, 1).await?;
+    router.add_learner(0, 1).await?;
 
     router.new_raft_node(2).await;
-    router.add_non_voter(0, 2).await?;
+    router.add_learner(0, 2).await?;
 
     router.wait_for_log(&btreeset![1, 2], want, timeout, "non-voter init").await?;
 

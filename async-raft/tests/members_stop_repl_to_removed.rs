@@ -26,8 +26,8 @@ async fn members_stop_repl_to_removed() -> Result<()> {
     router.new_raft_node(3).await;
     router.new_raft_node(4).await;
 
-    router.add_non_voter(0, 3).await?;
-    router.add_non_voter(0, 4).await?;
+    router.add_learner(0, 3).await?;
+    router.add_learner(0, 4).await?;
 
     tracing::info!("--- changing config to 2,3,4");
     {

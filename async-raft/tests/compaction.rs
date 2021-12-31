@@ -88,7 +88,7 @@ async fn compaction() -> Result<()> {
     .await?;
 
     router.new_raft_node_with_sto(1, sto1.clone()).await;
-    router.add_non_voter(0, 1).await.expect("failed to add new node as non-voter");
+    router.add_learner(0, 1).await.expect("failed to add new node as non-voter");
 
     tracing::info!("--- add 1 log after snapshot");
     {
