@@ -43,7 +43,7 @@ async fn learner_restart() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router.wait_for_log(&btreeset![0, 1], want, None, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1], State::NonVoter, None, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     tracing::info!("--- initializing single node cluster");
@@ -62,13 +62,13 @@ async fn learner_restart() -> Result<()> {
     node0.shutdown().await?;
 
     let (node1, sto1) = router.remove_node(1).await.unwrap();
-    assert_node_state(0, &node1, 1, 2, State::NonVoter);
+    assert_node_state(0, &node1, 1, 2, State::Learner);
     node1.shutdown().await?;
 
     // restart node-1, assert the state as expected.
     let restarted = Raft::new(1, config.clone(), router.clone(), sto1);
     sleep(Duration::from_secs(2)).await;
-    assert_node_state(1, &restarted, 1, 2, State::NonVoter);
+    assert_node_state(1, &restarted, 1, 2, State::Learner);
 
     Ok(())
 }

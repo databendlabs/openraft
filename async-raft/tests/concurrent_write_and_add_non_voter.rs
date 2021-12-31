@@ -89,7 +89,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         wait_log(router.clone(), &candidates, want).await?;
     }
 
-    // Concurrently add NonVoter and write another log.
+    // Concurrently add Learner and write another log.
     tracing::info!("--- concurrently add non-voter and write another log");
     {
         router.new_raft_node(3).await;
@@ -115,9 +115,9 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     router
         .wait_for_metrics(
             &3u64,
-            |x| x.state == State::NonVoter,
+            |x| x.state == State::Learner,
             Some(timeout),
-            &format!("n{}.state -> {:?}", 3, State::NonVoter),
+            &format!("n{}.state -> {:?}", 3, State::Learner),
         )
         .await?;
 

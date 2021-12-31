@@ -52,7 +52,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         router.new_raft_node(0).await;
 
         router.wait_for_log(&btreeset![0], want, timeout(), "empty").await?;
-        router.wait_for_state(&btreeset![0], State::NonVoter, timeout(), "empty").await?;
+        router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
         router.initialize_from_single_node(0).await?;
         want += 1;
 

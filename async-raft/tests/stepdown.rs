@@ -37,7 +37,7 @@ async fn stepdown() -> Result<()> {
 
     // Assert all nodes are in non-voter state & have no entries.
     router.wait_for_log(&btreeset![0, 1], want, None, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1], State::NonVoter, None, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.

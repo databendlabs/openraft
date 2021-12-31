@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use async_raft::raft::AddNonVoterResponse;
+use async_raft::raft::AddLearnerResponse;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::RaftStorage;
@@ -39,7 +39,7 @@ async fn learner_add_readd() -> Result<()> {
     {
         let res = router.add_learner(0, 0).await?;
         assert_eq!(
-            AddNonVoterResponse {
+            AddLearnerResponse {
                 matched: LogId::new(1, n_logs)
             },
             res
@@ -76,7 +76,7 @@ async fn learner_add_readd() -> Result<()> {
     {
         let res = router.add_learner(0, 1).await?;
         assert_eq!(
-            AddNonVoterResponse {
+            AddLearnerResponse {
                 matched: LogId::new(1, n_logs)
             },
             res
@@ -120,7 +120,7 @@ async fn learner_add_non_blocking() -> Result<()> {
         let res = router.add_learner_with_blocking(0, 1, false).await?;
 
         assert_eq!(
-            AddNonVoterResponse {
+            AddLearnerResponse {
                 matched: LogId::new(0, 0)
             },
             res

@@ -38,7 +38,7 @@ use tracing::Span;
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::core::client::ClientRequestEntry;
-use crate::error::AddNonVoterError;
+use crate::error::AddLearnerError;
 use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::ForwardToLeader;
@@ -47,7 +47,7 @@ use crate::error::RaftError;
 use crate::error::RaftResult;
 use crate::metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
-use crate::raft::AddNonVoterResponse;
+use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
@@ -232,19 +232,19 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         self.target_state = match (has_log, single, is_voter) {
             // A restarted raft that already received some logs but was not yet added to a cluster.
-            // It should remain in NonVoter state, not Follower.
-            (true, true, false) => State::NonVoter,
-            (true, false, false) => State::NonVoter,
+            // It should remain in Learner state, not Follower.
+            (true, true, false) => State::Learner,
+            (true, false, false) => State::Learner,
 
-            (false, true, false) => State::NonVoter, // impossible: no logs but there are other members.
-            (false, false, false) => State::NonVoter, // impossible: no logs but there are other members.
+            (false, true, false) => State::Learner, // impossible: no logs but there are other members.
+            (false, false, false) => State::Learner, // impossible: no logs but there are other members.
 
             // If this is the only configured member and there is live state, then this is
             // a single-node cluster. Become leader.
             (true, true, true) => State::Leader,
 
             // The initial state when a raft is created from empty store.
-            (false, true, true) => State::NonVoter,
+            (false, true, true) => State::Learner,
 
             // Otherwise it is Follower.
             (true, false, true) => State::Follower,
@@ -272,7 +272,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 State::Leader => LeaderState::new(&mut self).run().await?,
                 State::Candidate => CandidateState::new(&mut self).run().await?,
                 State::Follower => FollowerState::new(&mut self).run().await?,
-                State::NonVoter => NonVoterState::new(&mut self).run().await?,
+                State::Learner => LearnerState::new(&mut self).run().await?,
                 State::Shutdown => {
                     tracing::info!("node has shutdown");
                     return Ok(());
@@ -323,7 +323,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self), fields(id=self.id))]
     fn set_target_state(&mut self, target_state: State) {
         if target_state == State::Follower && !self.effective_membership.membership.contains(&self.id) {
-            self.target_state = State::NonVoter;
+            self.target_state = State::Learner;
         } else {
             self.target_state = target_state;
         }
@@ -415,13 +415,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // being removed.
         self.effective_membership = cfg;
         if self.effective_membership.membership.contains(&self.id) {
-            if self.target_state == State::NonVoter {
-                // The node is a NonVoter and the new config has it configured as a normal member.
+            if self.target_state == State::Learner {
+                // The node is a Learner and the new config has it configured as a normal member.
                 // Transition to follower.
                 self.set_target_state(State::Follower);
             }
         } else {
-            self.set_target_state(State::NonVoter);
+            self.set_target_state(State::Learner);
         }
         Ok(())
     }
@@ -630,7 +630,7 @@ pub(self) enum SnapshotUpdate {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum State {
     /// The node is completely passive; replicating entries, but neither voting nor timing out.
-    NonVoter,
+    Learner,
     /// The node is replicating logs from the leader.
     Follower,
     /// The node is campaigning to become the cluster leader.
@@ -644,7 +644,7 @@ pub enum State {
 impl State {
     /// Check if currently in non-voter state.
     pub fn is_learner(&self) -> bool {
-        matches!(self, Self::NonVoter)
+        matches!(self, Self::Learner)
     }
 
     /// Check if currently in follower state.
@@ -787,7 +787,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
             }
-            RaftMsg::AddNonVoter { id, tx, blocking } => {
+            RaftMsg::AddLearner { id, tx, blocking } => {
                 self.add_learner(id, tx, blocking);
             }
             RaftMsg::ChangeMembership { members, blocking, tx } => {
@@ -810,7 +810,7 @@ struct ReplicationState<D: AppData> {
     pub repl_stream: ReplicationStream<D>,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
-    pub tx: Option<RaftRespTx<AddNonVoterResponse, AddNonVoterError>>,
+    pub tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
 }
 
 impl<D: AppData> MessageSummary for ReplicationState<D> {
@@ -922,7 +922,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
             }
-            RaftMsg::AddNonVoter { tx, .. } => {
+            RaftMsg::AddLearner { tx, .. } => {
                 self.core.reject_config_change_not_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
@@ -992,7 +992,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
             }
-            RaftMsg::AddNonVoter { tx, .. } => {
+            RaftMsg::AddLearner { tx, .. } => {
                 self.core.reject_config_change_not_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
@@ -1005,11 +1005,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to a Raft node in non-voter state.
-pub struct NonVoterState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+pub struct LearnerState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     core: &'a mut RaftCore<D, R, N, S>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> NonVoterState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         Self { core }
     }
@@ -1023,7 +1023,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 return Ok(());
             }
 
-            let span = tracing::debug_span!("CHrx:NonVoterState");
+            let span = tracing::debug_span!("CHrx:LearnerState");
             let _ent = span.enter();
 
             tokio::select! {
@@ -1059,7 +1059,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::Initialize { members, tx } => {
                 let _ = tx.send(self.handle_init_with_config(members).await);
             }
-            RaftMsg::AddNonVoter { tx, .. } => {
+            RaftMsg::AddLearner { tx, .. } => {
                 self.core.reject_config_change_not_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {

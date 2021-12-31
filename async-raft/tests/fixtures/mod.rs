@@ -15,11 +15,11 @@ use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use async_raft::async_trait::async_trait;
-use async_raft::error::AddNonVoterError;
+use async_raft::error::AddLearnerError;
 use async_raft::error::ClientReadError;
 use async_raft::error::ClientWriteError;
 use async_raft::metrics::Wait;
-use async_raft::raft::AddNonVoterResponse;
+use async_raft::raft::AddLearnerResponse;
 use async_raft::raft::AppendEntriesRequest;
 use async_raft::raft::AppendEntriesResponse;
 use async_raft::raft::ClientWriteRequest;
@@ -218,7 +218,7 @@ impl RaftRouter {
         tracing::info!("--- wait for init node to ready");
 
         self.wait_for_log(&btreeset![0], want, timeout(), "empty").await?;
-        self.wait_for_state(&btreeset![0], State::NonVoter, timeout(), "empty").await?;
+        self.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
@@ -448,7 +448,7 @@ impl RaftRouter {
         nodes.remove(&id);
     }
 
-    pub async fn add_learner(&self, leader: NodeId, target: NodeId) -> Result<AddNonVoterResponse, AddNonVoterError> {
+    pub async fn add_learner(&self, leader: NodeId, target: NodeId) -> Result<AddLearnerResponse, AddLearnerError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.add_learner(target, true).await
@@ -459,7 +459,7 @@ impl RaftRouter {
         leader: NodeId,
         target: NodeId,
         blocking: bool,
-    ) -> Result<AddNonVoterResponse, AddNonVoterError> {
+    ) -> Result<AddLearnerResponse, AddLearnerError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
         node.0.add_learner(target, blocking).await
@@ -543,8 +543,8 @@ impl RaftRouter {
             );
             assert_eq!(
                 node.state,
-                State::NonVoter,
-                "node is in state {:?}, expected NonVoter",
+                State::Learner,
+                "node is in state {:?}, expected Learner",
                 node.state
             );
             assert_eq!(

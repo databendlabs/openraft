@@ -49,7 +49,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router.new_raft_node(0).await;
 
         router.wait_for_log(&btreeset![0], want, None, "empty").await?;
-        router.wait_for_state(&btreeset![0], State::NonVoter, None, "empty").await?;
+        router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
         router.initialize_from_single_node(0).await?;
         want += 1;
 

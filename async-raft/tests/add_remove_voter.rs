@@ -51,9 +51,9 @@ async fn add_remove_voter() -> Result<()> {
     router
         .wait_for_metrics(
             &0u64,
-            |x| x.state == State::NonVoter,
+            |x| x.state == State::Learner,
             Some(timeout),
-            &format!("n{}.state -> {:?}", 4, State::NonVoter),
+            &format!("n{}.state -> {:?}", 4, State::Learner),
         )
         .await?;
 
@@ -111,9 +111,9 @@ async fn add_remove_voter() -> Result<()> {
         router
             .wait_for_metrics(
                 &4u64,
-                |x| x.state == State::NonVoter,
+                |x| x.state == State::Learner,
                 Some(timeout),
-                &format!("n{}.state -> {:?}", 4, State::NonVoter),
+                &format!("n{}.state -> {:?}", 4, State::Learner),
             )
             .await?;
     }

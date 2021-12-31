@@ -52,7 +52,7 @@ async fn leader_metrics() -> Result<()> {
     // Assert all nodes are in non-voter state & have no entries.
     let mut want = 0;
     router.wait_for_log(&btreeset![0], want, timeout, "init").await?;
-    router.wait_for_state(&btreeset![0], State::NonVoter, timeout, "init").await?;
+    router.wait_for_state(&btreeset![0], State::Learner, timeout, "init").await?;
 
     router.assert_pristine_cluster().await;
 
@@ -139,9 +139,9 @@ async fn leader_metrics() -> Result<()> {
         router
             .wait_for_metrics(
                 &4,
-                |x| x.state == State::NonVoter,
+                |x| x.state == State::Learner,
                 timeout,
-                &format!("n{}.state -> {:?}", 4, State::NonVoter),
+                &format!("n{}.state -> {:?}", 4, State::Learner),
             )
             .await?;
 

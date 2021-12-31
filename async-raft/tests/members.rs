@@ -15,7 +15,7 @@ mod fixtures;
 /// RUST_LOG=async_raft,memstore,learner_add=trace cargo test -p async-raft --test learner_add
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn members_add_lagging_learner_non_blocking() -> Result<()> {
-    // Add a non-voter into membership config, expect error NonVoterIsLagging.
+    // Add a non-voter into membership config, expect error LearnerIsLagging.
 
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
@@ -46,7 +46,7 @@ async fn members_add_lagging_learner_non_blocking() -> Result<()> {
         router.wait(&0, timeout()).await?.log(n_logs, "received 500 logs").await?;
     }
 
-    tracing::info!("--- restore replication and change membership at once, expect NonVoterIsLagging");
+    tracing::info!("--- restore replication and change membership at once, expect LearnerIsLagging");
     {
         router.restore_node(1).await;
         let res = router.change_membership_with_blocking(0, btreeset! {0,1}, false).await;
@@ -57,7 +57,7 @@ async fn members_add_lagging_learner_non_blocking() -> Result<()> {
         let err: ChangeMembershipError = err.try_into().unwrap();
 
         match err {
-            ChangeMembershipError::NonVoterIsLagging {
+            ChangeMembershipError::LearnerIsLagging {
                 node_id,
                 matched: _,
                 distance,
@@ -68,7 +68,7 @@ async fn members_add_lagging_learner_non_blocking() -> Result<()> {
                 assert!(distance < 500);
             }
             _ => {
-                panic!("expect ChangeMembershipError::NonVoterNotFound");
+                panic!("expect ChangeMembershipError::LearnerNotFound");
             }
         }
     }
