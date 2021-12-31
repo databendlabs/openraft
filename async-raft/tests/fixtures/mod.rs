@@ -77,7 +77,7 @@ macro_rules! init_ut {
         let name = func_name!();
         let last = name.split("::").last().unwrap();
 
-        let g = fixtures::init_default_ut_tracing();
+        let g = crate::fixtures::init_default_ut_tracing();
 
         let span = tracing::debug_span!("ut", "{}", last);
         (g, span)

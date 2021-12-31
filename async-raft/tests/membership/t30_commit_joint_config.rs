@@ -3,13 +3,82 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_raft::Config;
 use async_raft::State;
-use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
 use tracing_futures::Instrument;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
+
+/// A leader must wait for non-voter to commit member-change from [0] to [0,1,2].
+/// There is a bug that leader commit a member change log directly because it only checks
+/// the replication of voters and believes itself is the only voter.
+///
+/// - Init 1 leader and 2 non-voter.
+/// - Isolate non-voter.
+/// - Asserts that membership change won't success.
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn commit_joint_config_during_0_to_012() -> Result<()> {
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
+
+    // Setup test dependencies.
+    let config = Arc::new(Config::default().validate()?);
+    let router = Arc::new(RaftRouter::new(config.clone()));
+    router.new_raft_node(0).await;
+
+    // Assert all nodes are in non-voter state & have no entries.
+    let want;
+
+    // router.assert_pristine_cluster().await;
+
+    // Initialize the cluster, then assert that a stable cluster was formed & held.
+    tracing::info!("--- initializing cluster");
+    router.initialize_from_single_node(0).await?;
+    want = 1;
+
+    router.wait_for_log(&btreeset![0], want, None, "init node 0").await?;
+
+    // Sync some new nodes.
+    router.new_raft_node(1).await;
+    router.new_raft_node(2).await;
+
+    tracing::info!("--- adding new nodes to cluster");
+    let mut new_nodes = futures::stream::FuturesUnordered::new();
+    new_nodes.push(router.add_learner(0, 1));
+    new_nodes.push(router.add_learner(0, 2));
+    while let Some(inner) = new_nodes.next().await {
+        inner?;
+    }
+
+    router.wait_for_log(&btreeset![0], want, None, "init node 0").await?;
+
+    tracing::info!("--- isolate node 1,2, so that membership [0,1,2] wont commit");
+
+    router.isolate_node(1).await;
+    router.isolate_node(2).await;
+
+    tracing::info!("--- changing cluster config, should timeout");
+
+    tokio::spawn({
+        let router = router.clone();
+        async move {
+            let _x = router.change_membership(0, btreeset! {0,1,2}).await;
+        }
+        .instrument(tracing::debug_span!("spawn-change-membership"))
+    });
+
+    let res = router
+        .wait_for_metrics(
+            &0,
+            |x| x.last_applied > want,
+            None,
+            "the next joint log should not commit",
+        )
+        .await;
+    assert!(res.is_err(), "joint log should not commit");
+
+    Ok(())
+}
 
 /// Replace membership with another one with only one common node.
 /// To reproduce the bug that new config does not actually examine the term/index of non-voter, but instead only
@@ -18,10 +87,8 @@ mod fixtures;
 /// - bring a cluster of node 0,1,2 online.
 /// - isolate 3,4; change config to 2,3,4
 /// - since new config can not form a quorum, the joint config should not be committed.
-///
-/// RUST_LOG=async_raft,memstore,members_012_to_234=trace cargo test -p async-raft --test members_012_to_234
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
-async fn members_012_to_234() -> Result<()> {
+async fn commit_joint_config_during_012_to_234() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 

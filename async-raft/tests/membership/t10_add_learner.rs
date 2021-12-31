@@ -6,15 +6,13 @@ use async_raft::raft::AddLearnerResponse;
 use async_raft::Config;
 use async_raft::LogId;
 use async_raft::RaftStorage;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// RUST_LOG=async_raft,memstore,learner_add=trace cargo test -p async-raft --test learner_add
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn learner_add_readd() -> Result<()> {
+async fn add_learner_basic() -> Result<()> {
     //
     // - Add leader, expect NoChange
     // - Add a non-voter, expect raft to block until catching up.
@@ -87,7 +85,7 @@ async fn learner_add_readd() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn learner_add_non_blocking() -> Result<()> {
+async fn add_learner_non_blocking() -> Result<()> {
     //
     // - Add leader, expect NoChange
     // - Add a non-voter, expect raft to block until catching up.

@@ -3,14 +3,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_raft::Config;
-use fixtures::RaftRouter;
 use maplit::btreeset;
-#[macro_use]
-mod fixtures;
+
+use crate::fixtures::RaftRouter;
 
 /// Replication should stop after a follower is removed from membership.
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
-async fn members_stop_repl_to_removed() -> Result<()> {
+async fn stop_replication_to_removed_follower() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 
