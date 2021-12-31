@@ -84,6 +84,12 @@ pub struct EffectiveMembership {
     pub membership: Membership,
 }
 
+impl MessageSummary for EffectiveMembership {
+    fn summary(&self) -> String {
+        format!("{{log_id:{} membership:{}}}", self.log_id, self.membership.summary())
+    }
+}
+
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     /// This node's ID.
@@ -301,7 +307,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             leader_metrics,
         };
 
-        tracing::debug!("report_metrics: {:?}", m);
+        tracing::debug!("report_metrics: {}", m.summary());
         let res = self.tx_metrics.send(m);
 
         if let Err(err) = res {
@@ -320,8 +326,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
-    #[tracing::instrument(level = "debug", skip(self), fields(id=self.id))]
+    #[tracing::instrument(level = "trace", skip(self), fields(id=self.id))]
     fn set_target_state(&mut self, target_state: State) {
+        tracing::debug!(id = self.id, ?target_state, "set_target_state");
+
         if target_state == State::Follower && !self.effective_membership.membership.contains(&self.id) {
             self.target_state = State::NonVoter;
         } else {

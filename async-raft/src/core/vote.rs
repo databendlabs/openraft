@@ -9,6 +9,7 @@ use crate::core::UpdateCurrentLeader;
 use crate::error::RaftResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::summary::MessageSummary;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::NodeId;
@@ -19,7 +20,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// An RPC invoked by candidates to gather votes (§5.2).
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(msg=%msg.summary()))]
     pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> RaftResult<VoteResponse> {
         tracing::debug!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "start handle_vote_request");
 
