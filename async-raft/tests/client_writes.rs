@@ -31,7 +31,7 @@ async fn client_writes() -> Result<()> {
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(2000),
             // The write load is heavy in this test, need a relatively long timeout.
-            election_timeout_min: 500,
+            election_timeout_min: 501,
             election_timeout_max: 1000,
             ..Default::default()
         }
