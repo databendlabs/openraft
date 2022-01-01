@@ -1,20 +1,3 @@
-# https://github.com/marketplace/actions/slash-commands
-#
-# Examples:
-#     steps:
-#       - name: Check for Command
-#         id: command
-#         uses: xt0rted/slash-command-action@v1
-#         with:
-#           repo-token: ${{ secrets.GITHUB_TOKEN }}
-#           command: test
-#           reaction: "true"
-#           reaction-type: "eyes"
-#           allow-edits: "false"
-#           permission-level: admin
-#       - name: Act on the command
-#         run: echo "The command was '${{ steps.command.outputs.command-name }}' with arguments '${{ steps.command.outputs.command-arguments }}'"
-
 on:
   issue_comment:
     types:
@@ -33,7 +16,6 @@ jobs:
           reaction: "true"
           reaction-type: "rocket"
 
-      # https://github.com/marketplace/actions/actions-ecosystem-action-add-assignees
       - uses: actions-ecosystem/action-add-assignees@v1
         with:
           github_token: ${{ secrets.github_token }}
@@ -52,7 +34,6 @@ jobs:
           reaction: "true"
           reaction-type: "rocket"
 
-      # https://github.com/marketplace/actions/create-or-update-comment
       - uses: peter-evans/create-or-update-comment@v1
         with:
           issue-number: ${{ github.event.issue.number }}
@@ -61,56 +42,3 @@ jobs:
 
             - `/help` : to print help messages.
             - `/assignme` : to assign this issue to you.
-
-# # Another way: actions/github-script
-# # https://github.com/actions/github-script#comment-on-an-issue
-#
-# Assign:
-#
-# - uses: actions/github-script@v5
-#   with:
-#     script: |
-#       github.rest.issues.addAssignees({
-#         issue_number: context.issue.number,
-#         owner: context.repo.owner,
-#         repo: context.repo.repo,
-#         assignees: [context.payload.sender.login]
-#       })
-#
-# Create comment:
-#
-# - uses: actions/github-script@v5
-#   with:
-#     script: |
-#       github.rest.issues.createComment({
-#         issue_number: context.issue.number,
-#         owner: context.repo.owner,
-#         repo: context.repo.repo,
-#         body: [
-#                 'Get help or engage by:',
-#                 '',
-#                 '- `/help` : to print help messages.',
-#                 '- `/assignme` : to assign this issue to you.',
-#               ].join('\n')
-#       })
-
-
-# jobs:
-#   # pr_commented:
-#   #   # This job only runs for pull request comments
-#   #   name: PR comment
-#   #   if: ${{ github.event.issue.pull_request }}
-#   #   runs-on: ubuntu-latest
-#   #   steps:
-#   #     - run: |
-#   #         echo "Comment on PR #${{ github.event.issue.number }}"
-
-#   issue_commented:
-#     # This job only runs for issue comments
-#     name: Issue comment
-#     if: ${{ !github.event.issue.pull_request }}
-#     runs-on: ubuntu-latest
-#     steps:
-#       - run: |
-#           echo "Comment on issue #${{ github.event.issue.number }}"
-

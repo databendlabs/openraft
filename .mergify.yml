@@ -1,5 +1,3 @@
-# https://docs.mergify.com/conditions/#about-status-checks
-
 queue_rules:
   - name: feature_queue
     conditions:
@@ -12,8 +10,7 @@ pull_request_rules:
 
   - name: put o queue if approved
     conditions:
-        # TODO: make it `1` when finished.
-      - "#approved-reviews-by>=0"
+      - "#approved-reviews-by>=1"
     actions:
       queue:
         name: feature_queue
@@ -23,15 +20,3 @@ pull_request_rules:
       - merged
     actions:
       delete_head_branch:
-
-  # # if there is a conflict in a approved PR, ping the author.
-  # - name: ping author on conflicts
-  #   conditions:
-  #     - conflict
-  #     - "#approved-reviews-by >= 2"
-  #   actions:
-  #     comment:
-  #       message: |
-  #         This pull request has merge conflicts that must be resolved before it can be merged. @{{author}} please update it 🙏.
-
-  #         Try `@mergify update` or update manually.
