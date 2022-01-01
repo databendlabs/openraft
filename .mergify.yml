@@ -4,11 +4,21 @@ pull_request_rules:
 
   - name: Automatic merge on approval
     conditions:
-      - "#approved-reviews-by>=2"
-      - check-success=build async-raft
+      - "#approved-reviews-by>=1"
+      - '#check-pending=0'
+      - '#check-success>=2'
+      - check-success=clippy
+      - check-success=build async-raft (on)
+      - check-success~=build async-raft
     actions:
       merge:
         method: merge
+
+  - name: Delete head branch after merge
+    conditions:
+      - merged
+    actions:
+      delete_head_branch:
 
   # # if there is a conflict in a approved PR, ping the author.
   # - name: ping author on conflicts
