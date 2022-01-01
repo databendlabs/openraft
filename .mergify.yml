@@ -5,7 +5,6 @@ queue_rules:
     conditions:
       # - '#check-pending=0'
       - '#check-success>=2'
-      - check-success=clippy
       - check-success=build async-raft (on)
       - check-success~=build async-raft
 
