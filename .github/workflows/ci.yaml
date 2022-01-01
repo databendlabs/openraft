@@ -14,11 +14,11 @@ jobs:
       - name: Setup | Checkout
         uses: actions/checkout@v2
 
-      # # use rust-toolchain file
-      # - name: Setup | Toolchain
-      #   uses: actions-rs/toolchain@v1
-      #   with:
-      #     components: rustfmt, clippy
+      # use rust-toolchain file
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          components: rustfmt, clippy
 
       # # - A store with defensive checks returns error when unexpected accesses are sent to RaftStore.
       # # - Raft should not depend on defensive error to work correctly.
@@ -38,11 +38,11 @@ jobs:
       #     command: build
       #     args: --release --all-features
 
-      # - name: Clippy
-      #   uses: actions-rs/clippy-check@v1
-      #   with:
-      #     token: ${{ secrets.GITHUB_TOKEN }}
-      #     args: --all-targets -- -D warnings -A clippy::bool-assert-comparison
+      - name: Clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets -- -D warnings -A clippy::bool-assert-comparison
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2
