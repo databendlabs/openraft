@@ -1,0 +1,23 @@
+# https://docs.mergify.com/conditions/#about-status-checks
+
+pull_request_rules:
+
+  - name: Automatic merge on approval
+    conditions:
+      - "#approved-reviews-by>=2"
+      - check-success=build async-raft
+    actions:
+      merge:
+        method: merge
+
+  # # if there is a conflict in a approved PR, ping the author.
+  # - name: ping author on conflicts
+  #   conditions:
+  #     - conflict
+  #     - "#approved-reviews-by >= 2"
+  #   actions:
+  #     comment:
+  #       message: |
+  #         This pull request has merge conflicts that must be resolved before it can be merged. @{{author}} please update it 🙏.
+
+  #         Try `@mergify update` or update manually.
