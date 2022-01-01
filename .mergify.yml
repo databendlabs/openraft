@@ -3,7 +3,7 @@
 queue_rules:
   - name: feature_queue
     conditions:
-      - '#check-pending=0'
+      # - '#check-pending=0'
       - '#check-success>=2'
       - check-success=clippy
       - check-success=build async-raft (on)
