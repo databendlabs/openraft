@@ -1,29 +1,49 @@
-# https://github.com/actions/github-script#comment-on-an-issue
 
 on:
   issues:
     types:
       - opened
 
+# https://github.com/marketplace/actions/create-or-update-comment
+
 jobs:
   welcome:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/github-script@v5
+      - uses: peter-evans/create-or-update-comment@v1
         with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: [
-                     '👋 Thanks for opening this issue!',
-                     '',
-                      'Get help or engage by:',
-                      '',
-                      '- `/help` : to print help messages.',
-                      '- `/assignme` : to assign this issue to you.',
-                    ].join('\n')
-            })
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            👋 Thanks for opening this issue!
+
+            Get help or engage by:
+
+            - `/help` : to print help messages.
+            - `/assignme` : to assign this issue to you.
+
+
+# Another way: actions/github-script
+# # https://github.com/actions/github-script#comment-on-an-issue
+
+# jobs:
+#   welcome:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/github-script@v5
+#         with:
+#           script: |
+#             github.rest.issues.createComment({
+#               issue_number: context.issue.number,
+#               owner: context.repo.owner,
+#               repo: context.repo.repo,
+#               body: [
+#                      '👋 Thanks for opening this issue!',
+#                      '',
+#                       'Get help or engage by:',
+#                       '',
+#                       '- `/help` : to print help messages.',
+#                       '- `/assignme` : to assign this issue to you.',
+#                     ].join('\n')
+#             })
 
 

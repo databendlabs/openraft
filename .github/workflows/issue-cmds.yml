@@ -33,15 +33,12 @@ jobs:
           reaction: "true"
           reaction-type: "rocket"
 
-      - uses: actions/github-script@v5
+      # https://github.com/marketplace/actions/actions-ecosystem-action-add-assignees
+      - uses: actions-ecosystem/action-add-assignees@v1
         with:
-          script: |
-            github.rest.issues.addAssignees({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              assignees: [context.payload.sender.login]
-            })
+          github_token: ${{ secrets.github_token }}
+          assignees: ${{ github.actor }}
+
 
   help:
     name: /help
@@ -55,20 +52,47 @@ jobs:
           reaction: "true"
           reaction-type: "rocket"
 
-      - uses: actions/github-script@v5
+      # https://github.com/marketplace/actions/create-or-update-comment
+      - uses: peter-evans/create-or-update-comment@v1
         with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: [
-                      'Get help or engage by:',
-                      '',
-                      '- `/help` : to print help messages.',
-                      '- `/assignme` : to assign this issue to you.',
-                    ].join('\n')
-            })
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            Get help or engage by:
+
+            - `/help` : to print help messages.
+            - `/assignme` : to assign this issue to you.
+
+# # Another way: actions/github-script
+# # https://github.com/actions/github-script#comment-on-an-issue
+#
+# Assign:
+#
+# - uses: actions/github-script@v5
+#   with:
+#     script: |
+#       github.rest.issues.addAssignees({
+#         issue_number: context.issue.number,
+#         owner: context.repo.owner,
+#         repo: context.repo.repo,
+#         assignees: [context.payload.sender.login]
+#       })
+#
+# Create comment:
+#
+# - uses: actions/github-script@v5
+#   with:
+#     script: |
+#       github.rest.issues.createComment({
+#         issue_number: context.issue.number,
+#         owner: context.repo.owner,
+#         repo: context.repo.repo,
+#         body: [
+#                 'Get help or engage by:',
+#                 '',
+#                 '- `/help` : to print help messages.',
+#                 '- `/assignme` : to assign this issue to you.',
+#               ].join('\n')
+#       })
 
 
 # jobs:
