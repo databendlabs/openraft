@@ -3,37 +3,28 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Overview - Async Raft</title>
-        
-        
-
+        <title>Overview - openraft</title>
+                
 
         <!-- Custom HTML head -->
         
 
-
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
-        <meta name="description" content="The async-raft user guide.">
+        <meta name="description" content="The openraft user guide.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
 
-        
-        <link rel="icon" href="favicon.svg">
-        
-        
-        <link rel="shortcut icon" href="favicon.png">
-        
-        <link rel="stylesheet" href="css/variables.css">
+                <link rel="icon" href="favicon.svg">
+                        <link rel="shortcut icon" href="favicon.png">
+                <link rel="stylesheet" href="css/variables.css">
         <link rel="stylesheet" href="css/general.css">
         <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
-
+                <link rel="stylesheet" href="css/print.css" media="print">
+        
         <!-- Fonts -->
         <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+                <link rel="stylesheet" href="fonts/fonts.css">
         
-        <link rel="stylesheet" href="fonts/fonts.css">
-        
-
         <!-- Highlight.js Stylesheets -->
         <link rel="stylesheet" href="highlight.css">
         <link rel="stylesheet" href="tomorrow-night.css">
@@ -41,9 +32,7 @@
 
         <!-- Custom theme stylesheets -->
         
-
-        
-    </head>
+            </head>
     <body>
         <!-- Provide site root to javascript -->
         <script type="text/javascript">
@@ -93,8 +82,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html" class="active">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="network.html"><strong aria-hidden="true">2.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">3.</strong> Storage</a></li><li class="chapter-item expanded "><a href="raft.html"><strong aria-hidden="true">4.</strong> Raft API</a></li><li class="chapter-item expanded "><a href="putting-it-all-together.html"><strong aria-hidden="true">5.</strong> Putting It All Together</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">6.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">6.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">6.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">7.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">8.</strong> Get To It</a></li></ol>
-            </div>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html" class="active">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li></ol></li></ol>            </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
 
@@ -118,27 +106,24 @@
                             <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
                         </ul>
-                        
-                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                                                <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
                             <i class="fa fa-search"></i>
                         </button>
-                        
-                    </div>
+                                            </div>
 
-                    <h1 class="menu-title">Async Raft</h1>
+                    <h1 class="menu-title">openraft</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                                                <a href="print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
-                        
+                                                                        
                     </div>
                 </div>
 
-                
-                <div id="search-wrapper" class="hidden">
+                                <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <input type="search" name="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -147,7 +132,6 @@
                     </div>
                 </div>
                 
-
                 <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
                 <script type="text/javascript">
                     document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
@@ -159,32 +143,32 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 align="center">async raft</h1>
+                        <h1 align="center">openraft</h1>
 <div align="center">
     <strong>
-        An implementation of the <a href="https://raft.github.io/">Raft distributed consensus protocol</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/async-raft/async-raft">github</a>!
+        Improved version of <a href="https://raft.github.io/">Raft</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/datafuselabs/openraft">github</a>!
     </strong>
 </div>
 <br/>
 <div align="center">
-<p><a href="https://github.com/async-raft/async-raft/actions"><img src="https://github.com/async-raft/async-raft/workflows/ci/badge.svg?branch=master" alt="Build Status" /></a>
-<a href="https://discord.gg/DYSDaBjwaA"><img src="https://img.shields.io/discord/845414467234693170?logo=discord&amp;style=flat-square" alt="Discord Chat" /></a>
-<a href="https://crates.io/crates/async-raft"><img src="https://img.shields.io/crates/v/async-raft.svg" alt="Crates.io" /></a>
-<a href="https://docs.rs/async-raft"><img src="https://docs.rs/async-raft/badge.svg" alt="docs.rs" /></a>
-<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="License" /></a>
-<img src="https://img.shields.io/crates/d/async-raft.svg" alt="Crates.io" />
-<img src="https://img.shields.io/crates/dv/async-raft.svg" alt="Crates.io" /></p>
+<p><a href="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml"><img src="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg" alt="CI" /></a></p>
+<!-- [![Crates.io](https://img.shields.io/crates/v/async-raft.svg)](https://crates.io/crates/async-raft) -->
+<!-- [![docs.rs](https://docs.rs/async-raft/badge.svg)](https://docs.rs/async-raft) -->
+<p><a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="License" /></a></p>
+<!-- ![Crates.io](https://img.shields.io/crates/d/async-raft.svg) -->
+<!-- ![Crates.io](https://img.shields.io/crates/dv/async-raft.svg) -->
 </div>
 <br/>
 <hr />
-<h2><a class="header" href="#from-datafuse-developer" id="from-datafuse-developer">From datafuse developer:</a></h2>
-<p><strong>This fork fixed several bugs in the original async-raft, introduced new features
-and is matinained by datafuse team. The API and internal data structure has changed
-to fit the latest <a href="https://github.com/datafuselabs/datafuse">datafuse</a> need.</strong></p>
-<p>The tags in form of <code>v0.6.2-alpha.*</code> are datafuse maintained versions.
-They are well tested but it should still be considered as a beta.</p>
+<p>Raft is not yet good enough.
+This project intends to improve raft as the next generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
+<p><a href="https://datafuselabs.github.io/openraft">The guide</a> is the best place to get started.</p>
+<!-- , followed by [the docs](https://docs.rs/async-raft/latest/async_raft/) for more in-depth details. -->
 <p>Bug fixes are:</p>
 <ul>
+<li>fix: handle-vote should compare last_log_id in dictionary order, not in vector order</li>
+<li>fix: race condition of concurrent snapshot-install and apply.</li>
+<li>fix: a non-voter not in joint config should not block replication</li>
 <li>fix: when append-entries, deleting entries after prev-log-id causes committed entry to be lost</li>
 <li>fix: too many(50) inconsistent log should not live lock append-entries</li>
 <li>fix: RaftCore.entries_cache is inconsistent with storage. removed it.</li>
@@ -198,7 +182,7 @@ They are well tested but it should still be considered as a beta.</p>
 <li>fix: doc-include can only be used in nightly build</li>
 <li>fix: when handle_update_match_index(), non-voter should also be considered, because when member change a non-voter is also count as a quorum member</li>
 <li>fix: when calc quorum, the non-voter should be count</li>
-<li>fix: a NonVoter should stay as NonVoter instead of Follower after restart</li>
+<li>fix: a Learner should stay as Learner instead of Follower after restart</li>
 <li>fix: discarded log in replication_buffer should be finally sent.</li>
 <li>fix: a conflict is expected even when appending empty enties</li>
 <li>fix: last_applied should be updated only when logs actually applied.</li>
@@ -222,41 +206,36 @@ See the commits starts with <code>change:</code></p>
 <li>change: use snapshot-id to identify a snapshot stream</li>
 <li>change: InstallSnapshotRequest: merge last_included{term,index} into last_included</li>
 </ul>
-<hr />
-<p>Blazing fast Rust, a modern consensus protocol, and a reliable async runtime — this project intends to provide a consensus backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
-<p><a href="https://async-raft.github.io/async-raft">The guide</a> is the best place to get started, followed by <a href="https://docs.rs/async-raft/latest/async_raft/">the docs</a> for more in-depth details.</p>
-<p>This crate differs from other Raft implementations in that:</p>
-<ul>
-<li>It is fully reactive and embraces the async ecosystem. It is driven by actual Raft events taking place in the system as opposed to being driven by a <code>tick</code> operation. Batching of messages during replication is still used whenever possible for maximum throughput.</li>
-<li>Storage and network integration is well defined via two traits <code>RaftStorage</code> &amp; <code>RaftNetwork</code>. This provides applications maximum flexibility in being able to choose their storage and networking mediums. See the <a href="https://async-raft.github.io/async-raft/storage.html">storage</a> &amp; <a href="https://async-raft.github.io/async-raft/network.html">network</a> chapters of the guide for more details.</li>
-<li>All interaction with the Raft node is well defined via a single public <code>Raft</code> type, which is used to spawn the Raft async task, and to interact with that task. The API for this system is clear and concise. See the <a href="https://async-raft.github.io/async-raft/raft.html">raft</a> chapter in the guide.</li>
-<li>Log replication is fully pipelined and batched for optimal performance. Log replication also uses a congestion control mechanism to help keep nodes up-to-date as efficiently as possible.</li>
-<li>It fully supports dynamic cluster membership changes according to the Raft spec. See the <a href="https://async-raft.github.io/async-raft/dynamic-membership.html"><code>dynamic membership</code></a> chapter in the guide. With full support for leader stepdown, and non-voter syncing.</li>
-<li>Details on initial cluster formation, and how to effectively do so from an application's perspective, are discussed in the <a href="https://async-raft.github.io/async-raft/cluster-formation.html">cluster formation</a> chapter in the guide.</li>
-<li>Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.</li>
-<li>The entire code base is <a href="https://docs.rs/tracing/">instrumented with tracing</a>. This can be used for <a href="https://docs.rs/tracing/latest/tracing/index.html#log-compatibility">standard logging</a>, or for <a href="https://docs.rs/tracing/latest/tracing/index.html#related-crates">distributed tracing</a>, and the verbosity can be <a href="https://docs.rs/tracing/latest/tracing/level_filters/index.html">statically configured at compile time</a> to completely remove all instrumentation below the configured level.</li>
-</ul>
-<p>This implementation strictly adheres to the <a href="https://raft.github.io/raft.pdf">Raft spec</a> (<em>pdf warning</em>), and all data models use the same nomenclature found in the spec for better understandability. This implementation of Raft has integration tests covering all aspects of a Raft cluster's lifecycle including: cluster formation, dynamic membership changes, snapshotting, writing data to a live cluster and more.</p>
-<p>If you are building an application using this Raft implementation, open an issue and let me know! I would love to add your project's name &amp; logo to a users list in this project.</p>
-<h3><a class="header" href="#contributing" id="contributing">contributing</a></h3>
-<p>Check out the <a href="https://github.com/async-raft/async-raft/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a> guide for more details on getting started with contributing to this project.</p>
-<h3><a class="header" href="#license" id="license">license</a></h3>
-<p>async-raft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.</p>
-<hr />
-<p><strong>NOTE:</strong> the appearance of the &quot;section&quot; symbols <code>§</code> throughout this project are references to specific sections of the Raft spec.</p>
+<!--
+   - This crate differs from other Raft implementations in that:
+   - - It is fully reactive and embraces the async ecosystem. It is driven by actual Raft events taking place in the system as opposed to being driven by a `tick` operation. Batching of messages during replication is still used whenever possible for maximum throughput.
+   - 
+   - - Storage and network integration is well defined via two traits `RaftStorage` & `RaftNetwork`. This provides applications maximum flexibility in being able to choose their storage and networking mediums. See the [storage](https://async-raft.github.io/async-raft/storage.html) & [network](https://async-raft.github.io/async-raft/network.html) chapters of the guide for more details.
+   - - All interaction with the Raft node is well defined via a single public `Raft` type, which is used to spawn the Raft async task, and to interact with that task. The API for this system is clear and concise. See the [raft](https://async-raft.github.io/async-raft/raft.html) chapter in the guide.
+   - - Log replication is fully pipelined and batched for optimal performance. Log replication also uses a congestion control mechanism to help keep nodes up-to-date as efficiently as possible.
+   - - It fully supports dynamic cluster membership changes according to the Raft spec. See the [`dynamic membership`](https://async-raft.github.io/async-raft/dynamic-membership.html) chapter in the guide. With full support for leader stepdown, and non-voter syncing.
+   - - Details on initial cluster formation, and how to effectively do so from an application's perspective, are discussed in the [cluster formation](https://async-raft.github.io/async-raft/cluster-formation.html) chapter in the guide.
+   - - Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.
+   - - The entire code base is [instrumented with tracing](https://docs.rs/tracing/). This can be used for [standard logging](https://docs.rs/tracing/latest/tracing/index.html#log-compatibility), or for [distributed tracing](https://docs.rs/tracing/latest/tracing/index.html#related-crates), and the verbosity can be [statically configured at compile time](https://docs.rs/tracing/latest/tracing/level_filters/index.html) to completely remove all instrumentation below the configured level.
+   - 
+   - This implementation strictly adheres to the [Raft spec](https://raft.github.io/raft.pdf) (*pdf warning*), and all data models use the same nomenclature found in the spec for better understandability. This implementation of Raft has integration tests covering all aspects of a Raft cluster's lifecycle including: cluster formation, dynamic membership changes, snapshotting, writing data to a live cluster and more.
+   - 
+   - If you are building an application using this Raft implementation, open an issue and let me know! I would love to add your project's name & logo to a users list in this project.
+   -->
+<h3 id="contributing"><a class="header" href="#contributing">contributing</a></h3>
+<p>Check out the <a href="https://github.com/datafuselabs/openraft/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a> guide for more details on getting started with contributing to this project.</p>
+<h3 id="license"><a class="header" href="#license">license</a></h3>
+<p>Openraft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
                         
-
-                        
-                            <a rel="next" href="getting-started.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                                    <a rel="next" href="getting-started.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         
-
                         <div style="clear: both"></div>
                     </nav>
                 </div>
@@ -264,44 +243,31 @@ See the commits starts with <code>change:</code></p>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
                 
-
-                
-                    <a rel="next" href="getting-started.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                    <a rel="next" href="getting-started.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
-                
-            </nav>
+                            </nav>
 
         </div>
 
         
-
         
-
         
-
-        
-        <script type="text/javascript">
+                <script type="text/javascript">
             window.playground_copyable = true;
         </script>
         
-
         
-
-        
-        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+                <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
         
-
         <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
         <script src="book.js" type="text/javascript" charset="utf-8"></script>
 
         <!-- Custom JS scripts -->
         
-
         
-
     </body>
 </html>

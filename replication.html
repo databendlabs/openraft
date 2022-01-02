@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Cluster Formation - openraft</title>
+        <title>Replication - openraft</title>
                 
 
         <!-- Custom HTML head -->
@@ -82,7 +82,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html" class="active"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li></ol></li></ol>            </div>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html" class="active"><strong aria-hidden="true">4.3.</strong> Replication</a></li></ol></li></ol>            </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
 
@@ -143,57 +143,91 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="cluster-formation"><a class="header" href="#cluster-formation">Cluster Formation</a></h1>
-<p>A <code>Raft</code> node enters <code>Learner</code> state when it is created by <code>Raft::new()</code>.</p>
-<p>To form a cluster, application must call <code>Raft::initialize(membership)</code>.</p>
-<h2 id="raftinitialize"><a class="header" href="#raftinitialize"><code>Raft::initialize()</code></a></h2>
-<p>This method will:</p>
+                        <h1 id="replication"><a class="header" href="#replication">Replication</a></h1>
+<p>Appending entry is the only RPC to replicate logs from leader to followers or non-voters.
+Installing a snapshot can be seen as a special form of <strong>appending logs</strong>.</p>
+<h2 id="append-entry"><a class="header" href="#append-entry">Append-entry</a></h2>
+<p>Raft logs can be together seen as a <strong>single value</strong>:
+An append-entry RPC forwards all logs to a follower and replace all the logs on the follower.
+This way it guarantees committed log can always been seen by next leader.</p>
+<p>Although in practice, it is infeasible sending all the logs in one RPC.
+Thus, the receiving end in the algorithm becomes:</p>
 <ul>
-<li>
-<p>Update the in-memory membership.</p>
-</li>
-<li>
-<p>If there are more than one voters in the config, enter Candidate state and start vote to become leader.</p>
-</li>
-<li>
-<p>If there is only one voters(itself) in the config, become leader at once and
-will enter leader state.</p>
-</li>
-<li>
-<p>The leader will commit a log contains the given membership config.</p>
-</li>
-</ul>
-<p>TODO(xp): this procedure will be changed:  https://github.com/datafuselabs/openraft/issues/45</p>
+<li>Proceed only when <code>prev_log_id</code> matches local log id at the same <code>index</code>.</li>
+<li>Save every log entry into local store if:
 <ul>
-<li>
-<p>Calling this method on an already initialized node just returns an error and is safe.</p>
-</li>
-<li>
-<p>Calling this method on more than one node at the same time:</p>
-<ul>
-<li>
-<p>with the same <code>membership</code> is safe.
-Because voting protocol guarantees consistency.</p>
-</li>
-<li>
-<p>with different <code>membership</code> is <strong>ILLEGAL</strong> and will result in a undefined
-state, AKA the <strong>split-brain</strong> state.</p>
-</li>
+<li>the entry at the target index is empty.</li>
+<li>the entry at the target index is the same as the input one.
+Otherwise, there is an <strong>inconsistent</strong> entry,
+the follower must delete all entries since this one before storing the input one.</li>
 </ul>
 </li>
 </ul>
+<h3 id="why-need-to-delete"><a class="header" href="#why-need-to-delete">Why need to delete</a></h3>
+<p>The following diagram shows only log term.</p>
+<pre><code class="language-text">R1 5
+R2 5
+R3 5 3 3
+R4
+R5 2 4 4
+</code></pre>
+<p>If log 5 is committed by R1, and log 3 is not removed, R5 in future could become a new leader and overrides log
+5 on R3.</p>
+<h3 id="caveat-deleting-all-entries-after-prev_log_id-get-committed-log-lost"><a class="header" href="#caveat-deleting-all-entries-after-prev_log_id-get-committed-log-lost">Caveat: deleting all entries after <code>prev_log_id</code> get committed log lost</a></h3>
+<p>One of the mistake is to delete all entries after <code>prev_log_id</code> when a matching <code>prev_log_id</code> is found, e.g.:</p>
+<pre><code>fn handle_append_entries(req) {
+    if store.has(req.prev_log_id) {
+        store.delete_logs(req.prev_log_id.index..)
+        store.append_logs(req.entries)
+    }
+}
+
+</code></pre>
+<p>This results in loss of committed entry, because deleting and appending are not atomically executed.</p>
+<p>E.g., the log entries are as following and R1 now is the leader:</p>
+<pre><code class="language-text">R1 1,1  1,2  1,3
+R2 1,1  1,2
+R3
+</code></pre>
+<p>When the following steps take place, committed entry <code>{1,2}</code> is lost:</p>
+<ul>
+<li>R1 to R2: <code>append_entries(entries=[{1,2}, {1,3}], prev_log_id={1,1})</code></li>
+<li>R2 deletes <code>{1,2}</code></li>
+<li>R2 crash</li>
+<li>R2 elected as leader and only see <code>{1,1}</code>; the committed entry <code>{1,2}</code> is lost.</li>
+</ul>
+<p><strong>The safe way is to skip every entry that present in append-entries message then delete only the
+inconsistent entries</strong>.</p>
+<h3 id="caveat-commit-index-must-not-advance-the-last-known-consistent-log"><a class="header" href="#caveat-commit-index-must-not-advance-the-last-known-consistent-log">Caveat: commit-index must not advance the last known consistent log</a></h3>
+<p>Because we can not just delete <code>log[prev_log_id.index..]</code>, (which results in loss of committed
+entry), the commit index must be updated only after append-entries
+and must point to a log entry that is consistent to the leader.
+Or there would be chance applying an uncommitted entry on a follower:</p>
+<pre><code class="language-text">R0 1,1  1,2  3,3
+R1 1,1  1,2  2,3
+R2 1,1  1,2  3,3
+</code></pre>
+<ul>
+<li>R0 to R1 append_entries: <code>entries=[{1,2}], prev_log_id = {1,1}, commit_index = 3</code></li>
+<li>R1 accepted this append-entries request but was not aware of that entry <code>{2,3}</code> is inconsistent to leader.
+Then it will update commit_index to <code>3</code> and apply <code>{2,3}</code></li>
+</ul>
+<h2 id="replication-by-sending-snapshot"><a class="header" href="#replication-by-sending-snapshot">Replication by sending snapshot</a></h2>
+<p>Replication by sending a snapshot of the state machine can be seen as a special form of <strong>appending logs</strong>.
+Thus, it shares the same constrains.</p>
+<p>A state machine will never be overridden by logs,
+thus committed log in it will never get lost.
+Thus, when installing a snapshot, it does not need to remove inconsistent logs,
+e.g., any log after the <code>last_applied</code>.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                                                    <a rel="prev" href="cluster-controls.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                                    <a rel="prev" href="threading.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
                         
-                                                    <a rel="next" href="dynamic-membership.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
                         
                         <div style="clear: both"></div>
                     </nav>
@@ -201,13 +235,10 @@ state, AKA the <strong>split-brain</strong> state.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                                    <a rel="prev" href="cluster-controls.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                    <a rel="prev" href="threading.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
                 
-                                    <a rel="next" href="dynamic-membership.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
                             </nav>
 
         </div>

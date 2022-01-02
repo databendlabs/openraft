@@ -3,39 +3,29 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Async Raft</title>
-        
-        <meta name="robots" content="noindex" />
-        
-        
-
+        <title>openraft</title>
+                <meta name="robots" content="noindex" />
+                
 
         <!-- Custom HTML head -->
         
 
-
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
-        <meta name="description" content="The async-raft user guide.">
+        <meta name="description" content="The openraft user guide.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
 
-        
-        <link rel="icon" href="favicon.svg">
-        
-        
-        <link rel="shortcut icon" href="favicon.png">
-        
-        <link rel="stylesheet" href="css/variables.css">
+                <link rel="icon" href="favicon.svg">
+                        <link rel="shortcut icon" href="favicon.png">
+                <link rel="stylesheet" href="css/variables.css">
         <link rel="stylesheet" href="css/general.css">
         <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
-
+                <link rel="stylesheet" href="css/print.css" media="print">
+        
         <!-- Fonts -->
         <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+                <link rel="stylesheet" href="fonts/fonts.css">
         
-        <link rel="stylesheet" href="fonts/fonts.css">
-        
-
         <!-- Highlight.js Stylesheets -->
         <link rel="stylesheet" href="highlight.css">
         <link rel="stylesheet" href="tomorrow-night.css">
@@ -43,9 +33,7 @@
 
         <!-- Custom theme stylesheets -->
         
-
-        
-    </head>
+            </head>
     <body>
         <!-- Provide site root to javascript -->
         <script type="text/javascript">
@@ -95,8 +83,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="network.html"><strong aria-hidden="true">2.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">3.</strong> Storage</a></li><li class="chapter-item expanded "><a href="raft.html"><strong aria-hidden="true">4.</strong> Raft API</a></li><li class="chapter-item expanded "><a href="putting-it-all-together.html"><strong aria-hidden="true">5.</strong> Putting It All Together</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">6.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">6.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">6.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">7.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">8.</strong> Get To It</a></li></ol>
-            </div>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li></ol></li></ol>            </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
 
@@ -120,27 +107,24 @@
                             <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
                         </ul>
-                        
-                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                                                <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
                             <i class="fa fa-search"></i>
                         </button>
-                        
-                    </div>
+                                            </div>
 
-                    <h1 class="menu-title">Async Raft</h1>
+                    <h1 class="menu-title">openraft</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                                                <a href="print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
-                        
+                                                                        
                     </div>
                 </div>
 
-                
-                <div id="search-wrapper" class="hidden">
+                                <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <input type="search" name="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -149,7 +133,6 @@
                     </div>
                 </div>
                 
-
                 <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
                 <script type="text/javascript">
                     document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
@@ -161,32 +144,32 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 align="center">async raft</h1>
+                        <h1 align="center">openraft</h1>
 <div align="center">
     <strong>
-        An implementation of the <a href="https://raft.github.io/">Raft distributed consensus protocol</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/async-raft/async-raft">github</a>!
+        Improved version of <a href="https://raft.github.io/">Raft</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/datafuselabs/openraft">github</a>!
     </strong>
 </div>
 <br/>
 <div align="center">
-<p><a href="https://github.com/async-raft/async-raft/actions"><img src="https://github.com/async-raft/async-raft/workflows/ci/badge.svg?branch=master" alt="Build Status" /></a>
-<a href="https://discord.gg/DYSDaBjwaA"><img src="https://img.shields.io/discord/845414467234693170?logo=discord&amp;style=flat-square" alt="Discord Chat" /></a>
-<a href="https://crates.io/crates/async-raft"><img src="https://img.shields.io/crates/v/async-raft.svg" alt="Crates.io" /></a>
-<a href="https://docs.rs/async-raft"><img src="https://docs.rs/async-raft/badge.svg" alt="docs.rs" /></a>
-<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="License" /></a>
-<img src="https://img.shields.io/crates/d/async-raft.svg" alt="Crates.io" />
-<img src="https://img.shields.io/crates/dv/async-raft.svg" alt="Crates.io" /></p>
+<p><a href="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml"><img src="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg" alt="CI" /></a></p>
+<!-- [![Crates.io](https://img.shields.io/crates/v/async-raft.svg)](https://crates.io/crates/async-raft) -->
+<!-- [![docs.rs](https://docs.rs/async-raft/badge.svg)](https://docs.rs/async-raft) -->
+<p><a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="License" /></a></p>
+<!-- ![Crates.io](https://img.shields.io/crates/d/async-raft.svg) -->
+<!-- ![Crates.io](https://img.shields.io/crates/dv/async-raft.svg) -->
 </div>
 <br/>
 <hr />
-<h2><a class="header" href="#from-datafuse-developer" id="from-datafuse-developer">From datafuse developer:</a></h2>
-<p><strong>This fork fixed several bugs in the original async-raft, introduced new features
-and is matinained by datafuse team. The API and internal data structure has changed
-to fit the latest <a href="https://github.com/datafuselabs/datafuse">datafuse</a> need.</strong></p>
-<p>The tags in form of <code>v0.6.2-alpha.*</code> are datafuse maintained versions.
-They are well tested but it should still be considered as a beta.</p>
+<p>Raft is not yet good enough.
+This project intends to improve raft as the next generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
+<p><a href="https://datafuselabs.github.io/openraft">The guide</a> is the best place to get started.</p>
+<!-- , followed by [the docs](https://docs.rs/async-raft/latest/async_raft/) for more in-depth details. -->
 <p>Bug fixes are:</p>
 <ul>
+<li>fix: handle-vote should compare last_log_id in dictionary order, not in vector order</li>
+<li>fix: race condition of concurrent snapshot-install and apply.</li>
+<li>fix: a non-voter not in joint config should not block replication</li>
 <li>fix: when append-entries, deleting entries after prev-log-id causes committed entry to be lost</li>
 <li>fix: too many(50) inconsistent log should not live lock append-entries</li>
 <li>fix: RaftCore.entries_cache is inconsistent with storage. removed it.</li>
@@ -200,7 +183,7 @@ They are well tested but it should still be considered as a beta.</p>
 <li>fix: doc-include can only be used in nightly build</li>
 <li>fix: when handle_update_match_index(), non-voter should also be considered, because when member change a non-voter is also count as a quorum member</li>
 <li>fix: when calc quorum, the non-voter should be count</li>
-<li>fix: a NonVoter should stay as NonVoter instead of Follower after restart</li>
+<li>fix: a Learner should stay as Learner instead of Follower after restart</li>
 <li>fix: discarded log in replication_buffer should be finally sent.</li>
 <li>fix: a conflict is expected even when appending empty enties</li>
 <li>fix: last_applied should be updated only when logs actually applied.</li>
@@ -224,180 +207,126 @@ See the commits starts with <code>change:</code></p>
 <li>change: use snapshot-id to identify a snapshot stream</li>
 <li>change: InstallSnapshotRequest: merge last_included{term,index} into last_included</li>
 </ul>
-<hr />
-<p>Blazing fast Rust, a modern consensus protocol, and a reliable async runtime — this project intends to provide a consensus backbone for the next generation of distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
-<p><a href="https://async-raft.github.io/async-raft">The guide</a> is the best place to get started, followed by <a href="https://docs.rs/async-raft/latest/async_raft/">the docs</a> for more in-depth details.</p>
-<p>This crate differs from other Raft implementations in that:</p>
-<ul>
-<li>It is fully reactive and embraces the async ecosystem. It is driven by actual Raft events taking place in the system as opposed to being driven by a <code>tick</code> operation. Batching of messages during replication is still used whenever possible for maximum throughput.</li>
-<li>Storage and network integration is well defined via two traits <code>RaftStorage</code> &amp; <code>RaftNetwork</code>. This provides applications maximum flexibility in being able to choose their storage and networking mediums. See the <a href="https://async-raft.github.io/async-raft/storage.html">storage</a> &amp; <a href="https://async-raft.github.io/async-raft/network.html">network</a> chapters of the guide for more details.</li>
-<li>All interaction with the Raft node is well defined via a single public <code>Raft</code> type, which is used to spawn the Raft async task, and to interact with that task. The API for this system is clear and concise. See the <a href="https://async-raft.github.io/async-raft/raft.html">raft</a> chapter in the guide.</li>
-<li>Log replication is fully pipelined and batched for optimal performance. Log replication also uses a congestion control mechanism to help keep nodes up-to-date as efficiently as possible.</li>
-<li>It fully supports dynamic cluster membership changes according to the Raft spec. See the <a href="https://async-raft.github.io/async-raft/dynamic-membership.html"><code>dynamic membership</code></a> chapter in the guide. With full support for leader stepdown, and non-voter syncing.</li>
-<li>Details on initial cluster formation, and how to effectively do so from an application's perspective, are discussed in the <a href="https://async-raft.github.io/async-raft/cluster-formation.html">cluster formation</a> chapter in the guide.</li>
-<li>Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.</li>
-<li>The entire code base is <a href="https://docs.rs/tracing/">instrumented with tracing</a>. This can be used for <a href="https://docs.rs/tracing/latest/tracing/index.html#log-compatibility">standard logging</a>, or for <a href="https://docs.rs/tracing/latest/tracing/index.html#related-crates">distributed tracing</a>, and the verbosity can be <a href="https://docs.rs/tracing/latest/tracing/level_filters/index.html">statically configured at compile time</a> to completely remove all instrumentation below the configured level.</li>
-</ul>
-<p>This implementation strictly adheres to the <a href="https://raft.github.io/raft.pdf">Raft spec</a> (<em>pdf warning</em>), and all data models use the same nomenclature found in the spec for better understandability. This implementation of Raft has integration tests covering all aspects of a Raft cluster's lifecycle including: cluster formation, dynamic membership changes, snapshotting, writing data to a live cluster and more.</p>
-<p>If you are building an application using this Raft implementation, open an issue and let me know! I would love to add your project's name &amp; logo to a users list in this project.</p>
-<h3><a class="header" href="#contributing" id="contributing">contributing</a></h3>
-<p>Check out the <a href="https://github.com/async-raft/async-raft/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a> guide for more details on getting started with contributing to this project.</p>
-<h3><a class="header" href="#license" id="license">license</a></h3>
-<p>async-raft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.</p>
-<hr />
-<p><strong>NOTE:</strong> the appearance of the &quot;section&quot; symbols <code>§</code> throughout this project are references to specific sections of the Raft spec.</p>
-<h1><a class="header" href="#getting-started" id="getting-started">Getting Started</a></h1>
-<p>Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients. Why use Raft? Among other things, it provides data storage systems with fault-tolerance, strong consistency and linearizability.</p>
-<p>A visual depiction of how Raft works (taken from the spec) can be seen below.</p>
+<!--
+   - This crate differs from other Raft implementations in that:
+   - - It is fully reactive and embraces the async ecosystem. It is driven by actual Raft events taking place in the system as opposed to being driven by a `tick` operation. Batching of messages during replication is still used whenever possible for maximum throughput.
+   - 
+   - - Storage and network integration is well defined via two traits `RaftStorage` & `RaftNetwork`. This provides applications maximum flexibility in being able to choose their storage and networking mediums. See the [storage](https://async-raft.github.io/async-raft/storage.html) & [network](https://async-raft.github.io/async-raft/network.html) chapters of the guide for more details.
+   - - All interaction with the Raft node is well defined via a single public `Raft` type, which is used to spawn the Raft async task, and to interact with that task. The API for this system is clear and concise. See the [raft](https://async-raft.github.io/async-raft/raft.html) chapter in the guide.
+   - - Log replication is fully pipelined and batched for optimal performance. Log replication also uses a congestion control mechanism to help keep nodes up-to-date as efficiently as possible.
+   - - It fully supports dynamic cluster membership changes according to the Raft spec. See the [`dynamic membership`](https://async-raft.github.io/async-raft/dynamic-membership.html) chapter in the guide. With full support for leader stepdown, and non-voter syncing.
+   - - Details on initial cluster formation, and how to effectively do so from an application's perspective, are discussed in the [cluster formation](https://async-raft.github.io/async-raft/cluster-formation.html) chapter in the guide.
+   - - Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.
+   - - The entire code base is [instrumented with tracing](https://docs.rs/tracing/). This can be used for [standard logging](https://docs.rs/tracing/latest/tracing/index.html#log-compatibility), or for [distributed tracing](https://docs.rs/tracing/latest/tracing/index.html#related-crates), and the verbosity can be [statically configured at compile time](https://docs.rs/tracing/latest/tracing/level_filters/index.html) to completely remove all instrumentation below the configured level.
+   - 
+   - This implementation strictly adheres to the [Raft spec](https://raft.github.io/raft.pdf) (*pdf warning*), and all data models use the same nomenclature found in the spec for better understandability. This implementation of Raft has integration tests covering all aspects of a Raft cluster's lifecycle including: cluster formation, dynamic membership changes, snapshotting, writing data to a live cluster and more.
+   - 
+   - If you are building an application using this Raft implementation, open an issue and let me know! I would love to add your project's name & logo to a users list in this project.
+   -->
+<h3 id="contributing"><a class="header" href="#contributing">contributing</a></h3>
+<p>Check out the <a href="https://github.com/datafuselabs/openraft/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a> guide for more details on getting started with contributing to this project.</p>
+<h3 id="license"><a class="header" href="#license">license</a></h3>
+<p>Openraft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
+<p>Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients.</p>
 <p>
     <img style="max-width:600px;" src="./images/raft-overview.png"/>
 </p>
-<p>Raft is intended to run within some parent application, which traditionally will be some sort of data storage system (SQL, NoSQL, KV store, AMQP, Streaming, Graph, whatever). You can do whatever you want with your application, Raft will provide you with the consensus module.</p>
-<h2><a class="header" href="#first-steps" id="first-steps">first steps</a></h2>
-<p>In order to start using Raft, you will need to declare the data types you will use for client requests and client responses. Let's do that now. Throughout this guide, we will be using the <code>memstore</code> crate, which is an in-memory implementation of the <code>RaftStorage</code> trait for demo and testing purposes (part of the same repo). This will give us a concrete set of examples to work with, which also happen to be used for all of the integration tests of <code>async-raft</code> itself.</p>
-<h3><a class="header" href="#async_raftappdata" id="async_raftappdata"><code>async_raft::AppData</code></a></h3>
-<p>This marker trait is used to declare an application's data type. It has the following constraints: <code>Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static</code>. Your data type represents the requests which will be sent to your application to create, update and delete data. Requests to read data should not be sent through Raft, only mutating requests. More on linearizable reads, and how to avoid stale reads, is discussed in the <a href="./raft.html">Raft API chapter</a>.</p>
-<p>The intention of this trait is that applications which are using this crate will be able to use their own concrete data types throughout their application without having to serialize and deserialize their data as it goes through Raft. Instead, applications can present their data models as-is to Raft, Raft will present it to the application's <code>RaftStorage</code> impl when ready, and the application may then deal with the data directly in the storage engine without having to do a preliminary deserialization.</p>
-<h5><a class="header" href="#impl" id="impl">impl</a></h5>
-<p>Finishing up this step is easy, just <code>impl AppData for YourData {}</code> ... and in most cases, that's it. You'll need to be sure that the aforementioned constraints are satisfied on <code>YourData</code>. The following derivation should do the trick <code>#[derive(Clone, Debug, Serialize, Deserialize)]</code>.</p>
-<p>In the <code>memstore</code> crate, here is a snippet of what the code looks like:</p>
+<p>Raft includes two major parts:</p>
+<ul>
+<li>How to replicate logs consistently among nodes,</li>
+<li>and how to consume the logs, which is defined mainly in state machine.</li>
+</ul>
+<p>To implement your own raft based application with openraft is quite easy, which
+includes: </p>
+<ul>
+<li>Define client request and response;</li>
+<li>Implement a storage to let raft store its state;</li>
+<li>Implement a network layer for raft to transmit messages.</li>
+</ul>
+<h2 id="define-client-request-and-response"><a class="header" href="#define-client-request-and-response">Define client request and response</a></h2>
+<p>A request is some data that modifies the raft state machine.
+A response is some data that the raft state machine returns to client.</p>
+<p>Request and response can be any types that impl <code>AppData</code> and <code>AppDataResponse</code>,
+e.g.:</p>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>/// The application data request type which the `MemStore` works with.
-///
-/// Conceptually, for demo purposes, this represents an update to a client's status info,
-/// returning the previously recorded status.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ClientRequest {
-    /* fields omitted */
-}
-
+</span>#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClientRequest {/* fields */}
 impl AppData for ClientRequest {}
-<span class="boring">}
-</span></code></pre></pre>
-<h3><a class="header" href="#async_raftappdataresponse" id="async_raftappdataresponse"><code>async_raft::AppDataResponse</code></a></h3>
-<p>This marker trait is used to declare an application's response data. It has the following constraints: <code>Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static</code>.</p>
-<p>The intention of this trait is that applications which are using this crate will be able to use their own concrete data types for returning response data from the storage layer when an entry is applied to the state machine as part of a client request (this is not used during replication). This allows applications to seamlessly return application specific data from their storage layer, up through Raft, and back into their application for returning data to clients.</p>
-<p>This type must encapsulate both success and error responses, as application specific logic related to the success or failure of a client request — application specific validation logic, enforcing of data constraints, and anything of that nature — are expressly out of the realm of the Raft consensus protocol.</p>
-<h5><a class="header" href="#impl-1" id="impl-1">impl</a></h5>
-<p>Finishing up this step is also easy: <code>impl AppDataResponse for YourDataResponse {}</code>. The aforementioned derivation applies here as well.</p>
-<p>In the <code>memstore</code> crate, here is a snippet of what the code looks like:</p>
-<pre><pre class="playground"><code class="language-rust">
-<span class="boring">#![allow(unused)]
-</span>
-<span class="boring">fn main() {
-</span>/// The application data response type which the `MemStore` works with.
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClientResponse(Result&lt;Option&lt;String&gt;, ClientError&gt;);
-
 impl AppDataResponse for ClientResponse {}
 <span class="boring">}
 </span></code></pre></pre>
-<hr />
-<p>Woot woot! Onward to the networking layer.</p>
-<h1><a class="header" href="#network" id="network">Network</a></h1>
-<p>Raft is a distributed consensus protocol, so the ability to send and receive data over a network is integral to the proper functionality of nodes within a Raft cluster.</p>
-<p>The network capabilities required by this system are broken up into two parts: the <code>RaftNetwork</code> trait &amp; the application network.</p>
-<h3><a class="header" href="#raftnetwork" id="raftnetwork"><code>RaftNetwork</code></a></h3>
-<p>Raft uses the <code>RaftNetwork</code> trait for sending Raft RPCs. This trait says nothing about how those requests should be received on the other end. There is a lot of flexibility with this trait. Maybe you want to use <a href="https://github.com/hyperium/tonic">Tonic gRPC</a>, or perhaps some other <a href="https://github.com/seanmonstar/reqwest">HTTP-based protocol</a>. One could use WebSockets, a raw TCP socket, UDP, HTTP3 ... in the end, this depends on the application's needs. Whichever option is chosen, the fundamental requirement is that an implementor of the <code>RaftNetwork</code> trait must be able to reliably transmit data over the network.</p>
-<p>All of the methods to be implemented are similar in structure. Take this one for example:</p>
+<p>These two types are totally application specific, and are mainly related to the
+state machine implementation in <code>RaftStorage</code>.</p>
+<h2 id="implement-raftstorage"><a class="header" href="#implement-raftstorage">Implement RaftStorage</a></h2>
+<p>The trait <code>RaftStorage</code> defines the way that data is stored and consumed.
+It could be a wrapper of some local KV store such <a href="https://docs.rs/rocksdb/latest/rocksdb/">RocksDB</a>,
+or a wrapper of a remote sql DB.</p>
+<p><code>RaftStorage</code> defines 4 sets of APIs:</p>
+<ul>
+<li>Read/write raft state, e.g., term or vote.</li>
+<li>Read/write logs.</li>
+<li>Apply log entry to the state machine.</li>
+<li>Building and installing a snapshot.</li>
+</ul>
+<h3 id="how-do-i-impl-raftstorage-correctly"><a class="header" href="#how-do-i-impl-raftstorage-correctly">How do I impl RaftStorage correctly</a></h3>
+<ul>
+<li>
+<p>The APIs have been made quite obvious and there is a good example
+<a href="https://github.com/datafuselabs/openraft/tree/main/memstore"><code>memstore</code></a>,
+which is a pure-in-memory implementation that shows what should be done when a
+method is called.</p>
+</li>
+<li>
+<p>There is a test suite for <code>RaftStorage</code> impl, if an impl passes the test,
+Openraft will work happily with it.</p>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs">Test suite for RaftStorage impl</a></p>
+<p>TODO(xp): move this test suite to openraft crate so that users can include it.</p>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>    /// Send an AppendEntries RPC to the target Raft node (§5).
-    async fn append_entries(&amp;self, target: NodeId, rpc: AppendEntriesRequest&lt;D&gt;) -&gt; Result&lt;AppendEntriesResponse&gt;;
+</span>// TODO(xp): give a example how to test an impl of RaftStorage
 <span class="boring">}
 </span></code></pre></pre>
-<p>The implementing type should use the given <code>NodeId</code> (just a <code>u64</code>) to identify the target Raft node to which the given <code>rpc</code> must be sent. For applications using a single Raft cluster, this is quite simple. If using a multi-Raft setup, cluster information could be embedded in the <code>RaftNetwork</code> implementing type, and network requests could be enriched with that cluster information before being transmitted over the network to ensure that the receiving server can pass the received <code>rpc</code> to the correct Raft cluster.</p>
-<p>The excellent <a href="https://docs.rs/async-trait/"><code>async_trait</code></a> crate is re-exported by this crate to make implementation as easy as possible. Please see the documentation on how to use this macro to creating an async trait implementation.</p>
-<h3><a class="header" href="#application-network" id="application-network">Application Network</a></h3>
-<p>The main role of the application network, in this context, is to handle RPCs from Raft peers and client requests coming from application clients, and then feed them into Raft. This is essentially the receiving end of the <code>RaftNetwork</code> trait, however this project does not enforce any specific interface on how this is to be implemented. The only requirement is that it work with the <code>RaftNetwork</code> trait implementation. There are a few other important things that it will probably need to do as well, depending on the application's needs, here are a few other common networking roles:</p>
-<ul>
-<li><strong>discovery:</strong> a component which allows the members of an application cluster (its nodes) to discover and communicate with each other. This is not provided by this crate. There are lots of solutions out there to solve this problem. Applications can build their own discovery system by way of DNS, they could use other systems like etcd or consul. The important thing to note here is that once a peer is discovered, it would be prudent for application nodes to maintain a connection with that peer, as heartbeats are very regular, and building new network connections is not free.</li>
-<li><strong>data format:</strong> the way that data is serialized and sent accross the networking medium. Popular data formats include protobuf, capnproto, flatbuffers, message pack, JSON &amp;c. Applications are responsible for serializing and deserializing the various message types used in this crate for network transmission. Serde is used throughout this system to aid on this front.</li>
+</li>
 </ul>
-<p>Applications must be able to facilitate message exchange between nodes reliably.</p>
-<hr />
-<p>Now that we've got a solid taste for the network requirements, let's move on to Raft storage.</p>
-<h1><a class="header" href="#storage" id="storage">Storage</a></h1>
-<p>The way that data is stored and represented is an integral part of every data storage system. Whether it is a SQL or NoSQL database, a KV store, an AMQP / Streaming / Eventing system, a Graph database, or anything which stores data — control over the storage technology and technique is critical. This implementation of Raft uses the <code>RaftStorage</code> trait to define the behavior needed of an application's storage layer to work with Raft.</p>
-<h3><a class="header" href="#implementation" id="implementation">implementation</a></h3>
-<p>There are a few important decisions which need to be made in order to implement the <code>RaftStorage</code> trait.</p>
-<ol>
-<li><strong>How do you plan on storing your snapshots?</strong> The <code>RaftStorage::Snapshot</code> associated type must declare the type your application uses for dealing with the raw bytes of a snapshot. For most applications, it stands to reason that a simple on-disk file is what will be used. As such, take a look at <a href="https://docs.rs/tokio/latest/tokio/fs/struct.File.html">Tokio's fs::File</a>. It satisfies all of the trait bounds for the <code>Snapshot</code> associated type.</li>
-<li><strong>How do you plan on storing your data?</strong> A majority of the methods of your <code>RaftStorage</code> impl will involve reading and writing data. Rust has a few data storage crates available to choose from which will satisfy these requirements. Have a look at <a href="https://docs.rs/sled/latest/sled/">Sled</a>, or <a href="https://docs.rs/rocksdb/latest/rocksdb/">RocksDB</a>. There are others to choose from, but these may be a solid starting point. Or you could always roll your own.</li>
-</ol>
-<p>Once you're ready to begin with your implementation, be sure to adhere to the documentation of the <code>RaftStorage</code> methods themselves. There are plenty of data safety requirements to uphold in order for your application to work properly overall, and to work properly with Raft.</p>
-<p>For inspiration, have a look at this <a href="https://github.com/async-raft/async-raft/tree/master/memstore">repo's <code>memstore</code> project</a>. It is an in-memory implementation of the <code>RaftStorage</code> trait, intended for demo and testing purposes.</p>
-<h3><a class="header" href="#compaction--snapshots" id="compaction--snapshots">compaction / snapshots</a></h3>
-<p>This implementation of Raft automatically triggers log compaction based on runtime configuration, using the <a href="https://docs.rs/async-raft/latest/async_raft/storage/trait.RaftStorage.html#tymethod.do_log_compaction"><code>RaftStorage::do_log_compaction</code></a> method. Everything related to compaction / snapshots starts with this method. Though snapshots are originally created in the <a href="https://docs.rs/async-raft/latest/async_raft/storage/trait.RaftStorage.html#tymethod.do_log_compaction"><code>RaftStorage::do_log_compaction</code></a> method, the Raft cluster leader may stream a snapshot over to other nodes if the node is new and needs to be brought up-to-speed, or if a node is lagging behind. Internally, Raft uses the <code>RaftStorage::Snapshot</code> associated type to work with the snapshot locally and for streaming to follower nodes.</p>
-<p>Compaction / snapshotting are not optional in this system. It is an integral component of the Raft spec, and <code>RaftStorage</code> implementations should be careful to implement the compaction / snapshotting related methods carefully according to the trait's documentation.</p>
-<p>When performing log compaction, the compaction can only cover the breadth of the log up to the last applied log and under write load this value may change quickly. As such, the storage implementation should export/checkpoint/snapshot its state machine, and then use the value of that export's last applied log as the metadata indicating the breadth of the log covered by the snapshot.</p>
-<hr />
-<p>There is more to learn, so let's keep going. Time to learn about the most central API of this project.</p>
-<h1><a class="header" href="#raft-api" id="raft-api">Raft API</a></h1>
-<p>The <code>Raft</code> type represents the singular API of this crate, and is the interface to a running Raft node. It is highly generic, which allows your application's data types to be known at compile, for maximum performance and type-safety. Users of this Raft implementation get to choose the exact types to be used throughout the system, and get to work with their application's data types directly without the overhead of serializing and deserializing the data as it moves through the <code>Raft</code> system.</p>
-<p>In previous chapters, we've defined our <code>AppData</code>, <code>AppDataResponse</code>, <code>RaftNetwork</code> and <code>RaftStorage</code> types. These four types are used as part of a concrete <code>Raft</code> definition, and applications may find it beneficial to define an alias covering all of these types for easier reference. Something like the following:</p>
+<h3 id="race-condition-about-raftstorage"><a class="header" href="#race-condition-about-raftstorage">Race condition about RaftStorage</a></h3>
+<p>In our design, there is at most one thread at a time writing data to it.
+But there may be several threads reading from it concurrently,
+e.g., more than one replication tasks reading log entries from store.</p>
+<h3 id="an-implementation-has-to-guarantee-data-durability"><a class="header" href="#an-implementation-has-to-guarantee-data-durability">An implementation has to guarantee data durability</a></h3>
+<p>The caller always assumes a completed write is persistent.
+The raft correctness highly depends on a reliable store.</p>
+<h2 id="impl-raftnetwork"><a class="header" href="#impl-raftnetwork">impl <code>RaftNetwork</code></a></h2>
+<p>Raft nodes need to communicate with each other to achieve consensus about the
+logs.
+The trait <code>RaftNetwork</code> defines the data transmission requirements.</p>
+<p>An implementation of <code>RaftNetwork</code> can be considered as a wrapper that invokes the
+corresponding methods of a remote <code>Raft</code>.</p>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>/// Your Raft type alias.
-type YourRaft = Raft&lt;YourData, YourDataResponse, YourRaftNetwork, YourRaftStorage&gt;;
+</span>pub trait RaftNetwork&lt;D&gt;: Send + Sync + 'static
+where D: AppData
+{
+    async fn send_append_entries(&amp;self, target: NodeId, rpc: AppendEntriesRequest&lt;D&gt;) -&gt; Result&lt;AppendEntriesResponse&gt;;
+    async fn send_install_snapshot( &amp;self, target: NodeId, rpc: InstallSnapshotRequest,) -&gt; Result&lt;InstallSnapshotResponse&gt;;
+    async fn send_vote(&amp;self, target: NodeId, rpc: VoteRequest) -&gt; Result&lt;VoteResponse&gt;;
+}
 <span class="boring">}
 </span></code></pre></pre>
-<h3><a class="header" href="#api" id="api">API</a></h3>
-<p>The API of the <code>Raft</code> type is broken up into 4 sections: Client Requests, Raft RPCs, Admin Commands &amp; Utility Methods.</p>
-<h4><a class="header" href="#client-requests" id="client-requests">Client Requests</a></h4>
-<p>The application level interface for clients is 100% at the discression of the application being built. However, once a client read or write operation is ready to be processed, the below methods provide the read/write functionality for Raft interaction.</p>
-<ul>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.client_read"><code>async fn client_read(...) -&gt; Result&lt;...&gt;</code></a>: Check to ensure this node is still the cluster leader, in order to guard against stale reads. The actual read operation itself is up to the application, this method just ensures that the read will not be stale.</li>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.client_write"><code>async fn client_write(...) -&gt; Result&lt;...&gt;</code></a>: Submit a mutating client request to Raft to update the state of the system (§5.1). It will be appended to the log, committed to the cluster, and then applied to the application state machine. The result of applying the request to the state machine will be returned as the response from this method.</li>
-</ul>
-<h4><a class="header" href="#raft-rpcs" id="raft-rpcs">Raft RPCs</a></h4>
-<p>These methods directly correspond to the <code>RaftNetwork</code> trait described in earlier chapters. The application is responsible for implementing its own network layer which can receive these RPCs coming from Raft peers, and should then pass them into the Raft node using the following methods.</p>
-<ul>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.append_entries"><code>async fn append_entries(...) -&gt; Result&lt;...&gt;</code></a>: An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).</li>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.vote"><code>async fn vote(...) -&gt; Result&lt;...&gt;</code></a>: An RPC invoked by candidates to gather votes (§5.2).</li>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.install_snapshot"><code>async fn install_snapshot(...) -&gt; Result&lt;...&gt;</code></a>: Invoked by the Raft leader to send chunks of a snapshot to a follower (§7).</li>
-</ul>
-<h4><a class="header" href="#admin-commands" id="admin-commands">Admin Commands</a></h4>
-<p>All of these methods are intended for use directly by the parent application for managing various lifecycles of the cluster. Each of these lifecycles are discussed in more detail in the <a href="https://async-raft.github.io/async-raft/cluster-controls.html">Cluster Controls</a> chapter.</p>
-<ul>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.initialize"><code>async fn initialize(...) -&gt; Result&lt;...&gt;</code></a>: Initialize a pristine Raft node with the given config &amp; start a campaign to become leader.</li>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.add_non_voter"><code>async fn add_non_voter(...) -&gt; Result&lt;...&gt;</code></a>: Add a new node to the cluster as a non-voter, which will sync the node with the master so that it can later join the cluster as a voting member.</li>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.change_membership"><code>async fn change_membership(...) -&gt; Result&lt;...&gt;</code></a>: Propose a new membership config change to a running cluster.</li>
-</ul>
-<h4><a class="header" href="#utility-methods" id="utility-methods">Utility Methods</a></h4>
-<ul>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.metrics"><code>fn metrics(&amp;self) -&gt; watch::Receiver&lt;RaftMetrics&gt;</code></a>: Get a stream of all metrics coming from the Raft node.</li>
-<li><a href="https://docs.rs/async-raft/latest/async_raft/raft/struct.Raft.html#method.shutdown"><code>fn shutdown(self) -&gt; tokio::task::JoinHandle&lt;RaftResult&lt;()&gt;&gt;</code></a>: Send a shutdown signal to the Raft node, and get a <code>JoinHandle</code> which can be used to await the full shutdown of the node. If the node is already in shutdown, this routine will allow you to await its full shutdown.</li>
-</ul>
-<h3><a class="header" href="#reading--writing-data" id="reading--writing-data">Reading &amp; Writing Data</a></h3>
-<p>What does the Raft spec have to say about reading and writing data?</p>
-<blockquote>
-<p>Clients of Raft send all of their requests to the leader. When a client first starts up, it connects to a randomly-chosen server. If the client’s first choice is not the leader, that server will reject the client’s request and supply information about the most recent leader it has heard from. If the leader crashes, client requests will timeout; clients then try again with randomly-chosen servers.</p>
-</blockquote>
-<p>The <code>Raft.metrics</code> method, discussed above, provides a stream of data on the Raft node's internals, and should be used in order to determine the cluster leader, which should only need to be performed once when the client connection is first established.</p>
-<blockquote>
-<p>Our goal for Raft is to implement linearizable semantics (each operation appears to execute instantaneously, exactly once, at some point between its invocation and its response). [...] if the leader crashes after committing the log entry but before responding to the client, the client [may] retry the command with a new leader, causing it to be executed a second time. The solution is for clients to assign unique serial numbers to every command. Then, the state machine tracks the latest serial number processed for each client, along with the associated response. If it receives a command whose serial number has already been executed, it responds immediately without re-executing the request.</p>
-</blockquote>
-<p>As described in the quote above, applications will need to have their clients assign unique serial numbers to every command sent to the application servers. Then, within the application specific code implemented inside of <code>RaftStorage::apply_entry_to_state_machine</code>, if the application detects that the serial number has already been executed for the requesting client, then the response should be immediately returned without re-executing the request. Much of this will be application specific, but these principals can help with design.</p>
-<blockquote>
-<p>Read-only operations can be handled without writing anything into the log. However, with no additional measures, this would run the risk of returning stale data, since the leader responding to the request might have been superseded by a newer leader of which it is unaware. [...] a leader must check whether it has been deposed before processing a read-only request (its information may be stale if a more recent leader has been elected). Raft handles this by having the leader exchange heartbeat messages with a majority of the cluster before responding to read-only requests.</p>
-</blockquote>
-<p>The <code>Raft.client_read</code> method should be used to ensure that the callee Raft node is still the cluster leader.</p>
-<hr />
-<p>The API is simple enough, now its time to put everything together.</p>
-<h1><a class="header" href="#putting-it-all-together" id="putting-it-all-together">Putting It All Together</a></h1>
-<p>In previous chapters we've seen how to define our application's data types which will be used for interacting with Raft, we've seen how to implement the <code>RaftNetwork</code> trait, we've seen how to implement the <code>RaftStorage</code> trait, and we've reviewed the <code>Raft</code> API itself. Now its time to put all of these components together. Let's do this.</p>
-<p>For this chapter, we're going to use snippets of the code found in the <code>memstore</code> crate, which is an in-memory implementation of the <code>RaftStorage</code> trait for demo and testing purposes, which also happens to be used for all of the integration tests of <code>async-raft</code> itself.</p>
-<h3><a class="header" href="#recap-on-our-data-types" id="recap-on-our-data-types">Recap On Our Data Types</a></h3>
-<p>As we've seen earlier, here are our <code>AppData</code> and <code>AppDataResponse</code> types/impls.</p>
-<pre><pre class="playground"><code class="language-rust">
-<span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>/// The application data request type which the `MemStore` works with.
+<p>A mock impl in our tests explains what the impl has to do:
+<a href="https://github.com/datafuselabs/openraft/blob/main/async-raft/tests/fixtures/mod.rs">fixture: mock impl RaftNetwork</a></p>
+<p>As a real world impl, you may want to use <a href="https://github.com/hyperium/tonic">Tonic gRPC</a>.
+<a href="https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89">databend-meta</a> would be a nice real world example.</p>
+<h2 id="put-everything-together"><a class="header" href="#put-everything-together">Put everything together</a></h2>
+<p>Finally we put these part together and boot up a raft node:</p>
+<pre><pre class="playground"><code class="language-rust">/// The application data request type which the `MemStore` works with.
 ///
 /// Conceptually, for demo purposes, this represents an update to a client's status info,
 /// returning the previously recorded status.
@@ -412,23 +341,12 @@ pub struct ClientRequest {
     /// can perform.
     pub status: String,
 }
-
 impl AppData for ClientRequest {}
 
 /// The application data response type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientResponse(Result&lt;Option&lt;String&gt;, ClientError&gt;);
-
 impl AppDataResponse for ClientResponse {}
-<span class="boring">}
-</span></code></pre></pre>
-<h3><a class="header" href="#raftnetwork-impl" id="raftnetwork-impl">RaftNetwork impl</a></h3>
-<p>We've already discussed the <code>RaftNetwork</code> trait in a previous chapter. Here is an abbreviated snippet of what the <code>RaftNetwork</code> impl looks like in the <code>async-raft</code> integration test suite.</p>
-<pre><pre class="playground"><code class="language-rust">
-<span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// We use anyhow::Result in our impl below.
-use anyhow::Result;
 
 /// A type which emulates a network transport and implements the `RaftNetwork` trait.
 pub struct RaftRouter {
@@ -452,20 +370,10 @@ impl RaftNetwork&lt;ClientRequest&gt; for RaftRouter {
         // ... snip ...
     }
 }
-<span class="boring">}
-</span></code></pre></pre>
-<h3><a class="header" href="#raftstorage-impl" id="raftstorage-impl">RaftStorage impl</a></h3>
-<p>We've already got a <code>RaftStorage</code> impl to work with from the <code>memstore</code> crate. Here is an abbreviated snippet of the code.</p>
-<pre><pre class="playground"><code class="language-rust">
-<span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// We use anyhow::Result in our impl below.
-use anyhow::Result;
 
 #[async_trait]
 impl RaftStorage&lt;ClientRequest, ClientResponse&gt; for MemStore {
     type Snapshot = Cursor&lt;Vec&lt;u8&gt;&gt;;
-    type ShutdownError = ShutdownError;
 
     async fn get_membership_config(&amp;self) -&gt; Result&lt;MembershipConfig&gt; {
         // ... snip ...
@@ -475,23 +383,8 @@ impl RaftStorage&lt;ClientRequest, ClientResponse&gt; for MemStore {
         // ... snip ...
     }
 
-    // The remainder of our methods are implemented below.
     // ... snip ...
 }
-<span class="boring">}
-</span></code></pre></pre>
-<h3><a class="header" href="#raft-type-alias" id="raft-type-alias">Raft Type Alias</a></h3>
-<p>For better readability in your application's code, it would be beneficial to define a type alias which fully qualifies all of the types which your Raft instance will be using. This is quite simple. The example below is taken directly from this project's integration test suite, which uses the <code>memstore</code> crate and a specialized <code>RaftNetwork</code> impl designed specifically for testing.</p>
-<pre><pre class="playground"><code class="language-rust">
-<span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>/// A concrete Raft type used during testing.
-pub type MemRaft = Raft&lt;ClientRequest, ClientResponse, RaftRouter, MemStore&gt;;
-<span class="boring">}
-</span></code></pre></pre>
-<h3><a class="header" href="#give-it-the-boot" id="give-it-the-boot">Give It The Boot</a></h3>
-<p>Though applications will be much more complex than this contrived example, booting a Raft node is dead simple. Even if your application uses a multi-Raft pattern for managing different segments / shards of data, the same principal applies. Boot a Raft node, and retain its instance for API usage.</p>
-<pre><pre class="playground"><code class="language-rust">//! This code assumes the code samples above.
 
 #[tokio::main]
 async fn main() {
@@ -511,53 +404,403 @@ async fn main() {
     // for calling API methods based on events in your app.
     let raft = Raft::new(node_id, config, network, storage);
 
-    run_app(raft).await; // This is subjective. Do it your own way.
-                         // Just run your app, feeding Raft &amp; client
-                         // RPCs into the Raft node as they arrive.
+    let resp = raft.client_write(ClientWriteRequest::new(req)).await?;
 }
+
 </code></pre></pre>
-<hr />
-<p>You've officially ascended to the next level of AWESOME! Next, let's take a look at cluster lifecycle controls, dynamic membership, and the like.</p>
-<h1><a class="header" href="#cluster-controls" id="cluster-controls">Cluster Controls</a></h1>
-<p>Raft nodes may be controlled in various ways outside of the normal flow of the Raft protocol using some of the API methods of the <code>Raft</code> type. This allows the parent application — within which the Raft node is running — to influence the Raft node's behavior based on application level needs.</p>
-<h3><a class="header" href="#concepts" id="concepts">concepts</a></h3>
-<p>In the world of Raft consensus, there are a few aspects of a Raft node's lifecycle which are not directly dictated in the Raft spec. Cluster formation and the preliminary details of what would lead to dynamic cluster membership changes are a few examples of concepts not directly detailed in the spec. This implementation of Raft offers as much flexibility as possible to deal with such details in a way which is safe according to the Raft specification, but also in a way which preserves flexibility for the many different types of applications which may be implemented using Raft.</p>
-<h1><a class="header" href="#cluster-formation" id="cluster-formation">Cluster Formation</a></h1>
-<p>All Raft nodes, when they first come online in a pristine state, will enter into the <code>NonVoter</code> state, which is a completely passive state.</p>
-<p>To form a new cluster, application nodes must call the <code>Raft.initialize</code> method with the IDs of all discovered nodes which are to be part of the cluster (including the ID of the running node). Or if the application is to run in a standalone / single-node manner, it may issue the command with only its own ID.</p>
-<h4><a class="header" href="#raftinitialize" id="raftinitialize"><code>Raft.initialize</code></a></h4>
-<p>This method is used exclusively for the formation of new clusters. This command will fail if the node is not in the <code>NonVoter</code> state, or if the node's log index is greater than <code>0</code>.</p>
-<p>This will cause the Raft node to hold the given configuration in memory and then immediately perform the election protocol. For single-node clusters, the node will immediately become leader, for multi-node clusters it will submit <code>RequestVote</code> RPCs to all of the nodes in the given config list. <strong>NOTE WELL that it is safe for EVERY node in the cluster to perform this action in parallel</strong> when a new cluster is being formed. Once this process has been completed, the newly elected leader will append the given membership config data to the log, ensuring that the new configuration will be reckoned as the initial cluster configuration moving forward throughout the life of the cluster.</p>
-<p>In order to ensure that multiple independent clusters aren't formed by prematurely calling the <code>Raft.initialize</code> method before all peers are discovered, it is recommended that applications adopt a configurable <code>cluster_formation_delay</code> setting. The value for such a configuration should simply be a few orders of magnitude greater than the amount of time it takes for all the nodes of a new cluster to come online and discover each other. There are alternative patterns which may be used. Ultimately, this is subject to the design of the application.</p>
-<p>As a rule of thumb, when new nodes come online, the leader of an existing Raft cluster will eventually discover the node (via the application's discovery system), and in such cases, the application could call the <code>Raft.add_non_voter</code> method to begin syncing the new node with the cluster. Once it is finished syncing, then applications should call the <code>Raft.change_membership</code> method to add the new node as a voting member of the cluster. For removing nodes from the cluster, the leader should call <code>Raft.change_membership</code> with the updated config, no preliminary steps are needed. See the next section for more details on this subject.</p>
-<h1><a class="header" href="#dynamic-membership" id="dynamic-membership">Dynamic Membership</a></h1>
-<p>Throughout the lifecycle of a Raft cluster, nodes will come and go. New nodes may need to be added to the cluster for various application specific reasons. Nodes may experience hardware failure and end up going offline. This implementation of Raft offers two mechanisms for controlling these lifecycle events.</p>
-<h4><a class="header" href="#raftadd_non_voter" id="raftadd_non_voter"><code>Raft.add_non_voter</code></a></h4>
-<p>This method will add a new non-voter to the cluster and will immediately begin syncing the node with the leader. This method may be called multiple times as needed. The <code>Future</code> returned by calling this method will resolve once the node is up-to-date and is ready to be added as a voting member of the cluster.</p>
-<h4><a class="header" href="#raftchange_membership" id="raftchange_membership"><code>Raft.change_membership</code></a></h4>
-<p>This method will start a cluster membership change. If there are any new nodes in the given config which were not previously added as non-voters from an earlier call to <code>Raft.add_non_voter</code>, then those nodes will begin the sync process. It is recommended that applications always call <code>Raft.add_non_voter</code> first when adding new nodes to the cluster, as this offers a bit more flexibility. Once <code>Raft.change_membership</code> is called, it can not be called again until the reconfiguration process is complete (which is typically quite fast).</p>
-<p>Cluster auto-healing — where cluster members which have been offline for some period of time are automatically removed — is an application specific behavior, but is fully supported via this dynamic cluster membership system. Simply call <code>Raft.change_membership</code> with the dead node removed from the membership set.</p>
-<p>Cluster leader stepdown is also fully supported. Nothing special needs to take place. Simply call <code>Raft.change_membership</code> with the ID of the leader removed from the membership set. The leader will recognize that it is being removed from the cluster, and will stepdown once it has committed the config change to the cluster according to the safety protocols defined in the Raft spec.</p>
-<h1><a class="header" href="#metrics" id="metrics">Metrics</a></h1>
-<p><code>Raft</code> exports metrics on its internal state via the <code>Raft.metrics</code> method, which returns a stream of <a href="https://docs.rs/crate/async-raft/latest/async_raft/metrics/struct.RaftMetrics.html"><code>RaftMetrics</code></a>. The metrics themselves describe the state of the Raft node, its current role in the cluster, its current membership config, as well as information on the Raft log and the last index to be applied to the state machine.</p>
-<p>Applications may use this data in whatever way is needed. The obvious use cases are to expose these metrics to a metrics collection system, such as Prometheus, TimescaleDB, Influx &amp;c. Applications may also use this data to trigger events within higher levels of the application itself.</p>
-<h1><a class="header" href="#get-to-it" id="get-to-it">Get To It</a></h1>
-<p>Rust is an outstanding language for building stateful systems.</p>
+<p>Now it is time to write something to the cluster.
+As we did in our tests with <code>Raft::client_write()</code>:
+<a href="https://github.com/datafuselabs/openraft/blob/main/async-raft/tests/client_writes.rs">client_writes</a></p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="cluster-controls"><a class="header" href="#cluster-controls">Cluster Controls</a></h1>
+<p>A raft cluster may be control in various ways using the API methods of the <code>Raft</code> type.
+This allows the application to influence the raft behavior.</p>
+<p>There are several concepts related to cluster control:</p>
 <ul>
-<li>We don't need to continue allocating all of the memory of all of the clouds to the JVM.</li>
-<li>We ABSOLUTELY need to move away from all of the memory safety issues which have compromised countless systems.</li>
-<li>Raft is a robust and powerful consensus protocol, and this implementation offers a fairly robust API to build against.</li>
+<li>
+<p>Voter: a raft node that is responsible to vote, elect itself for leadership(Candidate),
+become Leader or Follower</p>
+</li>
+<li>
+<p>Candidate: a node tries to elect itself as the Leader.</p>
+</li>
+<li>
+<p>Leader: the only node in a cluster that deals with application request.</p>
+</li>
+<li>
+<p>Follower: a node that believes there is a legal leader and just receives
+replicated logs.</p>
+</li>
+<li>
+<p>Learner: a node that is not allow to vote but only receives logs.</p>
+</li>
 </ul>
-<p>There are plenty of awesome things to build! Let's do this!</p>
+<p>Voter state transition:</p>
+<pre><code>                         vote granted by a quorum
+          .--&gt; Candidate ----------------------&gt; Leader
+heartbeat |     |                                  |
+timeout   |     | seen a higher Leader             | seen a higher Leader
+          |     v                                  |
+          '----Follower &lt;--------------------------'
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="cluster-formation"><a class="header" href="#cluster-formation">Cluster Formation</a></h1>
+<p>A <code>Raft</code> node enters <code>Learner</code> state when it is created by <code>Raft::new()</code>.</p>
+<p>To form a cluster, application must call <code>Raft::initialize(membership)</code>.</p>
+<h2 id="raftinitialize"><a class="header" href="#raftinitialize"><code>Raft::initialize()</code></a></h2>
+<p>This method will:</p>
+<ul>
+<li>
+<p>Update the in-memory membership.</p>
+</li>
+<li>
+<p>If there are more than one voters in the config, enter Candidate state and start vote to become leader.</p>
+</li>
+<li>
+<p>If there is only one voters(itself) in the config, become leader at once and
+will enter leader state.</p>
+</li>
+<li>
+<p>The leader will commit a log contains the given membership config.</p>
+</li>
+</ul>
+<p>TODO(xp): this procedure will be changed:  https://github.com/datafuselabs/openraft/issues/45</p>
+<ul>
+<li>
+<p>Calling this method on an already initialized node just returns an error and is safe.</p>
+</li>
+<li>
+<p>Calling this method on more than one node at the same time:</p>
+<ul>
+<li>
+<p>with the same <code>membership</code> is safe.
+Because voting protocol guarantees consistency.</p>
+</li>
+<li>
+<p>with different <code>membership</code> is <strong>ILLEGAL</strong> and will result in a undefined
+state, AKA the <strong>split-brain</strong> state.</p>
+</li>
+</ul>
+</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="dynamic-membership"><a class="header" href="#dynamic-membership">Dynamic Membership</a></h1>
+<p>This impl of <code>Raft</code> offers a more flexible way to deal with cluster management:</p>
+<p>It offers only one cluster membership: the <strong>joint</strong> membership.
+<strong>Joint</strong> membership is no more an ephemeral state but instead, a normal
+long lasting config for a cluster.</p>
+<p>A uniform config is just a special case.</p>
+<blockquote>
+<p>This way it offers flexible cluster management such as hierarchical
+membership config that is aware of data-center layout, e.g., 
+<code>[{a, b, c}, {u, v, w}, {x, y, z}]</code> is a cluster with 9 nodes, every 3 nodes
+forms a group(which in real world, a data center.).
+And the quorum of such a cluster is majority of 3 groups, in which
+a majority is constituted, e.g, <code>[{a, b}, {u, v}]</code> is a quorum.</p>
+</blockquote>
+<hr />
+<p>Openraft offers 2 mechanisms for controlling member node lifecycle.</p>
+<h2 id="raftadd_learner"><a class="header" href="#raftadd_learner"><code>Raft::add_learner()</code></a></h2>
+<p>This method will add a learner to the cluster,
+and immediately begin syncing logs from the leader.</p>
+<ul>
+<li>
+<p>A <strong>Learner</strong> won't vote for leadership.</p>
+</li>
+<li>
+<p>A <strong>Learner</strong> is not persistently stored by <code>Raft</code>, i.e., if a new leader is
+elected, a Learner will no longer receive logs from the new leader.</p>
+<p>TODO(xp): store learners in <code>MembershipConfig</code>.</p>
+</li>
+</ul>
+<h2 id="raftchange_membership"><a class="header" href="#raftchange_membership"><code>Raft::change_membership()</code></a></h2>
+<p>This method will initiate a membership change.</p>
+<p>If there are nodes in the given config is not a learner, this method will add it
+as Learner first.
+Thus it is recommended that application always call <code>Raft::add_learner</code> first.
+Otherwise <code>change_membership</code> may block for long before committing the
+given membership and return.</p>
+<p>The new membership config specified by this method will take effect at once.</p>
+<p>Once the new config is committed, a Voter that is no in the new config will
+revert to a Learner and is ready to remove.</p>
+<p>Correctness constrains:</p>
+<ul>
+<li>
+<p>There is no uncommitted membership config on the leader.</p>
+</li>
+<li>
+<p>The new config has to contains a group that is the same as one of the last
+committed config.</p>
+<p>E.g., the last committed one is <code>[{a, b, c}]</code>, then a legal new config may be:
+a joint config: <code>[{a, b, c}, {x, y, z}]</code>.</p>
+<p>If the last committed one is <code>[{a, b, c}, {x, y, z}]</code>, a legal new config
+may be: <code>[{a, b, c}]</code>, or <code>[{x, y, z}]</code>.</p>
+</li>
+</ul>
+<p>If the constrains are not satisfied, an error is returned and nothing is done
+except the learner will not be removed.</p>
+<p>TODO(xp): these constrains can be loosen, if raft stores the commit index.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="metrics"><a class="header" href="#metrics">Metrics</a></h1>
+<p><code>Raft</code> exports metrics on its internal state via <code>Raft::metrics() -&gt; watch::Receiver&lt;RaftMetrics&gt;</code>.</p>
+<p><code>RaftMetrics</code> contains useful information such as:</p>
+<ul>
+<li>role of this raft node,</li>
+<li>the current leader,</li>
+<li>last, committed, applied log.</li>
+<li>replication state, if this node is a Leader,</li>
+<li>snapshot state,</li>
+</ul>
+<p>Metrics can be used as a trigger of application events, as a monitoring data
+source, etc.</p>
+<p>Metrics is not a stream thus it only guarantees to provide the latest state but
+not every change of the state.
+Because internally, <code>watch::channel()</code> only stores one state.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="internal"><a class="header" href="#internal">Internal</a></h1>
+<p>In this chapter we explains how openraft internally works.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="architecture"><a class="header" href="#architecture">Architecture</a></h1>
+<pre><code>
+        ...................................
+        .          User                   .
+        .          ‖                      .
+        .          ‖                      .
+        .          ‖                      .
+        .          ‖ client_write(impl AppData) -&gt; impl AppDataResponse
+        .          ‖ client_read()        .
+        .          ‖ add_non_voter()      .
+        .          ‖ change_member()      .
+        .          v                      .
+        .          Raft                   .             .-------------&gt; Raft -----.
+        ...................................             |                         |
+                   |                                    |                         |
+                   | enum RaftMes                       |                         |
+                   |                                    |                         |
+           ........|................................    |                         |
+           .       v                               .    | RPC:                    v
+.================= RaftCore                        .    |   vote()                RaftCore
+‖          .       .==+========.                   .    |   append_entries()      
+‖          .       v           v                   .    |   install_snapshot()
+‖          . ReplicationState  ReplicationState    .    |   
+‖          ...|................|....................    |
+‖             |                |                        |
+‖             |                |                        |
+‖  ...........|...........  ...|....................    |
+‖  .          v          .  .  v                   .    |
+‖  . ReplicationStream   .  .  ReplicationStream   .    |
+‖  . ‖                   .  .  ‖  ‖                .    |
+‖  ..‖....................  .  ‖  ‖                .    |
+‖    ‖                      .  ‖  v                .    |
+‖    ‖                      .  ‖  Arc&lt;RaftNetwork&gt; -----'
+‖    ‖                      ...‖....................
+‖    ‖                         ‖
+‖    `=========================+ 
+‖                              ‖ get_log()
+‖                              ‖ ...
+‖                              v
+`======================&gt; Arc&lt;RaftStorage&gt;
+   append_log()                ‖
+   ...                         ‖
+                               v
+                           local-disk
+                                
+ 
+ -----------------------------------------------              ----------------------------------------------- 
+ Node 1                                                       Node 2                                          
+
+</code></pre>
+<p>Legends:</p>
+<pre><code>..............
+. tokio task .
+..............
+
+=&gt; function call
+-&gt; async communication: through channel or RPC
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="threadstasks"><a class="header" href="#threadstasks">Threads(tasks)</a></h1>
+<p>There are several threads, AKA tokio-tasks in this raft impl:</p>
+<ul>
+<li>
+<p>RaftCore: all log and state machine operation is done in this thread.
+Thus there is no race condition</p>
+<ul>
+<li>All raft state runs in this task, such as LeaderState, CandidateState etc.</li>
+<li>All write to store is done in this task, i.e., write to store is serialized.</li>
+</ul>
+<p>Lifecycle:</p>
+<ul>
+<li>RaftCore thread is spawnd when a raft node is created and keeps running until
+the raft node is dropped.</li>
+</ul>
+</li>
+<li>
+<p>Replication tasks:</p>
+<p>There is exactly one replication task spawned for every replication target,
+i.e., a follower or learner.</p>
+<p>A replication task replicates logs or snapshot to its target.
+A replication thread do not write logs or state machine, but only read from it.</p>
+<p>Lifecycle:</p>
+<ul>
+<li>
+<p>A replication task is spawned when RaftCore enters <code>LeaderState</code>, or a leader
+target is added by user.</p>
+</li>
+<li>
+<p>A replication task is dropped when a follower of learner is removed by
+<strong>change-membership</strong> or when RaftCore quits <code>LeaderState</code>.</p>
+</li>
+</ul>
+</li>
+<li>
+<p>Snapshot building task:</p>
+<p>When RaftCore receives a RaftMsg that requires a snapshot, which is sent by a
+<strong>replication task</strong>, RaftCore spawns a sub task to build a snapshot.</p>
+<p>Lifecycle:</p>
+<ul>
+<li>It is spawned when a snapshot is requested,
+and is dropped at once when the snapshot is ready.</li>
+</ul>
+</li>
+<li>
+<p>User application runs in another task that spawns RaftCore task.</p>
+</li>
+</ul>
+<h1 id="communication-between-tasks"><a class="header" href="#communication-between-tasks">Communication between tasks</a></h1>
+<p>All tasks communicate with channels:</p>
+<pre><code>User
+|
+| write;
+| change_membership;
+| ...
+|
+|                     new log to
+|                     replicate;
+`---------&gt; RaftCore -------------+-&gt; Replication -.
+            ^  ^                  |                |
+            |  |                  `-&gt; Replication -+
+            |  |                                   |
+            |  `-----------------------------------'
+            |      update replication state;
+            |      need snapshot;
+            |
+            |
+            | snapshot is ready;
+            |
+            Build-snapshot
+
+</code></pre>
+<ul>
+<li>
+<p>User to RaftCore: <code>Raft</code> sends <code>RaftMsg</code> though <code>Raft.tx_api</code> to <code>RaftCore</code>,
+along with a channel for <code>RaftCore</code> to send back response.</p>
+</li>
+<li>
+<p>RaftCore to Replication: <code>RaftCore</code> stores a channel for every repliation
+task.
+The messages sent to replication task includes:</p>
+<ul>
+<li>a new log id to replicate,</li>
+<li>and the index the leader has committed.</li>
+</ul>
+</li>
+<li>
+<p>Replication to RaftCore:</p>
+<ul>
+<li>
+<p>Replication task send the already replicated log id
+to RaftCore through another per-replication channel.</p>
+</li>
+<li>
+<p>Replication task send a <code>NeedSnapshot</code> request through the same channel to
+ask RaftCore to build a snapshot if there is no log a follower/learner
+needs.</p>
+</li>
+</ul>
+</li>
+<li>
+<p>Build-snapshot to RaftCore: RaftCore spawn a separate task to build a snapshot
+asynchronously. When finished, the spawned task send to RaftCore a message
+including the snapshot info.</p>
+</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="replication"><a class="header" href="#replication">Replication</a></h1>
+<p>Appending entry is the only RPC to replicate logs from leader to followers or non-voters.
+Installing a snapshot can be seen as a special form of <strong>appending logs</strong>.</p>
+<h2 id="append-entry"><a class="header" href="#append-entry">Append-entry</a></h2>
+<p>Raft logs can be together seen as a <strong>single value</strong>:
+An append-entry RPC forwards all logs to a follower and replace all the logs on the follower.
+This way it guarantees committed log can always been seen by next leader.</p>
+<p>Although in practice, it is infeasible sending all the logs in one RPC.
+Thus, the receiving end in the algorithm becomes:</p>
+<ul>
+<li>Proceed only when <code>prev_log_id</code> matches local log id at the same <code>index</code>.</li>
+<li>Save every log entry into local store if:
+<ul>
+<li>the entry at the target index is empty.</li>
+<li>the entry at the target index is the same as the input one.
+Otherwise, there is an <strong>inconsistent</strong> entry,
+the follower must delete all entries since this one before storing the input one.</li>
+</ul>
+</li>
+</ul>
+<h3 id="why-need-to-delete"><a class="header" href="#why-need-to-delete">Why need to delete</a></h3>
+<p>The following diagram shows only log term.</p>
+<pre><code class="language-text">R1 5
+R2 5
+R3 5 3 3
+R4
+R5 2 4 4
+</code></pre>
+<p>If log 5 is committed by R1, and log 3 is not removed, R5 in future could become a new leader and overrides log
+5 on R3.</p>
+<h3 id="caveat-deleting-all-entries-after-prev_log_id-get-committed-log-lost"><a class="header" href="#caveat-deleting-all-entries-after-prev_log_id-get-committed-log-lost">Caveat: deleting all entries after <code>prev_log_id</code> get committed log lost</a></h3>
+<p>One of the mistake is to delete all entries after <code>prev_log_id</code> when a matching <code>prev_log_id</code> is found, e.g.:</p>
+<pre><code>fn handle_append_entries(req) {
+    if store.has(req.prev_log_id) {
+        store.delete_logs(req.prev_log_id.index..)
+        store.append_logs(req.entries)
+    }
+}
+
+</code></pre>
+<p>This results in loss of committed entry, because deleting and appending are not atomically executed.</p>
+<p>E.g., the log entries are as following and R1 now is the leader:</p>
+<pre><code class="language-text">R1 1,1  1,2  1,3
+R2 1,1  1,2
+R3
+</code></pre>
+<p>When the following steps take place, committed entry <code>{1,2}</code> is lost:</p>
+<ul>
+<li>R1 to R2: <code>append_entries(entries=[{1,2}, {1,3}], prev_log_id={1,1})</code></li>
+<li>R2 deletes <code>{1,2}</code></li>
+<li>R2 crash</li>
+<li>R2 elected as leader and only see <code>{1,1}</code>; the committed entry <code>{1,2}</code> is lost.</li>
+</ul>
+<p><strong>The safe way is to skip every entry that present in append-entries message then delete only the
+inconsistent entries</strong>.</p>
+<h3 id="caveat-commit-index-must-not-advance-the-last-known-consistent-log"><a class="header" href="#caveat-commit-index-must-not-advance-the-last-known-consistent-log">Caveat: commit-index must not advance the last known consistent log</a></h3>
+<p>Because we can not just delete <code>log[prev_log_id.index..]</code>, (which results in loss of committed
+entry), the commit index must be updated only after append-entries
+and must point to a log entry that is consistent to the leader.
+Or there would be chance applying an uncommitted entry on a follower:</p>
+<pre><code class="language-text">R0 1,1  1,2  3,3
+R1 1,1  1,2  2,3
+R2 1,1  1,2  3,3
+</code></pre>
+<ul>
+<li>R0 to R1 append_entries: <code>entries=[{1,2}], prev_log_id = {1,1}, commit_index = 3</code></li>
+<li>R1 accepted this append-entries request but was not aware of that entry <code>{2,3}</code> is inconsistent to leader.
+Then it will update commit_index to <code>3</code> and apply <code>{2,3}</code></li>
+</ul>
+<h2 id="replication-by-sending-snapshot"><a class="header" href="#replication-by-sending-snapshot">Replication by sending snapshot</a></h2>
+<p>Replication by sending a snapshot of the state machine can be seen as a special form of <strong>appending logs</strong>.
+Thus, it shares the same constrains.</p>
+<p>A state machine will never be overridden by logs,
+thus committed log in it will never get lost.
+Thus, when installing a snapshot, it does not need to remove inconsistent logs,
+e.g., any log after the <code>last_applied</code>.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
                         
-
                         
-
                         <div style="clear: both"></div>
                     </nav>
                 </div>
@@ -565,48 +808,33 @@ async fn main() {
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
                 
-
-                
-            </nav>
+                            </nav>
 
         </div>
 
         
-
         
-
         
-
-        
-        <script type="text/javascript">
+                <script type="text/javascript">
             window.playground_copyable = true;
         </script>
         
-
         
-
-        
-        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+                <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
         
-
         <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
         <script src="book.js" type="text/javascript" charset="utf-8"></script>
 
         <!-- Custom JS scripts -->
         
-
-        
-        
-        <script type="text/javascript">
+                        <script type="text/javascript">
         window.addEventListener('load', function() {
             window.setTimeout(window.print, 100);
         });
         </script>
-        
-        
-
+                
     </body>
 </html>

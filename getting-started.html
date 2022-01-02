@@ -3,37 +3,28 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Getting Started - Async Raft</title>
-        
-        
-
+        <title>Getting Started - openraft</title>
+                
 
         <!-- Custom HTML head -->
         
 
-
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
-        <meta name="description" content="The async-raft user guide.">
+        <meta name="description" content="The openraft user guide.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
 
-        
-        <link rel="icon" href="favicon.svg">
-        
-        
-        <link rel="shortcut icon" href="favicon.png">
-        
-        <link rel="stylesheet" href="css/variables.css">
+                <link rel="icon" href="favicon.svg">
+                        <link rel="shortcut icon" href="favicon.png">
+                <link rel="stylesheet" href="css/variables.css">
         <link rel="stylesheet" href="css/general.css">
         <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
-
+                <link rel="stylesheet" href="css/print.css" media="print">
+        
         <!-- Fonts -->
         <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+                <link rel="stylesheet" href="fonts/fonts.css">
         
-        <link rel="stylesheet" href="fonts/fonts.css">
-        
-
         <!-- Highlight.js Stylesheets -->
         <link rel="stylesheet" href="highlight.css">
         <link rel="stylesheet" href="tomorrow-night.css">
@@ -41,9 +32,7 @@
 
         <!-- Custom theme stylesheets -->
         
-
-        
-    </head>
+            </head>
     <body>
         <!-- Provide site root to javascript -->
         <script type="text/javascript">
@@ -93,8 +82,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html" class="active"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="network.html"><strong aria-hidden="true">2.</strong> Network</a></li><li class="chapter-item expanded "><a href="storage.html"><strong aria-hidden="true">3.</strong> Storage</a></li><li class="chapter-item expanded "><a href="raft.html"><strong aria-hidden="true">4.</strong> Raft API</a></li><li class="chapter-item expanded "><a href="putting-it-all-together.html"><strong aria-hidden="true">5.</strong> Putting It All Together</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">6.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">6.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">6.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">7.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="get-to-it.html"><strong aria-hidden="true">8.</strong> Get To It</a></li></ol>
-            </div>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html" class="active"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li></ol></li></ol>            </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
 
@@ -118,27 +106,24 @@
                             <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
                         </ul>
-                        
-                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                                                <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
                             <i class="fa fa-search"></i>
                         </button>
-                        
-                    </div>
+                                            </div>
 
-                    <h1 class="menu-title">Async Raft</h1>
+                    <h1 class="menu-title">openraft</h1>
 
                     <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                                                <a href="print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
                         </a>
-                        
+                                                                        
                     </div>
                 </div>
 
-                
-                <div id="search-wrapper" class="hidden">
+                                <div id="search-wrapper" class="hidden">
                     <form id="searchbar-outer" class="searchbar-outer">
-                        <input type="search" name="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
                     </form>
                     <div id="searchresults-outer" class="searchresults-outer hidden">
                         <div id="searchresults-header" class="searchresults-header"></div>
@@ -147,7 +132,6 @@
                     </div>
                 </div>
                 
-
                 <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
                 <script type="text/javascript">
                     document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
@@ -159,122 +143,238 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1><a class="header" href="#getting-started" id="getting-started">Getting Started</a></h1>
-<p>Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients. Why use Raft? Among other things, it provides data storage systems with fault-tolerance, strong consistency and linearizability.</p>
-<p>A visual depiction of how Raft works (taken from the spec) can be seen below.</p>
+                        <h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
+<p>Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients.</p>
 <p>
     <img style="max-width:600px;" src="./images/raft-overview.png"/>
 </p>
-<p>Raft is intended to run within some parent application, which traditionally will be some sort of data storage system (SQL, NoSQL, KV store, AMQP, Streaming, Graph, whatever). You can do whatever you want with your application, Raft will provide you with the consensus module.</p>
-<h2><a class="header" href="#first-steps" id="first-steps">first steps</a></h2>
-<p>In order to start using Raft, you will need to declare the data types you will use for client requests and client responses. Let's do that now. Throughout this guide, we will be using the <code>memstore</code> crate, which is an in-memory implementation of the <code>RaftStorage</code> trait for demo and testing purposes (part of the same repo). This will give us a concrete set of examples to work with, which also happen to be used for all of the integration tests of <code>async-raft</code> itself.</p>
-<h3><a class="header" href="#async_raftappdata" id="async_raftappdata"><code>async_raft::AppData</code></a></h3>
-<p>This marker trait is used to declare an application's data type. It has the following constraints: <code>Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static</code>. Your data type represents the requests which will be sent to your application to create, update and delete data. Requests to read data should not be sent through Raft, only mutating requests. More on linearizable reads, and how to avoid stale reads, is discussed in the <a href="./raft.html">Raft API chapter</a>.</p>
-<p>The intention of this trait is that applications which are using this crate will be able to use their own concrete data types throughout their application without having to serialize and deserialize their data as it goes through Raft. Instead, applications can present their data models as-is to Raft, Raft will present it to the application's <code>RaftStorage</code> impl when ready, and the application may then deal with the data directly in the storage engine without having to do a preliminary deserialization.</p>
-<h5><a class="header" href="#impl" id="impl">impl</a></h5>
-<p>Finishing up this step is easy, just <code>impl AppData for YourData {}</code> ... and in most cases, that's it. You'll need to be sure that the aforementioned constraints are satisfied on <code>YourData</code>. The following derivation should do the trick <code>#[derive(Clone, Debug, Serialize, Deserialize)]</code>.</p>
-<p>In the <code>memstore</code> crate, here is a snippet of what the code looks like:</p>
+<p>Raft includes two major parts:</p>
+<ul>
+<li>How to replicate logs consistently among nodes,</li>
+<li>and how to consume the logs, which is defined mainly in state machine.</li>
+</ul>
+<p>To implement your own raft based application with openraft is quite easy, which
+includes: </p>
+<ul>
+<li>Define client request and response;</li>
+<li>Implement a storage to let raft store its state;</li>
+<li>Implement a network layer for raft to transmit messages.</li>
+</ul>
+<h2 id="define-client-request-and-response"><a class="header" href="#define-client-request-and-response">Define client request and response</a></h2>
+<p>A request is some data that modifies the raft state machine.
+A response is some data that the raft state machine returns to client.</p>
+<p>Request and response can be any types that impl <code>AppData</code> and <code>AppDataResponse</code>,
+e.g.:</p>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>/// The application data request type which the `MemStore` works with.
-///
-/// Conceptually, for demo purposes, this represents an update to a client's status info,
-/// returning the previously recorded status.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ClientRequest {
-    /* fields omitted */
-}
-
+</span>#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ClientRequest {/* fields */}
 impl AppData for ClientRequest {}
-<span class="boring">}
-</span></code></pre></pre>
-<h3><a class="header" href="#async_raftappdataresponse" id="async_raftappdataresponse"><code>async_raft::AppDataResponse</code></a></h3>
-<p>This marker trait is used to declare an application's response data. It has the following constraints: <code>Clone + Debug + Send + Sync + Serialize + DeserializeOwned + 'static</code>.</p>
-<p>The intention of this trait is that applications which are using this crate will be able to use their own concrete data types for returning response data from the storage layer when an entry is applied to the state machine as part of a client request (this is not used during replication). This allows applications to seamlessly return application specific data from their storage layer, up through Raft, and back into their application for returning data to clients.</p>
-<p>This type must encapsulate both success and error responses, as application specific logic related to the success or failure of a client request — application specific validation logic, enforcing of data constraints, and anything of that nature — are expressly out of the realm of the Raft consensus protocol.</p>
-<h5><a class="header" href="#impl-1" id="impl-1">impl</a></h5>
-<p>Finishing up this step is also easy: <code>impl AppDataResponse for YourDataResponse {}</code>. The aforementioned derivation applies here as well.</p>
-<p>In the <code>memstore</code> crate, here is a snippet of what the code looks like:</p>
-<pre><pre class="playground"><code class="language-rust">
-<span class="boring">#![allow(unused)]
-</span>
-<span class="boring">fn main() {
-</span>/// The application data response type which the `MemStore` works with.
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClientResponse(Result&lt;Option&lt;String&gt;, ClientError&gt;);
-
 impl AppDataResponse for ClientResponse {}
 <span class="boring">}
 </span></code></pre></pre>
-<hr />
-<p>Woot woot! Onward to the networking layer.</p>
+<p>These two types are totally application specific, and are mainly related to the
+state machine implementation in <code>RaftStorage</code>.</p>
+<h2 id="implement-raftstorage"><a class="header" href="#implement-raftstorage">Implement RaftStorage</a></h2>
+<p>The trait <code>RaftStorage</code> defines the way that data is stored and consumed.
+It could be a wrapper of some local KV store such <a href="https://docs.rs/rocksdb/latest/rocksdb/">RocksDB</a>,
+or a wrapper of a remote sql DB.</p>
+<p><code>RaftStorage</code> defines 4 sets of APIs:</p>
+<ul>
+<li>Read/write raft state, e.g., term or vote.</li>
+<li>Read/write logs.</li>
+<li>Apply log entry to the state machine.</li>
+<li>Building and installing a snapshot.</li>
+</ul>
+<h3 id="how-do-i-impl-raftstorage-correctly"><a class="header" href="#how-do-i-impl-raftstorage-correctly">How do I impl RaftStorage correctly</a></h3>
+<ul>
+<li>
+<p>The APIs have been made quite obvious and there is a good example
+<a href="https://github.com/datafuselabs/openraft/tree/main/memstore"><code>memstore</code></a>,
+which is a pure-in-memory implementation that shows what should be done when a
+method is called.</p>
+</li>
+<li>
+<p>There is a test suite for <code>RaftStorage</code> impl, if an impl passes the test,
+Openraft will work happily with it.</p>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs">Test suite for RaftStorage impl</a></p>
+<p>TODO(xp): move this test suite to openraft crate so that users can include it.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>// TODO(xp): give a example how to test an impl of RaftStorage
+<span class="boring">}
+</span></code></pre></pre>
+</li>
+</ul>
+<h3 id="race-condition-about-raftstorage"><a class="header" href="#race-condition-about-raftstorage">Race condition about RaftStorage</a></h3>
+<p>In our design, there is at most one thread at a time writing data to it.
+But there may be several threads reading from it concurrently,
+e.g., more than one replication tasks reading log entries from store.</p>
+<h3 id="an-implementation-has-to-guarantee-data-durability"><a class="header" href="#an-implementation-has-to-guarantee-data-durability">An implementation has to guarantee data durability</a></h3>
+<p>The caller always assumes a completed write is persistent.
+The raft correctness highly depends on a reliable store.</p>
+<h2 id="impl-raftnetwork"><a class="header" href="#impl-raftnetwork">impl <code>RaftNetwork</code></a></h2>
+<p>Raft nodes need to communicate with each other to achieve consensus about the
+logs.
+The trait <code>RaftNetwork</code> defines the data transmission requirements.</p>
+<p>An implementation of <code>RaftNetwork</code> can be considered as a wrapper that invokes the
+corresponding methods of a remote <code>Raft</code>.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub trait RaftNetwork&lt;D&gt;: Send + Sync + 'static
+where D: AppData
+{
+    async fn send_append_entries(&amp;self, target: NodeId, rpc: AppendEntriesRequest&lt;D&gt;) -&gt; Result&lt;AppendEntriesResponse&gt;;
+    async fn send_install_snapshot( &amp;self, target: NodeId, rpc: InstallSnapshotRequest,) -&gt; Result&lt;InstallSnapshotResponse&gt;;
+    async fn send_vote(&amp;self, target: NodeId, rpc: VoteRequest) -&gt; Result&lt;VoteResponse&gt;;
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p>A mock impl in our tests explains what the impl has to do:
+<a href="https://github.com/datafuselabs/openraft/blob/main/async-raft/tests/fixtures/mod.rs">fixture: mock impl RaftNetwork</a></p>
+<p>As a real world impl, you may want to use <a href="https://github.com/hyperium/tonic">Tonic gRPC</a>.
+<a href="https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89">databend-meta</a> would be a nice real world example.</p>
+<h2 id="put-everything-together"><a class="header" href="#put-everything-together">Put everything together</a></h2>
+<p>Finally we put these part together and boot up a raft node:</p>
+<pre><pre class="playground"><code class="language-rust">/// The application data request type which the `MemStore` works with.
+///
+/// Conceptually, for demo purposes, this represents an update to a client's status info,
+/// returning the previously recorded status.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ClientRequest {
+    /// The ID of the client which has sent the request.
+    pub client: String,
+    /// The serial number of this request.
+    pub serial: u64,
+    /// A string describing the status of the client. For a real application, this should probably
+    /// be an enum representing all of the various types of requests / operations which a client
+    /// can perform.
+    pub status: String,
+}
+impl AppData for ClientRequest {}
+
+/// The application data response type which the `MemStore` works with.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ClientResponse(Result&lt;Option&lt;String&gt;, ClientError&gt;);
+impl AppDataResponse for ClientResponse {}
+
+/// A type which emulates a network transport and implements the `RaftNetwork` trait.
+pub struct RaftRouter {
+    // ... some internal state ...
+}
+
+#[async_trait]
+impl RaftNetwork&lt;ClientRequest&gt; for RaftRouter {
+    /// Send an AppendEntries RPC to the target Raft node (§5).
+    async fn append_entries(&amp;self, target: u64, rpc: AppendEntriesRequest&lt;ClientRequest&gt;) -&gt; Result&lt;AppendEntriesResponse&gt; {
+        // ... snip ...
+    }
+
+    /// Send an InstallSnapshot RPC to the target Raft node (§7).
+    async fn install_snapshot(&amp;self, target: u64, rpc: InstallSnapshotRequest) -&gt; Result&lt;InstallSnapshotResponse&gt; {
+        // ... snip ...
+    }
+
+    /// Send a RequestVote RPC to the target Raft node (§5).
+    async fn vote(&amp;self, target: u64, rpc: VoteRequest) -&gt; Result&lt;VoteResponse&gt; {
+        // ... snip ...
+    }
+}
+
+#[async_trait]
+impl RaftStorage&lt;ClientRequest, ClientResponse&gt; for MemStore {
+    type Snapshot = Cursor&lt;Vec&lt;u8&gt;&gt;;
+
+    async fn get_membership_config(&amp;self) -&gt; Result&lt;MembershipConfig&gt; {
+        // ... snip ...
+    }
+
+    async fn get_initial_state(&amp;self) -&gt; Result&lt;InitialState&gt; {
+        // ... snip ...
+    }
+
+    // ... snip ...
+}
+
+#[tokio::main]
+async fn main() {
+    // Get our node's ID from stable storage.
+    let node_id = get_id_from_storage().await;
+
+    // Build our Raft runtime config, then instantiate our
+    // RaftNetwork &amp; RaftStorage impls.
+    let config = Arc::new(Config::build(&quot;primary-raft-group&quot;.into())
+        .validate()
+        .expect(&quot;failed to build Raft config&quot;));
+    let network = Arc::new(RaftRouter::new(config.clone()));
+    let storage = Arc::new(MemStore::new(node_id));
+
+    // Create a new Raft node, which spawns an async task which
+    // runs the Raft core logic. Keep this Raft instance around
+    // for calling API methods based on events in your app.
+    let raft = Raft::new(node_id, config, network, storage);
+
+    let resp = raft.client_write(ClientWriteRequest::new(req)).await?;
+}
+
+</code></pre></pre>
+<p>Now it is time to write something to the cluster.
+As we did in our tests with <code>Raft::client_write()</code>:
+<a href="https://github.com/datafuselabs/openraft/blob/main/async-raft/tests/client_writes.rs">client_writes</a></p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                        
-                            <a rel="prev" href="overview.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                                    <a rel="prev" href="overview.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
                         
-
-                        
-                            <a rel="next" href="network.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                                    <a rel="next" href="cluster-controls.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         
-
                         <div style="clear: both"></div>
                     </nav>
                 </div>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                
-                    <a rel="prev" href="overview.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                    <a rel="prev" href="overview.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
                 
-
-                
-                    <a rel="next" href="network.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                    <a rel="next" href="cluster-controls.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
-                
-            </nav>
+                            </nav>
 
         </div>
 
         
-
         
-
         
-
-        
-        <script type="text/javascript">
+                <script type="text/javascript">
             window.playground_copyable = true;
         </script>
         
-
         
-
-        
-        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+                <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
         
-
         <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
         <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
         <script src="book.js" type="text/javascript" charset="utf-8"></script>
 
         <!-- Custom JS scripts -->
         
-
         
-
     </body>
 </html>
