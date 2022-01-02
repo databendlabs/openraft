@@ -165,8 +165,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // TODO(xp): 111 test adding a node that is not non-voter.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in members.difference(&self.core.effective_membership.membership.get_ith_config(0).unwrap()) {
-            match self.nodes.get(&new_node) {
+        for new_node in members.difference(self.core.effective_membership.membership.get_ith_config(0).unwrap()) {
+            match self.nodes.get(new_node) {
                 // Node is ready to join.
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id, &self.core.config) {

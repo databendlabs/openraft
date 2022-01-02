@@ -296,7 +296,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn client_request_post_commit(&mut self, req: ClientRequestEntry<D, R>) {
         let entry = &req.entry;
 
-        let apply_res = self.apply_entry_to_state_machine(&entry).await;
+        let apply_res = self.apply_entry_to_state_machine(entry).await;
 
         self.send_response(entry, apply_res, req.tx).await;
 

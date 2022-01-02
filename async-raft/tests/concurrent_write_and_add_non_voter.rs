@@ -143,7 +143,7 @@ async fn wait_log(
     for i in node_ids.iter() {
         router
             .wait_for_metrics(
-                &i,
+                i,
                 |x| x.last_log_index == want_log,
                 Some(timeout),
                 &format!("n{}.last_log_index -> {}", i, want_log),
@@ -151,7 +151,7 @@ async fn wait_log(
             .await?;
         router
             .wait_for_metrics(
-                &i,
+                i,
                 |x| x.last_applied == want_log,
                 Some(timeout),
                 &format!("n{}.last_applied -> {}", i, want_log),

@@ -26,15 +26,13 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
-    // Assert all nodes are in non-voter state & have no entries.
-    let want;
-
     // router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    want = 1;
+    // Assert all nodes are in non-voter state & have no entries.
+    let want = 1;
 
     router.wait_for_log(&btreeset![0], want, None, "init node 0").await?;
 
