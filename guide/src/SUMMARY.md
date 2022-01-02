@@ -13,4 +13,5 @@ Async Raft
 - [Get To It](./get-to-it.md)
 
 Internal
+- [Threads](./threading.md)
 - [Replication](./replication.md)
