@@ -2,7 +2,7 @@ on: [push, pull_request]
 name: ci
 jobs:
   build-async-raft:
-    name: build async-raft
+    name: unittest
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -27,6 +27,8 @@ jobs:
         with:
           command: test
         env:
+          # Parallel tests block each other and result in timeout.
+          RUST_TEST_THREADS: 2
           RUST_LOG: debug
           RUST_BACKTRACE: full
           RAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
