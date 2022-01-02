@@ -1,6 +1,5 @@
 #![doc = include_str!("../README.md")]
 #![feature(backtrace)]
-#![feature(bound_cloned)]
 
 #[cfg(test)]
 mod test;

@@ -1,6 +1,5 @@
 #![doc = include_str!("../README.md")]
 #![feature(backtrace)]
-#![feature(bound_cloned)]
 
 pub mod config;
 mod core;

@@ -50,7 +50,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
         for i in &[0, 3, 4] {
             router
-                .wait(&i, timeout())
+                .wait(i, timeout())
                 .await?
                 .metrics(|x| x.last_applied >= n_logs, "new cluster recv new logs")
                 .await?;
@@ -59,7 +59,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
     for i in &[1, 2] {
         router
-            .wait(&i, timeout())
+            .wait(i, timeout())
             .await?
             .metrics(|x| x.last_applied < n_logs, "old cluster does not recv new logs")
             .await?;

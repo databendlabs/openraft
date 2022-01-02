@@ -759,6 +759,7 @@ impl Membership {
         Membership::new_single(btreeset! {id})
     }
 
+    #[must_use]
     pub fn to_final_config(&self) -> Self {
         assert!(!self.configs.is_empty());
 

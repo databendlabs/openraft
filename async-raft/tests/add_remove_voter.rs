@@ -135,7 +135,7 @@ async fn wait_log(router: std::sync::Arc<fixtures::RaftRouter>, node_ids: &BTree
     for i in node_ids.iter() {
         router
             .wait_for_metrics(
-                &i,
+                i,
                 |x| x.last_log_index == want_log,
                 Some(timeout),
                 &format!("n{}.last_log_index -> {}", i, want_log),
@@ -143,7 +143,7 @@ async fn wait_log(router: std::sync::Arc<fixtures::RaftRouter>, node_ids: &BTree
             .await?;
         router
             .wait_for_metrics(
-                &i,
+                i,
                 |x| x.last_applied == want_log,
                 Some(timeout),
                 &format!("n{}.last_applied -> {}", i, want_log),
