@@ -15,7 +15,7 @@ This document presents the essential details of the Raft protocol as an aid for 
 - the leader accepts log entries from clients, replicates them on other servers, and tells servers when it is safe to apply log entries to their state machines. §5.0
 - data always flows from leader to followers, never any other direction. §5.0
 - when a leader goes offline, a new leader is elected. §5.0
-- at any given time each server is in one of four states: leader (§5.0), candidate (§5.0), follower (§5.0), or non-voter (§6).
+- at any given time each server is in one of four states: leader (§5.0), candidate (§5.0), follower (§5.0), or learner (§6).
 
 ## terms
 - time is divided into terms of arbitrary length. §5.1
@@ -38,7 +38,7 @@ Follower servers simply respond to requests from leaders and candidates. §5.1
 - a new randomized election timeout is started after each valid RPC received from the leader or candidates. §5.2
 - if a follower receives no communication during the election timeout window, then it assumes there is no viable leader, transitions to the candidate state, and begins campaigning to become the new leader. §5.2
 
-### non-voter
+### learner
 Non-voters are the same as followers, except are not considered for votes, and do not have election timeouts. §6
 
 ### candidate

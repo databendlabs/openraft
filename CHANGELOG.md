@@ -228,7 +228,7 @@ The only thing which hasn't changed is that this crate is still an implementatio
 - The guide has been updated.
 - Docs have been updated.
 - The `Raft` type is now the primary API of this crate, and is a simple struct with a few public methods.
-- Lots of fixes to the implementation of the protocol, ranging from subtle issues in joint consensus to non-voter syncing.
+- Lots of fixes to the implementation of the protocol, ranging from subtle issues in joint consensus to learner syncing.
 
 ## 0.4.4
 - Implemented `Error` for `config::ConfigError`

@@ -1,6 +1,6 @@
 # Replication
 
-Appending entry is the only RPC to replicate logs from leader to followers or non-voters.
+Appending entry is the only RPC to replicate logs from leader to followers or learners.
 Installing a snapshot can be seen as a special form of **appending logs**.
 
 ## Append-entry

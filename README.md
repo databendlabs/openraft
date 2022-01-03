@@ -30,7 +30,7 @@ Bug fixes are:
 
 - fix: handle-vote should compare last_log_id in dictionary order, not in vector order
 - fix: race condition of concurrent snapshot-install and apply.
-- fix: a non-voter not in joint config should not block replication
+- fix: a learner not in joint config should not block replication
 - fix: when append-entries, deleting entries after prev-log-id causes committed entry to be lost
 - fix: too many(50) inconsistent log should not live lock append-entries
 - fix: RaftCore.entries_cache is inconsistent with storage. removed it.
@@ -42,8 +42,8 @@ Bug fixes are:
 - fix: leader should re-create and send snapshot when `threshold/2 < last_log_index - snapshot < threshold`
 - fix: client_read has using wrong quorum=majority-1
 - fix: doc-include can only be used in nightly build
-- fix: when handle_update_match_index(), non-voter should also be considered, because when member change a non-voter is also count as a quorum member
-- fix: when calc quorum, the non-voter should be count
+- fix: when handle_update_match_index(), learner should also be considered, because when member change a learner is also count as a quorum member
+- fix: when calc quorum, the learner should be count
 - fix: a Learner should stay as Learner instead of Follower after restart
 - fix: discarded log in replication_buffer should be finally sent.
 - fix: a conflict is expected even when appending empty enties
@@ -75,7 +75,7 @@ See the commits starts with `change:`
    - - Storage and network integration is well defined via two traits `RaftStorage` & `RaftNetwork`. This provides applications maximum flexibility in being able to choose their storage and networking mediums. See the [storage](https://async-raft.github.io/async-raft/storage.html) & [network](https://async-raft.github.io/async-raft/network.html) chapters of the guide for more details.
    - - All interaction with the Raft node is well defined via a single public `Raft` type, which is used to spawn the Raft async task, and to interact with that task. The API for this system is clear and concise. See the [raft](https://async-raft.github.io/async-raft/raft.html) chapter in the guide.
    - - Log replication is fully pipelined and batched for optimal performance. Log replication also uses a congestion control mechanism to help keep nodes up-to-date as efficiently as possible.
-   - - It fully supports dynamic cluster membership changes according to the Raft spec. See the [`dynamic membership`](https://async-raft.github.io/async-raft/dynamic-membership.html) chapter in the guide. With full support for leader stepdown, and non-voter syncing.
+   - - It fully supports dynamic cluster membership changes according to the Raft spec. See the [`dynamic membership`](https://async-raft.github.io/async-raft/dynamic-membership.html) chapter in the guide. With full support for leader stepdown, and learner syncing.
    - - Details on initial cluster formation, and how to effectively do so from an application's perspective, are discussed in the [cluster formation](https://async-raft.github.io/async-raft/cluster-formation.html) chapter in the guide.
    - - Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.
    - - The entire code base is [instrumented with tracing](https://docs.rs/tracing/). This can be used for [standard logging](https://docs.rs/tracing/latest/tracing/index.html#log-compatibility), or for [distributed tracing](https://docs.rs/tracing/latest/tracing/index.html#related-crates), and the verbosity can be [statically configured at compile time](https://docs.rs/tracing/latest/tracing/level_filters/index.html) to completely remove all instrumentation below the configured level.
