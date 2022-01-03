@@ -21,24 +21,24 @@ jobs:
       - name: Publish memstore
         run: cd memstore && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
-  release:
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Setup | Checkout
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
+  # release:
+  #   needs: publish
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Setup | Checkout
+  #       uses: actions/checkout@v2
+  #       with:
+  #         fetch-depth: 0
 
-      # save tag name in var "tag"
-      - name: Extract tag
-        id: vars
-        run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
+  #     # save tag name in var "tag"
+  #     - name: Extract tag
+  #       id: vars
+  #       run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
 
-      - name: Build | Publish Pre-Release
-        uses: softprops/action-gh-release@v1
-        with:
-          body_path: change-log/${{ steps.vars.outputs.tag }}.md
-          draft: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #     - name: Build | Publish Pre-Release
+  #       uses: softprops/action-gh-release@v1
+  #       with:
+  #         body_path: change-log/${{ steps.vars.outputs.tag }}.md
+  #         draft: true
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
