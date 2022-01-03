@@ -30,13 +30,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup | Create Release Log
-        run: cat CHANGELOG.md | tail -n +7 | head -n 25 > RELEASE_LOG.md
+      # save tag name in var "tag"
+      - name: Extract tag
+        id: vars
+        run: echo ::set-output name=tag::${GITHUB_REF#refs/*/}
 
-      - name: Build | Publish Pre-Release
+      - name: Build | Publish
         uses: softprops/action-gh-release@v1
         with:
-          body_path: RELEASE_LOG.md
+          body_path: change-log/${{ steps.vars.outputs.tag }}.md
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
