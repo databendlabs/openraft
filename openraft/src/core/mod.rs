@@ -676,7 +676,7 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     pub(super) core: &'a mut RaftCore<D, R, N, S>,
 
     /// A mapping of node IDs the replication state of the target node.
-    pub(super) nodes: BTreeMap<NodeId, ReplicationState<D>>,
+    pub(super) nodes: BTreeMap<NodeId, ReplicationState>,
 
     /// The metrics about a leader
     pub leader_metrics: LeaderMetrics,
@@ -810,16 +810,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 }
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-struct ReplicationState<D: AppData> {
+struct ReplicationState {
     pub matched: LogId,
     pub remove_since: Option<u64>,
-    pub repl_stream: ReplicationStream<D>,
+    pub repl_stream: ReplicationStream,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
     pub tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
 }
 
-impl<D: AppData> MessageSummary for ReplicationState<D> {
+impl MessageSummary for ReplicationState {
     fn summary(&self) -> String {
         format!(
             "matched: {}, remove_after_commit: {:?}",
@@ -828,8 +828,7 @@ impl<D: AppData> MessageSummary for ReplicationState<D> {
     }
 }
 
-impl<D> ReplicationState<D>
-where D: AppData
+impl ReplicationState
 {
     // TODO(xp): make this a method of Config?
 
