@@ -15,6 +15,7 @@ jobs:
           command: assignme
           reaction: "true"
           reaction-type: "rocket"
+          permission-level: read
 
       - uses: actions-ecosystem/action-add-assignees@v1
         with:
