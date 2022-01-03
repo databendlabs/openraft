@@ -24,12 +24,12 @@ mod fixtures;
 ///
 /// What does this test do?
 ///
-/// - brings 5 nodes online: one leader and 4 non-voter.
-/// - add 4 non-voter as follower.
+/// - brings 5 nodes online: one leader and 4 learner.
+/// - add 4 learner as follower.
 /// - asserts that the leader was able to successfully commit logs and that the followers has successfully replicated
 ///   the payload.
 /// - remove one folower: node-4
-/// - asserts node-4 becomes non-voter and the leader stops sending logs to it.
+/// - asserts node-4 becomes learner and the leader stops sending logs to it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn leader_metrics() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
@@ -47,7 +47,7 @@ async fn leader_metrics() -> Result<()> {
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
-    // Assert all nodes are in non-voter state & have no entries.
+    // Assert all nodes are in learner state & have no entries.
     let mut want = 0;
     router.wait_for_log(&btreeset![0], want, timeout, "init").await?;
     router.wait_for_state(&btreeset![0], State::Learner, timeout, "init").await?;
@@ -94,7 +94,7 @@ async fn leader_metrics() -> Result<()> {
         inner?;
     }
 
-    router.wait_for_log(&all_members, want, timeout, "add non-voter 1,2,3,4").await?;
+    router.wait_for_log(&all_members, want, timeout, "add learner 1,2,3,4").await?;
 
     tracing::info!("--- changing cluster config to 012");
 
@@ -133,7 +133,7 @@ async fn leader_metrics() -> Result<()> {
         router.change_membership(0, left_members.clone()).await?;
         want += 2; // two member-change logs
 
-        tracing::info!("--- n{} should revert to non-voter", 4);
+        tracing::info!("--- n{} should revert to learner", 4);
         router
             .wait_for_metrics(
                 &4,

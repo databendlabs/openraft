@@ -11,7 +11,7 @@ use crate::fixtures::RaftRouter;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
-    // Add a member without adding it as non-voter, in blocking mode it should finish successfully.
+    // Add a member without adding it as learner, in blocking mode it should finish successfully.
 
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
@@ -37,7 +37,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         router.wait(&0, timeout()).await?.log(n_logs, "received 100 logs").await?;
     }
 
-    tracing::info!("--- change membership without adding-non-voter");
+    tracing::info!("--- change membership without adding-learner");
     {
         router.new_raft_node(1).await;
 
@@ -59,7 +59,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
-    // Add a non-voter into membership config, expect error NonVoterIsLagging.
+    // Add a learner into membership config, expect error NonVoterIsLagging.
 
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();

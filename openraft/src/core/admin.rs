@@ -65,7 +65,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
-    /// Add a new node to the cluster as a non-voter, bringing it up-to-speed, and then responding
+    /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
     /// on the given channel.
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) fn add_learner(
@@ -161,9 +161,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Here, all we do is check to see which nodes still need to be synced, which determines
         // if we can proceed.
 
-        // TODO(xp): test change membership without adding as non-voter.
+        // TODO(xp): test change membership without adding as learner.
 
-        // TODO(xp): 111 test adding a node that is not non-voter.
+        // TODO(xp): 111 test adding a node that is not learner.
         // TODO(xp): 111 test adding a node that is lagging.
         for new_node in members.difference(self.core.effective_membership.membership.get_ith_config(0).unwrap()) {
             match self.nodes.get(new_node) {

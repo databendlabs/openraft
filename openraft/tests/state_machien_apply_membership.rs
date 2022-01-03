@@ -18,7 +18,7 @@ mod fixtures;
 ///
 /// What does this test do?
 ///
-/// - bring a cluster with 3 voter and 2 non-voter.
+/// - bring a cluster with 3 voter and 2 learner.
 /// - check last_membership in state machine.
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
@@ -33,7 +33,7 @@ async fn state_machine_apply_membership() -> Result<()> {
 
     let mut want = 0;
 
-    // Assert all nodes are in non-voter state & have no entries.
+    // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], want, None, "empty").await?;
     router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;

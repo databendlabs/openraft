@@ -214,7 +214,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Synchronize a new Raft node, optionally, blocking until up-to-speed (§6).
     ///
-    /// - Add a node as non-voter into the cluster.
+    /// - Add a node as learner into the cluster.
     /// - Setup replication from leader to it.
     ///
     /// If blocking is true, this function blocks until the leader believes the logs on the new node is up to date,
@@ -223,7 +223,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// If blocking is false, this function returns at once as successfully setting up the replication.
     ///
-    /// If the node to add is already a voter or non-voter, it returns `RaftResponse::NoChange` at once.
+    /// If the node to add is already a voter or learner, it returns `RaftResponse::NoChange` at once.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=id))]
     pub async fn add_learner(&self, id: NodeId, blocking: bool) -> Result<AddLearnerResponse, AddLearnerError> {
         let (tx, rx) = oneshot::channel();
@@ -232,15 +232,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Propose a cluster configuration change.
     ///
-    /// If a node in the proposed config but is not yet a voter or non-voter, it first calls `add_learner` to setup
+    /// If a node in the proposed config but is not yet a voter or learner, it first calls `add_learner` to setup
     /// replication to the new node.
     ///
     /// Internal:
     /// - It proposes a **joint** config.
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
-    /// If blocking is true, it blocks until every non-voter becomes up to date.
-    /// Otherwise it returns error `ChangeMembershipError::LearnerIsLagging` if there is a lagging non-voter.
+    /// If blocking is true, it blocks until every learner becomes up to date.
+    /// Otherwise it returns error `ChangeMembershipError::LearnerIsLagging` if there is a lagging learner.
     ///
     /// If it lost leadership or crashed before committing the second **uniform** config log, the cluster is left in the
     /// **joint** config.
@@ -250,7 +250,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         members: BTreeSet<NodeId>,
         blocking: bool,
     ) -> Result<ClientWriteResponse<R>, ClientWriteError> {
-        tracing::info!(?members, "change_membership: add every member as non-voter");
+        tracing::info!(?members, "change_membership: add every member as learner");
 
         for id in members.iter() {
             let res = self.add_learner(*id, blocking).await;
@@ -427,11 +427,11 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         tx: RaftRespTx<(), InitializeError>,
     },
     // TODO(xp): make tx a field of a struct
-    /// Request raft core to setup a new replication to a non-voter.
+    /// Request raft core to setup a new replication to a learner.
     AddLearner {
         id: NodeId,
 
-        /// If block until the newly added non-voter becomes line-rate.
+        /// If block until the newly added learner becomes line-rate.
         blocking: bool,
 
         /// Send the log id when the replication becomes line-rate.
