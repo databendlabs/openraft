@@ -15,7 +15,7 @@ mod fixtures;
 ///
 /// What does this test do?
 ///
-/// - bring on a cluster of 1 voter and 1 non-voter.
+/// - bring on a cluster of 1 voter and 1 learner.
 /// - send several logs and check the replication.
 /// - isolate replication to node 1. send some other logs to trigger snapshot on node 0. The logs on node 0 should be
 ///   removed.

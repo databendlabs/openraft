@@ -39,7 +39,7 @@ async fn lagging_network_write() -> Result<()> {
     router.new_raft_node(0).await;
     let mut want = 0;
 
-    // Assert all nodes are in non-voter state & have no entries.
+    // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], want, timeout, "empty").await?;
     router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
@@ -60,7 +60,7 @@ async fn lagging_network_write() -> Result<()> {
     router.new_raft_node(2).await;
     router.add_learner(0, 2).await?;
 
-    router.wait_for_log(&btreeset![1, 2], want, timeout, "non-voter init").await?;
+    router.wait_for_log(&btreeset![1, 2], want, timeout, "learner init").await?;
 
     router.client_request_many(0, "client", 1).await;
     want += 1;

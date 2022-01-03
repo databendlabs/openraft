@@ -9,11 +9,11 @@ use openraft::Config;
 #[macro_use]
 mod fixtures;
 
-/// Test replication to non-voter that is not in membership should not block.
+/// Test replication to learner that is not in membership should not block.
 ///
 /// What does this test do?
 ///
-/// - bring on a cluster of 1 voter and 1 non-voter.
+/// - bring on a cluster of 1 voter and 1 learner.
 /// - isolate replication to node 1.
 /// - client write should not be blocked.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -164,7 +164,7 @@ pub enum ChangeMembershipError {
     EmptyMembership,
 
     // TODO(xp): 111 test it
-    #[error("to add a member {node_id} first need to add it as non-voter")]
+    #[error("to add a member {node_id} first need to add it as learner")]
     LearnerNotFound { node_id: NodeId },
 
     // TODO(xp): 111 test it
@@ -190,6 +190,6 @@ pub enum AddLearnerError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
 
-    #[error("node {0} is already a non-voter")]
+    #[error("node {0} is already a learner")]
     Exists(NodeId),
 }

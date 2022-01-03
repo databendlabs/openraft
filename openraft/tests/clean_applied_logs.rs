@@ -11,7 +11,7 @@ use tokio::time::sleep;
 #[macro_use]
 mod fixtures;
 
-/// Logs should be deleted by raft after applying them, on leader and non-voter.
+/// Logs should be deleted by raft after applying them, on leader and learner.
 ///
 /// - assert logs are deleted on leader after applying them.
 /// - assert logs are deleted on replication target after installing a snapshot.
@@ -36,7 +36,7 @@ async fn clean_applied_logs() -> Result<()> {
     for idx in 0..count {
         router.client_request(0, "0", idx as u64).await;
         // raft commit at once with a single leader cluster.
-        // If we send too fast, logs are removed before forwarding to non-voter.
+        // If we send too fast, logs are removed before forwarding to learner.
         // Then it triggers snapshot replication, which is not expected.
         sleep(Duration::from_millis(50)).await;
     }

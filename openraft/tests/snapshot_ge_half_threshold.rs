@@ -20,7 +20,7 @@ mod fixtures;
 /// - send enough requests to the node that log compaction will be triggered.
 /// - send some other log after snapshot created, to make the `leader.last_log_index - snapshot.applied_index` big
 ///   enough.
-/// - add non-voter and assert that they receive the snapshot and logs.
+/// - add learner and assert that they receive the snapshot and logs.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn snapshot_ge_half_threshold() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
@@ -74,19 +74,19 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         want = log_cnt;
     }
 
-    tracing::info!("--- add non-voter to receive snapshot and logs");
+    tracing::info!("--- add learner to receive snapshot and logs");
     {
         router.new_raft_node(1).await;
-        router.add_learner(0, 1).await.expect("failed to add new node as non-voter");
+        router.add_learner(0, 1).await.expect("failed to add new node as learner");
 
-        router.wait_for_log(&btreeset![0, 1], want, None, "add non-voter").await?;
+        router.wait_for_log(&btreeset![0, 1], want, None, "add learner").await?;
         let expected_snap = Some((want.into(), 1));
         router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, None, "").await?;
         router
             .assert_storage_state(
                 1,
                 want,
-                None, /* non-voter does not vote */
+                None, /* learner does not vote */
                 LogId { term: 1, index: want },
                 expected_snap,
             )

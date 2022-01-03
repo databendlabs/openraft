@@ -71,7 +71,7 @@ impl MessageSummary for RaftMetrics {
 /// The metrics about the leader. It is Some() only when this node is leader.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeaderMetrics {
-    /// Replication metrics of all known replication target: voters and non-voters
+    /// Replication metrics of all known replication target: voters and learners
     pub replication: HashMap<NodeId, ReplicationMetrics>,
 }
 

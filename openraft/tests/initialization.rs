@@ -19,7 +19,7 @@ mod fixtures;
 /// What does this test do?
 ///
 /// - brings 3 nodes online with only knowledge of themselves.
-/// - asserts that they remain in non-voter state with no activity (they should be completely passive).
+/// - asserts that they remain in learner state with no activity (they should be completely passive).
 /// - initializes the cluster with membership config including all nodes.
 /// - asserts that the cluster was able to come online, elect a leader and maintain a stable state.
 /// - asserts that the leader was able to successfully commit its initial payload and that all followers have
@@ -38,7 +38,7 @@ async fn initialization() -> Result<()> {
 
     let mut want = 0;
 
-    // Assert all nodes are in non-voter state & have no entries.
+    // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], want, None, "empty").await?;
     router.wait_for_state(&btreeset![0, 1, 2], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
