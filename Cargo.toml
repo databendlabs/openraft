@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "async-raft",
+    "openraft",
     "memstore",
 ]

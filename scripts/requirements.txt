@@ -1,0 +1,3 @@
+semantic_version
+jinja2
+PyYAML

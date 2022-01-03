@@ -2,12 +2,12 @@ use std::collections::Bound;
 use std::future::Future;
 use std::marker::PhantomData;
 
-use async_raft::DefensiveCheck;
-use async_raft::DefensiveError;
-use async_raft::StoreExt;
-use async_raft::Violation;
 use async_trait::async_trait;
 use maplit::btreeset;
+use openraft::DefensiveCheck;
+use openraft::DefensiveError;
+use openraft::StoreExt;
+use openraft::Violation;
 
 use super::*;
 

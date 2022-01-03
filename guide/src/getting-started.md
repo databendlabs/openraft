@@ -105,7 +105,7 @@ where D: AppData
 ```
 
 A mock impl in our tests explains what the impl has to do:
-[fixture: mock impl RaftNetwork](https://github.com/datafuselabs/openraft/blob/main/async-raft/tests/fixtures/mod.rs)
+[fixture: mock impl RaftNetwork](https://github.com/datafuselabs/openraft/blob/main/openraft/tests/fixtures/mod.rs)
 
 
 As a real world impl, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic).
@@ -202,5 +202,5 @@ async fn main() {
 
 Now it is time to write something to the cluster.
 As we did in our tests with `Raft::client_write()`:
-[client_writes](https://github.com/datafuselabs/openraft/blob/main/async-raft/tests/client_writes.rs)
+[client_writes](https://github.com/datafuselabs/openraft/blob/main/openraft/tests/client_writes.rs)
 

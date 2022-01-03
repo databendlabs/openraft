@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - "async-raft-v*"
+      - "v*"
 
 jobs:
   publish:
@@ -18,8 +18,8 @@ jobs:
           profile: minimal
           override: true
 
-      - name: Publish | Async Raft
-        run: cd async-raft && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
+      - name: Publish openraft
+        run: cd openraft && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
   release:
     needs: publish

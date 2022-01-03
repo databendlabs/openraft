@@ -2,7 +2,7 @@ name: Release
 on:
   push:
     tags:
-      - "memstore-v*"
+      - "disabled-v*"
 
 jobs:
   publish:
@@ -18,7 +18,7 @@ jobs:
           profile: minimal
           override: true
 
-      - name: Publish | Async Raft
+      - name: Publish memstore
         run: cd memstore && cargo publish --token ${{ secrets.CRATES_IO_TOKEN }}
 
   release:

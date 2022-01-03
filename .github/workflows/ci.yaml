@@ -1,7 +1,7 @@
 on: [push, pull_request]
 name: ci
 jobs:
-  build-async-raft:
+  ut:
     name: unittest
     runs-on: ubuntu-latest
     strategy:
@@ -51,4 +51,4 @@ jobs:
         if: failure()
         with:
           path: |
-            async-raft/_log/
+            openraft/_log/

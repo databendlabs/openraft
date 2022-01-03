@@ -1,4 +1,3 @@
-#![doc = include_str!("../README.md")]
 #![feature(backtrace)]
 
 #[cfg(test)]
@@ -13,26 +12,26 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use async_raft::async_trait::async_trait;
-use async_raft::raft::Entry;
-use async_raft::raft::EntryPayload;
-use async_raft::raft::Membership;
-use async_raft::storage::HardState;
-use async_raft::storage::InitialState;
-use async_raft::storage::Snapshot;
-use async_raft::AppData;
-use async_raft::AppDataResponse;
-use async_raft::EffectiveMembership;
-use async_raft::ErrorSubject;
-use async_raft::ErrorVerb;
-use async_raft::LogId;
-use async_raft::NodeId;
-use async_raft::RaftStorage;
-use async_raft::RaftStorageDebug;
-use async_raft::SnapshotMeta;
-use async_raft::StateMachineChanges;
-use async_raft::StorageError;
-use async_raft::StorageIOError;
+use openraft::async_trait::async_trait;
+use openraft::raft::Entry;
+use openraft::raft::EntryPayload;
+use openraft::raft::Membership;
+use openraft::storage::HardState;
+use openraft::storage::InitialState;
+use openraft::storage::Snapshot;
+use openraft::AppData;
+use openraft::AppDataResponse;
+use openraft::EffectiveMembership;
+use openraft::ErrorSubject;
+use openraft::ErrorVerb;
+use openraft::LogId;
+use openraft::NodeId;
+use openraft::RaftStorage;
+use openraft::RaftStorageDebug;
+use openraft::SnapshotMeta;
+use openraft::StateMachineChanges;
+use openraft::StorageError;
+use openraft::StorageIOError;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -83,7 +82,7 @@ pub struct MemStoreStateMachine {
     pub client_status: HashMap<String, String>,
 }
 
-/// An in-memory storage system implementing the `async_raft::RaftStorage` trait.
+/// An in-memory storage system implementing the `RaftStorage` trait.
 pub struct MemStore {
     /// The ID of the Raft node for which this memory storage instances is configured.
     id: NodeId,
