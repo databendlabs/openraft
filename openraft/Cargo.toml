@@ -1,13 +1,13 @@
 [package]
 name = "openraft"
-version = "0.6.3"
+version = "0.6.4"
 edition = "2021"
 authors = [
     "Databend Authors <opensource@datafuselabs.com>",
     "Anthony Dodd <Dodd.AnthonyJosiah@gmail.com>"
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
-description = "Raft consensus with improvments."
+description = "Advanced Raft consensus"
 documentation = "https://docs.rs/openraft"
 homepage = "https://github.com/datafuselabs/openraft"
 keywords = ["raft", "consensus"]
