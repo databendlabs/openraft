@@ -8,7 +8,7 @@
 
 ### Fixed:
 
--   Fixed: [4d58a51e](https://github.com/datafuselabs/openraft/commit/4d58a51e41189acba06c1d2a0e8466759d9eb785) a non-voter not in joint config should not block replication; by drdr xp; 2021-08-31
+-   Fixed: [4d58a51e](https://github.com/datafuselabs/openraft/commit/4d58a51e41189acba06c1d2a0e8466759d9eb785) a learner not in joint config should not block replication; by drdr xp; 2021-08-31
 
 -   Fixed: [eed681d5](https://github.com/datafuselabs/openraft/commit/eed681d57950fc58b6ca71a45814b8f6d2bb1223) race condition of concurrent snapshot-install and apply.; by drdr xp; 2021-09-01
 
@@ -143,17 +143,17 @@
       Making this change to let raft be able to check if a membership is
       committed by comparing the log index and its committed index.
 
-    - Change: when adding a existent non-voter, it returns an `Ok` value
+    - Change: when adding a existent learner, it returns an `Ok` value
       instead of an `Err`.
 
     - Change: add arg `blocking` to `add_non_voter` and `change_membership`.
       A blocking `change_membership` still wait for the two config change
       log to commit.
-      `blocking` only indicates if to wait for replication to non-voter to
+      `blocking` only indicates if to wait for replication to learner to
       be up to date.
 
     - Change: remove `non_voters`. Merge it into `nodes`.
-      Now both voters and non-voters share the same replication handle.
+      Now both voters and learners share the same replication handle.
 
     - Change: remove field `ReplicationState.is_ready_to_join`, it
       can be just calculated when needed.
@@ -454,11 +454,11 @@
 -   Fixed: [beb0302b](https://github.com/datafuselabs/openraft/commit/beb0302b4fec0758062141e727bf1bbcfd4d4b98) leader should not commit when there is no replication to voters.; by drdr xp; 2021-08-18
 
     When there is no replication to voters but there are replications to
-    non-voters, the leader did not check non-voters for a quorum but just
+    learners, the leader did not check learners for a quorum but just
     commits a log at once.
 
     This cause the membership change log from a single node always commits.
-    E.g. start node 0, and non-voter 1, 2; then `change_membership({0, 1, 2})`,
+    E.g. start node 0, and learner 1, 2; then `change_membership({0, 1, 2})`,
     It just commits the joint-log at once.
     But according to raft paper, it should await a quorum of {0} and a
     quorum of {0, 1, 2}.
@@ -775,14 +775,14 @@
 
 -   Fixed: [39690593](https://github.com/datafuselabs/openraft/commit/39690593a07c6b9ded4b7b8f1aca3191fa7641e4) a NonVoter should stay as NonVoter instead of Follower after restart; by drdr xp; 2021-05-14
 
--   Fixed: [d882e743](https://github.com/datafuselabs/openraft/commit/d882e743db4734b2188b137ebf20c0443cf9fb49) when calc quorum, the non-voter should be count; by drdr xp; 2021-06-02
+-   Fixed: [d882e743](https://github.com/datafuselabs/openraft/commit/d882e743db4734b2188b137ebf20c0443cf9fb49) when calc quorum, the learner should be count; by drdr xp; 2021-06-02
 
     Counting only the follower(nodes) as quorum for new config(c1) results
     in unexpected log commit.
     E.g.: change from 012 to 234, when 3 and 4 are unreachable, the first
     log of joint should not be committed.
 
--   Fixed: [a10d9906](https://github.com/datafuselabs/openraft/commit/a10d99066b8c447d7335c7f34e08bd78c4b49f61) when handle_update_match_index(), non-voter should also be considered, because when member change a non-voter is also count as a quorum member; by drdr xp; 2021-06-16
+-   Fixed: [a10d9906](https://github.com/datafuselabs/openraft/commit/a10d99066b8c447d7335c7f34e08bd78c4b49f61) when handle_update_match_index(), learner should also be considered, because when member change a learner is also count as a quorum member; by drdr xp; 2021-06-16
 
 -   Fixed: [11cb5453](https://github.com/datafuselabs/openraft/commit/11cb5453e2200eda06d26396620eefe66b169975) doc-include can only be used in nightly build; by drdr xp; 2021-06-16
 
@@ -867,7 +867,7 @@ The only thing which hasn't changed is that this crate is still an implementatio
 - The guide has been updated.
 - Docs have been updated.
 - The `Raft` type is now the primary API of this crate, and is a simple struct with a few public methods.
-- Lots of fixes to the implementation of the protocol, ranging from subtle issues in joint consensus to non-voter syncing.
+- Lots of fixes to the implementation of the protocol, ranging from subtle issues in joint consensus to learner syncing.
 
 ## 0.4.4
 - Implemented `Error` for `config::ConfigError`

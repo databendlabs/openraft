@@ -16,12 +16,12 @@ use crate::fixtures::RaftRouter;
 ///
 /// What does this test do?
 ///
-/// - brings 2 nodes online: one leader and one non-voter.
+/// - brings 2 nodes online: one leader and one learner.
 /// - write one log to the leader.
-/// - asserts that the leader was able to successfully commit its initial payload and that the non-voter has
+/// - asserts that the leader was able to successfully commit its initial payload and that the learner has
 ///   successfully replicated the payload.
-/// - shutdown all and restart the non-voter node.
-/// - asserts the non-voter stays in non-vtoer state.
+/// - shutdown all and restart the learner node.
+/// - asserts the learner stays in non-vtoer state.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn learner_restart() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
@@ -36,7 +36,7 @@ async fn learner_restart() -> Result<()> {
 
     let mut want = 0;
 
-    // Assert all nodes are in non-voter state & have no entries.
+    // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1], want, None, "empty").await?;
     router.wait_for_state(&btreeset![0, 1], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;

@@ -33,8 +33,8 @@ mod fixtures;
 /// What does this test do?
 ///
 /// - brings a 3 candidates cluster online.
-/// - add another non-voter and at the same time write a log.
-/// - asserts that all of the leader, followers and the non-voter receives all logs.
+/// - add another learner and at the same time write a log.
+/// - asserts that all of the leader, followers and the learner receives all logs.
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn concurrent_write_and_add_learner() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
@@ -87,7 +87,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     }
 
     // Concurrently add Learner and write another log.
-    tracing::info!("--- concurrently add non-voter and write another log");
+    tracing::info!("--- concurrently add learner and write another log");
     {
         router.new_raft_node(3).await;
         let r = router.clone();
@@ -98,7 +98,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
                     r.add_learner(leader, 3).await.unwrap();
                     Ok::<(), anyhow::Error>(())
                 }
-                .instrument(tracing::debug_span!("spawn-add-non-voter")),
+                .instrument(tracing::debug_span!("spawn-add-learner")),
             )
         };
 
@@ -118,7 +118,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         )
         .await?;
 
-    // THe non-voter should receive the last written log
+    // THe learner should receive the last written log
     router
         .wait_for_metrics(
             &3u64,

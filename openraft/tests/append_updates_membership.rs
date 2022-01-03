@@ -19,7 +19,7 @@ mod fixtures;
 /// append-entries should update membership correctly when adding new logs and deleting
 /// inconsistent logs.
 ///
-/// - bring up a non-voter and send to it append_entries request. Check the membership updated.
+/// - bring up a learner and send to it append_entries request. Check the membership updated.
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn append_updates_membership() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
