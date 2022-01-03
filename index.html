@@ -146,85 +146,90 @@
                         <h1 align="center">openraft</h1>
 <div align="center">
     <strong>
-        Improved version of <a href="https://raft.github.io/">Raft</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/datafuselabs/openraft">github</a>!
+        Advanced <a href="https://raft.github.io/">Raft</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/datafuselabs/openraft">github</a>!
     </strong>
 </div>
 <br/>
 <div align="center">
 <p><a href="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml"><img src="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg" alt="CI" /></a></p>
-<!-- [![Crates.io](https://img.shields.io/crates/v/async-raft.svg)](https://crates.io/crates/async-raft) -->
-<!-- [![docs.rs](https://docs.rs/async-raft/badge.svg)](https://docs.rs/async-raft) -->
+<!-- [![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft) -->
+<!-- [![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft) -->
 <p><a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="License" /></a></p>
-<!-- ![Crates.io](https://img.shields.io/crates/d/async-raft.svg) -->
-<!-- ![Crates.io](https://img.shields.io/crates/dv/async-raft.svg) -->
+<!-- ![Crates.io](https://img.shields.io/crates/d/openraft.svg) -->
+<!-- ![Crates.io](https://img.shields.io/crates/dv/openraft.svg) -->
 </div>
 <br/>
 <hr />
 <p>Raft is not yet good enough.
 This project intends to improve raft as the next generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
 <p><a href="https://datafuselabs.github.io/openraft">The guide</a> is the best place to get started.</p>
-<!-- , followed by [the docs](https://docs.rs/async-raft/latest/async_raft/) for more in-depth details. -->
-<p>Bug fixes are:</p>
+<!-- , followed by [the docs](https://docs.rs/openraft/latest/) for more in-depth details. -->
+<p>Openraft is derived from <a href="https://docs.rs/crate/async-raft/latest">async-raft</a> with several bugs fixed:</p>
 <ul>
-<li>fix: handle-vote should compare last_log_id in dictionary order, not in vector order</li>
-<li>fix: race condition of concurrent snapshot-install and apply.</li>
-<li>fix: a non-voter not in joint config should not block replication</li>
-<li>fix: when append-entries, deleting entries after prev-log-id causes committed entry to be lost</li>
-<li>fix: too many(50) inconsistent log should not live lock append-entries</li>
-<li>fix: RaftCore.entries_cache is inconsistent with storage. removed it.</li>
-<li>fix: snapshot replication does not need to send a last 0 size chunk</li>
-<li>fix: install snapshot req with offset GE 0 should not start a new session.</li>
-<li>fix: leader should not commit when there is no replication to voters.</li>
-<li>fix: after 2 log compaction, membership should be able to be extract from prev compaction log</li>
-<li>fix: when finalize_snapshot_installation, memstore should not load membership from its old log that are going to be overridden by snapshot.</li>
-<li>fix: leader should re-create and send snapshot when <code>threshold/2 &lt; last_log_index - snapshot &lt; threshold</code></li>
-<li>fix: client_read has using wrong quorum=majority-1</li>
-<li>fix: doc-include can only be used in nightly build</li>
-<li>fix: when handle_update_match_index(), non-voter should also be considered, because when member change a non-voter is also count as a quorum member</li>
-<li>fix: when calc quorum, the non-voter should be count</li>
-<li>fix: a Learner should stay as Learner instead of Follower after restart</li>
-<li>fix: discarded log in replication_buffer should be finally sent.</li>
-<li>fix: a conflict is expected even when appending empty enties</li>
-<li>fix: last_applied should be updated only when logs actually applied.</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/6c0ccaf3ab3f262437d8fc021d4b13437fa4c9ac">6c0ccaf3</a> consider joint config when starting up and committing.; by drdr xp; 2021-12-24</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/228077a66d5099fd404ae9c68f0977e5f978f102">228077a6</a> a restarted follower should not wait too long to elect. Otherwise, the entire cluster hangs; by drdr xp; 2021-11-19</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/a48a3282c58bdcae3309545a06431aecf3e65db8">a48a3282</a> handle-vote should compare last_log_id in dictionary order, not in vector order; by drdr xp; 2021-09-09</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/eed681d57950fc58b6ca71a45814b8f6d2bb1223">eed681d5</a> race condition of concurrent snapshot-install and apply.; by drdr xp; 2021-09-01</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/9540c904da4ae005baec01868e01016f3bc76810">9540c904</a> when append-entries, deleting entries after prev-log-id causes committed entry to be lost; by drdr xp; 2021-08-31</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/6d53aa12f66ecd08e81bcb055eb17387b835e2eb">6d53aa12</a> too many(50) inconsistent log should not live lock append-entries; by drdr xp; 2021-08-31</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/4d58a51e41189acba06c1d2a0e8466759d9eb785">4d58a51e</a> a non-voter not in joint config should not block replication; by drdr xp; 2021-08-31</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/8cd24ba0f0212e94e61f21a7be0ce0806fcc66d5">8cd24ba0</a> RaftCore.entries_cache is inconsistent with storage. removed it.; by drdr xp; 2021-08-23</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/2eccb9e1f82f1bf71f6a2cf9ef6da7bf6232fa84">2eccb9e1</a> install snapshot req with offset GE 0 should not start a new session.; by drdr xp; 2021-08-22</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/eee8e534e0b0b9abdb37dd94aeb64dc1affd3ef7">eee8e534</a> snapshot replication does not need to send a last 0 size chunk; by drdr xp; 2021-08-22</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/beb0302b4fec0758062141e727bf1bbcfd4d4b98">beb0302b</a> leader should not commit when there is no replication to voters.; by drdr xp; 2021-08-18</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/dba24036cda834e8c970d2561b1ff435afd93165">dba24036</a> after 2 log compaction, membership should be able to be extract from prev compaction log; by drdr xp; 2021-07-14</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/447dc11cab51fb3b1925177d13e4dd89f998837b">447dc11c</a> when finalize_snapshot_installation, memstore should not load membership from its old log that are going to be overridden by snapshot.; by drdr xp; 2021-07-13</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/cf4badd0d762757519e2db5ed2f2fc65c2f49d02">cf4badd0</a> leader should re-create and send snapshot when <code>threshold/2 &lt; last_log_index - snapshot &lt; threshold</code>; by drdr xp; 2021-07-08</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/d60f1e852d3e5b9455589593067599d261f695b2">d60f1e85</a> client_read has using wrong quorum=majority-1; by drdr xp; 2021-07-02</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/11cb5453e2200eda06d26396620eefe66b169975">11cb5453</a> doc-include can only be used in nightly build; by drdr xp; 2021-06-16</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/a10d99066b8c447d7335c7f34e08bd78c4b49f61">a10d9906</a> when handle_update_match_index(), non-voter should also be considered, because when member change a non-voter is also count as a quorum member; by drdr xp; 2021-06-16</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/d882e743db4734b2188b137ebf20c0443cf9fb49">d882e743</a> when calc quorum, the non-voter should be count; by drdr xp; 2021-06-02</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/6202138f0766dcfd07a1a825af165f132de6b920">6202138f</a> a conflict is expected even when appending empty entries; by drdr xp; 2021-05-24</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/f449b64aa9254d9a18bc2abb5f602913af079ca9">f449b64a</a> discarded log in replication_buffer should be finally sent.; by drdr xp; 2021-05-22</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/6d680484ee3e352d4caf37f5cd6f57630f46d9e2">6d680484</a> #112 : when a follower is removed, leader should stop sending log to it.; by drdr xp; 2021-05-21</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/89bb48f8702762d33b59a7c9b9710bde4a97478c">89bb48f8</a> last_applied should be updated only when logs actually applied.; by drdr xp; 2021-05-20</li>
+<li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/39690593a07c6b9ded4b7b8f1aca3191fa7641e4">39690593</a> a NonVoter should stay as NonVoter instead of Follower after restart; by drdr xp; 2021-05-14</li>
 </ul>
-<p>If you'd like to use this repo, notice the changes to the APIs:
-It is not quite difficult to follow up the changes.
-Most changes to the APIs are obvious and are some generalized form of the original ones.
-See the commits starts with <code>change:</code></p>
+<p>A full list of changes/fixes can be found in <a href="https://github.com/datafuselabs/openraft/blob/main/change-log.md">change-log</a></p>
+<h1 id="features"><a class="header" href="#features">Features</a></h1>
 <ul>
-<li>change: MembershipConfig.member type is changed form HashSet BTreeSet</li>
-<li>change: pass all logs to apply_entry_to_state_machine(), not just Normal logs.</li>
-<li>change: use LogId to track last applied instead of using just an index.</li>
-<li>change: reduce one unnecessary snapshot serialization</li>
-<li>change: add CurrentSnapshotData.meta: SnapshotMeta, which is a container of all meta data of a snapshot: last log id included, membership etc.</li>
-<li>change: Entry: merge term and index to log_id: LogId</li>
-<li>change: InitialState: last_log_{term,index} into last_log: LogId</li>
-<li>change: AppendEntriesRequest: merge prev_log_{term,index} into prev_log: LogId</li>
-<li>change: RaftCore: merge last_log_{term,index} into last_log: LogId</li>
-<li>change: RaftCore: replace <code>snapshot_index</code> with <code>snapshot_last_included: LogId</code>. Keep tracks of both snapshot last log term and index.</li>
-<li>change: CurrentSnapshotData: merge <code>term</code> and <code>index</code> into <code>included</code>.</li>
-<li>change: use snapshot-id to identify a snapshot stream</li>
-<li>change: InstallSnapshotRequest: merge last_included{term,index} into last_included</li>
+<li>
+<p>It is fully reactive and embraces the async ecosystem.
+It is driven by actual Raft events taking place in the system as opposed to being driven by a <code>tick</code> operation.
+Batching of messages during replication is still used whenever possible for maximum throughput.</p>
+</li>
+<li>
+<p>Storage and network integration is well defined via two traits <code>RaftStorage</code> &amp; <code>RaftNetwork</code>.
+This provides applications maximum flexibility in being able to choose their storage and networking mediums.</p>
+</li>
+<li>
+<p>All interaction with the Raft node is well defined via a single public <code>Raft</code> type, which is used to spawn the Raft async task, and to interact with that task.
+The API for this system is clear and concise.</p>
+</li>
+<li>
+<p>Log replication is fully pipelined and batched for optimal performance.
+Log replication also uses a congestion control mechanism to help keep nodes up-to-date as efficiently as possible.</p>
+</li>
+<li>
+<p>It fully supports dynamic cluster membership changes with joint config.
+The buggy single-step membership change algo is not considered.
+See the <a href="https://datafuselabs.github.io/openraft/dynamic-membership.html"><code>dynamic membership</code></a> chapter in the guide.</p>
+</li>
+<li>
+<p>Details on initial cluster formation, and how to effectively do so from an application's perspective,
+are discussed in the <a href="https://datafuselabs.github.io/openraft/cluster-formation.html">cluster formation</a> chapter in the guide.</p>
+</li>
+<li>
+<p>Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.</p>
+</li>
+<li>
+<p>The entire code base is <a href="https://docs.rs/tracing/">instrumented with tracing</a>.
+This can be used for <a href="https://docs.rs/tracing/latest/tracing/index.html#log-compatibility">standard logging</a>, or for <a href="https://docs.rs/tracing/latest/tracing/index.html#related-crates">distributed tracing</a>, and the verbosity can be <a href="https://docs.rs/tracing/latest/tracing/level_filters/index.html">statically configured at compile time</a> to completely remove all instrumentation below the configured level.</p>
+</li>
 </ul>
-<!--
-   - This crate differs from other Raft implementations in that:
-   - - It is fully reactive and embraces the async ecosystem. It is driven by actual Raft events taking place in the system as opposed to being driven by a `tick` operation. Batching of messages during replication is still used whenever possible for maximum throughput.
-   - 
-   - - Storage and network integration is well defined via two traits `RaftStorage` & `RaftNetwork`. This provides applications maximum flexibility in being able to choose their storage and networking mediums. See the [storage](https://async-raft.github.io/async-raft/storage.html) & [network](https://async-raft.github.io/async-raft/network.html) chapters of the guide for more details.
-   - - All interaction with the Raft node is well defined via a single public `Raft` type, which is used to spawn the Raft async task, and to interact with that task. The API for this system is clear and concise. See the [raft](https://async-raft.github.io/async-raft/raft.html) chapter in the guide.
-   - - Log replication is fully pipelined and batched for optimal performance. Log replication also uses a congestion control mechanism to help keep nodes up-to-date as efficiently as possible.
-   - - It fully supports dynamic cluster membership changes according to the Raft spec. See the [`dynamic membership`](https://async-raft.github.io/async-raft/dynamic-membership.html) chapter in the guide. With full support for leader stepdown, and non-voter syncing.
-   - - Details on initial cluster formation, and how to effectively do so from an application's perspective, are discussed in the [cluster formation](https://async-raft.github.io/async-raft/cluster-formation.html) chapter in the guide.
-   - - Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.
-   - - The entire code base is [instrumented with tracing](https://docs.rs/tracing/). This can be used for [standard logging](https://docs.rs/tracing/latest/tracing/index.html#log-compatibility), or for [distributed tracing](https://docs.rs/tracing/latest/tracing/index.html#related-crates), and the verbosity can be [statically configured at compile time](https://docs.rs/tracing/latest/tracing/level_filters/index.html) to completely remove all instrumentation below the configured level.
-   - 
-   - This implementation strictly adheres to the [Raft spec](https://raft.github.io/raft.pdf) (*pdf warning*), and all data models use the same nomenclature found in the spec for better understandability. This implementation of Raft has integration tests covering all aspects of a Raft cluster's lifecycle including: cluster formation, dynamic membership changes, snapshotting, writing data to a live cluster and more.
-   - 
-   - If you are building an application using this Raft implementation, open an issue and let me know! I would love to add your project's name & logo to a users list in this project.
-   -->
-<h3 id="contributing"><a class="header" href="#contributing">contributing</a></h3>
+<h1 id="contributing"><a class="header" href="#contributing">Contributing</a></h1>
 <p>Check out the <a href="https://github.com/datafuselabs/openraft/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a> guide for more details on getting started with contributing to this project.</p>
-<h3 id="license"><a class="header" href="#license">license</a></h3>
+<h1 id="license"><a class="header" href="#license">License</a></h1>
 <p>Openraft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.</p>
 
                     </main>
