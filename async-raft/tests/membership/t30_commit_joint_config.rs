@@ -9,12 +9,12 @@ use tracing_futures::Instrument;
 
 use crate::fixtures::RaftRouter;
 
-/// A leader must wait for non-voter to commit member-change from [0] to [0,1,2].
+/// A leader must wait for learner to commit member-change from [0] to [0,1,2].
 /// There is a bug that leader commit a member change log directly because it only checks
 /// the replication of voters and believes itself is the only voter.
 ///
-/// - Init 1 leader and 2 non-voter.
-/// - Isolate non-voter.
+/// - Init 1 leader and 2 learner.
+/// - Isolate learner.
 /// - Asserts that membership change won't success.
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn commit_joint_config_during_0_to_012() -> Result<()> {
@@ -31,7 +31,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    // Assert all nodes are in non-voter state & have no entries.
+    // Assert all nodes are in learner state & have no entries.
     let want = 1;
 
     router.wait_for_log(&btreeset![0], want, None, "init node 0").await?;
@@ -79,7 +79,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 }
 
 /// Replace membership with another one with only one common node.
-/// To reproduce the bug that new config does not actually examine the term/index of non-voter, but instead only
+/// To reproduce the bug that new config does not actually examine the term/index of learner, but instead only
 /// examining the followers
 ///
 /// - bring a cluster of node 0,1,2 online.
@@ -97,7 +97,7 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
 
     let mut want = 0;
 
-    // Assert all nodes are in non-voter state & have no entries.
+    // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], want, None, "empty").await?;
     router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;

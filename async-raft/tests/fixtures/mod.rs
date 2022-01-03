@@ -218,7 +218,7 @@ impl RaftRouter {
         }
 
         for id in learners {
-            tracing::info!("--- add non-voter: {}", id);
+            tracing::info!("--- add learner: {}", id);
             self.new_raft_node(id).await;
             self.add_learner(0, id).await?;
         }
@@ -500,7 +500,7 @@ impl RaftRouter {
 
     //////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Assert that the cluster is in a pristine state, with all nodes as non-voters.
+    /// Assert that the cluster is in a pristine state, with all nodes as learners.
     pub async fn assert_pristine_cluster(&self) {
         let nodes = self.latest_metrics().await;
         for node in nodes.iter() {

@@ -17,7 +17,7 @@ mod fixtures;
 ///
 /// - build a stable single node cluster.
 /// - send enough requests to the node that log compaction will be triggered.
-/// - add non-voter and assert that they receive the snapshot and logs.
+/// - add learner and assert that they receive the snapshot and logs.
 ///
 /// export RUST_LOG=async_raft,memstore,snapshot_chunk_size=trace
 /// cargo test -p async-raft --test snapshot_chunk_size
@@ -65,20 +65,20 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.assert_storage_state(1, want, Some(0), LogId { term: 1, index: want }, want_snap).await?;
     }
 
-    tracing::info!("--- add non-voter to receive snapshot and logs");
+    tracing::info!("--- add learner to receive snapshot and logs");
     {
         router.new_raft_node(1).await;
-        router.add_learner(0, 1).await.expect("failed to add new node as non-voter");
+        router.add_learner(0, 1).await.expect("failed to add new node as learner");
 
         let want_snap = Some((want.into(), 1));
 
-        router.wait_for_log(&btreeset![0, 1], want, None, "add non-voter").await?;
+        router.wait_for_log(&btreeset![0, 1], want, None, "add learner").await?;
         router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, None, "").await?;
         router
             .assert_storage_state(
                 1,
                 want,
-                None, /* non-voter does not vote */
+                None, /* learner does not vote */
                 LogId { term: 1, index: want },
                 want_snap,
             )

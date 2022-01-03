@@ -14,7 +14,7 @@ mod fixtures;
 ///
 /// What does this test do?
 ///
-/// - brings 2 nodes online: one leader and one non-voter.
+/// - brings 2 nodes online: one leader and one learner.
 /// - write one log to the leader.
 /// - asserts that when metrics.last_applied is upto date, the state machine should be upto date too.
 ///
@@ -38,7 +38,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     router.initialize_with(0, btreeset![0]).await?;
     router.wait_for_state(&btreeset![0], State::Leader, None, "init").await?;
 
-    tracing::info!("--- add one non-voter");
+    tracing::info!("--- add one learner");
     router.add_learner(0, 1).await?;
 
     tracing::info!("--- write one log");

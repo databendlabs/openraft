@@ -94,13 +94,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             state.matched = matched;
 
-            // Issue a response on the non-voters response channel if needed.
+            // Issue a response on the learners response channel if needed.
             if state.is_line_rate(&self.core.last_log_id, &self.core.config) {
                 // This replication became line rate.
 
-                // When adding a non-voter, it blocks until the replication becomes line-rate.
+                // When adding a learner, it blocks until the replication becomes line-rate.
                 if let Some(tx) = state.tx.take() {
-                    // TODO(xp): define a specific response type for non-voter matched event.
+                    // TODO(xp): define a specific response type for learner matched event.
                     let x = AddLearnerResponse { matched: state.matched };
                     let _ = tx.send(Ok(x));
                 }

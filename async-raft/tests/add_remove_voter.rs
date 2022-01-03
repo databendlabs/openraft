@@ -16,12 +16,12 @@ mod fixtures;
 ///
 /// What does this test do?
 ///
-/// - brings 5 nodes online: one leader and 4 non-voter.
-/// - add 4 non-voter as follower.
+/// - brings 5 nodes online: one leader and 4 learner.
+/// - add 4 learner as follower.
 /// - asserts that the leader was able to successfully commit logs and that the followers has successfully replicated
 ///   the payload.
 /// - remove one follower: node-4
-/// - asserts node-4 becomes non-voter and the leader stops sending logs to it.
+/// - asserts node-4 becomes learner and the leader stops sending logs to it.
 ///
 /// RUST_LOG=async_raft,memstore,add_remove_voter=trace cargo test -p async-raft --test add_remove_voter
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
@@ -38,7 +38,7 @@ async fn add_remove_voter() -> Result<()> {
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
-    // Assert all nodes are in non-voter state & have no entries.
+    // Assert all nodes are in learner state & have no entries.
     let mut want = 0;
     router
         .wait_for_metrics(

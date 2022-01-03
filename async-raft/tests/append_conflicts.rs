@@ -21,7 +21,7 @@ mod fixtures;
 
 /// Test append-entries response in every case.
 ///
-/// - bring up a non-voter and send to it append_entries request. Check the response in every case.
+/// - bring up a learner and send to it append_entries request. Check the response in every case.
 ///
 /// RUST_LOG=async_raft,memstore,append_conflicts=trace cargo test -p async-raft --test append_conflicts
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]

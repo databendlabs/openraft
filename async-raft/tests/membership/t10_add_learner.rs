@@ -15,7 +15,7 @@ use crate::fixtures::RaftRouter;
 async fn add_learner_basic() -> Result<()> {
     //
     // - Add leader, expect NoChange
-    // - Add a non-voter, expect raft to block until catching up.
+    // - Add a learner, expect raft to block until catching up.
     // - Re-add should fail.
 
     let (_log_guard, ut_span) = init_ut!();
@@ -88,7 +88,7 @@ async fn add_learner_basic() -> Result<()> {
 async fn add_learner_non_blocking() -> Result<()> {
     //
     // - Add leader, expect NoChange
-    // - Add a non-voter, expect raft to block until catching up.
+    // - Add a learner, expect raft to block until catching up.
     // - Re-add should fail.
 
     let (_log_guard, ut_span) = init_ut!();

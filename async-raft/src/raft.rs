@@ -250,7 +250,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         members: BTreeSet<NodeId>,
         blocking: bool,
     ) -> Result<ClientWriteResponse<R>, ClientWriteError> {
-        tracing::info!(?members, "change_membership: add every member as non-voter");
+        tracing::info!(?members, "change_membership: add every member as learner");
 
         for id in members.iter() {
             let res = self.add_learner(*id, blocking).await;

@@ -24,7 +24,7 @@ mod fixtures;
 ///
 /// - build a stable single node cluster.
 /// - send enough requests to the node that log compaction will be triggered.
-/// - ensure that snapshot overrides the existent membership on the non-voter.
+/// - ensure that snapshot overrides the existent membership on the learner.
 ///
 /// export RUST_LOG=async_raft,memstore,snapshot_overrides_membership=trace
 /// cargo test -p async-raft --test snapshot_overrides_membership
@@ -76,13 +76,13 @@ async fn snapshot_overrides_membership() -> Result<()> {
             .await?;
     }
 
-    tracing::info!("--- create non-voter");
+    tracing::info!("--- create learner");
     {
-        tracing::info!("--- create non-voter");
+        tracing::info!("--- create learner");
         router.new_raft_node(1).await;
         let sto = router.get_storage_handle(&1).await?;
 
-        tracing::info!("--- add a membership config log to the non-voter");
+        tracing::info!("--- add a membership config log to the learner");
         {
             let req = AppendEntriesRequest {
                 term: 1,
@@ -96,20 +96,20 @@ async fn snapshot_overrides_membership() -> Result<()> {
             };
             router.send_append_entries(1, req).await?;
 
-            tracing::info!("--- check that non-voter membership is affected");
+            tracing::info!("--- check that learner membership is affected");
             {
                 let m = sto.get_membership_config().await?;
                 assert_eq!(Membership::new_single(btreeset! {2,3}), m.membership);
             }
         }
 
-        tracing::info!("--- add non-voter to the cluster to receive snapshot, which overrides the non-voter storage");
+        tracing::info!("--- add learner to the cluster to receive snapshot, which overrides the learner storage");
         {
-            router.add_learner(0, 1).await.expect("failed to add new node as non-voter");
+            router.add_learner(0, 1).await.expect("failed to add new node as learner");
 
-            tracing::info!("--- DONE add non-voter");
+            tracing::info!("--- DONE add learner");
 
-            router.wait_for_log(&btreeset![0, 1], want, timeout(), "add non-voter").await?;
+            router.wait_for_log(&btreeset![0, 1], want, timeout(), "add learner").await?;
             router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, timeout(), "").await?;
 
             let expected_snap = Some((want.into(), 1));
@@ -118,7 +118,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 .assert_storage_state(
                     1,
                     want,
-                    None, /* non-voter does not vote */
+                    None, /* learner does not vote */
                     LogId { term: 1, index: want },
                     expected_snap,
                 )

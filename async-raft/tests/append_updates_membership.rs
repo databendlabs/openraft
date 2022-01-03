@@ -19,7 +19,7 @@ mod fixtures;
 /// append-entries should update membership correctly when adding new logs and deleting
 /// inconsistent logs.
 ///
-/// - bring up a non-voter and send to it append_entries request. Check the membership updated.
+/// - bring up a learner and send to it append_entries request. Check the membership updated.
 ///
 /// RUST_LOG=async_raft,memstore,append_updates_membership=trace cargo test -p async-raft --test
 /// append_updates_membership
