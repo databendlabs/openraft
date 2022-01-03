@@ -416,10 +416,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn update_membership(&mut self, cfg: EffectiveMembership) -> RaftResult<()> {
         // If the given config does not contain this node's ID, it means one of the following:
         //
-        // - the node is currently a non-voter and is replicating an old config to which it has
+        // - the node is currently a learner and is replicating an old config to which it has
         // not yet been added.
         // - the node has been removed from the cluster. The parent application can observe the
-        // transition to the non-voter state as a signal for when it is safe to shutdown a node
+        // transition to the learner state as a signal for when it is safe to shutdown a node
         // being removed.
         self.effective_membership = cfg;
         if self.effective_membership.membership.contains(&self.id) {
@@ -650,7 +650,7 @@ pub enum State {
 }
 
 impl State {
-    /// Check if currently in non-voter state.
+    /// Check if currently in learner state.
     pub fn is_learner(&self) -> bool {
         matches!(self, Self::Learner)
     }
@@ -1013,7 +1013,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// Volatile state specific to a Raft node in non-voter state.
+/// Volatile state specific to a Raft node in learner state.
 pub struct LearnerState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     core: &'a mut RaftCore<D, R, N, S>,
 }
@@ -1023,7 +1023,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         Self { core }
     }
 
-    /// Run the non-voter loop.
+    /// Run the learner loop.
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="non-voter"))]
     pub(self) async fn run(mut self) -> RaftResult<()> {
         self.core.report_metrics(Update::Update(None));
