@@ -553,6 +553,8 @@
 
 ### Fixed:
 
+-   Fixed: [178d520](https://github.com/veeupup/openraft/commit/178d520e3db47b361582fe4aedd96f04a5dae160) typo; by Veeupup; 2022-01-04
+
 -   Fixed: [fc8e92a8](https://github.com/datafuselabs/openraft/commit/fc8e92a8207c1cf8bd1dba2e8de5c0c5eebedc1c) typo; by drdr xp; 2021-07-12
 
 -   Fixed: [447dc11c](https://github.com/datafuselabs/openraft/commit/447dc11cab51fb3b1925177d13e4dd89f998837b) when finalize_snapshot_installation, memstore should not load membership from its old log that are going to be overridden by snapshot.; by drdr xp; 2021-07-13

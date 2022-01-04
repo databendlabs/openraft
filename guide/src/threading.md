@@ -2,7 +2,7 @@
 
 There are several threads, AKA tokio-tasks in this raft impl:
 
-- RaftCore: all log and state machine operation is done in this thread.
+- RaftCore: all logs and state machine operations are done in this thread.
   Thus there is no race condition
 
   - All raft state runs in this task, such as LeaderState, CandidateState etc.
@@ -82,13 +82,13 @@ User
 
 - Replication to RaftCore:
 
-    - Replication task send the already replicated log id
+    - Replication task sends the already replicated log id
         to RaftCore through another per-replication channel.
 
-    - Replication task send a `NeedSnapshot` request through the same channel to
+    - Replication task sends a `NeedSnapshot` request through the same channel to
         ask RaftCore to build a snapshot if there is no log a follower/learner
         needs.
 
 - Build-snapshot to RaftCore: RaftCore spawn a separate task to build a snapshot
-    asynchronously. When finished, the spawned task send to RaftCore a message
+    asynchronously. When finished, the spawned task sends to RaftCore a message
     including the snapshot info.
