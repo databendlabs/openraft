@@ -386,6 +386,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         // Continue to find the matching log id on follower.
         self.max_possible_matched_index = conflict.index - 1;
+
         Ok(())
     }
 
@@ -454,6 +455,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 needs_snap
             }
         }
+    }
+
+    /// Perform a check to see if this replication stream has more log to replicate
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub(self) fn has_more_log(&self) -> bool {
+        self.last_log_index > self.matched.index
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -648,6 +655,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             let span = tracing::debug_span!("CHrx:LineRate");
             let _en = span.enter();
+
+            // Check raft channel to ensure we are staying up-to-date
+            self.try_drain_raft_rx().await?;
+            if self.has_more_log() {
+                // if there is more log, continue to send_append_entries
+                continue;
+            }
 
             tokio::select! {
                 _ = self.heartbeat.tick() => {
