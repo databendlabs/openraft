@@ -37,7 +37,7 @@ and immediately begin syncing logs from the leader.
 
 This method will initiate a membership change.
 
-If there are nodes in the given config is not a learner, this method will add it
+If there are nodes in the given config that is not a learner, this method will add it
 as Learner first.
 Thus it is recommended that application always call `Raft::add_learner` first.
 Otherwise `change_membership` may block for long before committing the
@@ -45,7 +45,7 @@ given membership and return.
 
 The new membership config specified by this method will take effect at once.
 
-Once the new config is committed, a Voter that is no in the new config will
+Once the new config is committed, a Voter that is not in the new config will
 revert to a Learner and is ready to remove.
 
 Correctness constrains:

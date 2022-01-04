@@ -1,6 +1,6 @@
 # Cluster Controls
 
-A raft cluster may be control in various ways using the API methods of the `Raft` type.
+A raft cluster may be controlled in various ways using the API methods of the `Raft` type.
 This allows the application to influence the raft behavior.
 
 There are several concepts related to cluster control:
