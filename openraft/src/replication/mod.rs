@@ -246,6 +246,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 ReplicationError::Network { .. } => {
                     // nothing to do
                 }
+                ReplicationError::MoreLogs { .. } => {
+                    // nothing to do
+                }
             };
         }
     }
@@ -314,6 +317,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             break (prev_log_id, logs);
         };
+
+        let log_size = logs.len();
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
@@ -387,6 +392,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         // Continue to find the matching log id on follower.
         self.max_possible_matched_index = conflict.index - 1;
+
+        // log_size == max_payload_entries means there may be more logs to replicate
+        if log_size == self.config.max_payload_entries.try_into().unwrap() {
+            return Err(ReplicationError::MoreLogs);
+        }
         Ok(())
     }
 
@@ -637,6 +647,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                         }
                         ReplicationError::Network { .. } => {
                             break;
+                        }
+                        ReplicationError::MoreLogs { .. } => {
+                            // continue to call send_append_entries in next loop, no need to wait heartbeat tick
+                            continue;
                         }
                         _ => {
                             return Err(err);

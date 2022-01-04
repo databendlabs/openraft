@@ -51,6 +51,9 @@ pub enum ReplicationError {
     #[error("{0}")]
     LackEntry(#[from] LackEntry),
 
+    #[error("more logs")]
+    MoreLogs,
+
     #[error("leader committed index {committed_index} advances target log index {target_index} too many")]
     CommittedAdvanceTooMany { committed_index: u64, target_index: u64 },
 
