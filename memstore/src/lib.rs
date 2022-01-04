@@ -15,7 +15,6 @@ use std::sync::Mutex;
 use openraft::async_trait::async_trait;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::raft::Membership;
 use openraft::storage::HardState;
 use openraft::storage::InitialState;
 use openraft::storage::Snapshot;
@@ -157,74 +156,13 @@ impl RaftStorageDebug<MemStoreStateMachine> for MemStore {
     }
 }
 
-impl MemStore {
-    fn find_first_membership_log<'a, T, D>(mut it: T) -> Option<EffectiveMembership>
-    where
-        T: 'a + Iterator<Item = &'a Entry<D>>,
-        D: AppData,
-    {
-        it.find_map(|entry| match &entry.payload {
-            EntryPayload::Membership(cfg) => Some(EffectiveMembership {
-                log_id: entry.log_id,
-                membership: cfg.clone(),
-            }),
-            _ => None,
-        })
-    }
-
-    /// Go backwards through the log to find the most recent membership config <= `upto_index`.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn get_membership_from_log(&self, upto_index: Option<u64>) -> Result<EffectiveMembership, StorageError> {
-        let membership_in_log = {
-            let log = self.log.read().await;
-
-            let reversed_logs = log.values().rev();
-            match upto_index {
-                Some(upto) => {
-                    let skipped = reversed_logs.skip_while(|entry| entry.log_id.index > upto);
-                    Self::find_first_membership_log(skipped)
-                }
-                None => Self::find_first_membership_log(reversed_logs),
-            }
-        };
-
-        // Find membership stored in state machine.
-
-        let (_, membership_in_sm) = self.last_applied_state().await?;
-
-        let membership =
-            if membership_in_log.as_ref().map(|x| x.log_id.index) > membership_in_sm.as_ref().map(|x| x.log_id.index) {
-                membership_in_log
-            } else {
-                membership_in_sm
-            };
-
-        // Create a default one if both are None.
-
-        Ok(match membership {
-            Some(x) => x,
-            None => EffectiveMembership {
-                log_id: LogId { term: 0, index: 0 },
-                membership: Membership::new_initial(self.id),
-            },
-        })
-    }
-}
-
 #[async_trait]
 impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     type SnapshotData = Cursor<Vec<u8>>;
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_membership_config(&self) -> Result<EffectiveMembership, StorageError> {
-        self.get_membership_from_log(None).await
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn get_initial_state(&self) -> Result<InitialState, StorageError> {
-        let membership = self.get_membership_config().await?;
-        let mut hs = self.hs.write().await;
-        match &mut *hs {
+        let hs = self.read_hard_state().await?;
+        match hs {
             Some(inner) => {
                 // Search for two place and use the max one,
                 // because when a state machine is installed there could be logs
@@ -237,6 +175,9 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
                 let last_log_id = max(last_in_log, last_applied);
 
+                let membership = self.get_membership().await?;
+                let membership = membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
+
                 Ok(InitialState {
                     last_log_id,
                     last_applied,
@@ -246,7 +187,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             }
             None => {
                 let new = InitialState::new_initial(self.id);
-                *hs = Some(new.hard_state.clone());
+                self.save_hard_state(&new.hard_state).await?;
                 Ok(new)
             }
         }

@@ -109,7 +109,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         self.last_log_id = self.get_log_id(start - 1).await?;
 
-        let membership = self.storage.get_membership_config().await.map_err(|err| self.map_storage_error(err))?;
+        // TODO(xp): get_membership() should have a defensive check to ensure it always returns Some() if node is
+        //           initialized. Because a node always commit a membership log as the first log entry.
+        let membership = self.storage.get_membership().await.map_err(|err| self.map_storage_error(err))?;
+
+        // TODO(xp): This is a dirty patch:
+        //           When a node starts in a single-node mode, it does not append an initial log
+        //           but instead depends on storage.get_membership() to return a default one.
+        //           It would be better a node always append an initial log entry.
+        let membership = membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
 
         self.update_membership(membership)?;
 
