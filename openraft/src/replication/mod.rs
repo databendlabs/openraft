@@ -23,7 +23,6 @@ use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::error::LackEntry;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::Entry;
 use crate::raft::InstallSnapshotRequest;
 use crate::storage::Snapshot;
 use crate::AppData;
@@ -47,16 +46,16 @@ impl MessageSummary for ReplicationMetrics {
 }
 
 /// The public handle to a spawned replication stream.
-pub(crate) struct ReplicationStream<D: AppData> {
+pub(crate) struct ReplicationStream {
     /// The spawn handle the `ReplicationCore` task.
     // pub handle: JoinHandle<()>,
     /// The channel used for communicating with the replication task.
-    pub repl_tx: mpsc::UnboundedSender<(RaftEvent<D>, Span)>,
+    pub repl_tx: mpsc::UnboundedSender<(RaftEvent, Span)>,
 }
 
-impl<D: AppData> ReplicationStream<D> {
+impl ReplicationStream {
     /// Create a new replication stream for the target peer.
-    pub(crate) fn new<R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>(
+    pub(crate) fn new<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>(
         id: NodeId,
         target: NodeId,
         term: u64,
@@ -100,7 +99,7 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
 
     /// A channel for receiving events from the Raft node.
-    repl_rx: mpsc::UnboundedReceiver<(RaftEvent<D>, Span)>,
+    repl_rx: mpsc::UnboundedReceiver<(RaftEvent, Span)>,
 
     /// The `RaftNetwork` interface.
     network: Arc<N>,
@@ -157,7 +156,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         network: Arc<N>,
         storage: Arc<S>,
         raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
-    ) -> ReplicationStream<D> {
+    ) -> ReplicationStream {
         // other component to ReplicationStream
         let (repl_tx, repl_rx) = mpsc::unbounded_channel();
         let heartbeat_timeout = Duration::from_millis(config.heartbeat_interval);
@@ -487,7 +486,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
-    pub fn process_raft_event(&mut self, event: RaftEvent<D>) -> Result<(), ReplicationError> {
+    pub fn process_raft_event(&mut self, event: RaftEvent) -> Result<(), ReplicationError> {
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
         match event {
@@ -497,10 +496,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 self.committed = commit_index;
             }
 
-            RaftEvent::Replicate { entry, committed } => {
-                // TODO(xp): Message Replicate does not need to send an entry.
+            RaftEvent::Replicate { appended, committed } => {
                 self.committed = committed;
-                self.last_log_index = entry.log_id.index;
+                self.last_log_index = appended.index;
             }
 
             RaftEvent::Terminate => {
@@ -530,13 +528,13 @@ enum TargetReplState {
 
 // TODO(xp): remove Replicate
 /// An event from the Raft node.
-pub(crate) enum RaftEvent<D: AppData> {
+pub(crate) enum RaftEvent {
     Replicate {
         /// The new entry which needs to be replicated.
         ///
-        /// This entry will always be the most recent entry to have been appended to the log, so its
-        /// index is the new last_log_index value.
-        entry: Arc<Entry<D>>,
+        /// The logId of the most recent entry to have been appended to the log, its index is the
+        /// new last_log_index value.
+        appended: LogId,
 
         /// The index of the highest log entry which is known to be committed in the cluster.
         committed: LogId,
@@ -549,10 +547,10 @@ pub(crate) enum RaftEvent<D: AppData> {
     Terminate,
 }
 
-impl<D: AppData> MessageSummary for RaftEvent<D> {
+impl MessageSummary for RaftEvent {
     fn summary(&self) -> String {
         match self {
-            RaftEvent::Replicate { entry: _, committed } => {
+            RaftEvent::Replicate { appended: _, committed } => {
                 format!("Replicate: committed: {}", committed)
             }
             RaftEvent::UpdateCommittedLogId {

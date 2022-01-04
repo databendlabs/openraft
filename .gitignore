@@ -2,6 +2,7 @@
 guide/book
 target
 vendor
+.idea
 
 # File Ignores ###############################################################
 **/*.rs.bk
