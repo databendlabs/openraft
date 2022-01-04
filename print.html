@@ -144,28 +144,34 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 align="center">openraft</h1>
-<div align="center">
-    <strong>
-        Advanced <a href="https://raft.github.io/">Raft</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/datafuselabs/openraft">github</a>!
-    </strong>
-</div>
-<br/>
-<div align="center">
-<p><a href="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml"><img src="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg" alt="CI" /></a></p>
-<!-- [![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft) -->
-<!-- [![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft) -->
-<p><a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="License" /></a></p>
-<!-- ![Crates.io](https://img.shields.io/crates/d/openraft.svg) -->
-<!-- ![Crates.io](https://img.shields.io/crates/dv/openraft.svg) -->
-</div>
-<br/>
+                        <h1 id="openraft"><a class="header" href="#openraft">Openraft</a></h1>
+<strong>
+    Advanced <a href="https://raft.github.io/">Raft</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/datafuselabs/openraft">github</a>!
+</strong>
 <hr />
+<p><a href="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml"><img src="https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg" alt="CI" /></a>
+<a href="https://crates.io/crates/openraft"><img src="https://img.shields.io/crates/v/openraft.svg" alt="Crates.io" /></a>
+<a href="https://docs.rs/openraft"><img src="https://docs.rs/openraft/badge.svg" alt="docs.rs" /></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="License" /></a>
+<img src="https://img.shields.io/crates/d/openraft.svg" alt="Crates.io" />
+<img src="https://img.shields.io/crates/dv/openraft.svg" alt="Crates.io" /></p>
 <p>Raft is not yet good enough.
 This project intends to improve raft as the next generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
-<p><a href="https://datafuselabs.github.io/openraft">The guide</a> is the best place to get started.</p>
-<!-- , followed by [the docs](https://docs.rs/openraft/latest/) for more in-depth details. -->
+<ul>
+<li>
+<p><strong>Get started</strong>: <a href="https://datafuselabs.github.io/openraft">The guide</a> is the best place to get started,
+followed by <a href="https://docs.rs/openraft/latest/">the docs</a> for more in-depth details.</p>
+</li>
+<li>
+<p><strong>Openraft API is not stable yet.</strong> Before <code>1.0.0</code>, an upgrade may contain incompatible changes.
+Check our <a href="https://github.com/datafuselabs/openraft/blob/main/change-log.md">change-log</a></p>
+</li>
+<li>
 <p>Openraft is derived from <a href="https://docs.rs/crate/async-raft/latest">async-raft</a> with several bugs fixed:</p>
+</li>
+</ul>
+<details>
+  <summary>List of fixed bugs:</summary>
 <ul>
 <li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/6c0ccaf3ab3f262437d8fc021d4b13437fa4c9ac">6c0ccaf3</a> consider joint config when starting up and committing.; by drdr xp; 2021-12-24</li>
 <li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/228077a66d5099fd404ae9c68f0977e5f978f102">228077a6</a> a restarted follower should not wait too long to elect. Otherwise, the entire cluster hangs; by drdr xp; 2021-11-19</li>
@@ -192,6 +198,7 @@ This project intends to improve raft as the next generation consensus protocol f
 <li>Fixed: <a href="https://github.com/datafuselabs/openraft/commit/39690593a07c6b9ded4b7b8f1aca3191fa7641e4">39690593</a> a NonVoter should stay as NonVoter instead of Follower after restart; by drdr xp; 2021-05-14</li>
 </ul>
 <p>A full list of changes/fixes can be found in <a href="https://github.com/datafuselabs/openraft/blob/main/change-log.md">change-log</a></p>
+</details>
 <h1 id="features"><a class="header" href="#features">Features</a></h1>
 <ul>
 <li>
