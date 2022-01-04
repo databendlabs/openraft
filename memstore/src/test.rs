@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use maplit::btreeset;
+use openraft::raft::Membership;
 use openraft::DefensiveCheck;
 use openraft::DefensiveError;
 use openraft::StoreExt;
@@ -84,8 +85,10 @@ where
     B: StoreBuilder<ClientRequest, ClientResponse, S>,
 {
     fn test_store(builder: &B) -> anyhow::Result<()> {
-        run_fut(Suite::get_membership_config_default(builder))?;
-        run_fut(Suite::get_membership_config_from_log_and_sm(builder))?;
+        run_fut(Suite::last_membership_in_log_initial(builder))?;
+        run_fut(Suite::last_membership_in_log(builder))?;
+        run_fut(Suite::get_membership_initial(builder))?;
+        run_fut(Suite::get_membership_from_log_and_sm(builder))?;
         run_fut(Suite::get_initial_state_default(builder))?;
         run_fut(Suite::get_initial_state_membership_from_log_and_sm(builder))?;
         run_fut(Suite::get_initial_state_with_state(builder))?;
@@ -109,17 +112,101 @@ where
         Ok(())
     }
 
-    pub async fn get_membership_config_default(builder: &B) -> anyhow::Result<()> {
+    pub async fn last_membership_in_log_initial(builder: &B) -> anyhow::Result<()> {
         let store = builder.build(NODE_ID).await;
 
-        let membership = store.get_membership_config().await?;
+        let membership = store.last_membership_in_log(0).await?;
 
-        assert_eq!(Membership::new_single(btreeset! {NODE_ID}), membership.membership,);
+        assert!(membership.is_none());
 
         Ok(())
     }
 
-    pub async fn get_membership_config_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
+    pub async fn last_membership_in_log(builder: &B) -> anyhow::Result<()> {
+        let store = builder.build(NODE_ID).await;
+
+        tracing::info!("--- no log, do not read membership from state machine");
+        {
+            store
+                .apply_to_state_machine(&[
+                    &Entry {
+                        log_id: LogId { term: 1, index: 1 },
+                        payload: EntryPayload::Blank,
+                    },
+                    &Entry {
+                        log_id: LogId { term: 1, index: 2 },
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {3,4,5})),
+                    },
+                ])
+                .await?;
+
+            let mem = store.last_membership_in_log(0).await?;
+
+            assert!(mem.is_none());
+        }
+
+        tracing::info!("--- membership presents in log, smaller than last_applied, read from log");
+        {
+            store
+                .append_to_log(&[&Entry {
+                    log_id: (1, 1).into(),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
+                }])
+                .await?;
+
+            let mem = store.last_membership_in_log(0).await?;
+            let mem = mem.unwrap();
+            assert_eq!(Membership::new_single(btreeset! {1, 2, 3}), mem.membership,);
+
+            let mem = store.last_membership_in_log(1).await?;
+            let mem = mem.unwrap();
+            assert_eq!(Membership::new_single(btreeset! {1, 2, 3}), mem.membership,);
+
+            let mem = store.last_membership_in_log(2).await?;
+            assert!(mem.is_none());
+        }
+
+        tracing::info!("--- membership presents in log and > sm.last_applied, read from log");
+        {
+            store
+                .append_to_log(&[
+                    &Entry {
+                        log_id: LogId { term: 1, index: 3 },
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {7,8,9})),
+                    },
+                    &Entry {
+                        log_id: LogId { term: 1, index: 4 },
+                        payload: EntryPayload::Blank,
+                    },
+                ])
+                .await?;
+
+            let mem = store.last_membership_in_log(0).await?;
+            let mem = mem.unwrap();
+
+            assert_eq!(Membership::new_single(btreeset! {7,8,9},), mem.membership,);
+        }
+
+        tracing::info!("--- membership presents in log and > sm.last_applied, read from log but since_index is greater than the last");
+        {
+            let mem = store.last_membership_in_log(4).await?;
+            assert!(mem.is_none());
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_membership_initial(builder: &B) -> anyhow::Result<()> {
+        let store = builder.build(NODE_ID).await;
+
+        let membership = store.get_membership().await?;
+
+        assert!(membership.is_none());
+
+        Ok(())
+    }
+
+    pub async fn get_membership_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
         let store = builder.build(NODE_ID).await;
 
         tracing::info!("--- no log, read membership from state machine");
@@ -137,7 +224,8 @@ where
                 ])
                 .await?;
 
-            let mem = store.get_membership_config().await?;
+            let mem = store.get_membership().await?;
+            let mem = mem.unwrap();
 
             assert_eq!(Membership::new_single(btreeset! {3,4,5}), mem.membership,);
         }
@@ -151,7 +239,9 @@ where
                 }])
                 .await?;
 
-            let mem = store.get_membership_config().await?;
+            let mem = store.get_membership().await?;
+
+            let mem = mem.unwrap();
 
             assert_eq!(Membership::new_single(btreeset! {3, 4, 5}), mem.membership,);
         }
@@ -161,13 +251,15 @@ where
             store
                 .append_to_log(&[&Entry {
                     log_id: LogId { term: 1, index: 3 },
-                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {7,8,9})),
                 }])
                 .await?;
 
-            let mem = store.get_membership_config().await?;
+            let mem = store.get_membership().await?;
 
-            assert_eq!(Membership::new_single(btreeset! {1,2,3},), mem.membership,);
+            let mem = mem.unwrap();
+
+            assert_eq!(Membership::new_single(btreeset! {7,8,9},), mem.membership,);
         }
 
         Ok(())
@@ -933,7 +1025,7 @@ where
                 ])
                 .await?;
 
-            let res = store.get_membership_config().await;
+            let res = store.get_membership().await;
 
             let e = res.unwrap_err().into_defensive().unwrap();
             assert!(matches!(e, DefensiveError {

@@ -54,6 +54,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if self.core.effective_membership.membership.all_nodes().len() == 1 {
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
+
+            // TODO(xp): it should always commit a initial log entry
             self.core.set_target_state(State::Leader);
             self.core.save_hard_state().await?;
         } else {

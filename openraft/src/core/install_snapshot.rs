@@ -226,8 +226,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             }
 
             // There could be unknown membership in the snapshot.
-            let membership = self.storage.get_membership_config().await.map_err(|err| self.map_storage_error(err))?;
+            let membership = self.storage.get_membership().await.map_err(|err| self.map_storage_error(err))?;
             tracing::debug!("storage membership: {:?}", membership);
+
+            assert!(membership.is_some());
+
+            let membership = membership.unwrap();
 
             self.update_membership(membership)?;
 

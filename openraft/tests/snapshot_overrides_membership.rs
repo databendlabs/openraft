@@ -95,7 +95,10 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             tracing::info!("--- check that learner membership is affected");
             {
-                let m = sto.get_membership_config().await?;
+                let m = sto.get_membership().await?;
+
+                let m = m.unwrap();
+
                 assert_eq!(Membership::new_single(btreeset! {2,3}), m.membership);
             }
         }
@@ -121,7 +124,10 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 )
                 .await?;
 
-            let m = sto.get_membership_config().await?;
+            let m = sto.get_membership().await?;
+
+            let m = m.unwrap();
+
             assert_eq!(
                 Membership::new_single(btreeset! {0}),
                 m.membership,
