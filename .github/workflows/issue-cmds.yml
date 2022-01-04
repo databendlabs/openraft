@@ -7,6 +7,7 @@ jobs:
   assignme:
     name: /assignme
     runs-on: ubuntu-latest
+    if: startsWith(github.event.comment.body, '/assignme')
 
     steps:
       - uses: xt0rted/slash-command-action@v1
@@ -26,6 +27,7 @@ jobs:
   help:
     name: /help
     runs-on: ubuntu-latest
+    if: startsWith(github.event.comment.body, '/help')
 
     steps:
       - uses: xt0rted/slash-command-action@v1
