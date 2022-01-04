@@ -828,8 +828,7 @@ impl MessageSummary for ReplicationState {
     }
 }
 
-impl ReplicationState
-{
+impl ReplicationState {
     // TODO(xp): make this a method of Config?
 
     /// Return true if the distance behind last_log_id is smaller than the threshold to join.

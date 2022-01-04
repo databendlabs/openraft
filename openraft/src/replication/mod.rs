@@ -497,7 +497,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
 
             RaftEvent::Replicate { appended, committed } => {
-                // TODO(xp): Message Replicate does not need to send an entry.
                 self.committed = committed;
                 self.last_log_index = appended.index;
             }
