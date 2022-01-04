@@ -1,10 +1,8 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use fixtures::RaftRouter;
-use futures::stream::StreamExt;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::State;
@@ -12,12 +10,9 @@ use openraft::State;
 #[macro_use]
 mod fixtures;
 
-/// Cluster add_remove_voter test.
+/// When a node is removed from cluster, replication to it should be stopped.
 ///
-/// What does this test do?
-///
-/// - brings 5 nodes online: one leader and 4 learner.
-/// - add 4 learner as follower.
+/// - brings 5 nodes online: one leader and 4 follower.
 /// - asserts that the leader was able to successfully commit logs and that the followers has successfully replicated
 ///   the payload.
 /// - remove one follower: node-4
@@ -27,126 +22,48 @@ async fn add_remove_voter() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 
-    let timeout = Duration::from_millis(500);
-    let all_members = btreeset![0, 1, 2, 3, 4];
-    let left_members = btreeset![0, 1, 2, 3];
+    let cluster_of_5 = btreeset![0, 1, 2, 3, 4];
+    let cluster_of_4 = btreeset![0, 1, 2, 3];
 
-    // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
-    router.new_raft_node(0).await;
 
-    // Assert all nodes are in learner state & have no entries.
-    let mut n_logs = 0;
-    router
-        .wait_for_metrics(
-            &0u64,
-            |x| x.last_log_index == n_logs,
-            Some(timeout),
-            &format!("n{}.last_log_index -> {}", 0, 0),
-        )
-        .await?;
-    router
-        .wait_for_metrics(
-            &0u64,
-            |x| x.state == State::Learner,
-            Some(timeout),
-            &format!("n{}.state -> {:?}", 4, State::Learner),
-        )
-        .await?;
-
-    router.assert_pristine_cluster().await;
-
-    // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
-    router.initialize_from_single_node(0).await?;
-    n_logs = 1;
-
-    wait_log(router.clone(), &btreeset![0], n_logs).await?;
-    router.assert_stable_cluster(Some(1), Some(n_logs)).await;
-
-    // Sync some new nodes.
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
-    router.new_raft_node(3).await;
-    router.new_raft_node(4).await;
-
-    tracing::info!("--- adding new nodes to cluster");
-    let mut new_nodes = futures::stream::FuturesUnordered::new();
-    new_nodes.push(router.add_learner(0, 1));
-    new_nodes.push(router.add_learner(0, 2));
-    new_nodes.push(router.add_learner(0, 3));
-    new_nodes.push(router.add_learner(0, 4));
-    while let Some(inner) = new_nodes.next().await {
-        inner?;
-    }
-
-    wait_log(router.clone(), &all_members, n_logs).await?;
-
-    tracing::info!("--- changing cluster config");
-    {
-        router.change_membership(0, all_members.clone()).await?;
-        n_logs += 2; // 2 member-change logs
-
-        wait_log(router.clone(), &all_members, n_logs).await?;
-        router.assert_stable_cluster(Some(1), Some(n_logs)).await; // Still in term 1, so leader is still node 0.
-    }
+    let mut n_logs = router.new_nodes_from_single(cluster_of_5.clone(), btreeset! {}).await?;
 
     tracing::info!("--- write 100 logs");
     {
         router.client_request_many(0, "client", 100).await;
         n_logs += 100;
 
-        wait_log(router.clone(), &all_members, n_logs).await?;
+        router.wait_for_log(&cluster_of_5, n_logs, timeout(), "write 100 logs").await?;
     }
 
     tracing::info!("--- remove n{}", 4);
     {
-        router.change_membership(0, left_members.clone()).await?;
+        router.change_membership(0, cluster_of_4.clone()).await?;
         n_logs += 2; // two member-change logs
 
-        wait_log(router.clone(), &left_members, n_logs).await?;
-        router
-            .wait_for_metrics(
-                &4u64,
-                |x| x.state == State::Learner,
-                Some(timeout),
-                &format!("n{}.state -> {:?}", 4, State::Learner),
-            )
-            .await?;
+        router.wait_for_log(&cluster_of_4, n_logs, timeout(), "removed node-4").await?;
+        router.wait(&4, timeout()).await?.state(State::Learner, "").await?;
     }
 
-    // Send some requests
-    router.client_request_many(0, "client", 100).await;
-    n_logs += 100;
+    tracing::info!("--- write another 100 logs");
+    {
+        router.client_request_many(0, "client", 100).await;
+        n_logs += 100;
+    }
 
-    wait_log(router.clone(), &left_members, n_logs).await?;
+    router.wait_for_log(&cluster_of_4, n_logs, timeout(), "4 nodes recv logs 100~200").await?;
 
-    // log will not be sync to removed node
-    let x = router.latest_metrics().await;
-    assert!(x[4].last_log_index < n_logs);
+    tracing::info!("--- log will not be sync to removed node");
+    {
+        let x = router.latest_metrics().await;
+        assert!(x[4].last_log_index < n_logs - 50);
+    }
+
     Ok(())
 }
 
-async fn wait_log(router: std::sync::Arc<fixtures::RaftRouter>, node_ids: &BTreeSet<u64>, want_log: u64) -> Result<()> {
-    let timeout = Duration::from_millis(500);
-    for i in node_ids.iter() {
-        router
-            .wait_for_metrics(
-                i,
-                |x| x.last_log_index == want_log,
-                Some(timeout),
-                &format!("n{}.last_log_index -> {}", i, want_log),
-            )
-            .await?;
-        router
-            .wait_for_metrics(
-                i,
-                |x| x.last_applied == want_log,
-                Some(timeout),
-                &format!("n{}.last_applied -> {}", i, want_log),
-            )
-            .await?;
-    }
-    Ok(())
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(1000))
 }
