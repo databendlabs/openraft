@@ -337,7 +337,7 @@ impl RaftRouter {
         T: Fn(&RaftMetrics) -> bool + Send,
     {
         let wait = self.wait(node_id, timeout).await?;
-        let rst = wait.metrics(func, msg).await?;
+        let rst = wait.metrics(func, format!("node-{} {}", node_id, msg)).await?;
         Ok(rst)
     }
 
