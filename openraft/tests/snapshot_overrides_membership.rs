@@ -42,34 +42,40 @@ async fn snapshot_overrides_membership() -> Result<()> {
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     tracing::info!("--- initializing cluster");
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&btreeset![0], want, timeout(), "empty").await?;
+        router.wait_for_log(&btreeset![0], n_logs, timeout(), "empty").await?;
         router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
         router.initialize_from_single_node(0).await?;
-        want += 1;
+        n_logs += 1;
 
-        router.wait_for_log(&btreeset![0], want, timeout(), "init leader").await?;
-        router.assert_stable_cluster(Some(1), Some(want)).await;
+        router.wait_for_log(&btreeset![0], n_logs, timeout(), "init leader").await?;
+        router.assert_stable_cluster(Some(1), Some(n_logs)).await;
     }
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
-        router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
-        want = snapshot_threshold;
+        router.client_request_many(0, "0", (snapshot_threshold - n_logs) as usize).await;
+        n_logs = snapshot_threshold;
 
-        router.wait_for_log(&btreeset![0], want, timeout(), "send log to trigger snapshot").await?;
-        router.assert_stable_cluster(Some(1), Some(want)).await;
+        router.wait_for_log(&btreeset![0], n_logs, timeout(), "send log to trigger snapshot").await?;
+        router.assert_stable_cluster(Some(1), Some(n_logs)).await;
 
         router
-            .wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, timeout(), "snapshot")
+            .wait_for_snapshot(&btreeset![0], LogId { term: 1, index: n_logs }, timeout(), "snapshot")
             .await?;
         router
-            .assert_storage_state(1, want, Some(0), LogId { term: 1, index: want }, Some((want.into(), 1)))
+            .assert_storage_state(
+                1,
+                n_logs,
+                Some(0),
+                LogId { term: 1, index: n_logs },
+                Some((n_logs.into(), 1)),
+            )
             .await?;
     }
 
@@ -109,17 +115,17 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             tracing::info!("--- DONE add learner");
 
-            router.wait_for_log(&btreeset![0, 1], want, timeout(), "add learner").await?;
-            router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, timeout(), "").await?;
+            router.wait_for_log(&btreeset![0, 1], n_logs, timeout(), "add learner").await?;
+            router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: n_logs }, timeout(), "").await?;
 
-            let expected_snap = Some((want.into(), 1));
+            let expected_snap = Some((n_logs.into(), 1));
 
             router
                 .assert_storage_state(
                     1,
-                    want,
+                    n_logs,
                     None, /* learner does not vote */
-                    LogId { term: 1, index: want },
+                    LogId { term: 1, index: n_logs },
                     expected_snap,
                 )
                 .await?;

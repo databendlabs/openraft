@@ -26,20 +26,20 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     tracing::info!("--- initializing cluster");
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
         router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
 
         router.initialize_from_single_node(0).await?;
-        want += 1;
+        n_logs += 1;
 
-        router.wait_for_log(&btreeset![0], want, None, "init leader").await?;
-        router.assert_stable_cluster(Some(1), Some(want)).await;
+        router.wait_for_log(&btreeset![0], n_logs, None, "init leader").await?;
+        router.assert_stable_cluster(Some(1), Some(n_logs)).await;
     }
 
     let n = router.remove_node(0).await.ok_or_else(|| anyhow::anyhow!("node not found"))?;

@@ -35,31 +35,31 @@ async fn snapshot_chunk_size() -> Result<()> {
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     tracing::info!("--- initializing cluster");
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
         router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
 
         router.initialize_from_single_node(0).await?;
-        want += 1;
+        n_logs += 1;
 
-        router.wait_for_log(&btreeset![0], want, None, "init leader").await?;
+        router.wait_for_log(&btreeset![0], n_logs, None, "init leader").await?;
     }
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
-        router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
-        want = snapshot_threshold;
+        router.client_request_many(0, "0", (snapshot_threshold - n_logs) as usize).await;
+        n_logs = snapshot_threshold;
 
-        let want_snap = Some((want.into(), 1));
+        let want_snap = Some((n_logs.into(), 1));
 
-        router.wait_for_log(&btreeset![0], want, None, "send log to trigger snapshot").await?;
-        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
-        router.assert_storage_state(1, want, Some(0), LogId { term: 1, index: want }, want_snap).await?;
+        router.wait_for_log(&btreeset![0], n_logs, None, "send log to trigger snapshot").await?;
+        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: n_logs }, None, "snapshot").await?;
+        router.assert_storage_state(1, n_logs, Some(0), LogId { term: 1, index: n_logs }, want_snap).await?;
     }
 
     tracing::info!("--- add learner to receive snapshot and logs");
@@ -67,16 +67,16 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
 
-        let want_snap = Some((want.into(), 1));
+        let want_snap = Some((n_logs.into(), 1));
 
-        router.wait_for_log(&btreeset![0, 1], want, None, "add learner").await?;
-        router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, None, "").await?;
+        router.wait_for_log(&btreeset![0, 1], n_logs, None, "add learner").await?;
+        router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: n_logs }, None, "").await?;
         router
             .assert_storage_state(
                 1,
-                want,
+                n_logs,
                 None, /* learner does not vote */
-                LogId { term: 1, index: want },
+                LogId { term: 1, index: n_logs },
                 want_snap,
             )
             .await?;

@@ -95,20 +95,20 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+    router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
     router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    want += 1;
+    n_logs += 1;
 
-    router.wait_for_log(&btreeset![0], want, None, "init").await?;
-    router.assert_stable_cluster(Some(1), Some(want)).await;
+    router.wait_for_log(&btreeset![0], n_logs, None, "init").await?;
+    router.assert_stable_cluster(Some(1), Some(n_logs)).await;
 
     tracing::info!("--- adding 4 new nodes to cluster");
 
@@ -133,9 +133,9 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
 
     tracing::info!("--- changing config to 0,1,2");
     router.change_membership(0, btreeset![0, 1, 2]).await?;
-    want += 2;
+    n_logs += 2;
 
-    router.wait_for_log(&btreeset![0, 1, 2], want, None, "cluster of 0,1,2").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "cluster of 0,1,2").await?;
 
     tracing::info!("--- changing config to 2,3,4");
     {
@@ -149,9 +149,9 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
             .instrument(tracing::debug_span!("spawn-change-membership")),
         );
     }
-    want += 1;
+    n_logs += 1;
 
-    let wait_rst = router.wait_for_log(&btreeset![0], want, None, "cluster of joint").await;
+    let wait_rst = router.wait_for_log(&btreeset![0], n_logs, None, "cluster of joint").await;
 
     // the first step of joint should not pass because the new config can not constitute a quorum
     assert!(wait_rst.is_err());

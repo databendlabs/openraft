@@ -34,23 +34,23 @@ async fn learner_restart() -> Result<()> {
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1], want, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1], n_logs, None, "empty").await?;
     router.wait_for_state(&btreeset![0, 1], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     tracing::info!("--- initializing single node cluster");
 
     router.initialize_with(0, btreeset![0]).await?;
-    want += 1;
+    n_logs += 1;
 
     router.add_learner(0, 1).await?;
     router.client_request(0, "foo", 1).await;
-    want += 1;
+    n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1], want, None, "write one log").await?;
+    router.wait_for_log(&btreeset![0, 1], n_logs, None, "write one log").await?;
 
     let (node0, _sto0) = router.remove_node(0).await.unwrap();
     assert_node_state(0, &node0, 1, 2, State::Leader);

@@ -37,11 +37,11 @@ async fn add_remove_voter() -> Result<()> {
     router.new_raft_node(0).await;
 
     // Assert all nodes are in learner state & have no entries.
-    let mut want = 0;
+    let mut n_logs = 0;
     router
         .wait_for_metrics(
             &0u64,
-            |x| x.last_log_index == want,
+            |x| x.last_log_index == n_logs,
             Some(timeout),
             &format!("n{}.last_log_index -> {}", 0, 0),
         )
@@ -60,10 +60,10 @@ async fn add_remove_voter() -> Result<()> {
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    want = 1;
+    n_logs = 1;
 
-    wait_log(router.clone(), &btreeset![0], want).await?;
-    router.assert_stable_cluster(Some(1), Some(want)).await;
+    wait_log(router.clone(), &btreeset![0], n_logs).await?;
+    router.assert_stable_cluster(Some(1), Some(n_logs)).await;
 
     // Sync some new nodes.
     router.new_raft_node(1).await;
@@ -81,31 +81,31 @@ async fn add_remove_voter() -> Result<()> {
         inner?;
     }
 
-    wait_log(router.clone(), &all_members, want).await?;
+    wait_log(router.clone(), &all_members, n_logs).await?;
 
     tracing::info!("--- changing cluster config");
     {
         router.change_membership(0, all_members.clone()).await?;
-        want += 2; // 2 member-change logs
+        n_logs += 2; // 2 member-change logs
 
-        wait_log(router.clone(), &all_members, want).await?;
-        router.assert_stable_cluster(Some(1), Some(want)).await; // Still in term 1, so leader is still node 0.
+        wait_log(router.clone(), &all_members, n_logs).await?;
+        router.assert_stable_cluster(Some(1), Some(n_logs)).await; // Still in term 1, so leader is still node 0.
     }
 
     tracing::info!("--- write 100 logs");
     {
         router.client_request_many(0, "client", 100).await;
-        want += 100;
+        n_logs += 100;
 
-        wait_log(router.clone(), &all_members, want).await?;
+        wait_log(router.clone(), &all_members, n_logs).await?;
     }
 
     tracing::info!("--- remove n{}", 4);
     {
         router.change_membership(0, left_members.clone()).await?;
-        want += 2; // two member-change logs
+        n_logs += 2; // two member-change logs
 
-        wait_log(router.clone(), &left_members, want).await?;
+        wait_log(router.clone(), &left_members, n_logs).await?;
         router
             .wait_for_metrics(
                 &4u64,
@@ -118,13 +118,13 @@ async fn add_remove_voter() -> Result<()> {
 
     // Send some requests
     router.client_request_many(0, "client", 100).await;
-    want += 100;
+    n_logs += 100;
 
-    wait_log(router.clone(), &left_members, want).await?;
+    wait_log(router.clone(), &left_members, n_logs).await?;
 
     // log will not be sync to removed node
     let x = router.latest_metrics().await;
-    assert!(x[4].last_log_index < want);
+    assert!(x[4].last_log_index < n_logs);
     Ok(())
 }
 

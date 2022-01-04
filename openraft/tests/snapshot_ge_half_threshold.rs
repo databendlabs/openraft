@@ -39,39 +39,45 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     tracing::info!("--- initializing cluster");
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
         router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
         router.initialize_from_single_node(0).await?;
-        want += 1;
+        n_logs += 1;
 
-        router.wait_for_log(&btreeset![0], want, None, "init leader").await?;
-        router.assert_stable_cluster(Some(1), Some(want)).await;
+        router.wait_for_log(&btreeset![0], n_logs, None, "init leader").await?;
+        router.assert_stable_cluster(Some(1), Some(n_logs)).await;
     }
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
-        router.client_request_many(0, "0", (snapshot_threshold - want) as usize).await;
-        want = snapshot_threshold;
+        router.client_request_many(0, "0", (snapshot_threshold - n_logs) as usize).await;
+        n_logs = snapshot_threshold;
 
-        router.wait_for_log(&btreeset![0], want, None, "send log to trigger snapshot").await?;
-        router.assert_stable_cluster(Some(1), Some(want)).await;
+        router.wait_for_log(&btreeset![0], n_logs, None, "send log to trigger snapshot").await?;
+        router.assert_stable_cluster(Some(1), Some(n_logs)).await;
 
-        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: want }, None, "snapshot").await?;
+        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: n_logs }, None, "snapshot").await?;
         router
-            .assert_storage_state(1, want, Some(0), LogId { term: 1, index: want }, Some((want.into(), 1)))
+            .assert_storage_state(
+                1,
+                n_logs,
+                Some(0),
+                LogId { term: 1, index: n_logs },
+                Some((n_logs.into(), 1)),
+            )
             .await?;
     }
 
     tracing::info!("--- send logs to make distance between snapshot index and last_log_index");
     {
-        router.client_request_many(0, "0", (log_cnt - want) as usize).await;
-        want = log_cnt;
+        router.client_request_many(0, "0", (log_cnt - n_logs) as usize).await;
+        n_logs = log_cnt;
     }
 
     tracing::info!("--- add learner to receive snapshot and logs");
@@ -79,15 +85,15 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
 
-        router.wait_for_log(&btreeset![0, 1], want, None, "add learner").await?;
-        let expected_snap = Some((want.into(), 1));
-        router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: want }, None, "").await?;
+        router.wait_for_log(&btreeset![0, 1], n_logs, None, "add learner").await?;
+        let expected_snap = Some((n_logs.into(), 1));
+        router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: n_logs }, None, "").await?;
         router
             .assert_storage_state(
                 1,
-                want,
+                n_logs,
                 None, /* learner does not vote */
-                LogId { term: 1, index: want },
+                LogId { term: 1, index: n_logs },
                 expected_snap,
             )
             .await?;
