@@ -500,13 +500,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 self.committed = committed;
                 self.last_log_index = appended.index;
             }
-
-            RaftEvent::Terminate => {
-                tracing::debug!("received: RaftEvent::Terminate");
-                // TODO(xp): just close the channel to shut replication down.
-                self.set_target_repl_state(TargetReplState::Shutdown);
-                return Err(ReplicationError::Closed);
-            }
         }
 
         Ok(())
@@ -544,7 +537,6 @@ pub(crate) enum RaftEvent {
         /// The index of the highest log entry which is known to be committed in the cluster.
         committed: LogId,
     },
-    Terminate,
 }
 
 impl MessageSummary for RaftEvent {
@@ -558,7 +550,6 @@ impl MessageSummary for RaftEvent {
             } => {
                 format!("UpdateCommitIndex: commit_index: {}", commit_index)
             }
-            RaftEvent::Terminate => "Terminate".to_string(),
         }
     }
 }
