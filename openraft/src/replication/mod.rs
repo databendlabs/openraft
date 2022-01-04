@@ -461,7 +461,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     /// Perform a check to see if this replication stream has more log to replicate
     #[tracing::instrument(level = "trace", skip(self))]
     pub(self) fn has_more_log(&self) -> bool {
-        self.last_log_index > self.matched.index;
+        self.last_log_index > self.matched.index
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
