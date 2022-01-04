@@ -174,13 +174,13 @@ elected, a Learner will no longer receive logs from the new leader.</p>
 </ul>
 <h2 id="raftchange_membership"><a class="header" href="#raftchange_membership"><code>Raft::change_membership()</code></a></h2>
 <p>This method will initiate a membership change.</p>
-<p>If there are nodes in the given config is not a learner, this method will add it
+<p>If there are nodes in the given config that is not a learner, this method will add it
 as Learner first.
 Thus it is recommended that application always call <code>Raft::add_learner</code> first.
 Otherwise <code>change_membership</code> may block for long before committing the
 given membership and return.</p>
 <p>The new membership config specified by this method will take effect at once.</p>
-<p>Once the new config is committed, a Voter that is no in the new config will
+<p>Once the new config is committed, a Voter that is not in the new config will
 revert to a Learner and is ready to remove.</p>
 <p>Correctness constrains:</p>
 <ul>

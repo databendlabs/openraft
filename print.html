@@ -417,7 +417,7 @@ async fn main() {
 As we did in our tests with <code>Raft::client_write()</code>:
 <a href="https://github.com/datafuselabs/openraft/blob/main/openraft/tests/client_writes.rs">client_writes</a></p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="cluster-controls"><a class="header" href="#cluster-controls">Cluster Controls</a></h1>
-<p>A raft cluster may be control in various ways using the API methods of the <code>Raft</code> type.
+<p>A raft cluster may be controlled in various ways using the API methods of the <code>Raft</code> type.
 This allows the application to influence the raft behavior.</p>
 <p>There are several concepts related to cluster control:</p>
 <ul>
@@ -517,13 +517,13 @@ elected, a Learner will no longer receive logs from the new leader.</p>
 </ul>
 <h2 id="raftchange_membership"><a class="header" href="#raftchange_membership"><code>Raft::change_membership()</code></a></h2>
 <p>This method will initiate a membership change.</p>
-<p>If there are nodes in the given config is not a learner, this method will add it
+<p>If there are nodes in the given config that is not a learner, this method will add it
 as Learner first.
 Thus it is recommended that application always call <code>Raft::add_learner</code> first.
 Otherwise <code>change_membership</code> may block for long before committing the
 given membership and return.</p>
 <p>The new membership config specified by this method will take effect at once.</p>
-<p>Once the new config is committed, a Voter that is no in the new config will
+<p>Once the new config is committed, a Voter that is not in the new config will
 revert to a Learner and is ready to remove.</p>
 <p>Correctness constrains:</p>
 <ul>
@@ -621,7 +621,7 @@ Because internally, <code>watch::channel()</code> only stores one state.</p>
 <p>There are several threads, AKA tokio-tasks in this raft impl:</p>
 <ul>
 <li>
-<p>RaftCore: all log and state machine operation is done in this thread.
+<p>RaftCore: all logs and state machine operations are done in this thread.
 Thus there is no race condition</p>
 <ul>
 <li>All raft state runs in this task, such as LeaderState, CandidateState etc.</li>
@@ -707,11 +707,11 @@ The messages sent to replication task includes:</p>
 <p>Replication to RaftCore:</p>
 <ul>
 <li>
-<p>Replication task send the already replicated log id
+<p>Replication task sends the already replicated log id
 to RaftCore through another per-replication channel.</p>
 </li>
 <li>
-<p>Replication task send a <code>NeedSnapshot</code> request through the same channel to
+<p>Replication task sends a <code>NeedSnapshot</code> request through the same channel to
 ask RaftCore to build a snapshot if there is no log a follower/learner
 needs.</p>
 </li>
@@ -719,7 +719,7 @@ needs.</p>
 </li>
 <li>
 <p>Build-snapshot to RaftCore: RaftCore spawn a separate task to build a snapshot
-asynchronously. When finished, the spawned task send to RaftCore a message
+asynchronously. When finished, the spawned task sends to RaftCore a message
 including the snapshot info.</p>
 </li>
 </ul>
