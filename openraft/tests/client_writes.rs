@@ -40,23 +40,23 @@ async fn client_writes() -> Result<()> {
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1, 2], want, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "empty").await?;
     router.wait_for_state(&btreeset![0, 1, 2], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    want += 1;
+    n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1, 2], want, None, "leader init log").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "leader init log").await?;
     router.wait_for_state(&btreeset![0], State::Leader, None, "cluster leader").await?;
     router.wait_for_state(&btreeset![1, 2], State::Follower, None, "cluster follower").await?;
 
-    router.assert_stable_cluster(Some(1), Some(want)).await;
+    router.assert_stable_cluster(Some(1), Some(n_logs)).await;
 
     // Write a bunch of data and assert that the cluster stayes stable.
     let leader = router.leader().await.expect("leader not found");
@@ -69,10 +69,10 @@ async fn client_writes() -> Result<()> {
     clients.push(router.client_request_many(leader, "5", 500));
     while clients.next().await.is_some() {}
 
-    want += 500 * 6;
-    router.wait_for_log(&btreeset![0, 1, 2], want, None, "sync logs").await?;
+    n_logs += 500 * 6;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "sync logs").await?;
 
-    router.assert_stable_cluster(Some(1), Some(want)).await; // The extra 1 is from the leader's initial commit entry.
+    router.assert_stable_cluster(Some(1), Some(n_logs)).await; // The extra 1 is from the leader's initial commit entry.
 
     // TODO(xp): flaky test on CI: want voted_for to be Some(0) but is None.
     //           maybe a heavy load delayed heartbeat thus a node start to elect itself. since we have changed follwoer
@@ -109,7 +109,13 @@ async fn client_writes() -> Result<()> {
     // at /home/runner/work/openraft/openraft/openraft/tests/client_writes.rs:25:7
 
     router
-        .assert_storage_state(1, want, Some(0), LogId::new(1, want), Some(((2000..2100).into(), 1)))
+        .assert_storage_state(
+            1,
+            n_logs,
+            Some(0),
+            LogId::new(1, n_logs),
+            Some(((2000..2100).into(), 1)),
+        )
         .await?;
 
     Ok(())

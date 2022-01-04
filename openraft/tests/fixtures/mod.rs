@@ -181,22 +181,22 @@ impl RaftRouter {
 
         self.new_raft_node(0).await;
 
-        let mut want = 0;
+        let mut n_logs = 0;
 
         tracing::info!("--- wait for init node to ready");
 
-        self.wait_for_log(&btreeset![0], want, timeout(), "empty").await?;
+        self.wait_for_log(&btreeset![0], n_logs, timeout(), "empty").await?;
         self.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
         self.initialize_from_single_node(0).await?;
-        want += 1;
+        n_logs += 1;
 
         tracing::info!("--- wait for init node to become leader");
 
-        self.wait_for_log(&btreeset![0], want, timeout(), "init").await?;
-        self.assert_stable_cluster(Some(1), Some(want)).await;
+        self.wait_for_log(&btreeset![0], n_logs, timeout(), "init").await?;
+        self.assert_stable_cluster(Some(1), Some(n_logs)).await;
 
         for id in node_ids.iter() {
             if *id == 0 {
@@ -212,9 +212,9 @@ impl RaftRouter {
             tracing::info!("--- change membership to setup voters: {:?}", node_ids);
 
             self.change_membership(0, node_ids.clone()).await?;
-            want += 2;
+            n_logs += 2;
 
-            self.wait_for_log(&node_ids, want, timeout(), &format!("cluster of {:?}", node_ids)).await?;
+            self.wait_for_log(&node_ids, n_logs, timeout(), &format!("cluster of {:?}", node_ids)).await?;
         }
 
         for id in learners {
@@ -223,7 +223,7 @@ impl RaftRouter {
             self.add_learner(0, id).await?;
         }
 
-        Ok(want)
+        Ok(n_logs)
     }
 
     /// Create and register a new Raft node bearing the given ID.

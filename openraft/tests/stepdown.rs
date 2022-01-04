@@ -31,19 +31,19 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1], want, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1], n_logs, None, "empty").await?;
     router.wait_for_state(&btreeset![0, 1], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    want += 1;
+    n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1], want, None, "init").await?;
+    router.wait_for_log(&btreeset![0, 1], n_logs, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -52,17 +52,17 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
     router.change_membership(orig_leader, btreeset![1, 2, 3]).await?;
-    want += 2;
+    n_logs += 2;
 
     for id in 0..4 {
         if id == orig_leader {
-            router.wait_for_log(&btreeset![id], want, None, "update membership: 1, 2, 3; old leader").await?;
+            router.wait_for_log(&btreeset![id], n_logs, None, "update membership: 1, 2, 3; old leader").await?;
         } else {
             // a new leader elected and propose a log
             router
                 .wait_for_log(
                     &btreeset![id],
-                    want + 1,
+                    n_logs + 1,
                     None,
                     "update membership: 1, 2, 3; new candidate",
                 )
@@ -71,7 +71,7 @@ async fn stepdown() -> Result<()> {
     }
 
     // leader commit a new log.
-    want += 1;
+    n_logs += 1;
 
     // Assert on the state of the old leader.
     {
@@ -126,9 +126,9 @@ async fn stepdown() -> Result<()> {
     tracing::info!("term: {}", metrics.current_term);
     tracing::info!("index: {}", metrics.last_log_index);
     assert!(metrics.current_term >= 2, "term incr when leader changes");
-    router.assert_stable_cluster(Some(metrics.current_term), Some(want)).await;
+    router.assert_stable_cluster(Some(metrics.current_term), Some(n_logs)).await;
     router
-        .assert_storage_state(metrics.current_term, want, None, LogId { term: 2, index: 4 }, None)
+        .assert_storage_state(metrics.current_term, n_logs, None, LogId { term: 2, index: 4 }, None)
         .await?;
     // ----------------------------------- ^^^ this is `0` instead of `4` because blank payloads from new leaders
     //                                         and config change entries are never applied to the state machine.

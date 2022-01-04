@@ -29,7 +29,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut want = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
     let sto = router.get_storage_handle(&0).await?;
     router.remove_node(0).await;
@@ -38,7 +38,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
         sto.append_to_log(&[&Entry {
             log_id: LogId {
                 term: 1,
-                index: want + 1,
+                index: n_logs + 1,
             },
             payload: EntryPayload::Membership(Membership::new_multi(vec![btreeset! {0}, btreeset! {0,1,2}])),
         }])
@@ -46,9 +46,9 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     }
 
     // A joint log and the leader should add a new final config log.
-    want += 2;
+    n_logs += 2;
 
-    let _ = want;
+    let _ = n_logs;
 
     // To let tne router not panic
     router.new_raft_node(1).await;
