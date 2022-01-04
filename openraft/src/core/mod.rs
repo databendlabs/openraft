@@ -55,7 +55,6 @@ use crate::raft::EntryPayload;
 use crate::raft::Membership;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
-use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::HardState;
@@ -676,7 +675,7 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     pub(super) core: &'a mut RaftCore<D, R, N, S>,
 
     /// A mapping of node IDs the replication state of the target node.
-    pub(super) nodes: BTreeMap<NodeId, ReplicationState<D>>,
+    pub(super) nodes: BTreeMap<NodeId, ReplicationState>,
 
     /// The metrics about a leader
     pub leader_metrics: LeaderMetrics,
@@ -740,9 +739,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             if !self.core.target_state.is_leader() {
                 tracing::info!("id={} state becomes: {:?}", self.core.id, self.core.target_state);
 
-                for node in self.nodes.values() {
-                    let _ = node.repl_stream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
-                }
+                // implicit drop replication_rx
+                // notify to all nodes DO NOT send replication event any more.
                 return Ok(());
             }
 
@@ -810,16 +808,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 }
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-struct ReplicationState<D: AppData> {
+struct ReplicationState {
     pub matched: LogId,
     pub remove_since: Option<u64>,
-    pub repl_stream: ReplicationStream<D>,
+    pub repl_stream: ReplicationStream,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
     pub tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
 }
 
-impl<D: AppData> MessageSummary for ReplicationState<D> {
+impl MessageSummary for ReplicationState {
     fn summary(&self) -> String {
         format!(
             "matched: {}, remove_after_commit: {:?}",
@@ -828,9 +826,7 @@ impl<D: AppData> MessageSummary for ReplicationState<D> {
     }
 }
 
-impl<D> ReplicationState<D>
-where D: AppData
-{
+impl ReplicationState {
     // TODO(xp): make this a method of Config?
 
     /// Return true if the distance behind last_log_id is smaller than the threshold to join.

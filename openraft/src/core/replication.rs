@@ -33,7 +33,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &self,
         target: NodeId,
         caller_tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
-    ) -> ReplicationState<D> {
+    ) -> ReplicationState {
         let repl_stream = ReplicationStream::new(
             self.core.id,
             target,
