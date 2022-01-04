@@ -738,7 +738,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         loop {
             if !self.core.target_state.is_leader() {
                 tracing::info!("id={} state becomes: {:?}", self.core.id, self.core.target_state);
-
+                // notify to all nodes DO NOT send replication event any more.
                 self.replication_rx.close();
 
                 return Ok(());
