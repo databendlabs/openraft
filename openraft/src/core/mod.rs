@@ -55,7 +55,6 @@ use crate::raft::EntryPayload;
 use crate::raft::Membership;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
-use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::HardState;
@@ -740,9 +739,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             if !self.core.target_state.is_leader() {
                 tracing::info!("id={} state becomes: {:?}", self.core.id, self.core.target_state);
 
-                for node in self.nodes.values() {
-                    let _ = node.repl_stream.repl_tx.send((RaftEvent::Terminate, tracing::debug_span!("CH")));
-                }
+                self.replication_rx.close();
+
                 return Ok(());
             }
 
