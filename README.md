@@ -16,6 +16,9 @@
 Raft is not yet good enough.
 This project intends to improve raft as the next generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).
 
+Currently openraft is the consensus engine of meta-service cluster in [databend](https://github.com/datafuselabs/databend).
+
+
 - **Get started**: [The guide](https://datafuselabs.github.io/openraft) is the best place to get started,
   followed by [the docs](https://docs.rs/openraft/latest/) for more in-depth details.
 
@@ -56,6 +59,8 @@ This project intends to improve raft as the next generation consensus protocol f
 A full list of changes/fixes can be found in [change-log](https://github.com/datafuselabs/openraft/blob/main/change-log.md)
 
 </details>
+
+
 
 # Features
 
