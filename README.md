@@ -1,32 +1,35 @@
-<h1 align="center">openraft</h1>
-<div align="center">
-    <strong>
-        Advanced <a href="https://raft.github.io/">Raft</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/datafuselabs/openraft">github</a>!
-    </strong>
-</div>
-<br/>
-<div align="center">
+# Openraft
 
-[![CI](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml)
-<!-- [![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft) -->
-<!-- [![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft) -->
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE)
-<!-- ![Crates.io](https://img.shields.io/crates/d/openraft.svg) -->
-<!-- ![Crates.io](https://img.shields.io/crates/dv/openraft.svg) -->
-
-</div>
-<br/>
+<strong>
+    Advanced <a href="https://raft.github.io/">Raft</a> using <a href="https://tokio.rs/">the Tokio framework</a>. Please ⭐ on <a href="https://github.com/datafuselabs/openraft">github</a>!
+</strong>
 
 ---
+
+[![CI](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml)
+[![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft)
+[![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE)
+![Crates.io](https://img.shields.io/crates/d/openraft.svg)
+![Crates.io](https://img.shields.io/crates/dv/openraft.svg)
 
 Raft is not yet good enough.
 This project intends to improve raft as the next generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).
 
-[The guide](https://datafuselabs.github.io/openraft) is the best place to get started.
+Currently openraft is the consensus engine of meta-service cluster in [databend](https://github.com/datafuselabs/databend).
 
-<!-- , followed by [the docs](https://docs.rs/openraft/latest/) for more in-depth details. -->
 
-Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed:
+- **Get started**: [The guide](https://datafuselabs.github.io/openraft) is the best place to get started,
+  followed by [the docs](https://docs.rs/openraft/latest/) for more in-depth details.
+
+- **Openraft API is not stable yet.** Before `1.0.0`, an upgrade may contain incompatible changes.
+  Check our [change-log](https://github.com/datafuselabs/openraft/blob/main/change-log.md)
+
+- Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed:
+
+<details>
+  <summary>List of fixed bugs:</summary>
+
 
 -   Fixed: [6c0ccaf3](https://github.com/datafuselabs/openraft/commit/6c0ccaf3ab3f262437d8fc021d4b13437fa4c9ac) consider joint config when starting up and committing.; by drdr xp; 2021-12-24
 -   Fixed: [228077a6](https://github.com/datafuselabs/openraft/commit/228077a66d5099fd404ae9c68f0977e5f978f102) a restarted follower should not wait too long to elect. Otherwise, the entire cluster hangs; by drdr xp; 2021-11-19
@@ -54,6 +57,10 @@ Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) w
 
 
 A full list of changes/fixes can be found in [change-log](https://github.com/datafuselabs/openraft/blob/main/change-log.md)
+
+</details>
+
+
 
 # Features
 

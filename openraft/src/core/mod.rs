@@ -83,6 +83,15 @@ pub struct EffectiveMembership {
     pub membership: Membership,
 }
 
+impl EffectiveMembership {
+    pub fn new_initial(node_id: u64) -> Self {
+        EffectiveMembership {
+            log_id: LogId::new(0, 0),
+            membership: Membership::new_initial(node_id),
+        }
+    }
+}
+
 impl MessageSummary for EffectiveMembership {
     fn summary(&self) -> String {
         format!("{{log_id:{} membership:{}}}", self.log_id, self.membership.summary())
@@ -1018,7 +1027,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Run the learner loop.
-    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="non-voter"))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="learner"))]
     pub(self) async fn run(mut self) -> RaftResult<()> {
         self.core.report_metrics(Update::Update(None));
         loop {

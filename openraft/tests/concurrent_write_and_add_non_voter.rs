@@ -49,14 +49,14 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
     router.new_raft_node(0).await;
 
-    let mut want;
+    let mut n_logs;
 
     tracing::info!("--- initializing cluster of 1 node");
     {
         router.initialize_from_single_node(0).await?;
-        want = 1;
+        n_logs = 1;
 
-        wait_log(router.clone(), &btreeset![0], want).await?;
+        wait_log(router.clone(), &btreeset![0], n_logs).await?;
     }
 
     tracing::info!("--- adding two candidate nodes");
@@ -70,9 +70,9 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         tracing::info!("--- changing cluster config");
 
         router.change_membership(0, candidates.clone()).await?;
-        want += 2; // Tow member change logs
+        n_logs += 2; // Tow member change logs
 
-        wait_log(router.clone(), &candidates, want).await?;
+        wait_log(router.clone(), &candidates, n_logs).await?;
         router.assert_stable_cluster(Some(1), Some(3)).await; // Still in term 1, so leader is still node 0.
     }
 
@@ -81,9 +81,9 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     tracing::info!("--- write one log");
     {
         router.client_request_many(leader, "client", 1).await;
-        want += 1;
+        n_logs += 1;
 
-        wait_log(router.clone(), &candidates, want).await?;
+        wait_log(router.clone(), &candidates, n_logs).await?;
     }
 
     // Concurrently add Learner and write another log.
@@ -103,12 +103,12 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         };
 
         router.client_request_many(leader, "client", 1).await;
-        want += 1;
+        n_logs += 1;
 
         let _ = handle.await?;
     };
 
-    wait_log(router.clone(), &candidates, want).await?;
+    wait_log(router.clone(), &candidates, n_logs).await?;
     router
         .wait_for_metrics(
             &3u64,
@@ -122,9 +122,9 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     router
         .wait_for_metrics(
             &3u64,
-            |x| x.last_log_index == want,
+            |x| x.last_log_index == n_logs,
             Some(timeout),
-            &format!("n{}.last_log_index -> {}", 3, want),
+            &format!("n{}.last_log_index -> {}", 3, n_logs),
         )
         .await?;
 

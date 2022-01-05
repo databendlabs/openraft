@@ -12,6 +12,7 @@ use tokio::io::AsyncWrite;
 
 use crate::core::EffectiveMembership;
 use crate::raft::Entry;
+use crate::raft::EntryPayload;
 use crate::raft::Membership;
 use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
@@ -110,32 +111,68 @@ where
     /// for details on where and how this is used.
     type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
 
-    /// Get the latest membership config found in the log or in state machine.
+    /// Returns the last membership config found in log or state machine.
+    async fn get_membership(&self) -> Result<Option<EffectiveMembership>, StorageError> {
+        let (_, sm_mem) = self.last_applied_state().await?;
+
+        let sm_mem_index = match &sm_mem {
+            None => 0,
+            Some(mem) => mem.log_id.index,
+        };
+
+        let log_mem = self.last_membership_in_log(sm_mem_index + 1).await?;
+
+        if log_mem.is_some() {
+            return Ok(log_mem);
+        }
+
+        return Ok(sm_mem);
+    }
+
+    /// Get the latest membership config found in the log.
     ///
-    /// This must always be implemented as a reverse search through the log to find the most
-    /// recent membership config to be appended to the log.
-    ///
-    /// If a snapshot pointer is encountered, then the membership config embedded in that snapshot
-    /// pointer should be used.
-    ///
-    /// If the system is pristine, then it should return the value of calling
-    /// `MembershipConfig::new_initial(node_id)`. It is required that the storage engine persist
-    /// the node's ID so that it is consistent across restarts.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_membership_config(&self) -> Result<EffectiveMembership, StorageError>;
+    /// This method should returns membership with the greatest log index which is `>=since_index`.
+    /// If no such membership log is found, it returns `None`, e.g., when logs are cleaned after being applied.
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn last_membership_in_log(&self, since_index: u64) -> Result<Option<EffectiveMembership>, StorageError> {
+        let last_log_id = self.last_id_in_log().await?;
+        let first_log_id = self.first_id_in_log().await?;
+
+        let first_log_id = match first_log_id {
+            None => {
+                // There is no log at all
+                return Ok(None);
+            }
+            Some(x) => x,
+        };
+
+        let mut end = last_log_id.index + 1;
+        let start = std::cmp::max(first_log_id.index, since_index);
+        let step = 64;
+
+        while start < end {
+            let entries = self.try_get_log_entries(start..end).await?;
+
+            for ent in entries.iter().rev() {
+                if let EntryPayload::Membership(ref mem) = ent.payload {
+                    return Ok(Some(EffectiveMembership {
+                        log_id: ent.log_id,
+                        membership: mem.clone(),
+                    }));
+                }
+            }
+
+            end = end.saturating_sub(step);
+        }
+
+        Ok(None)
+    }
 
     /// Get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface on the storage system to
     /// fetch the last known state from stable storage. If no such entry exists due to being the
     /// first time the node has come online, then `InitialState::new_initial` should be used.
-    ///
-    /// **Pro tip:** the storage impl may need to look in a few different places to accurately
-    /// respond to this request: the last entry in the log for `last_log_index` & `last_log_term`;
-    /// the node's hard state record; and the index of the last log applied to the state machine.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn get_initial_state(&self) -> Result<InitialState, StorageError>;
 
     /// Save Raft's hard-state.

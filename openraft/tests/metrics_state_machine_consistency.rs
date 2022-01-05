@@ -44,9 +44,9 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     // Wait for metrics to be up to date.
     // Once last_applied updated, the key should be visible in state machine.
     tracing::info!("--- wait for log to sync");
-    let want = 2u64;
+    let n_logs = 2u64;
     for node_id in 0..2 {
-        router.wait_for_log(&btreeset![node_id], want, None, "write one log").await?;
+        router.wait_for_log(&btreeset![node_id], n_logs, None, "write one log").await?;
         let sto = router.get_storage_handle(&node_id).await?;
         assert!(sto.get_state_machine().await.client_status.get("foo").is_some());
     }

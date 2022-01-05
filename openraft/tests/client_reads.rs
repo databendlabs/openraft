@@ -28,19 +28,19 @@ async fn client_reads() -> Result<()> {
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1, 2], want, None, "empty node").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "empty node").await?;
     router.wait_for_state(&btreeset![0, 1, 2], State::Learner, None, "empty node").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    want += 1;
+    n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1, 2], want, None, "init leader").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "init leader").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Get the ID of the leader, and assert that client_read succeeds.

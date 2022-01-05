@@ -29,19 +29,19 @@ async fn singlenode() -> Result<()> {
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
 
-    let mut want = 0;
+    let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0], want, None, "empty").await?;
+    router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
     router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    want += 1;
+    n_logs += 1;
 
-    router.wait_for_log(&btreeset![0], want, None, "init").await?;
+    router.wait_for_log(&btreeset![0], n_logs, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Write some data to the single node cluster.
