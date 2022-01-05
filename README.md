@@ -60,6 +60,25 @@ A full list of changes/fixes can be found in [change-log](https://github.com/dat
 
 </details>
 
+# Roadmap
+
+- [ ] Support only one membership-change algo: joint; 
+
+- [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/datafuselabs/openraft/discussions/15);
+
+- [ ] Reduce confliction rate when electing;
+  Allow leadership to be taken in one term by a node with greater node-id.
+
+- [ ] Support flexible quorum, e.g.:[Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html)
+
+- [ ] Consider introducing read-quorum and write-quorum,
+  improve efficiency with a cluster with an even number of nodes.
+
+<!--
+   - - [ ] Consider to separate log storage and log order storage.
+   -   Leader only determines and replicates the index of log entries, not log
+   -   payload.
+   -->
 
 
 # Features
