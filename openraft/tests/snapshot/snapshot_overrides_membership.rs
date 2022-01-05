@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
@@ -15,8 +14,7 @@ use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 use openraft::State;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Test membership info is sync correctly along with snapshot.
 ///
