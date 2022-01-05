@@ -243,17 +243,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(first)
     }
 
-    async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
-        let first = self.first_id_in_log().await?;
-        let (last_applied, _) = self.last_applied_state().await?;
-
-        if let Some(x) = first {
-            return Ok(std::cmp::min(x, last_applied));
-        }
-
-        Ok(last_applied)
-    }
-
     async fn last_id_in_log(&self) -> Result<LogId, StorageError> {
         let log = self.log.read().await;
         let last = log.iter().last().map(|(_, ent)| ent.log_id).unwrap_or_default();
