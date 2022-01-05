@@ -30,6 +30,7 @@ struct MemStoreBuilder {}
 impl StoreBuilder<ClientRequest, ClientResponse, MemStore> for MemStoreBuilder {
     async fn build(&self, id: NodeId) -> MemStore {
         let mem_sto = MemStore::new(id).await;
+        mem_sto.initialize().await;
         mem_sto
     }
 }
@@ -273,7 +274,7 @@ where
             voted_for: None,
         };
 
-        let initial = store.get_initial_state().await?;
+        let initial = store.get_initial_state().await?.unwrap();
 
         assert_eq!(
             initial.last_log_id,
@@ -316,7 +317,7 @@ where
             }])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = store.get_initial_state().await?.unwrap();
 
         assert_eq!(
             initial.last_log_id,
@@ -362,7 +363,7 @@ where
                 ])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 Membership::new_single(btreeset! {3,4,5}),
@@ -379,7 +380,7 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 Membership::new_single(btreeset! {3,4,5}),
@@ -396,7 +397,7 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 Membership::new_single(btreeset! {1,2,3}),
@@ -431,7 +432,7 @@ where
             ])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = store.get_initial_state().await?.unwrap();
 
         assert_eq!(
             initial.last_log_id,
@@ -459,7 +460,7 @@ where
             }])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = store.get_initial_state().await?.unwrap();
 
         assert_eq!(
             initial.last_log_id,
@@ -479,7 +480,7 @@ where
             })
             .await?;
 
-        let post = store.get_initial_state().await?;
+        let post = store.get_initial_state().await?.unwrap();
 
         assert_eq!(
             HardState {
@@ -1118,7 +1119,7 @@ where
                 ..
             }));
 
-            let state = store.get_initial_state().await?;
+            let state = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 HardState {
@@ -1154,7 +1155,7 @@ where
                 ..
             }));
 
-            let state = store.get_initial_state().await?;
+            let state = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 HardState {
@@ -1190,7 +1191,7 @@ where
                 ..
             }));
 
-            let state = store.get_initial_state().await?;
+            let state = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 HardState {

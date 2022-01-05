@@ -221,13 +221,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
     async fn main(mut self) -> RaftResult<()> {
         tracing::debug!("raft node is initializing");
-
-        let state = self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))?;
-        self.last_log_id = state.last_log_id;
-        self.current_term = state.hard_state.current_term;
-        self.voted_for = state.hard_state.voted_for;
-        self.effective_membership = state.last_membership.clone();
-        self.last_applied = state.last_applied;
+        if let Some(state) = self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))? {
+            self.last_log_id = state.last_log_id;
+            self.current_term = state.hard_state.current_term;
+            self.voted_for = state.hard_state.voted_for;
+            self.effective_membership = state.last_membership.clone();
+            self.last_applied = state.last_applied;
+        }
 
         // NOTE: this is repeated here for clarity. It is unsafe to initialize the node's commit
         // index to any other value. The commit index must be determined by a leader after

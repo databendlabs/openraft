@@ -111,6 +111,13 @@ where
     /// for details on where and how this is used.
     type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
 
+    /// Initialize the storage(e.g. state).
+    ///
+    /// When the Raft node is first started, it will call this interface on the storage system to
+    /// initialize node related information,e.g. node state then `InitialState::new_initial` should
+    /// be used.
+    async fn initialize(&self) -> Result<(), StorageError>;
+
     /// Returns the last membership config found in log or state machine.
     async fn get_membership(&self) -> Result<Option<EffectiveMembership>, StorageError> {
         let (_, sm_mem) = self.last_applied_state().await?;
@@ -170,10 +177,9 @@ where
 
     /// Get Raft's state information from storage.
     ///
-    /// When the Raft node is first started, it will call this interface on the storage system to
-    /// fetch the last known state from stable storage. If no such entry exists due to being the
-    /// first time the node has come online, then `InitialState::new_initial` should be used.
-    async fn get_initial_state(&self) -> Result<InitialState, StorageError>;
+    /// When call `get_initial_state` that will return `None` if node is not call `initialize`.
+    /// So when the Raft node is first started, should call the `initialize` first.
+    async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError>;
 
     /// Save Raft's hard-state.
     ///
