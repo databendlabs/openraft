@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::Membership;
 use openraft::Config;
@@ -12,8 +11,7 @@ use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 use openraft::State;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Test a second compaction should not lose membership.
 /// To ensure the bug is fixed:
