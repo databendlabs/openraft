@@ -18,6 +18,15 @@ mdbook build
 mdbook watch
 ```
 
+## Working with git
+
+- **Write the commit message like writing an email to your friends**. There is a great [git commit format guide](https://cbea.ms/git-commit/).
+
+- Do **rebase** and **squash** the branch onto the latest `main` branch before publishing a PR.
+
+- Do **NOT** **rebase** after publishing PR. Only merge.
+
+
 ## Release checklist
 
 - Any documentation updates should also be reflected in the guide.
