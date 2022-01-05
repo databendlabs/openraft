@@ -3,6 +3,7 @@ queue_rules:
     conditions:
       # - '#check-pending=0'
       - '#check-success>=2'
+      - check-success=check-subject
       - check-success=unittest (on)
       - check-success~=unittest
 
@@ -11,6 +12,7 @@ pull_request_rules:
   - name: put o queue if approved
     conditions:
       - "#approved-reviews-by>=1"
+      - check-success=check-subject
     actions:
       queue:
         name: feature_queue
