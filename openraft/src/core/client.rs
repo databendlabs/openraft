@@ -55,7 +55,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn commit_initial_leader_entry(&mut self) -> RaftResult<()> {
         // If the cluster has just formed, and the current index is 0, then commit the current
         // config, else a blank payload.
-        let last_index = self.core.last_log_id.index;
+        let last_index = self.core.last_log_id.expect("raft core last_log_id is uninitialized").index;
 
         let req: ClientWriteRequest<D> = if last_index == 0 {
             ClientWriteRequest::new_config(self.core.effective_membership.membership.clone())
@@ -65,7 +65,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Commit the initial payload to the cluster.
         let entry = self.append_payload_to_log(req.entry).await?;
-        self.core.last_log_id.term = self.core.current_term; // This only ever needs to be updated once per term.
+        self.core.last_log_id = self.core.last_log_id.map(|mut last_log_id| {
+            last_log_id.term = self.core.current_term;
+            last_log_id
+        }); // This only ever needs to be updated once per term.
 
         self.leader_report_metrics();
 
@@ -234,7 +237,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> RaftResult<Entry<D>> {
         let entry = Entry {
             log_id: LogId {
-                index: self.core.last_log_id.index + 1,
+                index: self.core.last_log_id.expect("raft core last_log_id is uninitialized").index + 1,
                 term: self.core.current_term,
             },
             payload,
@@ -242,7 +245,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.core.storage.append_to_log(&[&entry]).await.map_err(|err| self.core.map_storage_error(err))?;
 
         tracing::debug!("append log: {}", entry.summary());
-        self.core.last_log_id.index = entry.log_id.index;
+        self.core.last_log_id = self.core.last_log_id.map(|mut last_log_id| {
+            last_log_id.index = entry.log_id.index;
+            last_log_id
+        });
 
         Ok(entry)
     }

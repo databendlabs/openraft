@@ -30,7 +30,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(VoteResponse {
                 term: self.current_term,
                 vote_granted: false,
-                last_log_id: self.last_log_id,
+                last_log_id: self.last_log_id.expect("raft core is uninitialized"),
             });
         }
 
@@ -46,7 +46,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 return Ok(VoteResponse {
                     term: self.current_term,
                     vote_granted: false,
-                    last_log_id: self.last_log_id,
+                    last_log_id: self.last_log_id.expect("raft core is uninitialized"),
                 });
             }
         }
@@ -63,7 +63,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Check if candidate's log is at least as up-to-date as this node's.
         // If candidate's log is not at least as up-to-date as this node, then reject.
-        if msg.last_log_id < self.last_log_id {
+        if msg.last_log_id < self.last_log_id.expect("raft core is uninitialized") {
             tracing::debug!(
                 { candidate = msg.candidate_id },
                 "rejecting vote request as candidate's log is not up-to-date"
@@ -71,7 +71,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(VoteResponse {
                 term: self.current_term,
                 vote_granted: false,
-                last_log_id: self.last_log_id,
+                last_log_id: self.last_log_id.expect("raft core is uninitialized"),
             });
         }
 
@@ -84,13 +84,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             Some(candidate_id) if candidate_id == &msg.candidate_id => Ok(VoteResponse {
                 term: self.current_term,
                 vote_granted: true,
-                last_log_id: self.last_log_id,
+                last_log_id: self.last_log_id.expect("raft core is uninitialized"),
             }),
             // This node has already voted for a different candidate.
             Some(_) => Ok(VoteResponse {
                 term: self.current_term,
                 vote_granted: false,
-                last_log_id: self.last_log_id,
+                last_log_id: self.last_log_id.expect("raft core is uninitialized"),
             }),
             // This node has not yet voted for the current term, so vote for the candidate.
             None => {
@@ -102,7 +102,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 Ok(VoteResponse {
                     term: self.current_term,
                     vote_granted: true,
-                    last_log_id: self.last_log_id,
+                    last_log_id: self.last_log_id.expect("raft core is uninitialized"),
                 })
             }
         }
@@ -125,7 +125,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `last_log_id`.
             //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
             //           election.
-            if self.core.last_log_id < res.last_log_id {
+            if self.core.last_log_id.expect("raft core is uninitialized") < res.last_log_id {
                 self.core.set_target_state(State::Follower);
                 tracing::debug!("reverting to follower state due to greater term observed in RequestVote RPC response");
             } else {
@@ -133,7 +133,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     id = %self.core.id,
                     self_term=%self.core.current_term,
                     res_term=%res.term,
-                    self_last_log_id=%self.core.last_log_id,
+                    self_last_log_id=%self.core.last_log_id.unwrap(),
                     res_last_log_id=%res.last_log_id,
                     "I have lower term but higher or euqal last_log_id, keep trying to elect"
                 );
@@ -162,7 +162,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let (tx, rx) = mpsc::channel(all_nodes.len());
 
         for member in all_nodes.into_iter().filter(|member| member != &self.core.id) {
-            let rpc = VoteRequest::new(self.core.current_term, self.core.id, self.core.last_log_id);
+            let rpc = VoteRequest::new(
+                self.core.current_term,
+                self.core.id,
+                self.core.last_log_id.expect("raft core is uninitialized"),
+            );
 
             let (network, tx_inner) = (self.core.network.clone(), tx.clone());
             let _ = tokio::spawn(

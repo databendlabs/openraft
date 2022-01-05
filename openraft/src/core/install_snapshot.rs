@@ -221,8 +221,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             if self.committed < self.last_applied {
                 self.committed = self.last_applied;
             }
-            if self.last_log_id < self.last_applied {
-                self.last_log_id = self.last_applied;
+            if self.last_log_id.expect("raft core is uninitialized") < self.last_applied {
+                self.last_log_id = Some(self.last_applied);
             }
 
             // There could be unknown membership in the snapshot.
