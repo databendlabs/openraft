@@ -199,6 +199,31 @@ Check our <a href="https://github.com/datafuselabs/openraft/blob/main/change-log
 </ul>
 <p>A full list of changes/fixes can be found in <a href="https://github.com/datafuselabs/openraft/blob/main/change-log.md">change-log</a></p>
 </details>
+<h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
+<ul>
+<li><input disabled="" type="checkbox"/>
+<p>Support only one membership-change algo: joint; </p>
+</li>
+<li><input disabled="" type="checkbox"/>
+<p>Reduce the complexity of vote and pre-vote: <a href="https://github.com/datafuselabs/openraft/discussions/15">get rid of pre-vote RPC</a>;</p>
+</li>
+<li><input disabled="" type="checkbox"/>
+<p>Reduce confliction rate when electing;
+Allow leadership to be taken in one term by a node with greater node-id.</p>
+</li>
+<li><input disabled="" type="checkbox"/>
+<p>Support flexible quorum, e.g.:<a href="https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html">Hierarchical Quorums</a></p>
+</li>
+<li><input disabled="" type="checkbox"/>
+<p>Consider introducing read-quorum and write-quorum,
+improve efficiency with a cluster with an even number of nodes.</p>
+</li>
+</ul>
+<!--
+   - - [ ] Consider to separate log storage and log order storage.
+   -   Leader only determines and replicates the index of log entries, not log
+   -   payload.
+   -->
 <h1 id="features"><a class="header" href="#features">Features</a></h1>
 <ul>
 <li>
