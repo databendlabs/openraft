@@ -38,7 +38,8 @@ where
         }
 
         let (last_applied, _) = self.inner().last_applied_state().await?;
-        let last_log_id = self.inner().last_id_in_log().await?;
+        let (_, last) = self.inner().get_log_state().await?;
+        let last_log_id = last.expect("last_log_id should not be None.");
 
         if last_log_id.index > last_applied.index && last_log_id < last_applied {
             return Err(
@@ -176,10 +177,10 @@ where
     /// Find the last known log id from log or state machine
     /// If no log id found, the default one `0,0` is returned.
     async fn last_log_id(&self) -> Result<LogId, StorageError> {
-        let log_last_id = self.inner().last_id_in_log().await?;
+        let (_, log_last_id) = self.inner().get_log_state().await?;
         let (sm_last_id, _) = self.inner().last_applied_state().await?;
 
-        Ok(std::cmp::max(log_last_id, sm_last_id))
+        Ok(std::cmp::max(log_last_id.unwrap_or_default(), sm_last_id))
     }
 
     /// The entries to apply to state machien has to be last_applied_log_id.index + 1

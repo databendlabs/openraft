@@ -135,8 +135,7 @@ where
     /// If no such membership log is found, it returns `None`, e.g., when logs are cleaned after being applied.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn last_membership_in_log(&self, since_index: u64) -> Result<Option<EffectiveMembership>, StorageError> {
-        let last_log_id = self.last_id_in_log().await?;
-        let first_log_id = self.first_id_in_log().await?;
+        let (first_log_id, last_log_id) = self.get_log_state().await?;
 
         let first_log_id = match first_log_id {
             None => {
@@ -146,7 +145,7 @@ where
             Some(x) => x,
         };
 
-        let mut end = last_log_id.index + 1;
+        let mut end = last_log_id.unwrap().index + 1;
         let start = std::cmp::max(first_log_id.index, since_index);
         let step = 64;
 
@@ -204,13 +203,13 @@ where
     /// It does not return an error if in defensive mode and the log entry at `log_index` is not found.
     async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>, StorageError>;
 
-    /// Returns the first log id in log.
+    /// Returns the fist log id and last log id in log.
     ///
     /// The impl should not consider the applied log id in state machine.
-    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError>;
+    async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError>;
 
     async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
-        let first = self.first_id_in_log().await?;
+        let (first, _) = self.get_log_state().await?;
         let (last_applied, _) = self.last_applied_state().await?;
 
         if let Some(x) = first {
@@ -219,11 +218,6 @@ where
 
         Ok(last_applied)
     }
-
-    /// Returns the last log id in log.
-    ///
-    /// The impl should not consider the applied log id in state machine.
-    async fn last_id_in_log(&self) -> Result<LogId, StorageError>;
 
     /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
     /// membership config.
