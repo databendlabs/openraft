@@ -4,9 +4,9 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use maplit::btreeset;
-use openraft::raft::Membership;
 use openraft::DefensiveCheck;
 use openraft::DefensiveError;
+use openraft::Membership;
 use openraft::StoreExt;
 use openraft::Violation;
 

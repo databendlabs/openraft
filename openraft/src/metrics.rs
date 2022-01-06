@@ -19,8 +19,8 @@ use tokio::time::Instant;
 
 use crate::core::EffectiveMembership;
 use crate::core::State;
-use crate::raft::Membership;
 use crate::LogId;
+use crate::Membership;
 use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftError;

@@ -6,10 +6,10 @@ use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::raft::Membership;
 use openraft::AppData;
 use openraft::Config;
 use openraft::LogId;
+use openraft::Membership;
 use openraft::State;
 
 use crate::fixtures::RaftRouter;
