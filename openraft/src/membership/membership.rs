@@ -9,7 +9,7 @@ use maplit::btreeset;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::quorum;
+use crate::membership::quorum;
 use crate::MessageSummary;
 use crate::NodeId;
 
