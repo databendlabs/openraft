@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
@@ -12,8 +11,7 @@ use openraft::LogId;
 use openraft::RaftStorage;
 use openraft::State;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Too many inconsistent log should not block replication.
 ///
