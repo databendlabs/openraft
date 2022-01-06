@@ -57,7 +57,7 @@ use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
-use crate::storage::HardState;
+use crate::storage::{HardState, InitialState};
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -221,13 +221,21 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
     async fn main(mut self) -> RaftResult<()> {
         tracing::debug!("raft node is initializing");
-        if let Some(state) = self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))? {
-            self.last_log_id = state.last_log_id;
-            self.current_term = state.hard_state.current_term;
-            self.voted_for = state.hard_state.voted_for;
-            self.effective_membership = state.last_membership.clone();
-            self.last_applied = state.last_applied;
-        }
+
+        // NOTE: get_initial_state will return None, if Raft node is first startup.
+        let state = if let Some(init_state) = self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))?{
+            init_state
+        }else {
+            let init_state = InitialState::new_initial(self.id);
+            self.storage.save_hard_state(&init_state.hard_state).await.map_err(|err| self.map_storage_error(err))?;
+            init_state
+        };
+
+        self.last_log_id = state.last_log_id;
+        self.current_term = state.hard_state.current_term;
+        self.voted_for = state.hard_state.voted_for;
+        self.effective_membership = state.last_membership.clone();
+        self.last_applied = state.last_applied;
 
         // NOTE: this is repeated here for clarity. It is unsafe to initialize the node's commit
         // index to any other value. The commit index must be determined by a leader after

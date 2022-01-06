@@ -160,12 +160,6 @@ impl RaftStorageDebug<MemStoreStateMachine> for MemStore {
 impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     type SnapshotData = Cursor<Vec<u8>>;
 
-    async fn initialize(&self) -> Result<(), StorageError> {
-        let state = InitialState::new_initial(self.id);
-        self.save_hard_state(&state.hard_state).await?;
-        Ok(())
-    }
-
     async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError> {
         let hs = self.read_hard_state().await?;
         match hs {
