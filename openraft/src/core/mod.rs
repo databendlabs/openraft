@@ -52,7 +52,6 @@ use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
-use crate::raft::Membership;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::replication::ReplicaEvent;
@@ -62,6 +61,7 @@ use crate::storage::InitialState;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::Membership;
 use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftNetwork;
@@ -229,7 +229,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         {
             init_state
         } else {
-            let init_state = InitialState::new_initial(self.id);
+            let init_state = InitialState::new(self.id);
             self.storage
                 .save_hard_state(&init_state.hard_state)
                 .await

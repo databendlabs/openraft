@@ -3,9 +3,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::raft::Membership;
 use openraft::Config;
 use openraft::LogId;
+use openraft::Membership;
 use openraft::MessageSummary;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;

@@ -4,10 +4,10 @@ use anyhow::Result;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::EntryPayload;
-use openraft::raft::Membership;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::LogId;
+use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
 

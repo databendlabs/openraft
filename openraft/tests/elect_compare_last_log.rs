@@ -6,10 +6,10 @@ use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::raft::Membership;
 use openraft::storage::HardState;
 use openraft::Config;
 use openraft::LogId;
+use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
 

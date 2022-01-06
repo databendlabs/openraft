@@ -15,7 +15,7 @@ use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
-use crate::quorum;
+use crate::membership::quorum;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;

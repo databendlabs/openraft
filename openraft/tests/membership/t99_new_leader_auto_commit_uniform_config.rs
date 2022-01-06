@@ -4,9 +4,9 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::raft::Membership;
 use openraft::Config;
 use openraft::LogId;
+use openraft::Membership;
 use openraft::Raft;
 use openraft::RaftStorage;
 
