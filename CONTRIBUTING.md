@@ -29,6 +29,10 @@ mdbook watch
 
 ## Release checklist
 
+- `make`: pass the unit test, format and clippy check.
+
 - Any documentation updates should also be reflected in the guide.
+
 - Ensure the Cargo.toml version for openraft or memstore has been updated, depending on which is being released.
+
 - Once the release CI has been finished, navigate to the release page, update the release info and publish the release.

@@ -185,7 +185,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                     last_membership: membership,
                 }))
             }
-            None => Ok(None)
+            None => Ok(None),
         }
     }
 

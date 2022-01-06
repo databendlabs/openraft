@@ -1,4 +1,4 @@
-all: test lint
+all: test lint fmt
 
 test:
 	cargo test

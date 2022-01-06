@@ -269,7 +269,7 @@ where
         let store = builder.build(NODE_ID).await;
 
         let initial = store.get_initial_state().await?;
-        assert_eq!(initial.is_none(), true,"unexpected initial state");
+        assert_eq!(initial.is_none(), true, "unexpected initial state");
         Ok(())
     }
 
