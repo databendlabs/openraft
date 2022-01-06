@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use memstore::ClientRequest;
 use openraft::raft::AppendEntriesRequest;
@@ -15,9 +14,7 @@ use openraft::RaftStorage;
 use openraft::State;
 
 use crate::fixtures::ent;
-
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Test append-entries response in every case.
 ///

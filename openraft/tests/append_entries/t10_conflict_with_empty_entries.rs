@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use memstore::ClientRequest;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
@@ -10,8 +9,7 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::RaftNetwork;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Cluster conflict_with_empty_entries test.
 ///
