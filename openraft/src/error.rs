@@ -126,19 +126,17 @@ pub enum ClientWriteError {
 #[derive(Debug, thiserror::Error, PartialEq)]
 #[non_exhaustive]
 pub enum ConfigError {
-    /// A configuration error indicating that the given values for election timeout min & max are invalid: max must be
-    /// greater than min.
-    #[error("given values for election timeout min & max are invalid: max must be greater than min")]
-    InvalidElectionTimeoutMinMax,
+    #[error("election timeout: min({min}) must be < max({max})")]
+    ElectionTimeout { min: u64, max: u64 },
 
-    /// The given value for max_payload_entries is too small, must be > 0.
-    #[error("the given value for max_payload_entries is too small, must be > 0")]
-    MaxPayloadEntriesTooSmall,
+    #[error("max_payload_entries must be > 0")]
+    MaxPayloadIs0,
 
-    /// election_timeout_min smaller than heartbeat_interval would cause endless election.
-    /// A recommended election_timeout_min value is about 3 times heartbeat_interval.
-    #[error("election_timeout_min value must be > heartbeat_interval")]
-    ElectionTimeoutLessThanHeartBeatInterval,
+    #[error("election_timeout_min({election_timeout_min}) must be > heartbeat_interval({heartbeat_interval})")]
+    ElectionTimeoutLTHeartBeat {
+        election_timeout_min: u64,
+        heartbeat_interval: u64,
+    },
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
