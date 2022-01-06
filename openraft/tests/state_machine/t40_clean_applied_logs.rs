@@ -2,14 +2,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftStorage;
 use tokio::time::sleep;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Logs should be deleted by raft after applying them, on leader and learner.
 ///
