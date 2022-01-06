@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftStorageDebug;
 use openraft::State;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Cluster metrics_state_machine_consistency test.
 ///

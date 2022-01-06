@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
 use maplit::hashmap;
@@ -17,8 +16,7 @@ use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
 use pretty_assertions::assert_ne;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Cluster leader_metrics test.
 ///
