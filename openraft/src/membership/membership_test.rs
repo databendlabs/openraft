@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use maplit::btreemap;
 use maplit::btreeset;
 
-use crate::raft::Membership;
+use crate::Membership;
 use crate::NodeId;
 
 #[test]

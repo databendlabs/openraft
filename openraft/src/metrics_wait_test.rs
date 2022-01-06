@@ -7,8 +7,8 @@ use tokio::time::sleep;
 use crate::core::EffectiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
-use crate::raft::Membership;
 use crate::LogId;
+use crate::Membership;
 use crate::RaftMetrics;
 use crate::State;
 

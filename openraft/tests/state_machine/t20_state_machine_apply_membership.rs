@@ -3,10 +3,10 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures::stream::StreamExt;
 use maplit::btreeset;
-use openraft::raft::Membership;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::LogId;
+use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
 

@@ -13,12 +13,12 @@ use tokio::io::AsyncWrite;
 use crate::core::EffectiveMembership;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
-use crate::raft::Membership;
 use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::Membership;
 use crate::NodeId;
 use crate::StorageError;
 

@@ -5,8 +5,6 @@ pub mod config;
 mod core;
 pub mod error;
 pub mod metrics;
-#[cfg(test)]
-mod metrics_wait_test;
 pub mod network;
 mod quorum;
 pub mod raft;
@@ -17,10 +15,12 @@ mod storage_error;
 mod summary;
 
 mod defensive;
-#[cfg(test)]
-mod membership_test;
+mod membership;
 mod store_ext;
 mod store_wrapper;
+
+#[cfg(test)]
+mod metrics_wait_test;
 
 pub use async_trait;
 use serde::de::DeserializeOwned;
@@ -39,6 +39,7 @@ pub use crate::error::ConfigError;
 pub use crate::error::InitializeError;
 pub use crate::error::RaftError;
 pub use crate::error::ReplicationError;
+pub use crate::membership::Membership;
 pub use crate::metrics::RaftMetrics;
 pub use crate::network::RaftNetwork;
 pub use crate::raft::Raft;

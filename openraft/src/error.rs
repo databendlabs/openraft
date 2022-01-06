@@ -4,9 +4,9 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::time::Duration;
 
-use crate::raft::Membership;
 use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
+use crate::Membership;
 use crate::NodeId;
 use crate::StorageError;
 
