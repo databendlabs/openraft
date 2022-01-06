@@ -57,7 +57,8 @@ use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
-use crate::storage::{HardState, InitialState};
+use crate::storage::HardState;
+use crate::storage::InitialState;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -223,11 +224,16 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tracing::debug!("raft node is initializing");
 
         // NOTE: get_initial_state will return None, if Raft node is first startup.
-        let state = if let Some(init_state) = self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))?{
+        let state = if let Some(init_state) =
+            self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))?
+        {
             init_state
-        }else {
+        } else {
             let init_state = InitialState::new_initial(self.id);
-            self.storage.save_hard_state(&init_state.hard_state).await.map_err(|err| self.map_storage_error(err))?;
+            self.storage
+                .save_hard_state(&init_state.hard_state)
+                .await
+                .map_err(|err| self.map_storage_error(err))?;
             init_state
         };
 
