@@ -57,7 +57,7 @@ use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
-use crate::storage::HardState;
+use crate::storage::{HardState, InitialState};
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -222,7 +222,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn main(mut self) -> RaftResult<()> {
         tracing::debug!("raft node is initializing");
 
-        let state = self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))?;
+        // NOTE: get_initial_state will return None, if Raft node is first startup.
+        let state = if let Some(init_state) = self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))?{
+            init_state
+        }else {
+            let init_state = InitialState::new_initial(self.id);
+            self.storage.save_hard_state(&init_state.hard_state).await.map_err(|err| self.map_storage_error(err))?;
+            init_state
+        };
+
         self.last_log_id = state.last_log_id;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
