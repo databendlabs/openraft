@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
@@ -13,8 +12,7 @@ use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 use openraft::State;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Compaction test.
 ///
