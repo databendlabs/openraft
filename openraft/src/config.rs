@@ -144,15 +144,21 @@ impl Config {
     /// Validate the state of this config.
     pub fn validate(self) -> Result<Config, ConfigError> {
         if self.election_timeout_min >= self.election_timeout_max {
-            return Err(ConfigError::InvalidElectionTimeoutMinMax);
+            return Err(ConfigError::ElectionTimeout {
+                min: self.election_timeout_min,
+                max: self.election_timeout_max,
+            });
         }
 
         if self.election_timeout_min <= self.heartbeat_interval {
-            return Err(ConfigError::ElectionTimeoutLessThanHeartBeatInterval);
+            return Err(ConfigError::ElectionTimeoutLTHeartBeat {
+                election_timeout_min: self.election_timeout_min,
+                heartbeat_interval: self.heartbeat_interval,
+            });
         }
 
         if self.max_payload_entries == 0 {
-            return Err(ConfigError::MaxPayloadEntriesTooSmall);
+            return Err(ConfigError::MaxPayloadIs0);
         }
 
         Ok(self)
