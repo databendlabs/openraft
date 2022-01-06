@@ -6,7 +6,6 @@ mod core;
 pub mod error;
 pub mod metrics;
 pub mod network;
-mod quorum;
 pub mod raft;
 mod raft_types;
 mod replication;
