@@ -269,7 +269,7 @@ where
         let store = builder.build(NODE_ID).await;
 
         let initial = store.get_initial_state().await?;
-        assert_eq!(initial.is_none(), true, "unexpected initial state");
+        assert!(initial.is_none(), "unexpected initial state");
         Ok(())
     }
 
@@ -454,14 +454,14 @@ where
             })
             .await?;
 
-        let post = store.get_initial_state().await?.unwrap();
+        let got = store.read_hard_state().await?;
 
         assert_eq!(
-            HardState {
+            Some(HardState {
                 current_term: 100,
                 voted_for: Some(NODE_ID),
-            },
-            post.hard_state,
+            }),
+            got,
         );
         Ok(())
     }
@@ -1093,14 +1093,14 @@ where
                 ..
             }));
 
-            let state = store.get_initial_state().await?.unwrap();
+            let hs = store.read_hard_state().await?;
 
             assert_eq!(
-                HardState {
+                Some(HardState {
                     current_term: 10,
                     voted_for: Some(NODE_ID),
-                },
-                state.hard_state,
+                }),
+                hs,
             );
         }
 
@@ -1129,14 +1129,14 @@ where
                 ..
             }));
 
-            let state = store.get_initial_state().await?.unwrap();
+            let hs = store.read_hard_state().await?;
 
             assert_eq!(
-                HardState {
+                Some(HardState {
                     current_term: 10,
                     voted_for: Some(NODE_ID),
-                },
-                state.hard_state,
+                }),
+                hs,
             );
         }
 
@@ -1165,14 +1165,14 @@ where
                 ..
             }));
 
-            let state = store.get_initial_state().await?.unwrap();
+            let hs = store.read_hard_state().await?;
 
             assert_eq!(
-                HardState {
+                Some(HardState {
                     current_term: 10,
                     voted_for: Some(NODE_ID),
-                },
-                state.hard_state,
+                }),
+                hs
             );
         }
 

@@ -229,7 +229,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         {
             init_state
         } else {
-            let init_state = InitialState::new_initial(self.id);
+            let init_state = InitialState::new(self.id);
             self.storage
                 .save_hard_state(&init_state.hard_state)
                 .await
