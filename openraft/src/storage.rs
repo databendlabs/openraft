@@ -172,8 +172,8 @@ where
     ///
     /// When the Raft node is first started, it will call this interface on the storage system to
     /// fetch the last known state from stable storage. If no such entry exists due to being the
-    /// first time the node has come online, then `InitialState::new_initial` should be used.
-    async fn get_initial_state(&self) -> Result<InitialState, StorageError>;
+    /// first time the node has come online, will returns `None`.
+    async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError>;
 
     /// Save Raft's hard-state.
     ///

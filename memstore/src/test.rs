@@ -89,7 +89,7 @@ where
         run_fut(Suite::last_membership_in_log(builder))?;
         run_fut(Suite::get_membership_initial(builder))?;
         run_fut(Suite::get_membership_from_log_and_sm(builder))?;
-        run_fut(Suite::get_initial_state_default(builder))?;
+        run_fut(Suite::get_initial_state_without_init(builder))?;
         run_fut(Suite::get_initial_state_membership_from_log_and_sm(builder))?;
         run_fut(Suite::get_initial_state_with_state(builder))?;
         run_fut(Suite::get_initial_state_last_log_gt_sm(builder))?;
@@ -265,36 +265,11 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_default(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_initial_state_without_init(builder: &B) -> anyhow::Result<()> {
         let store = builder.build(NODE_ID).await;
 
-        let expected_hs = HardState {
-            current_term: 0,
-            voted_for: None,
-        };
-
         let initial = store.get_initial_state().await?;
-
-        assert_eq!(
-            initial.last_log_id,
-            LogId { term: 0, index: 0 },
-            "unexpected default value for last log"
-        );
-        assert_eq!(
-            initial.last_applied,
-            LogId { term: 0, index: 0 },
-            "unexpected value for last applied log"
-        );
-
-        assert_eq!(
-            Membership::new_single(btreeset! {NODE_ID}),
-            initial.last_membership.membership,
-        );
-
-        assert_eq!(
-            initial.hard_state, expected_hs,
-            "unexpected value for default hard state"
-        );
+        assert_eq!(initial.is_none(), true,"unexpected initial state");
         Ok(())
     }
 
@@ -316,7 +291,7 @@ where
             }])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = store.get_initial_state().await?.unwrap();
 
         assert_eq!(
             initial.last_log_id,
@@ -362,7 +337,7 @@ where
                 ])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 Membership::new_single(btreeset! {3,4,5}),
@@ -379,7 +354,7 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 Membership::new_single(btreeset! {3,4,5}),
@@ -396,7 +371,7 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 Membership::new_single(btreeset! {1,2,3}),
@@ -431,7 +406,7 @@ where
             ])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = store.get_initial_state().await?.unwrap();
 
         assert_eq!(
             initial.last_log_id,
@@ -459,7 +434,7 @@ where
             }])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = store.get_initial_state().await?.unwrap();
 
         assert_eq!(
             initial.last_log_id,
@@ -479,7 +454,7 @@ where
             })
             .await?;
 
-        let post = store.get_initial_state().await?;
+        let post = store.get_initial_state().await?.unwrap();
 
         assert_eq!(
             HardState {
@@ -1118,7 +1093,7 @@ where
                 ..
             }));
 
-            let state = store.get_initial_state().await?;
+            let state = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 HardState {
@@ -1154,7 +1129,7 @@ where
                 ..
             }));
 
-            let state = store.get_initial_state().await?;
+            let state = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 HardState {
@@ -1190,7 +1165,7 @@ where
                 ..
             }));
 
-            let state = store.get_initial_state().await?;
+            let state = store.get_initial_state().await?.unwrap();
 
             assert_eq!(
                 HardState {

@@ -92,7 +92,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_initial_state(&self) -> Result<InitialState, StorageError> {
+    async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError> {
         self.defensive_no_dirty_log().await?;
         self.inner().get_initial_state().await
     }

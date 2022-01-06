@@ -160,7 +160,7 @@ impl RaftStorageDebug<MemStoreStateMachine> for MemStore {
 impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     type SnapshotData = Cursor<Vec<u8>>;
 
-    async fn get_initial_state(&self) -> Result<InitialState, StorageError> {
+    async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError> {
         let hs = self.read_hard_state().await?;
         match hs {
             Some(inner) => {
@@ -178,18 +178,14 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 let membership = self.get_membership().await?;
                 let membership = membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
 
-                Ok(InitialState {
+                Ok(Some(InitialState {
                     last_log_id,
                     last_applied,
                     hard_state: inner.clone(),
                     last_membership: membership,
-                })
+                }))
             }
-            None => {
-                let new = InitialState::new_initial(self.id);
-                self.save_hard_state(&new.hard_state).await?;
-                Ok(new)
-            }
+            None => Ok(None)
         }
     }
 
