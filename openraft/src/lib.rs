@@ -20,6 +20,8 @@ mod store_ext;
 mod store_wrapper;
 
 #[cfg(test)]
+mod config_test;
+#[cfg(test)]
 mod metrics_wait_test;
 
 pub use async_trait;
