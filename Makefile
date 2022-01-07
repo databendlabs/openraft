@@ -1,6 +1,9 @@
-all: test lint fmt
+all: test lint fmt defensive_test
 
-test:
+defensive_test:
+	RAFT_STORE_DEFENSIVE=on cargo test
+
+test: lint fmt
 	cargo test
 
 fmt:
