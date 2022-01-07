@@ -39,16 +39,17 @@ where
 
         let (last_applied, _) = self.inner().last_applied_state().await?;
         let (_, last) = self.inner().get_log_state().await?;
-        let last_log_id = last.expect("last_log_id should not be None.");
 
-        if last_log_id.index > last_applied.index && last_log_id < last_applied {
-            return Err(
-                DefensiveError::new(ErrorSubject::Log(last_log_id), Violation::DirtyLog {
-                    higher_index_log_id: last_log_id,
-                    lower_index_log_id: last_applied,
-                })
-                .into(),
-            );
+        if let Some(last_log_id) = last {
+            if last_log_id.index > last_applied.index && last_log_id < last_applied {
+                return Err(
+                    DefensiveError::new(ErrorSubject::Log(last_log_id), Violation::DirtyLog {
+                        higher_index_log_id: last_log_id,
+                        lower_index_log_id: last_applied,
+                    })
+                    .into(),
+                );
+            }
         }
 
         Ok(())
