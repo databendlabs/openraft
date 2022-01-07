@@ -2,14 +2,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::metrics::WaitError;
 use openraft::Config;
 use openraft::State;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Test wait() utils
 ///

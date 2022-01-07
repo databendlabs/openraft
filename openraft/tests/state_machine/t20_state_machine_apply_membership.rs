@@ -1,18 +1,16 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use futures::stream::StreamExt;
 use maplit::btreeset;
-use openraft::raft::Membership;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::LogId;
+use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// All log should be applied to state machine.
 ///

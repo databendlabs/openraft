@@ -33,18 +33,27 @@ jobs:
           RUST_BACKTRACE: full
           RAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
 
-      # release build
+
       - name: Build | Release Mode
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --all-features
 
+
+      - name: Format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+
       - name: Clippy
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-targets -- -D warnings -A clippy::bool-assert-comparison
+
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2

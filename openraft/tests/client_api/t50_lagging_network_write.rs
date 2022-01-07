@@ -1,13 +1,12 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::State;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Lagging network test.
 ///
@@ -21,8 +20,6 @@ mod fixtures;
 async fn lagging_network_write() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
-
-    let timeout = Some(tokio::time::Duration::from_millis(2000));
 
     let config = Arc::new(
         Config {
@@ -40,7 +37,7 @@ async fn lagging_network_write() -> Result<()> {
     let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0], n_logs, timeout, "empty").await?;
+    router.wait_for_log(&btreeset![0], n_logs, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
@@ -49,7 +46,7 @@ async fn lagging_network_write() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     n_logs += 1;
 
-    router.wait_for_log(&btreeset![0], n_logs, timeout, "init").await?;
+    router.wait_for_log(&btreeset![0], n_logs, timeout(), "init").await?;
     router.wait_for_state(&btreeset![0], State::Leader, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(n_logs)).await;
 
@@ -60,21 +57,25 @@ async fn lagging_network_write() -> Result<()> {
     router.new_raft_node(2).await;
     router.add_learner(0, 2).await?;
 
-    router.wait_for_log(&btreeset![1, 2], n_logs, timeout, "learner init").await?;
+    router.wait_for_log(&btreeset![1, 2], n_logs, timeout(), "learner init").await?;
 
     router.client_request_many(0, "client", 1).await;
     n_logs += 1;
-    router.wait_for_log(&btreeset![0, 1, 2], n_logs, timeout, "write one log").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, timeout(), "write one log").await?;
 
     router.change_membership(0, btreeset![0, 1, 2]).await?;
     n_logs += 2;
     router.wait_for_state(&btreeset![0], State::Leader, None, "changed").await?;
     router.wait_for_state(&btreeset![1, 2], State::Follower, None, "changed").await?;
-    router.wait_for_log(&btreeset![0, 1, 2], n_logs, timeout, "3 candidates").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, timeout(), "3 candidates").await?;
 
     router.client_request_many(0, "client", 1).await;
     n_logs += 1;
-    router.wait_for_log(&btreeset![0, 1, 2], n_logs, timeout, "write 2nd log").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, timeout(), "write 2nd log").await?;
 
     Ok(())
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(2000))
 }

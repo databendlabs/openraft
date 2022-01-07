@@ -2,15 +2,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftStorage;
 use openraft::State;
 use tokio::sync::watch;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// The logs have to be applied in log index order.
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]

@@ -13,12 +13,12 @@ use tokio::io::AsyncWrite;
 use crate::core::EffectiveMembership;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
-use crate::raft::Membership;
 use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::Membership;
 use crate::NodeId;
 use crate::StorageError;
 
@@ -73,20 +73,16 @@ pub struct InitialState {
 }
 
 impl InitialState {
-    /// Create a new instance for a pristine Raft node.
-    ///
-    /// ### `id`
-    /// The ID of the Raft node.
-    pub fn new_initial(id: NodeId) -> Self {
+    pub fn new(id: NodeId) -> Self {
         Self {
-            last_log_id: LogId { term: 0, index: 0 },
-            last_applied: LogId { term: 0, index: 0 },
+            last_log_id: LogId::new(0, 0),
+            last_applied: LogId::new(0, 0),
             hard_state: HardState {
                 current_term: 0,
                 voted_for: None,
             },
             last_membership: EffectiveMembership {
-                log_id: LogId { term: 0, index: 0 },
+                log_id: LogId::new(0, 0),
                 membership: Membership::new_initial(id),
             },
         }

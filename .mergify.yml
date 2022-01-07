@@ -9,10 +9,11 @@ queue_rules:
 
 pull_request_rules:
 
-  - name: put o queue if approved
+  - name: put into queue if approved
     conditions:
       - "#approved-reviews-by>=1"
       - check-success=check-subject
+      - check-success=unittest (on)
     actions:
       queue:
         name: feature_queue
