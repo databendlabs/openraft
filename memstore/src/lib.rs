@@ -169,10 +169,8 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 // - the last log id
                 // - the last_applied log id in state machine.
 
-                let (_, last) = self.get_log_state().await?;
                 let (last_applied, _) = self.last_applied_state().await?;
-
-                let last_log_id = match last {
+                let last_log_id = match self.last_id_in_log().await? {
                     Some(log_last_id) => std::cmp::max(log_last_id, last_applied),
                     None => last_applied,
                 };

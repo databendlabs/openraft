@@ -204,6 +204,22 @@ where
     /// The impl should not consider the applied log id in state machine.
     async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError>;
 
+    /// Returns the first log id in log.
+    ///
+    /// The impl should not consider the applied log id in state machine.
+    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
+        let (first_log_id, _) = self.get_log_state().await?;
+        Ok(first_log_id)
+    }
+
+    /// Returns the last log id in log.
+    ///
+    /// The impl should not consider the applied log id in state machine.
+    async fn last_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
+        let (_, last_log_id) = self.get_log_state().await?;
+        Ok(last_log_id)
+    }
+
     async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
         let (first, _) = self.get_log_state().await?;
         let (last_applied, _) = self.last_applied_state().await?;
