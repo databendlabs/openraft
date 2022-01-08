@@ -10,8 +10,8 @@
         .          ‖                      .
         .          ‖ client_write(impl AppData) -> impl AppDataResponse
         .          ‖ client_read()        .
-        .          ‖ add_non_voter()      .
-        .          ‖ change_member()      .
+        .          ‖ add_learner()      .
+        .          ‖ change_membership()      .
         .          v                      .
         .          Raft                   .             .-------------> Raft -----.
         ...................................             |                         |
