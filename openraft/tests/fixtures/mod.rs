@@ -636,10 +636,11 @@ impl RaftRouter {
     ) -> anyhow::Result<()> {
         let rt = self.routing_table.read().await;
         for (id, (_node, storage)) in rt.iter() {
-            let log_last_id = storage.last_id_in_log().await?;
             let (sm_last_id, _) = storage.last_applied_state().await?;
-
-            let last_log_id = std::cmp::max(log_last_id, sm_last_id);
+            let last_log_id = match storage.last_id_in_log().await? {
+                Some(log_last_id) => std::cmp::max(log_last_id, sm_last_id),
+                None => sm_last_id,
+            };
 
             assert_eq!(
                 expect_last_log, last_log_id.index,

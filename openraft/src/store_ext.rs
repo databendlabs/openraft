@@ -138,18 +138,13 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
-        self.inner().first_id_in_log().await
+    async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError> {
+        self.inner().get_log_state().await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
         self.inner().first_known_log_id().await
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn last_id_in_log(&self) -> Result<LogId, StorageError> {
-        self.inner().last_id_in_log().await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

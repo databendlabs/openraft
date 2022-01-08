@@ -99,6 +99,7 @@ where
         run_fut(Suite::try_get_log_entry(builder))?;
         run_fut(Suite::initial_logs(builder))?;
         run_fut(Suite::first_known_log_id(builder))?;
+        run_fut(Suite::get_log_state(builder))?;
         run_fut(Suite::first_id_in_log(builder))?;
         run_fut(Suite::last_id_in_log(builder))?;
         run_fut(Suite::last_applied_state(builder))?;
@@ -585,6 +586,70 @@ where
         Ok(())
     }
 
+    pub async fn get_log_state(builder: &B) -> anyhow::Result<()> {
+        let store = builder.build(NODE_ID).await;
+        let (first_log_id, last_log_id) = store.get_log_state().await?;
+        assert_eq!(
+            Some(LogId::new(0, 0)),
+            first_log_id,
+            "store initialized with a log at 0"
+        );
+        assert_eq!(
+            Some(LogId::new(0, 0)),
+            last_log_id,
+            "last_log_id should equal to first_log_id when store initialized"
+        );
+
+        tracing::info!("--- only logs");
+        {
+            store
+                .append_to_log(&[
+                    &Entry {
+                        log_id: LogId { term: 1, index: 1 },
+                        payload: EntryPayload::Blank,
+                    },
+                    &Entry {
+                        log_id: LogId { term: 1, index: 2 },
+                        payload: EntryPayload::Blank,
+                    },
+                ])
+                .await?;
+
+            let (first_log_id, last_log_id) = store.get_log_state().await?;
+            assert_eq!(Some(LogId::new(0, 0)), first_log_id);
+            assert_eq!(Some(LogId::new(1, 2)), last_log_id);
+
+            store.delete_logs_from(0..1).await?;
+
+            let (first_log_id, last_log_id) = store.get_log_state().await?;
+            assert_eq!(Some(LogId::new(1, 1)), first_log_id);
+            assert_eq!(Some(LogId::new(1, 2)), last_log_id);
+        }
+
+        tracing::info!("--- last id in logs < last applied id in sm, only return the id in logs");
+        {
+            store
+                .apply_to_state_machine(&[&Entry {
+                    log_id: LogId { term: 1, index: 3 },
+                    payload: EntryPayload::Blank,
+                }])
+                .await?;
+            let (_, last_log_id) = store.get_log_state().await?;
+            assert_eq!(Some(LogId::new(1, 2)), last_log_id);
+        }
+
+        tracing::info!("--- no logs, return default");
+        {
+            store.delete_logs_from(..).await?;
+
+            let (first_log_id, last_log_id) = store.get_log_state().await?;
+            assert_eq!(None, first_log_id);
+            assert_eq!(None, last_log_id);
+        }
+
+        Ok(())
+    }
+
     pub async fn first_id_in_log(builder: &B) -> anyhow::Result<()> {
         let store = builder.build(NODE_ID).await;
 
@@ -630,7 +695,7 @@ where
         let store = builder.build(NODE_ID).await;
 
         let log_id = store.last_id_in_log().await?;
-        assert_eq!(LogId { term: 0, index: 0 }, log_id);
+        assert_eq!(Some(LogId { term: 0, index: 0 }), log_id);
 
         tracing::info!("--- only logs");
         {
@@ -648,7 +713,7 @@ where
                 .await?;
 
             let log_id = store.last_id_in_log().await?;
-            assert_eq!(LogId { term: 1, index: 2 }, log_id);
+            assert_eq!(Some(LogId { term: 1, index: 2 }), log_id);
         }
 
         tracing::info!("--- last id in logs < last applied id in sm, only return the id in logs");
@@ -660,7 +725,7 @@ where
                 }])
                 .await?;
             let log_id = store.last_id_in_log().await?;
-            assert_eq!(LogId { term: 1, index: 2 }, log_id);
+            assert_eq!(Some(LogId { term: 1, index: 2 }), log_id);
         }
 
         tracing::info!("--- no logs, return default");
@@ -668,7 +733,7 @@ where
             store.delete_logs_from(..).await?;
 
             let log_id = store.last_id_in_log().await?;
-            assert_eq!(LogId { term: 0, index: 0 }, log_id);
+            assert_eq!(None, log_id);
         }
 
         Ok(())
