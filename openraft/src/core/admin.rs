@@ -20,9 +20,9 @@ use crate::AppDataResponse;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
-use crate::RaftError;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::StorageError;
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
     /// Handle the admin `init_with_config` command.
@@ -112,13 +112,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         members: BTreeSet<NodeId>,
         blocking: bool,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
-    ) {
+    ) -> Result<(), StorageError> {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::EmptyMembership,
             )));
-            return;
+            return Ok(());
         }
 
         // The last membership config is not committed yet.
@@ -129,7 +129,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     membership_log_id: self.core.effective_membership.log_id,
                 },
             )));
-            return;
+            return Ok(());
         }
 
         let new_config;
@@ -145,7 +145,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                         to: members,
                     },
                 )));
-                return;
+                return Ok(());
             } else {
                 new_config = Membership::new_single(next_membership.clone());
             }
@@ -184,7 +184,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                                 distance: self.core.last_log_id.index.saturating_sub(node.matched.index),
                             },
                         )));
-                        return;
+                        return Ok(());
                     }
                 }
 
@@ -193,17 +193,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                         ChangeMembershipError::LearnerNotFound { node_id: *new_node },
                     )));
-                    return;
+                    return Ok(());
                 }
             }
         }
 
         // TODO(xp): 111 report metrics?
-        let res = self.append_membership_log(new_config, Some(tx)).await;
-
-        if let Err(e) = res {
-            tracing::error!("append joint log error: {:?}", e);
-        }
+        self.append_membership_log(new_config, Some(tx)).await?;
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=self.core.id))]
@@ -211,9 +208,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         mem: Membership,
         resp_tx: Option<RaftRespTx<ClientWriteResponse<R>, ClientWriteError>>,
-    ) -> Result<(), RaftError> {
+    ) -> Result<(), StorageError> {
         let payload = ClientWriteRequest::<D>::new_config(mem.clone());
-        let res = self.append_payload_to_log(payload.entry).await;
+        let entry = self.append_payload_to_log(payload.entry).await?;
 
         // Caveat: membership must be updated before commit check is done with the new config.
         self.core.effective_membership = EffectiveMembership {
@@ -223,26 +220,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         self.leader_report_metrics();
 
-        let entry = match res {
-            Ok(entry) => entry,
-            Err(err) => {
-                let err_str = err.to_string();
-                if let Some(tx) = resp_tx {
-                    let send_res = tx.send(Err(err.into()));
-                    if let Err(_e) = send_res {
-                        tracing::error!("send response res error");
-                    }
-                }
-                return Err(RaftError::RaftStorage(anyhow::anyhow!(err_str)));
-            }
-        };
-
         let cr_entry = ClientRequestEntry {
             entry: Arc::new(entry),
             tx: resp_tx,
         };
 
-        self.replicate_client_request(cr_entry).await;
+        self.replicate_client_request(cr_entry).await?;
 
         Ok(())
     }

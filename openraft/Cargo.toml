@@ -17,6 +17,7 @@ readme = "../README.md"
 
 [dependencies]
 anyhow = "1.0.32"
+anyerror = { version = "0.1.1", features=["anyhow"]}
 async-trait = "0.1.36"
 byte-unit = "4.0.12"
 bytes = "1.0"

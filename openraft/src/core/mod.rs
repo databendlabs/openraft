@@ -14,6 +14,7 @@ mod startup_test;
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use futures::future::AbortHandle;
@@ -41,10 +42,10 @@ use crate::core::client::ClientRequestEntry;
 use crate::error::AddLearnerError;
 use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
+use crate::error::ExtractFatal;
+use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
-use crate::error::RaftError;
-use crate::error::RaftResult;
 use crate::metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
 use crate::raft::AddLearnerResponse;
@@ -185,9 +186,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         rx_api: mpsc::UnboundedReceiver<(RaftMsg<D, R>, Span)>,
         tx_metrics: watch::Sender<RaftMetrics>,
         rx_shutdown: oneshot::Receiver<()>,
-    ) -> JoinHandle<RaftResult<()>> {
+    ) -> JoinHandle<Result<(), Fatal>> {
+        //
+
+        // TODO(xp): remove this.
         let membership = Membership::new_initial(id); // This is updated from storage in the main loop.
         let (tx_compaction, rx_compaction) = mpsc::channel(1);
+
         let this = Self {
             id,
             config,
@@ -209,10 +214,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             has_completed_initial_replication_to_sm: false,
             last_heartbeat: None,
             next_election_timeout: None,
+
             tx_compaction,
             rx_compaction,
+
             rx_api,
+
             tx_metrics,
+
             rx_shutdown,
         };
         tokio::spawn(this.main().instrument(trace_span!("spawn").or_current()))
@@ -220,20 +229,32 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// The main loop of the Raft protocol.
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
-    async fn main(mut self) -> RaftResult<()> {
+    async fn main(mut self) -> Result<(), Fatal> {
+        let res = self.do_main().await;
+        match res {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                tracing::error!(?err, "quit RaftCore::main on error");
+
+                let mut curr = self.tx_metrics.borrow().clone();
+                curr.running_state = Err(err.clone());
+                let _ = self.tx_metrics.send(curr);
+
+                Err(err)
+            }
+        }
+    }
+
+    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
+    async fn do_main(&mut self) -> Result<(), Fatal> {
         tracing::debug!("raft node is initializing");
 
         // NOTE: get_initial_state will return None, if Raft node is first startup.
-        let state = if let Some(init_state) =
-            self.storage.get_initial_state().await.map_err(|err| self.map_storage_error(err))?
-        {
+        let state = if let Some(init_state) = self.storage.get_initial_state().await? {
             init_state
         } else {
             let init_state = InitialState::new(self.id);
-            self.storage
-                .save_hard_state(&init_state.hard_state)
-                .await
-                .map_err(|err| self.map_storage_error(err))?;
+            self.storage.save_hard_state(&init_state.hard_state).await?;
             init_state
         };
 
@@ -249,7 +270,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.committed = LogId::new(0, 0);
 
         // Fetch the most recent snapshot in the system.
-        if let Some(snapshot) = self.storage.get_current_snapshot().await.map_err(|err| self.map_storage_error(err))? {
+        if let Some(snapshot) = self.storage.get_current_snapshot().await? {
             self.snapshot_last_log_id = snapshot.meta.last_log_id;
             self.report_metrics(Update::Ignore);
         }
@@ -297,10 +318,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // if some error has been encountered, or if a state change is required.
         loop {
             match &self.target_state {
-                State::Leader => LeaderState::new(&mut self).run().await?,
-                State::Candidate => CandidateState::new(&mut self).run().await?,
-                State::Follower => FollowerState::new(&mut self).run().await?,
-                State::Learner => LearnerState::new(&mut self).run().await?,
+                State::Leader => LeaderState::new(self).run().await?,
+                State::Candidate => CandidateState::new(self).run().await?,
+                State::Follower => FollowerState::new(self).run().await?,
+                State::Learner => LearnerState::new(self).run().await?,
                 State::Shutdown => {
                     tracing::info!("node has shutdown");
                     return Ok(());
@@ -318,6 +339,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         };
 
         let m = RaftMetrics {
+            running_state: Ok(()),
+
             id: self.id,
             state: self.target_state,
             current_term: self.current_term,
@@ -339,12 +362,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Save the Raft node's current hard state to disk.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_hard_state(&mut self) -> RaftResult<()> {
+    async fn save_hard_state(&mut self) -> Result<(), StorageError> {
         let hs = HardState {
             current_term: self.current_term,
             voted_for: self.voted_for,
         };
-        self.storage.save_hard_state(&hs).await.map_err(|err| self.map_storage_error(err))
+        self.storage.save_hard_state(&hs).await
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
@@ -415,27 +438,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
     }
 
-    /// Trigger the shutdown sequence due to a non-recoverable error from the storage layer.
-    ///
-    /// This method assumes that a storage error observed here is non-recoverable. As such, the
-    /// Raft node will be instructed to stop. If such behavior is not needed, then don't use this
-    /// interface.
-    #[tracing::instrument(level = "trace", skip(self))]
-    fn map_fatal_storage_error(&mut self, err: anyhow::Error) -> RaftError {
-        tracing::error!({error=?err, id=self.id}, "fatal storage error, shutting down");
-        self.set_target_state(State::Shutdown);
-        RaftError::RaftStorage(err)
-    }
-
-    fn map_storage_error(&mut self, err: StorageError) -> RaftError {
-        tracing::error!({error=?err, id=self.id}, "fatal storage error, shutting down");
-        self.set_target_state(State::Shutdown);
-        RaftError::RaftStorage(err.into())
-    }
-
     /// Update the node's current membership config & save hard state.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_membership(&mut self, cfg: EffectiveMembership) -> RaftResult<()> {
+    fn update_membership(&mut self, cfg: EffectiveMembership) {
         // If the given config does not contain this node's ID, it means one of the following:
         //
         // - the node is currently a learner and is replicating an old config to which it has
@@ -453,7 +458,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         } else {
             self.set_target_state(State::Learner);
         }
-        Ok(())
     }
 
     /// Update the system's snapshot state based on the given data.
@@ -729,7 +733,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Transition to the Raft leader state.
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="leader"))]
-    pub(self) async fn run(mut self) -> RaftResult<()> {
+    pub(self) async fn run(mut self) -> Result<(), Fatal> {
         // Spawn replication streams.
         let targets = self
             .core
@@ -753,11 +757,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         self.commit_initial_leader_entry().await?;
 
-        self.leader_loop().await
+        self.leader_loop().await?;
+
+        Ok(())
     }
 
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id))]
-    pub(self) async fn leader_loop(mut self) -> RaftResult<()> {
+    pub(self) async fn leader_loop(mut self) -> Result<(), Fatal> {
         loop {
             if !self.core.target_state.is_leader() {
                 tracing::info!("id={} state becomes: {:?}", self.core.id, self.core.target_state);
@@ -772,17 +778,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {
-                    self.handle_msg(msg).instrument(span).await;
+                    self.handle_msg(msg).instrument(span).await?;
                 },
+
                 Some(update) = self.core.rx_compaction.recv() => {
                     tracing::info!("leader recv from rx_compaction: {:?}", update);
                     self.core.update_snapshot_state(update);
                 }
+
                 Some((event, span)) = self.replication_rx.recv() => {
                     tracing::info!("leader recv from replication_rx: {:?}", event.summary());
-                    let _ent = span.enter();
-                    self.handle_replica_event(event).await;
+                    self.handle_replica_event(event).instrument(span).await?;
                 }
+
                 Ok(_) = &mut self.core.rx_shutdown => {
                     tracing::info!("leader recv from rx_shudown");
                     self.core.set_target_state(State::Shutdown);
@@ -792,24 +800,27 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "leader", id=self.core.id))]
-    pub async fn handle_msg(&mut self, msg: RaftMsg<D, R>) {
+    pub async fn handle_msg(&mut self, msg: RaftMsg<D, R>) -> Result<(), Fatal> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
-                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+                let res = self.core.handle_append_entries_request(rpc).await.extract_fatal()?;
+                let _ = tx.send(res);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let _ = tx.send(self.core.handle_vote_request(rpc).await);
+                let res = self.core.handle_vote_request(rpc).await.extract_fatal()?;
+                let _ = tx.send(res);
             }
             RaftMsg::InstallSnapshot { rpc, tx } => {
-                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+                let res = self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?;
+                let _ = tx.send(res);
             }
             RaftMsg::ClientReadRequest { tx } => {
                 self.handle_client_read_request(tx).await;
             }
             RaftMsg::ClientWriteRequest { rpc, tx } => {
-                self.handle_client_write_request(rpc, tx).await;
+                self.handle_client_write_request(rpc, tx).await?;
             }
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
@@ -818,9 +829,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 self.add_learner(id, tx, blocking);
             }
             RaftMsg::ChangeMembership { members, blocking, tx } => {
-                self.change_membership(members, blocking, tx).await;
+                self.change_membership(members, blocking, tx).await?;
             }
-        }
+        };
+
+        Ok(())
     }
 
     /// Report metrics with leader specific states.
@@ -884,7 +897,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Run the candidate loop.
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="candidate"))]
-    pub(self) async fn run(mut self) -> RaftResult<()> {
+    pub(self) async fn run(mut self) -> Result<(), Fatal> {
         // Each iteration of the outer loop represents a new term.
         loop {
             if !self.core.target_state.is_candidate() {
@@ -914,11 +927,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
                 tokio::select! {
                     _ = timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
-                    Some((res, peer)) = pending_votes.recv() => self.handle_vote_response(res, peer).await?,
-                    Some((msg,span)) = self.core.rx_api.recv() => {
-                        self.handle_msg(msg).instrument(span).await;
+
+                    Some((res, peer)) = pending_votes.recv() => {
+                        self.handle_vote_response(res, peer).await?;
                     },
+
+                    Some((msg,span)) = self.core.rx_api.recv() => {
+                        self.handle_msg(msg).instrument(span).await?;
+                    },
+
                     Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
+
                     Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
                 }
             }
@@ -926,17 +945,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "candidate", id=self.core.id))]
-    pub async fn handle_msg(&mut self, msg: RaftMsg<D, R>) {
+    pub async fn handle_msg(&mut self, msg: RaftMsg<D, R>) -> Result<(), Fatal> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
-                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+                let _ = tx.send(self.core.handle_append_entries_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let _ = tx.send(self.core.handle_vote_request(rpc).await);
+                let _ = tx.send(self.core.handle_vote_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::InstallSnapshot { rpc, tx } => {
-                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::ClientReadRequest { tx } => {
                 self.core.forward_client_read_request(tx);
@@ -953,7 +972,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_config_change_not_leader(tx);
             }
-        }
+        };
+        Ok(())
     }
 }
 
@@ -971,8 +991,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Run the follower loop.
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="follower"))]
-    pub(self) async fn run(mut self) -> RaftResult<()> {
+    pub(self) async fn run(mut self) -> Result<(), Fatal> {
         self.core.report_metrics(Update::Update(None));
+
         loop {
             if !self.core.target_state.is_follower() {
                 return Ok(());
@@ -986,28 +1007,31 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     tracing::debug!("timeout to recv a event, change to CandidateState");
                     self.core.set_target_state(State::Candidate)
                 },
+
                 Some((msg,span)) = self.core.rx_api.recv() => {
-                    self.handle_msg(msg).instrument(span).await;
+                    self.handle_msg(msg).instrument(span).await?;
                 },
+
                 Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
+
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }
     }
 
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "follower", id=self.core.id))]
-    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<D, R>) {
+    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<D, R>) -> Result<(), Fatal> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
-                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+                let _ = tx.send(self.core.handle_append_entries_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let _ = tx.send(self.core.handle_vote_request(rpc).await);
+                let _ = tx.send(self.core.handle_vote_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::InstallSnapshot { rpc, tx } => {
-                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::ClientReadRequest { tx } => {
                 self.core.forward_client_read_request(tx);
@@ -1024,7 +1048,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_config_change_not_leader(tx);
             }
-        }
+        };
+        Ok(())
     }
 }
 
@@ -1042,8 +1067,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Run the learner loop.
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="learner"))]
-    pub(self) async fn run(mut self) -> RaftResult<()> {
+    pub(self) async fn run(mut self) -> Result<(), Fatal> {
         self.core.report_metrics(Update::Update(None));
+
         loop {
             if !self.core.target_state.is_learner() {
                 return Ok(());
@@ -1054,27 +1080,32 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {
-                    self.handle_msg(msg).instrument(span).await;
+                    self.handle_msg(msg).instrument(span).await?;
                 },
-                Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
+
+                Some(update) = self.core.rx_compaction.recv() => {
+                    self.core.update_snapshot_state(update);
+                },
+
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
         }
     }
 
+    // TODO(xp): define a handle_msg method in RaftCore that decides what to do by current State.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "learner", id=self.core.id))]
-    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<D, R>) {
+    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<D, R>) -> Result<(), Fatal> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
-                let _ = tx.send(self.core.handle_append_entries_request(rpc).await);
+                let _ = tx.send(self.core.handle_append_entries_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let _ = tx.send(self.core.handle_vote_request(rpc).await);
+                let _ = tx.send(self.core.handle_vote_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::InstallSnapshot { rpc, tx } => {
-                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await);
+                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::ClientReadRequest { tx } => {
                 self.core.forward_client_read_request(tx);
@@ -1091,6 +1122,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_config_change_not_leader(tx);
             }
-        }
+        };
+        Ok(())
     }
 }

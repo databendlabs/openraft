@@ -17,11 +17,13 @@ use tracing::Span;
 use crate::config::Config;
 use crate::core::RaftCore;
 use crate::error::AddLearnerError;
+use crate::error::AppendEntriesError;
 use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
+use crate::error::Fatal;
 use crate::error::InitializeError;
-use crate::error::RaftError;
-use crate::error::RaftResult;
+use crate::error::InstallSnapshotError;
+use crate::error::VoteError;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::AppData;
@@ -37,7 +39,7 @@ use crate::SnapshotMeta;
 struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     tx_api: mpsc::UnboundedSender<(RaftMsg<D, R>, Span)>,
     rx_metrics: watch::Receiver<RaftMetrics>,
-    raft_handle: Mutex<Option<JoinHandle<RaftResult<()>>>>,
+    raft_handle: Mutex<Option<JoinHandle<Result<(), Fatal>>>>,
     tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
     marker_n: std::marker::PhantomData<N>,
     marker_s: std::marker::PhantomData<S>,
@@ -92,7 +94,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
+
         let raft_handle = RaftCore::spawn(id, config, network, storage, rx_api, tx_metrics, rx_shutdown);
+
         let inner = RaftInner {
             tx_api,
             rx_metrics,
@@ -109,7 +113,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
     #[tracing::instrument(level = "trace", skip(self, rpc), fields(rpc=%rpc.summary()))]
-    pub async fn append_entries(&self, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse, RaftError> {
+    pub async fn append_entries(
+        &self,
+        rpc: AppendEntriesRequest<D>,
+    ) -> Result<AppendEntriesResponse, AppendEntriesError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
     }
@@ -118,7 +125,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
-    pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, RaftError> {
+    pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, VoteError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
@@ -128,7 +135,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node up-to-speed
     /// with the leader (§7).
     #[tracing::instrument(level = "debug", skip(self, rpc), fields(snapshot_id=%rpc.meta.last_log_id))]
-    pub async fn install_snapshot(&self, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse, RaftError> {
+    pub async fn install_snapshot(
+        &self,
+        rpc: InstallSnapshotRequest,
+    ) -> Result<InstallSnapshotResponse, InstallSnapshotError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::InstallSnapshot { rpc, tx }, rx).await
     }
@@ -262,9 +272,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             tracing::info!(%res_err, "add learner: already exists");
 
             match res_err {
-                AddLearnerError::RaftError(raft_err) => {
-                    return Err(ClientWriteError::RaftError(raft_err));
-                }
                 // TODO(xp): test add learner on non-leader
                 AddLearnerError::ForwardToLeader(forward_err) => {
                     return Err(ClientWriteError::ForwardToLeader(forward_err))
@@ -273,6 +280,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                     tracing::info!(%node_id, "add learner: already exists");
                     continue;
                 }
+                AddLearnerError::Fatal(f) => return Err(ClientWriteError::Fatal(f)),
             }
         }
 
@@ -315,23 +323,25 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<D, R>, rx: RaftRespRx<T, E>) -> Result<T, E>
-    where E: From<RaftError> {
+    where E: From<Fatal> {
         let span = tracing::Span::current();
 
         let sum = mes.summary();
 
         let send_res = self.inner.tx_api.send((mes, span));
         if let Err(send_err) = send_res {
-            tracing::error!(%send_err, mes=%sum, "error send tx to RaftCore");
-            return Err(RaftError::ShuttingDown.into());
+            let err = self.inner.rx_metrics.borrow().running_state.clone().unwrap_err();
+            tracing::error!(%send_err, mes=%sum, last_error=?err, "error send tx to RaftCore");
+            return Err(err.into());
         }
 
         let recv_res = rx.await;
         let res = match recv_res {
             Ok(x) => x,
             Err(e) => {
-                tracing::error!(%e, mes=%sum, "error recv rx from RaftCore");
-                Err(RaftError::ShuttingDown.into())
+                let err = self.inner.rx_metrics.borrow().running_state.clone().unwrap_err();
+                tracing::error!(%e, mes=%sum, last_error=?err, "error recv rx from RaftCore");
+                Err(err.into())
             }
         };
 
@@ -403,15 +413,15 @@ pub struct AddLearnerResponse {
 pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     AppendEntries {
         rpc: AppendEntriesRequest<D>,
-        tx: RaftRespTx<AppendEntriesResponse, RaftError>,
+        tx: RaftRespTx<AppendEntriesResponse, AppendEntriesError>,
     },
     RequestVote {
         rpc: VoteRequest,
-        tx: RaftRespTx<VoteResponse, RaftError>,
+        tx: RaftRespTx<VoteResponse, VoteError>,
     },
     InstallSnapshot {
         rpc: InstallSnapshotRequest,
-        tx: RaftRespTx<InstallSnapshotResponse, RaftError>,
+        tx: RaftRespTx<InstallSnapshotResponse, InstallSnapshotError>,
     },
     ClientWriteRequest {
         rpc: ClientWriteRequest<D>,

@@ -45,7 +45,7 @@ async fn metrics_wait() -> Result<()> {
                 WaitError::Timeout(_, _) => {
                     // ok
                 }
-                WaitError::RaftError(_) => {
+                WaitError::ShuttingDown => {
                     panic!("unexpected error")
                 }
             }

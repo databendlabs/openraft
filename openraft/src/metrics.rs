@@ -19,16 +19,18 @@ use tokio::time::Instant;
 
 use crate::core::EffectiveMembership;
 use crate::core::State;
+use crate::error::Fatal;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::NodeId;
-use crate::RaftError;
 use crate::ReplicationMetrics;
 
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RaftMetrics {
+    pub running_state: Result<(), Fatal>,
+
     /// The ID of the Raft node.
     pub id: NodeId,
     /// The state of the Raft node.
@@ -94,6 +96,7 @@ impl RaftMetrics {
     pub(crate) fn new_initial(id: NodeId) -> Self {
         let membership_config = Membership::new_initial(id);
         Self {
+            running_state: Ok(()),
             id,
             state: State::Follower,
             current_term: 0,
@@ -116,8 +119,8 @@ pub enum WaitError {
     #[error("timeout after {0:?} when {1}")]
     Timeout(Duration, String),
 
-    #[error("{0}")]
-    RaftError(#[from] RaftError),
+    #[error("raft is shutting down")]
+    ShuttingDown,
 }
 
 /// Wait is a wrapper of RaftMetrics channel that impls several utils to wait for metrics to satisfy some condition.
@@ -177,14 +180,15 @@ impl Wait {
                             // metrics changed, continue the waiting loop
                         },
                         Err(err) => {
-                        tracing::debug!(
-                            "id={} error: {:?}; wait {:} latest: {:?}",
-                            latest.id,
-                            err,
-                            msg.to_string(),
-                            latest
-                        );
-                            return Err(WaitError::RaftError(RaftError::ShuttingDown));
+                            tracing::debug!(
+                                "id={} error: {:?}; wait {:} latest: {:?}",
+                                latest.id,
+                                err,
+                                msg.to_string(),
+                                latest
+                            );
+
+                            return Err(WaitError::ShuttingDown);
                         }
                     }
                 }

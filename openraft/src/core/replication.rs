@@ -10,7 +10,6 @@ use crate::core::SnapshotState;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
 use crate::error::AddLearnerError;
-use crate::error::RaftResult;
 use crate::raft::AddLearnerResponse;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
@@ -25,6 +24,7 @@ use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::ReplicationMetrics;
+use crate::StorageError;
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
@@ -55,25 +55,31 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Handle a replication event coming from one of the replication streams.
     #[tracing::instrument(level = "trace", skip(self, event), fields(event=%event.summary()))]
-    pub(super) async fn handle_replica_event(&mut self, event: ReplicaEvent<S::SnapshotData>) {
-        let res = match event {
-            ReplicaEvent::RevertToFollower { target, term } => self.handle_revert_to_follower(target, term).await,
-            ReplicaEvent::UpdateMatched { target, matched } => self.handle_update_matched(target, matched).await,
-            ReplicaEvent::NeedsSnapshot { target, tx } => self.handle_needs_snapshot(target, tx).await,
+    pub(super) async fn handle_replica_event(
+        &mut self,
+        event: ReplicaEvent<S::SnapshotData>,
+    ) -> Result<(), StorageError> {
+        match event {
+            ReplicaEvent::RevertToFollower { target, term } => {
+                self.handle_revert_to_follower(target, term).await?;
+            }
+            ReplicaEvent::UpdateMatched { target, matched } => {
+                self.handle_update_matched(target, matched).await?;
+            }
+            ReplicaEvent::NeedsSnapshot { target, tx } => {
+                self.handle_needs_snapshot(target, tx).await?;
+            }
             ReplicaEvent::Shutdown => {
                 self.core.set_target_state(State::Shutdown);
-                return;
             }
         };
 
-        if let Err(err) = res {
-            tracing::error!({error=%err}, "error while processing event from replication stream");
-        }
+        Ok(())
     }
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
     #[tracing::instrument(level = "trace", skip(self, term))]
-    async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> RaftResult<()> {
+    async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> Result<(), StorageError> {
         if term > self.core.current_term {
             self.core.update_current_term(term, None);
             self.core.save_hard_state().await?;
@@ -84,7 +90,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn handle_update_matched(&mut self, target: NodeId, matched: LogId) -> RaftResult<()> {
+    async fn handle_update_matched(&mut self, target: NodeId, matched: LogId) -> Result<(), StorageError> {
         // Update target's match index & check if it is awaiting removal.
 
         if let Some(state) = self.nodes.get_mut(&target) {
@@ -152,13 +158,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // Build a new ApplyLogsTask from each of the given client requests.
 
                 for request in self.awaiting_committed.drain(..=offset).collect::<Vec<_>>() {
-                    self.client_request_post_commit(request).await;
+                    self.client_request_post_commit(request).await?;
                 }
             }
         }
 
         // TODO(xp): does this update too frequently?
         self.leader_report_metrics();
+
         Ok(())
     }
 
@@ -208,15 +215,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         _: NodeId,
         tx: oneshot::Sender<Snapshot<S::SnapshotData>>,
-    ) -> RaftResult<()> {
+    ) -> Result<(), StorageError> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => *threshold,
         };
 
         // Check for existence of current snapshot.
-        let current_snapshot_opt =
-            self.core.storage.get_current_snapshot().await.map_err(|err| self.core.map_storage_error(err))?;
+        let current_snapshot_opt = self.core.storage.get_current_snapshot().await?;
 
         if let Some(snapshot) = current_snapshot_opt {
             // If snapshot exists, ensure its distance from the leader's last log index is <= half

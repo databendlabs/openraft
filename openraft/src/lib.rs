@@ -33,7 +33,6 @@ pub use crate::defensive::DefensiveCheck;
 pub use crate::error::ChangeMembershipError;
 pub use crate::error::ClientWriteError;
 pub use crate::error::InitializeError;
-pub use crate::error::RaftError;
 pub use crate::error::ReplicationError;
 pub use crate::membership::Membership;
 pub use crate::metrics::RaftMetrics;

@@ -6,7 +6,7 @@ use crate::core::CandidateState;
 use crate::core::RaftCore;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
-use crate::error::RaftResult;
+use crate::error::VoteError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::summary::MessageSummary;
@@ -15,13 +15,14 @@ use crate::AppDataResponse;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::StorageError;
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// An RPC invoked by candidates to gather votes (§5.2).
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(msg=%msg.summary()))]
-    pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> RaftResult<VoteResponse> {
+    pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> Result<VoteResponse, VoteError> {
         tracing::debug!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "start handle_vote_request");
 
         // If candidate's current term is less than this nodes current term, reject.
@@ -112,7 +113,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> RaftResult<()> {
+    pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {
         // If peer's term is greater than current term, revert to follower state.
 
         if res.term > self.core.current_term {

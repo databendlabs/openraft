@@ -60,7 +60,10 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         let mut req = req0.clone();
         req.offset = 2;
         let res = n.0.install_snapshot(req).await;
-        assert_eq!("expect: ss1+0, got: ss1+2", res.unwrap_err().to_string());
+        assert_eq!(
+            "snapshot segment id mismatch, expect: ss1+0, got: ss1+2",
+            res.unwrap_err().to_string()
+        );
     }
 
     tracing::info!("--- install and write ss1:[0,3)");
@@ -75,7 +78,10 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         req.offset = 3;
         req.meta.snapshot_id = "ss2".into();
         let res = n.0.install_snapshot(req).await;
-        assert_eq!("expect: ss1+3, got: ss2+3", res.unwrap_err().to_string());
+        assert_eq!(
+            "snapshot segment id mismatch, expect: ss1+3, got: ss2+3",
+            res.unwrap_err().to_string()
+        );
     }
 
     tracing::info!("-- write from offset=0 with different id, create a new session");
