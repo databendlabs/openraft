@@ -236,7 +236,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError> {
         let log = self.log.read().await;
         let first = log.iter().next().map(|(_, ent)| ent.log_id);
-        let last = log.iter().last().map(|(_, ent)| ent.log_id);
+        let last = log.iter().rev().next().map(|(_, ent)| ent.log_id);
         Ok((first, last))
     }
 
