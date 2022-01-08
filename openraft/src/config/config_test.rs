@@ -1,5 +1,5 @@
+use crate::config::error::ConfigError;
 use crate::Config;
-use crate::ConfigError;
 use crate::SnapshotPolicy;
 
 #[test]

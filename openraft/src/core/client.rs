@@ -212,7 +212,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         rpc: ClientWriteRequest<D>,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) {
-        let entry = match self.append_payload_to_log(rpc.entry).await {
+        let res = self.append_payload_to_log(rpc.entry).await;
+        let entry = match res {
             Ok(entry) => ClientRequestEntry {
                 entry: Arc::new(entry),
                 tx: Some(tx),
