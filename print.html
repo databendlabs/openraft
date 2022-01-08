@@ -601,8 +601,8 @@ Because internally, <code>watch::channel()</code> only stores one state.</p>
         .          ‖                      .
         .          ‖ client_write(impl AppData) -&gt; impl AppDataResponse
         .          ‖ client_read()        .
-        .          ‖ add_non_voter()      .
-        .          ‖ change_member()      .
+        .          ‖ add_learner()      .
+        .          ‖ change_membership()      .
         .          v                      .
         .          Raft                   .             .-------------&gt; Raft -----.
         ...................................             |                         |
