@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use structopt::StructOpt;
 
-use crate::error::ConfigError;
+use crate::config::error::ConfigError;
 
 /// Log compaction and snapshot policy.
 ///
