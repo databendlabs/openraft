@@ -1,9 +1,11 @@
 #![doc = include_str!("../README.md")]
 #![feature(backtrace)]
 
-pub mod config;
+mod config;
 mod core;
+mod defensive;
 pub mod error;
+mod membership;
 pub mod metrics;
 pub mod network;
 pub mod raft;
@@ -11,32 +13,25 @@ mod raft_types;
 mod replication;
 pub mod storage;
 mod storage_error;
-mod summary;
-
-mod defensive;
-mod membership;
 mod store_ext;
 mod store_wrapper;
+mod summary;
 
-#[cfg(test)]
-mod config_test;
 #[cfg(test)]
 mod metrics_wait_test;
 
 pub use async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-pub use store_ext::StoreExt;
-pub use store_wrapper::Wrapper;
 
 pub use crate::config::Config;
+pub use crate::config::ConfigError;
 pub use crate::config::SnapshotPolicy;
 pub use crate::core::EffectiveMembership;
 pub use crate::core::State;
 pub use crate::defensive::DefensiveCheck;
 pub use crate::error::ChangeMembershipError;
 pub use crate::error::ClientWriteError;
-pub use crate::error::ConfigError;
 pub use crate::error::InitializeError;
 pub use crate::error::RaftError;
 pub use crate::error::ReplicationError;
@@ -59,6 +54,8 @@ pub use crate::storage_error::ErrorVerb;
 pub use crate::storage_error::StorageError;
 pub use crate::storage_error::StorageIOError;
 pub use crate::storage_error::Violation;
+pub use crate::store_ext::StoreExt;
+pub use crate::store_wrapper::Wrapper;
 pub use crate::summary::MessageSummary;
 
 /// A Raft node's ID.
