@@ -37,17 +37,17 @@ where
             return Ok(());
         }
 
-        let (last_applied, _) = self.inner().last_applied_state().await?;
-        let last_log_id = self.inner().last_id_in_log().await?;
-
-        if last_log_id.index > last_applied.index && last_log_id < last_applied {
-            return Err(
-                DefensiveError::new(ErrorSubject::Log(last_log_id), Violation::DirtyLog {
-                    higher_index_log_id: last_log_id,
-                    lower_index_log_id: last_applied,
-                })
-                .into(),
-            );
+        if let Some(last_log_id) = self.inner().last_id_in_log().await? {
+            let (last_applied, _) = self.inner().last_applied_state().await?;
+            if last_log_id.index > last_applied.index && last_log_id < last_applied {
+                return Err(
+                    DefensiveError::new(ErrorSubject::Log(last_log_id), Violation::DirtyLog {
+                        higher_index_log_id: last_log_id,
+                        lower_index_log_id: last_applied,
+                    })
+                    .into(),
+                );
+            }
         }
 
         Ok(())
@@ -179,7 +179,7 @@ where
         let log_last_id = self.inner().last_id_in_log().await?;
         let (sm_last_id, _) = self.inner().last_applied_state().await?;
 
-        Ok(std::cmp::max(log_last_id, sm_last_id))
+        Ok(std::cmp::max(log_last_id.unwrap_or_default(), sm_last_id))
     }
 
     /// The entries to apply to state machien has to be last_applied_log_id.index + 1

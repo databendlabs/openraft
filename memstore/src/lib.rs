@@ -3,7 +3,6 @@
 #[cfg(test)]
 mod test;
 
-use std::cmp::max;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -170,10 +169,11 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 // - the last log id
                 // - the last_applied log id in state machine.
 
-                let last_in_log = self.last_id_in_log().await?;
                 let (last_applied, _) = self.last_applied_state().await?;
-
-                let last_log_id = max(last_in_log, last_applied);
+                let last_log_id = match self.last_id_in_log().await? {
+                    Some(log_last_id) => std::cmp::max(log_last_id, last_applied),
+                    None => last_applied,
+                };
 
                 let membership = self.get_membership().await?;
                 let membership = membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
@@ -233,16 +233,11 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(log.get(&log_index).cloned())
     }
 
-    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
+    async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError> {
         let log = self.log.read().await;
         let first = log.iter().next().map(|(_, ent)| ent.log_id);
-        Ok(first)
-    }
-
-    async fn last_id_in_log(&self) -> Result<LogId, StorageError> {
-        let log = self.log.read().await;
-        let last = log.iter().last().map(|(_, ent)| ent.log_id).unwrap_or_default();
-        Ok(last)
+        let last = log.iter().rev().next().map(|(_, ent)| ent.log_id);
+        Ok((first, last))
     }
 
     async fn last_applied_state(&self) -> Result<(LogId, Option<EffectiveMembership>), StorageError> {
