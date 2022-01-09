@@ -11,6 +11,7 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use anyerror::AnyError;
 use openraft::async_trait::async_trait;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
@@ -319,7 +320,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             // Serialize the data of the state machine.
             let sm = self.sm.read().await;
             data = serde_json::to_vec(&*sm)
-                .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, e.into()))?;
+                .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
 
             last_applied_log = sm.last_applied_log;
         }
@@ -392,7 +393,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                 StorageIOError::new(
                     ErrorSubject::Snapshot(new_snapshot.meta.clone()),
                     ErrorVerb::Read,
-                    e.into(),
+                    AnyError::new(&e),
                 )
             })?;
             let mut sm = self.sm.write().await;

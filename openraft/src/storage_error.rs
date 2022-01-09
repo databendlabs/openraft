@@ -2,13 +2,17 @@ use std::backtrace::Backtrace;
 use std::fmt::Formatter;
 use std::ops::Bound;
 
+use anyerror::AnyError;
+use serde::Deserialize;
+use serde::Serialize;
+
 use crate::storage::HardState;
 use crate::LogId;
 use crate::SnapshotMeta;
 
 /// An error that occurs when the RaftStore impl runs defensive check of input or output.
 /// E.g. re-applying an log entry is a violation that may be a potential bug.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DefensiveError {
     /// The subject that violates store defensive check, e.g. hard-state, log or state machine.
     pub subject: ErrorSubject,
@@ -16,7 +20,7 @@ pub struct DefensiveError {
     /// The description of the violation.
     pub violation: Violation,
 
-    pub backtrace: Backtrace,
+    pub backtrace: String,
 }
 
 impl DefensiveError {
@@ -24,7 +28,7 @@ impl DefensiveError {
         DefensiveError {
             subject,
             violation,
-            backtrace: Backtrace::capture(),
+            backtrace: format!("{:?}", Backtrace::capture()),
         }
     }
 }
@@ -35,7 +39,7 @@ impl std::fmt::Display for DefensiveError {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ErrorSubject {
     /// A general storage error
     Store,
@@ -65,15 +69,16 @@ pub enum ErrorSubject {
 }
 
 /// What it is doing when an error occurs.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ErrorVerb {
     Read,
     Write,
+    Seek,
     Delete,
 }
 
 /// Violations a store would return when running defensive check.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Violation {
     #[error("term can only be change to a greater value, current: {curr}, change to {to}")]
     TermNotAscending { curr: u64, to: u64 },
@@ -111,7 +116,7 @@ pub enum Violation {
 }
 
 /// A storage error could be either a defensive check error or an error occurred when doing the actual io operation.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StorageError {
     /// An error raised by defensive check.
     #[error(transparent)]
@@ -144,15 +149,20 @@ impl StorageError {
             _ => None,
         }
     }
+
+    pub fn from_io_error(subject: ErrorSubject, verb: ErrorVerb, io_error: std::io::Error) -> Self {
+        let sto_io_err = StorageIOError::new(subject, verb, AnyError::new(&io_error));
+        StorageError::IO { source: sto_io_err }
+    }
 }
 
 /// Error that occurs when operating the store.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorageIOError {
     subject: ErrorSubject,
     verb: ErrorVerb,
-    source: anyhow::Error,
-    backtrace: Backtrace,
+    source: AnyError,
+    backtrace: String,
 }
 
 impl std::fmt::Display for StorageIOError {
@@ -162,12 +172,13 @@ impl std::fmt::Display for StorageIOError {
 }
 
 impl StorageIOError {
-    pub fn new(subject: ErrorSubject, verb: ErrorVerb, source: anyhow::Error) -> StorageIOError {
+    pub fn new(subject: ErrorSubject, verb: ErrorVerb, source: AnyError) -> StorageIOError {
         StorageIOError {
             subject,
             verb,
             source,
-            backtrace: Backtrace::capture(),
+            // TODO: use crate backtrace instead of std::backtrace.
+            backtrace: format!("{:?}", Backtrace::capture()),
         }
     }
 }

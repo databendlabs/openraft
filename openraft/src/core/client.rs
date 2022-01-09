@@ -13,8 +13,7 @@ use crate::core::LeaderState;
 use crate::core::State;
 use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
-use crate::error::RaftError;
-use crate::error::RaftResult;
+use crate::error::QuorumNotEnough;
 use crate::membership::quorum;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteRequest;
@@ -52,7 +51,7 @@ impl<D: AppData, R: AppDataResponse> MessageSummary for ClientRequestEntry<D, R>
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Commit the initial entry which new leaders are obligated to create when first coming to power, per §8.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn commit_initial_leader_entry(&mut self) -> RaftResult<()> {
+    pub(super) async fn commit_initial_leader_entry(&mut self) -> Result<(), StorageError> {
         // If the cluster has just formed, and the current index is 0, then commit the current
         // config, else a blank payload.
         let last_index = self.core.last_log_id.index;
@@ -74,7 +73,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             tx: None,
         };
         // TODO(xp): it should update the lost_log_id
-        self.replicate_client_request(cr_entry).await;
+        self.replicate_client_request(cr_entry).await?;
 
         Ok(())
     }
@@ -200,9 +199,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // If we've hit this location, then we've failed to gather needed confirmations due to
         // request failures.
-        let _ = tx.send(Err(ClientReadError::RaftError(RaftError::RaftNetwork(anyhow!(
-            "too many requests failed, could not confirm leadership"
-        )))));
+
+        let _ = tx.send(Err(QuorumNotEnough {
+            cluster: self.core.effective_membership.membership.summary(),
+            // TODO(xp): it does not count c1_confirmed yet.
+            got: c0_confirmed as u64,
+        }
+        .into()));
     }
 
     /// Handle client write requests.
@@ -211,28 +214,22 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         rpc: ClientWriteRequest<D>,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
-    ) {
-        let res = self.append_payload_to_log(rpc.entry).await;
-        let entry = match res {
-            Ok(entry) => ClientRequestEntry {
-                entry: Arc::new(entry),
-                tx: Some(tx),
-            },
-
-            Err(err) => {
-                let _ = tx.send(Err(ClientWriteError::RaftError(err)));
-                return;
-            }
+    ) -> Result<(), StorageError> {
+        let entry = self.append_payload_to_log(rpc.entry).await?;
+        let entry = ClientRequestEntry {
+            entry: Arc::new(entry),
+            tx: Some(tx),
         };
 
         self.leader_report_metrics();
 
-        self.replicate_client_request(entry).await;
+        self.replicate_client_request(entry).await?;
+        Ok(())
     }
 
     /// Transform the given payload into an entry, assign an index and term, and append the entry to the log.
     #[tracing::instrument(level = "debug", skip(self, payload))]
-    pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> RaftResult<Entry<D>> {
+    pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> Result<Entry<D>, StorageError> {
         let entry = Entry {
             log_id: LogId {
                 index: self.core.last_log_id.index + 1,
@@ -240,7 +237,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             },
             payload,
         };
-        self.core.storage.append_to_log(&[&entry]).await.map_err(|err| self.core.map_storage_error(err))?;
+        self.core.storage.append_to_log(&[&entry]).await?;
 
         tracing::debug!("append log: {}", entry.summary());
         self.core.last_log_id.index = entry.log_id.index;
@@ -254,7 +251,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// merely beings the process. Once the request is committed to the cluster, its response will
     /// be generated asynchronously.
     #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
-    pub(super) async fn replicate_client_request(&mut self, req: ClientRequestEntry<D, R>) {
+    pub(super) async fn replicate_client_request(&mut self, req: ClientRequestEntry<D, R>) -> Result<(), StorageError> {
         // Replicate the request if there are other cluster members. The client response will be
         // returned elsewhere after the entry has been committed to the cluster.
         let entry_arc = req.entry.clone();
@@ -278,7 +275,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             tracing::debug!(%self.core.committed, "update committed, no need to replicate");
 
             self.leader_report_metrics();
-            self.client_request_post_commit(req).await;
+            self.client_request_post_commit(req).await?;
         }
 
         for node in self.nodes.values() {
@@ -290,26 +287,32 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 tracing::debug_span!("CH"),
             ));
         }
+
+        Ok(())
     }
 
     /// Handle the post-commit logic for a client request.
     #[tracing::instrument(level = "debug", skip(self, req))]
-    pub(super) async fn client_request_post_commit(&mut self, req: ClientRequestEntry<D, R>) {
+    pub(super) async fn client_request_post_commit(
+        &mut self,
+        req: ClientRequestEntry<D, R>,
+    ) -> Result<(), StorageError> {
         let entry = &req.entry;
 
-        let apply_res = self.apply_entry_to_state_machine(entry).await;
+        let apply_res = self.apply_entry_to_state_machine(entry).await?;
 
         self.send_response(entry, apply_res, req.tx).await;
 
         // Trigger log compaction if needed.
         self.core.trigger_log_compaction_if_needed(false);
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(self, entry, resp, tx), fields(entry=%entry.summary()))]
     pub(super) async fn send_response(
         &mut self,
         entry: &Entry<D>,
-        resp: RaftResult<R>,
+        resp: R,
         tx: Option<RaftRespTx<ClientWriteResponse<R>, ClientWriteError>>,
     ) {
         let tx = match tx {
@@ -317,25 +320,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             Some(x) => x,
         };
 
-        let res = match resp {
-            Ok(data) => {
-                let membership = if let EntryPayload::Membership(ref c) = entry.payload {
-                    Some(c.clone())
-                } else {
-                    None
-                };
-
-                Ok(ClientWriteResponse {
-                    log_id: entry.log_id,
-                    data,
-                    membership,
-                })
-            }
-            Err(raft_err) => {
-                tracing::error!(err=?raft_err, entry=%entry.summary(), "apply client entry");
-                Err(ClientWriteError::RaftError(raft_err))
-            }
+        let membership = if let EntryPayload::Membership(ref c) = entry.payload {
+            Some(c.clone())
+        } else {
+            None
         };
+
+        let res = Ok(ClientWriteResponse {
+            log_id: entry.log_id,
+            data: resp,
+            membership,
+        });
 
         let send_res = tx.send(res);
         tracing::debug!(
@@ -360,7 +355,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Apply the given log entry to the state machine.
     #[tracing::instrument(level = "debug", skip(self, entry))]
-    pub(super) async fn apply_entry_to_state_machine(&mut self, entry: &Entry<D>) -> RaftResult<R> {
+    pub(super) async fn apply_entry_to_state_machine(&mut self, entry: &Entry<D>) -> Result<R, StorageError> {
         self.handle_special_log(entry);
 
         // First, we just ensure that we apply any outstanding up to, but not including, the index
@@ -374,12 +369,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let expected_next_index = self.core.last_applied.index + 1;
         if index != expected_next_index {
-            let entries = self
-                .core
-                .storage
-                .get_log_entries(expected_next_index..index)
-                .await
-                .map_err(|err| self.core.map_storage_error(err))?;
+            let entries = self.core.storage.get_log_entries(expected_next_index..index).await?;
 
             if let Some(entry) = entries.last() {
                 self.core.last_applied = entry.log_id;
@@ -392,8 +382,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     &data_entries,
                     self.core.config.max_applied_log_to_keep,
                 )
-                .await
-                .map_err(|err| self.core.map_storage_error(err))?;
+                .await?;
             }
         }
 
@@ -403,25 +392,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             &[entry],
             self.core.config.max_applied_log_to_keep,
         )
-        .await;
+        .await?;
 
-        let res = apply_res.map_err(|err| {
-            if let StorageError::IO { .. } = err {
-                // If this is an instance of the storage impl's shutdown error, then trigger shutdown.
-                self.core.map_storage_error(err)
-            } else {
-                // TODO(xp): remove this
-                // Else, we propagate normally.
-                RaftError::RaftStorage(err.into())
-            }
-        });
-
+        // TODO(xp): deal with partial apply.
         self.core.last_applied = *log_id;
         self.leader_report_metrics();
-        let res = res?;
 
         // TODO(xp) merge this function to replication_to_state_machine?
 
-        Ok(res.into_iter().next().unwrap())
+        Ok(apply_res.into_iter().next().unwrap())
     }
 }

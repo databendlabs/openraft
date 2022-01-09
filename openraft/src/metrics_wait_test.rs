@@ -176,6 +176,7 @@ async fn test_wait() -> anyhow::Result<()> {
 /// Returns init metrics, Wait, and the tx to send an updated metrics.
 fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
     let init = RaftMetrics {
+        running_state: Ok(()),
         id: 0,
         state: State::Learner,
         current_term: 0,

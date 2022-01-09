@@ -2,7 +2,7 @@ use crate::core::apply_to_state_machine;
 use crate::core::RaftCore;
 use crate::core::State;
 use crate::core::UpdateCurrentLeader;
-use crate::error::RaftResult;
+use crate::error::AppendEntriesError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::Entry;
@@ -10,11 +10,14 @@ use crate::raft::EntryPayload;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::EffectiveMembership;
+use crate::ErrorSubject;
+use crate::ErrorVerb;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::RaftError;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::StorageError;
+use crate::StorageIOError;
 use crate::Update;
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
@@ -25,7 +28,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     pub(super) async fn handle_append_entries_request(
         &mut self,
         msg: AppendEntriesRequest<D>,
-    ) -> RaftResult<AppendEntriesResponse> {
+    ) -> Result<AppendEntriesResponse, AppendEntriesError> {
         tracing::debug!(%self.last_log_id, %self.last_applied, msg=%msg.summary(), "handle_append_entries_request");
 
         let msg_entries = msg.entries.as_slice();
@@ -94,24 +97,26 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //              +----------------+------------------------+
         //              ` 0              ` last_applied           ` last_log_id
 
-        return self.append_apply_log_entries(&msg.prev_log_id, msg_entries, valid_committed).await;
+        let res = self.append_apply_log_entries(&msg.prev_log_id, msg_entries, valid_committed).await?;
+
+        Ok(res)
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_logs(&mut self, start: u64) -> RaftResult<()> {
+    async fn delete_logs(&mut self, start: u64) -> Result<(), StorageError> {
         // TODO(xp): add a StorageAdapter to provide auxiliary APIs.
         //           e.g.:
         //           - extract and manage membership config.
         //           - keep track of last_log_id, first_log_id,
         //           RaftStorage should only provides the least basic APIs.
 
-        self.storage.delete_logs_from(start..).await.map_err(|err| self.map_storage_error(err))?;
+        self.storage.delete_logs_from(start..).await?;
 
         self.last_log_id = self.get_log_id(start - 1).await?;
 
         // TODO(xp): get_membership() should have a defensive check to ensure it always returns Some() if node is
         //           initialized. Because a node always commit a membership log as the first log entry.
-        let membership = self.storage.get_membership().await.map_err(|err| self.map_storage_error(err))?;
+        let membership = self.storage.get_membership().await?;
 
         // TODO(xp): This is a dirty patch:
         //           When a node starts in a single-node mode, it does not append an initial log
@@ -119,24 +124,32 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //           It would be better a node always append an initial log entry.
         let membership = membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
 
-        self.update_membership(membership)?;
+        self.update_membership(membership);
 
         Ok(())
     }
 
+    // TODO(xp): rename it to `find_last_log_id`.
+    //           If there is no log at all, it should return None.
+    // TODO(xp): self.last_log_id is not clear about what it is: if there is not log, it is set to `last_applied`.
+    //           Consider rename it.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn get_log_id(&mut self, index: u64) -> RaftResult<LogId> {
+    async fn get_log_id(&mut self, index: u64) -> Result<LogId, StorageError> {
         assert!(index >= self.last_applied.index);
 
         if index == self.last_applied.index {
             return Ok(self.last_applied);
         }
 
-        let entries = self.storage.get_log_entries(index..=index).await.map_err(|err| self.map_storage_error(err))?;
+        let entries = self.storage.get_log_entries(index..=index).await?;
 
-        let entry = entries
-            .first()
-            .ok_or_else(|| self.map_fatal_storage_error(anyhow::anyhow!("log entry not found at: {}", index)))?;
+        let entry = entries.first().ok_or_else(|| StorageError::IO {
+            source: StorageIOError::new(
+                ErrorSubject::LogIndex(index),
+                ErrorVerb::Read,
+                anyhow::anyhow!("not found").into(),
+            ),
+        })?;
 
         Ok(entry.log_id)
     }
@@ -181,7 +194,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// If log 5 is committed by R1, and log 3 is not removed, R5 in future could become a new leader and overrides log
     /// 5 on R3.
     #[tracing::instrument(level="trace", skip(self, msg_entries), fields(msg_entries=%msg_entries.summary()))]
-    async fn delete_inconsistent_log<'s, 'e>(&'s mut self, msg_entries: &'e [Entry<D>]) -> RaftResult<()> {
+    async fn delete_inconsistent_log<'s, 'e>(&'s mut self, msg_entries: &'e [Entry<D>]) -> Result<(), StorageError> {
         // all msg_entries are inconsistent logs
 
         tracing::debug!(msg_entries=%msg_entries.summary(), "try to delete_inconsistent_log");
@@ -210,7 +223,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Walks at most 50 entries backward to get an entry as the `prev_log_id` for next append-entries request.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn get_older_log_id(&mut self, prev_log_id: LogId) -> RaftResult<LogId> {
+    async fn get_older_log_id(&mut self, prev_log_id: LogId) -> Result<LogId, StorageError> {
         let start = prev_log_id.index.saturating_sub(50);
 
         if start <= self.last_applied.index {
@@ -223,7 +236,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(LogId { term: 0, index: 0 });
         }
 
-        let entries = self.storage.get_log_entries(start..=start).await.map_err(|err| self.map_storage_error(err))?;
+        let entries = self.storage.get_log_entries(start..=start).await?;
 
         let log_id = entries.first().unwrap().log_id;
 
@@ -238,7 +251,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         prev_log_id: &LogId,
         entries: &[Entry<D>],
         committed: LogId,
-    ) -> RaftResult<AppendEntriesResponse> {
+    ) -> Result<AppendEntriesResponse, StorageError> {
         let matching = self.does_log_id_match(prev_log_id).await?;
         tracing::debug!(
             "check prev_log_id {} match: committed: {}, matches: {}",
@@ -309,7 +322,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     pub async fn skip_matching_entries<'s, 'e>(
         &'s self,
         entries: &'e [Entry<D>],
-    ) -> RaftResult<(usize, &'e [Entry<D>])> {
+    ) -> Result<(usize, &'e [Entry<D>]), StorageError> {
         let l = entries.len();
 
         for i in 0..l {
@@ -321,7 +334,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             }
 
             // TODO(xp): this is a naive impl. Batch loading entries from storage.
-            let log = self.storage.try_get_log_entry(index).await.map_err(|err| RaftError::RaftStorage(err.into()))?;
+            let log = self.storage.try_get_log_entry(index).await?;
 
             if let Some(local) = log {
                 if local.log_id == log_id {
@@ -339,7 +352,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// This way to check if the entries in append-entries request is consecutive with local logs.
     /// Raft only accept consecutive logs to be appended.
-    pub async fn does_log_id_match(&self, remote_log_id: &LogId) -> RaftResult<bool> {
+    pub async fn does_log_id_match(&self, remote_log_id: &LogId) -> Result<bool, StorageError> {
         let index = remote_log_id.index;
 
         // Committed entries are always safe and are consistent to a valid leader.
@@ -347,7 +360,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(true);
         }
 
-        let log = self.storage.try_get_log_entry(index).await.map_err(|err| RaftError::RaftStorage(err.into()))?;
+        let log = self.storage.try_get_log_entry(index).await?;
         tracing::debug!(
             "check log id matching: local: {:?} remote: {}",
             log.as_ref().map(|x| x.log_id),
@@ -368,7 +381,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Configuration changes are also detected and applied here. See `configuration changes`
     /// in the raft-essentials.md in this repo.
     #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
-    async fn append_log_entries(&mut self, entries: &[Entry<D>]) -> RaftResult<()> {
+    async fn append_log_entries(&mut self, entries: &[Entry<D>]) -> Result<(), StorageError> {
         if entries.is_empty() {
             return Ok(());
         }
@@ -391,12 +404,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //           This task should be done by StorageAdaptor.
         if let Some(conf) = last_conf_change {
             tracing::debug!({membership=?conf}, "applying new membership config received from leader");
-            self.update_membership(conf)?;
+            self.update_membership(conf);
         };
 
         // Replicate entries to log (same as append, but in follower mode).
         let entry_refs = entries.iter().collect::<Vec<_>>();
-        self.storage.append_to_log(&entry_refs).await.map_err(|err| self.map_storage_error(err))?;
+        self.storage.append_to_log(&entry_refs).await?;
         if let Some(entry) = entries.last() {
             self.last_log_id = entry.log_id;
         }
@@ -408,7 +421,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Very importantly, this routine must not block the main control loop main task, else it
     /// may cause the Raft leader to timeout the requests to this node.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), RaftError> {
+    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), StorageError> {
         tracing::debug!("replicate_to_sm_if_needed: last_applied: {}", self.last_applied,);
 
         // Perform initial replication to state machine if needed.
@@ -431,11 +444,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Drain entries from the beginning of the cache up to commit index.
 
-        let entries = self
-            .storage
-            .get_log_entries(self.last_applied.index + 1..=self.committed.index)
-            .await
-            .map_err(|e| self.map_storage_error(e))?;
+        let entries = self.storage.get_log_entries(self.last_applied.index + 1..=self.committed.index).await?;
 
         let last_log_id = entries.last().map(|x| x.log_id).unwrap();
 
@@ -444,9 +453,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         let entries_refs: Vec<_> = entries.iter().collect();
 
-        apply_to_state_machine(self.storage.clone(), &entries_refs, self.config.max_applied_log_to_keep)
-            .await
-            .map_err(|e| self.map_storage_error(e))?;
+        apply_to_state_machine(self.storage.clone(), &entries_refs, self.config.max_applied_log_to_keep).await?;
 
         self.last_applied = last_log_id;
 
@@ -461,7 +468,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// This will only be executed once, and only in response to its first payload of entries
     /// from the AppendEntries RPC handler.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn initial_replicate_to_state_machine(&mut self) -> Result<(), RaftError> {
+    async fn initial_replicate_to_state_machine(&mut self) -> Result<(), StorageError> {
         let stop = std::cmp::min(self.committed.index, self.last_log_id.index) + 1;
         let start = self.last_applied.index + 1;
         let storage = self.storage.clone();
@@ -476,15 +483,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Fetch the series of entries which must be applied to the state machine, then apply them.
 
-        let entries = storage.get_log_entries(start..stop).await.map_err(|e| self.map_storage_error(e))?;
+        let entries = storage.get_log_entries(start..stop).await?;
 
         let new_last_applied = entries.last().unwrap();
 
         let data_entries: Vec<_> = entries.iter().collect();
 
-        apply_to_state_machine(storage, &data_entries, self.config.max_applied_log_to_keep)
-            .await
-            .map_err(|e| self.map_storage_error(e))?;
+        apply_to_state_machine(storage, &data_entries, self.config.max_applied_log_to_keep).await?;
 
         self.last_applied = new_last_applied.log_id;
         self.report_metrics(Update::Ignore);
