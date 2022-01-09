@@ -31,8 +31,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         mut members: BTreeSet<NodeId>,
     ) -> Result<(), InitializeError> {
-        if self.core.last_log_id.index != 0 || self.core.current_term != 0 {
-            tracing::error!({self.core.last_log_id.index, self.core.current_term}, "rejecting init_with_config request as last_log_index or current_term is 0");
+        if self.core.last_log_id.is_none() || self.core.current_term != 0 {
+            tracing::error!(
+                { last_log_id=?self.core.last_log_id, self.core.current_term },
+                "rejecting init_with_config request as last_log_index is not None or current_term is 0");
             return Err(InitializeError::NotAllowed);
         }
 
@@ -81,7 +83,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if target == self.core.id {
             tracing::debug!("target node is this node");
             let _ = tx.send(Ok(AddLearnerResponse {
-                matched: self.core.last_log_id,
+                matched: self.core.last_log_id.expect("raft core is uninitialized."),
             }));
             return;
         }
@@ -171,7 +173,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             match self.nodes.get(new_node) {
                 // Node is ready to join.
                 Some(node) => {
-                    if node.is_line_rate(&self.core.last_log_id, &self.core.config) {
+                    if node.is_line_rate(&self.core.last_log_id.unwrap_or_default(), &self.core.config) {
                         continue;
                     }
 
@@ -181,7 +183,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                             ChangeMembershipError::LearnerIsLagging {
                                 node_id: *new_node,
                                 matched: node.matched,
-                                distance: self.core.last_log_id.index.saturating_sub(node.matched.index),
+                                distance: self.core.last_log_id.unwrap().index.saturating_sub(node.matched.index),
                             },
                         )));
                         return Ok(());
@@ -214,7 +216,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Caveat: membership must be updated before commit check is done with the new config.
         self.core.effective_membership = EffectiveMembership {
-            log_id: self.core.last_log_id,
+            log_id: entry.log_id,
             membership: mem,
         };
 

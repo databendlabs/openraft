@@ -39,7 +39,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             target,
             self.core.current_term,
             self.core.config.clone(),
-            self.core.last_log_id,
+            self.core.last_log_id.expect("raft core is uninitialized."),
             self.core.committed,
             self.core.network.clone(),
             self.core.storage.clone(),
@@ -101,7 +101,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             state.matched = matched;
 
             // Issue a response on the learners response channel if needed.
-            if state.is_line_rate(&self.core.last_log_id, &self.core.config) {
+            if state.is_line_rate(&self.core.last_log_id.unwrap_or_default(), &self.core.config) {
                 // This replication became line rate.
 
                 // When adding a learner, it blocks until the replication becomes line-rate.
@@ -195,14 +195,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 self.core.last_log_id
             } else {
                 let repl_state = self.nodes.get(id);
-                repl_state.map(|x| x.matched).unwrap_or_default()
+                Some(repl_state.map(|x| x.matched).unwrap_or_default())
             };
 
             // Mismatching term can not prevent other replica with higher term log from being chosen as leader,
             // and that new leader may overrides any lower term logs.
             // Thus it is not considered as committed.
-            if matched.term == self.core.current_term {
-                res.insert(*id, matched);
+            if let Some(log_id) = matched {
+                if log_id.term == self.core.current_term {
+                    res.insert(*id, log_id);
+                }
             }
         }
 
@@ -229,7 +231,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // of the configured snapshot threshold, else create a new snapshot.
             if snapshot_is_within_half_of_threshold(
                 &snapshot.meta.last_log_id.index,
-                &self.core.last_log_id.index,
+                &self.core.last_log_id.unwrap_or_default().index,
                 &threshold,
             ) {
                 let _ = tx.send(snapshot);

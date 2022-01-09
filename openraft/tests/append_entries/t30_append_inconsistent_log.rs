@@ -118,7 +118,7 @@ async fn append_inconsistent_log() -> Result<()> {
     router
         .wait(&0, Some(Duration::from_millis(2000)))
         .await?
-        .metrics(|x| x.last_log_index == n_logs, "sync log to node 0")
+        .metrics(|x| x.last_log_index == Some(n_logs), "sync log to node 0")
         .await?;
 
     let logs = sto0.get_log_entries(60..=60).await?;

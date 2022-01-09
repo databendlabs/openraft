@@ -56,7 +56,7 @@ async fn add_remove_voter() -> Result<()> {
     tracing::info!("--- log will not be sync to removed node");
     {
         let x = router.latest_metrics().await;
-        assert!(x[4].last_log_index < n_logs - 50);
+        assert!(x[4].last_log_index < Some(n_logs - 50));
     }
 
     Ok(())

@@ -147,7 +147,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     voted_for: Option<NodeId>,
 
     /// The last entry to be appended to the log.
-    last_log_id: LogId,
+    last_log_id: Option<LogId>,
 
     /// The node's current snapshot state.
     snapshot_state: Option<SnapshotState<S::SnapshotData>>,
@@ -208,7 +208,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             current_term: 0,
             current_leader: None,
             voted_for: None,
-            last_log_id: LogId::new(0, 0),
+            last_log_id: None,
             snapshot_state: None,
             snapshot_last_log_id: LogId::new(0, 0),
             has_completed_initial_replication_to_sm: false,
@@ -258,7 +258,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             init_state
         };
 
-        self.last_log_id = state.last_log_id;
+        self.last_log_id = Some(state.last_log_id);
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
         self.effective_membership = state.last_membership.clone();
@@ -275,7 +275,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.report_metrics(Update::Ignore);
         }
 
-        let has_log = self.last_log_id.index != u64::MIN;
+        let has_log = self.last_log_id.unwrap().index != u64::MIN;
         let single = self.effective_membership.membership.all_nodes().len() == 1;
         let is_voter = self.effective_membership.membership.contains(&self.id);
 
@@ -344,7 +344,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             id: self.id,
             state: self.target_state,
             current_term: self.current_term,
-            last_log_index: self.last_log_id.index,
+            last_log_index: self.last_log_id.map(|id| id.index),
             last_applied: self.last_applied.index,
             current_leader: self.current_leader,
             membership_config: self.effective_membership.clone(),

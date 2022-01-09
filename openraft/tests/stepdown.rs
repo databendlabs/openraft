@@ -92,8 +92,9 @@ async fn stepdown() -> Result<()> {
             metrics.current_term
         );
         assert_eq!(
-            metrics.last_log_index, 3,
-            "expected old leader to have last log index of 3, got {}",
+            metrics.last_log_index,
+            Some(3),
+            "expected old leader to have last log index of 3, got {:?}",
             metrics.last_log_index
         );
         assert_eq!(
@@ -124,7 +125,7 @@ async fn stepdown() -> Result<()> {
     // As leader established it commits a Blank log.
     // If the election takes only one round, the expected term/index is 2/4.
     tracing::info!("term: {}", metrics.current_term);
-    tracing::info!("index: {}", metrics.last_log_index);
+    tracing::info!("index: {:?}", metrics.last_log_index);
     assert!(metrics.current_term >= 2, "term incr when leader changes");
     router.assert_stable_cluster(Some(metrics.current_term), Some(n_logs)).await;
     router

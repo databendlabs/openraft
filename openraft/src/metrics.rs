@@ -37,9 +37,9 @@ pub struct RaftMetrics {
     pub state: State,
     /// The current term of the Raft node.
     pub current_term: u64,
-    /// The last log index to be appended to this Raft node's log.
-    pub last_log_index: u64,
-    /// The last log index to be applied to this Raft node's state machine.
+    /// The last log index has been appended to this Raft node's log.
+    pub last_log_index: Option<u64>,
+    /// The last log index has been applied to this Raft node's state machine.
     pub last_applied: u64,
     /// The current cluster leader.
     pub current_leader: Option<NodeId>,
@@ -56,7 +56,7 @@ pub struct RaftMetrics {
 
 impl MessageSummary for RaftMetrics {
     fn summary(&self) -> String {
-        format!("Metrics{{id:{},{:?}, term:{}, last_log:{}, last_applied:{}, leader:{:?}, membership:{}, snapshot:{}, replication:{}",
+        format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{}, leader:{:?}, membership:{}, snapshot:{}, replication:{}",
             self.id,
             self.state,
             self.current_term,
@@ -100,7 +100,7 @@ impl RaftMetrics {
             id,
             state: State::Follower,
             current_term: 0,
-            last_log_index: 0,
+            last_log_index: None,
             last_applied: 0,
             current_leader: None,
             membership_config: EffectiveMembership {
@@ -210,7 +210,7 @@ impl Wait {
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log(&self, want_log: u64, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
-            |x| x.last_log_index == want_log,
+            |x| x.last_log_index == Some(want_log),
             &format!("{} .last_log_index -> {}", msg.to_string(), want_log),
         )
         .await?;

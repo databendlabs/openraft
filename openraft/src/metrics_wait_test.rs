@@ -38,7 +38,7 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.last_log_index = 3;
+            update.last_log_index = Some(3);
             update.last_applied = 3;
             let rst = tx.send(update);
             assert!(rst.is_ok());
@@ -46,7 +46,7 @@ async fn test_wait() -> anyhow::Result<()> {
         let got = w.log(3, "log").await?;
         h.await?;
 
-        assert_eq!(3, got.last_log_index);
+        assert_eq!(Some(3), got.last_log_index);
         assert_eq!(3, got.last_applied);
     }
 
@@ -180,7 +180,7 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
         id: 0,
         state: State::Learner,
         current_term: 0,
-        last_log_index: 0,
+        last_log_index: None,
         last_applied: 0,
         current_leader: None,
         membership_config: EffectiveMembership {

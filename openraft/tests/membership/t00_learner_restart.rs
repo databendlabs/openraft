@@ -73,7 +73,7 @@ fn assert_node_state(id: NodeId, node: &MemRaft, expected_term: u64, expected_lo
     tracing::info!("node {} metrics: {:?}", id, m);
 
     assert_eq!(expected_term, m.current_term, "node {} term", id);
-    assert_eq!(expected_log, m.last_log_index, "node {} last_log_index", id);
+    assert_eq!(Some(expected_log), m.last_log_index, "node {} last_log_index", id);
     assert_eq!(expected_log, m.last_applied, "node {} last_log_index", id);
     assert_eq!(state, m.state, "node {} state", id);
 }
