@@ -157,6 +157,22 @@ impl Membership {
         min_greatest.unwrap_or(None)
     }
 
+    /// Check if the `other` membership is safe to change to.
+    ///
+    /// Read more about:
+    /// [safe-membership-change](https://datafuselabs.github.io/openraft/dynamic-membership.html#the_safe_to_relation)
+    pub fn is_safe_to(&self, other: &Self) -> bool {
+        for c in &self.configs {
+            for d in &other.configs {
+                if c == d {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     fn is_majority_of_single_config(granted: &BTreeSet<NodeId>, single_config: &BTreeSet<NodeId>) -> bool {
         let d = granted.intersection(single_config);
         let n_granted = d.fold(0, |a, _x| a + 1);
