@@ -62,7 +62,7 @@ A full list of changes/fixes can be found in [change-log](https://github.com/dat
 
 # Roadmap
 
-- [ ] Support only one membership-change algo: joint; 
+- [x] [Extended joint membership](https://datafuselabs.github.io/openraft/dynamic-membership.html#the-safe-to-relation)
 
 - [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/datafuselabs/openraft/discussions/15);
 
