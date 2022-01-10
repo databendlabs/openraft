@@ -69,7 +69,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             let mut report_metrics = false;
 
             if msg.term > self.current_term {
-                self.update_current_term(msg.term, None);
+                self.update_current_term(msg.term, Some(msg.leader_id));
                 self.save_hard_state().await?;
                 report_metrics = true;
             }

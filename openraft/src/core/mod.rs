@@ -430,7 +430,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Encapsulate the process of updating the current term, as updating the `voted_for` state must also be updated.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     fn update_current_term(&mut self, new_term: u64, voted_for: Option<NodeId>) {
         if new_term > self.current_term {
             self.current_term = new_term;
