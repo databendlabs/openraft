@@ -174,31 +174,59 @@ elected, a Learner will no longer receive logs from the new leader.</p>
 </ul>
 <h2 id="raftchange_membership"><a class="header" href="#raftchange_membership"><code>Raft::change_membership()</code></a></h2>
 <p>This method will initiate a membership change.</p>
-<p>If there are nodes in the given config that is not a learner, this method will add it
+<p>If there are nodes in the given membership that is not a learner, this method will add it
 as Learner first.
 Thus it is recommended that application always call <code>Raft::add_learner</code> first.
 Otherwise <code>change_membership</code> may block for long before committing the
 given membership and return.</p>
-<p>The new membership config specified by this method will take effect at once.</p>
-<p>Once the new config is committed, a Voter that is not in the new config will
+<p>The new membership specified by this method will take effect at once.</p>
+<p>Once the new membership is committed, a Voter that is not in the new membership will
 revert to a Learner and is ready to remove.</p>
 <p>Correctness constrains:</p>
 <ul>
 <li>
-<p>There is no uncommitted membership config on the leader.</p>
+<p>There is no uncommitted membership on the leader.</p>
 </li>
 <li>
-<p>The new config has to contains a group that is the same as one of the last
-committed config.</p>
-<p>E.g., the last committed one is <code>[{a, b, c}]</code>, then a legal new config may be:
-a joint config: <code>[{a, b, c}, {x, y, z}]</code>.</p>
-<p>If the last committed one is <code>[{a, b, c}, {x, y, z}]</code>, a legal new config
-may be: <code>[{a, b, c}]</code>, or <code>[{x, y, z}]</code>.</p>
+<p>The new membership has to contains a config that is the same as one of the last
+committed membership.</p>
+<p>E.g., the last committed one is <code>[{a, b, c}]</code>, then a legal new membership may be:
+a joint membership: <code>[{a, b, c}, {x, y, z}]</code>.</p>
+<p>If the last committed one is <code>[{a, b, c}, {x, y, z}]</code>, a legal new
+membership may be: <code>[{a, b, c}]</code>, or <code>[{x, y, z}]</code>.</p>
 </li>
 </ul>
-<p>If the constrains are not satisfied, an error is returned and nothing is done
+<p>If the constraints are not satisfied, an error is returned and nothing is done
 except the learner will not be removed.</p>
-<p>TODO(xp): these constrains can be loosen, if raft stores the commit index.</p>
+<h3 id="the-safe-to-relation"><a class="header" href="#the-safe-to-relation">The safe-to relation</a></h3>
+<p>TL, DR</p>
+<p>According to the rule that every 2 quorums has to intersect each other,
+one membership <code>m1</code> is safe to change to another membership <code>m2</code> iff <code>m1</code> contains
+a config the same as one in <code>m2</code>.</p>
+<p>E.g.: given a joint membership of 3 config: <code>m1 = c1 * c2 * c3</code>(<code>cᵢ</code> is a set of
+nodes. <code>*</code> means joint), the following are safe with <code>m1</code>:</p>
+<ul>
+<li><code>c1</code>,</li>
+<li><code>c2</code>,</li>
+<li><code>c1 * c3</code>,</li>
+<li>and <code>c2 * c4 * c5</code>.</li>
+</ul>
+<p>The <code>safe_to</code> relation is <strong>commutative</strong>, e.g., <code>m1</code> being safe with <code>m2</code> iff <code>m2</code> being safe with <code>m1</code>.</p>
+<p>E.g., one of the safe membership changing path is:
+<code>c1</code>  →  <code>c1 * c2 * c3</code>  →  <code>c3 * c4</code>  →  <code>c4</code>.
+Every step in it is safe.</p>
+<p>Another example with 6 memberships shows that it is always safe to change
+membership from one vertex to another along edges:</p>
+<pre><code>            c3
+          /   \
+         /     \
+        /       \
+   c1*c3 ------- c2*c3
+    /  \         /  \
+   /    \       /    \
+  /      \     /      \
+c1 ------ c1*c2 ------ c2
+</code></pre>
 
                     </main>
 
