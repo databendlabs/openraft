@@ -160,7 +160,7 @@ impl Membership {
     /// Check if the `other` membership is safe to change to.
     ///
     /// Read more about:
-    /// [safe-membership-change](https://datafuselabs.github.io/openraft/dynamic-membership.html#the_safe_to_relation)
+    /// [safe-membership-change](https://datafuselabs.github.io/openraft/dynamic-membership.html#the-safe-to-relation)
     pub fn is_safe_to(&self, other: &Self) -> bool {
         for c in &self.configs {
             for d in &other.configs {
