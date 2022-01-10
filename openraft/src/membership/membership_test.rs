@@ -132,3 +132,37 @@ fn test_membership_greatest_majority_value() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_membership_is_safe_to() -> anyhow::Result<()> {
+    let set123 = || btreeset! {1,2,3};
+    let set345 = || btreeset! {3,4,5};
+    let set789 = || btreeset! {7,8,9};
+
+    let m123 = Membership::new_single(set123());
+    let m345 = Membership::new_single(set345());
+    let m123_345 = Membership::new_multi(vec![set123(), set345()]);
+    let m345_789 = Membership::new_multi(vec![set345(), set789()]);
+
+    assert!(m123.is_safe_to(&m123));
+    assert!(!m123.is_safe_to(&m345));
+    assert!(m123.is_safe_to(&m123_345));
+    assert!(!m123.is_safe_to(&m345_789));
+
+    assert!(!m345.is_safe_to(&m123));
+    assert!(m345.is_safe_to(&m345));
+    assert!(m345.is_safe_to(&m123_345));
+    assert!(m345.is_safe_to(&m345_789));
+
+    assert!(m123_345.is_safe_to(&m123));
+    assert!(m123_345.is_safe_to(&m345));
+    assert!(m123_345.is_safe_to(&m123_345));
+    assert!(m123_345.is_safe_to(&m345_789));
+
+    assert!(!m345_789.is_safe_to(&m123));
+    assert!(m345_789.is_safe_to(&m345));
+    assert!(m345_789.is_safe_to(&m123_345));
+    assert!(m345_789.is_safe_to(&m345_789));
+
+    Ok(())
+}
