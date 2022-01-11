@@ -24,14 +24,14 @@ async fn stepdown() -> Result<()> {
     let _ent = ut_span.enter();
 
     // Setup test dependencies.
-    let mut old_config = Config::default().validate()?;
-    // use a bigger election timeout, to avoid new election timeout cause term + 1
-    old_config.election_timeout_min = 800;
-    old_config.election_timeout_max = 1000;
-
-    old_config.clone().validate()?;
-
-    let config = Arc::new(old_config);
+    let config = Arc::new(
+        Config {
+            election_timeout_min: 800,
+            election_timeout_max: 1000,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
