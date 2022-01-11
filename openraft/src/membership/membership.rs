@@ -162,11 +162,45 @@ impl Membership {
     /// Read more about:
     /// [safe-membership-change](https://datafuselabs.github.io/openraft/dynamic-membership.html#the-safe-to-relation)
     pub fn is_safe_to(&self, other: &Self) -> bool {
+        for d in &other.configs {
+            if self.contains_config(d) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Returns the next safe membership to change to while the expected final membership is `goal`.
+    ///
+    /// E.g.(`cicj` is a joint membership of `ci` and `cj`):
+    /// - `c1.next_step(c1)` returns `c1`
+    /// - `c1.next_step(c2)` returns `c1*c2`
+    /// - `c1c2.next_step(c2)` returns `c2`
+    /// - `c1c2.next_step(c1)` returns `c1`
+    /// - `c1c2.next_step(c3)` returns `c2c3`
+    ///
+    /// With this method the membership change algo is simplified to:
+    /// ```ignore
+    /// while curr != goal {
+    ///     let next = curr.next_step(goal);
+    ///     change_membership(next);
+    ///     curr = next;
+    /// }
+    /// ```
+    #[must_use]
+    pub fn next_safe(&self, goal: BTreeSet<NodeId>) -> Self {
+        if self.contains_config(&goal) {
+            Membership::new_single(goal)
+        } else {
+            Membership::new_multi(vec![self.configs.last().cloned().unwrap(), goal])
+        }
+    }
+
+    fn contains_config(&self, other: &BTreeSet<NodeId>) -> bool {
         for c in &self.configs {
-            for d in &other.configs {
-                if c == d {
-                    return true;
-                }
+            if c == other {
+                return true;
             }
         }
 
