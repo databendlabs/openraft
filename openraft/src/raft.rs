@@ -719,24 +719,24 @@ pub struct InstallSnapshotResponse {
 pub struct ClientWriteRequest<D: AppData> {
     /// The application specific contents of this client request.
     #[serde(bound = "D: AppData")]
-    pub(crate) entry: EntryPayload<D>,
+    pub(crate) payload: EntryPayload<D>,
 }
 
 impl<D: AppData> MessageSummary for ClientWriteRequest<D> {
     fn summary(&self) -> String {
-        self.entry.summary()
+        self.payload.summary()
     }
 }
 
 impl<D: AppData> ClientWriteRequest<D> {
     /// Create a new client payload instance with a normal entry type.
-    pub fn new(entry: D) -> Self {
-        Self::new_base(EntryPayload::Normal(entry))
+    pub fn new(app_data: D) -> Self {
+        Self::new_base(EntryPayload::Normal(app_data))
     }
 
     /// Create a new instance.
     pub(crate) fn new_base(entry: EntryPayload<D>) -> Self {
-        Self { entry }
+        Self { payload: entry }
     }
 
     /// Generate a new payload holding a config change.
@@ -747,7 +747,7 @@ impl<D: AppData> ClientWriteRequest<D> {
     /// Generate a new blank payload.
     ///
     /// This is used by new leaders when first coming to power.
-    pub(crate) fn new_blank_payload() -> Self {
+    pub(crate) fn new_blank() -> Self {
         Self::new_base(EntryPayload::Blank)
     }
 }

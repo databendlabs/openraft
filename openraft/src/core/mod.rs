@@ -551,7 +551,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         req: ClientWriteRequest<D>,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) {
-        match req.entry {
+        match req.payload {
             EntryPayload::Normal(_entry) => {
                 let _ = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
                     leader_id: self.current_leader,
