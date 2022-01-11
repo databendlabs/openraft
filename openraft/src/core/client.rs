@@ -4,6 +4,7 @@ use anyhow::anyhow;
 use futures::future::TryFutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use maplit::btreeset;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tracing::Instrument;
@@ -14,7 +15,6 @@ use crate::core::State;
 use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::QuorumNotEnough;
-use crate::membership::quorum;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
@@ -62,7 +62,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             };
 
         // Commit the initial payload to the cluster.
-        let entry = self.append_payload_to_log(req.entry).await?;
+        let entry = self.append_payload_to_log(req.payload).await?;
         self.core.last_log_id = self.core.last_log_id.map(|mut last_log_id| {
             last_log_id.term = self.core.current_term;
             last_log_id
@@ -95,35 +95,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(super) async fn handle_client_read_request(&mut self, tx: RaftRespTx<(), ClientReadError>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
-        let mut c0_confirmed = 0usize;
 
-        let mems = &self.core.effective_membership.membership;
+        let mem = &self.core.effective_membership.membership;
+        let mut granted = btreeset! {self.core.id};
 
-        // Will never be zero, as we don't allow it when proposing config changes.
-        let len_members = mems.get_ith_config(0).unwrap().len();
-
-        let c0_needed = quorum::majority_of(len_members);
-
-        let mut c1_confirmed = 0usize;
-        let mut c1_needed = 0usize;
-
-        let second = mems.get_ith_config(1);
-
-        if let Some(joint_members) = second {
-            let len = joint_members.len(); // Will never be zero, as we don't allow it when proposing config changes.
-            c1_needed = quorum::majority_of(len);
-
-            if joint_members.contains(&self.core.id) {
-                c1_confirmed += 1;
-            }
-        }
-
-        // Increment confirmations for self, including post-joint-consensus config if applicable.
-        c0_confirmed += 1;
-
-        // If we already have all needed confirmations — which would be the case for single node
-        // clusters — then respond.
-        if c0_confirmed >= c0_needed && c1_confirmed >= c1_needed {
+        if mem.is_majority(&granted) {
             let _ = tx.send(Ok(()));
             return;
         }
@@ -131,10 +107,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Spawn parallel requests, all with the standard timeout for heartbeats.
         let mut pending = FuturesUnordered::new();
         let all_members = self.core.effective_membership.membership.all_nodes();
+
         for (id, node) in self.nodes.iter() {
             if !all_members.contains(id) {
                 continue;
             }
+
             let rpc = AppendEntriesRequest {
                 term: self.core.current_term,
                 leader_id: self.core.id,
@@ -142,9 +120,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 entries: vec![],
                 leader_commit: self.core.committed,
             };
+
             let target = *id;
             let network = self.core.network.clone();
+
             let ttl = Duration::from_millis(self.core.config.heartbeat_interval);
+
             let task = tokio::spawn(
                 async move {
                     match timeout(ttl, network.send_append_entries(target, rpc)).await {
@@ -161,7 +142,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Handle responses as they return.
         while let Some(res) = pending.next().await {
-            // TODO(xp): if receives error about a higher term, it should stop at once?
             let (target, data) = match res {
                 Ok(Ok(res)) => res,
                 Ok(Err((target, err))) => {
@@ -177,23 +157,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // If we receive a response with a greater term, then revert to follower and abort this request.
             if data.term != self.core.current_term {
                 self.core.update_current_term(data.term, None);
+                // TODO(xp): if receives error about a higher term, it should stop at once?
                 self.core.set_target_state(State::Follower);
             }
 
-            // If the term is the same, then it means we are still the leader.
-            if self.core.effective_membership.membership.get_ith_config(0).unwrap().contains(&target) {
-                c0_confirmed += 1;
-            }
+            granted.insert(target);
 
-            let second = self.core.effective_membership.membership.get_ith_config(1);
-
-            if let Some(joint) = second {
-                if joint.contains(&target) {
-                    c1_confirmed += 1;
-                }
-            }
-
-            if c0_confirmed >= c0_needed && c1_confirmed >= c1_needed {
+            let mem = &self.core.effective_membership.membership;
+            if mem.is_majority(&granted) {
                 let _ = tx.send(Ok(()));
                 return;
             }
@@ -204,8 +175,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let _ = tx.send(Err(QuorumNotEnough {
             cluster: self.core.effective_membership.membership.summary(),
-            // TODO(xp): it does not count c1_confirmed yet.
-            got: c0_confirmed as u64,
+            got: granted,
         }
         .into()));
     }

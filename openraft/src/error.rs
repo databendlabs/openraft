@@ -246,9 +246,8 @@ pub struct SnapshotMismatch {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("not enough for a quorum, cluster: {cluster}, got: {got}")]
+#[error("not enough for a quorum, cluster: {cluster}, got: {got:?}")]
 pub struct QuorumNotEnough {
     pub cluster: String,
-    // TODO(xp): replace it with BTreeSet.
-    pub got: u64,
+    pub got: BTreeSet<NodeId>,
 }
