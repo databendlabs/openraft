@@ -58,7 +58,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             if self.core.last_log_id.expect("leader's raft core is uninitialized.").index == 0 {
                 ClientWriteRequest::new_config(self.core.effective_membership.membership.clone())
             } else {
-                ClientWriteRequest::new_blank_payload()
+                ClientWriteRequest::new_blank()
             };
 
         // Commit the initial payload to the cluster.
@@ -217,7 +217,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         rpc: ClientWriteRequest<D>,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) -> Result<(), StorageError> {
-        let entry = self.append_payload_to_log(rpc.entry).await?;
+        let entry = self.append_payload_to_log(rpc.payload).await?;
         let entry = ClientRequestEntry {
             entry: Arc::new(entry),
             tx: Some(tx),
