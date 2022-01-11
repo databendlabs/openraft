@@ -316,6 +316,13 @@ impl RaftRouter {
         metrics
     }
 
+    pub async fn get_metrics(&self, node_id: &NodeId) -> Result<RaftMetrics> {
+        let rt = self.routing_table.read().await;
+        let x = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
+        let metrics = x.0.metrics().borrow().clone();
+        Ok(metrics)
+    }
+
     /// Get a handle to the storage backend for the target node.
     pub async fn get_storage_handle(&self, node_id: &NodeId) -> Result<Arc<StoreWithDefensive>> {
         let rt = self.routing_table.read().await;
