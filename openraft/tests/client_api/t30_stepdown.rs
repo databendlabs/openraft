@@ -36,7 +36,7 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
 
-    let timeout:Option<Duration> = Some(Duration::from_millis(2000));
+    let timeout = Some(Duration::from_millis(2000));
 
     let mut n_logs = 0;
 
@@ -63,7 +63,14 @@ async fn stepdown() -> Result<()> {
 
     for id in 0..4 {
         if id == orig_leader {
-            router.wait_for_log(&btreeset![id], n_logs, timeout, "update membership: 1, 2, 3; old leader").await?;
+            router
+                .wait_for_log(
+                    &btreeset![id],
+                    n_logs,
+                    timeout,
+                    "update membership: 1, 2, 3; old leader",
+                )
+                .await?;
         } else {
             // a new leader elected and propose a log
             router
