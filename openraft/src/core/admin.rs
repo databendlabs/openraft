@@ -12,8 +12,8 @@ use crate::error::ChangeMembershipError;
 use crate::error::ClientWriteError;
 use crate::error::InitializeError;
 use crate::raft::AddLearnerResponse;
-use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
+use crate::raft::EntryPayload;
 use crate::raft::RaftRespTx;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -134,27 +134,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return Ok(());
         }
 
-        let new_config;
-
         let curr = &self.core.effective_membership.membership;
 
-        if let Some(next_membership) = curr.get_ith_config(1) {
-            // When it is in joint state, it is only allowed to change to the `members_after_consensus`
-            if &members != next_membership {
-                let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                    ChangeMembershipError::Incompatible {
-                        curr: curr.clone(),
-                        to: members,
-                    },
-                )));
-                return Ok(());
-            } else {
-                new_config = Membership::new_single(next_membership.clone());
-            }
-        } else {
-            // currently it is uniform config, enter joint state
-            new_config = Membership::new_multi(vec![curr.get_ith_config(0).unwrap().clone(), members.clone()]);
-        }
+        let new_config = curr.next_safe(members.clone());
 
         tracing::debug!(?new_config, "new_config");
 
@@ -169,11 +151,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // TODO(xp): 111 test adding a node that is not learner.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in members.difference(self.core.effective_membership.membership.get_ith_config(0).unwrap()) {
+        for new_node in members.difference(curr.all_nodes()) {
             match self.nodes.get(new_node) {
-                // Node is ready to join.
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id.unwrap_or_default(), &self.core.config) {
+                        // Node is ready to join.
                         continue;
                     }
 
@@ -200,7 +182,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
         }
 
-        // TODO(xp): 111 report metrics?
         self.append_membership_log(new_config, Some(tx)).await?;
         Ok(())
     }
@@ -211,8 +192,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         mem: Membership,
         resp_tx: Option<RaftRespTx<ClientWriteResponse<R>, ClientWriteError>>,
     ) -> Result<(), StorageError> {
-        let payload = ClientWriteRequest::<D>::new_config(mem.clone());
-        let entry = self.append_payload_to_log(payload.entry).await?;
+        let payload = EntryPayload::Membership(mem.clone());
+        let entry = self.append_payload_to_log(payload).await?;
 
         // Caveat: membership must be updated before commit check is done with the new config.
         self.core.effective_membership = EffectiveMembership {
