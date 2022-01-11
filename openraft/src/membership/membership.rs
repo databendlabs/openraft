@@ -163,7 +163,7 @@ impl Membership {
     /// [safe-membership-change](https://datafuselabs.github.io/openraft/dynamic-membership.html#the-safe-to-relation)
     pub fn is_safe_to(&self, other: &Self) -> bool {
         for d in &other.configs {
-            if self.contains_config(d) {
+            if self.configs.contains(d) {
                 return true;
             }
         }
@@ -190,21 +190,11 @@ impl Membership {
     /// ```
     #[must_use]
     pub fn next_safe(&self, goal: BTreeSet<NodeId>) -> Self {
-        if self.contains_config(&goal) {
+        if self.configs.contains(&goal) {
             Membership::new_single(goal)
         } else {
             Membership::new_multi(vec![self.configs.last().cloned().unwrap(), goal])
         }
-    }
-
-    fn contains_config(&self, other: &BTreeSet<NodeId>) -> bool {
-        for c in &self.configs {
-            if c == other {
-                return true;
-            }
-        }
-
-        false
     }
 
     fn is_majority_of_single_config(granted: &BTreeSet<NodeId>, single_config: &BTreeSet<NodeId>) -> bool {
