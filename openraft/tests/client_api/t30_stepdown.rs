@@ -2,15 +2,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LogId;
 use openraft::State;
 use tokio::time::sleep;
 
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Client write tests.
 ///
@@ -26,16 +24,25 @@ async fn stepdown() -> Result<()> {
     let _ent = ut_span.enter();
 
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            election_timeout_min: 800,
+            election_timeout_max: 1000,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let router = Arc::new(RaftRouter::new(config.clone()));
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
 
+    let timeout = Some(Duration::from_millis(2000));
+
     let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1], n_logs, None, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1], State::Learner, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1], n_logs, timeout, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1], State::Learner, timeout, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -43,7 +50,7 @@ async fn stepdown() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1], n_logs, None, "init").await?;
+    router.wait_for_log(&btreeset![0, 1], n_logs, timeout, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -56,14 +63,21 @@ async fn stepdown() -> Result<()> {
 
     for id in 0..4 {
         if id == orig_leader {
-            router.wait_for_log(&btreeset![id], n_logs, None, "update membership: 1, 2, 3; old leader").await?;
+            router
+                .wait_for_log(
+                    &btreeset![id],
+                    n_logs,
+                    timeout,
+                    "update membership: 1, 2, 3; old leader",
+                )
+                .await?;
         } else {
             // a new leader elected and propose a log
             router
                 .wait_for_log(
                     &btreeset![id],
                     n_logs + 1,
-                    None,
+                    timeout,
                     "update membership: 1, 2, 3; new candidate",
                 )
                 .await?;
