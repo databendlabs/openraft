@@ -122,7 +122,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     router
         .wait_for_metrics(
             &3u64,
-            |x| x.last_log_index == n_logs,
+            |x| x.last_log_index == Some(n_logs),
             Some(timeout),
             &format!("n{}.last_log_index -> {}", 3, n_logs),
         )
@@ -141,7 +141,7 @@ async fn wait_log(
         router
             .wait_for_metrics(
                 i,
-                |x| x.last_log_index == want_log,
+                |x| x.last_log_index == Some(want_log),
                 Some(timeout),
                 &format!("n{}.last_log_index -> {}", i, want_log),
             )

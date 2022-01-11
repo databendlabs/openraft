@@ -29,7 +29,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &mut self,
         msg: AppendEntriesRequest<D>,
     ) -> Result<AppendEntriesResponse, AppendEntriesError> {
-        tracing::debug!(%self.last_log_id, %self.last_applied, msg=%msg.summary(), "handle_append_entries_request");
+        tracing::debug!(last_log_id=?self.last_log_id, %self.last_applied, msg=%msg.summary(), "handle_append_entries_request");
 
         let msg_entries = msg.entries.as_slice();
 
@@ -112,7 +112,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         self.storage.delete_logs_from(start..).await?;
 
-        self.last_log_id = self.get_log_id(start - 1).await?;
+        self.last_log_id = Some(self.get_log_id(start - 1).await?);
 
         // TODO(xp): get_membership() should have a defensive check to ensure it always returns Some() if node is
         //           initialized. Because a node always commit a membership log as the first log entry.
@@ -204,12 +204,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(());
         }
 
-        if msg_entries[0].log_id.index > self.last_log_id.index {
-            return Ok(());
+        if let Some(last_log_id) = self.last_log_id {
+            if msg_entries[0].log_id.index > last_log_id.index {
+                return Ok(());
+            }
         }
 
         tracing::debug!(
-            "delete inconsistent log entries [{}, {}), last_log_id: {}, entries: {}",
+            "delete inconsistent log entries [{}, {}), last_log_id: {:?}, entries: {}",
             msg_entries[0].log_id,
             msg_entries[l - 1].log_id,
             self.last_log_id,
@@ -262,9 +264,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         if !matching {
             // prev_log_id mismatches, the logs [prev_log_id.index, +oo) are all inconsistent and should be removed
-            if prev_log_id.index <= self.last_log_id.index {
-                tracing::debug!(%prev_log_id, "delete inconsistent log since prev_log_id");
-                self.delete_logs(prev_log_id.index).await?;
+            if let Some(last_log_id) = self.last_log_id {
+                if prev_log_id.index <= last_log_id.index {
+                    tracing::debug!(%prev_log_id, "delete inconsistent log since prev_log_id");
+                    self.delete_logs(prev_log_id.index).await?;
+                }
             }
 
             return Ok(AppendEntriesResponse {
@@ -411,7 +415,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let entry_refs = entries.iter().collect::<Vec<_>>();
         self.storage.append_to_log(&entry_refs).await?;
         if let Some(entry) = entries.last() {
-            self.last_log_id = entry.log_id;
+            self.last_log_id = Some(entry.log_id);
         }
         Ok(())
     }
@@ -469,11 +473,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// from the AppendEntries RPC handler.
     #[tracing::instrument(level = "debug", skip(self))]
     async fn initial_replicate_to_state_machine(&mut self) -> Result<(), StorageError> {
-        let stop = std::cmp::min(self.committed.index, self.last_log_id.index) + 1;
+        let stop = if let Some(last_log_id) = self.last_log_id {
+            std::cmp::min(self.committed.index, last_log_id.index) + 1
+        } else {
+            self.committed.index + 1
+        };
         let start = self.last_applied.index + 1;
         let storage = self.storage.clone();
 
-        tracing::debug!(start, stop, %self.committed, %self.last_log_id, "start stop");
+        tracing::debug!(start, stop, %self.committed, last_log_id=?self.last_log_id, "start stop");
 
         // when self.commit_index is not initialized, e.g. the first heartbeat from leader always has a commit_index to
         // be 0, because the leader needs one round of heartbeat to find out the commit index.

@@ -37,7 +37,10 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
             router
                 .wait(&i, timeout())
                 .await?
-                .metrics(|x| x.last_log_index >= n_logs, "all nodes recv change-membership logs")
+                .metrics(
+                    |x| x.last_log_index >= Some(n_logs),
+                    "all nodes recv change-membership logs",
+                )
                 .await?;
         }
     }

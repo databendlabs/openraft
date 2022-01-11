@@ -54,17 +54,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn commit_initial_leader_entry(&mut self) -> Result<(), StorageError> {
         // If the cluster has just formed, and the current index is 0, then commit the current
         // config, else a blank payload.
-        let last_index = self.core.last_log_id.index;
-
-        let req: ClientWriteRequest<D> = if last_index == 0 {
-            ClientWriteRequest::new_config(self.core.effective_membership.membership.clone())
-        } else {
-            ClientWriteRequest::new_blank_payload()
-        };
+        let req: ClientWriteRequest<D> =
+            if self.core.last_log_id.expect("leader's raft core is uninitialized.").index == 0 {
+                ClientWriteRequest::new_config(self.core.effective_membership.membership.clone())
+            } else {
+                ClientWriteRequest::new_blank_payload()
+            };
 
         // Commit the initial payload to the cluster.
         let entry = self.append_payload_to_log(req.entry).await?;
-        self.core.last_log_id.term = self.core.current_term; // This only ever needs to be updated once per term.
+        self.core.last_log_id = self.core.last_log_id.map(|mut last_log_id| {
+            last_log_id.term = self.core.current_term;
+            last_log_id
+        }); // This only ever needs to be updated once per term.
 
         self.leader_report_metrics();
 
@@ -232,7 +234,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> Result<Entry<D>, StorageError> {
         let entry = Entry {
             log_id: LogId {
-                index: self.core.last_log_id.index + 1,
+                index: self.core.last_log_id.expect("raft core is uninitialized.").index + 1,
                 term: self.core.current_term,
             },
             payload,
@@ -240,7 +242,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.core.storage.append_to_log(&[&entry]).await?;
 
         tracing::debug!("append log: {}", entry.summary());
-        self.core.last_log_id.index = entry.log_id.index;
+        self.core.last_log_id = self.core.last_log_id.map(|mut log_id| {
+            log_id.index = entry.log_id.index;
+            log_id
+        });
 
         Ok(entry)
     }

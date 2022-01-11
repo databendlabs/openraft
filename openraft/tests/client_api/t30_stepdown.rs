@@ -111,12 +111,12 @@ async fn stepdown() -> Result<()> {
         let metrics = router.get_metrics(&0).await?;
         let cfg = metrics.membership_config.membership;
 
-        assert!(metrics.state != State::Leader,);
-        assert_eq!(metrics.current_term, 1,);
-        assert_eq!(metrics.last_log_index, 3,);
-        assert_eq!(metrics.last_applied, 3,);
-        assert_eq!(cfg.get_configs().clone(), vec![btreeset![1, 2, 3]],);
-        assert!(!cfg.is_in_joint_consensus(),);
+        assert!(metrics.state != State::Leader);
+        assert_eq!(metrics.current_term, 1);
+        assert_eq!(metrics.last_log_index, Some(3));
+        assert_eq!(metrics.last_applied, 3);
+        assert_eq!(cfg.get_configs().clone(), vec![btreeset![1, 2, 3]]);
+        assert!(!cfg.is_in_joint_consensus());
     }
 
     Ok(())

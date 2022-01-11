@@ -533,9 +533,11 @@ impl RaftRouter {
                 node.id, node.last_applied
             );
             assert_eq!(
-                node.last_log_index, 0,
-                "node {} has last_log_index {}, expected 0",
-                node.id, node.last_log_index
+                node.last_log_index,
+                Some(0),
+                "node {} has last_log_index {:?}, expected 0",
+                node.id,
+                node.last_log_index
             );
             let members = node.membership_config.membership.ith_config(0);
             assert_eq!(
@@ -588,9 +590,10 @@ impl RaftRouter {
             Some(term) => term,
             None => leader.current_term,
         };
-        let expected_last_log = match expected_last_log {
-            Some(idx) => idx,
-            None => leader.last_log_index,
+        let expected_last_log = if expected_last_log.is_some() {
+            expected_last_log
+        } else {
+            leader.last_log_index
         };
         let all_nodes = nodes.iter().map(|node| node.id).collect::<Vec<_>>();
         for node in non_isolated_nodes.iter() {
@@ -608,13 +611,16 @@ impl RaftRouter {
                 node.id, node.current_term, expected_term
             );
             assert_eq!(
-                node.last_applied, expected_last_log,
-                "node {} has last_applied {}, expected {}",
-                node.id, node.last_applied, expected_last_log
+                Some(node.last_applied),
+                expected_last_log,
+                "node {} has last_applied {}, expected {:?}",
+                node.id,
+                node.last_applied,
+                expected_last_log
             );
             assert_eq!(
                 node.last_log_index, expected_last_log,
-                "node {} has last_log_index {}, expected {}",
+                "node {} has last_log_index {:?}, expected {:?}",
                 node.id, node.last_log_index, expected_last_log
             );
             let mut members = node.membership_config.membership.ith_config(0);
