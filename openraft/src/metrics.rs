@@ -226,7 +226,7 @@ impl Wait {
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log_at_least(&self, want_log: u64, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
-            |x| x.last_log_index >= want_log,
+            |x| x.last_log_index >= Some(want_log),
             &format!("{} .last_log_index >= {}", msg.to_string(), want_log),
         )
         .await?;

@@ -51,9 +51,9 @@ async fn test_wait() -> anyhow::Result<()> {
 
         assert_eq!(Some(3), got.last_log_index);
         assert_eq!(3, got.last_applied);
-        assert_eq!(3, got_least2.last_log_index);
+        assert_eq!(Some(3), got_least2.last_log_index);
         assert_eq!(3, got_least2.last_applied);
-        assert_eq!(3, got_least3.last_log_index);
+        assert_eq!(Some(3), got_least3.last_log_index);
         assert_eq!(3, got_least3.last_applied);
 
         assert!(got_least4.is_err());
