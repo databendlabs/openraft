@@ -4,9 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::LogId;
 use openraft::State;
-use tokio::time::sleep;
 
 use crate::fixtures::RaftRouter;
 
@@ -36,13 +34,11 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
 
-    let timeout = Some(Duration::from_millis(2000));
-
     let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1], n_logs, timeout, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1], State::Learner, timeout, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1], n_logs, timeout(), "empty").await?;
+    router.wait_for_state(&btreeset![0, 1], State::Learner, timeout(), "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -50,7 +46,7 @@ async fn stepdown() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1], n_logs, timeout, "init").await?;
+    router.wait_for_log(&btreeset![0, 1], n_logs, timeout(), "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -61,91 +57,71 @@ async fn stepdown() -> Result<()> {
     router.change_membership(orig_leader, btreeset![1, 2, 3]).await?;
     n_logs += 2;
 
-    for id in 0..4 {
-        if id == orig_leader {
+    tracing::info!("--- old leader commits 2 membership log");
+    {
+        router
+            .wait(&orig_leader, timeout())
+            .await?
+            .log(n_logs, "old leader commits 2 membership log")
+            .await?;
+    }
+
+    // Another node(e.g. node-1) in the old cluster may not commit the second membership change log.
+    // Because to commit the 2nd log it only need a quorum of the new cluster.
+
+    router
+        .wait(&1, timeout())
+        .await?
+        .log_at_least(n_logs, "node in old cluster commits at least 1 membership log")
+        .await?;
+
+    tracing::info!("--- new cluster commits 2 membership logs");
+    {
+        // leader commit a new log.
+        n_logs += 1;
+
+        for id in [2, 3] {
             router
-                .wait_for_log(
-                    &btreeset![id],
+                .wait(&id, timeout())
+                .await?
+                .log_at_least(
                     n_logs,
-                    timeout,
-                    "update membership: 1, 2, 3; old leader",
-                )
-                .await?;
-        } else {
-            // a new leader elected and propose a log
-            router
-                .wait_for_log(
-                    &btreeset![id],
-                    n_logs + 1,
-                    timeout,
-                    "update membership: 1, 2, 3; new candidate",
+                    "node in new cluster finally commit at least one blank leader-initialize log",
                 )
                 .await?;
         }
     }
 
-    // leader commit a new log.
-    n_logs += 1;
-
-    // Assert on the state of the old leader.
+    tracing::info!("--- check term in new cluster");
     {
-        let metrics = router
-            .latest_metrics()
-            .await
-            .into_iter()
-            .find(|node| node.id == 0)
-            .expect("expected to find metrics on original leader node");
-        let cfg = metrics.membership_config.membership;
-        assert!(
-            metrics.state != State::Leader,
-            "expected old leader to have stepped down"
-        );
-        assert_eq!(
-            metrics.current_term, 1,
-            "expected old leader to still be in first term, got {}",
-            metrics.current_term
-        );
-        assert_eq!(
-            metrics.last_log_index, 3,
-            "expected old leader to have last log index of 3, got {}",
-            metrics.last_log_index
-        );
-        assert_eq!(
-            metrics.last_applied, 3,
-            "expected old leader to have last applied of 3, got {}",
-            metrics.last_applied
-        );
-        assert_eq!(
-            cfg.get_configs().clone(),
-            vec![btreeset![1, 2, 3]],
-            "expected old leader to have membership of [1, 2, 3], got {:?}",
-            cfg.get_configs()
-        );
-        assert!(
-            !cfg.is_in_joint_consensus(),
-            "expected old leader to be out of joint consensus"
-        );
+        for id in [1, 2, 3] {
+            router
+                .wait(&id, timeout())
+                .await?
+                .metrics(
+                    |x| x.current_term >= 2,
+                    "new cluster has term >= 2 because of new election",
+                )
+                .await?;
+        }
     }
 
-    // Assert that the current cluster is stable.
-    let _ = router.remove_node(0).await;
-    sleep(Duration::from_secs(5)).await; // Give time for a new leader to be elected.
+    tracing::info!("--- check state of the old leader");
+    {
+        let metrics = router.get_metrics(&0).await?;
+        let cfg = metrics.membership_config.membership;
 
-    // All metrics should be identical. Just use the first one.
-    let metrics = &router.latest_metrics().await[0];
-
-    // It may take more than one round to establish a leader.
-    // As leader established it commits a Blank log.
-    // If the election takes only one round, the expected term/index is 2/4.
-    tracing::info!("term: {}", metrics.current_term);
-    tracing::info!("index: {}", metrics.last_log_index);
-    assert!(metrics.current_term >= 2, "term incr when leader changes");
-    router.assert_stable_cluster(Some(metrics.current_term), Some(n_logs)).await;
-    router
-        .assert_storage_state(metrics.current_term, n_logs, None, LogId { term: 2, index: 4 }, None)
-        .await?;
-    // ----------------------------------- ^^^ this is `0` instead of `4` because blank payloads from new leaders
-    //                                         and config change entries are never applied to the state machine.
+        assert!(metrics.state != State::Leader,);
+        assert_eq!(metrics.current_term, 1,);
+        assert_eq!(metrics.last_log_index, 3,);
+        assert_eq!(metrics.last_applied, 3,);
+        assert_eq!(cfg.get_configs().clone(), vec![btreeset![1, 2, 3]],);
+        assert!(!cfg.is_in_joint_consensus(),);
+    }
 
     Ok(())
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(2000))
 }

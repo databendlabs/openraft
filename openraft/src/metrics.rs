@@ -206,7 +206,7 @@ impl Wait {
         .await
     }
 
-    /// Wait until applied upto `want_log`(inclusive) logs or timeout.
+    /// Wait until applied exactly `want_log`(inclusive) logs or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn log(&self, want_log: u64, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
@@ -218,6 +218,22 @@ impl Wait {
         self.metrics(
             |x| x.last_applied == want_log,
             &format!("{} .last_applied -> {}", msg.to_string(), want_log),
+        )
+        .await
+    }
+
+    /// Wait until applied at least `want_log`(inclusive) logs or timeout.
+    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
+    pub async fn log_at_least(&self, want_log: u64, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
+        self.metrics(
+            |x| x.last_log_index >= want_log,
+            &format!("{} .last_log_index >= {}", msg.to_string(), want_log),
+        )
+        .await?;
+
+        self.metrics(
+            |x| x.last_applied >= want_log,
+            &format!("{} .last_applied >= {}", msg.to_string(), want_log),
         )
         .await
     }
