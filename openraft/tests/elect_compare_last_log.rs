@@ -13,6 +13,8 @@ use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
 
+use crate::fixtures::blank;
+
 #[macro_use]
 mod fixtures;
 
@@ -40,7 +42,7 @@ async fn elect_compare_last_log() -> Result<()> {
         })
         .await?;
 
-        sto0.append_to_log(&[&Entry {
+        sto0.append_to_log(&[&blank(0, 0), &Entry {
             log_id: LogId { term: 2, index: 1 },
             payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
         }])
@@ -56,14 +58,12 @@ async fn elect_compare_last_log() -> Result<()> {
         .await?;
 
         sto1.append_to_log(&[
+            &blank(0, 0),
             &Entry {
                 log_id: LogId { term: 1, index: 1 },
                 payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
             },
-            &Entry {
-                log_id: LogId { term: 1, index: 2 },
-                payload: EntryPayload::Blank,
-            },
+            &blank(1, 2),
         ])
         .await?;
     }

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use fixtures::RaftRouter;
@@ -26,20 +27,20 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = 0;
+    let mut log_index = 0;
 
     tracing::info!("--- initializing cluster");
     {
         router.new_raft_node(0).await;
 
-        router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
-        router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
+        router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
+        router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
 
         router.initialize_from_single_node(0).await?;
-        n_logs += 1;
+        log_index += 1;
 
-        router.wait_for_log(&btreeset![0], n_logs, None, "init leader").await?;
-        router.assert_stable_cluster(Some(1), Some(n_logs)).await;
+        router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init leader").await?;
+        router.assert_stable_cluster(Some(1), Some(log_index)).await;
     }
 
     let n = router.remove_node(0).await.ok_or_else(|| anyhow::anyhow!("node not found"))?;
@@ -105,4 +106,8 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         n.0.install_snapshot(req).await?;
     }
     Ok(())
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(1000))
 }

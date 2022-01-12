@@ -296,12 +296,12 @@ where
 
         assert_eq!(
             initial.last_log_id,
-            LogId { term: 3, index: 2 },
+            Some(LogId { term: 3, index: 2 }),
             "state machine has higher log"
         );
         assert_eq!(
             initial.last_applied,
-            LogId { term: 3, index: 1 },
+            Some(LogId { term: 3, index: 1 }),
             "unexpected value for last applied log"
         );
         assert_eq!(
@@ -411,7 +411,7 @@ where
 
         assert_eq!(
             initial.last_log_id,
-            LogId { term: 2, index: 1 },
+            Some(LogId { term: 2, index: 1 }),
             "state machine has higher log"
         );
         Ok(())
@@ -439,7 +439,7 @@ where
 
         assert_eq!(
             initial.last_log_id,
-            LogId { term: 3, index: 1 },
+            Some(LogId { term: 3, index: 1 }),
             "state machine has higher log"
         );
         Ok(())
@@ -510,20 +510,8 @@ where
     pub async fn initial_logs(builder: &B) -> anyhow::Result<()> {
         let store = builder.build(NODE_ID).await;
 
-        let ent = store.try_get_log_entry(0).await?.unwrap();
-        assert_eq!(
-            LogId { term: 0, index: 0 },
-            ent.log_id,
-            "store initialized with a log at 0"
-        );
-
-        tracing::info!("--- no logs, return None");
-        {
-            store.delete_logs_from(..).await?;
-
-            let ent = store.try_get_log_entry(0).await?;
-            assert!(ent.is_none());
-        }
+        let ent = store.try_get_log_entry(0).await?;
+        assert!(ent.is_none(), "store initialized");
 
         Ok(())
     }
@@ -532,55 +520,33 @@ where
         let store = builder.build(NODE_ID).await;
 
         let log_id = store.first_known_log_id().await?;
-        assert_eq!(LogId::new(0, 0), log_id, "store initialized with a log at 0");
+        assert_eq!(None, log_id, "store initialized");
 
         tracing::info!("--- returns the min id");
         {
-            store
-                .append_to_log(&[
-                    &Entry {
-                        log_id: LogId { term: 1, index: 1 },
-                        payload: EntryPayload::Blank,
-                    },
-                    &Entry {
-                        log_id: LogId { term: 1, index: 2 },
-                        payload: EntryPayload::Blank,
-                    },
-                ])
-                .await?;
+            store.append_to_log(&[&blank(1, 1), &blank(1, 2)]).await?;
 
             store.delete_logs_from(0..2).await?;
 
             // NOTE: it assumes non applied logs always exist.
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId::new(0, 0), log_id, "last_applied is 0-0");
+            assert_eq!(None, log_id, "last_applied is None");
 
-            store
-                .apply_to_state_machine(&[&Entry {
-                    log_id: LogId { term: 1, index: 1 },
-                    payload: EntryPayload::Blank,
-                }])
-                .await?;
+            store.apply_to_state_machine(&[&blank(1, 1)]).await?;
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId::new(1, 1), log_id);
+            assert_eq!(Some(LogId::new(1, 1)), log_id);
 
-            store
-                .apply_to_state_machine(&[&Entry {
-                    log_id: LogId { term: 1, index: 2 },
-                    payload: EntryPayload::Blank,
-                }])
-                .await?;
+            store.apply_to_state_machine(&[&blank(1, 2)]).await?;
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId::new(1, 2), log_id);
+            assert_eq!(Some(LogId::new(1, 2)), log_id);
 
-            store
-                .apply_to_state_machine(&[&Entry {
-                    log_id: LogId { term: 1, index: 3 },
-                    payload: EntryPayload::Blank,
-                }])
-                .await?;
+            store.apply_to_state_machine(&[&blank(1, 3)]).await?;
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(LogId::new(1, 2), log_id, "least id is in log");
+            assert_eq!(Some(LogId::new(1, 2)), log_id, "least id is in log");
+
+            store.delete_logs_from(0..3).await?;
+            let log_id = store.first_known_log_id().await?;
+            assert_eq!(Some(LogId::new(1, 3)), log_id, "no logs, returns last applied log id");
         }
 
         Ok(())
@@ -589,16 +555,8 @@ where
     pub async fn get_log_state(builder: &B) -> anyhow::Result<()> {
         let store = builder.build(NODE_ID).await;
         let (first_log_id, last_log_id) = store.get_log_state().await?;
-        assert_eq!(
-            Some(LogId::new(0, 0)),
-            first_log_id,
-            "store initialized with a log at 0"
-        );
-        assert_eq!(
-            Some(LogId::new(0, 0)),
-            last_log_id,
-            "last_log_id should equal to first_log_id when store initialized"
-        );
+        assert_eq!(None, first_log_id, "store initialized");
+        assert_eq!(None, last_log_id, "last_log_id is None when store initialized");
 
         tracing::info!("--- only logs");
         {
@@ -614,12 +572,6 @@ where
                     },
                 ])
                 .await?;
-
-            let (first_log_id, last_log_id) = store.get_log_state().await?;
-            assert_eq!(Some(LogId::new(0, 0)), first_log_id);
-            assert_eq!(Some(LogId::new(1, 2)), last_log_id);
-
-            store.delete_logs_from(0..1).await?;
 
             let (first_log_id, last_log_id) = store.get_log_state().await?;
             assert_eq!(Some(LogId::new(1, 1)), first_log_id);
@@ -654,7 +606,7 @@ where
         let store = builder.build(NODE_ID).await;
 
         let log_id = store.first_id_in_log().await?;
-        assert_eq!(Some(LogId::new(0, 0)), log_id, "store initialized with a log at 0");
+        assert!(log_id.is_none(), "store initialized");
 
         tracing::info!("--- only logs");
         {
@@ -670,11 +622,6 @@ where
                     },
                 ])
                 .await?;
-
-            let log_id = store.first_id_in_log().await?;
-            assert_eq!(Some(LogId::new(0, 0)), log_id);
-
-            store.delete_logs_from(0..1).await?;
 
             let log_id = store.first_id_in_log().await?;
             assert_eq!(Some(LogId::new(1, 1)), log_id);
@@ -695,7 +642,7 @@ where
         let store = builder.build(NODE_ID).await;
 
         let log_id = store.last_id_in_log().await?;
-        assert_eq!(Some(LogId { term: 0, index: 0 }), log_id);
+        assert_eq!(None, log_id);
 
         tracing::info!("--- only logs");
         {
@@ -743,7 +690,7 @@ where
         let store = builder.build(NODE_ID).await;
 
         let (applied, membership) = store.last_applied_state().await?;
-        assert_eq!(LogId { term: 0, index: 0 }, applied);
+        assert_eq!(None, applied);
         assert_eq!(None, membership);
 
         tracing::info!("--- with last_applied and last_membership");
@@ -756,7 +703,7 @@ where
                 .await?;
 
             let (applied, membership) = store.last_applied_state().await?;
-            assert_eq!(LogId { term: 1, index: 3 }, applied);
+            assert_eq!(Some(LogId { term: 1, index: 3 }), applied);
             assert_eq!(
                 Some(EffectiveMembership {
                     log_id: LogId { term: 1, index: 3 },
@@ -776,7 +723,7 @@ where
                 .await?;
 
             let (applied, membership) = store.last_applied_state().await?;
-            assert_eq!(LogId { term: 1, index: 5 }, applied);
+            assert_eq!(Some(LogId { term: 1, index: 5 }), applied);
             assert_eq!(
                 Some(EffectiveMembership {
                     log_id: LogId { term: 1, index: 3 },
@@ -883,8 +830,8 @@ where
 
         assert_eq!(
             last_applied,
-            LogId { term: 3, index: 1 },
-            "expected last_applied_log to be 1, got {}",
+            Some(LogId { term: 3, index: 1 }),
+            "expected last_applied_log to be 1, got {:?}",
             last_applied
         );
 
@@ -939,8 +886,8 @@ where
 
         assert_eq!(
             last_applied,
-            LogId { term: 3, index: 3 },
-            "expected last_applied_log to be 3, got {}",
+            Some(LogId { term: 3, index: 3 }),
+            "expected last_applied_log to be 3, got {:?}",
             last_applied
         );
 
@@ -980,6 +927,8 @@ where
     }
 
     pub async fn feed_10_logs_vote_self(sto: &S) -> anyhow::Result<()> {
+        sto.append_to_log(&[&blank(0, 0)]).await?;
+
         for i in 1..=10 {
             sto.append_to_log(&[&Entry {
                 log_id: (1, i).into(),
@@ -1039,6 +988,10 @@ where
             store
                 .append_to_log(&[
                     &Entry {
+                        log_id: LogId::new(0, 0),
+                        payload: EntryPayload::Blank,
+                    },
+                    &Entry {
                         log_id: LogId { term: 1, index: 1 },
                         payload: EntryPayload::Blank,
                     },
@@ -1054,6 +1007,10 @@ where
                 .await?;
             store
                 .apply_to_state_machine(&[
+                    &Entry {
+                        log_id: LogId { term: 2, index: 0 },
+                        payload: EntryPayload::Blank,
+                    },
                     &Entry {
                         log_id: LogId { term: 2, index: 1 },
                         payload: EntryPayload::Blank,
@@ -1087,33 +1044,17 @@ where
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
             store
-                .append_to_log(&[
-                    &Entry {
-                        log_id: LogId { term: 1, index: 1 },
-                        payload: EntryPayload::Blank,
-                    },
-                    &Entry {
-                        log_id: LogId { term: 1, index: 2 },
-                        payload: EntryPayload::Blank,
-                    },
-                    &Entry {
-                        log_id: LogId { term: 1, index: 3 },
-                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
-                    },
-                ])
+                .append_to_log(&[&blank(0, 0), &blank(1, 1), &blank(1, 2), &Entry {
+                    log_id: LogId { term: 1, index: 3 },
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
+                }])
                 .await?;
 
             store
-                .apply_to_state_machine(&[
-                    &Entry {
-                        log_id: LogId { term: 2, index: 1 },
-                        payload: EntryPayload::Blank,
-                    },
-                    &Entry {
-                        log_id: LogId { term: 2, index: 2 },
-                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {3,4,5})),
-                    },
-                ])
+                .apply_to_state_machine(&[&blank(0, 0), &blank(2, 1), &Entry {
+                    log_id: LogId { term: 2, index: 2 },
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {3,4,5})),
+                }])
                 .await?;
 
             let state = store.get_initial_state().await;
@@ -1294,7 +1235,6 @@ where
 
         let res = store.get_log_entries(10..12).await;
         let e = res.unwrap_err().into_defensive().unwrap();
-        println!("{}", e);
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::LogIndex(11),
             violation: Violation::LogIndexNotFound {
@@ -1370,7 +1310,7 @@ where
         assert_eq!(ErrorSubject::Logs, e.subject);
         assert_eq!(
             Violation::LogsNonConsecutive {
-                prev: LogId { term: 1, index: 1 },
+                prev: Some(LogId { term: 1, index: 1 }),
                 next: LogId { term: 1, index: 3 },
             },
             e.violation
@@ -1386,38 +1326,17 @@ where
         tracing::info!("-- nonconsecutive log");
         tracing::info!("-- overlapping log");
 
-        store
-            .append_to_log(&[
-                &Entry {
-                    log_id: (1, 1).into(),
-                    payload: EntryPayload::Blank,
-                },
-                &Entry {
-                    log_id: (1, 2).into(),
-                    payload: EntryPayload::Blank,
-                },
-            ])
-            .await?;
+        store.append_to_log(&[&blank(0, 0), &blank(1, 1), &blank(1, 2)]).await?;
 
-        store
-            .apply_to_state_machine(&[&Entry {
-                log_id: LogId { term: 1, index: 1 },
-                payload: EntryPayload::Blank,
-            }])
-            .await?;
+        store.apply_to_state_machine(&[&blank(0, 0), &blank(1, 1)]).await?;
 
-        let res = store
-            .append_to_log(&[&Entry {
-                log_id: (3, 4).into(),
-                payload: EntryPayload::Blank,
-            }])
-            .await;
+        let res = store.append_to_log(&[&blank(3, 4)]).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Log(LogId { term: 3, index: 4 }), e.subject);
         assert_eq!(
             Violation::LogsNonConsecutive {
-                prev: LogId { term: 1, index: 2 },
+                prev: Some(LogId { term: 1, index: 2 }),
                 next: LogId { term: 3, index: 4 },
             },
             e.violation
@@ -1436,31 +1355,9 @@ where
         tracing::info!("-- nonconsecutive log");
         tracing::info!("-- overlapping log");
 
-        store
-            .append_to_log(&[
-                &Entry {
-                    log_id: (1, 1).into(),
-                    payload: EntryPayload::Blank,
-                },
-                &Entry {
-                    log_id: (1, 2).into(),
-                    payload: EntryPayload::Blank,
-                },
-            ])
-            .await?;
+        store.append_to_log(&[&blank(0, 0), &blank(1, 1), &blank(1, 2)]).await?;
 
-        store
-            .apply_to_state_machine(&[
-                &Entry {
-                    log_id: LogId { term: 1, index: 1 },
-                    payload: EntryPayload::Blank,
-                },
-                &Entry {
-                    log_id: LogId { term: 1, index: 2 },
-                    payload: EntryPayload::Blank,
-                },
-            ])
-            .await?;
+        store.apply_to_state_machine(&[&blank(0, 0), &blank(1, 1), &blank(1, 2)]).await?;
 
         store.delete_logs_from(1..).await?;
 
@@ -1475,7 +1372,7 @@ where
         assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 4 }), e.subject);
         assert_eq!(
             Violation::LogsNonConsecutive {
-                prev: LogId { term: 1, index: 2 },
+                prev: Some(LogId { term: 1, index: 2 }),
                 next: LogId { term: 1, index: 4 },
             },
             e.violation
@@ -1489,31 +1386,15 @@ where
         // append_to_log: 1,3: index == last + 1 but term is lower
         let store = builder.build(NODE_ID).await;
 
-        store
-            .append_to_log(&[
-                &Entry {
-                    log_id: (2, 1).into(),
-                    payload: EntryPayload::Blank,
-                },
-                &Entry {
-                    log_id: (2, 2).into(),
-                    payload: EntryPayload::Blank,
-                },
-            ])
-            .await?;
+        store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
-        let res = store
-            .append_to_log(&[&Entry {
-                log_id: (1, 3).into(),
-                payload: EntryPayload::Blank,
-            }])
-            .await;
+        let res = store.append_to_log(&[&blank(1, 3)]).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 3 }), e.subject);
         assert_eq!(
             Violation::LogsNonConsecutive {
-                prev: LogId { term: 2, index: 2 },
+                prev: Some(LogId { term: 2, index: 2 }),
                 next: LogId { term: 1, index: 3 },
             },
             e.violation
@@ -1528,46 +1409,19 @@ where
         // append_to_log: 1,3: index == last + 1 but term is lower
         let store = builder.build(NODE_ID).await;
 
-        store
-            .append_to_log(&[
-                &Entry {
-                    log_id: (2, 1).into(),
-                    payload: EntryPayload::Blank,
-                },
-                &Entry {
-                    log_id: (2, 2).into(),
-                    payload: EntryPayload::Blank,
-                },
-            ])
-            .await?;
+        store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
-        store
-            .apply_to_state_machine(&[
-                &Entry {
-                    log_id: LogId { term: 2, index: 1 },
-                    payload: EntryPayload::Blank,
-                },
-                &Entry {
-                    log_id: LogId { term: 2, index: 2 },
-                    payload: EntryPayload::Blank,
-                },
-            ])
-            .await?;
+        store.apply_to_state_machine(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
         store.delete_logs_from(1..).await?;
 
-        let res = store
-            .append_to_log(&[&Entry {
-                log_id: (1, 3).into(),
-                payload: EntryPayload::Blank,
-            }])
-            .await;
+        let res = store.append_to_log(&[&blank(1, 3)]).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 3 }), e.subject);
         assert_eq!(
             Violation::LogsNonConsecutive {
-                prev: LogId { term: 2, index: 2 },
+                prev: Some(LogId { term: 2, index: 2 }),
                 next: LogId { term: 1, index: 3 },
             },
             e.violation
@@ -1592,7 +1446,7 @@ where
         let store = builder.build(NODE_ID).await;
 
         let entry = Entry {
-            log_id: LogId { term: 3, index: 1 },
+            log_id: LogId::new(3, 1),
 
             payload: EntryPayload::Normal(ClientRequest {
                 client: "0".into(),
@@ -1601,7 +1455,7 @@ where
             }),
         };
 
-        store.apply_to_state_machine(&[&entry]).await?;
+        store.apply_to_state_machine(&[&blank(0, 0), &entry]).await?;
 
         tracing::info!("--- re-apply 1th");
         {
@@ -1611,7 +1465,7 @@ where
             assert_eq!(ErrorSubject::Apply(LogId { term: 3, index: 1 }), e.subject);
             assert_eq!(
                 Violation::ApplyNonConsecutive {
-                    prev: LogId { term: 3, index: 1 },
+                    prev: Some(LogId { term: 3, index: 1 }),
                     next: LogId { term: 3, index: 1 },
                 },
                 e.violation
@@ -1635,7 +1489,7 @@ where
             assert_eq!(ErrorSubject::Apply(LogId { term: 3, index: 3 }), e.subject);
             assert_eq!(
                 Violation::ApplyNonConsecutive {
-                    prev: LogId { term: 3, index: 1 },
+                    prev: Some(LogId { term: 3, index: 1 }),
                     next: LogId { term: 3, index: 3 },
                 },
                 e.violation
@@ -1648,19 +1502,13 @@ where
     pub async fn df_apply_gt_last_applied_id(builder: &B) -> anyhow::Result<()> {
         let store = builder.build(NODE_ID).await;
 
-        let entry = Entry {
-            log_id: LogId { term: 3, index: 1 },
-            payload: EntryPayload::Blank,
-        };
+        let entry = blank(3, 1);
 
-        store.apply_to_state_machine(&[&entry]).await?;
+        store.apply_to_state_machine(&[&blank(0, 0), &entry]).await?;
 
         tracing::info!("--- next apply with last_index+1 but lower term");
         {
-            let entry = Entry {
-                log_id: LogId { term: 2, index: 2 },
-                payload: EntryPayload::Blank,
-            };
+            let entry = blank(2, 2);
             let res = store.apply_to_state_machine(&[&entry]).await;
             assert!(res.is_err());
 
@@ -1668,7 +1516,7 @@ where
             assert_eq!(ErrorSubject::Apply(LogId { term: 2, index: 2 }), e.subject);
             assert_eq!(
                 Violation::ApplyNonConsecutive {
-                    prev: LogId { term: 3, index: 1 },
+                    prev: Some(LogId { term: 3, index: 1 }),
                     next: LogId { term: 2, index: 2 },
                 },
                 e.violation
@@ -1676,5 +1524,13 @@ where
         }
 
         Ok(())
+    }
+}
+
+/// Create a blank log entry
+fn blank<D: AppData>(term: u64, index: u64) -> Entry<D> {
+    Entry {
+        log_id: LogId::new(term, index),
+        payload: EntryPayload::Blank,
     }
 }

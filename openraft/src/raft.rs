@@ -330,8 +330,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         let send_res = self.inner.tx_api.send((mes, span));
         if let Err(send_err) = send_res {
-            let err = self.inner.rx_metrics.borrow().running_state.clone().unwrap_err();
-            tracing::error!(%send_err, mes=%sum, last_error=?err, "error send tx to RaftCore");
+            let last_err = self.inner.rx_metrics.borrow().running_state.clone();
+            tracing::error!(%send_err, mes=%sum, last_error=?last_err, "error send tx to RaftCore");
+
+            let err = match last_err {
+                Ok(_) => {
+                    // normal shutdown, not caused by any error.
+                    Fatal::Stopped
+                }
+                Err(e) => e,
+            };
+
             return Err(err.into());
         }
 
@@ -339,8 +348,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let res = match recv_res {
             Ok(x) => x,
             Err(e) => {
-                let err = self.inner.rx_metrics.borrow().running_state.clone().unwrap_err();
-                tracing::error!(%e, mes=%sum, last_error=?err, "error recv rx from RaftCore");
+                let last_err = self.inner.rx_metrics.borrow().running_state.clone();
+                tracing::error!(%e, mes=%sum, last_error=?last_err, "error recv rx from RaftCore");
+
+                let err = match last_err {
+                    Ok(_) => {
+                        // normal shutdown, not caused by any error.
+                        Fatal::Stopped
+                    }
+                    Err(e) => e,
+                };
+
                 Err(err.into())
             }
         };
@@ -406,7 +424,7 @@ pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AddLearnerResponse {
-    pub matched: LogId,
+    pub matched: Option<LogId>,
 }
 
 /// A message coming from the Raft API.
@@ -500,7 +518,7 @@ pub struct AppendEntriesRequest<D: AppData> {
     /// The leader's ID. Useful in redirecting clients.
     pub leader_id: u64,
 
-    pub prev_log_id: LogId,
+    pub prev_log_id: Option<LogId>,
 
     /// The new log entries to store.
     ///
@@ -510,13 +528,13 @@ pub struct AppendEntriesRequest<D: AppData> {
     pub entries: Vec<Entry<D>>,
 
     /// The leader's committed log id.
-    pub leader_commit: LogId,
+    pub leader_commit: Option<LogId>,
 }
 
 impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
     fn summary(&self) -> String {
         format!(
-            "leader={}-{}, prev_log_id={}, leader_commit={}, entries={}",
+            "leader={}-{}, prev_log_id={:?}, leader_commit={:?}, entries={}",
             self.term,
             self.leader_id,
             self.prev_log_id,
@@ -532,21 +550,16 @@ pub struct AppendEntriesResponse {
     /// The responding node's current term, for leader to update itself.
     pub term: u64,
 
-    /// The last matching log id on follower.
-    ///
-    /// It is a successful append-entry iff `matched` is `Some()`.
-    pub matched: Option<LogId>,
-
-    /// The log id that is different from the leader on follower.
-    ///
-    /// `conflict` is None if `matched` is `Some()`, because if there is a matching entry, all following inconsistent
-    /// entries will be deleted.
-    pub conflict: Option<LogId>,
+    pub success: bool,
+    pub conflict: bool,
 }
 
-impl AppendEntriesResponse {
-    pub fn success(&self) -> bool {
-        self.matched.is_some()
+impl MessageSummary for AppendEntriesResponse {
+    fn summary(&self) -> String {
+        format!(
+            "term:{}, success:{:?}, conflict:{:?}",
+            self.term, self.success, self.conflict
+        )
     }
 }
 
@@ -620,7 +633,7 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
             EntryPayload::Blank => "blank".to_string(),
             EntryPayload::Normal(_n) => "normal".to_string(),
             EntryPayload::Membership(c) => {
-                format!("config-change: {:?}", c)
+                format!("membership: {}", c.summary())
             }
         }
     }
@@ -634,17 +647,17 @@ pub struct VoteRequest {
 
     pub candidate_id: u64,
 
-    pub last_log_id: LogId,
+    pub last_log_id: Option<LogId>,
 }
 
 impl MessageSummary for VoteRequest {
     fn summary(&self) -> String {
-        format!("{}-{}, last_log:{}", self.term, self.candidate_id, self.last_log_id)
+        format!("{}-{}, last_log:{:?}", self.term, self.candidate_id, self.last_log_id)
     }
 }
 
 impl VoteRequest {
-    pub fn new(term: u64, candidate_id: u64, last_log_id: LogId) -> Self {
+    pub fn new(term: u64, candidate_id: u64, last_log_id: Option<LogId>) -> Self {
         Self {
             term,
             candidate_id,
@@ -663,7 +676,7 @@ pub struct VoteResponse {
     pub vote_granted: bool,
 
     /// The last log id stored on the remote voter.
-    pub last_log_id: LogId,
+    pub last_log_id: Option<LogId>,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -737,18 +750,6 @@ impl<D: AppData> ClientWriteRequest<D> {
     /// Create a new instance.
     pub(crate) fn new_base(entry: EntryPayload<D>) -> Self {
         Self { payload: entry }
-    }
-
-    /// Generate a new payload holding a config change.
-    pub(crate) fn new_config(membership: Membership) -> Self {
-        Self::new_base(EntryPayload::Membership(membership))
-    }
-
-    /// Generate a new blank payload.
-    ///
-    /// This is used by new leaders when first coming to power.
-    pub(crate) fn new_blank() -> Self {
-        Self::new_base(EntryPayload::Blank)
     }
 }
 

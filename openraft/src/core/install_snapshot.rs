@@ -239,13 +239,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             delete_applied_logs(self.storage.clone(), &last_applied, self.config.max_applied_log_to_keep).await?;
 
             // snapshot is installed
-            self.last_applied = last_applied;
+            self.last_applied = Some(last_applied);
 
             if self.committed < self.last_applied {
                 self.committed = self.last_applied;
             }
-            if self.last_log_id < Some(self.last_applied) {
-                self.last_log_id = Some(self.last_applied);
+            if self.last_log_id < self.last_applied {
+                self.last_log_id = self.last_applied;
             }
 
             // There could be unknown membership in the snapshot.

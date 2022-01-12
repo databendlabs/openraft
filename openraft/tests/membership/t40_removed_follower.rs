@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LogIdOptionExt;
 
 use crate::fixtures::RaftRouter;
 
@@ -55,7 +56,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
             router
                 .wait(i, timeout())
                 .await?
-                .metrics(|x| x.last_applied >= n_logs, "new cluster recv new logs")
+                .metrics(|x| x.last_applied.index() >= Some(n_logs), "new cluster recv new logs")
                 .await?;
         }
     }
@@ -64,7 +65,10 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
         router
             .wait(i, timeout())
             .await?
-            .metrics(|x| x.last_applied < n_logs, "old cluster does not recv new logs")
+            .metrics(
+                |x| x.last_applied.index() < Some(n_logs),
+                "old cluster does not recv new logs",
+            )
             .await?;
     }
 

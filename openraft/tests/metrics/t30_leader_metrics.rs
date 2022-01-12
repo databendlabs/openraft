@@ -26,7 +26,7 @@ use crate::fixtures::RaftRouter;
 /// - add 4 learner as follower.
 /// - asserts that the leader was able to successfully commit logs and that the followers has successfully replicated
 ///   the payload.
-/// - remove one folower: node-4
+/// - remove one follower: node-4
 /// - asserts node-4 becomes learner and the leader stops sending logs to it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn leader_metrics() -> Result<()> {
@@ -46,8 +46,9 @@ async fn leader_metrics() -> Result<()> {
     router.new_raft_node(0).await;
 
     // Assert all nodes are in learner state & have no entries.
-    let mut n_logs = 0;
-    router.wait_for_log(&btreeset![0], n_logs, timeout, "init").await?;
+    let mut log_index = 0;
+
+    router.wait_for_log(&btreeset![0], None, timeout, "init").await?;
     router.wait_for_state(&btreeset![0], State::Learner, timeout, "init").await?;
 
     router.assert_pristine_cluster().await;
@@ -55,10 +56,10 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!("--- initializing cluster");
 
     router.initialize_from_single_node(0).await?;
-    n_logs += 1;
+    log_index += 1;
 
-    router.wait_for_log(&btreeset![0], n_logs, timeout, "init cluster").await?;
-    router.assert_stable_cluster(Some(1), Some(n_logs)).await;
+    router.wait_for_log(&btreeset![0], Some(log_index), timeout, "init cluster").await?;
+    router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     router
         .wait_for_metrics(
@@ -92,19 +93,22 @@ async fn leader_metrics() -> Result<()> {
         inner?;
     }
 
-    router.wait_for_log(&all_members, n_logs, timeout, "add learner 1,2,3,4").await?;
+    router.wait_for_log(&all_members, Some(log_index), timeout, "add learner 1,2,3,4").await?;
 
     tracing::info!("--- changing cluster config to 012");
 
     router.change_membership(0, all_members.clone()).await?;
-    n_logs += 2; // 2 member-change logs
+    log_index += 2; // 2 member-change logs
 
-    router.wait_for_log(&all_members, n_logs, timeout, "change members to 0,1,2,3,4").await?;
+    router.wait_for_log(&all_members, Some(log_index), timeout, "change members to 0,1,2,3,4").await?;
 
-    router.assert_stable_cluster(Some(1), Some(n_logs)).await; // Still in term 1, so leader is still node 0.
+    router.assert_stable_cluster(Some(1), Some(log_index)).await; // Still in term 1, so leader is still node 0.
 
     let ww = ReplicationMetrics {
-        matched: LogId { term: 1, index: n_logs },
+        matched: Some(LogId {
+            term: 1,
+            index: log_index,
+        }),
     };
     let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone(), 4=>ww.clone(), };
     router
@@ -124,12 +128,12 @@ async fn leader_metrics() -> Result<()> {
 
     // Send some requests
     router.client_request_many(0, "client", 10).await;
-    n_logs += 10;
+    log_index += 10;
 
     tracing::info!("--- remove n{}", 4);
     {
         router.change_membership(0, left_members.clone()).await?;
-        n_logs += 2; // two member-change logs
+        log_index += 2; // two member-change logs
 
         tracing::info!("--- n{} should revert to learner", 4);
         router
@@ -144,7 +148,7 @@ async fn leader_metrics() -> Result<()> {
         router
             .wait_for_log(
                 &left_members,
-                n_logs,
+                Some(log_index),
                 timeout,
                 "other nodes should commit the membership change log",
             )
@@ -154,7 +158,10 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!("--- replication metrics should reflect the replication state");
     {
         let ww = ReplicationMetrics {
-            matched: LogId { term: 1, index: n_logs },
+            matched: Some(LogId {
+                term: 1,
+                index: log_index,
+            }),
         };
         let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone()};
         router
@@ -181,7 +188,7 @@ async fn leader_metrics() -> Result<()> {
             .send_vote(leader, VoteRequest {
                 term: 100,
                 candidate_id: 100,
-                last_log_id: LogId { term: 10, index: 100 },
+                last_log_id: Some(LogId { term: 10, index: 100 }),
             })
             .await?;
 

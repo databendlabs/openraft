@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::core::client::ClientRequestEntry;
-use crate::core::EffectiveMembership;
 use crate::core::LeaderState;
 use crate::core::LearnerState;
 use crate::core::State;
@@ -15,6 +14,7 @@ use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::EntryPayload;
 use crate::raft::RaftRespTx;
+use crate::raft_types::LogIdOptionExt;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -31,10 +31,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         mut members: BTreeSet<NodeId>,
     ) -> Result<(), InitializeError> {
-        if self.core.last_log_id.is_none() || self.core.current_term != 0 {
+        // TODO(xp): simplify this condition
+
+        if self.core.last_log_id.is_some() || self.core.current_term != 0 {
             tracing::error!(
-                { last_log_id=?self.core.last_log_id, self.core.current_term },
-                "rejecting init_with_config request as last_log_index is not None or current_term is 0");
+                last_log_id=?self.core.last_log_id, self.core.current_term,
+                "rejecting init_with_config request as last_log_index is not None or current_term is not 0");
             return Err(InitializeError::NotAllowed);
         }
 
@@ -43,17 +45,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             members.insert(self.core.id);
         }
 
-        // Build a new membership config from given init data & assign it as the new cluster
-        // membership config in memory only.
-        self.core.effective_membership = EffectiveMembership {
-            log_id: LogId { term: 1, index: 1 },
-            membership: Membership::new_single(members),
-        };
+        let membership = Membership::new_single(members);
+
+        let payload = EntryPayload::Membership(membership.clone());
+        let _ent = self.core.append_payload_to_log(payload).await?;
 
         // Become a candidate and start campaigning for leadership. If this node is the only node
         // in the cluster, then become leader without holding an election. If members len == 1, we
         // know it is our ID due to the above code where we ensure our own ID is present.
         if self.core.effective_membership.membership.all_nodes().len() == 1 {
+            // TODO(xp): remove this simplified shortcut.
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
 
@@ -83,7 +84,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if target == self.core.id {
             tracing::debug!("target node is this node");
             let _ = tx.send(Ok(AddLearnerResponse {
-                matched: self.core.last_log_id.expect("raft core is uninitialized."),
+                matched: self.core.last_log_id,
             }));
             return;
         }
@@ -102,9 +103,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.nodes.insert(target, state);
 
             // non-blocking mode, do not know about the replication stat.
-            let _ = tx.send(Ok(AddLearnerResponse {
-                matched: LogId::new(0, 0),
-            }));
+            let _ = tx.send(Ok(AddLearnerResponse { matched: None }));
         }
     }
 
@@ -125,7 +124,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // The last membership config is not committed yet.
         // Can not process the next one.
-        if self.core.committed < self.core.effective_membership.log_id {
+        if self.core.committed < Some(self.core.effective_membership.log_id) {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::InProgress {
                     membership_log_id: self.core.effective_membership.log_id,
@@ -154,7 +153,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         for new_node in members.difference(curr.all_nodes()) {
             match self.nodes.get(new_node) {
                 Some(node) => {
-                    if node.is_line_rate(&self.core.last_log_id.unwrap_or_default(), &self.core.config) {
+                    if node.is_line_rate(&self.core.last_log_id, &self.core.config) {
                         // Node is ready to join.
                         continue;
                     }
@@ -165,7 +164,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                             ChangeMembershipError::LearnerIsLagging {
                                 node_id: *new_node,
                                 matched: node.matched,
-                                distance: self.core.last_log_id.unwrap().index.saturating_sub(node.matched.index),
+                                distance: self.core.last_log_id.next_index().saturating_sub(node.matched.next_index()),
                             },
                         )));
                         return Ok(());
@@ -186,6 +185,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         Ok(())
     }
 
+    // TODO(xp): remove this
     #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=self.core.id))]
     pub async fn append_membership_log(
         &mut self,
@@ -193,13 +193,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         resp_tx: Option<RaftRespTx<ClientWriteResponse<R>, ClientWriteError>>,
     ) -> Result<(), StorageError> {
         let payload = EntryPayload::Membership(mem.clone());
-        let entry = self.append_payload_to_log(payload).await?;
-
-        // Caveat: membership must be updated before commit check is done with the new config.
-        self.core.effective_membership = EffectiveMembership {
-            log_id: entry.log_id,
-            membership: mem,
-        };
+        let entry = self.core.append_payload_to_log(payload).await?;
 
         self.leader_report_metrics();
 
@@ -268,7 +262,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             if let Some(n) = n {
                 if let Some(since) = n.remove_since {
-                    if n.matched.index < since {
+                    if n.matched.index() < Some(since) {
                         return false;
                     }
                 } else {

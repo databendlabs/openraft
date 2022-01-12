@@ -24,7 +24,6 @@ use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
-use crate::LogId;
 use crate::MessageSummary;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -52,21 +51,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Commit the initial entry which new leaders are obligated to create when first coming to power, per §8.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn commit_initial_leader_entry(&mut self) -> Result<(), StorageError> {
-        // If the cluster has just formed, and the current index is 0, then commit the current
-        // config, else a blank payload.
-        let req: ClientWriteRequest<D> =
-            if self.core.last_log_id.expect("leader's raft core is uninitialized.").index == 0 {
-                ClientWriteRequest::new_config(self.core.effective_membership.membership.clone())
-            } else {
-                ClientWriteRequest::new_blank()
-            };
-
-        // Commit the initial payload to the cluster.
-        let entry = self.append_payload_to_log(req.payload).await?;
-        self.core.last_log_id = self.core.last_log_id.map(|mut last_log_id| {
-            last_log_id.term = self.core.current_term;
-            last_log_id
-        }); // This only ever needs to be updated once per term.
+        let entry = self.core.append_payload_to_log(EntryPayload::Blank).await?;
 
         self.leader_report_metrics();
 
@@ -74,7 +59,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             entry: Arc::new(entry),
             tx: None,
         };
-        // TODO(xp): it should update the lost_log_id
+
         self.replicate_client_request(cr_entry).await?;
 
         Ok(())
@@ -187,7 +172,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         rpc: ClientWriteRequest<D>,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) -> Result<(), StorageError> {
-        let entry = self.append_payload_to_log(rpc.payload).await?;
+        let entry = self.core.append_payload_to_log(rpc.payload).await?;
         let entry = ClientRequestEntry {
             entry: Arc::new(entry),
             tx: Some(tx),
@@ -197,27 +182,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         self.replicate_client_request(entry).await?;
         Ok(())
-    }
-
-    /// Transform the given payload into an entry, assign an index and term, and append the entry to the log.
-    #[tracing::instrument(level = "debug", skip(self, payload))]
-    pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> Result<Entry<D>, StorageError> {
-        let entry = Entry {
-            log_id: LogId {
-                index: self.core.last_log_id.expect("raft core is uninitialized.").index + 1,
-                term: self.core.current_term,
-            },
-            payload,
-        };
-        self.core.storage.append_to_log(&[&entry]).await?;
-
-        tracing::debug!("append log: {}", entry.summary());
-        self.core.last_log_id = self.core.last_log_id.map(|mut log_id| {
-            log_id.index = entry.log_id.index;
-            log_id
-        });
-
-        Ok(entry)
     }
 
     /// Begin the process of replicating the given client request.
@@ -246,8 +210,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.awaiting_committed.push(req);
         } else {
             // Else, there are no voting nodes for replication, so the payload is now committed.
-            self.core.committed = entry_arc.log_id;
-            tracing::debug!(%self.core.committed, "update committed, no need to replicate");
+            self.core.committed = Some(entry_arc.log_id);
+            tracing::debug!(?self.core.committed, "update committed, no need to replicate");
 
             self.leader_report_metrics();
             self.client_request_post_commit(req).await?;
@@ -342,12 +306,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let log_id = &entry.log_id;
         let index = log_id.index;
 
-        let expected_next_index = self.core.last_applied.index + 1;
+        let expected_next_index = match self.core.last_applied {
+            None => 0,
+            Some(log_id) => log_id.index + 1,
+        };
+
         if index != expected_next_index {
             let entries = self.core.storage.get_log_entries(expected_next_index..index).await?;
 
             if let Some(entry) = entries.last() {
-                self.core.last_applied = entry.log_id;
+                self.core.last_applied = Some(entry.log_id);
             }
 
             let data_entries: Vec<_> = entries.iter().collect();
@@ -370,7 +338,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         .await?;
 
         // TODO(xp): deal with partial apply.
-        self.core.last_applied = *log_id;
+        self.core.last_applied = Some(*log_id);
         self.leader_report_metrics();
 
         // TODO(xp) merge this function to replication_to_state_machine?

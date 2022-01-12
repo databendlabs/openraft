@@ -5,6 +5,7 @@ use std::ops::RangeBounds;
 use async_trait::async_trait;
 
 use crate::raft::Entry;
+use crate::raft_types::LogIdOptionExt;
 use crate::storage::HardState;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -37,17 +38,17 @@ where
             return Ok(());
         }
 
-        if let Some(last_log_id) = self.inner().last_id_in_log().await? {
-            let (last_applied, _) = self.inner().last_applied_state().await?;
-            if last_log_id.index > last_applied.index && last_log_id < last_applied {
-                return Err(
-                    DefensiveError::new(ErrorSubject::Log(last_log_id), Violation::DirtyLog {
-                        higher_index_log_id: last_log_id,
-                        lower_index_log_id: last_applied,
-                    })
-                    .into(),
-                );
-            }
+        let last_log_id = self.inner().last_id_in_log().await?;
+        let (last_applied, _) = self.inner().last_applied_state().await?;
+
+        if last_log_id.index() > last_applied.index() && last_log_id < last_applied {
+            return Err(
+                DefensiveError::new(ErrorSubject::Log(last_log_id.unwrap()), Violation::DirtyLog {
+                    higher_index_log_id: last_log_id.unwrap(),
+                    lower_index_log_id: last_applied.unwrap(),
+                })
+                .into(),
+            );
         }
 
         Ok(())
@@ -102,7 +103,7 @@ where
         for e in entries.iter().skip(1) {
             if e.log_id.index != prev_log_id.index + 1 {
                 return Err(DefensiveError::new(ErrorSubject::Logs, Violation::LogsNonConsecutive {
-                    prev: prev_log_id,
+                    prev: Some(prev_log_id),
                     next: e.log_id,
                 })
                 .into());
@@ -138,7 +139,7 @@ where
         let last_id = self.last_log_id().await?;
 
         let first_id = entries[0].log_id;
-        if last_id.index + 1 != first_id.index {
+        if last_id.next_index() != first_id.index {
             return Err(
                 DefensiveError::new(ErrorSubject::Log(first_id), Violation::LogsNonConsecutive {
                     prev: last_id,
@@ -160,7 +161,9 @@ where
         let last_id = self.last_log_id().await?;
 
         let first_id = entries[0].log_id;
-        if first_id < last_id {
+        // TODO(xp): test first eq last.
+        // TODO(xp): test last == None is ok
+        if last_id.is_some() && Some(first_id) <= last_id {
             return Err(
                 DefensiveError::new(ErrorSubject::Log(first_id), Violation::LogsNonConsecutive {
                     prev: last_id,
@@ -175,11 +178,11 @@ where
 
     /// Find the last known log id from log or state machine
     /// If no log id found, the default one `0,0` is returned.
-    async fn last_log_id(&self) -> Result<LogId, StorageError> {
+    async fn last_log_id(&self) -> Result<Option<LogId>, StorageError> {
         let log_last_id = self.inner().last_id_in_log().await?;
         let (sm_last_id, _) = self.inner().last_applied_state().await?;
 
-        Ok(std::cmp::max(log_last_id.unwrap_or_default(), sm_last_id))
+        Ok(std::cmp::max(log_last_id, sm_last_id))
     }
 
     /// The entries to apply to state machien has to be last_applied_log_id.index + 1
@@ -191,7 +194,7 @@ where
         let (last_id, _) = self.inner().last_applied_state().await?;
 
         let first_id = entries[0].log_id;
-        if last_id.index + 1 != first_id.index {
+        if last_id.next_index() != first_id.index {
             return Err(
                 DefensiveError::new(ErrorSubject::Apply(first_id), Violation::ApplyNonConsecutive {
                     prev: last_id,
@@ -326,7 +329,8 @@ where
         let (last_id, _) = self.inner().last_applied_state().await?;
 
         let first_id = entries[0].log_id;
-        if first_id < last_id {
+        // TODO(xp): test first eq last
+        if Some(first_id) <= last_id {
             return Err(
                 DefensiveError::new(ErrorSubject::Apply(first_id), Violation::ApplyNonConsecutive {
                     prev: last_id,

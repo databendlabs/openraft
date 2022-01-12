@@ -42,6 +42,7 @@ use openraft::AppData;
 use openraft::Config;
 use openraft::DefensiveCheck;
 use openraft::LogId;
+use openraft::LogIdOptionExt;
 use openraft::NodeId;
 use openraft::Raft;
 use openraft::RaftMetrics;
@@ -181,22 +182,20 @@ impl RaftRouter {
 
         self.new_raft_node(0).await;
 
-        let mut n_logs = 0;
-
         tracing::info!("--- wait for init node to ready");
 
-        self.wait_for_log(&btreeset![0], n_logs, timeout(), "empty").await?;
+        self.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
         self.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
         self.initialize_from_single_node(0).await?;
-        n_logs += 1;
+        let mut log_index = 1; // log 0: initial membership log; log 1: leader initial log
 
         tracing::info!("--- wait for init node to become leader");
 
-        self.wait_for_log(&btreeset![0], n_logs, timeout(), "init").await?;
-        self.assert_stable_cluster(Some(1), Some(n_logs)).await;
+        self.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init").await?;
+        self.assert_stable_cluster(Some(1), Some(log_index)).await;
 
         for id in node_ids.iter() {
             if *id == 0 {
@@ -212,9 +211,15 @@ impl RaftRouter {
             tracing::info!("--- change membership to setup voters: {:?}", node_ids);
 
             self.change_membership(0, node_ids.clone()).await?;
-            n_logs += 2;
+            log_index += 2;
 
-            self.wait_for_log(&node_ids, n_logs, timeout(), &format!("cluster of {:?}", node_ids)).await?;
+            self.wait_for_log(
+                &node_ids,
+                Some(log_index),
+                timeout(),
+                &format!("cluster of {:?}", node_ids),
+            )
+            .await?;
         }
 
         for id in learners {
@@ -223,7 +228,7 @@ impl RaftRouter {
             self.add_learner(0, id).await?;
         }
 
-        Ok(n_logs)
+        Ok(log_index)
     }
 
     /// Create and register a new Raft node bearing the given ID.
@@ -360,7 +365,7 @@ impl RaftRouter {
     pub async fn wait_for_log(
         &self,
         node_ids: &BTreeSet<u64>,
-        want_log: u64,
+        want_log: Option<u64>,
         timeout: Option<Duration>,
         msg: &str,
     ) -> Result<()> {
@@ -528,16 +533,16 @@ impl RaftRouter {
                 node.id, node.current_term
             );
             assert_eq!(
-                node.last_applied, 0,
-                "node {} has last_applied {}, expected 0",
-                node.id, node.last_applied
+                None,
+                node.last_applied.index(),
+                "node {} has last_applied {:?}, expected None",
+                node.id,
+                node.last_applied
             );
             assert_eq!(
-                node.last_log_index,
-                Some(0),
-                "node {} has last_log_index {:?}, expected 0",
-                node.id,
-                node.last_log_index
+                None, node.last_log_index,
+                "node {} has last_log_index {:?}, expected None",
+                node.id, node.last_log_index
             );
             let members = node.membership_config.membership.ith_config(0);
             assert_eq!(
@@ -596,6 +601,7 @@ impl RaftRouter {
             leader.last_log_index
         };
         let all_nodes = nodes.iter().map(|node| node.id).collect::<Vec<_>>();
+
         for node in non_isolated_nodes.iter() {
             assert_eq!(
                 node.current_leader,
@@ -611,9 +617,9 @@ impl RaftRouter {
                 node.id, node.current_term, expected_term
             );
             assert_eq!(
-                Some(node.last_applied),
+                node.last_applied.index(),
                 expected_last_log,
-                "node {} has last_applied {}, expected {:?}",
+                "node {} has last_applied {:?}, expected {:?}",
                 node.id,
                 node.last_applied,
                 expected_last_log
@@ -650,15 +656,16 @@ impl RaftRouter {
         expect_snapshot: &Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let (sm_last_id, _) = storage.last_applied_state().await?;
-        let last_log_id = match storage.last_id_in_log().await? {
-            Some(log_last_id) => std::cmp::max(log_last_id, sm_last_id),
-            None => sm_last_id,
-        };
+        let last_id_in_log = storage.last_id_in_log().await?;
+        let last_log_id = std::cmp::max(last_id_in_log, sm_last_id);
 
         assert_eq!(
-            expect_last_log, last_log_id.index,
-            "expected node {} to have last_log {}, got {}",
-            id, expect_last_log, last_log_id
+            expect_last_log,
+            last_log_id.index().unwrap(),
+            "expected node {} to have last_log {}, got {:?}",
+            id,
+            expect_last_log,
+            last_log_id
         );
 
         let hs = storage.read_hard_state().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
@@ -713,9 +720,12 @@ impl RaftRouter {
         let (last_applied, _) = storage.last_applied_state().await?;
 
         assert_eq!(
-            &last_applied, &expect_sm_last_applied_log,
-            "expected node {} to have state machine last_applied_log {}, got {}",
-            id, expect_sm_last_applied_log, last_applied
+            &last_applied,
+            &Some(expect_sm_last_applied_log),
+            "expected node {} to have state machine last_applied_log {}, got {:?}",
+            id,
+            expect_sm_last_applied_log,
+            last_applied
         );
 
         Ok(())
@@ -854,7 +864,7 @@ fn timeout() -> Option<Duration> {
 }
 
 /// Create a blank log entry for test.
-pub fn ent<T: AppData>(term: u64, index: u64) -> Entry<T> {
+pub fn blank<T: AppData>(term: u64, index: u64) -> Entry<T> {
     Entry {
         log_id: LogId { term, index },
         payload: EntryPayload::Blank,

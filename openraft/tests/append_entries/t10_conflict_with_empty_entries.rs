@@ -9,6 +9,7 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::RaftNetwork;
 
+use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
 
 /// Cluster conflict_with_empty_entries test.
@@ -45,59 +46,49 @@ async fn conflict_with_empty_entries() -> Result<()> {
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log_id: LogId::new(1, 5),
+        prev_log_id: Some(LogId::new(1, 5)),
         entries: vec![],
-        leader_commit: LogId::new(1, 5),
+        leader_commit: Some(LogId::new(1, 5)),
     };
 
     let resp = router.send_append_entries(0, rpc).await?;
-    assert!(!resp.success());
-    assert!(resp.conflict.is_some());
-    let c = resp.conflict.unwrap();
-    assert_eq!(LogId { term: 1, index: 5 }, c);
+    assert!(!resp.success);
+    assert!(resp.conflict);
 
-    // Feed 2 logs
+    // Feed logs
 
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log_id: LogId::new(0, 0),
-        entries: vec![
-            Entry {
-                log_id: (1, 1).into(),
-                payload: EntryPayload::Blank,
-            },
-            Entry {
-                log_id: (1, 2).into(),
-                payload: EntryPayload::Normal(ClientRequest {
-                    client: "foo".to_string(),
-                    serial: 1,
-                    status: "bar".to_string(),
-                }),
-            },
-        ],
-        leader_commit: LogId::new(1, 5),
+        prev_log_id: None,
+        entries: vec![blank(0, 0), blank(1, 1), Entry {
+            log_id: (1, 2).into(),
+            payload: EntryPayload::Normal(ClientRequest {
+                client: "foo".to_string(),
+                serial: 1,
+                status: "bar".to_string(),
+            }),
+        }],
+        leader_commit: Some(LogId::new(1, 5)),
     };
 
     let resp = router.send_append_entries(0, rpc).await?;
-    assert!(resp.success());
-    assert!(resp.conflict.is_none());
+    assert!(resp.success);
+    assert!(!resp.conflict);
 
     // Expect a conflict with prev_log_index == 3
 
     let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 1,
         leader_id: 1,
-        prev_log_id: LogId::new(1, 3),
+        prev_log_id: Some(LogId::new(1, 3)),
         entries: vec![],
-        leader_commit: LogId::new(1, 5),
+        leader_commit: Some(LogId::new(1, 5)),
     };
 
     let resp = router.send_append_entries(0, rpc).await?;
-    assert!(!resp.success());
-    assert!(resp.conflict.is_some());
-    let c = resp.conflict.unwrap();
-    assert_eq!(LogId::new(1, 3), c);
+    assert!(!resp.success);
+    assert!(resp.conflict);
 
     Ok(())
 }

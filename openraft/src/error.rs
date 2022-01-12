@@ -18,6 +18,9 @@ use crate::StorageError;
 pub enum Fatal {
     #[error(transparent)]
     StorageError(#[from] StorageError),
+
+    #[error("raft stopped")]
+    Stopped,
 }
 
 /// Extract Fatal from a Result.
@@ -108,10 +111,10 @@ pub enum ChangeMembershipError {
     LearnerNotFound { node_id: NodeId },
 
     // TODO(xp): 111 test it
-    #[error("replication to learner {node_id} is lagging {distance}, matched: {matched}, can not add as member")]
+    #[error("replication to learner {node_id} is lagging {distance}, matched: {matched:?}, can not add as member")]
     LearnerIsLagging {
         node_id: NodeId,
-        matched: LogId,
+        matched: Option<LogId>,
         distance: u64,
     },
 
@@ -227,9 +230,9 @@ pub enum ReplicationError {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("store has no log at: {index}")]
+#[error("store has no log at: {index:?}")]
 pub struct LackEntry {
-    pub index: u64,
+    pub index: Option<u64>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]

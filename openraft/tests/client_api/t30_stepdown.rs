@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LogIdOptionExt;
 use openraft::State;
 
 use crate::fixtures::RaftRouter;
@@ -37,7 +38,7 @@ async fn stepdown() -> Result<()> {
     let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1], n_logs, timeout(), "empty").await?;
+    router.wait_for_log(&btreeset![0, 1], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0, 1], State::Learner, timeout(), "empty").await?;
     router.assert_pristine_cluster().await;
 
@@ -46,7 +47,7 @@ async fn stepdown() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1], n_logs, timeout(), "init").await?;
+    router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout(), "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -62,7 +63,7 @@ async fn stepdown() -> Result<()> {
         router
             .wait(&orig_leader, timeout())
             .await?
-            .log(n_logs, "old leader commits 2 membership log")
+            .log(Some(n_logs), "old leader commits 2 membership log")
             .await?;
     }
 
@@ -114,7 +115,7 @@ async fn stepdown() -> Result<()> {
         assert!(metrics.state != State::Leader);
         assert_eq!(metrics.current_term, 1);
         assert_eq!(metrics.last_log_index, Some(3));
-        assert_eq!(metrics.last_applied, 3);
+        assert_eq!(metrics.last_applied.index(), Some(3));
         assert_eq!(cfg.get_configs().clone(), vec![btreeset![1, 2, 3]]);
         assert!(!cfg.is_in_joint_consensus());
     }

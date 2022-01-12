@@ -20,6 +20,7 @@ use tokio::time::Instant;
 use crate::core::EffectiveMembership;
 use crate::core::State;
 use crate::error::Fatal;
+use crate::raft_types::LogIdOptionExt;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -40,7 +41,7 @@ pub struct RaftMetrics {
     /// The last log index has been appended to this Raft node's log.
     pub last_log_index: Option<u64>,
     /// The last log index has been applied to this Raft node's state machine.
-    pub last_applied: u64,
+    pub last_applied: Option<LogId>,
     /// The current cluster leader.
     pub current_leader: Option<NodeId>,
     /// The current membership config of the cluster.
@@ -48,7 +49,7 @@ pub struct RaftMetrics {
 
     /// The id of the last log included in snapshot.
     /// If there is no snapshot, it is (0,0).
-    pub snapshot: LogId,
+    pub snapshot: Option<LogId>,
 
     /// The metrics about the leader. It is Some() only when this node is leader.
     pub leader_metrics: Option<LeaderMetrics>,
@@ -56,7 +57,7 @@ pub struct RaftMetrics {
 
 impl MessageSummary for RaftMetrics {
     fn summary(&self) -> String {
-        format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{}, leader:{:?}, membership:{}, snapshot:{}, replication:{}",
+        format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, replication:{}",
             self.id,
             self.state,
             self.current_term,
@@ -101,13 +102,13 @@ impl RaftMetrics {
             state: State::Follower,
             current_term: 0,
             last_log_index: None,
-            last_applied: 0,
+            last_applied: None,
             current_leader: None,
             membership_config: EffectiveMembership {
                 log_id: LogId::default(),
                 membership: membership_config,
             },
-            snapshot: LogId { term: 0, index: 0 },
+            snapshot: None,
             leader_metrics: None,
         }
     }
@@ -208,16 +209,16 @@ impl Wait {
 
     /// Wait until applied exactly `want_log`(inclusive) logs or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn log(&self, want_log: u64, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
+    pub async fn log(&self, want_log_index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
-            |x| x.last_log_index == Some(want_log),
-            &format!("{} .last_log_index -> {}", msg.to_string(), want_log),
+            |x| x.last_log_index == want_log_index,
+            &format!("{} .last_log_index -> {:?}", msg.to_string(), want_log_index),
         )
         .await?;
 
         self.metrics(
-            |x| x.last_applied == want_log,
-            &format!("{} .last_applied -> {}", msg.to_string(), want_log),
+            |x| x.last_applied.index() == want_log_index,
+            &format!("{} .last_applied -> {:?}", msg.to_string(), want_log_index),
         )
         .await
     }
@@ -232,7 +233,7 @@ impl Wait {
         .await?;
 
         self.metrics(
-            |x| x.last_applied >= want_log,
+            |x| x.last_applied.index() >= Some(want_log),
             &format!("{} .last_applied >= {}", msg.to_string(), want_log),
         )
         .await
@@ -276,7 +277,7 @@ impl Wait {
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn snapshot(&self, want_snapshot: LogId, msg: impl ToString) -> Result<RaftMetrics, WaitError> {
         self.metrics(
-            |x| x.snapshot == want_snapshot,
+            |x| x.snapshot == Some(want_snapshot),
             &format!("{} .snapshot -> {:?}", msg.to_string(), want_snapshot),
         )
         .await

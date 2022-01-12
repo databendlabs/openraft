@@ -6,6 +6,7 @@ use anyhow::Result;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LogIdOptionExt;
 use openraft::State;
 use tracing_futures::Instrument;
 
@@ -149,7 +150,7 @@ async fn wait_log(
         router
             .wait_for_metrics(
                 i,
-                |x| x.last_applied == want_log,
+                |x| x.last_applied.index() == Some(want_log),
                 Some(timeout),
                 &format!("n{}.last_applied -> {}", i, want_log),
             )
