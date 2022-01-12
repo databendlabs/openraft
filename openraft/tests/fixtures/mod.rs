@@ -638,17 +638,18 @@ impl RaftRouter {
         }
     }
 
-    /// Assert against the state of the storage system per node in the cluster.
-    pub async fn assert_storage_state(
-        &self,
-        expect_term: u64,
-        expect_last_log: u64,
-        expect_voted_for: Option<u64>,
-        expect_sm_last_applied_log: LogId,
-        expect_snapshot: Option<(ValueTest<u64>, u64)>,
+   /// Assert against the state of the storage system one node in the cluster.
+   pub async fn assert_storage_state_with_sto(
+    &self,
+    storage: &Arc<StoreWithDefensive>,
+    id: &u64,
+    expect_term: u64,
+    expect_last_log: u64,
+    expect_voted_for: Option<u64>,
+    expect_sm_last_applied_log: LogId,
+    expect_snapshot: &Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
-        let rt = self.routing_table.read().await;
-        for (id, (_node, storage)) in rt.iter() {
+
             let (sm_last_id, _) = storage.last_applied_state().await?;
             let last_log_id = match storage.last_id_in_log().await? {
                 Some(log_last_id) => std::cmp::max(log_last_id, sm_last_id),
@@ -717,6 +718,47 @@ impl RaftRouter {
                 "expected node {} to have state machine last_applied_log {}, got {}",
                 id, expect_sm_last_applied_log, last_applied
             );
+
+        Ok(())
+    }
+
+    /// Assert against the state of the storage system one node in the cluster.
+    pub async fn assert_storage_state_in_node(
+        &self,
+        node_id: u64,
+        expect_term: u64,
+        expect_last_log: u64,
+        expect_voted_for: Option<u64>,
+        expect_sm_last_applied_log: LogId,
+        expect_snapshot: Option<(ValueTest<u64>, u64)>,
+    ) -> anyhow::Result<()> {
+        let rt = self.routing_table.read().await;
+
+        for (id, (_node, storage)) in rt.iter() {
+            if *id != node_id {
+                continue;
+            }
+            self.assert_storage_state_with_sto(storage, id, expect_term, expect_last_log, expect_voted_for, expect_sm_last_applied_log, &expect_snapshot).await?;
+
+            break;
+        }
+
+        Ok(())
+    }
+
+    /// Assert against the state of the storage system per node in the cluster.
+    pub async fn assert_storage_state(
+        &self,
+        expect_term: u64,
+        expect_last_log: u64,
+        expect_voted_for: Option<u64>,
+        expect_sm_last_applied_log: LogId,
+        expect_snapshot: Option<(ValueTest<u64>, u64)>,
+    ) -> anyhow::Result<()> {
+        let rt = self.routing_table.read().await;
+
+        for (id, (_node, storage)) in rt.iter() {
+            self.assert_storage_state_with_sto(storage, id, expect_term, expect_last_log, expect_voted_for, expect_sm_last_applied_log, &expect_snapshot).await?;
         }
 
         Ok(())
