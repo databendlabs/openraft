@@ -638,6 +638,122 @@ impl RaftRouter {
         }
     }
 
+    /// Assert against the state of the storage system one node in the cluster.
+    pub async fn assert_storage_state_with_sto(
+        &self,
+        storage: &Arc<StoreWithDefensive>,
+        id: &u64,
+        expect_term: u64,
+        expect_last_log: u64,
+        expect_voted_for: Option<u64>,
+        expect_sm_last_applied_log: LogId,
+        expect_snapshot: &Option<(ValueTest<u64>, u64)>,
+    ) -> anyhow::Result<()> {
+        let (sm_last_id, _) = storage.last_applied_state().await?;
+        let last_log_id = match storage.last_id_in_log().await? {
+            Some(log_last_id) => std::cmp::max(log_last_id, sm_last_id),
+            None => sm_last_id,
+        };
+
+        assert_eq!(
+            expect_last_log, last_log_id.index,
+            "expected node {} to have last_log {}, got {}",
+            id, expect_last_log, last_log_id
+        );
+
+        let hs = storage.read_hard_state().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
+
+        assert_eq!(
+            hs.current_term, expect_term,
+            "expected node {} to have term {}, got {:?}",
+            id, expect_term, hs
+        );
+
+        if let Some(voted_for) = &expect_voted_for {
+            assert_eq!(
+                hs.voted_for.as_ref(),
+                Some(voted_for),
+                "expected node {} to have voted for {}, got {:?}",
+                id,
+                voted_for,
+                hs
+            );
+        }
+
+        if let Some((index_test, term)) = &expect_snapshot {
+            let snap = storage
+                .get_current_snapshot()
+                .await
+                .map_err(|err| panic!("{}", err))
+                .unwrap()
+                .unwrap_or_else(|| panic!("no snapshot present for node {}", id));
+
+            match index_test {
+                ValueTest::Exact(index) => assert_eq!(
+                    &snap.meta.last_log_id.index, index,
+                    "expected node {} to have snapshot with index {}, got {}",
+                    id, index, snap.meta.last_log_id.index
+                ),
+                ValueTest::Range(range) => assert!(
+                    range.contains(&snap.meta.last_log_id.index),
+                    "expected node {} to have snapshot within range {:?}, got {}",
+                    id,
+                    range,
+                    snap.meta.last_log_id.index
+                ),
+            }
+
+            assert_eq!(
+                &snap.meta.last_log_id.term, term,
+                "expected node {} to have snapshot with term {}, got {}",
+                id, term, snap.meta.last_log_id.term
+            );
+        }
+
+        let (last_applied, _) = storage.last_applied_state().await?;
+
+        assert_eq!(
+            &last_applied, &expect_sm_last_applied_log,
+            "expected node {} to have state machine last_applied_log {}, got {}",
+            id, expect_sm_last_applied_log, last_applied
+        );
+
+        Ok(())
+    }
+
+    /// Assert against the state of the storage system one node in the cluster.
+    pub async fn assert_storage_state_in_node(
+        &self,
+        node_id: u64,
+        expect_term: u64,
+        expect_last_log: u64,
+        expect_voted_for: Option<u64>,
+        expect_sm_last_applied_log: LogId,
+        expect_snapshot: Option<(ValueTest<u64>, u64)>,
+    ) -> anyhow::Result<()> {
+        let rt = self.routing_table.read().await;
+
+        for (id, (_node, storage)) in rt.iter() {
+            if *id != node_id {
+                continue;
+            }
+            self.assert_storage_state_with_sto(
+                storage,
+                id,
+                expect_term,
+                expect_last_log,
+                expect_voted_for,
+                expect_sm_last_applied_log,
+                &expect_snapshot,
+            )
+            .await?;
+
+            break;
+        }
+
+        Ok(())
+    }
+
     /// Assert against the state of the storage system per node in the cluster.
     pub async fn assert_storage_state(
         &self,
@@ -648,75 +764,18 @@ impl RaftRouter {
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let rt = self.routing_table.read().await;
+
         for (id, (_node, storage)) in rt.iter() {
-            let (sm_last_id, _) = storage.last_applied_state().await?;
-            let last_log_id = match storage.last_id_in_log().await? {
-                Some(log_last_id) => std::cmp::max(log_last_id, sm_last_id),
-                None => sm_last_id,
-            };
-
-            assert_eq!(
-                expect_last_log, last_log_id.index,
-                "expected node {} to have last_log {}, got {}",
-                id, expect_last_log, last_log_id
-            );
-
-            let hs = storage.read_hard_state().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
-
-            assert_eq!(
-                hs.current_term, expect_term,
-                "expected node {} to have term {}, got {:?}",
-                id, expect_term, hs
-            );
-
-            if let Some(voted_for) = &expect_voted_for {
-                assert_eq!(
-                    hs.voted_for.as_ref(),
-                    Some(voted_for),
-                    "expected node {} to have voted for {}, got {:?}",
-                    id,
-                    voted_for,
-                    hs
-                );
-            }
-
-            if let Some((index_test, term)) = &expect_snapshot {
-                let snap = storage
-                    .get_current_snapshot()
-                    .await
-                    .map_err(|err| panic!("{}", err))
-                    .unwrap()
-                    .unwrap_or_else(|| panic!("no snapshot present for node {}", id));
-
-                match index_test {
-                    ValueTest::Exact(index) => assert_eq!(
-                        &snap.meta.last_log_id.index, index,
-                        "expected node {} to have snapshot with index {}, got {}",
-                        id, index, snap.meta.last_log_id.index
-                    ),
-                    ValueTest::Range(range) => assert!(
-                        range.contains(&snap.meta.last_log_id.index),
-                        "expected node {} to have snapshot within range {:?}, got {}",
-                        id,
-                        range,
-                        snap.meta.last_log_id.index
-                    ),
-                }
-
-                assert_eq!(
-                    &snap.meta.last_log_id.term, term,
-                    "expected node {} to have snapshot with term {}, got {}",
-                    id, term, snap.meta.last_log_id.term
-                );
-            }
-
-            let (last_applied, _) = storage.last_applied_state().await?;
-
-            assert_eq!(
-                &last_applied, &expect_sm_last_applied_log,
-                "expected node {} to have state machine last_applied_log {}, got {}",
-                id, expect_sm_last_applied_log, last_applied
-            );
+            self.assert_storage_state_with_sto(
+                storage,
+                id,
+                expect_term,
+                expect_last_log,
+                expect_voted_for,
+                expect_sm_last_applied_log,
+                &expect_snapshot,
+            )
+            .await?;
         }
 
         Ok(())
