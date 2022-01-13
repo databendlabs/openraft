@@ -56,6 +56,7 @@ async fn add_learner_basic() -> Result<()> {
 
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await?;
+        n_logs += 1;
 
         tracing::info!("--- add_learner blocks until the replication catches up");
         let sto1 = router.get_storage_handle(&1).await?;

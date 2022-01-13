@@ -32,7 +32,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
     // Assert all nodes are in learner state & have no entries.
-    let want = 1;
+    let mut want = 1;
 
     router.wait_for_log(&btreeset![0], want, None, "init node 0").await?;
 
@@ -47,6 +47,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     while let Some(inner) = new_nodes.next().await {
         inner?;
     }
+    want += 2;
 
     router.wait_for_log(&btreeset![0], want, None, "init node 0").await?;
 
@@ -125,6 +126,8 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
     while let Some(inner) = new_nodes.next().await {
         inner?;
     }
+    n_logs += 4;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "cluster of (0,1,2,3) learners").await?;
 
     tracing::info!("--- isolate 3,4");
 
@@ -149,7 +152,7 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
             .instrument(tracing::debug_span!("spawn-change-membership")),
         );
     }
-    n_logs += 1;
+    n_logs += 2;
 
     let wait_rst = router.wait_for_log(&btreeset![0], n_logs, None, "cluster of joint").await;
 

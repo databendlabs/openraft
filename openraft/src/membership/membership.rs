@@ -19,6 +19,9 @@ use crate::NodeId;
 /// every config.
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Membership {
+    /// learners set
+    learners: BTreeSet<NodeId>,
+
     /// Multi configs.
     configs: Vec<BTreeSet<NodeId>>,
 
@@ -44,12 +47,35 @@ impl Membership {
     pub fn new_single(members: BTreeSet<NodeId>) -> Self {
         let configs = vec![members];
         let all_nodes = Self::build_all_nodes(&configs);
-        Membership { configs, all_nodes }
+        let learners = BTreeSet::new();
+        Membership {
+            learners,
+            configs,
+            all_nodes,
+        }
     }
 
     pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
         let all_nodes = Self::build_all_nodes(&configs);
-        Membership { configs, all_nodes }
+        let learners = BTreeSet::new();
+        Membership {
+            learners,
+            configs,
+            all_nodes,
+        }
+    }
+
+    pub fn contain_learner(&self, id: &NodeId) -> bool {
+        self.learners.contains(id)
+    }
+
+    pub fn add_learner(&mut self, id: &NodeId) {
+        //if (self.contain_learner(id))
+        self.learners.insert(*id);
+    }
+
+    pub fn remove_learner(&mut self, id: &NodeId) {
+        self.learners.remove(id);
     }
 
     pub fn all_nodes(&self) -> &BTreeSet<NodeId> {

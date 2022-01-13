@@ -27,6 +27,8 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
     router.add_learner(0, 3).await?;
     router.add_learner(0, 4).await?;
+    n_logs += 2;
+    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "cluster of 2 learners").await?;
 
     tracing::info!("--- changing config to 2,3,4");
     {

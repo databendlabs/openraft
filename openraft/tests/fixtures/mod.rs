@@ -169,7 +169,7 @@ impl RaftRouter {
         tokio::time::sleep(timeout).await;
     }
 
-    /// Create a cluster: 0 is the initial leader, others are voters learners
+    /// Create a cluster: 0 is the initial leader, others are voters and learners
     /// NOTE: it create a single node cluster first, then change it to a multi-voter cluster.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn new_nodes_from_single(
@@ -206,6 +206,7 @@ impl RaftRouter {
 
             self.new_raft_node(*id).await;
             self.add_learner(0, *id).await?;
+            n_logs += 1;
         }
 
         if node_ids.len() > 1 {
@@ -221,6 +222,7 @@ impl RaftRouter {
             tracing::info!("--- add learner: {}", id);
             self.new_raft_node(id).await;
             self.add_learner(0, id).await?;
+            n_logs += 1;
         }
 
         Ok(n_logs)

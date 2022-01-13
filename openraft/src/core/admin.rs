@@ -69,15 +69,41 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn add_learner_into_membership(&mut self, target: &NodeId) -> bool {
+        let curr = &mut self.core.effective_membership.membership;
+        if curr.contain_learner(&target) {
+            tracing::debug!("target node {} is already a learner", target);
+
+            return false;
+        }
+        tracing::debug!("add target node {} into learner", target);
+        curr.add_learner(target);
+        let new_config = self.core.effective_membership.membership.clone();
+
+        tracing::debug!(?new_config, "new_config");
+
+        let _ = self.append_membership_log(new_config, None).await;
+
+        tracing::debug!(
+            "after add target node {} into learner {:?}",
+            target,
+            self.core.last_log_id
+        );
+        return true;
+    }
+
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
     /// on the given channel.
     #[tracing::instrument(level = "debug", skip(self, tx))]
-    pub(super) fn add_learner(
+    pub(super) async fn add_learner(
         &mut self,
         target: NodeId,
         tx: RaftRespTx<AddLearnerResponse, AddLearnerError>,
         blocking: bool,
     ) {
+        tracing::debug!("add target node {} as learner", target);
+
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
         if target == self.core.id {
@@ -94,6 +120,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return;
         }
 
+        let _ = self.add_learner_into_membership(&target);
+
         if blocking {
             let state = self.spawn_replication_stream(target, Some(tx));
             self.nodes.insert(target, state);
@@ -106,6 +134,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 matched: LogId::new(0, 0),
             }));
         }
+
+        tracing::debug!(
+            "after add target node {} as learner {:?}",
+            target,
+            self.core.last_log_id
+        );
     }
 
     #[tracing::instrument(level = "debug", skip(self, tx))]
@@ -136,7 +170,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let curr = &self.core.effective_membership.membership;
 
-        let new_config = curr.next_safe(members.clone());
+        let mut new_config = curr.next_safe(members.clone());
 
         tracing::debug!(?new_config, "new_config");
 
@@ -155,7 +189,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             match self.nodes.get(new_node) {
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id.unwrap_or_default(), &self.core.config) {
-                        // Node is ready to join.
+                        // Node is ready to join, remove from learners
+                        new_config.remove_learner(new_node);
                         continue;
                     }
 
