@@ -33,6 +33,7 @@ pub struct SnapshotMeta {
 }
 
 /// The data associated with the current snapshot.
+#[derive(Debug)]
 pub struct Snapshot<S>
 where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
@@ -56,7 +57,7 @@ pub struct HardState {
 }
 
 /// A struct used to represent the initial state which a Raft node needs when first starting.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InitialState {
     /// The last entry.
     pub last_log_id: Option<LogId>,
@@ -70,20 +71,6 @@ pub struct InitialState {
     /// The latest cluster membership configuration found, in log or in state machine, else a new initial
     /// membership config consisting only of this node's ID.
     pub last_membership: Option<EffectiveMembership>,
-}
-
-impl Default for InitialState {
-    fn default() -> Self {
-        Self {
-            last_log_id: None,
-            last_applied: None,
-            hard_state: HardState {
-                current_term: 0,
-                voted_for: None,
-            },
-            last_membership: None,
-        }
-    }
 }
 
 /// A trait defining the interface for a Raft storage system.
@@ -100,7 +87,7 @@ where
 
     /// The storage engine's associated type used for exposing a snapshot for reading & writing.
     ///
-    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
+    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
     type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
 
