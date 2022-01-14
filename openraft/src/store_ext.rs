@@ -96,9 +96,9 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<Vec<Entry<D>>, StorageError> {
         self.defensive_nonempty_range(range.clone()).await?;
 
@@ -117,9 +117,9 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn delete_logs_from<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<(), StorageError> {
         self.defensive_nonempty_range(range.clone()).await?;
         self.defensive_half_open_range(range.clone()).await?;
