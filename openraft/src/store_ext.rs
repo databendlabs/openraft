@@ -86,12 +86,6 @@ where
     type SnapshotData = T::SnapshotData;
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn last_membership_in_log(&self, since_index: u64) -> Result<Option<EffectiveMembership>, StorageError> {
-        self.defensive_no_dirty_log().await?;
-        self.inner().last_membership_in_log(since_index).await
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError> {
         self.defensive_no_dirty_log().await?;
         self.inner().get_initial_state().await
@@ -139,6 +133,7 @@ where
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError> {
+        self.defensive_no_dirty_log().await?;
         self.inner().get_log_state().await
     }
 

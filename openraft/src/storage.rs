@@ -163,6 +163,40 @@ where
         Ok(None)
     }
 
+    /// Returns the first log id in log.
+    ///
+    /// The impl should not consider the applied log id in state machine.
+    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
+        let (first_log_id, _) = self.get_log_state().await?;
+        Ok(first_log_id)
+    }
+
+    /// Returns the last log id in log.
+    ///
+    /// The impl should not consider the applied log id in state machine.
+    async fn last_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
+        let (_, last_log_id) = self.get_log_state().await?;
+        Ok(last_log_id)
+    }
+
+    /// Returns first known log id in logs or in state machine.
+    ///
+    /// It returns None only when there is never a log.
+    async fn first_known_log_id(&self) -> Result<Option<LogId>, StorageError> {
+        let (last_applied, _) = self.last_applied_state().await?;
+        let (first, _) = self.get_log_state().await?;
+
+        if last_applied.is_none() {
+            return Ok(first);
+        }
+
+        if first.is_none() {
+            return Ok(last_applied);
+        }
+
+        Ok(std::cmp::min(first, last_applied))
+    }
+
     /// Get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface on the storage system to
@@ -203,40 +237,6 @@ where
     ///
     /// The impl should not consider the applied log id in state machine.
     async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError>;
-
-    /// Returns the first log id in log.
-    ///
-    /// The impl should not consider the applied log id in state machine.
-    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
-        let (first_log_id, _) = self.get_log_state().await?;
-        Ok(first_log_id)
-    }
-
-    /// Returns the last log id in log.
-    ///
-    /// The impl should not consider the applied log id in state machine.
-    async fn last_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
-        let (_, last_log_id) = self.get_log_state().await?;
-        Ok(last_log_id)
-    }
-
-    /// Returns first known log id in logs or in state machine.
-    ///
-    /// It returns None only when there is never a log.
-    async fn first_known_log_id(&self) -> Result<Option<LogId>, StorageError> {
-        let (last_applied, _) = self.last_applied_state().await?;
-        let (first, _) = self.get_log_state().await?;
-
-        if last_applied.is_none() {
-            return Ok(first);
-        }
-
-        if first.is_none() {
-            return Ok(last_applied);
-        }
-
-        Ok(std::cmp::min(first, last_applied))
-    }
 
     /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
     /// membership config.
