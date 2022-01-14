@@ -78,6 +78,10 @@ impl Membership {
         self.learners.remove(id);
     }
 
+    pub fn all_learners(&self) -> &BTreeSet<NodeId> {
+        &self.learners
+    }
+
     pub fn all_nodes(&self) -> &BTreeSet<NodeId> {
         &self.all_nodes
     }

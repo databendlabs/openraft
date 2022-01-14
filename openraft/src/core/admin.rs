@@ -71,6 +71,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     #[tracing::instrument(level = "debug", skip(self))]
     async fn add_learner_into_membership(&mut self, target: &NodeId) {
+        tracing::debug!(
+            "before add_learner_into_membership target node {} into learner {:?}",
+            target,
+            self.nodes.keys()
+        );
+
         let curr = &mut self.core.effective_membership.membership;
         if curr.contain_learner(&target) {
             tracing::debug!("target node {} is already a learner", target);
@@ -85,7 +91,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let _ = self.append_membership_log(new_config, None).await;
 
         tracing::debug!(
-            "after add target node {} into learner {:?}",
+            "after add_learner_into_membership target node {} into learner {:?}",
             target,
             self.core.last_log_id
         );
@@ -101,7 +107,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         tx: RaftRespTx<AddLearnerResponse, AddLearnerError>,
         blocking: bool,
     ) {
-        tracing::debug!("add target node {} as learner", target);
+        tracing::debug!("add target node {} as learner {:?}", target, self.nodes.keys());
 
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
@@ -135,9 +141,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         tracing::debug!(
-            "after add target node {} as learner {:?}",
+            "after add target node {} as learner {:?} {:?}",
             target,
-            self.core.last_log_id
+            self.core.last_log_id,
+            self.nodes.keys()
         );
     }
 
@@ -266,9 +273,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let membership = &self.core.effective_membership.membership;
 
-        let all = membership.all_nodes();
+        // remove nodes which not included in nodes, nor learners
+        let all_nodes = membership.all_nodes();
+        let all_learners = membership.all_learners();
         for (id, state) in self.nodes.iter_mut() {
-            if all.contains(id) {
+            if all_nodes.contains(id) || all_learners.contains(id) {
                 continue;
             }
 

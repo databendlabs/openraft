@@ -55,7 +55,8 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
     router.change_membership(orig_leader, btreeset![1, 2, 3]).await?;
-    n_logs += 2;
+    // 2 for add_learner, 2 for change_membership
+    n_logs += 4;
 
     tracing::info!("--- old leader commits 2 membership log");
     {
@@ -113,8 +114,8 @@ async fn stepdown() -> Result<()> {
 
         assert!(metrics.state != State::Leader);
         assert_eq!(metrics.current_term, 1);
-        assert_eq!(metrics.last_log_index, Some(3));
-        assert_eq!(metrics.last_applied, 3);
+        assert_eq!(metrics.last_log_index, Some(5));
+        assert_eq!(metrics.last_applied, 5);
         assert_eq!(cfg.get_configs().clone(), vec![btreeset![1, 2, 3]]);
         assert!(!cfg.is_in_joint_consensus());
     }
