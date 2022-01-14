@@ -517,14 +517,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
         match event {
-            RaftEvent::UpdateCommittedLogId {
-                committed: commit_index,
-            } => {
-                self.committed = commit_index;
+            RaftEvent::UpdateCommittedLogId { committed } => {
+                self.committed = committed;
             }
 
             RaftEvent::Replicate { appended, committed } => {
                 self.committed = committed;
+
+                assert!(self.last_log_id < Some(appended));
                 self.last_log_id = Some(appended);
             }
         }

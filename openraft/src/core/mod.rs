@@ -273,7 +273,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
             self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
-            self.report_metrics(Update::Ignore);
+            self.report_metrics(Update::AsIs);
         }
 
         let has_log = self.last_log_id.is_some();
@@ -336,7 +336,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn report_metrics(&mut self, leader_metrics: Update<Option<&LeaderMetrics>>) {
         let leader_metrics = match leader_metrics {
             Update::Update(v) => v.cloned(),
-            Update::Ignore => self.tx_metrics.borrow().leader_metrics.clone(),
+            Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
         };
 
         let m = RaftMetrics {
@@ -466,7 +466,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn update_snapshot_state(&mut self, update: SnapshotUpdate) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
             self.snapshot_last_log_id = Some(log_id);
-            self.report_metrics(Update::Ignore);
+            self.report_metrics(Update::AsIs);
         }
         // If snapshot state is anything other than streaming, then drop it.
         if let Some(state @ SnapshotState::Streaming { .. }) = self.snapshot_state.take() {

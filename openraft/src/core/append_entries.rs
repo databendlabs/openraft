@@ -82,7 +82,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             }
 
             if report_metrics {
-                self.report_metrics(Update::Ignore);
+                self.report_metrics(Update::AsIs);
             }
         }
 
@@ -287,7 +287,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         self.replicate_to_state_machine_if_needed().await?;
 
-        self.report_metrics(Update::Ignore);
+        self.report_metrics(Update::AsIs);
 
         Ok(AppendEntriesResponse {
             term: self.current_term,
@@ -447,7 +447,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         self.last_applied = Some(last_log_id);
 
-        self.report_metrics(Update::Ignore);
+        self.report_metrics(Update::AsIs);
         self.trigger_log_compaction_if_needed(false);
 
         Ok(())
@@ -485,7 +485,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         apply_to_state_machine(storage, &data_entries, self.config.max_applied_log_to_keep).await?;
 
         self.last_applied = Some(new_last_applied.log_id);
-        self.report_metrics(Update::Ignore);
+        self.report_metrics(Update::AsIs);
         self.trigger_log_compaction_if_needed(false);
 
         Ok(())
