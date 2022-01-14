@@ -31,8 +31,8 @@ async fn elect_compare_last_log() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let sto0 = router.new_store(0).await;
-    let sto1 = router.new_store(1).await;
+    let sto0 = router.new_store().await;
+    let sto1 = router.new_store().await;
 
     tracing::info!("--- fake store: sto0: last log: 2,1");
     {

@@ -233,14 +233,14 @@ impl RaftRouter {
 
     /// Create and register a new Raft node bearing the given ID.
     pub async fn new_raft_node(self: &Arc<Self>, id: NodeId) {
-        let memstore = self.new_store(id).await;
+        let memstore = self.new_store().await;
         self.new_raft_node_with_sto(id, memstore).await
     }
 
-    pub async fn new_store(self: &Arc<Self>, id: u64) -> Arc<StoreWithDefensive> {
+    pub async fn new_store(self: &Arc<Self>) -> Arc<StoreWithDefensive> {
         let defensive = env::var("RAFT_STORE_DEFENSIVE").ok();
 
-        let sto = Arc::new(StoreExt::new(MemStore::new(id).await));
+        let sto = Arc::new(StoreExt::new(MemStore::new().await));
 
         if let Some(d) = defensive {
             tracing::info!("RAFT_STORE_DEFENSIVE set store defensive to {}", d);

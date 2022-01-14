@@ -22,15 +22,15 @@ where
     R: AppDataResponse,
     S: RaftStorage<D, R>,
 {
-    async fn build(&self, id: NodeId) -> S;
+    async fn build(&self) -> S;
 }
 
 struct MemStoreBuilder {}
 
 #[async_trait]
 impl StoreBuilder<ClientRequest, ClientResponse, MemStore> for MemStoreBuilder {
-    async fn build(&self, id: NodeId) -> MemStore {
-        let mem_sto = MemStore::new(id).await;
+    async fn build(&self) -> MemStore {
+        let mem_sto = MemStore::new().await;
         mem_sto
     }
 }
@@ -41,8 +41,8 @@ struct DefensiveBuilder {}
 impl StoreBuilder<ClientRequest, ClientResponse, StoreExt<ClientRequest, ClientResponse, MemStore>>
     for DefensiveBuilder
 {
-    async fn build(&self, id: NodeId) -> StoreExt<ClientRequest, ClientResponse, MemStore> {
-        let mem_store = MemStoreBuilder {}.build(id).await;
+    async fn build(&self) -> StoreExt<ClientRequest, ClientResponse, MemStore> {
+        let mem_store = MemStoreBuilder {}.build().await;
         let sto_ext = StoreExt::new(mem_store);
         sto_ext.set_defensive(true);
 
@@ -115,7 +115,7 @@ where
     }
 
     pub async fn last_membership_in_log_initial(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let membership = store.last_membership_in_log(0).await?;
 
@@ -125,7 +125,7 @@ where
     }
 
     pub async fn last_membership_in_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         tracing::info!("--- no log, do not read membership from state machine");
         {
@@ -199,7 +199,7 @@ where
     }
 
     pub async fn get_membership_initial(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let membership = store.get_membership().await?;
 
@@ -209,7 +209,7 @@ where
     }
 
     pub async fn get_membership_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         tracing::info!("--- no log, read membership from state machine");
         {
@@ -268,7 +268,7 @@ where
     }
 
     pub async fn get_initial_state_without_init(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let initial = store.get_initial_state().await?;
         assert_eq!(InitialState::default(), initial, "uninitialized state");
@@ -276,7 +276,7 @@ where
     }
 
     pub async fn get_initial_state_with_state(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         Self::default_hard_state(&store).await?;
 
         store
@@ -319,7 +319,7 @@ where
     pub async fn get_initial_state_membership_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
         // It should never return membership from logs that are included in state machine present.
 
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         Self::default_hard_state(&store).await?;
 
         // copy the test from get_membership_config
@@ -385,7 +385,7 @@ where
     }
 
     pub async fn get_initial_state_last_log_gt_sm(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         Self::default_hard_state(&store).await?;
 
         store
@@ -419,7 +419,7 @@ where
     }
 
     pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         Self::default_hard_state(&store).await?;
 
         store
@@ -447,7 +447,7 @@ where
     }
 
     pub async fn save_hard_state(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         store
             .save_hard_state(&HardState {
@@ -469,7 +469,7 @@ where
     }
 
     pub async fn get_log_entries(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
         tracing::info!("--- get start == stop");
@@ -491,7 +491,7 @@ where
     }
 
     pub async fn try_get_log_entry(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
         store.delete_logs_from(0..=0).await?;
@@ -509,7 +509,7 @@ where
     }
 
     pub async fn initial_logs(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let ent = store.try_get_log_entry(0).await?;
         assert!(ent.is_none(), "store initialized");
@@ -518,7 +518,7 @@ where
     }
 
     pub async fn first_known_log_id(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let log_id = store.first_known_log_id().await?;
         assert_eq!(None, log_id, "store initialized");
@@ -554,7 +554,7 @@ where
     }
 
     pub async fn get_log_state(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         let (first_log_id, last_log_id) = store.get_log_state().await?;
         assert_eq!(None, first_log_id, "store initialized");
         assert_eq!(None, last_log_id, "last_log_id is None when store initialized");
@@ -604,7 +604,7 @@ where
     }
 
     pub async fn first_id_in_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let log_id = store.first_id_in_log().await?;
         assert!(log_id.is_none(), "store initialized");
@@ -640,7 +640,7 @@ where
     }
 
     pub async fn last_id_in_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let log_id = store.last_id_in_log().await?;
         assert_eq!(None, log_id);
@@ -688,7 +688,7 @@ where
     }
 
     pub async fn last_applied_state(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let (applied, membership) = store.last_applied_state().await?;
         assert_eq!(None, applied);
@@ -740,7 +740,7 @@ where
     pub async fn delete_logs_from(builder: &B) -> anyhow::Result<()> {
         tracing::info!("--- delete start == stop");
         {
-            let store = builder.build(NODE_ID).await;
+            let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.delete_logs_from(1..1).await?;
@@ -751,7 +751,7 @@ where
 
         tracing::info!("--- delete start < stop");
         {
-            let store = builder.build(NODE_ID).await;
+            let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.delete_logs_from(..=0).await?;
@@ -765,7 +765,7 @@ where
 
         tracing::info!("--- delete start < large stop");
         {
-            let store = builder.build(NODE_ID).await;
+            let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.delete_logs_from(..=0).await?;
@@ -778,7 +778,7 @@ where
 
         tracing::info!("--- delete start, None");
         {
-            let store = builder.build(NODE_ID).await;
+            let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.delete_logs_from(..=0).await?;
@@ -793,7 +793,7 @@ where
     }
 
     pub async fn append_to_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
         store.delete_logs_from(..=0).await?;
@@ -814,7 +814,7 @@ where
     }
 
     pub async fn apply_single(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let entry = Entry {
             log_id: LogId { term: 3, index: 1 },
@@ -851,7 +851,7 @@ where
     }
 
     pub async fn apply_multi(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let req0 = ClientRequest {
             client: "1".into(),
@@ -982,7 +982,7 @@ where
     }
 
     pub async fn df_get_membership_config_dirty_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
@@ -1040,7 +1040,7 @@ where
     }
 
     pub async fn df_get_initial_state_dirty_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
@@ -1075,7 +1075,7 @@ where
     }
 
     pub async fn df_save_hard_state_ascending(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         store
             .save_hard_state(&HardState {
@@ -1187,7 +1187,7 @@ where
     }
 
     pub async fn df_get_log_entries(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
         store.delete_logs_from(..=0).await?;
@@ -1249,7 +1249,7 @@ where
     }
 
     pub async fn df_delete_logs_from_nonempty_range(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
         let res = store.delete_logs_from(10..10).await;
@@ -1280,7 +1280,7 @@ where
     }
 
     pub async fn df_append_to_log_nonempty_input(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let res = store.append_to_log(Vec::<&Entry<_>>::new().as_slice()).await;
 
@@ -1292,7 +1292,7 @@ where
     }
 
     pub async fn df_append_to_log_nonconsecutive_input(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let res = store
             .append_to_log(&[
@@ -1321,7 +1321,7 @@ where
     }
 
     pub async fn df_append_to_log_eq_last_plus_one(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         tracing::info!("-- log_id <= last_applied");
         tracing::info!("-- nonconsecutive log");
@@ -1350,7 +1350,7 @@ where
         // last_log: 1,1
         // last_applied: 1,2
         // append_to_log: 1,4
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         tracing::info!("-- log_id <= last_applied");
         tracing::info!("-- nonconsecutive log");
@@ -1385,7 +1385,7 @@ where
     pub async fn df_append_to_log_gt_last_log_id(builder: &B) -> anyhow::Result<()> {
         // last_log: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
@@ -1408,7 +1408,7 @@ where
         // last_log: 2,1
         // last_applied: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
@@ -1432,7 +1432,7 @@ where
     }
 
     pub async fn df_apply_nonempty_input(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let res = store.apply_to_state_machine(Vec::<&Entry<_>>::new().as_slice()).await;
 
@@ -1444,7 +1444,7 @@ where
     }
 
     pub async fn df_apply_index_eq_last_applied_plus_one(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let entry = Entry {
             log_id: LogId::new(3, 1),
@@ -1501,7 +1501,7 @@ where
     }
 
     pub async fn df_apply_gt_last_applied_id(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build(NODE_ID).await;
+        let store = builder.build().await;
 
         let entry = blank(3, 1);
 

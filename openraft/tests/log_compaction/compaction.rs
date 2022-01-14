@@ -94,7 +94,7 @@ async fn compaction() -> Result<()> {
         .await?;
 
     // Add a new node and assert that it received the same snapshot.
-    let sto1 = router.new_store(1).await;
+    let sto1 = router.new_store().await;
     sto1.append_to_log(&[&blank(0, 0), &Entry {
         log_id: LogId::new(1, 1),
         payload: EntryPayload::Membership(Membership::new_single(btreeset! {0})),

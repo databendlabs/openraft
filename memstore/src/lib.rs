@@ -23,7 +23,6 @@ use openraft::EffectiveMembership;
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::LogId;
-use openraft::NodeId;
 use openraft::RaftStorage;
 use openraft::RaftStorageDebug;
 use openraft::SnapshotMeta;
@@ -59,7 +58,7 @@ pub struct ClientResponse(Option<String>);
 impl AppDataResponse for ClientResponse {}
 
 /// The application snapshot type which the `MemStore` works with.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug)]
 pub struct MemStoreSnapshot {
     pub meta: SnapshotMeta,
 
@@ -82,8 +81,6 @@ pub struct MemStoreStateMachine {
 
 /// An in-memory storage system implementing the `RaftStorage` trait.
 pub struct MemStore {
-    /// The ID of the Raft node for which this memory storage instances is configured.
-    id: NodeId,
     /// The Raft log.
     log: RwLock<BTreeMap<u64, Entry<ClientRequest>>>,
     /// The Raft state machine.
@@ -99,37 +96,13 @@ pub struct MemStore {
 impl MemStore {
     /// Create a new `MemStore` instance.
     /// TODO(xp): creating a store should not require an id.
-    pub async fn new(id: NodeId) -> Self {
+    pub async fn new() -> Self {
         let log = RwLock::new(BTreeMap::new());
         let sm = RwLock::new(MemStoreStateMachine::default());
         let hs = RwLock::new(None);
         let current_snapshot = RwLock::new(None);
 
         Self {
-            id,
-            log,
-            sm,
-            hs,
-            snapshot_idx: Arc::new(Mutex::new(0)),
-            current_snapshot,
-        }
-    }
-
-    /// Create a new `MemStore` instance with some existing state (for testing).
-    #[cfg(test)]
-    pub fn new_with_state(
-        id: NodeId,
-        log: BTreeMap<u64, Entry<ClientRequest>>,
-        sm: MemStoreStateMachine,
-        hs: Option<HardState>,
-        current_snapshot: Option<MemStoreSnapshot>,
-    ) -> Self {
-        let log = RwLock::new(log);
-        let sm = RwLock::new(sm);
-        let hs = RwLock::new(hs);
-        let current_snapshot = RwLock::new(current_snapshot);
-        Self {
-            id,
             log,
             sm,
             hs,
@@ -225,7 +198,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         let mut res = Vec::with_capacity(entries.len());
 
         for entry in entries {
-            tracing::debug!("id:{} replicate to sm index:{}", self.id, entry.log_id.index);
+            tracing::debug!("replicate to sm, index:{}", entry.log_id.index);
 
             sm.last_applied_log = Some(entry.log_id);
 
@@ -282,26 +255,25 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             *l
         };
 
-        let meta;
+        let snapshot_id = format!("{}-{}-{}", last_applied_log.term, last_applied_log.index, snapshot_idx);
+
+        let meta = SnapshotMeta {
+            last_log_id: last_applied_log,
+            snapshot_id,
+        };
+
+        let snapshot = MemStoreSnapshot {
+            meta: meta.clone(),
+            data: data.clone(),
+        };
+
         {
             let mut current_snapshot = self.current_snapshot.write().await;
-
-            let snapshot_id = format!("{}-{}-{}", last_applied_log.term, last_applied_log.index, snapshot_idx);
-
-            meta = SnapshotMeta {
-                last_log_id: last_applied_log,
-                snapshot_id,
-            };
-
-            let snapshot = MemStoreSnapshot {
-                meta: meta.clone(),
-                data: data.clone(),
-            };
-
             *current_snapshot = Some(snapshot);
-        } // Release log & snapshot write locks.
+        }
 
-        tracing::info!({ snapshot_size = snapshot_size }, "log compaction complete");
+        tracing::info!(snapshot_size, "log compaction complete");
+
         Ok(Snapshot {
             meta,
             snapshot: Box::new(Cursor::new(data)),
@@ -362,8 +334,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
-                // TODO(xp): try not to clone the entire data.
-                //           If snapshot.data is Arc<T> that impl AsyncRead etc then the sharing can be done.
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
                     meta: snapshot.meta.clone(),
