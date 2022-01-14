@@ -5,7 +5,6 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
-use openraft::State;
 
 use crate::fixtures::RaftRouter;
 
@@ -37,45 +36,45 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = 0;
-
-    tracing::info!("--- initializing cluster");
-    {
-        router.new_raft_node(0).await;
-
-        router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
-        router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
-        router.initialize_from_single_node(0).await?;
-        n_logs += 1;
-
-        router.wait_for_log(&btreeset![0], n_logs, None, "init leader").await?;
-        router.assert_stable_cluster(Some(1), Some(n_logs)).await;
-    }
+    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
-        router.client_request_many(0, "0", (snapshot_threshold - n_logs) as usize).await;
-        n_logs = snapshot_threshold;
+        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await;
+        log_index = snapshot_threshold - 1;
 
-        router.wait_for_log(&btreeset![0], n_logs, None, "send log to trigger snapshot").await?;
-        router.assert_stable_cluster(Some(1), Some(n_logs)).await;
+        router.wait_for_log(&btreeset![0], Some(log_index), None, "send log to trigger snapshot").await?;
+        router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
-        router.wait_for_snapshot(&btreeset![0], LogId { term: 1, index: n_logs }, None, "snapshot").await?;
+        router
+            .wait_for_snapshot(
+                &btreeset![0],
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
+                None,
+                "snapshot",
+            )
+            .await?;
         router
             .assert_storage_state(
                 1,
-                n_logs,
+                log_index,
                 Some(0),
-                LogId { term: 1, index: n_logs },
-                Some((n_logs.into(), 1)),
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
+                Some((log_index.into(), 1)),
             )
             .await?;
     }
 
     tracing::info!("--- send logs to make distance between snapshot index and last_log_index");
     {
-        router.client_request_many(0, "0", (log_cnt - n_logs) as usize).await;
-        n_logs = log_cnt;
+        router.client_request_many(0, "0", (log_cnt - log_index) as usize).await;
+        log_index = log_cnt;
     }
 
     tracing::info!("--- add learner to receive snapshot and logs");
@@ -83,15 +82,28 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
 
-        router.wait_for_log(&btreeset![0, 1], n_logs, None, "add learner").await?;
-        let expected_snap = Some((n_logs.into(), 1));
-        router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: n_logs }, None, "").await?;
+        router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "add learner").await?;
+        let expected_snap = Some((log_index.into(), 1));
+        router
+            .wait_for_snapshot(
+                &btreeset![1],
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
+                None,
+                "",
+            )
+            .await?;
         router
             .assert_storage_state(
                 1,
-                n_logs,
+                log_index,
                 None, /* learner does not vote */
-                LogId { term: 1, index: n_logs },
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
                 expected_snap,
             )
             .await?;

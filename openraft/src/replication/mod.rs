@@ -24,6 +24,8 @@ use crate::config::SnapshotPolicy;
 use crate::error::LackEntry;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::InstallSnapshotRequest;
+use crate::raft_types::LogIdOptionExt;
+use crate::raft_types::LogIndexOptionExt;
 use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -36,12 +38,12 @@ use crate::ReplicationError;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReplicationMetrics {
-    pub matched: LogId,
+    pub matched: Option<LogId>,
 }
 
 impl MessageSummary for ReplicationMetrics {
     fn summary(&self) -> String {
-        format!("{}", self.matched)
+        format!("{:?}", self.matched)
     }
 }
 
@@ -60,8 +62,8 @@ impl ReplicationStream {
         target: NodeId,
         term: u64,
         config: Arc<Config>,
-        last_log: LogId,
-        committed: LogId,
+        last_log: Option<LogId>,
+        committed: Option<LogId>,
         network: Arc<N>,
         storage: Arc<S>,
         replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
@@ -117,12 +119,11 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     /// The target state of this replication stream.
     target_repl_state: TargetReplState,
 
-    /// The index of the log entry to most recently be appended to the log by the leader.
-    /// TODO(xp): remove this
-    last_log_index: u64,
+    /// The id of the log entry to most recently be appended to the log by the leader.
+    last_log_id: Option<LogId>,
 
     /// The log id of the highest log entry which is known to be committed in the cluster.
-    committed: LogId,
+    committed: Option<LogId>,
 
     /// The last know log to be successfully replicated on the target.
     ///
@@ -131,10 +132,10 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     /// behind. This is defined in §5.3.
     /// This will be initialized to the leader's (last_log_term, last_log_index), and will be updated as
     /// replication proceeds.
-    matched: LogId,
+    matched: Option<LogId>,
 
     // The last possible matching entry on a follower.
-    max_possible_matched_index: u64,
+    max_possible_matched_index: Option<u64>,
 
     /// The heartbeat interval for ensuring that heartbeats are always delivered in a timely fashion.
     heartbeat: Interval,
@@ -151,8 +152,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         target: NodeId,
         term: u64,
         config: Arc<Config>,
-        last_log: LogId,
-        committed: LogId,
+        last_log: Option<LogId>,
+        committed: Option<LogId>,
         network: Arc<N>,
         storage: Arc<S>,
         raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
@@ -171,10 +172,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             config,
             marker_r: std::marker::PhantomData,
             target_repl_state: TargetReplState::LineRate,
-            last_log_index: last_log.index,
+            last_log_id: last_log,
             committed,
-            matched: LogId { term: 0, index: 0 },
-            max_possible_matched_index: last_log.index,
+            matched: None,
+            max_possible_matched_index: last_log.index(),
             raft_core_tx,
             repl_rx,
             heartbeat: interval(heartbeat_timeout),
@@ -256,52 +257,65 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     #[tracing::instrument(level = "debug", skip(self))]
     async fn send_append_entries(&mut self) -> Result<(), ReplicationError> {
         // find the mid position aligning to 8
-        let diff = self.max_possible_matched_index - self.matched.index;
-        let mut prev_index = self.matched.index + diff / 16 * 8;
+        let diff = self.max_possible_matched_index.next_index() - self.matched.next_index();
+        let offset = diff / 16 * 8;
 
-        // TODO(xp): make this part a job of StorageAdaptor.
+        let mut prev_index = self.matched.index().add(offset);
+
         let (prev_log_id, logs) = loop {
+            // TODO(xp): test heartbeat when all logs are removed.
+
             // It is last_applied_id or the id of the first present log.
             let first_log_id = self.storage.first_known_log_id().await?;
 
-            self.check_consecutive(first_log_id.index)?;
+            // The smallest valid prev_id for append-entries
+            // A smaller one
+            let smallest_prev_id = if first_log_id.index() == Some(0) {
+                None
+            } else {
+                first_log_id
+            };
 
-            if prev_index < first_log_id.index {
-                prev_index = first_log_id.index;
+            self.check_consecutive(smallest_prev_id)?;
+
+            if prev_index < smallest_prev_id.index() {
+                prev_index = smallest_prev_id.index();
             }
 
-            let start = prev_index + 1;
-            let end = std::cmp::min(start + self.config.max_payload_entries, self.last_log_index + 1);
+            let start = prev_index.next_index();
+            let end = std::cmp::min(start + self.config.max_payload_entries, self.last_log_id.next_index());
 
             tracing::debug!(
-                "load entries: matched: {}, send_prev_log_index: {} first_log: {} prev_index: {}, end: {}",
-                self.matched,
-                self.max_possible_matched_index,
-                first_log_id,
-                prev_index,
+                ?self.matched,
+                ?self.max_possible_matched_index,
+                ?first_log_id,
+                ?prev_index,
                 end,
+                "load entries",
             );
 
-            assert!(end - prev_index > 0);
+            assert!(end >= prev_index.next_index());
 
-            let prev_log_id = if prev_index == first_log_id.index {
+            let prev_log_id = if prev_index == first_log_id.index() {
                 first_log_id
-            } else {
-                let first = self.storage.try_get_log_entry(prev_index).await?;
+            } else if let Some(prev_i) = prev_index {
+                let first = self.storage.try_get_log_entry(prev_i).await?;
                 match first {
-                    Some(f) => f.log_id,
+                    Some(f) => Some(f.log_id),
                     None => {
-                        tracing::info!("can not load first entry: at {}, retry loading logs", prev_index);
+                        tracing::info!("can not load first entry: at {:?}, retry loading logs", prev_index);
                         continue;
                     }
                 }
+            } else {
+                None
             };
 
             let logs = if start == end {
                 vec![]
             } else {
                 let logs = self.storage.try_get_log_entries(start..end).await?;
-                if !logs.is_empty() && logs[0].log_id.index > prev_log_id.index + 1 {
+                if !logs.is_empty() && logs[0].log_id.index > prev_log_id.next_index() {
                     // There is still chance the first log is removed.
                     // log entry is just deleted after fetching first_log_id.
                     // Without consecutive logs, we have to retry loading.
@@ -312,6 +326,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             };
 
             break (prev_log_id, logs);
+        };
+
+        let conflict = prev_log_id;
+        let matched = if logs.is_empty() {
+            prev_log_id
+        } else {
+            Some(logs[logs.len() - 1].log_id)
         };
 
         // Build the heartbeat frame to be sent to the follower.
@@ -354,10 +375,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         tracing::debug!("append_entries resp: {:?}", append_resp);
 
         // Handle success conditions.
-        if append_resp.success() {
-            let matched = append_resp.matched.unwrap();
+        if append_resp.success {
             self.update_matched(matched);
-
             return Ok(());
         }
 
@@ -373,29 +392,31 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             });
         }
 
-        // Replication was not successful, handle conflict optimization record, else decrement `next_index`.
-        let conflict = append_resp.conflict.unwrap();
-
         tracing::debug!(
             ?conflict,
             append_resp.term,
             "append entries failed, handling conflict opt"
         );
 
-        assert_eq!(conflict, prev_log_id, "if conflict, it is always the prev_log_id");
+        assert!(conflict.is_some(), "prev_log_id=None never conflict");
+        let conflict = conflict.unwrap();
 
         // Continue to find the matching log id on follower.
-        self.max_possible_matched_index = conflict.index - 1;
+        self.max_possible_matched_index = if conflict.index == 0 {
+            None
+        } else {
+            Some(conflict.index - 1)
+        };
 
         Ok(())
     }
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
     #[tracing::instrument(level = "trace", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
-    fn check_consecutive(&self, first_log_index: u64) -> Result<(), ReplicationError> {
-        tracing::debug!(first_log_index, self.max_possible_matched_index, "check_consecutive");
+    fn check_consecutive(&self, smallest_prev_id: Option<LogId>) -> Result<(), ReplicationError> {
+        tracing::debug!(?smallest_prev_id, ?self.max_possible_matched_index, "check_consecutive");
 
-        if first_log_index > self.max_possible_matched_index {
+        if smallest_prev_id.index() > self.max_possible_matched_index {
             return Err(ReplicationError::LackEntry(LackEntry {
                 index: self.max_possible_matched_index,
             }));
@@ -414,19 +435,20 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     /// follower replication(the left and right cursor in a bsearch).
     /// And also report the matched log id to RaftCore to commit an entry etc.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_matched(&mut self, new_matched: LogId) {
+    fn update_matched(&mut self, new_matched: Option<LogId>) {
         tracing::debug!(
             self.max_possible_matched_index,
-            %self.matched,
-            %new_matched, "update_matched");
-        if self.max_possible_matched_index < new_matched.index {
-            self.max_possible_matched_index = new_matched.index;
+            ?self.matched,
+            ?new_matched, "update_matched");
+
+        if self.max_possible_matched_index < new_matched.index() {
+            self.max_possible_matched_index = new_matched.index();
         }
 
         if self.matched < new_matched {
             self.matched = new_matched;
 
-            tracing::debug!(target=%self.target, matched=%self.matched, "matched updated");
+            tracing::debug!(target=%self.target, matched=?self.matched, "matched updated");
 
             let _ = self.raft_core_tx.send((
                 ReplicaEvent::UpdateMatched {
@@ -444,12 +466,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     pub(self) fn needs_snapshot(&self) -> bool {
         match &self.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => {
-                let needs_snap = self
-                    .committed
-                    .index
-                    .checked_sub(self.matched.index)
-                    .map(|diff| diff >= *threshold)
-                    .unwrap_or(false);
+                let c = self.committed.next_index();
+                let m = self.matched.next_index();
+
+                let needs_snap = c.saturating_sub(m) >= *threshold;
 
                 tracing::trace!("snapshot needed: {}", needs_snap);
                 needs_snap
@@ -460,7 +480,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     /// Perform a check to see if this replication stream has more log to replicate
     #[tracing::instrument(level = "trace", skip(self))]
     pub(self) fn has_more_log(&self) -> bool {
-        self.last_log_index > self.matched.index
+        self.last_log_id.index() > self.matched.index()
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -505,7 +525,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             RaftEvent::Replicate { appended, committed } => {
                 self.committed = committed;
-                self.last_log_index = appended.index;
+                self.last_log_id = Some(appended);
             }
         }
 
@@ -537,12 +557,12 @@ pub(crate) enum RaftEvent {
         appended: LogId,
 
         /// The index of the highest log entry which is known to be committed in the cluster.
-        committed: LogId,
+        committed: Option<LogId>,
     },
     /// A message from Raft indicating a new commit index value.
     UpdateCommittedLogId {
         /// The index of the highest log entry which is known to be committed in the cluster.
-        committed: LogId,
+        committed: Option<LogId>,
     },
 }
 
@@ -550,12 +570,12 @@ impl MessageSummary for RaftEvent {
     fn summary(&self) -> String {
         match self {
             RaftEvent::Replicate { appended: _, committed } => {
-                format!("Replicate: committed: {}", committed)
+                format!("Replicate: committed: {:?}", committed)
             }
             RaftEvent::UpdateCommittedLogId {
                 committed: commit_index,
             } => {
-                format!("UpdateCommitIndex: commit_index: {}", commit_index)
+                format!("UpdateCommitIndex: commit_index: {:?}", commit_index)
             }
         }
     }
@@ -570,7 +590,7 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
         /// The ID of the target node for which the match index is to be updated.
         target: NodeId,
         /// The log of the most recent log known to have been successfully replicated on the target.
-        matched: LogId,
+        matched: Option<LogId>,
     },
     /// An event indicating that the Raft node needs to revert to follower state.
     RevertToFollower {
@@ -597,7 +617,7 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
                 ref target,
                 ref matched,
             } => {
-                format!("UpdateMatchIndex: target: {}, matched: {}", target, matched)
+                format!("UpdateMatchIndex: target: {}, matched: {:?}", target, matched)
             }
             ReplicaEvent::RevertToFollower { ref target, ref term } => {
                 format!("RevertToFollower: target: {}, term: {}", target, term)
@@ -616,7 +636,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         loop {
             loop {
                 tracing::debug!(
-                    "current matched: {} send_prev_log_index: {}",
+                    "current matched: {:?} max_possible_matched_index: {:?}",
                     self.matched,
                     self.max_possible_matched_index
                 );
@@ -640,7 +660,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     }
                 }
 
-                if self.matched.index == self.max_possible_matched_index {
+                if self.matched.index() == self.max_possible_matched_index {
                     break;
                 }
             }
@@ -844,12 +864,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // If we just sent the final chunk of the snapshot, then transition to lagging state.
             if done {
                 tracing::debug!(
-                    "done install snapshot: snapshot last_log_id: {}, matched: {}",
+                    "done install snapshot: snapshot last_log_id: {}, matched: {:?}",
                     snapshot.meta.last_log_id,
                     self.matched,
                 );
 
-                self.update_matched(snapshot.meta.last_log_id);
+                self.update_matched(Some(snapshot.meta.last_log_id));
 
                 return Ok(());
             }

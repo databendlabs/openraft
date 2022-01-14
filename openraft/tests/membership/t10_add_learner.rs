@@ -30,14 +30,14 @@ async fn add_learner_basic() -> Result<()> {
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
     tracing::info!("--- re-adding leader does nothing");
     {
         let res = router.add_learner(0, 0).await?;
         assert_eq!(
             AddLearnerResponse {
-                matched: LogId::new(1, n_logs)
+                matched: Some(LogId::new(1, log_index))
             },
             res
         );
@@ -47,12 +47,12 @@ async fn add_learner_basic() -> Result<()> {
     {
         tracing::info!("--- write up to 1000 logs");
 
-        router.client_request_many(0, "learner_add", 1000 - n_logs as usize).await;
-        n_logs = 1000;
+        router.client_request_many(0, "learner_add", 1000 - log_index as usize).await;
+        log_index = 1000;
 
         tracing::info!("--- write up to 1000 logs done");
 
-        router.wait_for_log(&btreeset! {0}, n_logs, timeout(), "write 1000 logs to leader").await?;
+        router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "write 1000 logs to leader").await?;
 
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await?;
@@ -62,11 +62,11 @@ async fn add_learner_basic() -> Result<()> {
 
         let logs = sto1.get_log_entries(..).await?;
 
-        assert_eq!(n_logs, logs[logs.len() - 1].log_id.index);
+        assert_eq!(log_index, logs[logs.len() - 1].log_id.index);
         // 0-th log
-        assert_eq!(n_logs + 1, logs.len() as u64);
+        assert_eq!(log_index + 1, logs.len() as u64);
 
-        router.wait_for_log(&btreeset! {0,1}, n_logs, timeout(), "replication to learner").await?;
+        router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "replication to learner").await?;
     }
 
     tracing::info!("--- re-add node-1, expect error");
@@ -74,7 +74,7 @@ async fn add_learner_basic() -> Result<()> {
         let res = router.add_learner(0, 1).await?;
         assert_eq!(
             AddLearnerResponse {
-                matched: LogId::new(1, n_logs)
+                matched: Some(LogId::new(1, log_index))
             },
             res
         );
@@ -102,26 +102,21 @@ async fn add_learner_non_blocking() -> Result<()> {
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
     tracing::info!("--- add new node node-1, in non blocking mode");
     {
         tracing::info!("--- write up to 100 logs");
 
-        router.client_request_many(0, "learner_add", 100 - n_logs as usize).await;
-        n_logs = 100;
+        router.client_request_many(0, "learner_add", 100 - log_index as usize).await;
+        log_index = 100;
 
-        router.wait(&0, timeout()).await?.log(n_logs, "received 100 logs").await?;
+        router.wait(&0, timeout()).await?.log(Some(log_index), "received 100 logs").await?;
 
         router.new_raft_node(1).await;
         let res = router.add_learner_with_blocking(0, 1, false).await?;
 
-        assert_eq!(
-            AddLearnerResponse {
-                matched: LogId::new(0, 0)
-            },
-            res
-        );
+        assert_eq!(AddLearnerResponse { matched: None }, res);
     }
 
     Ok(())

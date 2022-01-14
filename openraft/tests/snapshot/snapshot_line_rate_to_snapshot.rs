@@ -35,14 +35,21 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
     tracing::info!("--- send more than half threshold logs");
     {
-        router.client_request_many(0, "0", (snapshot_threshold / 2 + 2 - n_logs) as usize).await;
-        n_logs = snapshot_threshold / 2 + 2;
+        router.client_request_many(0, "0", (snapshot_threshold / 2 + 2 - log_index) as usize).await;
+        log_index = snapshot_threshold / 2 + 2;
 
-        router.wait_for_log(&btreeset![0, 1], n_logs, timeout(), "send log to trigger snapshot").await?;
+        router
+            .wait_for_log(
+                &btreeset![0, 1],
+                Some(log_index),
+                timeout(),
+                "send log to trigger snapshot",
+            )
+            .await?;
     }
 
     tracing::info!("--- stop replication to node 1");
@@ -50,15 +57,25 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     {
         router.isolate_node(1).await;
 
-        router.client_request_many(0, "0", (snapshot_threshold - n_logs) as usize).await;
+        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await;
 
-        n_logs = snapshot_threshold;
+        log_index = snapshot_threshold - 1;
 
-        router.wait_for_log(&btreeset![0], n_logs, timeout(), "send log to trigger snapshot").await?;
+        router
+            .wait_for_log(
+                &btreeset![0],
+                Some(log_index),
+                timeout(),
+                "send log to trigger snapshot",
+            )
+            .await?;
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId { term: 1, index: n_logs },
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
                 timeout(),
                 "snapshot on node 0",
             )
@@ -69,11 +86,14 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     {
         router.restore_node(1).await;
 
-        router.wait_for_log(&btreeset![1], n_logs, timeout(), "replicate by snapshot").await?;
+        router.wait_for_log(&btreeset![1], Some(log_index), timeout(), "replicate by snapshot").await?;
         router
             .wait_for_snapshot(
                 &btreeset![1],
-                LogId { term: 1, index: n_logs },
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
                 timeout(),
                 "snapshot on node 1",
             )

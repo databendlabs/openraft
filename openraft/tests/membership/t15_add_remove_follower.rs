@@ -26,37 +26,37 @@ async fn add_remove_voter() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = router.new_nodes_from_single(cluster_of_5.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(cluster_of_5.clone(), btreeset! {}).await?;
 
     tracing::info!("--- write 100 logs");
     {
         router.client_request_many(0, "client", 100).await;
-        n_logs += 100;
+        log_index += 100;
 
-        router.wait_for_log(&cluster_of_5, n_logs, timeout(), "write 100 logs").await?;
+        router.wait_for_log(&cluster_of_5, Some(log_index), timeout(), "write 100 logs").await?;
     }
 
     tracing::info!("--- remove n{}", 4);
     {
         router.change_membership(0, cluster_of_4.clone()).await?;
-        n_logs += 2; // two member-change logs
+        log_index += 2; // two member-change logs
 
-        router.wait_for_log(&cluster_of_4, n_logs, timeout(), "removed node-4").await?;
+        router.wait_for_log(&cluster_of_4, Some(log_index), timeout(), "removed node-4").await?;
         router.wait(&4, timeout()).await?.state(State::Learner, "").await?;
     }
 
     tracing::info!("--- write another 100 logs");
     {
         router.client_request_many(0, "client", 100).await;
-        n_logs += 100;
+        log_index += 100;
     }
 
-    router.wait_for_log(&cluster_of_4, n_logs, timeout(), "4 nodes recv logs 100~200").await?;
+    router.wait_for_log(&cluster_of_4, Some(log_index), timeout(), "4 nodes recv logs 100~200").await?;
 
     tracing::info!("--- log will not be sync to removed node");
     {
         let x = router.latest_metrics().await;
-        assert!(x[4].last_log_index < Some(n_logs - 50));
+        assert!(x[4].last_log_index < Some(log_index - 50));
     }
 
     Ok(())

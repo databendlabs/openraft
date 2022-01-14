@@ -59,10 +59,10 @@ pub struct HardState {
 #[derive(Clone, Debug)]
 pub struct InitialState {
     /// The last entry.
-    pub last_log_id: LogId,
+    pub last_log_id: Option<LogId>,
 
     /// The LogId of the last log applied to the state machine.
-    pub last_applied: LogId,
+    pub last_applied: Option<LogId>,
 
     /// The saved hard state of the node.
     pub hard_state: HardState,
@@ -75,8 +75,8 @@ pub struct InitialState {
 impl InitialState {
     pub fn new(id: NodeId) -> Self {
         Self {
-            last_log_id: LogId::new(0, 0),
-            last_applied: LogId::new(0, 0),
+            last_log_id: None,
+            last_applied: None,
             hard_state: HardState {
                 current_term: 0,
                 voted_for: None,
@@ -220,20 +220,27 @@ where
         Ok(last_log_id)
     }
 
-    async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
-        let (first, _) = self.get_log_state().await?;
+    /// Returns first known log id in logs or in state machine.
+    ///
+    /// It returns None only when there is never a log.
+    async fn first_known_log_id(&self) -> Result<Option<LogId>, StorageError> {
         let (last_applied, _) = self.last_applied_state().await?;
+        let (first, _) = self.get_log_state().await?;
 
-        if let Some(x) = first {
-            return Ok(std::cmp::min(x, last_applied));
+        if last_applied.is_none() {
+            return Ok(None);
         }
 
-        Ok(last_applied)
+        if first.is_none() {
+            return Ok(last_applied);
+        }
+
+        Ok(std::cmp::min(first, last_applied))
     }
 
     /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
     /// membership config.
-    async fn last_applied_state(&self) -> Result<(LogId, Option<EffectiveMembership>), StorageError>;
+    async fn last_applied_state(&self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError>;
 
     /// Delete all logs in a `range`.
     ///

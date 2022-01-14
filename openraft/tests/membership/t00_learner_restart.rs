@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LogIdOptionExt;
 use openraft::NodeId;
 use openraft::Raft;
 use openraft::State;
@@ -37,7 +38,7 @@ async fn learner_restart() -> Result<()> {
     let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1], n_logs, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1], None, None, "empty").await?;
     router.wait_for_state(&btreeset![0, 1], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
@@ -50,7 +51,7 @@ async fn learner_restart() -> Result<()> {
     router.client_request(0, "foo", 1).await;
     n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1], n_logs, None, "write one log").await?;
+    router.wait_for_log(&btreeset![0, 1], Some(n_logs), None, "write one log").await?;
 
     let (node0, _sto0) = router.remove_node(0).await.unwrap();
     assert_node_state(0, &node0, 1, 2, State::Leader);
@@ -74,6 +75,6 @@ fn assert_node_state(id: NodeId, node: &MemRaft, expected_term: u64, expected_lo
 
     assert_eq!(expected_term, m.current_term, "node {} term", id);
     assert_eq!(Some(expected_log), m.last_log_index, "node {} last_log_index", id);
-    assert_eq!(expected_log, m.last_applied, "node {} last_log_index", id);
+    assert_eq!(Some(expected_log), m.last_applied.index(), "node {} last_log_index", id);
     assert_eq!(state, m.state, "node {} state", id);
 }

@@ -143,12 +143,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
-        self.inner().first_known_log_id().await
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn last_applied_state(&self) -> Result<(LogId, Option<EffectiveMembership>), StorageError> {
+    async fn last_applied_state(&self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError> {
         self.inner().last_applied_state().await
     }
 

@@ -24,30 +24,44 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
     tracing::info!("--- stop replication to node 1");
     {
         router.isolate_node(1).await;
 
-        router.client_request_many(0, "0", (10 - n_logs) as usize).await;
-        n_logs = 10;
+        router.client_request_many(0, "0", (10 - log_index) as usize).await;
+        log_index = 10;
 
-        router.wait_for_log(&btreeset![0], n_logs, timeout(), "send log to trigger snapshot").await?;
+        router
+            .wait_for_log(
+                &btreeset![0],
+                Some(log_index),
+                timeout(),
+                "send log to trigger snapshot",
+            )
+            .await?;
     }
 
     tracing::info!("--- restore replication to node 1");
     {
         router.restore_node(1).await;
 
-        router.client_request_many(0, "0", (10 - n_logs) as usize).await;
-        n_logs = 10;
+        router.client_request_many(0, "0", (10 - log_index) as usize).await;
+        log_index = 10;
 
-        router.wait_for_log(&btreeset![0], n_logs, timeout(), "send log to trigger snapshot").await?;
+        router
+            .wait_for_log(
+                &btreeset![0],
+                Some(log_index),
+                timeout(),
+                "send log to trigger snapshot",
+            )
+            .await?;
     }
     Ok(())
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5000))
+    Some(Duration::from_millis(1000))
 }

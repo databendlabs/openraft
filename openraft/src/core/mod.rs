@@ -55,6 +55,7 @@ use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
+use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::HardState;
@@ -125,10 +126,10 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// Committed means:
     /// - a log that is replicated to a quorum of the cluster and it is of the term of the leader.
     /// - A quorum could be a joint quorum.
-    committed: LogId,
+    committed: Option<LogId>,
 
     /// The log id of the highest log entry which has been applied to the local state machine.
-    last_applied: LogId,
+    last_applied: Option<LogId>,
 
     /// The current term.
     ///
@@ -155,7 +156,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
     ///
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
-    snapshot_last_log_id: LogId,
+    snapshot_last_log_id: Option<LogId>,
 
     /// A bool indicating if this system has performed its initial replication of
     /// outstanding entries to the state machine.
@@ -203,14 +204,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             network,
             storage,
             target_state: State::Follower,
-            committed: LogId::new(0, 0),
-            last_applied: LogId::new(0, 0),
+            committed: None,
+            last_applied: None,
             current_term: 0,
             current_leader: None,
             voted_for: None,
             last_log_id: None,
             snapshot_state: None,
-            snapshot_last_log_id: LogId::new(0, 0),
+            snapshot_last_log_id: None,
             has_completed_initial_replication_to_sm: false,
             last_heartbeat: None,
             next_election_timeout: None,
@@ -258,7 +259,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             init_state
         };
 
-        self.last_log_id = Some(state.last_log_id);
+        self.last_log_id = state.last_log_id;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
         self.effective_membership = state.last_membership.clone();
@@ -267,15 +268,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // NOTE: this is repeated here for clarity. It is unsafe to initialize the node's commit
         // index to any other value. The commit index must be determined by a leader after
         // successfully committing a new log to the cluster.
-        self.committed = LogId::new(0, 0);
+        self.committed = None;
 
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
-            self.snapshot_last_log_id = snapshot.meta.last_log_id;
+            self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
             self.report_metrics(Update::Ignore);
         }
 
-        let has_log = self.last_log_id.unwrap().index != u64::MIN;
+        let has_log = self.last_log_id.is_some();
         let single = self.effective_membership.membership.all_nodes().len() == 1;
         let is_voter = self.effective_membership.membership.contains(&self.id);
 
@@ -345,7 +346,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             state: self.target_state,
             current_term: self.current_term,
             last_log_index: self.last_log_id.map(|id| id.index),
-            last_applied: self.last_applied.index,
+            last_applied: self.last_applied,
             current_leader: self.current_leader,
             membership_config: self.effective_membership.clone(),
             snapshot: self.snapshot_last_log_id,
@@ -464,7 +465,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_snapshot_state(&mut self, update: SnapshotUpdate) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
-            self.snapshot_last_log_id = log_id;
+            self.snapshot_last_log_id = Some(log_id);
             self.report_metrics(Update::Ignore);
         }
         // If snapshot state is anything other than streaming, then drop it.
@@ -481,14 +482,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return;
         }
         let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
+
+        let last_applied = match self.last_applied {
+            None => {
+                return;
+            }
+            Some(x) => x,
+        };
+
         // Check to ensure we have actual entries for compaction.
-        if self.last_applied.index == 0 || self.last_applied.index < self.snapshot_last_log_id.index {
+        if Some(last_applied.index) < self.snapshot_last_log_id.index() {
             return;
         }
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
-            if self.last_applied.index < self.snapshot_last_log_id.index + *threshold {
+            if self.last_applied.next_index() - self.snapshot_last_log_id.next_index() < *threshold {
                 return;
             }
         }
@@ -571,6 +580,26 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let _ = tx.send(Err(ClientReadError::ForwardToLeader(ForwardToLeader {
             leader_id: self.current_leader,
         })));
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, payload))]
+    pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> Result<Entry<D>, StorageError> {
+        let log_id = LogId::new(self.current_term, self.last_log_id.next_index());
+
+        let entry = Entry { log_id, payload };
+        self.storage.append_to_log(&[&entry]).await?;
+
+        tracing::debug!("append log: {}", entry.summary());
+        self.last_log_id = Some(log_id);
+
+        if let EntryPayload::Membership(mem) = &entry.payload {
+            self.effective_membership = EffectiveMembership {
+                log_id: entry.log_id,
+                membership: mem.clone(),
+            };
+        }
+
+        Ok(entry)
     }
 }
 
@@ -845,7 +874,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 struct ReplicationState {
-    pub matched: LogId,
+    pub matched: Option<LogId>,
     pub remove_since: Option<u64>,
     pub repl_stream: ReplicationStream,
 
@@ -856,7 +885,7 @@ struct ReplicationState {
 impl MessageSummary for ReplicationState {
     fn summary(&self) -> String {
         format!(
-            "matched: {}, remove_after_commit: {:?}",
+            "matched: {:?}, remove_after_commit: {:?}",
             self.matched, self.remove_since
         )
     }
@@ -866,14 +895,14 @@ impl ReplicationState {
     // TODO(xp): make this a method of Config?
 
     /// Return true if the distance behind last_log_id is smaller than the threshold to join.
-    pub fn is_line_rate(&self, last_log_id: &LogId, config: &Config) -> bool {
+    pub fn is_line_rate(&self, last_log_id: &Option<LogId>, config: &Config) -> bool {
         is_matched_upto_date(&self.matched, last_log_id, config)
     }
 }
 
-pub fn is_matched_upto_date(matched: &LogId, last_log_id: &LogId, config: &Config) -> bool {
-    let my_index = matched.index;
-    let distance = last_log_id.index.saturating_sub(my_index);
+pub fn is_matched_upto_date(matched: &Option<LogId>, last_log_id: &Option<LogId>, config: &Config) -> bool {
+    let my_index = matched.next_index();
+    let distance = last_log_id.next_index().saturating_sub(my_index);
     distance <= config.replication_lag_threshold
 }
 

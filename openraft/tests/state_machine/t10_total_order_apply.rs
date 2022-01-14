@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LogIdOptionExt;
 use openraft::RaftStorage;
 use openraft::State;
 use tokio::sync::watch;
@@ -37,7 +38,7 @@ async fn total_order_apply() -> Result<()> {
 
     let sto1 = router.get_storage_handle(&1).await?;
 
-    let mut prev = 0;
+    let mut prev = None;
     let h = tokio::spawn(async move {
         loop {
             if *rx.borrow() {
@@ -46,10 +47,10 @@ async fn total_order_apply() -> Result<()> {
 
             let (last, _) = sto1.last_applied_state().await.unwrap();
 
-            if last.index < prev {
+            if last.index() < prev {
                 panic!("out of order apply");
             }
-            prev = last.index;
+            prev = last.index();
         }
     });
 
@@ -64,7 +65,7 @@ async fn total_order_apply() -> Result<()> {
     router
         .wait_for_metrics(
             &1u64,
-            |x| x.last_applied >= want,
+            |x| x.last_applied.index() >= Some(want),
             timeout(),
             &format!("n{}.last_applied -> {}", 1, want),
         )
