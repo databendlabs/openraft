@@ -41,8 +41,10 @@ use tokio::sync::RwLock;
 pub struct ClientRequest {
     /// The ID of the client which has sent the request.
     pub client: String,
+
     /// The serial number of this request.
     pub serial: u64,
+
     /// A string describing the status of the client. For a real application, this should probably
     /// be an enum representing all of the various types of requests / operations which a client
     /// can perform.
@@ -194,11 +196,12 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         &self,
         entries: &[&Entry<ClientRequest>],
     ) -> Result<Vec<ClientResponse>, StorageError> {
-        let mut sm = self.sm.write().await;
         let mut res = Vec::with_capacity(entries.len());
 
+        let mut sm = self.sm.write().await;
+
         for entry in entries {
-            tracing::debug!("replicate to sm, index:{}", entry.log_id.index);
+            tracing::debug!(%entry.log_id, "replicate to sm");
 
             sm.last_applied_log = Some(entry.log_id);
 

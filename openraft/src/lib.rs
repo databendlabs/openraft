@@ -4,11 +4,7 @@
 mod config;
 mod core;
 mod defensive;
-pub mod error;
 mod membership;
-pub mod metrics;
-pub mod network;
-pub mod raft;
 mod raft_types;
 mod replication;
 pub mod storage;
@@ -16,6 +12,12 @@ mod storage_error;
 mod store_ext;
 mod store_wrapper;
 mod summary;
+
+pub mod error;
+pub mod metrics;
+pub mod network;
+pub mod raft;
+pub mod testing;
 
 #[cfg(test)]
 mod metrics_wait_test;
