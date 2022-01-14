@@ -91,7 +91,7 @@ async fn leader_metrics() -> Result<()> {
     while let Some(inner) = new_nodes.next().await {
         inner?;
     }
-
+    n_logs += 4; // 4 add_learner log
     router.wait_for_log(&all_members, n_logs, timeout, "add learner 1,2,3,4").await?;
 
     tracing::info!("--- changing cluster config to 012");

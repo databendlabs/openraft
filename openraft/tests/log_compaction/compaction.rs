@@ -85,6 +85,7 @@ async fn compaction() -> Result<()> {
 
     router.new_raft_node_with_sto(1, sto1.clone()).await;
     router.add_learner(0, 1).await.expect("failed to add new node as learner");
+    n_logs += 1; // add_learner log
 
     tracing::info!("--- add 1 log after snapshot");
     {
@@ -98,7 +99,7 @@ async fn compaction() -> Result<()> {
     {
         let sto = router.get_storage_handle(&1).await?;
         let logs = sto.get_log_entries(..).await?;
-        assert_eq!(1, logs.len());
+        assert_eq!(2, logs.len());
         assert_eq!(LogId { term: 1, index: 51 }, logs[0].log_id)
     }
 

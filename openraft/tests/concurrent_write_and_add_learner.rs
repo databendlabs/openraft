@@ -66,6 +66,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         router.new_raft_node(2).await;
         router.add_learner(0, 1).await?;
         router.add_learner(0, 2).await?;
+        n_logs += 2; // two add_learner logs
 
         tracing::info!("--- changing cluster config");
 
@@ -73,7 +74,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         n_logs += 2; // Tow member change logs
 
         wait_log(router.clone(), &candidates, n_logs).await?;
-        router.assert_stable_cluster(Some(1), Some(3)).await; // Still in term 1, so leader is still node 0.
+        router.assert_stable_cluster(Some(1), Some(n_logs)).await; // Still in term 1, so leader is still node 0.
     }
 
     let leader = router.leader().await.unwrap();
@@ -101,7 +102,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
                 .instrument(tracing::debug_span!("spawn-add-learner")),
             )
         };
-
+        n_logs += 1; // one add_learner log
         router.client_request_many(leader, "client", 1).await;
         n_logs += 1;
 

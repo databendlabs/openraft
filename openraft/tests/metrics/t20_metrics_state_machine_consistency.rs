@@ -33,8 +33,10 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     router.initialize_with(0, btreeset![0]).await?;
     router.wait_for_state(&btreeset![0], State::Leader, None, "init").await?;
 
+    let mut n_logs = 0;
     tracing::info!("--- add one learner");
     router.add_learner(0, 1).await?;
+    n_logs += 1;
 
     tracing::info!("--- write one log");
     router.client_request(0, "foo", 1).await;
@@ -42,7 +44,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     // Wait for metrics to be up to date.
     // Once last_applied updated, the key should be visible in state machine.
     tracing::info!("--- wait for log to sync");
-    let n_logs = 2u64;
+    n_logs += 2u64;
     for node_id in 0..2 {
         router.wait_for_log(&btreeset![node_id], n_logs, None, "write one log").await?;
         let sto = router.get_storage_handle(&node_id).await?;
