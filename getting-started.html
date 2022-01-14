@@ -160,7 +160,7 @@ includes: </p>
 <li>Implement a storage to let raft store its state;</li>
 <li>Implement a network layer for raft to transmit messages.</li>
 </ul>
-<h2 id="define-client-request-and-response"><a class="header" href="#define-client-request-and-response">Define client request and response</a></h2>
+<h2 id="1-define-client-request-and-response"><a class="header" href="#1-define-client-request-and-response">1. Define client request and response</a></h2>
 <p>A request is some data that modifies the raft state machine.
 A response is some data that the raft state machine returns to client.</p>
 <p>Request and response can be any types that impl <code>AppData</code> and <code>AppDataResponse</code>,
@@ -179,7 +179,7 @@ impl AppDataResponse for ClientResponse {}
 </span></code></pre></pre>
 <p>These two types are totally application specific, and are mainly related to the
 state machine implementation in <code>RaftStorage</code>.</p>
-<h2 id="implement-raftstorage"><a class="header" href="#implement-raftstorage">Implement RaftStorage</a></h2>
+<h2 id="2-implement-raftstorage"><a class="header" href="#2-implement-raftstorage">2. Implement <code>RaftStorage</code></a></h2>
 <p>The trait <code>RaftStorage</code> defines the way that data is stored and consumed.
 It could be a wrapper of some local KV store such <a href="https://docs.rs/rocksdb/latest/rocksdb/">RocksDB</a>,
 or a wrapper of a remote sql DB.</p>
@@ -190,27 +190,23 @@ or a wrapper of a remote sql DB.</p>
 <li>Apply log entry to the state machine.</li>
 <li>Building and installing a snapshot.</li>
 </ul>
-<h3 id="how-do-i-impl-raftstorage-correctly"><a class="header" href="#how-do-i-impl-raftstorage-correctly">How do I impl RaftStorage correctly</a></h3>
-<ul>
-<li>
 <p>The APIs have been made quite obvious and there is a good example
-<a href="https://github.com/datafuselabs/openraft/tree/main/memstore"><code>memstore</code></a>,
+<a href="https://github.com/datafuselabs/openraft/blob/main/memstore/src/lib.rs"><code>MemStore</code></a>,
 which is a pure-in-memory implementation that shows what should be done when a
 method is called.</p>
-</li>
-<li>
-<p>There is a test suite for <code>RaftStorage</code> impl, if an impl passes the test,
-Openraft will work happily with it.</p>
-<p><a href="https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs">Test suite for RaftStorage impl</a></p>
-<p>TODO(xp): move this test suite to openraft crate so that users can include it.</p>
+<h3 id="how-do-i-impl-raftstorage-correctly"><a class="header" href="#how-do-i-impl-raftstorage-correctly">How do I impl RaftStorage correctly</a></h3>
+<p>There is a <a href="https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs">Test suite for RaftStorage</a>,
+if an implementation passes the test, openraft will work happily with it.</p>
+<p>To test your implementation with this suite, just do this:</p>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// TODO(xp): give a example how to test an impl of RaftStorage
+</span>#[test]
+pub fn test_mem_store() -&gt; anyhow::Result&lt;()&gt; {
+  openraft::testing::Suite::test_all(MemStore::new)
+}
 <span class="boring">}
 </span></code></pre></pre>
-</li>
-</ul>
 <h3 id="race-condition-about-raftstorage"><a class="header" href="#race-condition-about-raftstorage">Race condition about RaftStorage</a></h3>
 <p>In our design, there is at most one thread at a time writing data to it.
 But there may be several threads reading from it concurrently,
@@ -218,7 +214,7 @@ e.g., more than one replication tasks reading log entries from store.</p>
 <h3 id="an-implementation-has-to-guarantee-data-durability"><a class="header" href="#an-implementation-has-to-guarantee-data-durability">An implementation has to guarantee data durability</a></h3>
 <p>The caller always assumes a completed write is persistent.
 The raft correctness highly depends on a reliable store.</p>
-<h2 id="impl-raftnetwork"><a class="header" href="#impl-raftnetwork">impl <code>RaftNetwork</code></a></h2>
+<h2 id="3-impl-raftnetwork"><a class="header" href="#3-impl-raftnetwork">3. impl <code>RaftNetwork</code></a></h2>
 <p>Raft nodes need to communicate with each other to achieve consensus about the
 logs.
 The trait <code>RaftNetwork</code> defines the data transmission requirements.</p>
@@ -240,8 +236,8 @@ where D: AppData
 <a href="https://github.com/datafuselabs/openraft/blob/main/openraft/tests/fixtures/mod.rs">fixture: mock impl RaftNetwork</a></p>
 <p>As a real world impl, you may want to use <a href="https://github.com/hyperium/tonic">Tonic gRPC</a>.
 <a href="https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89">databend-meta</a> would be a nice real world example.</p>
-<h2 id="put-everything-together"><a class="header" href="#put-everything-together">Put everything together</a></h2>
-<p>Finally we put these part together and boot up a raft node:</p>
+<h2 id="4-put-everything-together"><a class="header" href="#4-put-everything-together">4. Put everything together</a></h2>
+<p>Finally, we put these part together and boot up a raft node:</p>
 <pre><pre class="playground"><code class="language-rust">/// The application data request type which the `MemStore` works with.
 ///
 /// Conceptually, for demo purposes, this represents an update to a client's status info,
