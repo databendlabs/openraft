@@ -66,7 +66,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         if report_metrics {
-            self.report_metrics(Update::Ignore);
+            self.report_metrics(Update::AsIs);
         }
 
         // Compare current snapshot state with received RPC and handle as needed.
@@ -259,7 +259,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.update_membership(membership);
 
             self.snapshot_last_log_id = self.last_applied;
-            self.report_metrics(Update::Ignore);
+            self.report_metrics(Update::AsIs);
         } else {
             // snapshot not installed
         }

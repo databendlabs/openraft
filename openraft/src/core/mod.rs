@@ -59,7 +59,6 @@ use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::HardState;
-use crate::storage::InitialState;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -250,56 +249,69 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn do_main(&mut self) -> Result<(), Fatal> {
         tracing::debug!("raft node is initializing");
 
-        // NOTE: get_initial_state will return None, if Raft node is first startup.
-        let state = if let Some(init_state) = self.storage.get_initial_state().await? {
-            init_state
-        } else {
-            let init_state = InitialState::new(self.id);
-            self.storage.save_hard_state(&init_state.hard_state).await?;
-            init_state
-        };
+        let state = self.storage.get_initial_state().await?;
+
+        // TODO(xp): this is not necessary.
+        self.storage.save_hard_state(&state.hard_state).await?;
 
         self.last_log_id = state.last_log_id;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
-        self.effective_membership = state.last_membership.clone();
+        self.effective_membership = state.last_membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
         self.last_applied = state.last_applied;
 
-        // NOTE: this is repeated here for clarity. It is unsafe to initialize the node's commit
-        // index to any other value. The commit index must be determined by a leader after
+        // NOTE: The commit index must be determined by a leader after
         // successfully committing a new log to the cluster.
         self.committed = None;
 
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
             self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
-            self.report_metrics(Update::Ignore);
+            self.report_metrics(Update::AsIs);
         }
 
-        let has_log = self.last_log_id.is_some();
-        let single = self.effective_membership.membership.all_nodes().len() == 1;
-        let is_voter = self.effective_membership.membership.contains(&self.id);
+        let has_log = if self.last_log_id.is_some() {
+            "has_log"
+        } else {
+            "no_log"
+        };
+
+        let single = if self.effective_membership.membership.all_nodes().len() == 1 {
+            "single"
+        } else {
+            "multi"
+        };
+
+        let is_voter = if self.effective_membership.membership.contains(&self.id) {
+            "voter"
+        } else {
+            "learner"
+        };
 
         self.target_state = match (has_log, single, is_voter) {
             // A restarted raft that already received some logs but was not yet added to a cluster.
             // It should remain in Learner state, not Follower.
-            (true, true, false) => State::Learner,
-            (true, false, false) => State::Learner,
+            ("has_log", "single", "learner") => State::Learner,
+            ("has_log", "multi", "learner") => State::Learner,
 
-            (false, true, false) => State::Learner, // impossible: no logs but there are other members.
-            (false, false, false) => State::Learner, // impossible: no logs but there are other members.
+            ("no_log", "single", "learner") => State::Learner, // impossible: no logs but there are other members.
+            ("no_log", "multi", "learner") => State::Learner,  // impossible: no logs but there are other members.
 
             // If this is the only configured member and there is live state, then this is
             // a single-node cluster. Become leader.
-            (true, true, true) => State::Leader,
+            ("has_log", "single", "voter") => State::Leader,
 
             // The initial state when a raft is created from empty store.
-            (false, true, true) => State::Learner,
+            ("no_log", "single", "voter") => State::Learner,
 
             // Otherwise it is Follower.
-            (true, false, true) => State::Follower,
+            ("has_log", "multi", "voter") => State::Follower,
 
-            (false, false, true) => State::Follower, // impossible: no logs but there are other members.
+            ("no_log", "multi", "voter") => State::Follower, // impossible: no logs but there are other members.
+
+            _ => {
+                panic!("invalid state: {}, {}, {}", has_log, single, is_voter);
+            }
         };
 
         if self.target_state == State::Follower {
@@ -336,7 +348,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn report_metrics(&mut self, leader_metrics: Update<Option<&LeaderMetrics>>) {
         let leader_metrics = match leader_metrics {
             Update::Update(v) => v.cloned(),
-            Update::Ignore => self.tx_metrics.borrow().leader_metrics.clone(),
+            Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
         };
 
         let m = RaftMetrics {
@@ -466,7 +478,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn update_snapshot_state(&mut self, update: SnapshotUpdate) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
             self.snapshot_last_log_id = Some(log_id);
-            self.report_metrics(Update::Ignore);
+            self.report_metrics(Update::AsIs);
         }
         // If snapshot state is anything other than streaming, then drop it.
         if let Some(state @ SnapshotState::Streaming { .. }) = self.snapshot_state.take() {

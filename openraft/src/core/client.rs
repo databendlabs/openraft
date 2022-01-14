@@ -198,6 +198,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let quorum_granted = self.core.effective_membership.membership.is_majority(&btreeset! {self.core.id});
 
         if quorum_granted {
+            assert!(self.core.committed < Some(log_id));
+
             self.core.committed = Some(log_id);
             tracing::debug!(?self.core.committed, "update committed, no need to replicate");
 

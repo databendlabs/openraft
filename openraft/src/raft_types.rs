@@ -111,11 +111,11 @@ impl Display for SnapshotSegmentId {
     }
 }
 
-// An update action with option to update with some value or just ignore this update.
+// An update action with option to update with some value or just leave it as is.
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Update<T> {
     Update(T),
-    Ignore,
+    AsIs,
 }
 
 /// The changes of a state machine.

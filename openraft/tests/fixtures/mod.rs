@@ -513,8 +513,6 @@ impl RaftRouter {
         node.0.client_write(ClientWriteRequest::new(payload)).await.map(|res| res.data)
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////
-
     /// Assert that the cluster is in a pristine state, with all nodes as learners.
     pub async fn assert_pristine_cluster(&self) {
         let nodes = self.latest_metrics().await;

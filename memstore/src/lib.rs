@@ -16,7 +16,6 @@ use openraft::async_trait::async_trait;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
 use openraft::storage::HardState;
-use openraft::storage::InitialState;
 use openraft::storage::Snapshot;
 use openraft::AppData;
 use openraft::AppDataResponse;
@@ -151,35 +150,6 @@ impl RaftStorageDebug<MemStoreStateMachine> for MemStore {
 #[async_trait]
 impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     type SnapshotData = Cursor<Vec<u8>>;
-
-    async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError> {
-        let hs = self.read_hard_state().await?;
-        match hs {
-            Some(inner) => {
-                // Search for two place and use the max one,
-                // because when a state machine is installed there could be logs
-                // included in the state machine that are not cleaned:
-                // - the last log id
-                // - the last_applied log id in state machine.
-
-                let (last_applied, _) = self.last_applied_state().await?;
-                let last_id_in_log = self.last_id_in_log().await?;
-                let last_log_id = std::cmp::max(last_applied, last_id_in_log);
-
-                let membership = self.get_membership().await?;
-                // TODO(xp): return None Membership if absent.
-                let membership = membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
-
-                Ok(Some(InitialState {
-                    last_log_id,
-                    last_applied,
-                    hard_state: inner.clone(),
-                    last_membership: membership,
-                }))
-            }
-            None => Ok(None),
-        }
-    }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError> {
