@@ -70,14 +70,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn add_learner_into_membership(&mut self, target: &NodeId) -> bool {
+    async fn add_learner_into_membership(&mut self, target: &NodeId) {
         let curr = &mut self.core.effective_membership.membership;
         if curr.contain_learner(&target) {
             tracing::debug!("target node {} is already a learner", target);
 
-            return false;
+            return;
         }
-        tracing::debug!("add target node {} into learner", target);
         curr.add_learner(target);
         let new_config = self.core.effective_membership.membership.clone();
 
@@ -90,7 +89,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             target,
             self.core.last_log_id
         );
-        return true;
+        return;
     }
 
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
@@ -120,7 +119,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return;
         }
 
-        let _ = self.add_learner_into_membership(&target);
+        self.add_learner_into_membership(&target).await;
 
         if blocking {
             let state = self.spawn_replication_stream(target, Some(tx));

@@ -208,6 +208,7 @@ impl RaftRouter {
             self.add_learner(0, *id).await?;
             n_logs += 1;
         }
+        self.wait_for_log(&node_ids, n_logs, timeout(), &format!("learners of {:?}", node_ids)).await?;
 
         if node_ids.len() > 1 {
             tracing::info!("--- change membership to setup voters: {:?}", node_ids);
@@ -218,12 +219,13 @@ impl RaftRouter {
             self.wait_for_log(&node_ids, n_logs, timeout(), &format!("cluster of {:?}", node_ids)).await?;
         }
 
-        for id in learners {
+        for id in learners.clone() {
             tracing::info!("--- add learner: {}", id);
             self.new_raft_node(id).await;
             self.add_learner(0, id).await?;
             n_logs += 1;
         }
+        self.wait_for_log(&node_ids, n_logs, timeout(), &format!("learners of {:?}", learners)).await?;
 
         Ok(n_logs)
     }
