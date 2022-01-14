@@ -164,19 +164,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(self.hs.read().await.clone())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &self,
-        range: RNG,
-    ) -> Result<Vec<Entry<ClientRequest>>, StorageError> {
-        let res = {
-            let log = self.log.read().await;
-            log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>()
-        };
-
-        Ok(res)
-    }
-
     async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RNG,
@@ -187,12 +174,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         };
 
         Ok(res)
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<ClientRequest>>, StorageError> {
-        let log = self.log.read().await;
-        Ok(log.get(&log_index).cloned())
     }
 
     async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError> {

@@ -273,50 +273,7 @@ where
             return Ok(());
         }
 
-        {
-            let want_first = match range.start_bound() {
-                Bound::Included(i) => Some(*i),
-                Bound::Excluded(i) => Some(*i + 1),
-                Bound::Unbounded => None,
-            };
-
-            let first = logs.first().map(|x| x.log_id.index);
-
-            if let Some(want) = want_first {
-                if first != want_first {
-                    return Err(
-                        DefensiveError::new(ErrorSubject::LogIndex(want), Violation::LogIndexNotFound {
-                            want,
-                            got: first,
-                        })
-                        .into(),
-                    );
-                }
-            }
-        }
-
-        {
-            let want_last = match range.end_bound() {
-                Bound::Included(i) => Some(*i),
-                Bound::Excluded(i) => Some(*i - 1),
-                Bound::Unbounded => None,
-            };
-
-            let last = logs.last().map(|x| x.log_id.index);
-
-            if let Some(want) = want_last {
-                if last != want_last {
-                    return Err(
-                        DefensiveError::new(ErrorSubject::LogIndex(want), Violation::LogIndexNotFound {
-                            want,
-                            got: last,
-                        })
-                        .into(),
-                    );
-                }
-            }
-        }
-
+        check_range_matches_entries(range, logs)?;
         Ok(())
     }
 
@@ -342,4 +299,60 @@ where
 
         Ok(())
     }
+}
+
+pub fn check_range_matches_entries<D: AppData, RNG: RangeBounds<u64> + Debug + Send>(
+    range: RNG,
+    entries: &[Entry<D>],
+) -> Result<(), StorageError> {
+    let want_first = match range.start_bound() {
+        Bound::Included(i) => Some(*i),
+        Bound::Excluded(i) => Some(*i + 1),
+        Bound::Unbounded => None,
+    };
+
+    let want_last = match range.end_bound() {
+        Bound::Included(i) => Some(*i),
+        Bound::Excluded(i) => Some(*i - 1),
+        Bound::Unbounded => None,
+    };
+
+    if want_first.is_some() && want_last.is_some() && want_first > want_last {
+        // empty range
+        return Ok(());
+    }
+
+    {
+        let first = entries.first().map(|x| x.log_id.index);
+
+        if let Some(want) = want_first {
+            if first != want_first {
+                return Err(
+                    DefensiveError::new(ErrorSubject::LogIndex(want), Violation::LogIndexNotFound {
+                        want,
+                        got: first,
+                    })
+                    .into(),
+                );
+            }
+        }
+    }
+
+    {
+        let last = entries.last().map(|x| x.log_id.index);
+
+        if let Some(want) = want_last {
+            if last != want_last {
+                return Err(
+                    DefensiveError::new(ErrorSubject::LogIndex(want), Violation::LogIndexNotFound {
+                        want,
+                        got: last,
+                    })
+                    .into(),
+                );
+            }
+        }
+    }
+
+    Ok(())
 }

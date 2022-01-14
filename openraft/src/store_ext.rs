@@ -96,20 +96,6 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &self,
-        range: RNG,
-    ) -> Result<Vec<Entry<D>>, StorageError> {
-        self.defensive_nonempty_range(range.clone()).await?;
-
-        let res = self.inner().get_log_entries(range.clone()).await?;
-
-        self.defensive_range_hits_logs(range, &res).await?;
-
-        Ok(res)
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
     async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RNG,
@@ -117,11 +103,6 @@ where
         self.defensive_nonempty_range(range.clone()).await?;
 
         self.inner().try_get_log_entries(range).await
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>, StorageError> {
-        self.inner().try_get_log_entry(log_index).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
