@@ -742,13 +742,7 @@ impl<D: AppData> MessageSummary for ClientWriteRequest<D> {
 }
 
 impl<D: AppData> ClientWriteRequest<D> {
-    /// Create a new client payload instance with a normal entry type.
-    pub fn new(app_data: D) -> Self {
-        Self::new_base(EntryPayload::Normal(app_data))
-    }
-
-    /// Create a new instance.
-    pub(crate) fn new_base(entry: EntryPayload<D>) -> Self {
+    pub fn new(entry: EntryPayload<D>) -> Self {
         Self { payload: entry }
     }
 }

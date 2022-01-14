@@ -193,34 +193,24 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn replicate_client_request(&mut self, req: ClientRequestEntry<D, R>) -> Result<(), StorageError> {
         // Replicate the request if there are other cluster members. The client response will be
         // returned elsewhere after the entry has been committed to the cluster.
-        let entry_arc = req.entry.clone();
 
-        // TODO(xp): calculate nodes set that need to replicate to, when updating membership
-        // TODO(xp): Or add to-learner replication into self.nodes.
+        let log_id = req.entry.log_id;
+        let quorum_granted = self.core.effective_membership.membership.is_majority(&btreeset! {self.core.id});
 
-        let all_members = self.core.effective_membership.membership.all_nodes();
-
-        let nodes = self.nodes.keys().collect::<Vec<_>>();
-        tracing::debug!(?nodes, ?all_members, "replicate_client_request");
-
-        // Except the leader itself, there are other nodes that need to replicate log to.
-        let await_quorum = all_members.len() > 1;
-
-        if await_quorum {
-            self.awaiting_committed.push(req);
-        } else {
-            // Else, there are no voting nodes for replication, so the payload is now committed.
-            self.core.committed = Some(entry_arc.log_id);
+        if quorum_granted {
+            self.core.committed = Some(log_id);
             tracing::debug!(?self.core.committed, "update committed, no need to replicate");
 
             self.leader_report_metrics();
             self.client_request_post_commit(req).await?;
+        } else {
+            self.awaiting_committed.push(req);
         }
 
         for node in self.nodes.values() {
             let _ = node.repl_stream.repl_tx.send((
                 RaftEvent::Replicate {
-                    appended: entry_arc.log_id,
+                    appended: log_id,
                     committed: self.core.committed,
                 },
                 tracing::debug_span!("CH"),

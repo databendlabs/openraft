@@ -507,7 +507,10 @@ impl RaftRouter {
     ) -> std::result::Result<MemClientResponse, ClientWriteError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&target).unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target));
-        node.0.client_write(ClientWriteRequest::new(req)).await.map(|res| res.data)
+
+        let payload = EntryPayload::Normal(req);
+
+        node.0.client_write(ClientWriteRequest::new(payload)).await.map(|res| res.data)
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////
