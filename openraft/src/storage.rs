@@ -212,9 +212,9 @@ where
     ///
     /// Similar to `try_get_log_entries` except an error will be returned if there is an entry not found in the
     /// specified range.
-    async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<Vec<Entry<D>>, StorageError> {
         // TODO(xp): test: expect an error if a specified entry is not found
         let res = self.try_get_log_entries(range.clone()).await?;
@@ -244,9 +244,9 @@ where
     /// The start value is inclusive in the search and the stop value is non-inclusive: `[start, stop)`.
     ///
     /// Entry that is not found is allowed.
-    async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<Vec<Entry<D>>, StorageError>;
 
     /// Returns the fist log id and last log id in log.
@@ -261,9 +261,9 @@ where
     /// Delete all logs in a `range`.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn delete_logs_from<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<(), StorageError>;
 
     /// Append a payload of entries to the log.

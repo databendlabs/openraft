@@ -139,9 +139,9 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(self.hs.read().await.clone())
     }
 
-    async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<Vec<Entry<ClientRequest>>, StorageError> {
         let res = {
             let log = self.log.read().await;

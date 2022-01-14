@@ -208,9 +208,9 @@ where
     }
 
     /// The range must not be empty otherwise it is an inappropriate action.
-    async fn defensive_nonempty_range<RNG: RangeBounds<u64> + Clone + Debug + Send>(
+    async fn defensive_nonempty_range<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
@@ -240,9 +240,9 @@ where
 
     /// Requires a range must be at least half open: (-oo, n] or [n, +oo);
     /// In order to keep logs continuity.
-    async fn defensive_half_open_range<RNG: RangeBounds<u64> + Clone + Debug + Send>(
+    async fn defensive_half_open_range<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
@@ -264,9 +264,9 @@ where
     }
 
     /// An range operation such as get or delete has to actually covers some log entries in store.
-    async fn defensive_range_hits_logs<RNG: RangeBounds<u64> + Debug + Send>(
+    async fn defensive_range_hits_logs<RB: RangeBounds<u64> + Debug + Send>(
         &self,
-        range: RNG,
+        range: RB,
         logs: &[Entry<D>],
     ) -> Result<(), StorageError> {
         if !self.is_defensive() {
@@ -301,8 +301,8 @@ where
     }
 }
 
-pub fn check_range_matches_entries<D: AppData, RNG: RangeBounds<u64> + Debug + Send>(
-    range: RNG,
+pub fn check_range_matches_entries<D: AppData, RB: RangeBounds<u64> + Debug + Send>(
+    range: RB,
     entries: &[Entry<D>],
 ) -> Result<(), StorageError> {
     let want_first = match range.start_bound() {
