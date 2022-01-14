@@ -11,6 +11,7 @@ use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
 use crate::core::EffectiveMembership;
+use crate::defensive::check_range_matches_entries;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft_types::SnapshotId;
@@ -220,6 +221,30 @@ where
         })
     }
 
+    /// Get a series of log entries from storage.
+    ///
+    /// Similar to `try_get_log_entries` except an error will be returned if there is an entry not found in the
+    /// specified range.
+    async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+        &self,
+        range: RNG,
+    ) -> Result<Vec<Entry<D>>, StorageError> {
+        // TODO(xp): test: expect an error if a specified entry is not found
+        let res = self.try_get_log_entries(range.clone()).await?;
+
+        check_range_matches_entries(range, &res)?;
+
+        Ok(res)
+    }
+
+    /// Try to get an log entry.
+    ///
+    /// It does not return an error if the log entry at `log_index` is not found.
+    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>, StorageError> {
+        let mut res = self.try_get_log_entries(log_index..(log_index + 1)).await?;
+        Ok(res.pop())
+    }
+
     /// Save Raft's hard-state.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
@@ -231,23 +256,11 @@ where
     ///
     /// The start value is inclusive in the search and the stop value is non-inclusive: `[start, stop)`.
     ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &self,
-        range: RNG,
-    ) -> Result<Vec<Entry<D>>, StorageError>;
-
-    /// Get a series of log entries from storage.
-    ///
-    /// Entry not found is allowed
+    /// Entry that is not found is allowed.
     async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RNG,
     ) -> Result<Vec<Entry<D>>, StorageError>;
-
-    /// Try to get an log entry.
-    /// It does not return an error if in defensive mode and the log entry at `log_index` is not found.
-    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>, StorageError>;
 
     /// Returns the fist log id and last log id in log.
     ///
@@ -270,8 +283,6 @@ where
     ///
     /// Though the entries will always be presented in order, each entry's index should be used to
     /// determine its location to be written in the log.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<(), StorageError>;
 
     /// Apply the given payload of entries to the state machine.
@@ -288,8 +299,6 @@ where
     /// - Deal with the EntryPayload::Normal() log, which is business logic log.
     /// - Deal with EntryPayload::Membership
     /// - A EntryPayload::SnapshotPointer log should never be seen.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn apply_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>, StorageError>;
 
     /// Perform log compaction, returning a handle to the generated snapshot.
@@ -300,8 +309,6 @@ where
     /// storage implementation should export/checkpoint/snapshot its state machine, and then use
     /// the value of that export's last applied log as the metadata indicating the breadth of the
     /// log covered by the snapshot.
-    ///
-    /// Errors returned from this method will be logged and retried.
     async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError>;
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object.
@@ -311,8 +318,6 @@ where
     /// ### implementation guide
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
     /// for details on log compaction / snapshotting.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>, StorageError>;
 
     /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
@@ -321,8 +326,6 @@ where
     ///
     /// ### snapshot
     /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the snapshot.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn finalize_snapshot_installation(
         &self,
         meta: &SnapshotMeta,
@@ -340,8 +343,6 @@ where
     ///
     /// A proper snapshot implementation will store the term, index and membership config as part
     /// of the snapshot, which should be decoded for creating this method's response data.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError>;
 }
 

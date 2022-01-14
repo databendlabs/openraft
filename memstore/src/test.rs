@@ -758,7 +758,7 @@ where
 
             store.delete_logs_from(1..4).await?;
 
-            let logs = store.get_log_entries(0..100).await?;
+            let logs = store.try_get_log_entries(0..100).await?;
             assert_eq!(logs.len(), 7);
             assert_eq!(logs[0].log_id.index, 4);
         }
@@ -771,7 +771,7 @@ where
             store.delete_logs_from(..=0).await?;
 
             store.delete_logs_from(1..1000).await?;
-            let logs = store.get_log_entries(0..).await?;
+            let logs = store.try_get_log_entries(0..).await?;
 
             assert_eq!(logs.len(), 0);
         }
@@ -784,7 +784,7 @@ where
             store.delete_logs_from(..=0).await?;
 
             store.delete_logs_from(1..).await?;
-            let logs = store.get_log_entries(0..100).await?;
+            let logs = store.try_get_log_entries(0..100).await?;
 
             assert_eq!(logs.len(), 0);
         }
@@ -805,8 +805,8 @@ where
             }])
             .await?;
 
-        let l = store.get_log_entries(0..).await?.len();
-        let last = store.get_log_entries(0..).await?.last().unwrap().clone();
+        let l = store.try_get_log_entries(0..).await?.len();
+        let last = store.try_get_log_entries(0..).await?.last().unwrap().clone();
 
         assert_eq!(l, 10, "expected 10 entries to exist in the log");
         assert_eq!(last.log_id, (2, 10).into(), "unexpected log id");
