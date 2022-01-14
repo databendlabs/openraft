@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use maplit::btreeset;
+use openraft::storage::InitialState;
 use openraft::DefensiveCheck;
 use openraft::DefensiveError;
 use openraft::Membership;
@@ -270,7 +271,7 @@ where
         let store = builder.build(NODE_ID).await;
 
         let initial = store.get_initial_state().await?;
-        assert!(initial.is_none(), "unexpected initial state");
+        assert_eq!(InitialState::default(), initial, "uninitialized state");
         Ok(())
     }
 
@@ -292,7 +293,7 @@ where
             }])
             .await?;
 
-        let initial = store.get_initial_state().await?.unwrap();
+        let initial = store.get_initial_state().await?;
 
         assert_eq!(
             initial.last_log_id,
@@ -338,11 +339,11 @@ where
                 ])
                 .await?;
 
-            let initial = store.get_initial_state().await?.unwrap();
+            let initial = store.get_initial_state().await?;
 
             assert_eq!(
                 Membership::new_single(btreeset! {3,4,5}),
-                initial.last_membership.membership,
+                initial.last_membership.unwrap().membership,
             );
         }
 
@@ -355,11 +356,11 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?.unwrap();
+            let initial = store.get_initial_state().await?;
 
             assert_eq!(
                 Membership::new_single(btreeset! {3,4,5}),
-                initial.last_membership.membership,
+                initial.last_membership.unwrap().membership,
             );
         }
 
@@ -372,11 +373,11 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?.unwrap();
+            let initial = store.get_initial_state().await?;
 
             assert_eq!(
                 Membership::new_single(btreeset! {1,2,3}),
-                initial.last_membership.membership,
+                initial.last_membership.unwrap().membership,
             );
         }
 
@@ -407,7 +408,7 @@ where
             ])
             .await?;
 
-        let initial = store.get_initial_state().await?.unwrap();
+        let initial = store.get_initial_state().await?;
 
         assert_eq!(
             initial.last_log_id,
@@ -435,7 +436,7 @@ where
             }])
             .await?;
 
-        let initial = store.get_initial_state().await?.unwrap();
+        let initial = store.get_initial_state().await?;
 
         assert_eq!(
             initial.last_log_id,

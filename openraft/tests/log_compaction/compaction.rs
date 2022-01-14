@@ -4,8 +4,11 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
+use openraft::raft::Entry;
+use openraft::raft::EntryPayload;
 use openraft::Config;
 use openraft::LogId;
+use openraft::Membership;
 use openraft::RaftNetwork;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
@@ -92,7 +95,11 @@ async fn compaction() -> Result<()> {
 
     // Add a new node and assert that it received the same snapshot.
     let sto1 = router.new_store(1).await;
-    sto1.append_to_log(&[&blank(0, 0), &blank(1, 1)]).await?;
+    sto1.append_to_log(&[&blank(0, 0), &Entry {
+        log_id: LogId::new(1, 1),
+        payload: EntryPayload::Membership(Membership::new_single(btreeset! {0})),
+    }])
+    .await?;
 
     router.new_raft_node_with_sto(1, sto1.clone()).await;
     router.add_learner(0, 1).await.expect("failed to add new node as learner");

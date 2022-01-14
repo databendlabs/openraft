@@ -6,7 +6,6 @@ use std::sync::RwLock;
 use crate::async_trait::async_trait;
 use crate::raft::Entry;
 use crate::storage::HardState;
-use crate::storage::InitialState;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
 use crate::AppData;
@@ -84,12 +83,6 @@ where
     R: AppDataResponse,
 {
     type SnapshotData = T::SnapshotData;
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError> {
-        self.defensive_no_dirty_log().await?;
-        self.inner().get_initial_state().await
-    }
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError> {

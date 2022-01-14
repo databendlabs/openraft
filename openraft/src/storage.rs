@@ -18,7 +18,6 @@ use crate::raft_types::StateMachineChanges;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
-use crate::Membership;
 use crate::NodeId;
 use crate::StorageError;
 
@@ -56,7 +55,7 @@ pub struct HardState {
 }
 
 /// A struct used to represent the initial state which a Raft node needs when first starting.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InitialState {
     /// The last entry.
     pub last_log_id: Option<LogId>,
@@ -69,11 +68,11 @@ pub struct InitialState {
 
     /// The latest cluster membership configuration found, in log or in state machine, else a new initial
     /// membership config consisting only of this node's ID.
-    pub last_membership: EffectiveMembership,
+    pub last_membership: Option<EffectiveMembership>,
 }
 
-impl InitialState {
-    pub fn new(id: NodeId) -> Self {
+impl Default for InitialState {
+    fn default() -> Self {
         Self {
             last_log_id: None,
             last_applied: None,
@@ -81,10 +80,7 @@ impl InitialState {
                 current_term: 0,
                 voted_for: None,
             },
-            last_membership: EffectiveMembership {
-                log_id: LogId::new(0, 0),
-                membership: Membership::new_initial(id),
-            },
+            last_membership: None,
         }
     }
 }
@@ -199,10 +195,30 @@ where
 
     /// Get Raft's state information from storage.
     ///
-    /// When the Raft node is first started, it will call this interface on the storage system to
-    /// fetch the last known state from stable storage. If no such entry exists due to being the
-    /// first time the node has come online, will returns `None`.
-    async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError>;
+    /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
+    /// storage.
+    async fn get_initial_state(&self) -> Result<InitialState, StorageError> {
+        let hs = self.read_hard_state().await?;
+
+        // Search for two place and use the max one,
+        // because when a state machine is installed there could be logs
+        // included in the state machine that are not cleaned:
+        // - the last log id
+        // - the last_applied log id in state machine.
+
+        let (last_applied, _) = self.last_applied_state().await?;
+        let last_id_in_log = self.last_id_in_log().await?;
+        let last_log_id = std::cmp::max(last_applied, last_id_in_log);
+
+        let membership = self.get_membership().await?;
+
+        Ok(InitialState {
+            last_log_id,
+            last_applied,
+            hard_state: hs.unwrap_or_default(),
+            last_membership: membership,
+        })
+    }
 
     /// Save Raft's hard-state.
     ///
