@@ -228,7 +228,7 @@ where
         let (first, _) = self.get_log_state().await?;
 
         if last_applied.is_none() {
-            return Ok(None);
+            return Ok(first);
         }
 
         if first.is_none() {

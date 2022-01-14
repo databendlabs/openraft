@@ -530,7 +530,7 @@ where
 
             // NOTE: it assumes non applied logs always exist.
             let log_id = store.first_known_log_id().await?;
-            assert_eq!(None, log_id, "last_applied is None");
+            assert_eq!(Some(LogId::new(1, 2)), log_id, "last_applied is None");
 
             store.apply_to_state_machine(&[&blank(1, 1)]).await?;
             let log_id = store.first_known_log_id().await?;
