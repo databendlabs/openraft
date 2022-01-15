@@ -264,7 +264,7 @@ where
     /// Delete all logs in a `range`.
     ///
     /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn delete_logs_from<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn delete_log<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RB,
     ) -> Result<(), StorageError>;
@@ -293,15 +293,14 @@ where
 
     // --- Snapshot
 
-    /// Perform log compaction, returning a handle to the generated snapshot.
+    /// Build snapshot
     ///
-    /// ### implementation guide
-    /// When performing log compaction, the compaction can only cover the breadth of the log up to
-    /// the last applied log and under write load this value may change quickly. As such, the
-    /// storage implementation should export/checkpoint/snapshot its state machine, and then use
-    /// the value of that export's last applied log as the metadata indicating the breadth of the
-    /// log covered by the snapshot.
-    async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError>;
+    /// A snapshot has to contain information about exactly all logs upto the last applied.
+    ///
+    /// Building snapshot can be done by:
+    /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a LSM-tree does,
+    /// - or by fetching a snapshot from the state machine.
+    async fn build_snapshot(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError>;
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object.
     ///
