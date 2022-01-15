@@ -6,12 +6,12 @@ use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::AppData;
 use openraft::Config;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::State;
 
+use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
 
 /// append-entries should update membership correctly when adding new logs and deleting
@@ -42,18 +42,18 @@ async fn append_updates_membership() -> Result<()> {
             leader_id: 0,
             prev_log_id: None,
             entries: vec![
-                ent(0, 0),
-                ent(1, 1),
+                blank(0, 0),
+                blank(1, 1),
                 Entry {
                     log_id: LogId { term: 1, index: 2 },
                     payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2})),
                 },
-                ent(1, 3),
+                blank(1, 3),
                 Entry {
                     log_id: LogId { term: 1, index: 4 },
                     payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3,4})),
                 },
-                ent(1, 5),
+                blank(1, 5),
             ],
             leader_commit: Some(LogId::new(0, 0)),
         };
@@ -71,7 +71,7 @@ async fn append_updates_membership() -> Result<()> {
             term: 1,
             leader_id: 0,
             prev_log_id: Some(LogId::new(1, 2)),
-            entries: vec![ent(2, 3)],
+            entries: vec![blank(2, 3)],
             leader_commit: Some(LogId::new(0, 0)),
         };
 
@@ -83,14 +83,6 @@ async fn append_updates_membership() -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Create a blonk log entry for test.
-fn ent<T: AppData>(term: u64, index: u64) -> Entry<T> {
-    Entry {
-        log_id: LogId { term, index },
-        payload: EntryPayload::Blank,
-    }
 }
 
 fn timeout() -> Option<Duration> {
