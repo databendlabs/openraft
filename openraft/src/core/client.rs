@@ -235,10 +235,18 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // TODO(xp): Or add to-learner replication into self.nodes.
 
         let all_members = self.core.effective_membership.membership.all_nodes();
+        let all_learners = self.core.effective_membership.membership.all_learners();
 
         let nodes = self.nodes.keys().collect::<Vec<_>>();
-        tracing::debug!(?nodes, ?all_members, "replicate_client_request");
+        tracing::debug!(?nodes, ?all_members, ?all_learners, "replicate_client_request");
 
+        tracing::debug!(
+            "replicate_client_request to: {:?} {:?} {:?} {:?}",
+            nodes,
+            all_members,
+            all_learners,
+            entry_arc.log_id,
+        );
         // Except the leader itself, there are other nodes that need to replicate log to.
         let await_quorum = all_members.len() > 1;
 

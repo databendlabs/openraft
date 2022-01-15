@@ -225,7 +225,7 @@ impl RaftRouter {
             self.add_learner(0, id).await?;
             n_logs += 1;
         }
-        self.wait_for_log(&node_ids, n_logs, timeout(), &format!("learners of {:?}", learners)).await?;
+        self.wait_for_log(&learners, n_logs, timeout(), &format!("learners of {:?}", learners)).await?;
 
         Ok(n_logs)
     }

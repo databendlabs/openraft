@@ -70,7 +70,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn add_learner_into_membership(&mut self, target: &NodeId) {
+    async fn add_learner_into_membership(&mut self, target: &NodeId) -> bool {
         tracing::debug!(
             "before add_learner_into_membership target node {} into learner {:?}",
             target,
@@ -81,21 +81,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if curr.contain_learner(&target) {
             tracing::debug!("target node {} is already a learner", target);
 
-            return;
+            return false;
         }
         curr.add_learner(target);
-        let new_config = self.core.effective_membership.membership.clone();
 
-        tracing::debug!(?new_config, "new_config");
-
-        let _ = self.append_membership_log(new_config, None).await;
-
-        tracing::debug!(
-            "after add_learner_into_membership target node {} into learner {:?}",
-            target,
-            self.core.last_log_id
-        );
-        return;
+        return true;
     }
 
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
@@ -125,7 +115,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return;
         }
 
-        self.add_learner_into_membership(&target).await;
+        let is_new_learner = self.add_learner_into_membership(&target).await;
 
         if blocking {
             let state = self.spawn_replication_stream(target, Some(tx));
@@ -140,11 +130,21 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }));
         }
 
+        if !is_new_learner {
+            return;
+        }
+
+        // append_membership_log after learner has added into nodes
+        let new_config = self.core.effective_membership.membership.clone();
+
+        tracing::debug!(?new_config, "new_config");
+
+        let _ = self.append_membership_log(new_config, None).await;
+
         tracing::debug!(
-            "after add target node {} as learner {:?} {:?}",
+            "after add target node {} as learner {:?}",
             target,
-            self.core.last_log_id,
-            self.nodes.keys()
+            self.core.last_log_id
         );
     }
 
