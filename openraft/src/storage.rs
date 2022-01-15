@@ -232,12 +232,18 @@ where
         Ok(res.pop())
     }
 
-    /// Save Raft's hard-state.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
+    // --- Hard State
+
     async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError>;
 
     async fn read_hard_state(&self) -> Result<Option<HardState>, StorageError>;
+
+    // --- Log
+
+    /// Returns the fist log id and last log id in log.
+    ///
+    /// The impl should not consider the applied log id in state machine.
+    async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError>;
 
     /// Get a series of log entries from storage.
     ///
@@ -249,14 +255,11 @@ where
         range: RB,
     ) -> Result<Vec<Entry<D>>, StorageError>;
 
-    /// Returns the fist log id and last log id in log.
+    /// Append a payload of entries to the log.
     ///
-    /// The impl should not consider the applied log id in state machine.
-    async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError>;
-
-    /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
-    /// membership config.
-    async fn last_applied_state(&self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError>;
+    /// Though the entries will always be presented in order, each entry's index should be used to
+    /// determine its location to be written in the log.
+    async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<(), StorageError>;
 
     /// Delete all logs in a `range`.
     ///
@@ -266,16 +269,16 @@ where
         range: RB,
     ) -> Result<(), StorageError>;
 
-    /// Append a payload of entries to the log.
-    ///
-    /// Though the entries will always be presented in order, each entry's index should be used to
-    /// determine its location to be written in the log.
-    async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<(), StorageError>;
+    // --- State Machine
+
+    /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
+    /// membership config.
+    async fn last_applied_state(&self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError>;
 
     /// Apply the given payload of entries to the state machine.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
-    /// have been replicated to a majority of the cluster, will be applied to the state machine.
+    /// have been replicated to a quorum of the cluster, will be applied to the state machine.
     ///
     /// This is where the business logic of interacting with your application's state machine
     /// should live. This is 100% application specific. Perhaps this is where an application
@@ -283,10 +286,12 @@ where
     /// is being stored.
     ///
     /// An impl should do:
+    /// - Store the last applied log id.
     /// - Deal with the EntryPayload::Normal() log, which is business logic log.
-    /// - Deal with EntryPayload::Membership
-    /// - A EntryPayload::SnapshotPointer log should never be seen.
+    /// - Deal with EntryPayload::Membership, store the membership config.
     async fn apply_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>, StorageError>;
+
+    // --- Snapshot
 
     /// Perform log compaction, returning a handle to the generated snapshot.
     ///
