@@ -656,9 +656,7 @@ impl RaftRouter {
         expect_sm_last_applied_log: LogId,
         expect_snapshot: &Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
-        let (sm_last_id, _) = storage.last_applied_state().await?;
-        let last_id_in_log = storage.last_id_in_log().await?;
-        let last_log_id = std::cmp::max(last_id_in_log, sm_last_id);
+        let last_log_id = storage.get_log_state().await?.last_log_id;
 
         assert_eq!(
             expect_last_log,

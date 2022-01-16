@@ -8,7 +8,6 @@ use crate::core::LeaderState;
 use crate::core::ReplicationState;
 use crate::core::SnapshotState;
 use crate::core::State;
-use crate::core::UpdateCurrentLeader;
 use crate::error::AddLearnerError;
 use crate::raft::AddLearnerResponse;
 use crate::raft::RaftRespTx;
@@ -83,7 +82,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if term > self.core.current_term {
             self.core.update_current_term(term, None);
             self.core.save_hard_state().await?;
-            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core.current_leader = None;
             self.core.set_target_state(State::Follower);
         }
         Ok(())
