@@ -5,7 +5,6 @@ use tracing_futures::Instrument;
 use crate::core::CandidateState;
 use crate::core::RaftCore;
 use crate::core::State;
-use crate::core::UpdateCurrentLeader;
 use crate::error::VoteError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -122,7 +121,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.update_current_term(res.term, None);
             self.core.save_hard_state().await?;
 
-            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core.current_leader = None;
 
             // If a quorum of nodes have higher `last_log_id`, I have no chance to become a leader.
             // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `last_log_id`.

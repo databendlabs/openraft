@@ -5,7 +5,6 @@ use crate::core::client::ClientRequestEntry;
 use crate::core::LeaderState;
 use crate::core::LearnerState;
 use crate::core::State;
-use crate::core::UpdateCurrentLeader;
 use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
 use crate::error::ClientWriteError;
@@ -220,15 +219,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // TODO(xp): transfer leadership
             self.core.set_target_state(State::Learner);
-            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core.current_leader = None;
             return;
         }
 
         let membership = &self.core.effective_membership.membership;
 
-        let all = membership.all_nodes();
         for (id, state) in self.nodes.iter_mut() {
-            if all.contains(id) {
+            if membership.contains(id) {
                 continue;
             }
 

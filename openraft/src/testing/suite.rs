@@ -1,4 +1,3 @@
-use std::collections::Bound;
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -9,6 +8,7 @@ use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::storage::HardState;
 use crate::storage::InitialState;
+use crate::storage::LogState;
 use crate::testing::DefensiveStoreBuilder;
 use crate::testing::StoreBuilder;
 use crate::AppData;
@@ -63,7 +63,6 @@ where
     }
 
     pub fn test_store(builder: &B) -> anyhow::Result<()> {
-        println!("---");
         run_fut(Suite::last_membership_in_log_initial(builder))?;
         run_fut(Suite::last_membership_in_log(builder))?;
         run_fut(Suite::get_membership_initial(builder))?;
@@ -77,12 +76,11 @@ where
         run_fut(Suite::get_log_entries(builder))?;
         run_fut(Suite::try_get_log_entry(builder))?;
         run_fut(Suite::initial_logs(builder))?;
-        run_fut(Suite::first_known_log_id(builder))?;
         run_fut(Suite::get_log_state(builder))?;
-        run_fut(Suite::first_id_in_log(builder))?;
+        run_fut(Suite::get_log_id(builder))?;
         run_fut(Suite::last_id_in_log(builder))?;
         run_fut(Suite::last_applied_state(builder))?;
-        run_fut(Suite::delete_logs_from(builder))?;
+        run_fut(Suite::delete_logs(builder))?;
         run_fut(Suite::append_to_log(builder))?;
         // run_fut(Suite::apply_single(builder))?;
         // run_fut(Suite::apply_multi(builder))?;
@@ -400,19 +398,9 @@ where
         let store = builder.build().await;
         Self::default_hard_state(&store).await?;
 
-        store
-            .append_to_log(&[&Entry {
-                log_id: (1, 2).into(),
-                payload: EntryPayload::Blank,
-            }])
-            .await?;
+        store.append_to_log(&[&blank(1, 2)]).await?;
 
-        store
-            .apply_to_state_machine(&[&Entry {
-                log_id: LogId { term: 3, index: 1 },
-                payload: EntryPayload::Blank,
-            }])
-            .await?;
+        store.apply_to_state_machine(&[&blank(3, 1)]).await?;
 
         let initial = store.get_initial_state().await?;
 
@@ -472,7 +460,7 @@ where
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
-        store.delete_log(0..=0).await?;
+        store.purge_logs_upto(LogId::new(0, 0)).await?;
 
         let ent = store.try_get_log_entry(3).await?;
         assert_eq!(Some(LogId { term: 1, index: 3 }), ent.map(|x| x.log_id));
@@ -495,124 +483,70 @@ where
         Ok(())
     }
 
-    pub async fn first_known_log_id(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
-
-        let log_id = store.first_known_log_id().await?;
-        assert_eq!(None, log_id, "store initialized");
-
-        tracing::info!("--- returns the min id");
-        {
-            store.append_to_log(&[&blank(1, 1), &blank(1, 2)]).await?;
-
-            store.delete_log(0..2).await?;
-
-            // NOTE: it assumes non applied logs always exist.
-            let log_id = store.first_known_log_id().await?;
-            assert_eq!(Some(LogId::new(1, 2)), log_id, "last_applied is None");
-
-            store.apply_to_state_machine(&[&blank(1, 1)]).await?;
-            let log_id = store.first_known_log_id().await?;
-            assert_eq!(Some(LogId::new(1, 1)), log_id);
-
-            store.apply_to_state_machine(&[&blank(1, 2)]).await?;
-            let log_id = store.first_known_log_id().await?;
-            assert_eq!(Some(LogId::new(1, 2)), log_id);
-
-            store.apply_to_state_machine(&[&blank(1, 3)]).await?;
-            let log_id = store.first_known_log_id().await?;
-            assert_eq!(Some(LogId::new(1, 2)), log_id, "least id is in log");
-
-            store.delete_log(0..3).await?;
-            let log_id = store.first_known_log_id().await?;
-            assert_eq!(Some(LogId::new(1, 3)), log_id, "no logs, returns last applied log id");
-        }
-
-        Ok(())
-    }
-
     pub async fn get_log_state(builder: &B) -> anyhow::Result<()> {
         let store = builder.build().await;
-        let (first_log_id, last_log_id) = store.get_log_state().await?;
-        assert_eq!(None, first_log_id, "store initialized");
-        assert_eq!(None, last_log_id, "last_log_id is None when store initialized");
+
+        let st = store.get_log_state().await?;
+
+        assert_eq!(None, st.last_purged_log_id);
+        assert_eq!(None, st.last_log_id);
 
         tracing::info!("--- only logs");
         {
-            store
-                .append_to_log(&[
-                    &Entry {
-                        log_id: LogId { term: 1, index: 1 },
-                        payload: EntryPayload::Blank,
-                    },
-                    &Entry {
-                        log_id: LogId { term: 1, index: 2 },
-                        payload: EntryPayload::Blank,
-                    },
-                ])
-                .await?;
+            store.append_to_log(&[&blank(0, 0), &blank(1, 1), &blank(1, 2)]).await?;
 
-            let (first_log_id, last_log_id) = store.get_log_state().await?;
-            assert_eq!(Some(LogId::new(1, 1)), first_log_id);
-            assert_eq!(Some(LogId::new(1, 2)), last_log_id);
+            let st = store.get_log_state().await?;
+            assert_eq!(None, st.last_purged_log_id);
+            assert_eq!(Some(LogId::new(1, 2)), st.last_log_id);
         }
 
-        tracing::info!("--- last id in logs < last applied id in sm, only return the id in logs");
+        tracing::info!("--- delete log 0-0");
         {
-            store
-                .apply_to_state_machine(&[&Entry {
-                    log_id: LogId { term: 1, index: 3 },
-                    payload: EntryPayload::Blank,
-                }])
-                .await?;
-            let (_, last_log_id) = store.get_log_state().await?;
-            assert_eq!(Some(LogId::new(1, 2)), last_log_id);
+            store.purge_logs_upto(LogId::new(0, 0)).await?;
+
+            let st = store.get_log_state().await?;
+            assert_eq!(Some(LogId::new(0, 0)), st.last_purged_log_id);
+            assert_eq!(Some(LogId::new(1, 2)), st.last_log_id);
         }
 
-        tracing::info!("--- no logs, return default");
+        tracing::info!("--- delete all log");
         {
-            store.delete_log(..).await?;
+            store.purge_logs_upto(LogId::new(1, 2)).await?;
 
-            let (first_log_id, last_log_id) = store.get_log_state().await?;
-            assert_eq!(None, first_log_id);
-            assert_eq!(None, last_log_id);
+            let st = store.get_log_state().await?;
+            assert_eq!(Some(LogId::new(1, 2)), st.last_purged_log_id);
+            assert_eq!(Some(LogId::new(1, 2)), st.last_log_id);
+        }
+
+        tracing::info!("--- delete advance last present logs");
+        {
+            store.purge_logs_upto(LogId::new(2, 3)).await?;
+
+            let st = store.get_log_state().await?;
+            assert_eq!(Some(LogId::new(2, 3)), st.last_purged_log_id);
+            assert_eq!(Some(LogId::new(2, 3)), st.last_log_id);
         }
 
         Ok(())
     }
 
-    pub async fn first_id_in_log(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_log_id(builder: &B) -> anyhow::Result<()> {
         let store = builder.build().await;
+        Self::feed_10_logs_vote_self(&store).await?;
 
-        let log_id = store.first_id_in_log().await?;
-        assert!(log_id.is_none(), "store initialized");
+        store.purge_logs_upto(LogId::new(1, 3)).await?;
 
-        tracing::info!("--- only logs");
-        {
-            store
-                .append_to_log(&[
-                    &Entry {
-                        log_id: LogId { term: 1, index: 1 },
-                        payload: EntryPayload::Blank,
-                    },
-                    &Entry {
-                        log_id: LogId { term: 1, index: 2 },
-                        payload: EntryPayload::Blank,
-                    },
-                ])
-                .await?;
+        let res = store.get_log_id(0).await;
+        assert!(res.is_err());
 
-            let log_id = store.first_id_in_log().await?;
-            assert_eq!(Some(LogId::new(1, 1)), log_id);
-        }
+        let res = store.get_log_id(11).await;
+        assert!(res.is_err());
 
-        tracing::info!("--- no logs, return default");
-        {
-            store.delete_log(..).await?;
+        let res = store.get_log_id(3).await?;
+        assert_eq!(LogId::new(1, 3), res);
 
-            let log_id = store.first_id_in_log().await?;
-            assert_eq!(None, log_id);
-        }
+        let res = store.get_log_id(4).await?;
+        assert_eq!(LogId::new(1, 4), res);
 
         Ok(())
     }
@@ -620,25 +554,14 @@ where
     pub async fn last_id_in_log(builder: &B) -> anyhow::Result<()> {
         let store = builder.build().await;
 
-        let log_id = store.last_id_in_log().await?;
+        let log_id = store.get_log_state().await?.last_log_id;
         assert_eq!(None, log_id);
 
         tracing::info!("--- only logs");
         {
-            store
-                .append_to_log(&[
-                    &Entry {
-                        log_id: LogId { term: 1, index: 1 },
-                        payload: EntryPayload::Blank,
-                    },
-                    &Entry {
-                        log_id: LogId { term: 1, index: 2 },
-                        payload: EntryPayload::Blank,
-                    },
-                ])
-                .await?;
+            store.append_to_log(&[&blank(0, 0), &blank(1, 1), &blank(1, 2)]).await?;
 
-            let log_id = store.last_id_in_log().await?;
+            let log_id = store.get_log_state().await?.last_log_id;
             assert_eq!(Some(LogId { term: 1, index: 2 }), log_id);
         }
 
@@ -650,16 +573,16 @@ where
                     payload: EntryPayload::Blank,
                 }])
                 .await?;
-            let log_id = store.last_id_in_log().await?;
+            let log_id = store.get_log_state().await?.last_log_id;
             assert_eq!(Some(LogId { term: 1, index: 2 }), log_id);
         }
 
         tracing::info!("--- no logs, return default");
         {
-            store.delete_log(..).await?;
+            store.purge_logs_upto(LogId::new(1, 2)).await?;
 
-            let log_id = store.last_id_in_log().await?;
-            assert_eq!(None, log_id);
+            let log_id = store.get_log_state().await?.last_log_id;
+            assert_eq!(Some(LogId::new(1, 2)), log_id);
         }
 
         Ok(())
@@ -715,56 +638,102 @@ where
         Ok(())
     }
 
-    pub async fn delete_logs_from(builder: &B) -> anyhow::Result<()> {
-        tracing::info!("--- delete start == stop");
+    pub async fn delete_logs(builder: &B) -> anyhow::Result<()> {
+        tracing::info!("--- delete (-oo, 0]");
         {
             let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_log(1..1).await?;
-
-            let logs = store.get_log_entries(1..11).await?;
-            assert_eq!(logs.len(), 10, "expected all (10) logs to be preserved");
-        }
-
-        tracing::info!("--- delete start < stop");
-        {
-            let store = builder.build().await;
-            Self::feed_10_logs_vote_self(&store).await?;
-
-            store.delete_log(..=0).await?;
-
-            store.delete_log(1..4).await?;
+            store.purge_logs_upto(LogId::new(0, 0)).await?;
 
             let logs = store.try_get_log_entries(0..100).await?;
-            assert_eq!(logs.len(), 7);
-            assert_eq!(logs[0].log_id.index, 4);
+            assert_eq!(logs.len(), 10);
+            assert_eq!(logs[0].log_id.index, 1);
+
+            assert_eq!(
+                LogState {
+                    last_purged_log_id: Some(LogId::new(0, 0)),
+                    last_log_id: Some(LogId::new(1, 10)),
+                },
+                store.get_log_state().await?
+            );
         }
 
-        tracing::info!("--- delete start < large stop");
+        tracing::info!("--- delete (-oo, 5]");
         {
             let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_log(..=0).await?;
+            store.purge_logs_upto(LogId::new(1, 5)).await?;
 
-            store.delete_log(1..1000).await?;
-            let logs = store.try_get_log_entries(0..).await?;
-
-            assert_eq!(logs.len(), 0);
-        }
-
-        tracing::info!("--- delete start, None");
-        {
-            let store = builder.build().await;
-            Self::feed_10_logs_vote_self(&store).await?;
-
-            store.delete_log(..=0).await?;
-
-            store.delete_log(1..).await?;
             let logs = store.try_get_log_entries(0..100).await?;
+            assert_eq!(logs.len(), 5);
+            assert_eq!(logs[0].log_id.index, 6);
 
+            assert_eq!(
+                LogState {
+                    last_purged_log_id: Some(LogId::new(1, 5)),
+                    last_log_id: Some(LogId::new(1, 10)),
+                },
+                store.get_log_state().await?
+            );
+        }
+
+        tracing::info!("--- delete (-oo, 20]");
+        {
+            let store = builder.build().await;
+            Self::feed_10_logs_vote_self(&store).await?;
+
+            store.purge_logs_upto(LogId::new(1, 20)).await?;
+
+            let logs = store.try_get_log_entries(0..100).await?;
             assert_eq!(logs.len(), 0);
+
+            assert_eq!(
+                LogState {
+                    last_purged_log_id: Some(LogId::new(1, 20)),
+                    last_log_id: Some(LogId::new(1, 20)),
+                },
+                store.get_log_state().await?
+            );
+        }
+
+        tracing::info!("--- delete [11, +oo)");
+        {
+            let store = builder.build().await;
+            Self::feed_10_logs_vote_self(&store).await?;
+
+            store.delete_conflict_logs_since(LogId::new(1, 11)).await?;
+
+            let logs = store.try_get_log_entries(0..100).await?;
+            assert_eq!(logs.len(), 11);
+
+            assert_eq!(
+                LogState {
+                    last_purged_log_id: None,
+                    last_log_id: Some(LogId::new(1, 10)),
+                },
+                store.get_log_state().await?
+            );
+        }
+
+        tracing::info!("--- delete [0, +oo)");
+        {
+            let store = builder.build().await;
+            Self::feed_10_logs_vote_self(&store).await?;
+
+            store.delete_conflict_logs_since(LogId::new(0, 0)).await?;
+
+            let logs = store.try_get_log_entries(0..100).await?;
+            assert_eq!(logs.len(), 0);
+
+            assert_eq!(
+                LogState {
+                    last_purged_log_id: None,
+                    last_log_id: None,
+                },
+                store.get_log_state().await?
+            );
         }
 
         Ok(())
@@ -774,14 +743,9 @@ where
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
-        store.delete_log(..=0).await?;
+        store.purge_logs_upto(LogId::new(0, 0)).await?;
 
-        store
-            .append_to_log(&[&Entry {
-                log_id: (2, 10).into(),
-                payload: EntryPayload::Blank,
-            }])
-            .await?;
+        store.append_to_log(&[&blank(2, 10)]).await?;
 
         let l = store.try_get_log_entries(0..).await?.len();
         let last = store.try_get_log_entries(0..).await?.last().unwrap().clone();
@@ -943,12 +907,10 @@ where
     B: StoreBuilder<D, R, S>,
 {
     pub fn test_store_defensive(builder: &B) -> anyhow::Result<()> {
-        println!("---2");
         run_fut(Suite::df_get_membership_config_dirty_log(builder))?;
         run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
         run_fut(Suite::df_save_hard_state_ascending(builder))?;
         run_fut(Suite::df_get_log_entries(builder))?;
-        run_fut(Suite::df_delete_logs_from_nonempty_range(builder))?;
         run_fut(Suite::df_append_to_log_nonempty_input(builder))?;
         run_fut(Suite::df_append_to_log_nonconsecutive_input(builder))?;
         run_fut(Suite::df_append_to_log_eq_last_plus_one(builder))?;
@@ -958,6 +920,8 @@ where
         run_fut(Suite::df_apply_nonempty_input(builder))?;
         run_fut(Suite::df_apply_index_eq_last_applied_plus_one(builder))?;
         run_fut(Suite::df_apply_gt_last_applied_id(builder))?;
+        run_fut(Suite::df_purge_applied_le_last_applied(builder))?;
+        run_fut(Suite::df_delete_conflict_gt_last_applied(builder))?;
 
         Ok(())
     }
@@ -1171,7 +1135,9 @@ where
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
-        store.delete_log(..=0).await?;
+        store.apply_to_state_machine(&[&blank(0, 0)]).await?;
+
+        store.purge_logs_upto(LogId::new(0, 0)).await?;
 
         store.get_log_entries(..).await?;
         store.get_log_entries(5..).await?;
@@ -1225,37 +1191,6 @@ where
             },
             ..
         }));
-
-        Ok(())
-    }
-
-    pub async fn df_delete_logs_from_nonempty_range(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
-        Self::feed_10_logs_vote_self(&store).await?;
-
-        let res = store.delete_log(10..10).await;
-
-        let e = res.unwrap_err().into_defensive().unwrap();
-        assert_eq!(ErrorSubject::Logs, e.subject);
-        assert_eq!(
-            Violation::RangeEmpty {
-                start: Some(10),
-                end: Some(9),
-            },
-            e.violation
-        );
-
-        let res = store.delete_log(1..5).await;
-
-        let e = res.unwrap_err().into_defensive().unwrap();
-        assert_eq!(ErrorSubject::Logs, e.subject);
-        assert_eq!(
-            Violation::RangeNotHalfOpen {
-                start: Bound::Included(1),
-                end: Bound::Excluded(5),
-            },
-            e.violation
-        );
 
         Ok(())
     }
@@ -1341,14 +1276,7 @@ where
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(1, 1), &blank(1, 2)]).await?;
 
-        store.delete_log(1..).await?;
-
-        let res = store
-            .append_to_log(&[&Entry {
-                log_id: (1, 4).into(),
-                payload: EntryPayload::Blank,
-            }])
-            .await;
+        let res = store.append_to_log(&[&blank(1, 4)]).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Log(LogId { term: 1, index: 4 }), e.subject);
@@ -1395,7 +1323,7 @@ where
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
-        store.delete_log(1..).await?;
+        store.purge_logs_upto(LogId::new(2, 2)).await?;
 
         let res = store.append_to_log(&[&blank(1, 3)]).await;
 
@@ -1484,6 +1412,52 @@ where
                 Violation::ApplyNonConsecutive {
                     prev: Some(LogId { term: 3, index: 1 }),
                     next: LogId { term: 2, index: 2 },
+                },
+                e.violation
+            );
+        }
+
+        Ok(())
+    }
+
+    pub async fn df_purge_applied_le_last_applied(builder: &B) -> anyhow::Result<()> {
+        let store = builder.build().await;
+
+        store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
+
+        {
+            let res = store.purge_logs_upto(LogId::new(5, 2)).await;
+            assert!(res.is_err());
+
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert_eq!(ErrorSubject::Log(LogId::new(5, 2)), e.subject);
+            assert_eq!(
+                Violation::PurgeNonApplied {
+                    last_applied: Some(LogId::new(3, 1)),
+                    purge_upto: LogId::new(5, 2),
+                },
+                e.violation
+            );
+        }
+
+        Ok(())
+    }
+
+    pub async fn df_delete_conflict_gt_last_applied(builder: &B) -> anyhow::Result<()> {
+        let store = builder.build().await;
+
+        store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
+
+        {
+            let res = store.delete_conflict_logs_since(LogId::new(5, 1)).await;
+            assert!(res.is_err());
+
+            let e = res.unwrap_err().into_defensive().unwrap();
+            assert_eq!(ErrorSubject::Log(LogId::new(5, 1)), e.subject);
+            assert_eq!(
+                Violation::AppliedWontConflict {
+                    last_applied: Some(LogId::new(3, 1)),
+                    first_conflict_log_id: LogId::new(5, 1),
                 },
                 e.violation
             );

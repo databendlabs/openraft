@@ -9,9 +9,6 @@ pub(crate) mod replication;
 mod replication_state_test;
 mod vote;
 
-#[cfg(test)]
-mod startup_test;
-
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
@@ -40,8 +37,6 @@ use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::core::client::ClientRequestEntry;
 use crate::error::AddLearnerError;
-use crate::error::ClientReadError;
-use crate::error::ClientWriteError;
 use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
@@ -49,8 +44,6 @@ use crate::error::InitializeError;
 use crate::metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
 use crate::raft::AddLearnerResponse;
-use crate::raft::ClientWriteRequest;
-use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::RaftMsg;
@@ -157,10 +150,6 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
     snapshot_last_log_id: Option<LogId>,
 
-    /// A bool indicating if this system has performed its initial replication of
-    /// outstanding entries to the state machine.
-    has_completed_initial_replication_to_sm: bool,
-
     /// The last time a heartbeat was received.
     last_heartbeat: Option<Instant>,
 
@@ -211,7 +200,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             last_log_id: None,
             snapshot_state: None,
             snapshot_last_log_id: None,
-            has_completed_initial_replication_to_sm: false,
             last_heartbeat: None,
             next_election_timeout: None,
 
@@ -426,22 +414,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
     }
 
-    /// Update the value of the `current_leader` property.
-    #[tracing::instrument(level = "trace", skip(self))]
-    fn update_current_leader(&mut self, update: UpdateCurrentLeader) {
-        match update {
-            UpdateCurrentLeader::ThisNode => {
-                self.current_leader = Some(self.id);
-            }
-            UpdateCurrentLeader::OtherNode(target) => {
-                self.current_leader = Some(target);
-            }
-            UpdateCurrentLeader::Unknown => {
-                self.current_leader = None;
-            }
-        }
-    }
-
     /// Encapsulate the process of updating the current term, as updating the `voted_for` state must also be updated.
     #[tracing::instrument(level = "debug", skip(self))]
     fn update_current_term(&mut self, new_term: u64, voted_for: Option<NodeId>) {
@@ -554,44 +526,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let _ = tx.send(Err(InitializeError::NotAllowed));
     }
 
-    /// Reject a proposed config change request due to the Raft node being in a state which prohibits the request.
+    /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn reject_config_change_not_leader<T, E>(&self, tx: RaftRespTx<T, E>)
+    fn reject_with_forward_to_leader<T, E>(&self, tx: RaftRespTx<T, E>)
     where E: From<ForwardToLeader> {
         let err = ForwardToLeader {
             leader_id: self.current_leader,
         };
 
         let _ = tx.send(Err(err.into()));
-    }
-
-    /// Forward the given client write request to the leader.
-    #[tracing::instrument(level = "trace", skip(self, req, tx))]
-    fn forward_client_write_request(
-        &self,
-        req: ClientWriteRequest<D>,
-        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
-    ) {
-        match req.payload {
-            EntryPayload::Normal(_entry) => {
-                let _ = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                    leader_id: self.current_leader,
-                })));
-            }
-            _ => {
-                // This is unreachable, and well controlled by the type system, but let's log an
-                // error for good measure.
-                tracing::error!("unreachable branch hit within openraft, attempting to forward a Raft internal entry");
-            }
-        }
-    }
-
-    /// Forward the given client read request to the leader.
-    #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn forward_client_read_request(&self, tx: RaftRespTx<(), ClientReadError>) {
-        let _ = tx.send(Err(ClientReadError::ForwardToLeader(ForwardToLeader {
-            leader_id: self.current_leader,
-        })));
     }
 
     #[tracing::instrument(level = "debug", skip(self, payload))]
@@ -633,7 +576,7 @@ where
     if let Some(last_applied) = last {
         // TODO(xp): apply_to_state_machine should return the last applied
         let res = sto.apply_to_state_machine(entries).await?;
-        delete_applied_logs(sto, &last_applied, max_keep).await?;
+        purge_applied_logs(sto, &last_applied, max_keep).await?;
         Ok(res)
     } else {
         Ok(vec![])
@@ -641,31 +584,38 @@ where
 }
 
 #[tracing::instrument(level = "trace", skip(sto))]
-async fn delete_applied_logs<D, R, S>(sto: Arc<S>, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
+async fn purge_applied_logs<D, R, S>(sto: Arc<S>, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
 where
     D: AppData,
     R: AppDataResponse,
     S: RaftStorage<D, R>,
 {
     // TODO(xp): periodically batch delete
-    let x = last_applied.index + 1;
-    let x = x.saturating_sub(max_keep);
+    let end = last_applied.index + 1;
+    let end = end.saturating_sub(max_keep);
 
-    tracing::debug!(%last_applied, max_keep, delete_lt = x, "delete_applied_logs");
+    tracing::debug!(%last_applied, max_keep, delete_lt = end, "delete_applied_logs");
 
-    if x > 0 {
-        sto.delete_log(..x).await
-    } else {
-        Ok(())
+    if end == 0 {
+        return Ok(());
     }
-}
 
-/// An enum describing the way the current leader property is to be updated.
-#[derive(Debug)]
-pub(self) enum UpdateCurrentLeader {
-    Unknown,
-    OtherNode(NodeId),
-    ThisNode,
+    let st = sto.get_log_state().await?;
+
+    if st.last_log_id < Some(*last_applied) {
+        sto.purge_logs_upto(*last_applied).await?;
+        return Ok(());
+    }
+
+    // non applied logs are deleted. it is a bug.
+    assert!(st.last_purged_log_id <= Some(*last_applied));
+
+    if st.last_purged_log_id.index() >= Some(end - 1) {
+        return Ok(());
+    }
+
+    let log_id = sto.get_log_id(end - 1).await?;
+    sto.purge_logs_upto(log_id).await
 }
 
 /// The current snapshot state of the Raft node.
@@ -793,7 +743,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Setup state as leader.
         self.core.last_heartbeat = None;
         self.core.next_election_timeout = None;
-        self.core.update_current_leader(UpdateCurrentLeader::ThisNode);
+        self.core.current_leader = Some(self.core.id);
+
         self.leader_report_metrics();
 
         self.commit_initial_leader_entry().await?;
@@ -949,7 +900,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.update_next_election_timeout(false); // Generates a new rand value within range.
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
-            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core.current_leader = None;
             self.core.save_hard_state().await?;
             self.core.report_metrics(Update::Update(None));
 
@@ -999,19 +950,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::ClientReadRequest { tx } => {
-                self.core.forward_client_read_request(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
-            RaftMsg::ClientWriteRequest { rpc, tx } => {
-                self.core.forward_client_write_request(rpc, tx);
+            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
             }
             RaftMsg::AddLearner { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
         };
         Ok(())
@@ -1075,19 +1026,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::ClientReadRequest { tx } => {
-                self.core.forward_client_read_request(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
-            RaftMsg::ClientWriteRequest { rpc, tx } => {
-                self.core.forward_client_write_request(rpc, tx);
+            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
             }
             RaftMsg::AddLearner { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
         };
         Ok(())
@@ -1149,19 +1100,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::ClientReadRequest { tx } => {
-                self.core.forward_client_read_request(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
-            RaftMsg::ClientWriteRequest { rpc, tx } => {
-                self.core.forward_client_write_request(rpc, tx);
+            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::Initialize { members, tx } => {
                 let _ = tx.send(self.handle_init_with_config(members).await);
             }
             RaftMsg::AddLearner { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
         };
         Ok(())

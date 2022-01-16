@@ -19,6 +19,7 @@ use crate::raft_types::StateMachineChanges;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::NodeId;
 use crate::StorageError;
 
@@ -73,6 +74,19 @@ pub struct InitialState {
     pub last_membership: Option<EffectiveMembership>,
 }
 
+/// The state about logs.
+///
+/// Invariance: last_purged_log_id <= last_applied <= last_log_id
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LogState {
+    /// The greatest log id that has been purged after being applied to state machine.
+    pub last_purged_log_id: Option<LogId>,
+
+    /// The log id of the last present entry if there are any entries.
+    /// Otherwise the same value as `last_purged_log_id`.
+    pub last_log_id: Option<LogId>,
+}
+
 /// A trait defining the interface for a Raft storage system.
 ///
 /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
@@ -115,18 +129,10 @@ where
     /// If no such membership log is found, it returns `None`, e.g., when logs are cleaned after being applied.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn last_membership_in_log(&self, since_index: u64) -> Result<Option<EffectiveMembership>, StorageError> {
-        let (first_log_id, last_log_id) = self.get_log_state().await?;
+        let st = self.get_log_state().await?;
 
-        let first_log_id = match first_log_id {
-            None => {
-                // There is no log at all
-                return Ok(None);
-            }
-            Some(x) => x,
-        };
-
-        let mut end = last_log_id.unwrap().index + 1;
-        let start = std::cmp::max(first_log_id.index, since_index);
+        let mut end = st.last_log_id.next_index();
+        let start = std::cmp::max(st.last_purged_log_id.next_index(), since_index);
         let step = 64;
 
         while start < end {
@@ -147,58 +153,22 @@ where
         Ok(None)
     }
 
-    /// Returns the first log id in log.
-    ///
-    /// The impl should not consider the applied log id in state machine.
-    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
-        let (first_log_id, _) = self.get_log_state().await?;
-        Ok(first_log_id)
-    }
-
-    /// Returns the last log id in log.
-    ///
-    /// The impl should not consider the applied log id in state machine.
-    async fn last_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
-        let (_, last_log_id) = self.get_log_state().await?;
-        Ok(last_log_id)
-    }
-
-    /// Returns first known log id in logs or in state machine.
-    ///
-    /// It returns None only when there is never a log.
-    async fn first_known_log_id(&self) -> Result<Option<LogId>, StorageError> {
-        let (last_applied, _) = self.last_applied_state().await?;
-        let (first, _) = self.get_log_state().await?;
-
-        if last_applied.is_none() {
-            return Ok(first);
-        }
-
-        if first.is_none() {
-            return Ok(last_applied);
-        }
-
-        Ok(std::cmp::min(first, last_applied))
-    }
-
     /// Get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
     /// storage.
     async fn get_initial_state(&self) -> Result<InitialState, StorageError> {
         let hs = self.read_hard_state().await?;
-
-        // Search for two place and use the max one,
-        // because when a state machine is installed there could be logs
-        // included in the state machine that are not cleaned:
-        // - the last log id
-        // - the last_applied log id in state machine.
-
+        let st = self.get_log_state().await?;
+        let mut last_log_id = st.last_log_id;
         let (last_applied, _) = self.last_applied_state().await?;
-        let last_id_in_log = self.last_id_in_log().await?;
-        let last_log_id = std::cmp::max(last_applied, last_id_in_log);
-
         let membership = self.get_membership().await?;
+
+        // Clean up dirty state: snapshot is installed but logs are not cleaned.
+        if last_log_id < last_applied {
+            self.purge_logs_upto(last_applied.unwrap()).await?;
+            last_log_id = last_applied;
+        }
 
         Ok(InitialState {
             last_log_id,
@@ -216,7 +186,6 @@ where
         &self,
         range: RB,
     ) -> Result<Vec<Entry<D>>, StorageError> {
-        // TODO(xp): test: expect an error if a specified entry is not found
         let res = self.try_get_log_entries(range.clone()).await?;
 
         check_range_matches_entries(range, &res)?;
@@ -232,6 +201,19 @@ where
         Ok(res.pop())
     }
 
+    /// Get the log id of the entry at `index`.
+    async fn get_log_id(&self, log_index: u64) -> Result<LogId, StorageError> {
+        let st = self.get_log_state().await?;
+
+        if Some(log_index) == st.last_purged_log_id.index() {
+            return Ok(st.last_purged_log_id.unwrap());
+        }
+
+        let entries = self.get_log_entries(log_index..=log_index).await?;
+
+        Ok(entries[0].log_id)
+    }
+
     // --- Hard State
 
     async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError>;
@@ -240,10 +222,12 @@ where
 
     // --- Log
 
-    /// Returns the fist log id and last log id in log.
+    /// Returns the last deleted log id and the last log id.
     ///
     /// The impl should not consider the applied log id in state machine.
-    async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError>;
+    /// The returned `last_log_id` could be the log id of the last present log entry, or the `last_purged_log_id` if
+    /// there is no entry at all.
+    async fn get_log_state(&self) -> Result<LogState, StorageError>;
 
     /// Get a series of log entries from storage.
     ///
@@ -261,13 +245,11 @@ where
     /// determine its location to be written in the log.
     async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<(), StorageError>;
 
-    /// Delete all logs in a `range`.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn delete_log<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &self,
-        range: RB,
-    ) -> Result<(), StorageError>;
+    /// Delete conflict log entries since `log_id`, inclusive.
+    async fn delete_conflict_logs_since(&self, log_id: LogId) -> Result<(), StorageError>;
+
+    /// Delete applied log entries upto `log_id`, inclusive.
+    async fn purge_logs_upto(&self, log_id: LogId) -> Result<(), StorageError>;
 
     // --- State Machine
 
@@ -311,13 +293,13 @@ where
     /// for details on log compaction / snapshotting.
     async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>, StorageError>;
 
-    /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
+    /// Install a snapshot which has finished streaming from the cluster leader.
     ///
     /// All other snapshots should be deleted at this point.
     ///
     /// ### snapshot
     /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the snapshot.
-    async fn finalize_snapshot_installation(
+    async fn install_snapshot(
         &self,
         meta: &SnapshotMeta,
         snapshot: Box<Self::SnapshotData>,

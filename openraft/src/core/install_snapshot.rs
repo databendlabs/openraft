@@ -4,11 +4,10 @@ use anyerror::AnyError;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 
-use crate::core::delete_applied_logs;
+use crate::core::purge_applied_logs;
 use crate::core::RaftCore;
 use crate::core::SnapshotState;
 use crate::core::State;
-use crate::core::UpdateCurrentLeader;
 use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
@@ -56,7 +55,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Update current leader if needed.
         if self.current_leader.as_ref() != Some(&req.leader_id) {
-            self.update_current_leader(UpdateCurrentLeader::OtherNode(req.leader_id));
+            self.current_leader = Some(req.leader_id);
             report_metrics = true;
         }
 
@@ -226,7 +225,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // TODO(xp): do not install if self.last_applied >= snapshot.meta.last_applied
 
-        let changes = self.storage.finalize_snapshot_installation(&req.meta, snapshot).await?;
+        let changes = self.storage.install_snapshot(&req.meta, snapshot).await?;
 
         tracing::debug!("update after apply or install-snapshot: {:?}", changes);
 
@@ -236,7 +235,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         if let Some(last_applied) = changes.last_applied {
             // Applied logs are not needed.
-            delete_applied_logs(self.storage.clone(), &last_applied, self.config.max_applied_log_to_keep).await?;
+            purge_applied_logs(self.storage.clone(), &last_applied, self.config.max_applied_log_to_keep).await?;
 
             // snapshot is installed
             self.last_applied = Some(last_applied);

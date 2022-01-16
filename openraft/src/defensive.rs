@@ -24,7 +24,7 @@ where
     D: AppData,
     R: AppDataResponse,
     T: RaftStorage<D, R>,
-    Self: Wrapper<T>,
+    Self: Wrapper<D, R, T>,
 {
     /// Enable or disable defensive check when calling storage APIs.
     fn set_defensive(&self, v: bool);
@@ -38,7 +38,7 @@ where
             return Ok(());
         }
 
-        let last_log_id = self.inner().last_id_in_log().await?;
+        let last_log_id = self.inner().get_log_state().await?.last_log_id;
         let (last_applied, _) = self.inner().last_applied_state().await?;
 
         if last_log_id.index() > last_applied.index() && last_log_id < last_applied {
@@ -136,7 +136,7 @@ where
             return Ok(());
         }
 
-        let last_id = self.last_log_id().await?;
+        let last_id = self.inner().get_log_state().await?.last_log_id;
 
         let first_id = entries[0].log_id;
         if last_id.next_index() != first_id.index {
@@ -158,7 +158,7 @@ where
             return Ok(());
         }
 
-        let last_id = self.last_log_id().await?;
+        let last_id = self.inner().get_log_state().await?.last_log_id;
 
         let first_id = entries[0].log_id;
         // TODO(xp): test first eq last.
@@ -176,13 +176,32 @@ where
         Ok(())
     }
 
-    /// Find the last known log id from log or state machine
-    /// If no log id found, the default one `0,0` is returned.
-    async fn last_log_id(&self) -> Result<Option<LogId>, StorageError> {
-        let log_last_id = self.inner().last_id_in_log().await?;
-        let (sm_last_id, _) = self.inner().last_applied_state().await?;
+    async fn defensive_purge_applied_le_last_applied(&self, upto: LogId) -> Result<(), StorageError> {
+        let (last_applied, _) = self.inner().last_applied_state().await?;
+        if Some(upto.index) > last_applied.index() {
+            return Err(
+                DefensiveError::new(ErrorSubject::Log(upto), Violation::PurgeNonApplied {
+                    last_applied,
+                    purge_upto: upto,
+                })
+                .into(),
+            );
+        }
+        Ok(())
+    }
 
-        Ok(std::cmp::max(log_last_id, sm_last_id))
+    async fn defensive_delete_conflict_gt_last_applied(&self, since: LogId) -> Result<(), StorageError> {
+        let (last_applied, _) = self.inner().last_applied_state().await?;
+        if Some(since.index) <= last_applied.index() {
+            return Err(
+                DefensiveError::new(ErrorSubject::Log(since), Violation::AppliedWontConflict {
+                    last_applied,
+                    first_conflict_log_id: since,
+                })
+                .into(),
+            );
+        }
+        Ok(())
     }
 
     /// The entries to apply to state machien has to be last_applied_log_id.index + 1

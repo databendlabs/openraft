@@ -265,16 +265,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         let (prev_log_id, logs) = loop {
             // TODO(xp): test heartbeat when all logs are removed.
 
-            // It is last_applied_id or the id of the first present log.
-            let first_log_id = self.storage.first_known_log_id().await?;
+            let log_state = self.storage.get_log_state().await?;
 
-            // The smallest valid prev_id for append-entries
-            // A smaller one
-            let smallest_prev_id = if first_log_id.index() == Some(0) {
-                None
-            } else {
-                first_log_id
-            };
+            let smallest_prev_id = log_state.last_purged_log_id;
 
             self.check_consecutive(smallest_prev_id)?;
 
@@ -288,7 +281,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             tracing::debug!(
                 ?self.matched,
                 ?self.max_possible_matched_index,
-                ?first_log_id,
+                ?smallest_prev_id,
                 ?prev_index,
                 end,
                 "load entries",
@@ -296,8 +289,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             assert!(end >= prev_index.next_index());
 
-            let prev_log_id = if prev_index == first_log_id.index() {
-                first_log_id
+            let prev_log_id = if prev_index == smallest_prev_id.index() {
+                smallest_prev_id
             } else if let Some(prev_i) = prev_index {
                 let first = self.storage.try_get_log_entry(prev_i).await?;
                 match first {
