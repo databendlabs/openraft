@@ -1,10 +1,10 @@
 //! Raft runtime configuration.
 
+use clap::Parser;
 use rand::thread_rng;
 use rand::Rng;
 use serde::Deserialize;
 use serde::Serialize;
-use structopt::StructOpt;
 
 use crate::config::error::ConfigError;
 
@@ -70,44 +70,44 @@ fn parse_snapshot_policy(src: &str) -> anyhow::Result<SnapshotPolicy> {
 /// What does all of this mean? Simply keep your election timeout settings high enough that the
 /// performance of your network will not cause election timeouts, but don't keep it so high that
 /// a real leader crash would cause prolonged downtime. See the Raft spec §5.6 for more details.
-#[derive(Clone, Debug, Serialize, Deserialize, StructOpt)]
+#[derive(Clone, Debug, Serialize, Deserialize, Parser)]
 pub struct Config {
     /// The application specific name of this Raft cluster
-    #[structopt(long, env = "RAFT_CLUSTER_NAME", default_value = "foo")]
+    #[clap(long, env = "RAFT_CLUSTER_NAME", default_value = "foo")]
     pub cluster_name: String,
 
     /// The minimum election timeout in milliseconds
-    #[structopt(long, env = "RAFT_ELECTION_TIMEOUT_MIN", default_value = "150")]
+    #[clap(long, env = "RAFT_ELECTION_TIMEOUT_MIN", default_value = "150")]
     pub election_timeout_min: u64,
 
     /// The maximum election timeout in milliseconds
-    #[structopt(long, env = "RAFT_ELECTION_TIMEOUT_MAX", default_value = "300")]
+    #[clap(long, env = "RAFT_ELECTION_TIMEOUT_MAX", default_value = "300")]
     pub election_timeout_max: u64,
 
     /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
-    #[structopt(long, env = "RAFT_HEARTBEAT_INTERVAL", default_value = "50")]
+    #[clap(long, env = "RAFT_HEARTBEAT_INTERVAL", default_value = "50")]
     pub heartbeat_interval: u64,
 
     /// The timeout for sending a snapshot segment, in millisecond
-    #[structopt(long, env = "RAFT_INSTALL_SNAPSHOT_TIMEOUT", default_value = "200")]
+    #[clap(long, env = "RAFT_INSTALL_SNAPSHOT_TIMEOUT", default_value = "200")]
     pub install_snapshot_timeout: u64,
 
     /// The maximum number of entries per payload allowed to be transmitted during replication
     ///
     /// If this is too low, it will take longer for the nodes to be brought up to
     /// consistency with the rest of the cluster.
-    #[structopt(long, env = "RAFT_MAX_PAYLOAD_ENTRIES", default_value = "300")]
+    #[clap(long, env = "RAFT_MAX_PAYLOAD_ENTRIES", default_value = "300")]
     pub max_payload_entries: u64,
 
     /// The distance behind in log replication a follower must fall before it is considered lagging
     ///
     /// Once a replication stream transition into line-rate state, the target node will be considered safe to join a
     /// cluster.
-    #[structopt(long, env = "RAFT_REPLICATION_LAG_THRESHOLD", default_value = "1000")]
+    #[clap(long, env = "RAFT_REPLICATION_LAG_THRESHOLD", default_value = "1000")]
     pub replication_lag_threshold: u64,
 
     /// The snapshot policy to use for a Raft node.
-    #[structopt(
+    #[clap(
         long,
         env = "RAFT_SNAPSHOT_POLICY",
         default_value = "since_last:5000",
@@ -116,17 +116,17 @@ pub struct Config {
     pub snapshot_policy: SnapshotPolicy,
 
     /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes)
-    #[structopt(long, env = "RAFT_SNAPSHOT_MAX_CHUNK_SIZE", default_value = "3MiB", parse(try_from_str=parse_bytes_with_unit))]
+    #[clap(long, env = "RAFT_SNAPSHOT_MAX_CHUNK_SIZE", default_value = "3MiB", parse(try_from_str=parse_bytes_with_unit))]
     pub snapshot_max_chunk_size: u64,
 
     /// The maximum number of applied logs to keep before purging
-    #[structopt(long, env = "RAFT_MAX_APPLIED_LOG_TO_KEEP", default_value = "1000")]
+    #[clap(long, env = "RAFT_MAX_APPLIED_LOG_TO_KEEP", default_value = "1000")]
     pub max_applied_log_to_keep: u64,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        <Self as StructOpt>::from_iter(&Vec::<&'static str>::new())
+        <Self as Parser>::parse_from(&Vec::<&'static str>::new())
     }
 }
 
@@ -137,7 +137,7 @@ impl Config {
     }
 
     pub fn build(args: &[&str]) -> Result<Config, ConfigError> {
-        let config = <Self as StructOpt>::from_iter(args);
+        let config = <Self as Parser>::parse_from(args);
         config.validate()
     }
 
