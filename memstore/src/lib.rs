@@ -164,7 +164,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "debug", skip(self, range), fields(range=?range))]
-    async fn delete_logs_from<R: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn delete_log<R: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: R,
     ) -> Result<(), StorageError> {
@@ -231,7 +231,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError> {
+    async fn build_snapshot(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError> {
         let (data, last_applied_log);
 
         {

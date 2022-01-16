@@ -117,14 +117,14 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn delete_logs_from<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    async fn delete_log<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RB,
     ) -> Result<(), StorageError> {
         self.defensive_nonempty_range(range.clone()).await?;
         self.defensive_half_open_range(range.clone()).await?;
 
-        self.inner().delete_logs_from(range).await
+        self.inner().delete_log(range).await
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
@@ -147,8 +147,8 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError> {
-        self.inner().do_log_compaction().await
+    async fn build_snapshot(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError> {
+        self.inner().build_snapshot().await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

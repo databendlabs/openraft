@@ -111,7 +111,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //           - keep track of last_log_id, first_log_id,
         //           RaftStorage should only provides the least basic APIs.
 
-        self.storage.delete_logs_from(start..).await?;
+        self.storage.delete_log(start..).await?;
 
         self.last_log_id = if start == 0 {
             None

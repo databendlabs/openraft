@@ -526,7 +526,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         tokio::spawn(
             async move {
-                let f = storage.do_log_compaction();
+                let f = storage.build_snapshot();
                 let res = Abortable::new(f, reg).await;
                 match res {
                     Ok(res) => match res {
@@ -654,7 +654,7 @@ where
     tracing::debug!(%last_applied, max_keep, delete_lt = x, "delete_applied_logs");
 
     if x > 0 {
-        sto.delete_logs_from(..x).await
+        sto.delete_log(..x).await
     } else {
         Ok(())
     }

@@ -472,7 +472,7 @@ where
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
-        store.delete_logs_from(0..=0).await?;
+        store.delete_log(0..=0).await?;
 
         let ent = store.try_get_log_entry(3).await?;
         assert_eq!(Some(LogId { term: 1, index: 3 }), ent.map(|x| x.log_id));
@@ -505,7 +505,7 @@ where
         {
             store.append_to_log(&[&blank(1, 1), &blank(1, 2)]).await?;
 
-            store.delete_logs_from(0..2).await?;
+            store.delete_log(0..2).await?;
 
             // NOTE: it assumes non applied logs always exist.
             let log_id = store.first_known_log_id().await?;
@@ -523,7 +523,7 @@ where
             let log_id = store.first_known_log_id().await?;
             assert_eq!(Some(LogId::new(1, 2)), log_id, "least id is in log");
 
-            store.delete_logs_from(0..3).await?;
+            store.delete_log(0..3).await?;
             let log_id = store.first_known_log_id().await?;
             assert_eq!(Some(LogId::new(1, 3)), log_id, "no logs, returns last applied log id");
         }
@@ -571,7 +571,7 @@ where
 
         tracing::info!("--- no logs, return default");
         {
-            store.delete_logs_from(..).await?;
+            store.delete_log(..).await?;
 
             let (first_log_id, last_log_id) = store.get_log_state().await?;
             assert_eq!(None, first_log_id);
@@ -608,7 +608,7 @@ where
 
         tracing::info!("--- no logs, return default");
         {
-            store.delete_logs_from(..).await?;
+            store.delete_log(..).await?;
 
             let log_id = store.first_id_in_log().await?;
             assert_eq!(None, log_id);
@@ -656,7 +656,7 @@ where
 
         tracing::info!("--- no logs, return default");
         {
-            store.delete_logs_from(..).await?;
+            store.delete_log(..).await?;
 
             let log_id = store.last_id_in_log().await?;
             assert_eq!(None, log_id);
@@ -721,7 +721,7 @@ where
             let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_logs_from(1..1).await?;
+            store.delete_log(1..1).await?;
 
             let logs = store.get_log_entries(1..11).await?;
             assert_eq!(logs.len(), 10, "expected all (10) logs to be preserved");
@@ -732,9 +732,9 @@ where
             let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_logs_from(..=0).await?;
+            store.delete_log(..=0).await?;
 
-            store.delete_logs_from(1..4).await?;
+            store.delete_log(1..4).await?;
 
             let logs = store.try_get_log_entries(0..100).await?;
             assert_eq!(logs.len(), 7);
@@ -746,9 +746,9 @@ where
             let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_logs_from(..=0).await?;
+            store.delete_log(..=0).await?;
 
-            store.delete_logs_from(1..1000).await?;
+            store.delete_log(1..1000).await?;
             let logs = store.try_get_log_entries(0..).await?;
 
             assert_eq!(logs.len(), 0);
@@ -759,9 +759,9 @@ where
             let store = builder.build().await;
             Self::feed_10_logs_vote_self(&store).await?;
 
-            store.delete_logs_from(..=0).await?;
+            store.delete_log(..=0).await?;
 
-            store.delete_logs_from(1..).await?;
+            store.delete_log(1..).await?;
             let logs = store.try_get_log_entries(0..100).await?;
 
             assert_eq!(logs.len(), 0);
@@ -774,7 +774,7 @@ where
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
-        store.delete_logs_from(..=0).await?;
+        store.delete_log(..=0).await?;
 
         store
             .append_to_log(&[&Entry {
@@ -1171,7 +1171,7 @@ where
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
-        store.delete_logs_from(..=0).await?;
+        store.delete_log(..=0).await?;
 
         store.get_log_entries(..).await?;
         store.get_log_entries(5..).await?;
@@ -1233,7 +1233,7 @@ where
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
-        let res = store.delete_logs_from(10..10).await;
+        let res = store.delete_log(10..10).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Logs, e.subject);
@@ -1245,7 +1245,7 @@ where
             e.violation
         );
 
-        let res = store.delete_logs_from(1..5).await;
+        let res = store.delete_log(1..5).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
         assert_eq!(ErrorSubject::Logs, e.subject);
@@ -1341,7 +1341,7 @@ where
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(1, 1), &blank(1, 2)]).await?;
 
-        store.delete_logs_from(1..).await?;
+        store.delete_log(1..).await?;
 
         let res = store
             .append_to_log(&[&Entry {
@@ -1395,7 +1395,7 @@ where
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
-        store.delete_logs_from(1..).await?;
+        store.delete_log(1..).await?;
 
         let res = store.append_to_log(&[&blank(1, 3)]).await;
 
