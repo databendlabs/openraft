@@ -93,18 +93,60 @@ async fn snapshot_chunk_size() -> Result<()> {
     {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
-        n_logs += 1;
+        log_index += 1;
 
-        router.wait_for_log(&btreeset![0, 1], n_logs, None, "add learner").await?;
-        router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: n_logs }, None, "").await?;
+        router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "add learner").await?;
+        router
+            .wait_for_snapshot(
+                &btreeset![1],
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
+                None,
+                "",
+            )
+            .await?;
 
         router
-            .assert_storage_state(
+            .wait_for_snapshot(
+                &btreeset![0],
+                LogId {
+                    term: 1,
+                    index: log_index - 1,
+                },
+                None,
+                "",
+            )
+            .await?;
+
+        // after add_learner, log_index + 1,
+        // but leader has only log_index snapshot, learner has log_index + 1snapshot,
+        router
+            .assert_storage_state_in_node(
+                0,
                 1,
-                n_logs,
-                Some(0), /* leader vote for self */
-                LogId { term: 1, index: n_logs },
-                Some(((n_logs).into(), 1)),
+                log_index,
+                Some(0),
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
+                Some(((log_index - 1).into(), 1)),
+            )
+            .await?;
+
+        router
+            .assert_storage_state_in_node(
+                1,
+                1,
+                log_index,
+                Some(0),
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
+                Some(((log_index).into(), 1)),
             )
             .await?;
     }
