@@ -101,15 +101,11 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         let err: ChangeMembershipError = err.try_into().unwrap();
 
         match err {
-            ChangeMembershipError::LearnerIsLagging {
-                node_id,
-                matched: _,
-                distance,
-            } => {
-                tracing::info!(distance, "--- distance");
-                assert_eq!(1, node_id);
-                assert!(distance >= lag_threshold);
-                assert!(distance < 500);
+            ChangeMembershipError::LearnerIsLagging(e) => {
+                tracing::info!(e.distance, "--- distance");
+                assert_eq!(1, e.node_id);
+                assert!(e.distance >= lag_threshold);
+                assert!(e.distance < 500);
             }
             _ => {
                 panic!("expect ChangeMembershipError::NonVoterNotFound");

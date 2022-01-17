@@ -8,7 +8,11 @@ use crate::core::State;
 use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
 use crate::error::ClientWriteError;
+use crate::error::EmptyMembership;
+use crate::error::InProgress;
 use crate::error::InitializeError;
+use crate::error::LearnerIsLagging;
+use crate::error::LearnerNotFound;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::EntryPayload;
@@ -116,7 +120,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                ChangeMembershipError::EmptyMembership,
+                ChangeMembershipError::EmptyMembership(EmptyMembership {}),
             )));
             return Ok(());
         }
@@ -125,9 +129,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Can not process the next one.
         if self.core.committed < Some(self.core.effective_membership.log_id) {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                ChangeMembershipError::InProgress {
+                ChangeMembershipError::InProgress(InProgress {
                     membership_log_id: self.core.effective_membership.log_id,
-                },
+                }),
             )));
             return Ok(());
         }
@@ -160,11 +164,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     if !blocking {
                         // Node has repl stream, but is not yet ready to join.
                         let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                            ChangeMembershipError::LearnerIsLagging {
+                            ChangeMembershipError::LearnerIsLagging(LearnerIsLagging {
                                 node_id: *new_node,
                                 matched: node.matched,
                                 distance: self.core.last_log_id.next_index().saturating_sub(node.matched.next_index()),
-                            },
+                            }),
                         )));
                         return Ok(());
                     }
@@ -173,7 +177,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // Node does not yet have a repl stream, spawn one.
                 None => {
                     let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                        ChangeMembershipError::LearnerNotFound { node_id: *new_node },
+                        ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: *new_node }),
                     )));
                     return Ok(());
                 }
