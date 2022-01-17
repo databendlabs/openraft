@@ -97,28 +97,24 @@ pub enum ClientWriteError {
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum ChangeMembershipError {
-    #[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
-    InProgress { membership_log_id: LogId },
+    #[error(transparent)]
+    InProgress(#[from] InProgress),
 
-    #[error("new membership can not be empty")]
-    EmptyMembership,
-
-    // TODO(xp): 111 test it
-    #[error("to add a member {node_id} first need to add it as learner")]
-    LearnerNotFound { node_id: NodeId },
+    #[error(transparent)]
+    EmptyMembership(#[from] EmptyMembership),
 
     // TODO(xp): 111 test it
-    #[error("replication to learner {node_id} is lagging {distance}, matched: {matched:?}, can not add as member")]
-    LearnerIsLagging {
-        node_id: NodeId,
-        matched: Option<LogId>,
-        distance: u64,
-    },
+    #[error(transparent)]
+    LearnerNotFound(#[from] LearnerNotFound),
+
+    // TODO(xp): 111 test it
+    #[error(transparent)]
+    LearnerIsLagging(#[from] LearnerIsLagging),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum AddLearnerError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
@@ -131,8 +127,7 @@ pub enum AddLearnerError {
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum InitializeError {
     /// The requested action is not allowed due to the Raft node's current state.
     #[error("the requested action is not allowed due to the Raft node's current state")]
@@ -222,28 +217,52 @@ pub enum ReplicationError {
     },
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("store has no log at: {index:?}")]
 pub struct LackEntry {
     pub index: Option<u64>,
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("has to forward request to: {leader_id:?}")]
 pub struct ForwardToLeader {
     pub leader_id: Option<NodeId>,
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("snapshot segment id mismatch, expect: {expect}, got: {got}")]
 pub struct SnapshotMismatch {
     pub expect: SnapshotSegmentId,
     pub got: SnapshotSegmentId,
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("not enough for a quorum, cluster: {cluster}, got: {got:?}")]
 pub struct QuorumNotEnough {
     pub cluster: String,
     pub got: BTreeSet<NodeId>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
+pub struct InProgress {
+    pub membership_log_id: LogId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("to add a member {node_id} first need to add it as learner")]
+pub struct LearnerNotFound {
+    pub node_id: NodeId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("replication to learner {node_id} is lagging {distance}, matched: {matched:?}, can not add as member")]
+pub struct LearnerIsLagging {
+    pub node_id: NodeId,
+    pub matched: Option<LogId>,
+    pub distance: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("new membership can not be empty")]
+pub struct EmptyMembership {}
