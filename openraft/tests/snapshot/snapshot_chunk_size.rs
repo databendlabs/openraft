@@ -121,7 +121,7 @@ async fn snapshot_chunk_size() -> Result<()> {
             .await?;
 
         // after add_learner, log_index + 1,
-        // but leader has only log_index snapshot, learner has log_index + 1snapshot,
+        // leader has only log_index log in snapshot, cause it has compacted before add_learner
         router
             .assert_storage_state_in_node(
                 0,
@@ -136,6 +136,8 @@ async fn snapshot_chunk_size() -> Result<()> {
             )
             .await?;
 
+        // learner has log_index + 1 log in snapshot, cause it do compact after add_learner,
+        // so learner's snapshot include add_learner log
         router
             .assert_storage_state_in_node(
                 1,
