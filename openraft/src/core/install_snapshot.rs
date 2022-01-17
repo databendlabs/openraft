@@ -233,35 +233,33 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // This does not affect raft consistency.
         // If you have any question about this, let me know: drdr.xp at gmail.com
 
-        if let Some(last_applied) = changes.last_applied {
-            // Applied logs are not needed.
-            purge_applied_logs(self.storage.clone(), &last_applied, self.config.max_applied_log_to_keep).await?;
+        let last_applied = changes.last_applied;
 
-            // snapshot is installed
-            self.last_applied = Some(last_applied);
+        // Applied logs are not needed.
+        purge_applied_logs(self.storage.clone(), &last_applied, self.config.max_applied_log_to_keep).await?;
 
-            if self.committed < self.last_applied {
-                self.committed = self.last_applied;
-            }
-            if self.last_log_id < self.last_applied {
-                self.last_log_id = self.last_applied;
-            }
+        // snapshot is installed
+        self.last_applied = Some(last_applied);
 
-            // There could be unknown membership in the snapshot.
-            let membership = self.storage.get_membership().await?;
-            tracing::debug!("storage membership: {:?}", membership);
-
-            assert!(membership.is_some());
-
-            let membership = membership.unwrap();
-
-            self.update_membership(membership);
-
-            self.snapshot_last_log_id = self.last_applied;
-            self.report_metrics(Update::AsIs);
-        } else {
-            // snapshot not installed
+        if self.committed < self.last_applied {
+            self.committed = self.last_applied;
         }
+        if self.last_log_id < self.last_applied {
+            self.last_log_id = self.last_applied;
+        }
+
+        // There could be unknown membership in the snapshot.
+        let membership = self.storage.get_membership().await?;
+        tracing::debug!("storage membership: {:?}", membership);
+
+        assert!(membership.is_some());
+
+        let membership = membership.unwrap();
+
+        self.update_membership(membership);
+
+        self.snapshot_last_log_id = self.last_applied;
+        self.report_metrics(Update::AsIs);
 
         Ok(())
     }
