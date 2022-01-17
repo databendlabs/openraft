@@ -9,7 +9,6 @@ use serde::Serialize;
 
 use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
-use crate::Membership;
 use crate::NodeId;
 use crate::StorageError;
 
@@ -117,12 +116,6 @@ pub enum ChangeMembershipError {
         matched: Option<LogId>,
         distance: u64,
     },
-
-    // TODO(xp): test it in unittest
-    // TODO(xp): rename this error to some elaborated name.
-    // TODO(xp): 111 test it
-    #[error("now allowed to change from {curr:?} to {to:?}")]
-    Incompatible { curr: Membership, to: BTreeSet<NodeId> },
 }
 
 #[derive(Debug, thiserror::Error)]

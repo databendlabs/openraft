@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::ChangeMembershipError;
+use openraft::error::ChangeMembershipError;
 use openraft::Config;
 use openraft::RaftStorage;
 

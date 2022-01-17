@@ -22,6 +22,7 @@ use tracing::Span;
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::error::LackEntry;
+use crate::error::ReplicationError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_types::LogIdOptionExt;
@@ -34,7 +35,6 @@ use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
-use crate::ReplicationError;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReplicationMetrics {
