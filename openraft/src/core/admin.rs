@@ -85,6 +85,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
         curr.add_learner(target);
 
+        // append_membership_log after learner has added into nodes
+        let new_config = self.core.effective_membership.membership.clone();
+
+        tracing::debug!(?new_config, "new_config");
+
+        let _ = self.append_membership_log(new_config, None).await;
+
         return true;
     }
 
@@ -115,7 +122,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return;
         }
 
-        let is_new_learner = self.add_learner_into_membership(&target).await;
+        let _ = self.add_learner_into_membership(&target).await;
 
         if blocking {
             let state = self.spawn_replication_stream(target, Some(tx));
@@ -130,22 +137,32 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }));
         }
 
-        if !is_new_learner {
-            return;
-        }
-
-        // append_membership_log after learner has added into nodes
-        let new_config = self.core.effective_membership.membership.clone();
-
-        tracing::debug!(?new_config, "new_config");
-
-        let _ = self.append_membership_log(new_config, None).await;
-
         tracing::debug!(
             "after add target node {} as learner {:?}",
             target,
             self.core.last_log_id
         );
+    }
+
+    pub fn has_pending_membership_change(&self, members: &BTreeSet<NodeId>) -> bool {
+        if self.core.committed >= self.core.effective_membership.log_id {
+            return false;
+        }
+
+        let curr = &self.core.effective_membership.membership;
+        let all_learners = curr.all_learners();
+        for new_node in members.difference(curr.all_nodes()) {
+            match all_learners.get(new_node) {
+                Some(_node) => {
+                    continue;
+                }
+                None => {
+                    // if new member not include in the learners, there is pending membership change
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     #[tracing::instrument(level = "debug", skip(self, tx))]
@@ -165,7 +182,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // The last membership config is not committed yet.
         // Can not process the next one.
-        if self.core.committed < self.core.effective_membership.log_id {
+        if self.has_pending_membership_change(&members) {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::InProgress {
                     membership_log_id: self.core.effective_membership.log_id,

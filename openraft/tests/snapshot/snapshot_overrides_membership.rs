@@ -110,6 +110,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         tracing::info!("--- add learner to the cluster to receive snapshot, which overrides the learner storage");
         {
             router.add_learner(0, 1).await.expect("failed to add new node as learner");
+            n_logs += 1;
 
             tracing::info!("--- DONE add learner");
 

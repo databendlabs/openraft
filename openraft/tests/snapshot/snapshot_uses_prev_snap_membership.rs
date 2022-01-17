@@ -60,6 +60,8 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await?;
+        n_logs += 1;
+        router.wait_for_log(&btreeset![0], n_logs, None, "add learner").await?;
 
         router.change_membership(0, btreeset![0, 1]).await?;
         n_logs += 2;

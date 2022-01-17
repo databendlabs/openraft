@@ -55,6 +55,16 @@ impl Membership {
         }
     }
 
+    pub fn new_single_with_learners(members: BTreeSet<NodeId>, learners: BTreeSet<NodeId>) -> Self {
+        let configs = vec![members];
+        let all_nodes = Self::build_all_nodes(&configs);
+        Membership {
+            learners,
+            configs,
+            all_nodes,
+        }
+    }
+
     pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
         let all_nodes = Self::build_all_nodes(&configs);
         let learners = BTreeSet::new();

@@ -256,10 +256,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ) -> Result<AppendEntriesResponse, StorageError> {
         let matching = self.does_log_id_match(prev_log_id).await?;
         tracing::debug!(
-            "check prev_log_id {} match: committed: {}, matches: {}",
+            "check prev_log_id {} match: committed: {}, matches: {} {}",
             prev_log_id,
             self.committed,
             matching,
+            entries.len(),
         );
 
         if !matching {

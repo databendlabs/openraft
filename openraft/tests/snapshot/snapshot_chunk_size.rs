@@ -64,18 +64,18 @@ async fn snapshot_chunk_size() -> Result<()> {
     {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
-
-        let want_snap = Some((n_logs.into(), 1));
+        n_logs += 1;
 
         router.wait_for_log(&btreeset![0, 1], n_logs, None, "add learner").await?;
         router.wait_for_snapshot(&btreeset![1], LogId { term: 1, index: n_logs }, None, "").await?;
+
         router
             .assert_storage_state(
                 1,
                 n_logs,
-                None, /* learner does not vote */
+                Some(0), /* leader vote for self */
                 LogId { term: 1, index: n_logs },
-                want_snap,
+                Some(((n_logs).into(), 1)),
             )
             .await?;
     }
