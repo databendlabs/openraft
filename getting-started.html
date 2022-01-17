@@ -154,7 +154,7 @@
 <li>and how to consume the logs, which is defined mainly in state machine.</li>
 </ul>
 <p>To implement your own raft based application with openraft is quite easy, which
-includes: </p>
+includes:</p>
 <ul>
 <li>Define client request and response;</li>
 <li>Implement a storage to let raft store its state;</li>
@@ -183,12 +183,56 @@ state machine implementation in <code>RaftStorage</code>.</p>
 <p>The trait <code>RaftStorage</code> defines the way that data is stored and consumed.
 It could be a wrapper of some local KV store such <a href="https://docs.rs/rocksdb/latest/rocksdb/">RocksDB</a>,
 or a wrapper of a remote sql DB.</p>
-<p><code>RaftStorage</code> defines 4 sets of APIs:</p>
+<p><code>RaftStorage</code> defines 4 sets of APIs an application needs to implement:</p>
 <ul>
-<li>Read/write raft state, e.g., term or vote.</li>
-<li>Read/write logs.</li>
-<li>Apply log entry to the state machine.</li>
-<li>Building and installing a snapshot.</li>
+<li>
+<p>Read/write raft state, e.g., term or vote.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn save_hard_state(hs:&amp;HardState)
+fn read_hard_state() -&gt; Result&lt;Option&lt;HardState&gt;&gt;
+<span class="boring">}
+</span></code></pre></pre>
+</li>
+<li>
+<p>Read/write logs.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn get_log_state() -&gt; Result&lt;LogState&gt;
+fn try_get_log_entries(range) -&gt; Result&lt;Vec&lt;Entry&gt;&gt;
+
+fn append_to_log(entries)
+
+fn delete_conflict_logs_since(since:LogId)
+fn purge_logs_upto(upto:LogId)
+<span class="boring">}
+</span></code></pre></pre>
+</li>
+<li>
+<p>Apply log entry to the state machine.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn last_applied_state() -&gt; Result&lt;(Option&lt;LogId&gt;, Option&lt;EffectiveMembership&gt;)&gt;
+fn apply_to_state_machine(entries) -&gt; Result&lt;Vec&lt;AppResponse&gt;&gt;
+<span class="boring">}
+</span></code></pre></pre>
+</li>
+<li>
+<p>Building and installing a snapshot.</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn build_snapshot() -&gt; Result&lt;Snapshot&gt;
+fn get_current_snapshot() -&gt; Result&lt;Option&lt;Snapshot&gt;&gt;
+
+fn begin_receiving_snapshot() -&gt; Result&lt;Box&lt;SnapshotData&gt;&gt;
+fn install_snapshot(meta, snapshot)
+<span class="boring">}
+</span></code></pre></pre>
+</li>
 </ul>
 <p>The APIs have been made quite obvious and there is a good example
 <a href="https://github.com/datafuselabs/openraft/blob/main/memstore/src/lib.rs"><code>MemStore</code></a>,
