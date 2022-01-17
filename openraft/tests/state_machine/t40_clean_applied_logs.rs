@@ -28,9 +28,9 @@ async fn clean_applied_logs() -> Result<()> {
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
-    let count = (10 - n_logs) as usize;
+    let count = (10 - log_index) as usize;
     for idx in 0..count {
         router.client_request(0, "0", idx as u64).await;
         // raft commit at once with a single leader cluster.
@@ -38,9 +38,9 @@ async fn clean_applied_logs() -> Result<()> {
         // Then it triggers snapshot replication, which is not expected.
         sleep(Duration::from_millis(50)).await;
     }
-    n_logs = 10;
+    log_index = 10;
 
-    router.wait_for_log(&btreeset! {0,1}, n_logs, timeout(), "write upto 10 logs").await?;
+    router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "write upto 10 logs").await?;
 
     tracing::info!("--- logs before max_applied_log_to_keep should be cleaned");
     {

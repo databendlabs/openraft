@@ -7,6 +7,7 @@ use tokio::time::sleep;
 use crate::core::EffectiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
+use crate::raft_types::LogIdOptionExt;
 use crate::LogId;
 use crate::Membership;
 use crate::RaftMetrics;
@@ -39,22 +40,22 @@ async fn test_wait() -> anyhow::Result<()> {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.last_log_index = Some(3);
-            update.last_applied = 3;
+            update.last_applied = Some(LogId::new(1, 3));
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
-        let got = w.log(3, "log").await?;
+        let got = w.log(Some(3), "log").await?;
         let got_least2 = w.log_at_least(2, "log").await?;
         let got_least3 = w.log_at_least(3, "log").await?;
         let got_least4 = w.log_at_least(4, "log").await;
         h.await?;
 
         assert_eq!(Some(3), got.last_log_index);
-        assert_eq!(3, got.last_applied);
+        assert_eq!(Some(3), got.last_applied.index());
         assert_eq!(Some(3), got_least2.last_log_index);
-        assert_eq!(3, got_least2.last_applied);
+        assert_eq!(Some(3), got_least2.last_applied.index());
         assert_eq!(Some(3), got_least3.last_log_index);
-        assert_eq!(3, got_least3.last_applied);
+        assert_eq!(Some(3), got_least3.last_applied.index());
 
         assert!(got_least4.is_err());
     }
@@ -123,14 +124,14 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.snapshot = LogId { term: 1, index: 2 };
+            update.snapshot = Some(LogId::new(1, 2));
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
         let got = w.snapshot(LogId { term: 1, index: 2 }, "snapshot").await?;
         h.await?;
 
-        assert_eq!(LogId { term: 1, index: 2 }, got.snapshot);
+        assert_eq!(Some(LogId::new(1, 2)), got.snapshot);
     }
 
     tracing::info!("--- wait for snapshot, only index matches");
@@ -140,7 +141,7 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.snapshot = LogId { term: 3, index: 2 };
+            update.snapshot = Some(LogId::new(3, 2));
             let rst = tx.send(update);
             assert!(rst.is_ok());
             // delay otherwise the channel will be closed thus the error is shutdown.
@@ -190,14 +191,14 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
         state: State::Learner,
         current_term: 0,
         last_log_index: None,
-        last_applied: 0,
+        last_applied: None,
         current_leader: None,
         membership_config: EffectiveMembership {
             log_id: LogId::default(),
             membership: Membership::new_single(btreeset! {}),
         },
 
-        snapshot: LogId { term: 0, index: 0 },
+        snapshot: None,
         leader_metrics: None,
     };
     let (tx, rx) = watch::channel(init.clone());

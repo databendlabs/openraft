@@ -11,6 +11,7 @@ use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
 use crate::core::EffectiveMembership;
+use crate::defensive::check_range_matches_entries;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft_types::SnapshotId;
@@ -18,7 +19,7 @@ use crate::raft_types::StateMachineChanges;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
-use crate::Membership;
+use crate::LogIdOptionExt;
 use crate::NodeId;
 use crate::StorageError;
 
@@ -33,6 +34,7 @@ pub struct SnapshotMeta {
 }
 
 /// The data associated with the current snapshot.
+#[derive(Debug)]
 pub struct Snapshot<S>
 where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
@@ -56,37 +58,33 @@ pub struct HardState {
 }
 
 /// A struct used to represent the initial state which a Raft node needs when first starting.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InitialState {
     /// The last entry.
-    pub last_log_id: LogId,
+    pub last_log_id: Option<LogId>,
 
     /// The LogId of the last log applied to the state machine.
-    pub last_applied: LogId,
+    pub last_applied: Option<LogId>,
 
     /// The saved hard state of the node.
     pub hard_state: HardState,
 
     /// The latest cluster membership configuration found, in log or in state machine, else a new initial
     /// membership config consisting only of this node's ID.
-    pub last_membership: EffectiveMembership,
+    pub last_membership: Option<EffectiveMembership>,
 }
 
-impl InitialState {
-    pub fn new(id: NodeId) -> Self {
-        Self {
-            last_log_id: LogId::new(0, 0),
-            last_applied: LogId::new(0, 0),
-            hard_state: HardState {
-                current_term: 0,
-                voted_for: None,
-            },
-            last_membership: EffectiveMembership {
-                log_id: LogId::new(0, 0),
-                membership: Membership::new_initial(id),
-            },
-        }
-    }
+/// The state about logs.
+///
+/// Invariance: last_purged_log_id <= last_applied <= last_log_id
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LogState {
+    /// The greatest log id that has been purged after being applied to state machine.
+    pub last_purged_log_id: Option<LogId>,
+
+    /// The log id of the last present entry if there are any entries.
+    /// Otherwise the same value as `last_purged_log_id`.
+    pub last_log_id: Option<LogId>,
 }
 
 /// A trait defining the interface for a Raft storage system.
@@ -103,7 +101,7 @@ where
 
     /// The storage engine's associated type used for exposing a snapshot for reading & writing.
     ///
-    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
+    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
     type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
 
@@ -131,18 +129,10 @@ where
     /// If no such membership log is found, it returns `None`, e.g., when logs are cleaned after being applied.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn last_membership_in_log(&self, since_index: u64) -> Result<Option<EffectiveMembership>, StorageError> {
-        let (first_log_id, last_log_id) = self.get_log_state().await?;
+        let st = self.get_log_state().await?;
 
-        let first_log_id = match first_log_id {
-            None => {
-                // There is no log at all
-                return Ok(None);
-            }
-            Some(x) => x,
-        };
-
-        let mut end = last_log_id.unwrap().index + 1;
-        let start = std::cmp::max(first_log_id.index, since_index);
+        let mut end = st.last_log_id.next_index();
+        let start = std::cmp::max(st.last_purged_log_id.next_index(), since_index);
         let step = 64;
 
         while start < end {
@@ -165,96 +155,112 @@ where
 
     /// Get Raft's state information from storage.
     ///
-    /// When the Raft node is first started, it will call this interface on the storage system to
-    /// fetch the last known state from stable storage. If no such entry exists due to being the
-    /// first time the node has come online, will returns `None`.
-    async fn get_initial_state(&self) -> Result<Option<InitialState>, StorageError>;
+    /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
+    /// storage.
+    async fn get_initial_state(&self) -> Result<InitialState, StorageError> {
+        let hs = self.read_hard_state().await?;
+        let st = self.get_log_state().await?;
+        let mut last_log_id = st.last_log_id;
+        let (last_applied, _) = self.last_applied_state().await?;
+        let membership = self.get_membership().await?;
 
-    /// Save Raft's hard-state.
+        // Clean up dirty state: snapshot is installed but logs are not cleaned.
+        if last_log_id < last_applied {
+            self.purge_logs_upto(last_applied.unwrap()).await?;
+            last_log_id = last_applied;
+        }
+
+        Ok(InitialState {
+            last_log_id,
+            last_applied,
+            hard_state: hs.unwrap_or_default(),
+            last_membership: membership,
+        })
+    }
+
+    /// Get a series of log entries from storage.
     ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
+    /// Similar to `try_get_log_entries` except an error will be returned if there is an entry not found in the
+    /// specified range.
+    async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+        &self,
+        range: RB,
+    ) -> Result<Vec<Entry<D>>, StorageError> {
+        let res = self.try_get_log_entries(range.clone()).await?;
+
+        check_range_matches_entries(range, &res)?;
+
+        Ok(res)
+    }
+
+    /// Try to get an log entry.
+    ///
+    /// It does not return an error if the log entry at `log_index` is not found.
+    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>, StorageError> {
+        let mut res = self.try_get_log_entries(log_index..(log_index + 1)).await?;
+        Ok(res.pop())
+    }
+
+    /// Get the log id of the entry at `index`.
+    async fn get_log_id(&self, log_index: u64) -> Result<LogId, StorageError> {
+        let st = self.get_log_state().await?;
+
+        if Some(log_index) == st.last_purged_log_id.index() {
+            return Ok(st.last_purged_log_id.unwrap());
+        }
+
+        let entries = self.get_log_entries(log_index..=log_index).await?;
+
+        Ok(entries[0].log_id)
+    }
+
+    // --- Hard State
+
     async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError>;
 
     async fn read_hard_state(&self) -> Result<Option<HardState>, StorageError>;
+
+    // --- Log
+
+    /// Returns the last deleted log id and the last log id.
+    ///
+    /// The impl should not consider the applied log id in state machine.
+    /// The returned `last_log_id` could be the log id of the last present log entry, or the `last_purged_log_id` if
+    /// there is no entry at all.
+    async fn get_log_state(&self) -> Result<LogState, StorageError>;
 
     /// Get a series of log entries from storage.
     ///
     /// The start value is inclusive in the search and the stop value is non-inclusive: `[start, stop)`.
     ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+    /// Entry that is not found is allowed.
+    async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<Vec<Entry<D>>, StorageError>;
-
-    /// Get a series of log entries from storage.
-    ///
-    /// Entry not found is allowed
-    async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &self,
-        range: RNG,
-    ) -> Result<Vec<Entry<D>>, StorageError>;
-
-    /// Try to get an log entry.
-    /// It does not return an error if in defensive mode and the log entry at `log_index` is not found.
-    async fn try_get_log_entry(&self, log_index: u64) -> Result<Option<Entry<D>>, StorageError>;
-
-    /// Returns the fist log id and last log id in log.
-    ///
-    /// The impl should not consider the applied log id in state machine.
-    async fn get_log_state(&self) -> Result<(Option<LogId>, Option<LogId>), StorageError>;
-
-    /// Returns the first log id in log.
-    ///
-    /// The impl should not consider the applied log id in state machine.
-    async fn first_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
-        let (first_log_id, _) = self.get_log_state().await?;
-        Ok(first_log_id)
-    }
-
-    /// Returns the last log id in log.
-    ///
-    /// The impl should not consider the applied log id in state machine.
-    async fn last_id_in_log(&self) -> Result<Option<LogId>, StorageError> {
-        let (_, last_log_id) = self.get_log_state().await?;
-        Ok(last_log_id)
-    }
-
-    async fn first_known_log_id(&self) -> Result<LogId, StorageError> {
-        let (first, _) = self.get_log_state().await?;
-        let (last_applied, _) = self.last_applied_state().await?;
-
-        if let Some(x) = first {
-            return Ok(std::cmp::min(x, last_applied));
-        }
-
-        Ok(last_applied)
-    }
-
-    /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
-    /// membership config.
-    async fn last_applied_state(&self) -> Result<(LogId, Option<EffectiveMembership>), StorageError>;
-
-    /// Delete all logs in a `range`.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &self,
-        range: RNG,
-    ) -> Result<(), StorageError>;
 
     /// Append a payload of entries to the log.
     ///
     /// Though the entries will always be presented in order, each entry's index should be used to
     /// determine its location to be written in the log.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<(), StorageError>;
+
+    /// Delete conflict log entries since `log_id`, inclusive.
+    async fn delete_conflict_logs_since(&self, log_id: LogId) -> Result<(), StorageError>;
+
+    /// Delete applied log entries upto `log_id`, inclusive.
+    async fn purge_logs_upto(&self, log_id: LogId) -> Result<(), StorageError>;
+
+    // --- State Machine
+
+    /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
+    /// membership config.
+    async fn last_applied_state(&self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError>;
 
     /// Apply the given payload of entries to the state machine.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
-    /// have been replicated to a majority of the cluster, will be applied to the state machine.
+    /// have been replicated to a quorum of the cluster, will be applied to the state machine.
     ///
     /// This is where the business logic of interacting with your application's state machine
     /// should live. This is 100% application specific. Perhaps this is where an application
@@ -262,24 +268,21 @@ where
     /// is being stored.
     ///
     /// An impl should do:
+    /// - Store the last applied log id.
     /// - Deal with the EntryPayload::Normal() log, which is business logic log.
-    /// - Deal with EntryPayload::Membership
-    /// - A EntryPayload::SnapshotPointer log should never be seen.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
+    /// - Deal with EntryPayload::Membership, store the membership config.
     async fn apply_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>, StorageError>;
 
-    /// Perform log compaction, returning a handle to the generated snapshot.
+    // --- Snapshot
+
+    /// Build snapshot
     ///
-    /// ### implementation guide
-    /// When performing log compaction, the compaction can only cover the breadth of the log up to
-    /// the last applied log and under write load this value may change quickly. As such, the
-    /// storage implementation should export/checkpoint/snapshot its state machine, and then use
-    /// the value of that export's last applied log as the metadata indicating the breadth of the
-    /// log covered by the snapshot.
+    /// A snapshot has to contain information about exactly all logs upto the last applied.
     ///
-    /// Errors returned from this method will be logged and retried.
-    async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError>;
+    /// Building snapshot can be done by:
+    /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a LSM-tree does,
+    /// - or by fetching a snapshot from the state machine.
+    async fn build_snapshot(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError>;
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object.
     ///
@@ -288,19 +291,15 @@ where
     /// ### implementation guide
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
     /// for details on log compaction / snapshotting.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>, StorageError>;
 
-    /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
+    /// Install a snapshot which has finished streaming from the cluster leader.
     ///
     /// All other snapshots should be deleted at this point.
     ///
     /// ### snapshot
     /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the snapshot.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
-    async fn finalize_snapshot_installation(
+    async fn install_snapshot(
         &self,
         meta: &SnapshotMeta,
         snapshot: Box<Self::SnapshotData>,
@@ -317,8 +316,6 @@ where
     ///
     /// A proper snapshot implementation will store the term, index and membership config as part
     /// of the snapshot, which should be decoded for creating this method's response data.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError>;
 }
 

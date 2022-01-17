@@ -4,18 +4,20 @@
 mod config;
 mod core;
 mod defensive;
-pub mod error;
 mod membership;
-pub mod metrics;
-pub mod network;
-pub mod raft;
 mod raft_types;
 mod replication;
-pub mod storage;
 mod storage_error;
 mod store_ext;
 mod store_wrapper;
 mod summary;
+
+pub mod error;
+pub mod metrics;
+pub mod network;
+pub mod raft;
+pub mod storage;
+pub mod testing;
 
 #[cfg(test)]
 mod metrics_wait_test;
@@ -30,15 +32,12 @@ pub use crate::config::SnapshotPolicy;
 pub use crate::core::EffectiveMembership;
 pub use crate::core::State;
 pub use crate::defensive::DefensiveCheck;
-pub use crate::error::ChangeMembershipError;
-pub use crate::error::ClientWriteError;
-pub use crate::error::InitializeError;
-pub use crate::error::ReplicationError;
 pub use crate::membership::Membership;
 pub use crate::metrics::RaftMetrics;
 pub use crate::network::RaftNetwork;
 pub use crate::raft::Raft;
 pub use crate::raft_types::LogId;
+pub use crate::raft_types::LogIdOptionExt;
 pub use crate::raft_types::SnapshotId;
 pub use crate::raft_types::SnapshotSegmentId;
 pub use crate::raft_types::StateMachineChanges;

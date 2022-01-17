@@ -9,9 +9,6 @@ pub(crate) mod replication;
 mod replication_state_test;
 mod vote;
 
-#[cfg(test)]
-mod startup_test;
-
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
@@ -40,8 +37,6 @@ use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::core::client::ClientRequestEntry;
 use crate::error::AddLearnerError;
-use crate::error::ClientReadError;
-use crate::error::ClientWriteError;
 use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
@@ -49,16 +44,14 @@ use crate::error::InitializeError;
 use crate::metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
 use crate::raft::AddLearnerResponse;
-use crate::raft::ClientWriteRequest;
-use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
+use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::HardState;
-use crate::storage::InitialState;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -125,10 +118,10 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// Committed means:
     /// - a log that is replicated to a quorum of the cluster and it is of the term of the leader.
     /// - A quorum could be a joint quorum.
-    committed: LogId,
+    committed: Option<LogId>,
 
     /// The log id of the highest log entry which has been applied to the local state machine.
-    last_applied: LogId,
+    last_applied: Option<LogId>,
 
     /// The current term.
     ///
@@ -155,11 +148,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
     ///
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
-    snapshot_last_log_id: LogId,
-
-    /// A bool indicating if this system has performed its initial replication of
-    /// outstanding entries to the state machine.
-    has_completed_initial_replication_to_sm: bool,
+    snapshot_last_log_id: Option<LogId>,
 
     /// The last time a heartbeat was received.
     last_heartbeat: Option<Instant>,
@@ -203,15 +192,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             network,
             storage,
             target_state: State::Follower,
-            committed: LogId::new(0, 0),
-            last_applied: LogId::new(0, 0),
+            committed: None,
+            last_applied: None,
             current_term: 0,
             current_leader: None,
             voted_for: None,
             last_log_id: None,
             snapshot_state: None,
-            snapshot_last_log_id: LogId::new(0, 0),
-            has_completed_initial_replication_to_sm: false,
+            snapshot_last_log_id: None,
             last_heartbeat: None,
             next_election_timeout: None,
 
@@ -249,56 +237,69 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn do_main(&mut self) -> Result<(), Fatal> {
         tracing::debug!("raft node is initializing");
 
-        // NOTE: get_initial_state will return None, if Raft node is first startup.
-        let state = if let Some(init_state) = self.storage.get_initial_state().await? {
-            init_state
-        } else {
-            let init_state = InitialState::new(self.id);
-            self.storage.save_hard_state(&init_state.hard_state).await?;
-            init_state
-        };
+        let state = self.storage.get_initial_state().await?;
 
-        self.last_log_id = Some(state.last_log_id);
+        // TODO(xp): this is not necessary.
+        self.storage.save_hard_state(&state.hard_state).await?;
+
+        self.last_log_id = state.last_log_id;
         self.current_term = state.hard_state.current_term;
         self.voted_for = state.hard_state.voted_for;
-        self.effective_membership = state.last_membership.clone();
+        self.effective_membership = state.last_membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
         self.last_applied = state.last_applied;
 
-        // NOTE: this is repeated here for clarity. It is unsafe to initialize the node's commit
-        // index to any other value. The commit index must be determined by a leader after
+        // NOTE: The commit index must be determined by a leader after
         // successfully committing a new log to the cluster.
-        self.committed = LogId::new(0, 0);
+        self.committed = None;
 
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
-            self.snapshot_last_log_id = snapshot.meta.last_log_id;
-            self.report_metrics(Update::Ignore);
+            self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
+            self.report_metrics(Update::AsIs);
         }
 
-        let has_log = self.last_log_id.unwrap().index != u64::MIN;
-        let single = self.effective_membership.membership.all_nodes().len() == 1;
-        let is_voter = self.effective_membership.membership.contains(&self.id);
+        let has_log = if self.last_log_id.is_some() {
+            "has_log"
+        } else {
+            "no_log"
+        };
+
+        let single = if self.effective_membership.membership.all_nodes().len() == 1 {
+            "single"
+        } else {
+            "multi"
+        };
+
+        let is_voter = if self.effective_membership.membership.contains(&self.id) {
+            "voter"
+        } else {
+            "learner"
+        };
 
         self.target_state = match (has_log, single, is_voter) {
             // A restarted raft that already received some logs but was not yet added to a cluster.
             // It should remain in Learner state, not Follower.
-            (true, true, false) => State::Learner,
-            (true, false, false) => State::Learner,
+            ("has_log", "single", "learner") => State::Learner,
+            ("has_log", "multi", "learner") => State::Learner,
 
-            (false, true, false) => State::Learner, // impossible: no logs but there are other members.
-            (false, false, false) => State::Learner, // impossible: no logs but there are other members.
+            ("no_log", "single", "learner") => State::Learner, // impossible: no logs but there are other members.
+            ("no_log", "multi", "learner") => State::Learner,  // impossible: no logs but there are other members.
 
             // If this is the only configured member and there is live state, then this is
             // a single-node cluster. Become leader.
-            (true, true, true) => State::Leader,
+            ("has_log", "single", "voter") => State::Leader,
 
             // The initial state when a raft is created from empty store.
-            (false, true, true) => State::Learner,
+            ("no_log", "single", "voter") => State::Learner,
 
             // Otherwise it is Follower.
-            (true, false, true) => State::Follower,
+            ("has_log", "multi", "voter") => State::Follower,
 
-            (false, false, true) => State::Follower, // impossible: no logs but there are other members.
+            ("no_log", "multi", "voter") => State::Follower, // impossible: no logs but there are other members.
+
+            _ => {
+                panic!("invalid state: {}, {}, {}", has_log, single, is_voter);
+            }
         };
 
         if self.target_state == State::Follower {
@@ -335,7 +336,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn report_metrics(&mut self, leader_metrics: Update<Option<&LeaderMetrics>>) {
         let leader_metrics = match leader_metrics {
             Update::Update(v) => v.cloned(),
-            Update::Ignore => self.tx_metrics.borrow().leader_metrics.clone(),
+            Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
         };
 
         let m = RaftMetrics {
@@ -345,7 +346,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             state: self.target_state,
             current_term: self.current_term,
             last_log_index: self.last_log_id.map(|id| id.index),
-            last_applied: self.last_applied.index,
+            last_applied: self.last_applied,
             current_leader: self.current_leader,
             membership_config: self.effective_membership.clone(),
             snapshot: self.snapshot_last_log_id,
@@ -413,22 +414,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
     }
 
-    /// Update the value of the `current_leader` property.
-    #[tracing::instrument(level = "trace", skip(self))]
-    fn update_current_leader(&mut self, update: UpdateCurrentLeader) {
-        match update {
-            UpdateCurrentLeader::ThisNode => {
-                self.current_leader = Some(self.id);
-            }
-            UpdateCurrentLeader::OtherNode(target) => {
-                self.current_leader = Some(target);
-            }
-            UpdateCurrentLeader::Unknown => {
-                self.current_leader = None;
-            }
-        }
-    }
-
     /// Encapsulate the process of updating the current term, as updating the `voted_for` state must also be updated.
     #[tracing::instrument(level = "debug", skip(self))]
     fn update_current_term(&mut self, new_term: u64, voted_for: Option<NodeId>) {
@@ -464,8 +449,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_snapshot_state(&mut self, update: SnapshotUpdate) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
-            self.snapshot_last_log_id = log_id;
-            self.report_metrics(Update::Ignore);
+            self.snapshot_last_log_id = Some(log_id);
+            self.report_metrics(Update::AsIs);
         }
         // If snapshot state is anything other than streaming, then drop it.
         if let Some(state @ SnapshotState::Streaming { .. }) = self.snapshot_state.take() {
@@ -481,14 +466,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return;
         }
         let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
+
+        let last_applied = match self.last_applied {
+            None => {
+                return;
+            }
+            Some(x) => x,
+        };
+
         // Check to ensure we have actual entries for compaction.
-        if self.last_applied.index == 0 || self.last_applied.index < self.snapshot_last_log_id.index {
+        if Some(last_applied.index) < self.snapshot_last_log_id.index() {
             return;
         }
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
-            if self.last_applied.index < self.snapshot_last_log_id.index + *threshold {
+            if self.last_applied.next_index() - self.snapshot_last_log_id.next_index() < *threshold {
                 return;
             }
         }
@@ -505,7 +498,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         tokio::spawn(
             async move {
-                let f = storage.do_log_compaction();
+                let f = storage.build_snapshot();
                 let res = Abortable::new(f, reg).await;
                 match res {
                     Ok(res) => match res {
@@ -533,9 +526,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let _ = tx.send(Err(InitializeError::NotAllowed));
     }
 
-    /// Reject a proposed config change request due to the Raft node being in a state which prohibits the request.
+    /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn reject_config_change_not_leader<T, E>(&self, tx: RaftRespTx<T, E>)
+    fn reject_with_forward_to_leader<T, E>(&self, tx: RaftRespTx<T, E>)
     where E: From<ForwardToLeader> {
         let err = ForwardToLeader {
             leader_id: self.current_leader,
@@ -544,33 +537,24 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let _ = tx.send(Err(err.into()));
     }
 
-    /// Forward the given client write request to the leader.
-    #[tracing::instrument(level = "trace", skip(self, req, tx))]
-    fn forward_client_write_request(
-        &self,
-        req: ClientWriteRequest<D>,
-        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
-    ) {
-        match req.payload {
-            EntryPayload::Normal(_entry) => {
-                let _ = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                    leader_id: self.current_leader,
-                })));
-            }
-            _ => {
-                // This is unreachable, and well controlled by the type system, but let's log an
-                // error for good measure.
-                tracing::error!("unreachable branch hit within openraft, attempting to forward a Raft internal entry");
-            }
-        }
-    }
+    #[tracing::instrument(level = "debug", skip(self, payload))]
+    pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> Result<Entry<D>, StorageError> {
+        let log_id = LogId::new(self.current_term, self.last_log_id.next_index());
 
-    /// Forward the given client read request to the leader.
-    #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn forward_client_read_request(&self, tx: RaftRespTx<(), ClientReadError>) {
-        let _ = tx.send(Err(ClientReadError::ForwardToLeader(ForwardToLeader {
-            leader_id: self.current_leader,
-        })));
+        let entry = Entry { log_id, payload };
+        self.storage.append_to_log(&[&entry]).await?;
+
+        tracing::debug!("append log: {}", entry.summary());
+        self.last_log_id = Some(log_id);
+
+        if let EntryPayload::Membership(mem) = &entry.payload {
+            self.effective_membership = EffectiveMembership {
+                log_id: entry.log_id,
+                membership: mem.clone(),
+            };
+        }
+
+        Ok(entry)
     }
 }
 
@@ -592,7 +576,7 @@ where
     if let Some(last_applied) = last {
         // TODO(xp): apply_to_state_machine should return the last applied
         let res = sto.apply_to_state_machine(entries).await?;
-        delete_applied_logs(sto, &last_applied, max_keep).await?;
+        purge_applied_logs(sto, &last_applied, max_keep).await?;
         Ok(res)
     } else {
         Ok(vec![])
@@ -600,31 +584,38 @@ where
 }
 
 #[tracing::instrument(level = "trace", skip(sto))]
-async fn delete_applied_logs<D, R, S>(sto: Arc<S>, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
+async fn purge_applied_logs<D, R, S>(sto: Arc<S>, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
 where
     D: AppData,
     R: AppDataResponse,
     S: RaftStorage<D, R>,
 {
     // TODO(xp): periodically batch delete
-    let x = last_applied.index + 1;
-    let x = x.saturating_sub(max_keep);
+    let end = last_applied.index + 1;
+    let end = end.saturating_sub(max_keep);
 
-    tracing::debug!(%last_applied, max_keep, delete_lt = x, "delete_applied_logs");
+    tracing::debug!(%last_applied, max_keep, delete_lt = end, "delete_applied_logs");
 
-    if x > 0 {
-        sto.delete_logs_from(..x).await
-    } else {
-        Ok(())
+    if end == 0 {
+        return Ok(());
     }
-}
 
-/// An enum describing the way the current leader property is to be updated.
-#[derive(Debug)]
-pub(self) enum UpdateCurrentLeader {
-    Unknown,
-    OtherNode(NodeId),
-    ThisNode,
+    let st = sto.get_log_state().await?;
+
+    if st.last_log_id < Some(*last_applied) {
+        sto.purge_logs_upto(*last_applied).await?;
+        return Ok(());
+    }
+
+    // non applied logs are deleted. it is a bug.
+    assert!(st.last_purged_log_id <= Some(*last_applied));
+
+    if st.last_purged_log_id.index() >= Some(end - 1) {
+        return Ok(());
+    }
+
+    let log_id = sto.get_log_id(end - 1).await?;
+    sto.purge_logs_upto(log_id).await
 }
 
 /// The current snapshot state of the Raft node.
@@ -752,7 +743,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Setup state as leader.
         self.core.last_heartbeat = None;
         self.core.next_election_timeout = None;
-        self.core.update_current_leader(UpdateCurrentLeader::ThisNode);
+        self.core.current_leader = Some(self.core.id);
+
         self.leader_report_metrics();
 
         self.commit_initial_leader_entry().await?;
@@ -845,7 +837,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 struct ReplicationState {
-    pub matched: LogId,
+    pub matched: Option<LogId>,
     pub remove_since: Option<u64>,
     pub repl_stream: ReplicationStream,
 
@@ -856,7 +848,7 @@ struct ReplicationState {
 impl MessageSummary for ReplicationState {
     fn summary(&self) -> String {
         format!(
-            "matched: {}, remove_after_commit: {:?}",
+            "matched: {:?}, remove_after_commit: {:?}",
             self.matched, self.remove_since
         )
     }
@@ -866,14 +858,14 @@ impl ReplicationState {
     // TODO(xp): make this a method of Config?
 
     /// Return true if the distance behind last_log_id is smaller than the threshold to join.
-    pub fn is_line_rate(&self, last_log_id: &LogId, config: &Config) -> bool {
+    pub fn is_line_rate(&self, last_log_id: &Option<LogId>, config: &Config) -> bool {
         is_matched_upto_date(&self.matched, last_log_id, config)
     }
 }
 
-pub fn is_matched_upto_date(matched: &LogId, last_log_id: &LogId, config: &Config) -> bool {
-    let my_index = matched.index;
-    let distance = last_log_id.index.saturating_sub(my_index);
+pub fn is_matched_upto_date(matched: &Option<LogId>, last_log_id: &Option<LogId>, config: &Config) -> bool {
+    let my_index = matched.next_index();
+    let distance = last_log_id.next_index().saturating_sub(my_index);
     distance <= config.replication_lag_threshold
 }
 
@@ -908,7 +900,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.update_next_election_timeout(false); // Generates a new rand value within range.
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
-            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core.current_leader = None;
             self.core.save_hard_state().await?;
             self.core.report_metrics(Update::Update(None));
 
@@ -958,19 +950,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::ClientReadRequest { tx } => {
-                self.core.forward_client_read_request(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
-            RaftMsg::ClientWriteRequest { rpc, tx } => {
-                self.core.forward_client_write_request(rpc, tx);
+            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
             }
             RaftMsg::AddLearner { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
         };
         Ok(())
@@ -1034,19 +1026,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::ClientReadRequest { tx } => {
-                self.core.forward_client_read_request(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
-            RaftMsg::ClientWriteRequest { rpc, tx } => {
-                self.core.forward_client_write_request(rpc, tx);
+            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
             }
             RaftMsg::AddLearner { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
         };
         Ok(())
@@ -1108,19 +1100,19 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::ClientReadRequest { tx } => {
-                self.core.forward_client_read_request(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
-            RaftMsg::ClientWriteRequest { rpc, tx } => {
-                self.core.forward_client_write_request(rpc, tx);
+            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::Initialize { members, tx } => {
                 let _ = tx.send(self.handle_init_with_config(members).await);
             }
             RaftMsg::AddLearner { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
-                self.core.reject_config_change_not_leader(tx);
+                self.core.reject_with_forward_to_leader(tx);
             }
         };
         Ok(())

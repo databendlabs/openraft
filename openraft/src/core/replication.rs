@@ -8,7 +8,6 @@ use crate::core::LeaderState;
 use crate::core::ReplicationState;
 use crate::core::SnapshotState;
 use crate::core::State;
-use crate::core::UpdateCurrentLeader;
 use crate::error::AddLearnerError;
 use crate::raft::AddLearnerResponse;
 use crate::raft::RaftRespTx;
@@ -39,14 +38,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             target,
             self.core.current_term,
             self.core.config.clone(),
-            self.core.last_log_id.expect("raft core is uninitialized."),
+            self.core.last_log_id,
             self.core.committed,
             self.core.network.clone(),
             self.core.storage.clone(),
             self.replication_tx.clone(),
         );
         ReplicationState {
-            matched: LogId { term: 0, index: 0 },
+            matched: None,
             repl_stream,
             remove_since: None,
             tx: caller_tx,
@@ -83,25 +82,25 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         if term > self.core.current_term {
             self.core.update_current_term(term, None);
             self.core.save_hard_state().await?;
-            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core.current_leader = None;
             self.core.set_target_state(State::Follower);
         }
         Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn handle_update_matched(&mut self, target: NodeId, matched: LogId) -> Result<(), StorageError> {
+    async fn handle_update_matched(&mut self, target: NodeId, matched: Option<LogId>) -> Result<(), StorageError> {
         // Update target's match index & check if it is awaiting removal.
 
         if let Some(state) = self.nodes.get_mut(&target) {
-            tracing::debug!("state.matched: {}, update to matched: {}", state.matched, matched);
+            tracing::debug!("state.matched: {:?}, update to matched: {:?}", state.matched, matched);
 
             assert!(matched >= state.matched, "the matched increments monotonically");
 
             state.matched = matched;
 
             // Issue a response on the learners response channel if needed.
-            if state.is_line_rate(&self.core.last_log_id.unwrap_or_default(), &self.core.config) {
+            if state.is_line_rate(&self.core.last_log_id, &self.core.config) {
                 // This replication became line rate.
 
                 // When adding a learner, it blocks until the replication becomes line-rate.
@@ -127,13 +126,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return Ok(());
         }
 
-        let commit_index = self.calc_commit_log_id();
+        let commit_log_id = self.calc_commit_log_id();
 
         // Determine if we have a new commit index, accounting for joint consensus.
         // If a new commit index has been established, then update a few needed elements.
 
-        if commit_index > self.core.committed {
-            self.core.committed = commit_index;
+        if commit_log_id > self.core.committed {
+            self.core.committed = commit_log_id;
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
@@ -150,7 +149,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 .awaiting_committed
                 .iter()
                 .enumerate()
-                .take_while(|(_idx, elem)| elem.entry.log_id <= self.core.committed)
+                .take_while(|(_idx, elem)| Some(elem.entry.log_id) <= self.core.committed)
                 .last()
                 .map(|(idx, _)| idx);
 
@@ -170,22 +169,25 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_leader_metrics(&mut self, target: NodeId, matched: LogId) {
-        tracing::debug!(%target, %matched, "update_leader_metrics");
+    fn update_leader_metrics(&mut self, target: NodeId, matched: Option<LogId>) {
+        tracing::debug!(%target, ?matched, "update_leader_metrics");
         self.leader_metrics.replication.insert(target, ReplicationMetrics { matched });
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn calc_commit_log_id(&self) -> LogId {
-        let repl_indexes = self.get_match_log_indexes();
+    fn calc_commit_log_id(&self) -> Option<LogId> {
+        let repl_indexes = self.get_match_log_ids();
 
         let committed = self.core.effective_membership.membership.greatest_majority_value(&repl_indexes);
 
-        *committed.unwrap_or(&self.core.committed)
+        // TODO(xp): remove this line
+        std::cmp::max(committed.cloned(), self.core.committed)
+
+        // *committed.unwrap_or(&self.core.committed)
     }
 
     /// Collect indexes of the greatest matching log on every replica(include the leader itself)
-    fn get_match_log_indexes(&self) -> BTreeMap<NodeId, LogId> {
+    fn get_match_log_ids(&self) -> BTreeMap<NodeId, LogId> {
         let node_ids = self.core.effective_membership.membership.all_nodes();
 
         let mut res = BTreeMap::new();
@@ -195,7 +197,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 self.core.last_log_id
             } else {
                 let repl_state = self.nodes.get(id);
-                Some(repl_state.map(|x| x.matched).unwrap_or_default())
+                repl_state.map(|x| x.matched).unwrap_or_default()
             };
 
             // Mismatching term can not prevent other replica with higher term log from being chosen as leader,

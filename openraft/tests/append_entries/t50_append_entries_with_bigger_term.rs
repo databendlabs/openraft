@@ -29,13 +29,13 @@ async fn append_entries_with_bigger_term() -> Result<()> {
     let req = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 2,
         leader_id: 1,
-        prev_log_id: LogId::new(1, n_logs),
+        prev_log_id: Some(LogId::new(1, n_logs)),
         entries: vec![],
-        leader_commit: LogId::new(1, n_logs),
+        leader_commit: Some(LogId::new(1, n_logs)),
     };
 
     let resp = router.send_append_entries(0, req).await?;
-    assert!(resp.success());
+    assert!(resp.success);
 
     // after append entries, check hard state in term 2 and vote for node 1
     router

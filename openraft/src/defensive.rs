@@ -5,6 +5,7 @@ use std::ops::RangeBounds;
 use async_trait::async_trait;
 
 use crate::raft::Entry;
+use crate::raft_types::LogIdOptionExt;
 use crate::storage::HardState;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -23,7 +24,7 @@ where
     D: AppData,
     R: AppDataResponse,
     T: RaftStorage<D, R>,
-    Self: Wrapper<T>,
+    Self: Wrapper<D, R, T>,
 {
     /// Enable or disable defensive check when calling storage APIs.
     fn set_defensive(&self, v: bool);
@@ -37,17 +38,17 @@ where
             return Ok(());
         }
 
-        if let Some(last_log_id) = self.inner().last_id_in_log().await? {
-            let (last_applied, _) = self.inner().last_applied_state().await?;
-            if last_log_id.index > last_applied.index && last_log_id < last_applied {
-                return Err(
-                    DefensiveError::new(ErrorSubject::Log(last_log_id), Violation::DirtyLog {
-                        higher_index_log_id: last_log_id,
-                        lower_index_log_id: last_applied,
-                    })
-                    .into(),
-                );
-            }
+        let last_log_id = self.inner().get_log_state().await?.last_log_id;
+        let (last_applied, _) = self.inner().last_applied_state().await?;
+
+        if last_log_id.index() > last_applied.index() && last_log_id < last_applied {
+            return Err(
+                DefensiveError::new(ErrorSubject::Log(last_log_id.unwrap()), Violation::DirtyLog {
+                    higher_index_log_id: last_log_id.unwrap(),
+                    lower_index_log_id: last_applied.unwrap(),
+                })
+                .into(),
+            );
         }
 
         Ok(())
@@ -102,7 +103,7 @@ where
         for e in entries.iter().skip(1) {
             if e.log_id.index != prev_log_id.index + 1 {
                 return Err(DefensiveError::new(ErrorSubject::Logs, Violation::LogsNonConsecutive {
-                    prev: prev_log_id,
+                    prev: Some(prev_log_id),
                     next: e.log_id,
                 })
                 .into());
@@ -135,10 +136,10 @@ where
             return Ok(());
         }
 
-        let last_id = self.last_log_id().await?;
+        let last_id = self.inner().get_log_state().await?.last_log_id;
 
         let first_id = entries[0].log_id;
-        if last_id.index + 1 != first_id.index {
+        if last_id.next_index() != first_id.index {
             return Err(
                 DefensiveError::new(ErrorSubject::Log(first_id), Violation::LogsNonConsecutive {
                     prev: last_id,
@@ -157,10 +158,12 @@ where
             return Ok(());
         }
 
-        let last_id = self.last_log_id().await?;
+        let last_id = self.inner().get_log_state().await?.last_log_id;
 
         let first_id = entries[0].log_id;
-        if first_id < last_id {
+        // TODO(xp): test first eq last.
+        // TODO(xp): test last == None is ok
+        if last_id.is_some() && Some(first_id) <= last_id {
             return Err(
                 DefensiveError::new(ErrorSubject::Log(first_id), Violation::LogsNonConsecutive {
                     prev: last_id,
@@ -173,13 +176,32 @@ where
         Ok(())
     }
 
-    /// Find the last known log id from log or state machine
-    /// If no log id found, the default one `0,0` is returned.
-    async fn last_log_id(&self) -> Result<LogId, StorageError> {
-        let log_last_id = self.inner().last_id_in_log().await?;
-        let (sm_last_id, _) = self.inner().last_applied_state().await?;
+    async fn defensive_purge_applied_le_last_applied(&self, upto: LogId) -> Result<(), StorageError> {
+        let (last_applied, _) = self.inner().last_applied_state().await?;
+        if Some(upto.index) > last_applied.index() {
+            return Err(
+                DefensiveError::new(ErrorSubject::Log(upto), Violation::PurgeNonApplied {
+                    last_applied,
+                    purge_upto: upto,
+                })
+                .into(),
+            );
+        }
+        Ok(())
+    }
 
-        Ok(std::cmp::max(log_last_id.unwrap_or_default(), sm_last_id))
+    async fn defensive_delete_conflict_gt_last_applied(&self, since: LogId) -> Result<(), StorageError> {
+        let (last_applied, _) = self.inner().last_applied_state().await?;
+        if Some(since.index) <= last_applied.index() {
+            return Err(
+                DefensiveError::new(ErrorSubject::Log(since), Violation::AppliedWontConflict {
+                    last_applied,
+                    first_conflict_log_id: since,
+                })
+                .into(),
+            );
+        }
+        Ok(())
     }
 
     /// The entries to apply to state machien has to be last_applied_log_id.index + 1
@@ -191,7 +213,7 @@ where
         let (last_id, _) = self.inner().last_applied_state().await?;
 
         let first_id = entries[0].log_id;
-        if last_id.index + 1 != first_id.index {
+        if last_id.next_index() != first_id.index {
             return Err(
                 DefensiveError::new(ErrorSubject::Apply(first_id), Violation::ApplyNonConsecutive {
                     prev: last_id,
@@ -205,9 +227,9 @@ where
     }
 
     /// The range must not be empty otherwise it is an inappropriate action.
-    async fn defensive_nonempty_range<RNG: RangeBounds<u64> + Clone + Debug + Send>(
+    async fn defensive_nonempty_range<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
@@ -237,9 +259,9 @@ where
 
     /// Requires a range must be at least half open: (-oo, n] or [n, +oo);
     /// In order to keep logs continuity.
-    async fn defensive_half_open_range<RNG: RangeBounds<u64> + Clone + Debug + Send>(
+    async fn defensive_half_open_range<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
-        range: RNG,
+        range: RB,
     ) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
@@ -261,59 +283,16 @@ where
     }
 
     /// An range operation such as get or delete has to actually covers some log entries in store.
-    async fn defensive_range_hits_logs<RNG: RangeBounds<u64> + Debug + Send>(
+    async fn defensive_range_hits_logs<RB: RangeBounds<u64> + Debug + Send>(
         &self,
-        range: RNG,
+        range: RB,
         logs: &[Entry<D>],
     ) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
         }
 
-        {
-            let want_first = match range.start_bound() {
-                Bound::Included(i) => Some(*i),
-                Bound::Excluded(i) => Some(*i + 1),
-                Bound::Unbounded => None,
-            };
-
-            let first = logs.first().map(|x| x.log_id.index);
-
-            if let Some(want) = want_first {
-                if first != want_first {
-                    return Err(
-                        DefensiveError::new(ErrorSubject::LogIndex(want), Violation::LogIndexNotFound {
-                            want,
-                            got: first,
-                        })
-                        .into(),
-                    );
-                }
-            }
-        }
-
-        {
-            let want_last = match range.end_bound() {
-                Bound::Included(i) => Some(*i),
-                Bound::Excluded(i) => Some(*i - 1),
-                Bound::Unbounded => None,
-            };
-
-            let last = logs.last().map(|x| x.log_id.index);
-
-            if let Some(want) = want_last {
-                if last != want_last {
-                    return Err(
-                        DefensiveError::new(ErrorSubject::LogIndex(want), Violation::LogIndexNotFound {
-                            want,
-                            got: last,
-                        })
-                        .into(),
-                    );
-                }
-            }
-        }
-
+        check_range_matches_entries(range, logs)?;
         Ok(())
     }
 
@@ -326,7 +305,8 @@ where
         let (last_id, _) = self.inner().last_applied_state().await?;
 
         let first_id = entries[0].log_id;
-        if first_id < last_id {
+        // TODO(xp): test first eq last
+        if Some(first_id) <= last_id {
             return Err(
                 DefensiveError::new(ErrorSubject::Apply(first_id), Violation::ApplyNonConsecutive {
                     prev: last_id,
@@ -338,4 +318,60 @@ where
 
         Ok(())
     }
+}
+
+pub fn check_range_matches_entries<D: AppData, RB: RangeBounds<u64> + Debug + Send>(
+    range: RB,
+    entries: &[Entry<D>],
+) -> Result<(), StorageError> {
+    let want_first = match range.start_bound() {
+        Bound::Included(i) => Some(*i),
+        Bound::Excluded(i) => Some(*i + 1),
+        Bound::Unbounded => None,
+    };
+
+    let want_last = match range.end_bound() {
+        Bound::Included(i) => Some(*i),
+        Bound::Excluded(i) => Some(*i - 1),
+        Bound::Unbounded => None,
+    };
+
+    if want_first.is_some() && want_last.is_some() && want_first > want_last {
+        // empty range
+        return Ok(());
+    }
+
+    {
+        let first = entries.first().map(|x| x.log_id.index);
+
+        if let Some(want) = want_first {
+            if first != want_first {
+                return Err(
+                    DefensiveError::new(ErrorSubject::LogIndex(want), Violation::LogIndexNotFound {
+                        want,
+                        got: first,
+                    })
+                    .into(),
+                );
+            }
+        }
+    }
+
+    {
+        let last = entries.last().map(|x| x.log_id.index);
+
+        if let Some(want) = want_last {
+            if last != want_last {
+                return Err(
+                    DefensiveError::new(ErrorSubject::LogIndex(want), Violation::LogIndexNotFound {
+                        want,
+                        got: last,
+                    })
+                    .into(),
+                );
+            }
+        }
+    }
+
+    Ok(())
 }

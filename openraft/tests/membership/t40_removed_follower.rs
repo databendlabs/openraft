@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LogIdOptionExt;
 
 use crate::fixtures::RaftRouter;
 
@@ -28,7 +29,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
     router.add_learner(0, 3).await?;
     router.add_learner(0, 4).await?;
     n_logs += 2;
-    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "cluster of 2 learners").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], Some(n_logs), None, "cluster of 2 learners").await?;
 
     tracing::info!("--- changing config to 2,3,4");
     {
@@ -57,7 +58,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
             router
                 .wait(i, timeout())
                 .await?
-                .metrics(|x| x.last_applied >= n_logs, "new cluster recv new logs")
+                .metrics(|x| x.last_applied.index() >= Some(n_logs), "new cluster recv new logs")
                 .await?;
         }
     }
@@ -66,7 +67,10 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
         router
             .wait(i, timeout())
             .await?
-            .metrics(|x| x.last_applied < n_logs, "old cluster does not recv new logs")
+            .metrics(
+                |x| x.last_applied.index() < Some(n_logs),
+                "old cluster does not recv new logs",
+            )
             .await?;
     }
 

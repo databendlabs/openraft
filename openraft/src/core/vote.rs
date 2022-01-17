@@ -5,7 +5,6 @@ use tracing_futures::Instrument;
 use crate::core::CandidateState;
 use crate::core::RaftCore;
 use crate::core::State;
-use crate::core::UpdateCurrentLeader;
 use crate::error::VoteError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -24,7 +23,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "debug", skip(self, msg), fields(msg=%msg.summary()))]
     pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> Result<VoteResponse, VoteError> {
         tracing::debug!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "start handle_vote_request");
-        let last_log_id = self.last_log_id.expect("raft core is uninitialized.");
+        let last_log_id = self.last_log_id;
 
         // If candidate's current term is less than this nodes current term, reject.
         if msg.term < self.current_term {
@@ -115,19 +114,20 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {
+        // TODO(xp): change membership from 123 to 4 may hangs I guess. Because this function will not be called.
         // If peer's term is greater than current term, revert to follower state.
 
         if res.term > self.core.current_term {
             self.core.update_current_term(res.term, None);
             self.core.save_hard_state().await?;
 
-            self.core.update_current_leader(UpdateCurrentLeader::Unknown);
+            self.core.current_leader = None;
 
             // If a quorum of nodes have higher `last_log_id`, I have no chance to become a leader.
             // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `last_log_id`.
             //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
             //           election.
-            if self.core.last_log_id < Some(res.last_log_id) {
+            if self.core.last_log_id < res.last_log_id {
                 self.core.set_target_state(State::Follower);
                 tracing::debug!("reverting to follower state due to greater term observed in RequestVote RPC response");
             } else {
@@ -136,7 +136,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     self_term=%self.core.current_term,
                     res_term=%res.term,
                     self_last_log_id=?self.core.last_log_id,
-                    res_last_log_id=%res.last_log_id,
+                    res_last_log_id=?res.last_log_id,
                     "I have lower term but higher or euqal last_log_id, keep trying to elect"
                 );
             }
@@ -164,11 +164,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let (tx, rx) = mpsc::channel(all_nodes.len());
 
         for member in all_nodes.into_iter().filter(|member| member != &self.core.id) {
-            let rpc = VoteRequest::new(
-                self.core.current_term,
-                self.core.id,
-                self.core.last_log_id.expect("raft core is uninitialized."),
-            );
+            let rpc = VoteRequest::new(self.core.current_term, self.core.id, self.core.last_log_id);
 
             let (network, tx_inner) = (self.core.network.clone(), tx.clone());
             let _ = tokio::spawn(

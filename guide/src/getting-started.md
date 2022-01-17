@@ -12,13 +12,13 @@ Raft includes two major parts:
 - and how to consume the logs, which is defined mainly in state machine.
 
 To implement your own raft based application with openraft is quite easy, which
-includes: 
+includes:
 
 - Define client request and response;
 - Implement a storage to let raft store its state;
 - Implement a network layer for raft to transmit messages.
 
-## Define client request and response
+## 1. Define client request and response
 
 A request is some data that modifies the raft state machine.
 A response is some data that the raft state machine returns to client.
@@ -40,37 +40,65 @@ These two types are totally application specific, and are mainly related to the
 state machine implementation in `RaftStorage`.
 
 
-## Implement RaftStorage
+## 2. Implement `RaftStorage`
 
 The trait `RaftStorage` defines the way that data is stored and consumed.
 It could be a wrapper of some local KV store such [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/),
 or a wrapper of a remote sql DB.
 
-`RaftStorage` defines 4 sets of APIs:
+`RaftStorage` defines 4 sets of APIs an application needs to implement:
 
 - Read/write raft state, e.g., term or vote.
+    ```rust
+    fn save_hard_state(hs:&HardState)
+    fn read_hard_state() -> Result<Option<HardState>>
+    ```
+
 - Read/write logs.
+    ```rust
+    fn get_log_state() -> Result<LogState>
+    fn try_get_log_entries(range) -> Result<Vec<Entry>>
+
+    fn append_to_log(entries)
+
+    fn delete_conflict_logs_since(since:LogId)
+    fn purge_logs_upto(upto:LogId)
+    ```
+
 - Apply log entry to the state machine.
+    ```rust
+    fn last_applied_state() -> Result<(Option<LogId>, Option<EffectiveMembership>)>
+    fn apply_to_state_machine(entries) -> Result<Vec<AppResponse>>
+    ```
+
 - Building and installing a snapshot.
+    ```rust
+    fn build_snapshot() -> Result<Snapshot>
+    fn get_current_snapshot() -> Result<Option<Snapshot>>
+
+    fn begin_receiving_snapshot() -> Result<Box<SnapshotData>>
+    fn install_snapshot(meta, snapshot)
+    ```
+
+The APIs have been made quite obvious and there is a good example
+[`MemStore`](https://github.com/datafuselabs/openraft/blob/main/memstore/src/lib.rs),
+which is a pure-in-memory implementation that shows what should be done when a
+method is called.
 
 
 ### How do I impl RaftStorage correctly
 
-- The APIs have been made quite obvious and there is a good example
-[`memstore`](https://github.com/datafuselabs/openraft/tree/main/memstore),
-which is a pure-in-memory implementation that shows what should be done when a
-method is called.
+There is a [Test suite for RaftStorage](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs),
+if an implementation passes the test, openraft will work happily with it.
 
-- There is a test suite for `RaftStorage` impl, if an impl passes the test,
-  Openraft will work happily with it.
+To test your implementation with this suite, just do this:
 
-  [Test suite for RaftStorage impl](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs)
-
-  TODO(xp): move this test suite to openraft crate so that users can include it.
-
-  ```rust
-  // TODO(xp): give a example how to test an impl of RaftStorage
-  ```
+```rust
+#[test]
+pub fn test_mem_store() -> anyhow::Result<()> {
+  openraft::testing::Suite::test_all(MemStore::new)
+}
+```
 
 ### Race condition about RaftStorage
 
@@ -85,7 +113,7 @@ The caller always assumes a completed write is persistent.
 The raft correctness highly depends on a reliable store.
 
 
-## impl `RaftNetwork`
+## 3. impl `RaftNetwork`
 
 Raft nodes need to communicate with each other to achieve consensus about the
 logs.
@@ -112,9 +140,9 @@ As a real world impl, you may want to use [Tonic gRPC](https://github.com/hyperi
 [databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) would be a nice real world example.
 
 
-## Put everything together
+## 4. Put everything together
 
-Finally we put these part together and boot up a raft node:
+Finally, we put these part together and boot up a raft node:
 
 ```rust
 /// The application data request type which the `MemStore` works with.

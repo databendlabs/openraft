@@ -29,7 +29,7 @@ async fn client_reads() -> Result<()> {
     let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "empty node").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], None, None, "empty node").await?;
     router.wait_for_state(&btreeset![0, 1, 2], State::Learner, None, "empty node").await?;
     router.assert_pristine_cluster().await;
 
@@ -38,7 +38,7 @@ async fn client_reads() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "init leader").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], Some(n_logs), None, "init leader").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Get the ID of the leader, and assert that client_read succeeds.

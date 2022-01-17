@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::ChangeMembershipError;
+use openraft::error::ChangeMembershipError;
 use openraft::Config;
 use openraft::RaftStorage;
 
@@ -34,7 +34,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         router.client_request_many(0, "non_voter_add", 100 - n_logs as usize).await;
         n_logs = 100;
 
-        router.wait(&0, timeout()).await?.log(n_logs, "received 100 logs").await?;
+        router.wait(&0, timeout()).await?.log(Some(n_logs), "received 100 logs").await?;
     }
 
     tracing::info!("--- change membership without adding-learner");
@@ -75,7 +75,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
     tracing::info!("--- stop replication by isolating node 1");
     {
@@ -84,10 +84,10 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
 
     tracing::info!("--- write up to 100 logs");
     {
-        router.client_request_many(0, "non_voter_add", 500 - n_logs as usize).await;
-        n_logs = 500;
+        router.client_request_many(0, "non_voter_add", 500 - log_index as usize).await;
+        log_index = 500;
 
-        router.wait(&0, timeout()).await?.log(n_logs, "received 500 logs").await?;
+        router.wait(&0, timeout()).await?.log(Some(log_index), "received 500 logs").await?;
     }
 
     tracing::info!("--- restore replication and change membership at once, expect NonVoterIsLagging");
@@ -101,15 +101,11 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         let err: ChangeMembershipError = err.try_into().unwrap();
 
         match err {
-            ChangeMembershipError::LearnerIsLagging {
-                node_id,
-                matched: _,
-                distance,
-            } => {
-                tracing::info!(distance, "--- distance");
-                assert_eq!(1, node_id);
-                assert!(distance >= lag_threshold);
-                assert!(distance < 500);
+            ChangeMembershipError::LearnerIsLagging(e) => {
+                tracing::info!(e.distance, "--- distance");
+                assert_eq!(1, e.node_id);
+                assert!(e.distance >= lag_threshold);
+                assert!(e.distance < 500);
             }
             _ => {
                 panic!("expect ChangeMembershipError::NonVoterNotFound");

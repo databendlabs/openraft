@@ -41,7 +41,7 @@ async fn client_writes() -> Result<()> {
     let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "empty").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], None, None, "empty").await?;
     router.wait_for_state(&btreeset![0, 1, 2], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
@@ -50,7 +50,7 @@ async fn client_writes() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     n_logs += 1;
 
-    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "leader init log").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], Some(n_logs), None, "leader init log").await?;
     router.wait_for_state(&btreeset![0], State::Leader, None, "cluster leader").await?;
     router.wait_for_state(&btreeset![1, 2], State::Follower, None, "cluster follower").await?;
 
@@ -68,7 +68,7 @@ async fn client_writes() -> Result<()> {
     while clients.next().await.is_some() {}
 
     n_logs += 500 * 6;
-    router.wait_for_log(&btreeset![0, 1, 2], n_logs, None, "sync logs").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], Some(n_logs), None, "sync logs").await?;
 
     router.assert_stable_cluster(Some(1), Some(n_logs)).await; // The extra 1 is from the leader's initial commit entry.
 
@@ -78,7 +78,7 @@ async fn client_writes() -> Result<()> {
             n_logs,
             Some(0),
             LogId::new(1, n_logs),
-            Some(((2000..2100).into(), 1)),
+            Some(((1999..2100).into(), 1)),
         )
         .await?;
 

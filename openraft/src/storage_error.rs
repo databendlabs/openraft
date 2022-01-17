@@ -108,11 +108,23 @@ pub enum Violation {
     #[error("all logs are removed. It requires at least one log to track continuity")]
     StoreLogsEmpty,
 
-    #[error("logs are not consecutive, prev: {prev}, next: {next}")]
-    LogsNonConsecutive { prev: LogId, next: LogId },
+    #[error("logs are not consecutive, prev: {prev:?}, next: {next}")]
+    LogsNonConsecutive { prev: Option<LogId>, next: LogId },
 
-    #[error("invalid next log to apply: prev: {prev}, next: {next}")]
-    ApplyNonConsecutive { prev: LogId, next: LogId },
+    #[error("invalid next log to apply: prev: {prev:?}, next: {next}")]
+    ApplyNonConsecutive { prev: Option<LogId>, next: LogId },
+
+    #[error("applied log can not conflict, last_applied: {last_applied:?}, delete since: {first_conflict_log_id}")]
+    AppliedWontConflict {
+        last_applied: Option<LogId>,
+        first_conflict_log_id: LogId,
+    },
+
+    #[error("not allowed to purge non-applied logs, last_applied: {last_applied:?}, purge upto: {purge_upto}")]
+    PurgeNonApplied {
+        last_applied: Option<LogId>,
+        purge_upto: LogId,
+    },
 }
 
 /// A storage error could be either a defensive check error or an error occurred when doing the actual io operation.

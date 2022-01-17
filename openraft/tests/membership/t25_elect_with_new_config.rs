@@ -5,6 +5,7 @@ use anyhow::Result;
 use futures::stream::StreamExt;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LogIdOptionExt;
 use openraft::State;
 use tokio::time::sleep;
 
@@ -35,7 +36,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     let mut n_logs = 0;
 
     // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0], n_logs, None, "empty").await?;
+    router.wait_for_log(&btreeset![0], None, None, "empty").await?;
     router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
@@ -44,7 +45,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     n_logs += 1;
 
-    router.wait_for_log(&btreeset![0], n_logs, None, "init").await?;
+    router.wait_for_log(&btreeset![0], Some(n_logs), None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(n_logs)).await;
 
     // Sync some new nodes.
@@ -64,13 +65,15 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     }
 
     n_logs += 4;
-    router.wait_for_log(&btreeset![0], n_logs, None, "cluster of 4 learners").await?;
+    router.wait_for_log(&btreeset![0], Some(n_logs), None, "cluster of 4 learners").await?;
 
     tracing::info!("--- changing cluster config");
     router.change_membership(0, btreeset![0, 1, 2, 3, 4]).await?;
     n_logs += 2;
 
-    router.wait_for_log(&btreeset![0, 1, 2, 3, 4], n_logs, None, "cluster of 5 candidates").await?;
+    router
+        .wait_for_log(&btreeset![0, 1, 2, 3, 4], Some(n_logs), None, "cluster of 5 candidates")
+        .await?;
     router.assert_stable_cluster(Some(1), Some(n_logs)).await; // Still in term 1, so leader is still node 0.
 
     // Isolate old leader and assert that a new leader takes over.
@@ -95,7 +98,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     let applied = metrics.last_applied;
     let leader_id = metrics.current_leader;
 
-    router.assert_stable_cluster(Some(term), Some(applied)).await;
+    router.assert_stable_cluster(Some(term), applied.index()).await;
     let leader = router.leader().await.expect("expected new leader");
     assert!(leader != 0, "expected new leader to be different from the old leader");
 
@@ -110,7 +113,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
         )
         .await?;
 
-    router.assert_stable_cluster(Some(term), Some(applied)).await;
+    router.assert_stable_cluster(Some(term), applied.index()).await;
 
     let current_leader = router.leader().await.expect("expected to find current leader");
     assert_eq!(leader, current_leader, "expected cluster leadership to stay the same");

@@ -13,6 +13,8 @@ use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
 
+use crate::fixtures::blank;
+
 #[macro_use]
 mod fixtures;
 
@@ -29,8 +31,8 @@ async fn elect_compare_last_log() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let sto0 = router.new_store(0).await;
-    let sto1 = router.new_store(1).await;
+    let sto0 = router.new_store().await;
+    let sto1 = router.new_store().await;
 
     tracing::info!("--- fake store: sto0: last log: 2,1");
     {
@@ -40,7 +42,7 @@ async fn elect_compare_last_log() -> Result<()> {
         })
         .await?;
 
-        sto0.append_to_log(&[&Entry {
+        sto0.append_to_log(&[&blank(0, 0), &Entry {
             log_id: LogId { term: 2, index: 1 },
             payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
         }])
@@ -56,14 +58,12 @@ async fn elect_compare_last_log() -> Result<()> {
         .await?;
 
         sto1.append_to_log(&[
+            &blank(0, 0),
             &Entry {
                 log_id: LogId { term: 1, index: 1 },
                 payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
             },
-            &Entry {
-                log_id: LogId { term: 1, index: 2 },
-                payload: EntryPayload::Blank,
-            },
+            &blank(1, 2),
         ])
         .await?;
     }

@@ -46,7 +46,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     tracing::info!("--- wait for log to sync");
     n_logs += 2u64;
     for node_id in 0..2 {
-        router.wait_for_log(&btreeset![node_id], n_logs, None, "write one log").await?;
+        router.wait_for_log(&btreeset![node_id], Some(n_logs), None, "write one log").await?;
         let sto = router.get_storage_handle(&node_id).await?;
         assert!(sto.get_state_machine().await.client_status.get("foo").is_some());
     }
