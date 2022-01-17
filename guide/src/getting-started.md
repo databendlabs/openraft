@@ -12,7 +12,7 @@ Raft includes two major parts:
 - and how to consume the logs, which is defined mainly in state machine.
 
 To implement your own raft based application with openraft is quite easy, which
-includes: 
+includes:
 
 - Define client request and response;
 - Implement a storage to let raft store its state;
@@ -46,12 +46,39 @@ The trait `RaftStorage` defines the way that data is stored and consumed.
 It could be a wrapper of some local KV store such [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/),
 or a wrapper of a remote sql DB.
 
-`RaftStorage` defines 4 sets of APIs:
+`RaftStorage` defines 4 sets of APIs an application needs to implement:
 
 - Read/write raft state, e.g., term or vote.
+    ```rust
+    fn save_hard_state(hs:&HardState)
+    fn read_hard_state() -> Result<Option<HardState>>
+    ```
+
 - Read/write logs.
+    ```rust
+    fn get_log_state() -> Result<LogState>
+    fn try_get_log_entries(range) -> Result<Vec<Entry>>
+
+    fn append_to_log(entries)
+
+    fn delete_conflict_logs_since(since:LogId)
+    fn purge_logs_upto(upto:LogId)
+    ```
+
 - Apply log entry to the state machine.
+    ```rust
+    fn last_applied_state() -> Result<(Option<LogId>, Option<EffectiveMembership>)>
+    fn apply_to_state_machine(entries) -> Result<Vec<AppResponse>>
+    ```
+
 - Building and installing a snapshot.
+    ```rust
+    fn build_snapshot() -> Result<Snapshot>
+    fn get_current_snapshot() -> Result<Option<Snapshot>>
+
+    fn begin_receiving_snapshot() -> Result<Box<SnapshotData>>
+    fn install_snapshot(meta, snapshot)
+    ```
 
 The APIs have been made quite obvious and there is a good example
 [`MemStore`](https://github.com/datafuselabs/openraft/blob/main/memstore/src/lib.rs),
