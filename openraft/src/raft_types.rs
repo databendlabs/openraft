@@ -122,7 +122,6 @@ pub enum Update<T> {
 /// E.g. when applying a log to state machine, or installing a state machine from snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateMachineChanges {
-    // TODO(xp): it does not need to be an Option
-    pub last_applied: Option<LogId>,
+    pub last_applied: LogId,
     pub is_snapshot: bool,
 }
