@@ -115,38 +115,67 @@ async fn snapshot_overrides_membership() -> Result<()> {
         tracing::info!("--- add learner to the cluster to receive snapshot, which overrides the learner storage");
         {
             router.add_learner(0, 1).await.expect("failed to add new node as learner");
-            n_logs += 1;
+            log_index += 1;
 
             tracing::info!("--- DONE add learner");
 
-            router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
+            router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "add learner").await?;
+            router.wait_for_log(&btreeset![1], Some(log_index - 1), timeout(), "add learner").await?;
             router
                 .wait_for_snapshot(
                     &btreeset![1],
                     LogId {
                         term: 1,
-                        index: log_index,
+                        index: log_index - 1,
                     },
                     timeout(),
                     "",
                 )
                 .await?;
 
-            let expected_snap = Some((log_index.into(), 1));
-
             router
-                .assert_storage_state(
+                .assert_storage_state_in_node(
+                    0,
                     1,
                     log_index,
-                    None, /* learner does not vote */
+                    Some(0),
                     LogId {
                         term: 1,
                         index: log_index,
                     },
-                    expected_snap,
+                    Some(((log_index - 1).into(), 1)),
                 )
                 .await?;
 
+            router
+                .assert_storage_state_in_node(
+                    1,
+                    1,
+                    log_index - 1,
+                    Some(0),
+                    LogId {
+                        term: 1,
+                        index: log_index - 1,
+                    },
+                    Some(((log_index - 1).into(), 1)),
+                )
+                .await?;
+            /*
+                        let expected_snap = Some((log_index.into(), 1));
+
+                        router
+                            .assert_storage_state(
+                                1,
+                                log_index,
+                                None, /* learner does not vote */
+                                LogId {
+                                    term: 1,
+                                    index: log_index,
+                                },
+                                expected_snap,
+                            )
+                            .await?;
+            */
             let m = sto.get_membership().await?;
 
             let m = m.unwrap();

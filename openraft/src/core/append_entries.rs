@@ -209,11 +209,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let mismatched = self.does_log_id_match(prev_log_id).await?;
 
         tracing::debug!(
-            "check prev_log_id {:?} match: committed: {:?}, matches: {:?} {}",
+            "check prev_log_id {:?} match: committed: {:?}, mismatched: {:?}",
             prev_log_id,
             self.committed,
             mismatched,
-            entries.len(),
         );
 
         if let Some(mismatched_log_id) = mismatched {
