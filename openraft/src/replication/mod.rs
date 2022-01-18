@@ -196,7 +196,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // If it returns Ok(), always go back to LineRate state.
             let res = match &self.target_repl_state {
                 TargetReplState::LineRate => self.line_rate_loop().await,
-                TargetReplState::Snapshotting => self.replicate_snapshot().await,
+                TargetReplState::Snapshotting { must_include } => {
+                    let must = *must_include;
+                    self.replicate_snapshot(must).await
+                }
                 TargetReplState::Shutdown => return,
             };
 
@@ -229,11 +232,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     // TODO(xp): tell core to quit?
                     return;
                 }
-                ReplicationError::LackEntry(_) => {
-                    self.set_target_repl_state(TargetReplState::Snapshotting);
+                ReplicationError::LackEntry(lack_ent) => {
+                    self.set_target_repl_state(TargetReplState::Snapshotting {
+                        must_include: lack_ent.last_purged_log_id,
+                    });
                 }
                 ReplicationError::CommittedAdvanceTooMany { .. } => {
-                    self.set_target_repl_state(TargetReplState::Snapshotting);
+                    self.set_target_repl_state(TargetReplState::Snapshotting { must_include: None });
                 }
                 ReplicationError::StorageError(_err) => {
                     self.set_target_repl_state(TargetReplState::Shutdown);
@@ -267,12 +272,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             let log_state = self.storage.get_log_state().await?;
 
-            let smallest_prev_id = log_state.last_purged_log_id;
+            let last_purged = log_state.last_purged_log_id;
 
-            self.check_consecutive(smallest_prev_id)?;
+            self.check_consecutive(last_purged)?;
 
-            if prev_index < smallest_prev_id.index() {
-                prev_index = smallest_prev_id.index();
+            if prev_index < last_purged.index() {
+                prev_index = last_purged.index();
             }
 
             let start = prev_index.next_index();
@@ -281,7 +286,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             tracing::debug!(
                 ?self.matched,
                 ?self.max_possible_matched_index,
-                ?smallest_prev_id,
+                ?last_purged,
                 ?prev_index,
                 end,
                 "load entries",
@@ -289,8 +294,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             assert!(end >= prev_index.next_index());
 
-            let prev_log_id = if prev_index == smallest_prev_id.index() {
-                smallest_prev_id
+            let prev_log_id = if prev_index == last_purged.index() {
+                last_purged
             } else if let Some(prev_i) = prev_index {
                 let first = self.storage.try_get_log_entry(prev_i).await?;
                 match first {
@@ -406,12 +411,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
     #[tracing::instrument(level = "trace", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
-    fn check_consecutive(&self, smallest_prev_id: Option<LogId>) -> Result<(), ReplicationError> {
-        tracing::debug!(?smallest_prev_id, ?self.max_possible_matched_index, "check_consecutive");
+    fn check_consecutive(&self, last_purged: Option<LogId>) -> Result<(), ReplicationError> {
+        tracing::debug!(?last_purged, ?self.max_possible_matched_index, "check_consecutive");
 
-        if smallest_prev_id.index() > self.max_possible_matched_index {
+        if last_purged.index() > self.max_possible_matched_index {
             return Err(ReplicationError::LackEntry(LackEntry {
                 index: self.max_possible_matched_index,
+                last_purged_log_id: last_purged,
             }));
         }
 
@@ -533,8 +539,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 enum TargetReplState {
     /// The replication stream is running at line rate.
     LineRate,
+
     /// The replication stream is streaming a snapshot over to the target node.
-    Snapshotting,
+    Snapshotting { must_include: Option<LogId> },
+
     /// The replication stream is shutting down.
     Shutdown,
 }
@@ -594,8 +602,11 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
     },
     /// An event from a replication stream requesting snapshot info.
     NeedsSnapshot {
-        /// The ID of the target node from which the event was sent.
         target: NodeId,
+
+        /// The log id the caller requires the snapshot has to include.
+        must_include: Option<LogId>,
+
         /// The response channel for delivering the snapshot data.
         tx: oneshot::Sender<Snapshot<S>>,
     },
@@ -615,8 +626,12 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
             ReplicaEvent::RevertToFollower { ref target, ref term } => {
                 format!("RevertToFollower: target: {}, term: {}", target, term)
             }
-            ReplicaEvent::NeedsSnapshot { ref target, .. } => {
-                format!("NeedsSnapshot: target: {}", target)
+            ReplicaEvent::NeedsSnapshot {
+                ref target,
+                ref must_include,
+                ..
+            } => {
+                format!("NeedsSnapshot: target: {}, must_include: {:?}", target, must_include)
             }
             ReplicaEvent::Shutdown => "Shutdown".to_string(),
         }
@@ -699,8 +714,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     #[tracing::instrument(level = "debug", skip(self), fields(state = "snapshotting"))]
-    pub async fn replicate_snapshot(&mut self) -> Result<(), ReplicationError> {
-        let snapshot = self.wait_for_snapshot().await?;
+    pub async fn replicate_snapshot(&mut self, snapshot_must_include: Option<LogId>) -> Result<(), ReplicationError> {
+        let snapshot = self.wait_for_snapshot(snapshot_must_include).await?;
         self.stream_snapshot(snapshot).await?;
 
         Ok(())
@@ -711,7 +726,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     /// If an error comes up during processing, this routine should simple be called again after
     /// issuing a new request to the storage layer.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn wait_for_snapshot(&mut self) -> Result<Snapshot<S::SnapshotData>, ReplicationError> {
+    async fn wait_for_snapshot(
+        &mut self,
+        snapshot_must_include: Option<LogId>,
+    ) -> Result<Snapshot<S::SnapshotData>, ReplicationError> {
         // Ask raft core for a snapshot.
         // - If raft core has a ready snapshot, it sends back through tx.
         // - Otherwise raft core starts a new task taking snapshot, and **close** `tx` when finished. Thus there has to
@@ -726,6 +744,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             let _ = self.raft_core_tx.send((
                 ReplicaEvent::NeedsSnapshot {
                     target: self.target,
+                    must_include: snapshot_must_include,
                     tx,
                 },
                 tracing::debug_span!("CH"),
