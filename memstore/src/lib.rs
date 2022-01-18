@@ -364,7 +364,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         let mut current_snapshot = self.current_snapshot.write().await;
         *current_snapshot = Some(new_snapshot);
         Ok(StateMachineChanges {
-            last_applied: Some(meta.last_log_id),
+            last_applied: meta.last_log_id,
             is_snapshot: true,
         })
     }

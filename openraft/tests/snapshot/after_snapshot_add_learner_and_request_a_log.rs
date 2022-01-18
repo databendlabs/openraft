@@ -3,17 +3,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::raft::AppendEntriesRequest;
-use openraft::raft::Entry;
-use openraft::raft::EntryPayload;
 use openraft::Config;
 use openraft::LogId;
-use openraft::Membership;
-use openraft::RaftNetwork;
-use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 
-use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
 
 /// Test membership info is sync correctly along with snapshot.
@@ -24,7 +17,7 @@ use crate::fixtures::RaftRouter;
 /// - send enough requests to the node that log compaction will be triggered.
 /// - ensure that snapshot overrides the existent membership on the learner.
 #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
-async fn snapshot_overrides_membership() -> Result<()> {
+async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 
@@ -85,39 +78,17 @@ async fn snapshot_overrides_membership() -> Result<()> {
     tracing::info!("--- create learner");
     {
         tracing::info!("--- create learner");
-        router.new_raft_node(1).await;
-        let sto = router.get_storage_handle(&1).await?;
-
-        tracing::info!("--- add a membership config log to the learner");
-        {
-            let req = AppendEntriesRequest {
-                term: 1,
-                leader_id: 0,
-                prev_log_id: None,
-                entries: vec![blank(0, 0), Entry {
-                    log_id: LogId { term: 1, index: 1 },
-                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {2,3})),
-                }],
-                leader_commit: Some(LogId::new(0, 0)),
-            };
-            router.send_append_entries(1, req).await?;
-
-            tracing::info!("--- check that learner membership is affected");
-            {
-                let m = sto.get_membership().await?;
-
-                let m = m.unwrap();
-
-                assert_eq!(Membership::new_single(btreeset! {2,3}), m.membership);
-            }
-        }
 
         tracing::info!("--- add learner to the cluster to receive snapshot, which overrides the learner storage");
         {
+            router.new_raft_node(1).await;
             router.add_learner(0, 1).await.expect("failed to add new node as learner");
             log_index += 1;
 
             tracing::info!("--- DONE add learner");
+            router.client_request_many(0, "0", 1).await;
+            log_index += 1;
+            tracing::info!("--- after request a log");
 
             router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
             router
@@ -146,16 +117,6 @@ async fn snapshot_overrides_membership() -> Result<()> {
                     expected_snap,
                 )
                 .await?;
-
-            let m = sto.get_membership().await?;
-
-            let m = m.unwrap();
-
-            assert_eq!(
-                Membership::new_single_with_learners(btreeset! {0}, btreeset! {1}),
-                m.membership,
-                "membership should be overridden by the snapshot"
-            );
         }
     }
 
