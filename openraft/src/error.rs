@@ -218,9 +218,10 @@ pub enum ReplicationError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error("store has no log at: {index:?}")]
+#[error("store has no log at: {index:?}, last purged: {last_purged_log_id:?}")]
 pub struct LackEntry {
     pub index: Option<u64>,
+    pub last_purged_log_id: Option<LogId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]

@@ -65,8 +65,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             ReplicaEvent::UpdateMatched { target, matched } => {
                 self.handle_update_matched(target, matched).await?;
             }
-            ReplicaEvent::NeedsSnapshot { target, tx } => {
-                self.handle_needs_snapshot(target, tx).await?;
+            ReplicaEvent::NeedsSnapshot {
+                target: _,
+                must_include,
+                tx,
+            } => {
+                self.handle_needs_snapshot(must_include, tx).await?;
             }
             ReplicaEvent::Shutdown => {
                 self.core.set_target_state(State::Shutdown);
@@ -214,10 +218,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// A replication streams requesting for snapshot info.
+    ///
+    /// The snapshot has to include `must_include`.
     #[tracing::instrument(level = "debug", skip(self, tx))]
     async fn handle_needs_snapshot(
         &mut self,
-        _: NodeId,
+        must_include: Option<LogId>,
         tx: oneshot::Sender<Snapshot<S::SnapshotData>>,
     ) -> Result<(), StorageError> {
         // Ensure snapshotting is configured, else do nothing.
@@ -229,15 +235,22 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let current_snapshot_opt = self.core.storage.get_current_snapshot().await?;
 
         if let Some(snapshot) = current_snapshot_opt {
-            // If snapshot exists, ensure its distance from the leader's last log index is <= half
-            // of the configured snapshot threshold, else create a new snapshot.
-            if snapshot_is_within_half_of_threshold(
-                &snapshot.meta.last_log_id.index,
-                &self.core.last_log_id.unwrap_or_default().index,
-                &threshold,
-            ) {
-                let _ = tx.send(snapshot);
-                return Ok(());
+            if let Some(must_inc) = must_include {
+                if snapshot.meta.last_log_id >= must_inc {
+                    let _ = tx.send(snapshot);
+                    return Ok(());
+                }
+            } else {
+                // If snapshot exists, ensure its distance from the leader's last log index is <= half
+                // of the configured snapshot threshold, else create a new snapshot.
+                if snapshot_is_within_half_of_threshold(
+                    &snapshot.meta.last_log_id.index,
+                    &self.core.last_log_id.unwrap_or_default().index,
+                    &threshold,
+                ) {
+                    let _ = tx.send(snapshot);
+                    return Ok(());
+                }
             }
         }
 
