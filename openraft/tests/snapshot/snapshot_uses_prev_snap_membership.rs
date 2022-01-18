@@ -33,9 +33,9 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            // Use 2, with 1 it triggers a compaction when replicating ent-1,
+            // Use 3, with 1 it triggers a compaction when replicating ent-1,
             // because ent-0 is removed.
-            max_applied_log_to_keep: 2,
+            max_applied_log_to_keep: 3,
             ..Default::default()
         }
         .validate()?,
@@ -73,7 +73,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
         {
             let logs = sto0.get_log_entries(..).await?;
-            assert_eq!(2, logs.len(), "only one applied log is kept");
+            assert_eq!(3, logs.len(), "only one applied log is kept");
         }
         let m = sto0.get_membership().await?;
 
@@ -122,7 +122,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     {
         {
             let logs = sto0.get_log_entries(..).await?;
-            assert_eq!(2, logs.len(), "only one applied log");
+            assert_eq!(3, logs.len(), "only one applied log");
         }
         let m = sto0.get_membership().await?;
 
