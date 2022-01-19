@@ -9,16 +9,12 @@ use openraft::State;
 
 use crate::fixtures::RaftRouter;
 
-/// Client write tests.
+/// Change membership from {0,1} to {1,2,3}.
 ///
-/// What does this test do?
-///
-/// - create a stable 2-node cluster.
-/// - starts a config change which adds two new nodes and removes the leader.
-/// - the leader should commit the change to C0 & C1 with separate majorities and then stepdown after the config change
-///   is committed.
+/// - Then the leader should step down after joint log is committed.
+/// - Check logs on other node.
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
-async fn stepdown() -> Result<()> {
+async fn step_down() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
 
@@ -32,23 +28,8 @@ async fn stepdown() -> Result<()> {
         .validate()?,
     );
     let router = Arc::new(RaftRouter::new(config.clone()));
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
 
-    let mut n_logs = 0;
-
-    // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1], None, timeout(), "empty").await?;
-    router.wait_for_state(&btreeset![0, 1], State::Learner, timeout(), "empty").await?;
-    router.assert_pristine_cluster().await;
-
-    // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
-    router.initialize_from_single_node(0).await?;
-    n_logs += 1;
-
-    router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout(), "init").await?;
-    router.assert_stable_cluster(Some(1), Some(1)).await;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {}).await?;
 
     // Submit a config change which adds two new nodes and removes the current leader.
     let orig_leader = router.leader().await.expect("expected the cluster to have a leader");
@@ -56,14 +37,14 @@ async fn stepdown() -> Result<()> {
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
     router.change_membership(orig_leader, btreeset![1, 2, 3]).await?;
-    n_logs += 2;
+    log_index += 2;
 
     tracing::info!("--- old leader commits 2 membership log");
     {
         router
             .wait(&orig_leader, timeout())
             .await?
-            .log(Some(n_logs), "old leader commits 2 membership log")
+            .log(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
 
@@ -73,20 +54,20 @@ async fn stepdown() -> Result<()> {
     router
         .wait(&1, timeout())
         .await?
-        .log_at_least(n_logs, "node in old cluster commits at least 1 membership log")
+        .log_at_least(log_index, "node in old cluster commits at least 1 membership log")
         .await?;
 
     tracing::info!("--- new cluster commits 2 membership logs");
     {
         // leader commit a new log.
-        n_logs += 1;
+        log_index += 1;
 
         for id in [2, 3] {
             router
                 .wait(&id, timeout())
                 .await?
                 .log_at_least(
-                    n_logs,
+                    log_index,
                     "node in new cluster finally commit at least one blank leader-initialize log",
                 )
                 .await?;
@@ -114,8 +95,8 @@ async fn stepdown() -> Result<()> {
 
         assert!(metrics.state != State::Leader);
         assert_eq!(metrics.current_term, 1);
-        assert_eq!(metrics.last_log_index, Some(3));
-        assert_eq!(metrics.last_applied.index(), Some(3));
+        assert_eq!(metrics.last_log_index, Some(5));
+        assert_eq!(metrics.last_applied.index(), Some(5));
         assert_eq!(cfg.get_configs().clone(), vec![btreeset![1, 2, 3]]);
         assert!(!cfg.is_in_joint_consensus());
     }
