@@ -72,6 +72,8 @@ async fn state_machine_apply_membership() -> Result<()> {
     while let Some(inner) = new_nodes.next().await {
         inner?;
     }
+    log_index += 4;
+    router.wait_for_log(&btreeset![0], Some(log_index), None, "add learner").await?;
 
     tracing::info!("--- changing cluster config");
     router.change_membership(0, btreeset![0, 1, 2]).await?;
@@ -98,8 +100,11 @@ async fn state_machine_apply_membership() -> Result<()> {
         let (_, last_membership) = sto.last_applied_state().await?;
         assert_eq!(
             Some(EffectiveMembership {
-                log_id: LogId { term: 1, index: 3 },
-                membership: Membership::new_single(btreeset! {0,1,2})
+                log_id: LogId {
+                    term: 1,
+                    index: log_index
+                },
+                membership: Membership::new_single_with_learners(btreeset! {0, 1, 2}, btreeset! {3,4})
             }),
             last_membership
         );

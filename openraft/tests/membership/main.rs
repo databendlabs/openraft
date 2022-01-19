@@ -7,9 +7,13 @@ mod fixtures;
 
 mod t00_learner_restart;
 mod t10_add_learner;
+
 mod t15_add_remove_follower;
+
 mod t20_change_membership;
+
 mod t25_elect_with_new_config;
+
 mod t30_commit_joint_config;
 mod t30_step_down;
 mod t40_removed_follower;

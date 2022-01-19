@@ -19,6 +19,9 @@ use crate::NodeId;
 /// every config.
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Membership {
+    /// learners set
+    learners: BTreeSet<NodeId>,
+
     /// Multi configs.
     configs: Vec<BTreeSet<NodeId>>,
 
@@ -28,12 +31,21 @@ pub struct Membership {
 
 impl MessageSummary for Membership {
     fn summary(&self) -> String {
-        let mut res = vec!["[".to_string()];
+        let mut res = vec!["members:[".to_string()];
         for (i, c) in self.configs.iter().enumerate() {
             if i > 0 {
                 res.push(",".to_string());
             }
             res.push(format!("{:?}", c));
+        }
+        res.push("]".to_string());
+
+        res.push(",learners:[".to_string());
+        for (learner_cnt, learner_id) in self.learners.iter().enumerate() {
+            if learner_cnt > 0 {
+                res.push(",".to_string());
+            }
+            res.push(format!("{:?}", learner_id));
         }
         res.push("]".to_string());
         res.join("")
@@ -44,12 +56,58 @@ impl Membership {
     pub fn new_single(members: BTreeSet<NodeId>) -> Self {
         let configs = vec![members];
         let all_nodes = Self::build_all_nodes(&configs);
-        Membership { configs, all_nodes }
+        let learners = BTreeSet::new();
+        Membership {
+            learners,
+            configs,
+            all_nodes,
+        }
+    }
+
+    pub fn new_single_with_learners(members: BTreeSet<NodeId>, learners: BTreeSet<NodeId>) -> Self {
+        let configs = vec![members];
+        let all_nodes = Self::build_all_nodes(&configs);
+        Membership {
+            learners,
+            configs,
+            all_nodes,
+        }
     }
 
     pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
         let all_nodes = Self::build_all_nodes(&configs);
-        Membership { configs, all_nodes }
+        let learners = BTreeSet::new();
+        Membership {
+            learners,
+            configs,
+            all_nodes,
+        }
+    }
+
+    pub fn new_multi_with_learners(configs: Vec<BTreeSet<NodeId>>, learners: BTreeSet<NodeId>) -> Self {
+        let all_nodes = Self::build_all_nodes(&configs);
+        Membership {
+            learners,
+            configs,
+            all_nodes,
+        }
+    }
+
+    pub fn contain_learner(&self, id: &NodeId) -> bool {
+        self.learners.contains(id)
+    }
+
+    pub fn add_learner(&mut self, id: &NodeId) {
+        //if (self.contain_learner(id))
+        self.learners.insert(*id);
+    }
+
+    pub fn remove_learner(&mut self, id: &NodeId) {
+        self.learners.remove(id);
+    }
+
+    pub fn all_learners(&self) -> &BTreeSet<NodeId> {
+        &self.learners
     }
 
     pub fn all_nodes(&self) -> &BTreeSet<NodeId> {
@@ -80,13 +138,17 @@ impl Membership {
     }
 
     /// Check if the given NodeId exists in this membership config.
-    pub fn contains(&self, x: &NodeId) -> bool {
+    pub fn is_member(&self, x: &NodeId) -> bool {
         for c in self.configs.iter() {
             if c.contains(x) {
                 return true;
             }
         }
         false
+    }
+
+    pub fn is_learner(&self, x: &NodeId) -> bool {
+        self.learners.contains(x)
     }
 
     /// Check to see if the config is currently in joint consensus.
@@ -191,9 +253,12 @@ impl Membership {
     #[must_use]
     pub fn next_safe(&self, goal: BTreeSet<NodeId>) -> Self {
         if self.configs.contains(&goal) {
-            Membership::new_single(goal)
+            Membership::new_single_with_learners(goal, self.learners.clone())
         } else {
-            Membership::new_multi(vec![self.configs.last().cloned().unwrap(), goal])
+            Membership::new_multi_with_learners(
+                vec![self.configs.last().cloned().unwrap(), goal],
+                self.learners.clone(),
+            )
         }
     }
 

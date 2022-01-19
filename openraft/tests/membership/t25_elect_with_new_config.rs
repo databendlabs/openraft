@@ -64,6 +64,9 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
         inner?;
     }
 
+    n_logs += 4;
+    router.wait_for_log(&btreeset![0], Some(n_logs), None, "cluster of 4 learners").await?;
+
     tracing::info!("--- changing cluster config");
     router.change_membership(0, btreeset![0, 1, 2, 3, 4]).await?;
     n_logs += 2;

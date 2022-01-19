@@ -270,7 +270,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             "multi"
         };
 
-        let is_voter = if self.effective_membership.membership.contains(&self.id) {
+        let is_voter = if self.effective_membership.membership.is_member(&self.id) {
             "voter"
         } else {
             "learner"
@@ -376,7 +376,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn set_target_state(&mut self, target_state: State) {
         tracing::debug!(id = self.id, ?target_state, "set_target_state");
 
-        if target_state == State::Follower && !self.effective_membership.membership.contains(&self.id) {
+        if target_state == State::Follower && !self.effective_membership.membership.is_member(&self.id) {
             self.target_state = State::Learner;
         } else {
             self.target_state = target_state;
@@ -434,7 +434,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // transition to the learner state as a signal for when it is safe to shutdown a node
         // being removed.
         self.effective_membership = cfg;
-        if self.effective_membership.membership.contains(&self.id) {
+        if self.effective_membership.membership.is_member(&self.id) {
             if self.target_state == State::Learner {
                 // The node is a Learner and the new config has it configured as a normal member.
                 // Transition to follower.
@@ -740,6 +740,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.nodes.insert(*target, state);
         }
 
+        // spawn replication streams for learners.
+        let learners = self.core.effective_membership.membership.all_learners();
+        for node_id in learners {
+            let state = self.spawn_replication_stream(*node_id, None);
+            self.nodes.insert(*node_id, state);
+        }
+
         // Setup state as leader.
         self.core.last_heartbeat = None;
         self.core.next_election_timeout = None;
@@ -818,7 +825,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 self.core.reject_init_with_config(tx);
             }
             RaftMsg::AddLearner { id, tx, blocking } => {
-                self.add_learner(id, tx, blocking);
+                self.add_learner(id, tx, blocking).await;
             }
             RaftMsg::ChangeMembership { members, blocking, tx } => {
                 self.change_membership(members, blocking, tx).await?;

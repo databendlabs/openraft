@@ -83,6 +83,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
         {
             router.new_raft_node(1).await;
             router.add_learner(0, 1).await.expect("failed to add new node as learner");
+            log_index += 1;
 
             tracing::info!("--- DONE add learner");
             router.client_request_many(0, "0", 1).await;

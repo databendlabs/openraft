@@ -29,10 +29,10 @@ fn test_membership() -> anyhow::Result<()> {
     assert_eq!(&btreeset! {1,2,3}, m123.all_nodes());
     assert_eq!(&btreeset! {1,2,3,4,5}, m123_345.all_nodes());
 
-    assert!(!m1.contains(&0));
-    assert!(m1.contains(&1));
-    assert!(m123_345.contains(&4));
-    assert!(!m123_345.contains(&6));
+    assert!(!m1.is_member(&0));
+    assert!(m1.is_member(&1));
+    assert!(m123_345.is_member(&4));
+    assert!(!m123_345.is_member(&6));
 
     assert!(!m123.is_in_joint_consensus());
     assert!(m123_345.is_in_joint_consensus());

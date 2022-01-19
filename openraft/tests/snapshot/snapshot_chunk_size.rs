@@ -93,10 +93,9 @@ async fn snapshot_chunk_size() -> Result<()> {
     {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
+        log_index += 1;
 
-        let want_snap = Some((log_index.into(), 1));
-
-        router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
+        router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "add learner").await?;
         router
             .wait_for_snapshot(
                 &btreeset![1],
@@ -108,16 +107,48 @@ async fn snapshot_chunk_size() -> Result<()> {
                 "",
             )
             .await?;
+
         router
-            .assert_storage_state(
+            .wait_for_snapshot(
+                &btreeset![0],
+                LogId {
+                    term: 1,
+                    index: log_index - 1,
+                },
+                None,
+                "",
+            )
+            .await?;
+
+        // after add_learner, log_index + 1,
+        // leader has only log_index log in snapshot, cause it has compacted before add_learner
+        router
+            .assert_storage_state_in_node(
+                0,
                 1,
                 log_index,
-                None, /* learner does not vote */
+                Some(0),
                 LogId {
                     term: 1,
                     index: log_index,
                 },
-                want_snap,
+                Some(((log_index - 1).into(), 1)),
+            )
+            .await?;
+
+        // learner has log_index + 1 log in snapshot, cause it do compact after add_learner,
+        // so learner's snapshot include add_learner log
+        router
+            .assert_storage_state_in_node(
+                1,
+                1,
+                log_index,
+                Some(0),
+                LogId {
+                    term: 1,
+                    index: log_index,
+                },
+                Some(((log_index).into(), 1)),
             )
             .await?;
     }

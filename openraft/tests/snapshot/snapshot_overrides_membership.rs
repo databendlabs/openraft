@@ -115,6 +115,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         tracing::info!("--- add learner to the cluster to receive snapshot, which overrides the learner storage");
         {
             router.add_learner(0, 1).await.expect("failed to add new node as learner");
+            log_index += 1;
 
             tracing::info!("--- DONE add learner");
 
@@ -151,7 +152,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             let m = m.unwrap();
 
             assert_eq!(
-                Membership::new_single(btreeset! {0}),
+                Membership::new_single_with_learners(btreeset! {0}, btreeset! {1}),
                 m.membership,
                 "membership should be overridden by the snapshot"
             );
