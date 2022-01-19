@@ -7,6 +7,7 @@ mod fixtures;
 
 mod t00_learner_restart;
 mod t10_add_learner;
+//mod t11_remove_leader;
 
 mod t15_add_remove_follower;
 

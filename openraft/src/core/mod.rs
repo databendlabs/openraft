@@ -740,6 +740,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.nodes.insert(*target, state);
         }
 
+        // spawn replication streams for learners.
+        let learners = self.core.effective_membership.membership.all_learners();
+        for node_id in learners {
+            let state = self.spawn_replication_stream(*node_id, None);
+            self.nodes.insert(*node_id, state);
+        }
+
         // Setup state as leader.
         self.core.last_heartbeat = None;
         self.core.next_election_timeout = None;

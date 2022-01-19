@@ -31,12 +31,21 @@ pub struct Membership {
 
 impl MessageSummary for Membership {
     fn summary(&self) -> String {
-        let mut res = vec!["[".to_string()];
+        let mut res = vec!["members:[".to_string()];
         for (i, c) in self.configs.iter().enumerate() {
             if i > 0 {
                 res.push(",".to_string());
             }
             res.push(format!("{:?}", c));
+        }
+        res.push("]".to_string());
+
+        res.push(",learners:[".to_string());
+        for (learner_cnt, learner_id) in self.learners.iter().enumerate() {
+            if learner_cnt > 0 {
+                res.push(",".to_string());
+            }
+            res.push(format!("{:?}", learner_id));
         }
         res.push("]".to_string());
         res.join("")
@@ -68,6 +77,15 @@ impl Membership {
     pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
         let all_nodes = Self::build_all_nodes(&configs);
         let learners = BTreeSet::new();
+        Membership {
+            learners,
+            configs,
+            all_nodes,
+        }
+    }
+
+    pub fn new_multi_with_learners(configs: Vec<BTreeSet<NodeId>>, learners: BTreeSet<NodeId>) -> Self {
+        let all_nodes = Self::build_all_nodes(&configs);
         Membership {
             learners,
             configs,
@@ -231,9 +249,12 @@ impl Membership {
     #[must_use]
     pub fn next_safe(&self, goal: BTreeSet<NodeId>) -> Self {
         if self.configs.contains(&goal) {
-            Membership::new_single(goal)
+            Membership::new_single_with_learners(goal, self.learners.clone())
         } else {
-            Membership::new_multi(vec![self.configs.last().cloned().unwrap(), goal])
+            Membership::new_multi_with_learners(
+                vec![self.configs.last().cloned().unwrap(), goal],
+                self.learners.clone(),
+            )
         }
     }
 
