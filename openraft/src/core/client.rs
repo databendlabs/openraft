@@ -203,14 +203,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let nodes = self.nodes.keys().collect::<Vec<_>>();
         tracing::debug!(?nodes, ?all_members, ?all_learners, "replicate_client_request");
 
-        tracing::debug!(
-            "replicate_client_request to: {:?} {:?} {:?} {:?}",
-            nodes,
-            all_members,
-            all_learners,
-            log_id,
-        );
-
         if quorum_granted {
             assert!(self.core.committed < Some(log_id));
 
