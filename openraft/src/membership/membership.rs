@@ -43,27 +43,27 @@ impl MessageSummary for Membership {
 impl Membership {
     pub fn new_single(members: BTreeSet<NodeId>) -> Self {
         let configs = vec![members];
-        let all_nodes = Self::build_all_nodes(&configs);
+        let all_nodes = Self::build_all_members(&configs);
         Membership { configs, all_nodes }
     }
 
     pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
-        let all_nodes = Self::build_all_nodes(&configs);
+        let all_nodes = Self::build_all_members(&configs);
         Membership { configs, all_nodes }
     }
 
-    pub fn all_nodes(&self) -> &BTreeSet<NodeId> {
+    pub fn all_members(&self) -> &BTreeSet<NodeId> {
         &self.all_nodes
     }
 
     pub fn replace(&mut self, new_configs: Vec<BTreeSet<NodeId>>) {
         self.configs = new_configs;
-        self.all_nodes = Self::build_all_nodes(&self.configs);
+        self.all_nodes = Self::build_all_members(&self.configs);
     }
 
     pub fn push(&mut self, new_config: BTreeSet<NodeId>) {
         self.configs.push(new_config);
-        self.all_nodes = Self::build_all_nodes(&self.configs);
+        self.all_nodes = Self::build_all_members(&self.configs);
     }
 
     pub fn get_configs(&self) -> &Vec<BTreeSet<NodeId>> {
@@ -205,7 +205,7 @@ impl Membership {
         n_granted >= majority
     }
 
-    fn build_all_nodes(configs: &[BTreeSet<NodeId>]) -> BTreeSet<NodeId> {
+    fn build_all_members(configs: &[BTreeSet<NodeId>]) -> BTreeSet<NodeId> {
         let mut nodes = BTreeSet::new();
         for config in configs.iter() {
             nodes.extend(config)

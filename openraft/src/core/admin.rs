@@ -56,7 +56,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Become a candidate and start campaigning for leadership. If this node is the only node
         // in the cluster, then become leader without holding an election. If members len == 1, we
         // know it is our ID due to the above code where we ensure our own ID is present.
-        if self.core.effective_membership.membership.all_nodes().len() == 1 {
+        if self.core.effective_membership.membership.all_members().len() == 1 {
             // TODO(xp): remove this simplified shortcut.
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
@@ -153,7 +153,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // TODO(xp): 111 test adding a node that is not learner.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in members.difference(curr.all_nodes()) {
+        for new_node in members.difference(curr.all_members()) {
             match self.nodes.get(new_node) {
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id, &self.core.config) {

@@ -91,7 +91,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Spawn parallel requests, all with the standard timeout for heartbeats.
         let mut pending = FuturesUnordered::new();
-        let all_members = self.core.effective_membership.membership.all_nodes();
+        let all_members = self.core.effective_membership.membership.all_members();
 
         for (id, node) in self.nodes.iter() {
             if !all_members.contains(id) {

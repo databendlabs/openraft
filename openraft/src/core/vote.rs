@@ -160,7 +160,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) fn spawn_parallel_vote_requests(&self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
-        let all_nodes = self.core.effective_membership.membership.all_nodes().clone();
+        let all_nodes = self.core.effective_membership.membership.all_members().clone();
         let (tx, rx) = mpsc::channel(all_nodes.len());
 
         for member in all_nodes.into_iter().filter(|member| member != &self.core.id) {
