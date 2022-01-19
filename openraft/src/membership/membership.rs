@@ -93,6 +93,7 @@ impl Membership {
         }
     }
 
+    #[must_use]
     pub fn add_learner(&self, id: &NodeId) -> Self {
         let mut learners = self.learners.clone();
         learners.insert(*id);
@@ -145,7 +146,7 @@ impl Membership {
             return true;
         }
 
-        return self.is_learner(target);
+        self.is_learner(target)
     }
 
     /// Check if the given NodeId exists in this membership config.
