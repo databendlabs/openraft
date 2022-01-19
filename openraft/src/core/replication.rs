@@ -192,7 +192,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Collect indexes of the greatest matching log on every replica(include the leader itself)
     fn get_match_log_ids(&self) -> BTreeMap<NodeId, LogId> {
-        let node_ids = self.core.effective_membership.membership.all_nodes();
+        let node_ids = self.core.effective_membership.membership.all_members();
 
         let mut res = BTreeMap::new();
 

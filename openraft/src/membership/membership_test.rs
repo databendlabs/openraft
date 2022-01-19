@@ -25,9 +25,9 @@ fn test_membership() -> anyhow::Result<()> {
     assert_eq!(vec![1, 2, 3], m123_345.ith_config(0));
     assert_eq!(vec![3, 4, 5], m123_345.ith_config(1));
 
-    assert_eq!(&btreeset! {1}, m1.all_nodes());
-    assert_eq!(&btreeset! {1,2,3}, m123.all_nodes());
-    assert_eq!(&btreeset! {1,2,3,4,5}, m123_345.all_nodes());
+    assert_eq!(&btreeset! {1}, m1.all_members());
+    assert_eq!(&btreeset! {1,2,3}, m123.all_members());
+    assert_eq!(&btreeset! {1,2,3,4,5}, m123_345.all_members());
 
     assert!(!m1.is_member(&0));
     assert!(m1.is_member(&1));
@@ -43,20 +43,51 @@ fn test_membership() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_membership_with_learners() -> anyhow::Result<()> {
+    let m1_2 = Membership::new_multi_with_learners(vec![btreeset! {1}], btreeset! {2});
+    let m1_23 = m1_2.add_learner(&3);
+    let s1_2 = Membership::new_single_with_learners(btreeset! {1}, btreeset! {2});
+    let s1_23 = s1_2.add_learner(&3);
+
+    {
+        assert_eq!(&btreeset! {1}, m1_2.all_members());
+        assert_eq!(&btreeset! {2}, m1_2.all_learners());
+        assert!(m1_2.is_learner(&2));
+
+        assert_eq!(&btreeset! {1}, m1_23.all_members());
+        assert_eq!(&btreeset! {2,3}, m1_23.all_learners());
+        assert!(m1_23.is_learner(&2));
+        assert!(m1_23.is_learner(&3));
+    }
+
+    {
+        assert_eq!(&btreeset! {1}, s1_2.all_members());
+        assert_eq!(&btreeset! {2}, s1_2.all_learners());
+        assert!(s1_2.is_learner(&2));
+
+        assert_eq!(&btreeset! {1}, s1_23.all_members());
+        assert_eq!(&btreeset! {2,3}, s1_23.all_learners());
+        assert!(s1_23.is_learner(&2));
+        assert!(s1_23.is_learner(&3));
+    }
+    Ok(())
+}
+
+#[test]
 fn test_membership_update() -> anyhow::Result<()> {
     // --- replace
 
     let mut m123 = Membership::new_single(btreeset! {1,2,3});
     m123.replace(vec![btreeset! {2,3}, btreeset! {3,4}]);
 
-    assert_eq!(&btreeset! {2,3,4}, m123.all_nodes());
+    assert_eq!(&btreeset! {2,3,4}, m123.all_members());
     assert_eq!(&vec![btreeset! {2,3}, btreeset! {3,4}], m123.get_configs());
 
     // --- push
 
     m123.push(btreeset! {3,5});
 
-    assert_eq!(&btreeset! {2,3,4,5}, m123.all_nodes());
+    assert_eq!(&btreeset! {2,3,4,5}, m123.all_members());
     assert_eq!(
         &vec![btreeset! {2,3}, btreeset! {3,4}, btreeset! {3,5}],
         m123.get_configs()
@@ -66,7 +97,7 @@ fn test_membership_update() -> anyhow::Result<()> {
 
     let got = m123.to_final_config();
 
-    assert_eq!(&btreeset! {3,5}, got.all_nodes());
+    assert_eq!(&btreeset! {3,5}, got.all_members());
     assert_eq!(&vec![btreeset! {3,5}], got.get_configs());
 
     Ok(())

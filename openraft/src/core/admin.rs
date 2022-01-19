@@ -56,7 +56,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         // Become a candidate and start campaigning for leadership. If this node is the only node
         // in the cluster, then become leader without holding an election. If members len == 1, we
         // know it is our ID due to the above code where we ensure our own ID is present.
-        if self.core.effective_membership.membership.all_nodes().len() == 1 {
+        if self.core.effective_membership.membership.all_members().len() == 1 {
             // TODO(xp): remove this simplified shortcut.
             self.core.current_term += 1;
             self.core.voted_for = Some(self.core.id);
@@ -76,28 +76,21 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "debug", skip(self))]
     async fn add_learner_into_membership(&mut self, target: &NodeId) {
         tracing::debug!(
-            "before add_learner_into_membership target node {} into learner {:?}",
+            "add_learner_into_membership target node {} into learner {:?}",
             target,
             self.nodes.keys()
         );
 
-        let membership = &self.core.effective_membership.membership;
-        if membership.is_member(target) {
-            tracing::debug!("target node {} is already a member,cannot add as learner", target);
+        let curr = &self.core.effective_membership.membership;
+        if curr.contains(target) {
+            tracing::debug!(
+                "target node {} is already a member or learner,cannot add as learner",
+                target
+            );
             return;
         }
 
-        let curr = &mut self.core.effective_membership.membership;
-
-        if curr.is_learner(target) {
-            tracing::debug!("target node {} is already a learner", target);
-
-            return;
-        }
-        curr.add_learner(target);
-
-        // append_membership_log after learner has added into nodes
-        let new_config = self.core.effective_membership.membership.clone();
+        let new_config = curr.add_learner(target);
 
         tracing::debug!(?new_config, "new_config");
 
@@ -158,7 +151,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let curr = &self.core.effective_membership.membership;
         let all_learners = curr.all_learners();
-        for new_node in members.difference(curr.all_nodes()) {
+        for new_node in members.difference(curr.all_members()) {
             match all_learners.get(new_node) {
                 Some(_node) => {
                     continue;
@@ -215,7 +208,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // TODO(xp): 111 test adding a node that is not learner.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in members.difference(curr.all_nodes()) {
+        for new_node in members.difference(curr.all_members()) {
             match self.nodes.get(new_node) {
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id, &self.core.config) {

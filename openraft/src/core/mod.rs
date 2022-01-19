@@ -264,7 +264,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             "no_log"
         };
 
-        let single = if self.effective_membership.membership.all_nodes().len() == 1 {
+        let single = if self.effective_membership.membership.all_members().len() == 1 {
             "single"
         } else {
             "multi"
@@ -730,7 +730,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             .core
             .effective_membership
             .membership
-            .all_nodes()
+            .all_members()
             .iter()
             .filter(|elem| *elem != &self.core.id)
             .collect::<Vec<_>>();
