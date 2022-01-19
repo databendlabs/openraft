@@ -104,7 +104,7 @@ async fn state_machine_apply_membership() -> Result<()> {
                     term: 1,
                     index: log_index
                 },
-                membership: Membership::new_single(btreeset! {0, 1, 2})
+                membership: Membership::new_single_with_learners(btreeset! {0, 1, 2}, btreeset! {3,4})
             }),
             last_membership
         );

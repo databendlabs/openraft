@@ -1,24 +1,9 @@
 # Dynamic Membership
 
-This impl of `Raft` offers a more flexible way to deal with cluster management:
+Unlike the original raft, openraft treats all membership as a **joint** membership.
+A uniform config is just a special case of joint: the joint of only one config.
 
-It offers only one cluster membership: the **joint** membership.
-**Joint** membership is no more an ephemeral state but instead, a normal
-long lasting config for a cluster.
-
-A uniform config is just a special case.
-
-> This way it offers flexible cluster management such as hierarchical
-> membership config that is aware of data-center layout, e.g., 
-> `[{a, b, c}, {u, v, w}, {x, y, z}]` is a cluster with 9 nodes, every 3 nodes
-> forms a group(which in real world, a data center.).
-> And the quorum of such a cluster is majority of 3 groups, in which
-> a majority is constituted, e.g, `[{a, b}, {u, v}]` is a quorum.
-
----
-
-Openraft offers 2 mechanisms for controlling member node lifecycle.
-
+Openraft offers two mechanisms for controlling member node lifecycle:
 
 ## `Raft::add_learner()`
 
@@ -33,71 +18,177 @@ and immediately begin syncing logs from the leader.
     TODO(xp): store learners in `MembershipConfig`.
 
 
-## `Raft::change_membership()`
+## `Raft::change_membership(node_list)`
 
-This method will initiate a membership change.
+This method will initiate a membership change and returns when the effective
+membership becomes `node_list`.
 
-If there are nodes in the given membership that is not a learner, this method will add it
+If there are nodes in the given membership that is not a `Learner`, this method will add it
 as Learner first.
-Thus it is recommended that application always call `Raft::add_learner` first.
-Otherwise `change_membership` may block for long before committing the
+Thus it is recommended that the application always call `Raft::add_learner` first.
+Otherwise, `Raft::change_membership` may block for long before committing the
 given membership and return.
 
-The new membership specified by this method will take effect at once.
+Once the new membership is committed, a `Voter` that is not in the new membership will
+revert to a `Learner` and is ready to remove.
 
-Once the new membership is committed, a Voter that is not in the new membership will
-revert to a Learner and is ready to remove.
+## Extended membership change algo
 
-Correctness constrains:
+Openraft tries to commit one or more membership logs to finally change the
+membership to `node_list`.
+In every step, the log it tries to commit is:
 
-- There is no uncommitted membership on the leader.
+-   the `node_list` itself, if it is safe to change from previous membership to
+    `node_list` directly.
 
-- The new membership has to contains a config that is the same as one of the last
-    committed membership.
-
-    E.g., the last committed one is `[{a, b, c}]`, then a legal new membership may be:
-    a joint membership: `[{a, b, c}, {x, y, z}]`.
-
-    If the last committed one is `[{a, b, c}, {x, y, z}]`, a legal new
-    membership may be: `[{a, b, c}]`, or `[{x, y, z}]`.
-
-If the constraints are not satisfied, an error is returned and nothing is done
-except the learner will not be removed.
+-   otherwise, a **joint** of the specified `node_list` and one config in the
+    previous membership.
 
 
-### The safe-to relation
+This algo that openraft uses is the so-called **Extended membership change**.
 
-TL, DR
-
-According to the rule that every 2 quorums has to intersect each other,
-one membership `m1` is safe to change to another membership `m2` iff `m1` contains
-a config the same as one in `m2`.
-
-E.g.: given a joint membership of 3 config: `m1 = c1 * c2 * c3`(`cᵢ` is a set of
-nodes. `*` means joint), the following are safe with `m1`:
-- `c1`,
-- `c2`,
-- `c1 * c3`,
-- and `c2 * c4 * c5`.
+> It is a more generalized form of membership change.
+> The original 2-step **joint** algo and 1-step algo in raft-paper are all specialized versions of this algo.
 
 
-The `safe_to` relation is **commutative**, e.g., `m1` being safe with `m2` iff `m2` being safe with `m1`.
+This algo provides more flexible membership change than the original joint algo:
 
-E.g., one of the safe membership changing path is:
-`c1`  →  `c1 * c2 * c3`  →  `c3 * c4`  →  `c4`.
-Every step in it is safe.
+-   The original **Joint** algo:
 
-Another example with 6 memberships shows that it is always safe to change
-membership from one vertex to another along edges:
+    The original **joint** algo in raft-paper allows changing membership in an
+    alternate pattern of joint membership and uniform membership.
+    E.g.,  the membership entry in a log history could be:
 
+    `c1`  →  `c1c2`  →  `c2`  →  `c2c3`  →  `c3`  ...
+
+    Where:
+    - `cᵢ` is a uniform membership, such as `{a, b, c}`;
+    - `cᵢcⱼ` is a joint of two node lists, such as `[{a, b, c}, {x, y, z}]`.
+
+-   **Extended** algo:
+
+    Extended membership change algo allows changing membership in the
+    following way:
+
+    `c1`  →  `c1c2c3`  →  `c3c4`  →  `c4`.
+
+    Or revert to a previous membership:
+
+    `c1c2c3`  →  `c1`.
+
+
+#### Flexibility
+
+Another example shows that it is always safe to change membership from one
+to another along the edges in the following diagram:
+
+```text
+          c3
+         /  \
+        /    \
+       /      \
+   c1c3 ------ c2c3
+    / \        / \
+   /   \      /   \
+  /     \    /     \
+c1 ----- c1c2 ----- c2
 ```
-            c3
-          /   \
-         /     \
-        /       \
-   c1*c3 ------- c2*c3
-    /  \         /  \
-   /    \       /    \
-  /      \     /      \
-c1 ------ c1*c2 ------ c2
+
+#### Disjoint memberships
+
+A counter-intuitive conclusion is that:
+
+**Even when two leaders propose two memberships without intersection, consensus will
+still, be achieved**.
+
+E.g., given the current membership to be `c1c2`, if
+`L1` proposed `c1c3`,
+`L2` proposed `c2c4`.
+
+There won't be a brain split problem.
+
+
+
+#### Spec of extended membership change algo
+
+This algo requires four constraints to work correctly:
+
+
+-   (0) **use-at-once**:
+    The new membership that is appended to log will take effect at once, i.e., openraft
+    uses the last seen membership config in the log, no matter it is committed or not.
+
+
+-   (1) **propose-after-commit**:
+    A leader is allowed to propose new membership only when the previous one is
+    committed.
+
+
+-   (2) **old-new-intersect**(safe transition):
+    (This is the only constraint that is loosened from the original raft) Any
+    quorum in new membership(`m'`) intersect with any quorum in the old
+    committed membership(`m`):
+
+    `∀qᵢ ∈ m, ∀qⱼ ∈ m'`: `qᵢ ∩ qⱼ ≠ ø`.
+
+
+-   (3) **initial-log**:
+    A leader has to replicate an initial blank log to a quorum in last seen
+    membership to commit all previous logs.
+
+
+
+In our implementation, (2) **old-new-intersect** is simplified to:
+The new membership has to contain a config entry that is the same as one in the last
+committed membership.
+
+E.g., given the last committed one is `[{a, b, c}]`, then a valid new membership may be:
+a joint membership: `[{a, b, c}, {x, y, z}]`.
+
+If the last committed one is `[{a, b, c}, {x, y, z}]`, a valid new membership
+may be: `[{a, b, c}]`, or `[{x, y, z}]`.
+
+
+
+### Proof of correctness
+
+Assumes there was a brain split problem occurred,
+then there are two leaders(`L1` and `L2`) proposing different membership(`m1` and `m2`(`mᵢ = cᵢcⱼ...`)):
+
+`L1`: `m1`,
+`L2`: `m2`
+
+Thus the `L1` log history and the `L2` log history diverged.
+Let `m0` be the last common membership in the log histories:
+
+```text
+L1       L2
+
+m1       m2
+ \      /
+  \    o   term-2
+   \   |
+    `--o   term-1
+       |
+       m0
 ```
+
+From (1) **propose-after-commit**,
+- `L1` must have committed log entry `m0` to a quorum in `m0`  in `term_1`.
+- `L2` must have committed log entry `m0` to a quorum in `m0`, in `term_2`.
+
+Assumes `term_1 < term_2`.
+
+From (3) **initial-log**, `L2` has at least one log with `term_2` committed in a
+quorum in `m0`.
+
+∵ (2) **old-new-intersect** and `term_1 < term_2`
+
+∴ log entry `m1` can never be committed by `L1`, 
+  because log replication or voting will always see a higher `term_2` on a node in a quorum in `m0`.
+
+  For the same reason, a candidate with log entry `m1` can never become a leader.
+
+∴ It is impossible that there are two leaders that both can commit a log entry.
+
+QED.
