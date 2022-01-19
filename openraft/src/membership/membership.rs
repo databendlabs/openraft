@@ -93,12 +93,7 @@ impl Membership {
         }
     }
 
-    pub fn contain_learner(&self, id: &NodeId) -> bool {
-        self.learners.contains(id)
-    }
-
     pub fn add_learner(&mut self, id: &NodeId) {
-        //if (self.contain_learner(id))
         self.learners.insert(*id);
     }
 

@@ -81,8 +81,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.nodes.keys()
         );
 
+        let membership = &self.core.effective_membership.membership;
+        if membership.is_member(target) {
+            tracing::debug!("target node {} is already a member,cannot add as learner", target);
+            return;
+        }
+
         let curr = &mut self.core.effective_membership.membership;
-        if curr.contain_learner(target) {
+
+        if curr.is_learner(target) {
             tracing::debug!("target node {} is already a learner", target);
 
             return;
