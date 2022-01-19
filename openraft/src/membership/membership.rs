@@ -19,11 +19,14 @@ use crate::NodeId;
 /// every config.
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Membership {
+    /// learners set
+    learners: BTreeSet<NodeId>,
+
     /// Multi configs.
     configs: Vec<BTreeSet<NodeId>>,
 
     /// Cache of all node ids.
-    all_nodes: BTreeSet<NodeId>,
+    all_members: BTreeSet<NodeId>,
 }
 
 impl MessageSummary for Membership {
@@ -43,27 +46,37 @@ impl MessageSummary for Membership {
 impl Membership {
     pub fn new_single(members: BTreeSet<NodeId>) -> Self {
         let configs = vec![members];
-        let all_nodes = Self::build_all_nodes(&configs);
-        Membership { configs, all_nodes }
+        let all_members = Self::build_all_members(&configs);
+        let learners = BTreeSet::new();
+        Membership {
+            learners,
+            configs,
+            all_members,
+        }
     }
 
     pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
-        let all_nodes = Self::build_all_nodes(&configs);
-        Membership { configs, all_nodes }
+        let all_members = Self::build_all_members(&configs);
+        let learners = BTreeSet::new();
+        Membership {
+            learners,
+            configs,
+            all_members,
+        }
     }
 
-    pub fn all_nodes(&self) -> &BTreeSet<NodeId> {
-        &self.all_nodes
+    pub fn all_members(&self) -> &BTreeSet<NodeId> {
+        &self.all_members
     }
 
     pub fn replace(&mut self, new_configs: Vec<BTreeSet<NodeId>>) {
         self.configs = new_configs;
-        self.all_nodes = Self::build_all_nodes(&self.configs);
+        self.all_members = Self::build_all_members(&self.configs);
     }
 
     pub fn push(&mut self, new_config: BTreeSet<NodeId>) {
         self.configs.push(new_config);
-        self.all_nodes = Self::build_all_nodes(&self.configs);
+        self.all_members = Self::build_all_members(&self.configs);
     }
 
     pub fn get_configs(&self) -> &Vec<BTreeSet<NodeId>> {
@@ -80,7 +93,7 @@ impl Membership {
     }
 
     /// Check if the given NodeId exists in this membership config.
-    pub fn contains(&self, x: &NodeId) -> bool {
+    pub fn is_member(&self, x: &NodeId) -> bool {
         for c in self.configs.iter() {
             if c.contains(x) {
                 return true;
@@ -205,11 +218,11 @@ impl Membership {
         n_granted >= majority
     }
 
-    fn build_all_nodes(configs: &[BTreeSet<NodeId>]) -> BTreeSet<NodeId> {
-        let mut nodes = BTreeSet::new();
+    fn build_all_members(configs: &[BTreeSet<NodeId>]) -> BTreeSet<NodeId> {
+        let mut members = BTreeSet::new();
         for config in configs.iter() {
-            nodes.extend(config)
+            members.extend(config)
         }
-        nodes
+        members
     }
 }
