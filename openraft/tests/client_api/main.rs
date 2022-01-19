@@ -7,5 +7,4 @@ mod fixtures;
 
 mod t10_client_writes;
 mod t20_client_reads;
-mod t30_stepdown;
 mod t50_lagging_network_write;
