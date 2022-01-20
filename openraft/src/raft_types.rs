@@ -4,6 +4,8 @@ use std::fmt::Formatter;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::MessageSummary;
+
 /// The identity of a raft log.
 /// A term and an index identifies an log globally.
 #[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,6 +23,17 @@ impl From<(u64, u64)> for LogId {
 impl Display for LogId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}-{}", self.term, self.index)
+    }
+}
+
+impl MessageSummary for Option<LogId> {
+    fn summary(&self) -> String {
+        match self {
+            None => "None".to_string(),
+            Some(x) => {
+                format!("{}", x)
+            }
+        }
     }
 }
 

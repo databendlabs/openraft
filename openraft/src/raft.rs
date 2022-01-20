@@ -534,11 +534,11 @@ pub struct AppendEntriesRequest<D: AppData> {
 impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
     fn summary(&self) -> String {
         format!(
-            "leader={}-{}, prev_log_id={:?}, leader_commit={:?}, entries={}",
+            "leader={}-{}, prev_log_id={}, leader_commit={}, entries={}",
             self.term,
             self.leader_id,
-            self.prev_log_id,
-            self.leader_commit,
+            self.prev_log_id.summary(),
+            self.leader_commit.summary(),
             self.entries.as_slice().summary()
         )
     }

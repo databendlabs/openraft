@@ -73,8 +73,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+    // add node into learner,return true if the node is already a member or learner
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn add_learner_into_membership(&mut self, target: &NodeId) {
+    async fn add_learner_into_membership(&mut self, target: &NodeId) -> bool {
         tracing::debug!(
             "add_learner_into_membership target node {} into learner {:?}",
             target,
@@ -87,7 +88,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 "target node {} is already a member or learner,cannot add as learner",
                 target
             );
-            return;
+            return true;
         }
 
         let new_config = curr.add_learner(target);
@@ -95,6 +96,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         tracing::debug!(?new_config, "new_config");
 
         let _ = self.append_membership_log(new_config, None).await;
+
+        return false;
     }
 
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
@@ -124,7 +127,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return;
         }
 
-        self.add_learner_into_membership(&target).await;
+        let exist = self.add_learner_into_membership(&target).await;
+        if exist {
+            return;
+        }
 
         if blocking {
             let state = self.spawn_replication_stream(target, Some(tx));
@@ -287,7 +293,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // remove nodes which not included in nodes and learners
         for (id, state) in self.nodes.iter_mut() {
-            if membership.is_member(id) || membership.is_learner(id) {
+            if membership.contains(id) {
                 continue;
             }
 

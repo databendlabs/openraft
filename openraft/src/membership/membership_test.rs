@@ -44,12 +44,14 @@ fn test_membership() -> anyhow::Result<()> {
 
 #[test]
 fn test_membership_with_learners() -> anyhow::Result<()> {
-    let m1_2 = Membership::new_multi_with_learners(vec![btreeset! {1}], btreeset! {2});
+    let mut m1_2 = Membership::new_multi_with_learners(vec![btreeset! {1}], btreeset! {2});
     let m1_23 = m1_2.add_learner(&3);
-    let s1_2 = Membership::new_single_with_learners(btreeset! {1}, btreeset! {2});
+    let mut s1_2 = Membership::new_single_with_learners(btreeset! {1}, btreeset! {2});
     let s1_23 = s1_2.add_learner(&3);
 
+    // test multi membership
     {
+        // test learner and membership
         assert_eq!(&btreeset! {1}, m1_2.all_members());
         assert_eq!(&btreeset! {2}, m1_2.all_learners());
         assert!(m1_2.is_learner(&2));
@@ -58,9 +60,20 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
         assert_eq!(&btreeset! {2,3}, m1_23.all_learners());
         assert!(m1_23.is_learner(&2));
         assert!(m1_23.is_learner(&3));
+
+        // test replace and push, does not affect learners
+        m1_2.replace(vec![btreeset! {3,4}]);
+        assert_eq!(&btreeset! {3,4}, m1_2.all_members());
+        assert_eq!(&btreeset! {2}, m1_2.all_learners());
+
+        m1_2.push(btreeset! {5});
+        assert_eq!(&btreeset! {3,4,5}, m1_2.all_members());
+        assert_eq!(&btreeset! {2}, m1_2.all_learners());
     }
 
+    // test single membership
     {
+        // test learner and membership
         assert_eq!(&btreeset! {1}, s1_2.all_members());
         assert_eq!(&btreeset! {2}, s1_2.all_learners());
         assert!(s1_2.is_learner(&2));
@@ -69,6 +82,15 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
         assert_eq!(&btreeset! {2,3}, s1_23.all_learners());
         assert!(s1_23.is_learner(&2));
         assert!(s1_23.is_learner(&3));
+
+        // test replace and push, does not affect learners
+        s1_2.replace(vec![btreeset! {3,4}]);
+        assert_eq!(&btreeset! {3,4}, s1_2.all_members());
+        assert_eq!(&btreeset! {2}, s1_2.all_learners());
+
+        s1_2.push(btreeset! {5});
+        assert_eq!(&btreeset! {3,4,5}, s1_2.all_members());
+        assert_eq!(&btreeset! {2}, s1_2.all_learners());
     }
     Ok(())
 }

@@ -142,11 +142,7 @@ impl Membership {
     }
 
     pub fn contains(&self, target: &NodeId) -> bool {
-        if self.is_member(target) {
-            return true;
-        }
-
-        self.is_learner(target)
+        return self.is_member(target) || self.is_learner(target);
     }
 
     /// Check if the given NodeId exists in this membership config.
