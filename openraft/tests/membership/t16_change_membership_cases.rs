@@ -56,6 +56,7 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
 
     // let mtx = router.wait(&0, timeout()).await?.log(Some(0), "get metrics").await?;
     // let term_0 = mtx.current_term;
+    let orig_leader = router.leader().await.expect("expected the cluster to have a leader");
 
     tracing::info!("--- change to {:?}", new);
     {
@@ -80,6 +81,7 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
             }
         }
 
+        let new_leader = router.leader().await.expect("expected the cluster to have a leader");
         for id in new.iter() {
             // new leader may already elected and committed a blank log.
             router
@@ -87,6 +89,17 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
                 .await?
                 .log_at_least(Some(log_index), format!("new cluster, {}", mes))
                 .await?;
+
+            if new_leader != orig_leader {
+                router
+                    .wait(&id, timeout())
+                    .await?
+                    .metrics(
+                        |x| x.current_term >= 2,
+                        "new cluster has term >= 2 because of new election",
+                    )
+                    .await?;
+            }
         }
 
         for id in only_in_old.clone() {
