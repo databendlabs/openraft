@@ -193,7 +193,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     router
         .wait(&1, timeout)
         .await?
-        .log_at_least(n_logs, "node in old cluster commits at least 1 membership log")
+        .log_at_least(Some(n_logs), "node in old cluster commits at least 1 membership log")
         .await?;
 
     tracing::info!("--- new cluster commits 2 membership logs");
@@ -206,7 +206,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
                 .wait(&id, timeout)
                 .await?
                 .log_at_least(
-                    n_logs,
+                    Some(n_logs),
                     "node in new cluster finally commit at least one blank leader-initialize log",
                 )
                 .await?;

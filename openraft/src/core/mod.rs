@@ -48,6 +48,7 @@ use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
+use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
@@ -352,6 +353,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             snapshot: self.snapshot_last_log_id,
             leader_metrics,
         };
+
+        {
+            let curr = self.tx_metrics.borrow();
+            if m == *curr {
+                tracing::debug!("metrics not changed: {}", m.summary());
+                return;
+            }
+        }
 
         tracing::debug!("report_metrics: {}", m.summary());
         let res = self.tx_metrics.send(m);
@@ -886,11 +895,9 @@ struct CandidateState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: 
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
-        let id = core.id;
         Self {
             core,
-            // vote for itself.
-            granted: btreeset! {id},
+            granted: btreeset! {},
         }
     }
 
@@ -898,6 +905,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="candidate"))]
     pub(self) async fn run(mut self) -> Result<(), Fatal> {
         // Each iteration of the outer loop represents a new term.
+
         loop {
             if !self.core.target_state.is_candidate() {
                 return Ok(());
@@ -910,6 +918,20 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.core.current_leader = None;
             self.core.save_hard_state().await?;
             self.core.report_metrics(Update::Update(None));
+
+            // vote for itself.
+            self.handle_vote_response(
+                VoteResponse {
+                    term: self.core.current_term,
+                    vote_granted: true,
+                    last_log_id: self.core.last_log_id,
+                },
+                self.core.id,
+            )
+            .await?;
+            if !self.core.target_state.is_candidate() {
+                return Ok(());
+            }
 
             // Send RPCs to all members in parallel.
             let mut pending_votes = self.spawn_parallel_vote_requests();

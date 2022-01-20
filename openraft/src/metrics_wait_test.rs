@@ -45,9 +45,9 @@ async fn test_wait() -> anyhow::Result<()> {
             assert!(rst.is_ok());
         });
         let got = w.log(Some(3), "log").await?;
-        let got_least2 = w.log_at_least(2, "log").await?;
-        let got_least3 = w.log_at_least(3, "log").await?;
-        let got_least4 = w.log_at_least(4, "log").await;
+        let got_least2 = w.log_at_least(Some(2), "log").await?;
+        let got_least3 = w.log_at_least(Some(3), "log").await?;
+        let got_least4 = w.log_at_least(Some(4), "log").await;
         h.await?;
 
         assert_eq!(Some(3), got.last_log_index);
