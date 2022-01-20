@@ -106,6 +106,21 @@ impl Membership {
         }
     }
 
+    #[must_use]
+    pub fn add_learner_set(&self, add_learners: BTreeSet<NodeId>) -> Self {
+        let mut learners = self.learners.clone();
+        for node_id in add_learners {
+            learners.insert(node_id);
+        }
+        let configs = self.configs.clone();
+        let all_members = Self::build_all_members(&self.configs);
+        Membership {
+            learners,
+            configs,
+            all_members,
+        }
+    }
+
     pub fn remove_learner(&mut self, id: &NodeId) {
         self.learners.remove(id);
     }

@@ -42,7 +42,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         router.new_raft_node(1).await;
 
         let res = router.change_membership_with_blocking(0, btreeset! {0,1}, true).await?;
-        n_logs += 3;
+        n_logs += 2;
         tracing::info!("--- change_membership blocks until success: {:?}", res);
 
         for node_id in 0..2 {

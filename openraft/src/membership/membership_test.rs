@@ -58,6 +58,10 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
         assert_eq!(&btreeset! {2,3}, m1_23.all_learners());
         assert!(m1_23.is_learner(&2));
         assert!(m1_23.is_learner(&3));
+
+        let m1_l2345 = m1_2.add_learner_set(btreeset! {3,4,5});
+        assert_eq!(&btreeset! {1}, m1_l2345.all_members());
+        assert_eq!(&btreeset! {2,3,4,5}, m1_l2345.all_learners());
     }
 
     // test single membership with learners
@@ -74,6 +78,10 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
         assert_eq!(&btreeset! {2,3}, s1_23.all_learners());
         assert!(s1_23.is_learner(&2));
         assert!(s1_23.is_learner(&3));
+
+        let s1_l2345 = s1_2.add_learner_set(btreeset! {3,4,5});
+        assert_eq!(&btreeset! {1}, s1_l2345.all_members());
+        assert_eq!(&btreeset! {2,3,4,5}, s1_l2345.all_learners());
     }
     Ok(())
 }

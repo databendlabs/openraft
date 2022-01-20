@@ -258,32 +258,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         members: BTreeSet<NodeId>,
         blocking: bool,
     ) -> Result<ClientWriteResponse<R>, ClientWriteError> {
-        tracing::info!(?members, "change_membership: add every member as learner");
-
-        for id in members.iter() {
-            let res = self.add_learner(*id, blocking).await;
-            let res_err = match res {
-                Ok(_) => {
-                    continue;
-                }
-                Err(e) => e,
-            };
-
-            tracing::info!(%res_err, "add learner: already exists");
-
-            match res_err {
-                // TODO(xp): test add learner on non-leader
-                AddLearnerError::ForwardToLeader(forward_err) => {
-                    return Err(ClientWriteError::ForwardToLeader(forward_err))
-                }
-                AddLearnerError::Exists(node_id) => {
-                    tracing::info!(%node_id, "add learner: already exists");
-                    continue;
-                }
-                AddLearnerError::Fatal(f) => return Err(ClientWriteError::Fatal(f)),
-            }
-        }
-
         tracing::info!("change_membership: start to commit joint config");
 
         let (tx, rx) = oneshot::channel();

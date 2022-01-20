@@ -175,8 +175,8 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     router.new_raft_node(3).await;
     router.new_raft_node(4).await;
     router.change_membership(orig_leader, btreeset![1, 3, 4]).await?;
-    // 2 for add_learner, 2 for change_membership
-    n_logs += 4;
+    // 2 for change_membership
+    n_logs += 2;
 
     tracing::info!("--- old leader commits 2 membership log");
     {

@@ -150,25 +150,47 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         );
     }
 
-    pub fn has_pending_membership_change(&self, members: &BTreeSet<NodeId>) -> bool {
-        if self.core.committed < Some(self.core.effective_membership.log_id) {
-            return false;
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(super) fn make_sure_member_in_learners(&mut self, members: &BTreeSet<NodeId>, curr: Membership) -> Membership {
+        let mut new_learner_set = BTreeSet::new();
+        for node_id in members {
+            let target = *node_id;
+            if target == self.core.id {
+                continue;
+            }
+            if let Some(_t) = self.nodes.get(node_id) {
+                tracing::debug!("target node {} is already a cluster member or is being synced", target);
+                continue;
+            }
+            if curr.contains(node_id) {
+                tracing::debug!(
+                    "target node {} is already a member or learner,cannot add as learner",
+                    target
+                );
+                continue;
+            }
+
+            new_learner_set.insert(target);
+
+            let state = self.spawn_replication_stream(target, None);
+            self.nodes.insert(target, state);
         }
 
-        let curr = &self.core.effective_membership.membership;
-        let all_learners = curr.all_learners();
-        for new_node in members.difference(curr.all_members()) {
-            match all_learners.get(new_node) {
-                Some(_node) => {
-                    continue;
-                }
-                None => {
-                    // if new member not include in the learners, there is pending membership change
-                    return true;
-                }
-            }
-        }
-        false
+        curr.add_learner_set(new_learner_set)
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(super) fn calc_new_membership(&mut self, members: &BTreeSet<NodeId>) -> Membership {
+        let curr = self.core.effective_membership.membership.clone();
+
+        // make sure all the members in the learners and spawn the replication stream
+        let config = self.make_sure_member_in_learners(members, curr);
+
+        let new_config = config.next_safe(members.clone());
+
+        tracing::debug!(?new_config, "calc_new_membership new_config:{:?}", self.nodes.keys());
+
+        new_config
     }
 
     #[tracing::instrument(level = "debug", skip(self, tx))]
@@ -188,7 +210,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // The last membership config is not committed yet.
         // Can not process the next one.
-        if self.has_pending_membership_change(&members) {
+        if self.core.committed < Some(self.core.effective_membership.log_id) {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::InProgress(InProgress {
                     membership_log_id: self.core.effective_membership.log_id,
@@ -197,11 +219,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return Ok(());
         }
 
-        let curr = &self.core.effective_membership.membership;
-
-        let mut new_config = curr.next_safe(members.clone());
-
-        tracing::debug!(?new_config, "new_config");
+        let curr = self.core.effective_membership.membership.clone();
+        let diff_members = members.difference(curr.all_members());
+        let mut new_config = self.calc_new_membership(&members);
 
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
         // streams AND are ready to join, then we can immediately proceed with entering joint
@@ -214,7 +234,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // TODO(xp): 111 test adding a node that is not learner.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in members.difference(curr.all_members()) {
+        for new_node in diff_members {
             match self.nodes.get(new_node) {
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id, &self.core.config) {
