@@ -237,7 +237,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         Ok(())
     }
 
-    // TODO(xp): remove this
     #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=self.core.id))]
     pub async fn append_membership_log(
         &mut self,
