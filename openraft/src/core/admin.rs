@@ -97,7 +97,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let _ = self.append_membership_log(new_config, None).await;
 
-        return false;
+        false
     }
 
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
