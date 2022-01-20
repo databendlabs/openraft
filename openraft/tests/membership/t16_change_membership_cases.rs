@@ -92,7 +92,7 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
 
             if new_leader != orig_leader {
                 router
-                    .wait(&id, timeout())
+                    .wait(id, timeout())
                     .await?
                     .metrics(
                         |x| x.current_term >= 2,
