@@ -54,7 +54,7 @@ async fn step_down() -> Result<()> {
     router
         .wait(&1, timeout())
         .await?
-        .log_at_least(log_index, "node in old cluster commits at least 1 membership log")
+        .log_at_least(Some(log_index), "node in old cluster commits at least 1 membership log")
         .await?;
 
     tracing::info!("--- new cluster commits 2 membership logs");
@@ -67,7 +67,7 @@ async fn step_down() -> Result<()> {
                 .wait(&id, timeout())
                 .await?
                 .log_at_least(
-                    log_index,
+                    Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
                 )
                 .await?;

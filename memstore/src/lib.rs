@@ -103,7 +103,6 @@ pub struct MemStore {
 
 impl MemStore {
     /// Create a new `MemStore` instance.
-    /// TODO(xp): creating a store should not require an id.
     pub async fn new() -> Self {
         let log = RwLock::new(BTreeMap::new());
         let sm = RwLock::new(MemStoreStateMachine::default());

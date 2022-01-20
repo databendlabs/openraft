@@ -114,7 +114,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {
-        // TODO(xp): change membership from 123 to 4 may hangs I guess. Because this function will not be called.
         // If peer's term is greater than current term, revert to follower state.
 
         if res.term > self.core.current_term {
