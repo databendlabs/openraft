@@ -49,22 +49,22 @@ async fn learner_restart() -> Result<()> {
 
     router.add_learner(0, 1).await?;
     router.client_request(0, "foo", 1).await;
-    n_logs += 1;
+    n_logs += 2;
 
     router.wait_for_log(&btreeset![0, 1], Some(n_logs), None, "write one log").await?;
 
     let (node0, _sto0) = router.remove_node(0).await.unwrap();
-    assert_node_state(0, &node0, 1, 2, State::Leader);
+    assert_node_state(0, &node0, 1, n_logs, State::Leader);
     node0.shutdown().await?;
 
     let (node1, sto1) = router.remove_node(1).await.unwrap();
-    assert_node_state(0, &node1, 1, 2, State::Learner);
+    assert_node_state(0, &node1, 1, n_logs, State::Learner);
     node1.shutdown().await?;
 
     // restart node-1, assert the state as expected.
     let restarted = Raft::new(1, config.clone(), router.clone(), sto1);
     sleep(Duration::from_secs(2)).await;
-    assert_node_state(1, &restarted, 1, 2, State::Learner);
+    assert_node_state(1, &restarted, 1, n_logs, State::Learner);
 
     Ok(())
 }

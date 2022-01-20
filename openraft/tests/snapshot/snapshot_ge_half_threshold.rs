@@ -81,6 +81,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
+        log_index += 1;
 
         router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "add learner").await?;
         let expected_snap = Some((log_index.into(), 1));

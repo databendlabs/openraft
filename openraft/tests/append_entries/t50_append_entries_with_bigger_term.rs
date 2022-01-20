@@ -25,7 +25,6 @@ async fn append_entries_with_bigger_term() -> Result<()> {
     // before append entries, check hard state in term 1 and vote for node 0
     router.assert_storage_state(1, n_logs, Some(0), LogId { term: 1, index: n_logs }, None).await?;
 
-    tracing::info!("append-entries with bigger term");
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
     let req = AppendEntriesRequest::<memstore::ClientRequest> {
         term: 2,
@@ -38,7 +37,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
     let resp = router.send_append_entries(0, req).await?;
     assert!(resp.success);
 
-    // after append entries, check hard state in term 2  and vote for node 1
+    // after append entries, check hard state in term 2 and vote for node 1
     router
         .assert_storage_state_in_node(0, 2, n_logs, Some(1), LogId { term: 1, index: n_logs }, None)
         .await?;

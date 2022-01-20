@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::LogIdOptionExt;
+use openraft::LogId;
 use openraft::State;
 
 use crate::fixtures::RaftRouter;
@@ -37,7 +37,8 @@ async fn step_down() -> Result<()> {
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
     router.change_membership(orig_leader, btreeset![1, 2, 3]).await?;
-    log_index += 2;
+    // 2 for add_learner, 2 for change_membership
+    log_index += 4;
 
     tracing::info!("--- old leader commits 2 membership log");
     {
@@ -95,8 +96,8 @@ async fn step_down() -> Result<()> {
 
         assert!(metrics.state != State::Leader);
         assert_eq!(metrics.current_term, 1);
-        assert_eq!(metrics.last_log_index, Some(5));
-        assert_eq!(metrics.last_applied.index(), Some(5));
+        assert_eq!(metrics.last_log_index, Some(8));
+        assert_eq!(metrics.last_applied, Some(LogId { index: 8, term: 1 }));
         assert_eq!(cfg.get_configs().clone(), vec![btreeset![1, 2, 3]]);
         assert!(!cfg.is_in_joint_consensus());
     }
