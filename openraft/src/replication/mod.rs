@@ -21,8 +21,12 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
+use crate::error::CommittedAdvanceTooMany;
+use crate::error::HigherTerm;
 use crate::error::LackEntry;
+use crate::error::NetworkError;
 use crate::error::ReplicationError;
+use crate::error::Timeout;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_types::LogIdOptionExt;
@@ -30,11 +34,14 @@ use crate::raft_types::LogIndexOptionExt;
 use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::ErrorSubject;
+use crate::ErrorVerb;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::ToStorageResult;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReplicationMetrics {
@@ -217,19 +224,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 ReplicationError::Closed => {
                     self.set_target_repl_state(TargetReplState::Shutdown);
                 }
-                ReplicationError::HigherTerm { higher, mine: _ } => {
+                ReplicationError::HigherTerm(h) => {
                     let _ = self.raft_core_tx.send((
                         ReplicaEvent::RevertToFollower {
                             target: self.target,
-                            term: higher,
+                            term: h.higher,
                         },
                         tracing::debug_span!("CH"),
                     ));
-                    return;
-                }
-                ReplicationError::IO { .. } => {
-                    tracing::error!(error=%err, "error replication to target={}", self.target);
-                    // TODO(xp): tell core to quit?
                     return;
                 }
                 ReplicationError::LackEntry(lack_ent) => {
@@ -357,16 +359,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 Ok(res) => res,
                 Err(err) => {
                     tracing::warn!(error=%err, "error sending AppendEntries RPC to target");
-                    return Err(ReplicationError::Network { source: err });
+                    return Err(ReplicationError::Network(NetworkError::from(err)));
                 }
             },
             Err(timeout_err) => {
                 tracing::warn!(error=%timeout_err, "timeout while sending AppendEntries RPC to target");
-                return Err(ReplicationError::Timeout {
+                return Err(ReplicationError::Timeout(Timeout {
+                    action: "send_append_entries".to_string(),
                     id: self.id,
                     target: self.target,
                     timeout: the_timeout,
-                });
+                }));
             }
         };
 
@@ -384,10 +387,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         if append_resp.term > self.term {
             tracing::debug!({ append_resp.term }, "append entries failed, reverting to follower");
 
-            return Err(ReplicationError::HigherTerm {
+            return Err(ReplicationError::HigherTerm(HigherTerm {
                 higher: append_resp.term,
                 mine: self.term,
-            });
+            }));
         }
 
         tracing::debug!(
@@ -674,11 +677,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             }
 
             if self.needs_snapshot() {
-                return Err(ReplicationError::CommittedAdvanceTooMany {
+                return Err(ReplicationError::CommittedAdvanceTooMany(CommittedAdvanceTooMany {
                     // TODO(xp) fill them
                     committed_index: 0,
                     target_index: 0,
-                });
+                }));
             }
 
             let span = tracing::debug_span!("CHrx:LineRate");
@@ -764,16 +767,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                                 //
                             },
                             Err(err) => {
-                                match err {
-                                    ReplicationError::StorageError(_) => {
-                                        return Err(err);
-                                    },
-                                    ReplicationError::IO {..} => {
-                                        return Err(err);
-                                    }
-                                    _=> {
-                                        // nothing to do
-                                    }
+                                if let ReplicationError::StorageError(_) = err {
+                                    return Err(err);
                                 }
                             }
                         }
@@ -814,7 +809,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(&mut self, mut snapshot: Snapshot<S::SnapshotData>) -> Result<(), ReplicationError> {
-        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await?;
+        let err_x = || (ErrorSubject::Snapshot(snapshot.meta.clone()), ErrorVerb::Read);
+
+        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
 
         let mut offset = 0;
 
@@ -822,8 +819,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         loop {
             // Build the RPC.
-            snapshot.snapshot.seek(SeekFrom::Start(offset)).await?;
-            let n_read = snapshot.snapshot.read_buf(&mut buf).await?;
+            snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
+
+            let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
 
             let done = (offset + n_read as u64) == end; // If bytes read == 0, then we're done.
             let req = InstallSnapshotRequest {
@@ -867,10 +865,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             // Handle response conditions.
             if res.term > self.term {
-                return Err(ReplicationError::HigherTerm {
+                return Err(ReplicationError::HigherTerm(HigherTerm {
                     higher: res.term,
                     mine: self.term,
-                });
+                }));
             }
 
             // If we just sent the final chunk of the snapshot, then transition to lagging state.

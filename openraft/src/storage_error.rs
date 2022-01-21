@@ -10,6 +10,29 @@ use crate::storage::HardState;
 use crate::LogId;
 use crate::SnapshotMeta;
 
+/// Convert error to StorageError::IO();
+pub trait ToStorageResult<T> {
+    /// Convert Result<T, E> to Result<T, StorageError::IO(StorageIOError)>
+    ///
+    /// `f` provides error context for building the StorageIOError.
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError>
+    where F: FnOnce() -> (ErrorSubject, ErrorVerb);
+}
+
+impl<T> ToStorageResult<T> for Result<T, std::io::Error> {
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError>
+    where F: FnOnce() -> (ErrorSubject, ErrorVerb) {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => {
+                let (subject, verb) = f();
+                let io_err = StorageIOError::new(subject, verb, AnyError::new(&e));
+                Err(io_err.into())
+            }
+        }
+    }
+}
+
 /// An error that occurs when the RaftStore impl runs defensive check of input or output.
 /// E.g. re-applying an log entry is a violation that may be a potential bug.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
