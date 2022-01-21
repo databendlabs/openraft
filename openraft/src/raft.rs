@@ -354,13 +354,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// let timeout = Duration::from_millis(200);
     ///
     /// // wait for raft log-3 to be received and applied:
-    /// r.wait(Some(timeout)).log(3).await?;
+    /// r.wait(Some(timeout)).log(Some(3), "log").await?;
     ///
     /// // wait for ever for raft node's current leader to become 3:
-    /// r.wait(None).current_leader(2).await?;
+    /// r.wait(None).current_leader(2, "wait for leader").await?;
     ///
     /// // wait for raft state to become a follower
-    /// r.wait(None).state(State::Follower).await?;
+    /// r.wait(None).state(State::Follower, "state").await?;
     /// ```
     pub fn wait(&self, timeout: Option<Duration>) -> Wait {
         let timeout = match timeout {

@@ -51,6 +51,7 @@ pub use crate::storage_error::ErrorSubject;
 pub use crate::storage_error::ErrorVerb;
 pub use crate::storage_error::StorageError;
 pub use crate::storage_error::StorageIOError;
+pub use crate::storage_error::ToStorageResult;
 pub use crate::storage_error::Violation;
 pub use crate::store_ext::StoreExt;
 pub use crate::store_wrapper::Wrapper;

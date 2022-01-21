@@ -1,9 +1,11 @@
 //! Error types exposed by this crate.
 
 use std::collections::BTreeSet;
+use std::error::Error;
 use std::fmt::Debug;
 use std::time::Duration;
 
+use anyerror::AnyError;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -109,7 +111,6 @@ pub enum ChangeMembershipError {
     #[error(transparent)]
     LearnerNotFound(#[from] LearnerNotFound),
 
-    // TODO(xp): 111 test it
     #[error(transparent)]
     LearnerIsLagging(#[from] LearnerIsLagging),
 }
@@ -179,42 +180,74 @@ impl From<StorageError> for AddLearnerError {
 #[non_exhaustive]
 #[allow(clippy::large_enum_variant)]
 pub enum ReplicationError {
-    #[error("seen a higher term: {higher} GT mine: {mine}")]
-    HigherTerm { higher: u64, mine: u64 },
+    #[error(transparent)]
+    HigherTerm(#[from] HigherTerm),
 
     #[error("Replication is closed")]
     Closed,
 
-    #[error("{0}")]
+    #[error(transparent)]
     LackEntry(#[from] LackEntry),
 
-    #[error("leader committed index {committed_index} advances target log index {target_index} too many")]
-    CommittedAdvanceTooMany { committed_index: u64, target_index: u64 },
+    #[error(transparent)]
+    CommittedAdvanceTooMany(#[from] CommittedAdvanceTooMany),
 
     // TODO(xp): two sub type: StorageError / TransportError
     // TODO(xp): a sub error for just send_append_entries()
-    #[error("{0}")]
+    #[error(transparent)]
     StorageError(#[from] StorageError),
 
     #[error(transparent)]
-    IO {
-        #[backtrace]
-        #[from]
-        source: std::io::Error,
-    },
-
-    #[error("timeout after {timeout:?} to replicate {id}->{target}")]
-    Timeout {
-        id: NodeId,
-        target: NodeId,
-        timeout: Duration,
-    },
+    Timeout(#[from] Timeout),
 
     #[error(transparent)]
-    Network {
-        #[backtrace]
-        source: anyhow::Error,
-    },
+    Network(#[from] NetworkError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("seen a higher term: {higher} GT mine: {mine}")]
+pub struct HigherTerm {
+    pub higher: u64,
+    pub mine: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("leader committed index {committed_index} advances target log index {target_index} too many")]
+pub struct CommittedAdvanceTooMany {
+    pub committed_index: u64,
+    pub target_index: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error(transparent)]
+pub struct NetworkError {
+    #[from]
+    source: AnyError,
+}
+
+impl NetworkError {
+    pub fn new<E: Error + 'static>(e: &E) -> Self {
+        Self {
+            source: AnyError::new(e),
+        }
+    }
+}
+
+impl From<anyhow::Error> for NetworkError {
+    fn from(e: anyhow::Error) -> Self {
+        Self {
+            source: AnyError::from(e),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("timeout after {timeout:?} when {action} {id}->{target}")]
+pub struct Timeout {
+    pub action: String,
+    pub id: NodeId,
+    pub target: NodeId,
+    pub timeout: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]

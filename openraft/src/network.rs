@@ -14,7 +14,7 @@ use crate::NodeId;
 
 /// A trait defining the interface for a Raft network between cluster members.
 ///
-/// See the [network chapter of the guide](https://datafuselabs.github.io/openraft/network.html)
+/// See the [network chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#3-impl-raftnetwork)
 /// for details and discussion on this trait and how to implement it.
 #[async_trait]
 pub trait RaftNetwork<D>: Send + Sync + 'static

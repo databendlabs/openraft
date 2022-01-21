@@ -53,20 +53,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let payload = EntryPayload::Membership(membership.clone());
         let _ent = self.core.append_payload_to_log(payload).await?;
 
-        // Become a candidate and start campaigning for leadership. If this node is the only node
-        // in the cluster, then become leader without holding an election. If members len == 1, we
-        // know it is our ID due to the above code where we ensure our own ID is present.
-        if self.core.effective_membership.membership.all_members().len() == 1 {
-            // TODO(xp): remove this simplified shortcut.
-            self.core.current_term += 1;
-            self.core.voted_for = Some(self.core.id);
-
-            // TODO(xp): it should always commit a initial log entry
-            self.core.set_target_state(State::Leader);
-            self.core.save_hard_state().await?;
-        } else {
-            self.core.set_target_state(State::Candidate);
-        }
+        self.core.set_target_state(State::Candidate);
 
         Ok(())
     }
@@ -270,7 +257,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         Ok(())
     }
 
-    // TODO(xp): remove this
     #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=self.core.id))]
     pub async fn append_membership_log(
         &mut self,

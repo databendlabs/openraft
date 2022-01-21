@@ -54,8 +54,6 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
         router.wait_for_log(&old, Some(log_index), timeout(), &format!("write 100 logs, {}", mes)).await?;
     }
 
-    // let mtx = router.wait(&0, timeout()).await?.log(Some(0), "get metrics").await?;
-    // let term_0 = mtx.current_term;
     let orig_leader = router.leader().await.expect("expected the cluster to have a leader");
 
     tracing::info!("--- change to {:?}", new);
