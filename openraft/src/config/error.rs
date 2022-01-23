@@ -13,4 +13,10 @@ pub enum ConfigError {
         election_timeout_min: u64,
         heartbeat_interval: u64,
     },
+
+    #[error("snapshot policy string is invalid: '{invalid:?}' expect: '{syntax}'")]
+    InvalidSnapshotPolicy { invalid: String, syntax: String },
+
+    #[error("{reason} when parsing {invalid:?}")]
+    InvalidNumber { invalid: String, reason: String },
 }

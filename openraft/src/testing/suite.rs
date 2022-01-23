@@ -19,6 +19,7 @@ use crate::ErrorSubject;
 use crate::LogId;
 use crate::Membership;
 use crate::RaftStorage;
+use crate::StorageError;
 use crate::Violation;
 
 const NODE_ID: u64 = 0;
@@ -46,7 +47,7 @@ where
     S: RaftStorage<D, R>,
     B: StoreBuilder<D, R, S>,
 {
-    pub fn test_all(builder: B) -> anyhow::Result<()> {
+    pub fn test_all(builder: B) -> Result<(), StorageError> {
         Suite::test_store(&builder)?;
 
         let df_builder = DefensiveStoreBuilder::<D, R, S, B> {
@@ -62,7 +63,7 @@ where
         Ok(())
     }
 
-    pub fn test_store(builder: &B) -> anyhow::Result<()> {
+    pub fn test_store(builder: &B) -> Result<(), StorageError> {
         run_fut(Suite::last_membership_in_log_initial(builder))?;
         run_fut(Suite::last_membership_in_log(builder))?;
         run_fut(Suite::get_membership_initial(builder))?;
@@ -90,7 +91,7 @@ where
         Ok(())
     }
 
-    pub async fn last_membership_in_log_initial(builder: &B) -> anyhow::Result<()> {
+    pub async fn last_membership_in_log_initial(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let membership = store.last_membership_in_log(0).await?;
@@ -100,7 +101,7 @@ where
         Ok(())
     }
 
-    pub async fn last_membership_in_log(builder: &B) -> anyhow::Result<()> {
+    pub async fn last_membership_in_log(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         tracing::info!("--- no log, do not read membership from state machine");
@@ -174,7 +175,7 @@ where
         Ok(())
     }
 
-    pub async fn get_membership_initial(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_membership_initial(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let membership = store.get_membership().await?;
@@ -184,7 +185,7 @@ where
         Ok(())
     }
 
-    pub async fn get_membership_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_membership_from_log_and_sm(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         tracing::info!("--- no log, read membership from state machine");
@@ -243,7 +244,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_without_init(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_initial_state_without_init(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let initial = store.get_initial_state().await?;
@@ -251,7 +252,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_with_state(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_initial_state_with_state(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
         Self::default_hard_state(&store).await?;
 
@@ -292,7 +293,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_membership_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_initial_state_membership_from_log_and_sm(builder: &B) -> Result<(), StorageError> {
         // It should never return membership from logs that are included in state machine present.
 
         let store = builder.build().await;
@@ -360,7 +361,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_last_log_gt_sm(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_initial_state_last_log_gt_sm(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
         Self::default_hard_state(&store).await?;
 
@@ -394,7 +395,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
         Self::default_hard_state(&store).await?;
 
@@ -412,7 +413,7 @@ where
         Ok(())
     }
 
-    pub async fn save_hard_state(builder: &B) -> anyhow::Result<()> {
+    pub async fn save_hard_state(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         store
@@ -434,7 +435,7 @@ where
         Ok(())
     }
 
-    pub async fn get_log_entries(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_log_entries(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
@@ -456,7 +457,7 @@ where
         Ok(())
     }
 
-    pub async fn try_get_log_entry(builder: &B) -> anyhow::Result<()> {
+    pub async fn try_get_log_entry(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
@@ -474,7 +475,7 @@ where
         Ok(())
     }
 
-    pub async fn initial_logs(builder: &B) -> anyhow::Result<()> {
+    pub async fn initial_logs(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let ent = store.try_get_log_entry(0).await?;
@@ -483,7 +484,7 @@ where
         Ok(())
     }
 
-    pub async fn get_log_state(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_log_state(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let st = store.get_log_state().await?;
@@ -530,7 +531,7 @@ where
         Ok(())
     }
 
-    pub async fn get_log_id(builder: &B) -> anyhow::Result<()> {
+    pub async fn get_log_id(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
@@ -551,7 +552,7 @@ where
         Ok(())
     }
 
-    pub async fn last_id_in_log(builder: &B) -> anyhow::Result<()> {
+    pub async fn last_id_in_log(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let log_id = store.get_log_state().await?.last_log_id;
@@ -588,7 +589,7 @@ where
         Ok(())
     }
 
-    pub async fn last_applied_state(builder: &B) -> anyhow::Result<()> {
+    pub async fn last_applied_state(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let (applied, membership) = store.last_applied_state().await?;
@@ -638,7 +639,7 @@ where
         Ok(())
     }
 
-    pub async fn delete_logs(builder: &B) -> anyhow::Result<()> {
+    pub async fn delete_logs(builder: &B) -> Result<(), StorageError> {
         tracing::info!("--- delete (-oo, 0]");
         {
             let store = builder.build().await;
@@ -739,7 +740,7 @@ where
         Ok(())
     }
 
-    pub async fn append_to_log(builder: &B) -> anyhow::Result<()> {
+    pub async fn append_to_log(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
@@ -755,7 +756,7 @@ where
         Ok(())
     }
 
-    // pub async fn apply_single(builder: &B) -> anyhow::Result<()> {
+    // pub async fn apply_single(builder: &B) -> Result<(), StorageError> {
     //     let store = builder.build().await;
     //
     //     let entry = Entry {
@@ -792,7 +793,7 @@ where
     //     Ok(())
     // }
     //
-    // pub async fn apply_multi(builder: &B) -> anyhow::Result<()> {
+    // pub async fn apply_multi(builder: &B) -> Result<(), StorageError> {
     //     let store = builder.build().await;
     //
     //     let req0 = ClientRequest {
@@ -869,7 +870,7 @@ where
     //     Ok(())
     // }
 
-    pub async fn feed_10_logs_vote_self(sto: &S) -> anyhow::Result<()> {
+    pub async fn feed_10_logs_vote_self(sto: &S) -> Result<(), StorageError> {
         sto.append_to_log(&[&blank(0, 0)]).await?;
 
         for i in 1..=10 {
@@ -885,7 +886,7 @@ where
         Ok(())
     }
 
-    pub async fn default_hard_state(sto: &S) -> anyhow::Result<()> {
+    pub async fn default_hard_state(sto: &S) -> Result<(), StorageError> {
         sto.save_hard_state(&HardState {
             current_term: 1,
             voted_for: Some(NODE_ID),
@@ -906,7 +907,7 @@ where
     S: RaftStorage<D, R>,
     B: StoreBuilder<D, R, S>,
 {
-    pub fn test_store_defensive(builder: &B) -> anyhow::Result<()> {
+    pub fn test_store_defensive(builder: &B) -> Result<(), StorageError> {
         run_fut(Suite::df_get_membership_config_dirty_log(builder))?;
         run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
         run_fut(Suite::df_save_hard_state_ascending(builder))?;
@@ -926,7 +927,7 @@ where
         Ok(())
     }
 
-    pub async fn df_get_membership_config_dirty_log(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_get_membership_config_dirty_log(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
@@ -984,7 +985,7 @@ where
         Ok(())
     }
 
-    pub async fn df_get_initial_state_dirty_log(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_get_initial_state_dirty_log(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
@@ -1019,7 +1020,7 @@ where
         Ok(())
     }
 
-    pub async fn df_save_hard_state_ascending(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_save_hard_state_ascending(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         store
@@ -1131,7 +1132,7 @@ where
         Ok(())
     }
 
-    pub async fn df_get_log_entries(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_get_log_entries(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
         Self::feed_10_logs_vote_self(&store).await?;
 
@@ -1195,7 +1196,7 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_nonempty_input(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_append_to_log_nonempty_input(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let res = store.append_to_log(Vec::<&Entry<_>>::new().as_slice()).await;
@@ -1207,7 +1208,7 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_nonconsecutive_input(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_append_to_log_nonconsecutive_input(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let res = store
@@ -1236,7 +1237,7 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_eq_last_plus_one(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_append_to_log_eq_last_plus_one(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         tracing::info!("-- log_id <= last_applied");
@@ -1262,7 +1263,7 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_eq_last_applied_plus_one(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_append_to_log_eq_last_applied_plus_one(builder: &B) -> Result<(), StorageError> {
         // last_log: 1,1
         // last_applied: 1,2
         // append_to_log: 1,4
@@ -1291,7 +1292,7 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_gt_last_log_id(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_append_to_log_gt_last_log_id(builder: &B) -> Result<(), StorageError> {
         // last_log: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
         let store = builder.build().await;
@@ -1313,7 +1314,7 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_gt_last_applied_id(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_append_to_log_gt_last_applied_id(builder: &B) -> Result<(), StorageError> {
         // last_log: 2,1
         // last_applied: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
@@ -1340,7 +1341,7 @@ where
         Ok(())
     }
 
-    pub async fn df_apply_nonempty_input(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_apply_nonempty_input(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let res = store.apply_to_state_machine(Vec::<&Entry<_>>::new().as_slice()).await;
@@ -1352,7 +1353,7 @@ where
         Ok(())
     }
 
-    pub async fn df_apply_index_eq_last_applied_plus_one(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_apply_index_eq_last_applied_plus_one(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let entry = blank(3, 1);
@@ -1393,7 +1394,7 @@ where
         Ok(())
     }
 
-    pub async fn df_apply_gt_last_applied_id(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_apply_gt_last_applied_id(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         let entry = blank(3, 1);
@@ -1420,7 +1421,7 @@ where
         Ok(())
     }
 
-    pub async fn df_purge_applied_le_last_applied(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_purge_applied_le_last_applied(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
@@ -1443,7 +1444,7 @@ where
         Ok(())
     }
 
-    pub async fn df_delete_conflict_gt_last_applied(builder: &B) -> anyhow::Result<()> {
+    pub async fn df_delete_conflict_gt_last_applied(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
@@ -1477,9 +1478,9 @@ fn blank<D: AppData>(term: u64, index: u64) -> Entry<D> {
 
 /// Block until a future is finished.
 /// The future will be running in a clean tokio runtime, to prevent an unfinished task affecting the test.
-pub fn run_fut<F>(f: F) -> anyhow::Result<()>
-where F: Future<Output = anyhow::Result<()>> {
-    let rt = tokio::runtime::Runtime::new()?;
+pub fn run_fut<F>(f: F) -> Result<(), StorageError>
+where F: Future<Output = Result<(), StorageError>> {
+    let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(f)?;
     Ok(())
 }
