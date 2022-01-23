@@ -54,10 +54,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // Update current leader if needed.
-        if self.current_leader.as_ref() != Some(&req.leader_id) {
-            self.current_leader = Some(req.leader_id);
+        if self.current_leader != Some(req.leader_id) {
             report_metrics = true;
         }
+
+        self.current_leader = Some(req.leader_id);
 
         // If not follower, become follower.
         if !self.target_state.is_follower() && !self.target_state.is_learner() {

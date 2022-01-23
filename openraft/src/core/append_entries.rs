@@ -72,10 +72,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             }
 
             // Update current leader if needed.
-            if self.current_leader.as_ref() != Some(&msg.leader_id) {
-                self.current_leader = Some(msg.leader_id);
+            if self.current_leader != Some(msg.leader_id) {
                 report_metrics = true;
             }
+
+            self.current_leader = Some(msg.leader_id);
 
             if report_metrics {
                 self.report_metrics(Update::AsIs);

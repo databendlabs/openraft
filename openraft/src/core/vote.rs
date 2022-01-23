@@ -20,14 +20,24 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// An RPC invoked by candidates to gather votes (§5.2).
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(msg=%msg.summary()))]
-    pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> Result<VoteResponse, VoteError> {
-        tracing::debug!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "start handle_vote_request");
+    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
+    pub(super) async fn handle_vote_request(&mut self, req: VoteRequest) -> Result<VoteResponse, VoteError> {
+        tracing::debug!(
+            candidate = req.candidate_id,
+            self.current_term,
+            req_term = req.term,
+            "start handle_vote_request"
+        );
         let last_log_id = self.last_log_id;
 
         // If candidate's current term is less than this nodes current term, reject.
-        if msg.term < self.current_term {
-            tracing::debug!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "RequestVote RPC term is less than current term");
+        if req.term < self.current_term {
+            tracing::debug!(
+                candidate = req.candidate_id,
+                self.current_term,
+                rpc_term = req.term,
+                "RequestVote RPC term is less than current term"
+            );
             return Ok(VoteResponse {
                 term: self.current_term,
                 vote_granted: false,
@@ -41,7 +51,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             let delta = now.duration_since(*inst);
             if self.config.election_timeout_min >= (delta.as_millis() as u64) {
                 tracing::debug!(
-                    { candidate = msg.candidate_id },
+                    { candidate = req.candidate_id },
                     "rejecting vote request received within election timeout minimum"
                 );
                 return Ok(VoteResponse {
@@ -55,8 +65,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Per spec, if we observe a term greater than our own outside of the election timeout
         // minimum, then we must update term & immediately become follower. We still need to
         // do vote checking after this.
-        if msg.term > self.current_term {
-            self.update_current_term(msg.term, None);
+        if req.term > self.current_term {
+            self.update_current_term(req.term, None);
             self.update_next_election_timeout(false);
             self.set_target_state(State::Follower);
             self.save_hard_state().await?;
@@ -64,9 +74,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Check if candidate's log is at least as up-to-date as this node's.
         // If candidate's log is not at least as up-to-date as this node, then reject.
-        if msg.last_log_id < last_log_id {
+        if req.last_log_id < last_log_id {
             tracing::debug!(
-                { candidate = msg.candidate_id },
+                { candidate = req.candidate_id },
                 "rejecting vote request as candidate's log is not up-to-date"
             );
             return Ok(VoteResponse {
@@ -82,7 +92,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Candidate's log is up-to-date so handle voting conditions.
         match &self.voted_for {
             // This node has already voted for the candidate.
-            Some(candidate_id) if candidate_id == &msg.candidate_id => Ok(VoteResponse {
+            Some(candidate_id) if candidate_id == &req.candidate_id => Ok(VoteResponse {
                 term: self.current_term,
                 vote_granted: true,
                 last_log_id,
@@ -95,11 +105,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             }),
             // This node has not yet voted for the current term, so vote for the candidate.
             None => {
-                self.voted_for = Some(msg.candidate_id);
+                self.voted_for = Some(req.candidate_id);
                 self.set_target_state(State::Follower);
                 self.update_next_election_timeout(false);
                 self.save_hard_state().await?;
-                tracing::debug!({candidate=msg.candidate_id, msg.term}, "voted for candidate");
+                tracing::debug!({candidate=req.candidate_id, req.term}, "voted for candidate");
                 Ok(VoteResponse {
                     term: self.current_term,
                     vote_granted: true,
