@@ -259,14 +259,6 @@ impl NetworkError {
     }
 }
 
-impl From<anyhow::Error> for NetworkError {
-    fn from(e: anyhow::Error) -> Self {
-        Self {
-            source: AnyError::from(e),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("timeout after {timeout:?} when {action} {id}->{target}")]
 pub struct Timeout {

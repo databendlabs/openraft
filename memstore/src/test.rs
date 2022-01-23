@@ -1,4 +1,5 @@
 use openraft::testing::Suite;
+use openraft::StorageError;
 
 use crate::MemStore;
 
@@ -24,6 +25,7 @@ use crate::MemStore;
 /// }
 /// ```
 #[test]
-pub fn test_mem_store() -> anyhow::Result<()> {
-    Suite::test_all(MemStore::new)
+pub fn test_mem_store() -> Result<(), StorageError> {
+    Suite::test_all(MemStore::new)?;
+    Ok(())
 }

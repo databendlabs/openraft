@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::time::Duration;
 
+use anyerror::AnyError;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
@@ -816,8 +817,7 @@ impl RaftRouter {
         let isolated = self.isolated_nodes.read().await;
 
         if isolated.contains(&target) || isolated.contains(&id) {
-            let err = anyhow!("target node is isolated");
-            let network_err = NetworkError::from(err);
+            let network_err = NetworkError::new(&AnyError::error("target node is isolated"));
             return Err(network_err);
         }
 

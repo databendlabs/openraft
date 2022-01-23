@@ -16,8 +16,7 @@ repository = "https://github.com/datafuselabs/openraft"
 readme = "../README.md"
 
 [dependencies]
-anyhow = "1.0.32"
-anyerror = { version = "0.1.1", features=["anyhow"]}
+anyerror = { version = "0.1.2"}
 async-trait = "0.1.36"
 byte-unit = "4.0.12"
 bytes = "1.0"
@@ -33,6 +32,7 @@ tracing = "0.1.29"
 tracing-futures = "0.2.4"
 
 [dev-dependencies]
+anyhow = "1.0.32"
 lazy_static = "1.4.0"
 memstore = { version="0.2.0", path="../memstore" }
 pretty_assertions = "1.0.0"
