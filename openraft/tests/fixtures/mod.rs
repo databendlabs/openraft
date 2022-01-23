@@ -23,8 +23,14 @@ use memstore::ClientResponse as MemClientResponse;
 use memstore::MemStore;
 use openraft::async_trait::async_trait;
 use openraft::error::AddLearnerError;
+use openraft::error::AppendEntriesError;
 use openraft::error::ClientReadError;
 use openraft::error::ClientWriteError;
+use openraft::error::InstallSnapshotError;
+use openraft::error::NetworkError;
+use openraft::error::RPCError;
+use openraft::error::RemoteError;
+use openraft::error::VoteError;
 use openraft::metrics::Wait;
 use openraft::raft::AddLearnerResponse;
 use openraft::raft::AppendEntriesRequest;
@@ -805,6 +811,18 @@ impl RaftRouter {
 
         Ok(())
     }
+
+    pub async fn check_reachable(&self, id: NodeId, target: NodeId) -> std::result::Result<(), NetworkError> {
+        let isolated = self.isolated_nodes.read().await;
+
+        if isolated.contains(&target) || isolated.contains(&id) {
+            let err = anyhow!("target node is isolated");
+            let network_err = NetworkError::from(err);
+            return Err(network_err);
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -814,46 +832,52 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
         &self,
         target: u64,
         rpc: AppendEntriesRequest<MemClientRequest>,
-    ) -> Result<AppendEntriesResponse> {
+    ) -> std::result::Result<AppendEntriesResponse, RPCError<AppendEntriesError>> {
         tracing::debug!("append_entries to id={} {:?}", target, rpc);
         self.rand_send_delay().await;
 
+        self.check_reachable(rpc.leader_id, target).await?;
+
         let rt = self.routing_table.read().await;
-        let isolated = self.isolated_nodes.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
-        if isolated.contains(&target) || isolated.contains(&rpc.leader_id) {
-            return Err(anyhow!("target node is isolated"));
-        }
+
         let resp = addr.0.append_entries(rpc).await;
 
         tracing::debug!("append_entries: recv resp from id={} {:?}", target, resp);
-        Ok(resp?)
+        let resp = resp.map_err(|e| RemoteError::new(target, e))?;
+        Ok(resp)
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
-    async fn send_install_snapshot(&self, target: u64, rpc: InstallSnapshotRequest) -> Result<InstallSnapshotResponse> {
+    async fn send_install_snapshot(
+        &self,
+        target: u64,
+        rpc: InstallSnapshotRequest,
+    ) -> std::result::Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>> {
         self.rand_send_delay().await;
 
+        self.check_reachable(rpc.leader_id, target).await?;
+
         let rt = self.routing_table.read().await;
-        let isolated = self.isolated_nodes.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
-        if isolated.contains(&target) || isolated.contains(&rpc.leader_id) {
-            return Err(anyhow!("target node is isolated"));
-        }
-        Ok(addr.0.install_snapshot(rpc).await?)
+
+        let resp = addr.0.install_snapshot(rpc).await;
+        let resp = resp.map_err(|e| RemoteError::new(target, e))?;
+        Ok(resp)
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn send_vote(&self, target: u64, rpc: VoteRequest) -> Result<VoteResponse> {
+    async fn send_vote(&self, target: u64, rpc: VoteRequest) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
         self.rand_send_delay().await;
 
+        self.check_reachable(rpc.candidate_id, target).await?;
+
         let rt = self.routing_table.read().await;
-        let isolated = self.isolated_nodes.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
-        if isolated.contains(&target) || isolated.contains(&rpc.candidate_id) {
-            return Err(anyhow!("target node is isolated"));
-        }
-        Ok(addr.0.vote(rpc).await?)
+
+        let resp = addr.0.vote(rpc).await;
+        let resp = resp.map_err(|e| RemoteError::new(target, e))?;
+        Ok(resp)
     }
 }
 

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use futures::future::TryFutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -15,6 +14,8 @@ use crate::core::State;
 use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::QuorumNotEnough;
+use crate::error::RPCError;
+use crate::error::Timeout;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
@@ -25,6 +26,7 @@ use crate::replication::RaftEvent;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::MessageSummary;
+use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::StorageError;
@@ -93,8 +95,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let mut pending = FuturesUnordered::new();
         let membership = &self.core.effective_membership.membership;
 
-        for (id, node) in self.nodes.iter() {
-            if !membership.is_member(id) {
+        for (target, node) in self.nodes.iter() {
+            if !membership.is_member(target) {
                 continue;
             }
 
@@ -106,22 +108,37 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 leader_commit: self.core.committed,
             };
 
-            let target = *id;
+            let my_id = self.core.id;
+            let target = *target;
             let network = self.core.network.clone();
 
             let ttl = Duration::from_millis(self.core.config.heartbeat_interval);
 
             let task = tokio::spawn(
                 async move {
-                    match timeout(ttl, network.send_append_entries(target, rpc)).await {
-                        Ok(Ok(data)) => Ok((target, data)),
-                        Ok(Err(err)) => Err((target, err)),
-                        Err(_timeout) => Err((target, anyhow!("timeout waiting for leadership confirmation"))),
+                    let outer_res = timeout(ttl, network.send_append_entries(target, rpc)).await;
+                    match outer_res {
+                        Ok(append_res) => match append_res {
+                            Ok(x) => Ok((target, x)),
+                            Err(err) => Err((target, err)),
+                        },
+                        Err(_timeout) => {
+                            let timeout_err = Timeout {
+                                action: RPCTypes::AppendEntries,
+                                id: my_id,
+                                target,
+                                timeout: ttl,
+                            };
+
+                            Err((target, RPCError::Timeout(timeout_err)))
+                        }
                     }
                 }
-                .instrument(tracing::debug_span!("spawn")),
+                // TODO(xp): add target to span
+                .instrument(tracing::debug_span!("SPAWN_append_entries")),
             )
-            .map_err(move |err| (*id, err));
+            .map_err(move |err| (target, err));
+
             pending.push(task);
         }
 

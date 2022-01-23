@@ -12,6 +12,7 @@ use serde::Serialize;
 use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
 use crate::NodeId;
+use crate::RPCTypes;
 use crate::StorageError;
 
 /// Fatal is unrecoverable and shuts down raft at once.
@@ -85,8 +86,6 @@ pub enum ClientReadError {
 /// An error related to a client write request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 pub enum ClientWriteError {
-    // #[error("{0}")]
-    // RaftError(#[from] RaftError),
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
 
@@ -177,7 +176,6 @@ impl From<StorageError> for AddLearnerError {
 
 /// Error variants related to the Replication.
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
 #[allow(clippy::large_enum_variant)]
 pub enum ReplicationError {
     #[error(transparent)]
@@ -202,6 +200,34 @@ pub enum ReplicationError {
 
     #[error(transparent)]
     Network(#[from] NetworkError),
+
+    #[error(transparent)]
+    RemoteError(#[from] RemoteError<AppendEntriesError>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+pub enum RPCError<T: Error> {
+    #[error(transparent)]
+    Timeout(#[from] Timeout),
+
+    #[error(transparent)]
+    Network(#[from] NetworkError),
+
+    #[error(transparent)]
+    RemoteError(#[from] RemoteError<T>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("error occur on remote peer {target}: {source}")]
+pub struct RemoteError<T: std::error::Error> {
+    pub target: NodeId,
+    pub source: T,
+}
+
+impl<T: std::error::Error> RemoteError<T> {
+    pub fn new(target: NodeId, e: T) -> Self {
+        Self { target, source: e }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -244,7 +270,7 @@ impl From<anyhow::Error> for NetworkError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("timeout after {timeout:?} when {action} {id}->{target}")]
 pub struct Timeout {
-    pub action: String,
+    pub action: RPCTypes,
     pub id: NodeId,
     pub target: NodeId,
     pub timeout: Duration,

@@ -21,10 +21,11 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
+use crate::error::AppendEntriesError;
 use crate::error::CommittedAdvanceTooMany;
 use crate::error::HigherTerm;
 use crate::error::LackEntry;
-use crate::error::NetworkError;
+use crate::error::RPCError;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
 use crate::raft::AppendEntriesRequest;
@@ -39,6 +40,7 @@ use crate::ErrorVerb;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
+use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::ToStorageResult;
@@ -253,6 +255,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 ReplicationError::Network { .. } => {
                     // nothing to do
                 }
+                ReplicationError::RemoteError(remote_err) => {
+                    tracing::error!(%remote_err, "remote peer error");
+                    match remote_err.source {
+                        AppendEntriesError::Fatal(fatal) => {
+                            tracing::error!(%fatal, target=%remote_err.target, "remote fatal error, close replication");
+                            return;
+                        }
+                    }
+                }
             };
         }
     }
@@ -359,13 +370,18 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 Ok(res) => res,
                 Err(err) => {
                     tracing::warn!(error=%err, "error sending AppendEntries RPC to target");
-                    return Err(ReplicationError::Network(NetworkError::from(err)));
+                    let repl_err = match err {
+                        RPCError::Timeout(e) => ReplicationError::Timeout(e),
+                        RPCError::Network(e) => ReplicationError::Network(e),
+                        RPCError::RemoteError(e) => ReplicationError::RemoteError(e),
+                    };
+                    return Err(repl_err);
                 }
             },
             Err(timeout_err) => {
                 tracing::warn!(error=%timeout_err, "timeout while sending AppendEntries RPC to target");
                 return Err(ReplicationError::Timeout(Timeout {
-                    action: "send_append_entries".to_string(),
+                    action: RPCTypes::AppendEntries,
                     id: self.id,
                     target: self.target,
                     timeout: the_timeout,

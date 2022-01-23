@@ -34,6 +34,7 @@ pub use crate::core::State;
 pub use crate::defensive::DefensiveCheck;
 pub use crate::membership::Membership;
 pub use crate::metrics::RaftMetrics;
+pub use crate::network::RPCTypes;
 pub use crate::network::RaftNetwork;
 pub use crate::raft::Raft;
 pub use crate::raft_types::LogId;
