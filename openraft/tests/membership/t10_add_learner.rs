@@ -174,6 +174,11 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 
     router.new_raft_node(3).await;
     router.new_raft_node(4).await;
+    router.add_learner(orig_leader, 3).await?;
+    router.add_learner(orig_leader, 4).await?;
+    n_logs += 2;
+    router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "add learner").await?;
+
     router.change_membership(orig_leader, btreeset![1, 3, 4]).await?;
     // 2 for change_membership
     n_logs += 2;

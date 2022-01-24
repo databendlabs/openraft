@@ -4,7 +4,6 @@ mod fixtures;
 
 // The number indicate the preferred running order for these case.
 // The later tests may depend on the earlier ones.
-
 mod t00_learner_restart;
 mod t10_add_learner;
 

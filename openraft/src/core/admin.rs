@@ -137,49 +137,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         );
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) fn make_sure_member_in_learners(&mut self, members: &BTreeSet<NodeId>, curr: Membership) -> Membership {
-        let mut new_learner_set = BTreeSet::new();
-        for node_id in members {
-            let target = *node_id;
-            if target == self.core.id {
-                continue;
-            }
-            if let Some(_t) = self.nodes.get(node_id) {
-                tracing::debug!("target node {} is already a cluster member or is being synced", target);
-                continue;
-            }
-            if curr.contains(node_id) {
-                tracing::debug!(
-                    "target node {} is already a member or learner,cannot add as learner",
-                    target
-                );
-                continue;
-            }
-
-            new_learner_set.insert(target);
-
-            let state = self.spawn_replication_stream(target, None);
-            self.nodes.insert(target, state);
-        }
-
-        curr.add_learner_set(new_learner_set)
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) fn calc_new_membership(&mut self, members: &BTreeSet<NodeId>) -> Membership {
-        let curr = self.core.effective_membership.membership.clone();
-
-        // make sure all the members in the learners and spawn the replication stream
-        let config = self.make_sure_member_in_learners(members, curr);
-
-        let new_config = config.next_safe(members.clone());
-
-        tracing::debug!(?new_config, "calc_new_membership new_config:{:?}", self.nodes.keys());
-
-        new_config
-    }
-
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(
         &mut self,
@@ -208,7 +165,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let curr = self.core.effective_membership.membership.clone();
         let diff_members = members.difference(curr.all_members());
-        let mut new_config = self.calc_new_membership(&members);
+        let mut new_config = curr.next_safe(members.clone());
 
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
         // streams AND are ready to join, then we can immediately proceed with entering joint
