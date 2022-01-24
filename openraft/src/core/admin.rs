@@ -164,8 +164,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         let curr = self.core.effective_membership.membership.clone();
-        let diff_members = members.difference(curr.all_members());
+        let new_members = members.difference(curr.all_members());
         let mut new_config = curr.next_safe(members.clone());
+        tracing::debug!(?new_config, "new_config");
 
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
         // streams AND are ready to join, then we can immediately proceed with entering joint
@@ -178,7 +179,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // TODO(xp): 111 test adding a node that is not learner.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in diff_members {
+        for new_node in new_members {
             match self.nodes.get(new_node) {
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id, &self.core.config) {
