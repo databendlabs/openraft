@@ -36,9 +36,13 @@ async fn step_down() -> Result<()> {
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;
+    router.add_learner(0, 2).await?;
+    router.add_learner(0, 3).await?;
+    log_index += 2;
+    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
     router.change_membership(orig_leader, btreeset![1, 2, 3]).await?;
-    // 2 for add_learner, 2 for change_membership
-    log_index += 4;
+    // 2 for change_membership
+    log_index += 2;
 
     tracing::info!("--- old leader commits 2 membership log");
     {

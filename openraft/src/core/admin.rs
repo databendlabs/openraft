@@ -137,27 +137,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         );
     }
 
-    pub fn has_pending_membership_change(&self, members: &BTreeSet<NodeId>) -> bool {
-        if self.core.committed < Some(self.core.effective_membership.log_id) {
-            return false;
-        }
-
-        let curr = &self.core.effective_membership.membership;
-        let all_learners = curr.all_learners();
-        for new_node in members.difference(curr.all_members()) {
-            match all_learners.get(new_node) {
-                Some(_node) => {
-                    continue;
-                }
-                None => {
-                    // if new member not include in the learners, there is pending membership change
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(
         &mut self,
@@ -175,7 +154,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // The last membership config is not committed yet.
         // Can not process the next one.
-        if self.has_pending_membership_change(&members) {
+        if self.core.committed < Some(self.core.effective_membership.log_id) {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::InProgress(InProgress {
                     membership_log_id: self.core.effective_membership.log_id,
@@ -184,10 +163,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return Ok(());
         }
 
-        let curr = &self.core.effective_membership.membership;
-
+        let curr = self.core.effective_membership.membership.clone();
+        let new_members = members.difference(curr.all_members());
         let mut new_config = curr.next_safe(members.clone());
-
         tracing::debug!(?new_config, "new_config");
 
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
@@ -201,7 +179,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // TODO(xp): 111 test adding a node that is not learner.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in members.difference(curr.all_members()) {
+        for new_node in new_members {
             match self.nodes.get(new_node) {
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id, &self.core.config) {
