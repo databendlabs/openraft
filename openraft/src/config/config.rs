@@ -22,27 +22,35 @@ pub enum SnapshotPolicy {
 }
 
 /// Parse number with unit such as 5.3 KB
-fn parse_bytes_with_unit(src: &str) -> anyhow::Result<u64> {
-    let res = byte_unit::Byte::from_str(src)?;
+fn parse_bytes_with_unit(src: &str) -> Result<u64, ConfigError> {
+    let res = byte_unit::Byte::from_str(src).map_err(|e| ConfigError::InvalidNumber {
+        invalid: src.to_string(),
+        reason: e.to_string(),
+    })?;
 
     Ok(res.get_bytes() as u64)
 }
 
-fn parse_snapshot_policy(src: &str) -> anyhow::Result<SnapshotPolicy> {
+fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
     let elts = src.split(':').collect::<Vec<_>>();
     if elts.len() != 2 {
-        return Err(anyhow::anyhow!(
-            "snapshot policy should be in form of 'since_last:<num>'"
-        ));
+        return Err(ConfigError::InvalidSnapshotPolicy {
+            syntax: "since_last:<num>".to_string(),
+            invalid: src.to_string(),
+        });
     }
 
     if elts[0] != "since_last" {
-        return Err(anyhow::anyhow!(
-            "snapshot policy should be in form of 'since_last:<num>'"
-        ));
+        return Err(ConfigError::InvalidSnapshotPolicy {
+            syntax: "since_last:<num>".to_string(),
+            invalid: src.to_string(),
+        });
     }
 
-    let n_logs = elts[1].parse::<u64>()?;
+    let n_logs = elts[1].parse::<u64>().map_err(|e| ConfigError::InvalidNumber {
+        invalid: src.to_string(),
+        reason: e.to_string(),
+    })?;
     Ok(SnapshotPolicy::LogsSinceLast(n_logs))
 }
 

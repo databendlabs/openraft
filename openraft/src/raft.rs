@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
+use tokio::task::JoinError;
 use tokio::task::JoinHandle;
 use tracing::Span;
 
@@ -374,7 +375,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Shutdown this Raft node.
-    pub async fn shutdown(&self) -> anyhow::Result<()> {
+    pub async fn shutdown(&self) -> Result<(), JoinError> {
         if let Some(tx) = self.inner.tx_shutdown.lock().await.take() {
             let _ = tx.send(());
         }
