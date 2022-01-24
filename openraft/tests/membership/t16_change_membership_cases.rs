@@ -60,10 +60,10 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
     {
         for id in only_in_new {
             router.new_raft_node(*id).await;
-            log_index += 1;
             router.add_learner(0, *id).await?;
+            log_index += 1;
+            router.wait_for_log(&old, Some(log_index), timeout(), &format!("add learner, {}", mes)).await?;
         }
-        router.wait_for_log(&old, Some(log_index), timeout(), &format!("add learner, {}", mes)).await?;
 
         router.change_membership(0, new.clone()).await?;
         log_index += 2; // two member-change logs
