@@ -82,7 +82,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         assert_eq!(Membership::new_single(btreeset! {0,1}), m.membership, "membership ");
 
         // TODO(xp): this assertion fails because when change-membership, a append-entries request does not update
-        //           voted_for and does not call save_hard_state.
+        //           voted_for and does not call save_vote.
         //           Thus the storage layer does not know about the leader==Some(0).
         //           Update voted_for whenever a new leader is seen would solve this issue.
         // router

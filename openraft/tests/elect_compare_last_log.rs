@@ -6,12 +6,13 @@ use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::storage::HardState;
+use openraft::CommittedState;
 use openraft::Config;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft::Vote;
 
 use crate::fixtures::blank;
 
@@ -36,8 +37,9 @@ async fn elect_compare_last_log() -> Result<()> {
 
     tracing::info!("--- fake store: sto0: last log: 2,1");
     {
-        sto0.save_hard_state(&HardState {
-            current_term: 10,
+        sto0.save_vote(&Vote {
+            term: 10,
+            state: CommittedState::Uncommitted,
             voted_for: None,
         })
         .await?;
@@ -51,8 +53,9 @@ async fn elect_compare_last_log() -> Result<()> {
 
     tracing::info!("--- fake store: sto1: last log: 1,2");
     {
-        sto1.save_hard_state(&HardState {
-            current_term: 10,
+        sto1.save_vote(&Vote {
+            term: 10,
+            state: CommittedState::Uncommitted,
             voted_for: None,
         })
         .await?;

@@ -5,7 +5,6 @@ use std::sync::RwLock;
 
 use crate::async_trait::async_trait;
 use crate::raft::Entry;
-use crate::storage::HardState;
 use crate::storage::LogState;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
@@ -19,6 +18,7 @@ use crate::RaftStorageDebug;
 use crate::SnapshotMeta;
 use crate::StateMachineChanges;
 use crate::StorageError;
+use crate::Vote;
 use crate::Wrapper;
 
 /// Extended store backed by another impl.
@@ -91,14 +91,14 @@ where
     type SnapshotData = T::SnapshotData;
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError> {
-        self.defensive_incremental_hard_state(hs).await?;
-        self.inner().save_hard_state(hs).await
+    async fn save_vote(&self, vote: &Vote) -> Result<(), StorageError> {
+        self.defensive_incremental_vote(vote).await?;
+        self.inner().save_vote(vote).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn read_hard_state(&self) -> Result<Option<HardState>, StorageError> {
-        self.inner().read_hard_state().await
+    async fn read_vote(&self) -> Result<Option<Vote>, StorageError> {
+        self.inner().read_vote().await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

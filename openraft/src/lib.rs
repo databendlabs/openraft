@@ -11,6 +11,7 @@ mod storage_error;
 mod store_ext;
 mod store_wrapper;
 mod summary;
+mod vote;
 
 pub mod error;
 pub mod metrics;
@@ -57,6 +58,8 @@ pub use crate::storage_error::Violation;
 pub use crate::store_ext::StoreExt;
 pub use crate::store_wrapper::Wrapper;
 pub use crate::summary::MessageSummary;
+pub use crate::vote::CommittedState;
+pub use crate::vote::Vote;
 
 /// A Raft node's ID.
 pub type NodeId = u64;

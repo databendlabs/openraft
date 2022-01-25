@@ -44,6 +44,7 @@ use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::ToStorageResult;
+use crate::Vote;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReplicationMetrics {
@@ -348,8 +349,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
-            term: self.term,
-            leader_id: self.id,
+            vote: Vote::new_committed(self.term, self.id),
             prev_log_id,
             leader_commit: self.committed,
             entries: logs,
@@ -400,18 +400,18 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         // Failed
 
         // Replication was not successful, if a newer term has been returned, revert to follower.
-        if append_resp.term > self.term {
-            tracing::debug!({ append_resp.term }, "append entries failed, reverting to follower");
+        if append_resp.vote.term > self.term {
+            tracing::debug!(%append_resp.vote, "append entries failed, reverting to follower");
 
             return Err(ReplicationError::HigherTerm(HigherTerm {
-                higher: append_resp.term,
+                higher: append_resp.vote.term,
                 mine: self.term,
             }));
         }
 
         tracing::debug!(
             ?conflict,
-            append_resp.term,
+            %append_resp.vote,
             "append entries failed, handling conflict opt"
         );
 
@@ -841,8 +841,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             let done = (offset + n_read as u64) == end; // If bytes read == 0, then we're done.
             let req = InstallSnapshotRequest {
-                term: self.term,
-                leader_id: self.id,
+                vote: Vote::new_committed(self.term, self.id),
                 meta: snapshot.meta.clone(),
                 offset,
                 data: Vec::from(&buf[..n_read]),
@@ -880,9 +879,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             };
 
             // Handle response conditions.
-            if res.term > self.term {
+            if res.vote.term > self.term {
                 return Err(ReplicationError::HigherTerm(HigherTerm {
-                    higher: res.term,
+                    higher: res.vote.term,
                     mine: self.term,
                 }));
             }

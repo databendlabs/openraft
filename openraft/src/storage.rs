@@ -20,8 +20,8 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::NodeId;
 use crate::StorageError;
+use crate::Vote;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotMeta {
@@ -45,18 +45,6 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
     pub snapshot: Box<S>,
 }
 
-/// A record holding the hard state of a Raft node.
-///
-/// This model derives serde's traits for easily (de)serializing this
-/// model for storage & retrieval.
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Default)]
-pub struct HardState {
-    /// The last recorded term observed by this system.
-    pub current_term: u64,
-    /// The ID of the node voted for in the `current_term`.
-    pub voted_for: Option<NodeId>,
-}
-
 /// A struct used to represent the initial state which a Raft node needs when first starting.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InitialState {
@@ -66,8 +54,7 @@ pub struct InitialState {
     /// The LogId of the last log applied to the state machine.
     pub last_applied: Option<LogId>,
 
-    /// The saved hard state of the node.
-    pub hard_state: HardState,
+    pub vote: Vote,
 
     /// The latest cluster membership configuration found, in log or in state machine, else a new initial
     /// membership config consisting only of this node's ID.
@@ -158,7 +145,7 @@ where
     /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
     /// storage.
     async fn get_initial_state(&self) -> Result<InitialState, StorageError> {
-        let hs = self.read_hard_state().await?;
+        let vote = self.read_vote().await?;
         let st = self.get_log_state().await?;
         let mut last_log_id = st.last_log_id;
         let (last_applied, _) = self.last_applied_state().await?;
@@ -173,7 +160,7 @@ where
         Ok(InitialState {
             last_log_id,
             last_applied,
-            hard_state: hs.unwrap_or_default(),
+            vote: vote.unwrap_or_default(),
             last_membership: membership,
         })
     }
@@ -214,11 +201,11 @@ where
         Ok(entries[0].log_id)
     }
 
-    // --- Hard State
+    // --- Vote
 
-    async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError>;
+    async fn save_vote(&self, vote: &Vote) -> Result<(), StorageError>;
 
-    async fn read_hard_state(&self) -> Result<Option<HardState>, StorageError>;
+    async fn read_vote(&self) -> Result<Option<Vote>, StorageError>;
 
     // --- Log
 

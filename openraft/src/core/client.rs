@@ -23,6 +23,7 @@ use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
+use crate::vote::Vote;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::MessageSummary;
@@ -101,8 +102,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             let rpc = AppendEntriesRequest {
-                term: self.core.current_term,
-                leader_id: self.core.id,
+                vote: self.core.vote,
                 prev_log_id: node.matched,
                 entries: vec![],
                 leader_commit: self.core.committed,
@@ -157,8 +157,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             };
 
             // If we receive a response with a greater term, then revert to follower and abort this request.
-            if data.term != self.core.current_term {
-                self.core.update_current_term(data.term, None);
+            if data.vote.term != self.core.vote.term {
+                self.core.vote = Vote::new_uncommitted(data.vote.term, None);
+                // TODO(xp): deal with storage error
+                self.core.save_vote().await.unwrap();
                 // TODO(xp): if receives error about a higher term, it should stop at once?
                 self.core.set_target_state(State::Follower);
             }

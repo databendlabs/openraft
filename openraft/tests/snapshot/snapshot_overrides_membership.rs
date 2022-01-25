@@ -12,6 +12,7 @@ use openraft::Membership;
 use openraft::RaftNetwork;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
+use openraft::Vote;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -91,8 +92,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         tracing::info!("--- add a membership config log to the learner");
         {
             let req = AppendEntriesRequest {
-                term: 1,
-                leader_id: 0,
+                vote: Vote::new_committed(1, 0),
                 prev_log_id: None,
                 entries: vec![blank(0, 0), Entry {
                     log_id: LogId { term: 1, index: 1 },

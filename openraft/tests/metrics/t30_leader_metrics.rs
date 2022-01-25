@@ -11,6 +11,7 @@ use openraft::LogId;
 use openraft::RaftNetwork;
 use openraft::ReplicationMetrics;
 use openraft::State;
+use openraft::Vote;
 #[allow(unused_imports)]
 use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
@@ -36,7 +37,6 @@ async fn leader_metrics() -> Result<()> {
     let span = tracing::debug_span!("leader_metrics");
     let _ent = span.enter();
 
-    let timeout = Some(Duration::from_millis(1000));
     let all_members = btreeset![0, 1, 2, 3, 4];
     let left_members = btreeset![0, 1, 2, 3];
 
@@ -48,8 +48,8 @@ async fn leader_metrics() -> Result<()> {
     // Assert all nodes are in learner state & have no entries.
     let mut log_index = 0;
 
-    router.wait_for_log(&btreeset![0], None, timeout, "init").await?;
-    router.wait_for_state(&btreeset![0], State::Learner, timeout, "init").await?;
+    router.wait_for_log(&btreeset![0], None, timeout(), "init").await?;
+    router.wait_for_state(&btreeset![0], State::Learner, timeout(), "init").await?;
 
     router.assert_pristine_cluster().await;
 
@@ -58,7 +58,7 @@ async fn leader_metrics() -> Result<()> {
     router.initialize_from_single_node(0).await?;
     log_index += 1;
 
-    router.wait_for_log(&btreeset![0], Some(log_index), timeout, "init cluster").await?;
+    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init cluster").await?;
     router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     router
@@ -71,7 +71,7 @@ async fn leader_metrics() -> Result<()> {
                     false
                 }
             },
-            timeout,
+            timeout(),
             "no replication with 1 node cluster",
         )
         .await?;
@@ -93,14 +93,14 @@ async fn leader_metrics() -> Result<()> {
         inner?;
     }
     log_index += 4; // 4 add_learner log
-    router.wait_for_log(&all_members, Some(log_index), timeout, "add learner 1,2,3,4").await?;
+    router.wait_for_log(&all_members, Some(log_index), timeout(), "add learner 1,2,3,4").await?;
 
     tracing::info!("--- changing cluster config to 012");
 
     router.change_membership(0, all_members.clone()).await?;
     log_index += 2; // 2 member-change logs
 
-    router.wait_for_log(&all_members, Some(log_index), timeout, "change members to 0,1,2,3,4").await?;
+    router.wait_for_log(&all_members, Some(log_index), timeout(), "change members to 0,1,2,3,4").await?;
 
     router.assert_stable_cluster(Some(1), Some(log_index)).await; // Still in term 1, so leader is still node 0.
 
@@ -121,7 +121,7 @@ async fn leader_metrics() -> Result<()> {
                     false
                 }
             },
-            timeout,
+            timeout(),
             "replication metrics to 4 nodes",
         )
         .await?;
@@ -140,7 +140,7 @@ async fn leader_metrics() -> Result<()> {
             .wait_for_metrics(
                 &4,
                 |x| x.state == State::Learner,
-                timeout,
+                timeout(),
                 &format!("n{}.state -> {:?}", 4, State::Learner),
             )
             .await?;
@@ -149,7 +149,7 @@ async fn leader_metrics() -> Result<()> {
             .wait_for_log(
                 &left_members,
                 Some(log_index),
-                timeout,
+                timeout(),
                 "other nodes should commit the membership change log",
             )
             .await?;
@@ -174,7 +174,7 @@ async fn leader_metrics() -> Result<()> {
                         false
                     }
                 },
-                timeout,
+                timeout(),
                 "replication metrics to 3 nodes",
             )
             .await?;
@@ -186,10 +186,18 @@ async fn leader_metrics() -> Result<()> {
     {
         router
             .send_vote(leader, VoteRequest {
-                term: 100,
-                candidate_id: 100,
+                vote: Vote::new_uncommitted(100, Some(100)),
                 last_log_id: Some(LogId { term: 10, index: 100 }),
             })
+            .await?;
+
+        router
+            .wait_for_metrics(
+                &leader,
+                |x| x.leader_metrics.is_none(),
+                timeout(),
+                "node 0 should close all replication",
+            )
             .await?;
 
         // The next election may have finished before waiting.
@@ -197,23 +205,34 @@ async fn leader_metrics() -> Result<()> {
             .wait_for_metrics(
                 &leader,
                 |x| x.state != State::Leader || (x.state == State::Leader && x.current_term > 100),
-                timeout,
+                timeout(),
                 &format!("node {} becomes candidate or becomes a new leader", leader,),
             )
+            .await?;
+
+        router
+            .wait(&leader, timeout())
+            .await?
+            .metrics(|x| x.current_leader.is_some(), "elect new leader")
             .await?;
     }
 
     tracing::info!("--- check leader metrics after leadership transferred.");
     let leader = router.current_leader(0).await.unwrap();
+    tracing::info!("--- new leader is {}", leader);
 
     router
         .wait_for_metrics(
             &leader,
-            |x| x.leader_metrics.is_none(),
-            timeout,
-            "node 0 should close all replication",
+            |x| x.leader_metrics.is_some(),
+            timeout(),
+            "new leader spawns replication",
         )
         .await?;
 
     Ok(())
+}
+
+fn timeout() -> Option<Duration> {
+    Some(Duration::from_millis(1000))
 }

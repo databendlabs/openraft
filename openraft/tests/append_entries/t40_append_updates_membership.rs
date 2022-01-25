@@ -10,6 +10,7 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::State;
+use openraft::Vote;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -38,8 +39,7 @@ async fn append_updates_membership() -> Result<()> {
     tracing::info!("--- append-entries update membership");
     {
         let req = AppendEntriesRequest {
-            term: 1,
-            leader_id: 0,
+            vote: Vote::new_committed(1, 0),
             prev_log_id: None,
             entries: vec![
                 blank(0, 0),
@@ -68,8 +68,7 @@ async fn append_updates_membership() -> Result<()> {
     tracing::info!("--- delete inconsistent logs update membership");
     {
         let req = AppendEntriesRequest {
-            term: 1,
-            leader_id: 0,
+            vote: Vote::new_committed(1, 0),
             prev_log_id: Some(LogId::new(1, 2)),
             entries: vec![blank(2, 3)],
             leader_commit: Some(LogId::new(0, 0)),

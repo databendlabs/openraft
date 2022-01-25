@@ -6,6 +6,7 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::Config;
 use openraft::LogId;
 use openraft::RaftNetwork;
+use openraft::Vote;
 
 use crate::fixtures::RaftRouter;
 
@@ -27,8 +28,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
 
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
     let req = AppendEntriesRequest::<memstore::ClientRequest> {
-        term: 2,
-        leader_id: 1,
+        vote: Vote::new_committed(2, 1),
         prev_log_id: Some(LogId::new(1, n_logs)),
         entries: vec![],
         leader_commit: Some(LogId::new(1, n_logs)),
