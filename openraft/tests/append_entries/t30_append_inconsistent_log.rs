@@ -5,11 +5,12 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::storage::HardState;
+use openraft::CommittedState;
 use openraft::Config;
 use openraft::LogId;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft::Vote;
 
 use crate::fixtures::RaftRouter;
 
@@ -65,14 +66,16 @@ async fn append_inconsistent_log() -> Result<()> {
         .await?;
     }
 
-    sto0.save_hard_state(&HardState {
-        current_term: 2,
+    sto0.save_vote(&Vote {
+        term: 2,
+        state: CommittedState::Uncommitted,
         voted_for: Some(0),
     })
     .await?;
 
-    sto2.save_hard_state(&HardState {
-        current_term: 3,
+    sto2.save_vote(&Vote {
+        term: 3,
+        state: CommittedState::Uncommitted,
         voted_for: Some(2),
     })
     .await?;

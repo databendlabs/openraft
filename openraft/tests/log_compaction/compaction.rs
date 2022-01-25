@@ -13,6 +13,7 @@ use openraft::RaftNetwork;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 use openraft::State;
+use openraft::Vote;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -148,8 +149,7 @@ async fn compaction() -> Result<()> {
     {
         let res = router
             .send_append_entries(1, AppendEntriesRequest {
-                term: 1,
-                leader_id: 0,
+                vote: Vote::new_committed(1, 0),
                 prev_log_id: Some(LogId::new(1, 2)),
                 entries: vec![],
                 leader_commit: Some(LogId::new(0, 0)),

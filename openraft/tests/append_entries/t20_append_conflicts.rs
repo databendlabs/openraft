@@ -13,6 +13,7 @@ use openraft::LogId;
 use openraft::MessageSummary;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft::Vote;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -41,8 +42,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- case 0: prev_log_id == None, no logs");
 
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: None,
         entries: vec![],
         leader_commit: Some(LogId::new(1, 2)),
@@ -56,8 +56,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- case 0: prev_log_id == None, 1 logs");
 
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: None,
         entries: vec![blank(0, 0)],
         leader_commit: Some(LogId::new(1, 2)),
@@ -70,8 +69,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- case 0: prev_log_id == 1-1, 0 logs");
 
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: Some(LogId::new(0, 0)),
         entries: vec![],
         leader_commit: Some(LogId::new(1, 2)),
@@ -86,8 +84,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- case 0: prev_log_id.index == 0, ");
 
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: Some(LogId::new(0, 0)),
         entries: vec![blank(1, 1), blank(1, 2), blank(1, 3), blank(1, 4)],
         // this set the last_applied to 2
@@ -112,8 +109,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- case 1: 0 < prev_log_id.index < commit_index");
 
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: Some(LogId::new(1, 1)),
         entries: vec![blank(1, 2)],
         leader_commit: Some(LogId::new(1, 2)),
@@ -128,8 +124,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- case 2:  prev_log_id.index == last_applied, inconsistent log should be removed");
 
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: Some(LogId::new(1, 2)),
         entries: vec![blank(2, 3)],
         // this set the last_applied to 2
@@ -144,8 +139,7 @@ async fn append_conflicts() -> Result<()> {
 
     // check last_log_id is updated:
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: Some(LogId::new(1, 2000)),
         entries: vec![],
         leader_commit: Some(LogId::new(1, 2)),
@@ -160,8 +154,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- case 3,4: prev_log_id.index <= last_log_id, prev_log_id mismatch, inconsistent log is removed");
 
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: Some(LogId::new(3, 3)),
         entries: vec![],
         leader_commit: Some(LogId::new(1, 2)),
@@ -176,8 +169,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- case 3,4: prev_log_id.index <= last_log_id, prev_log_id matches, inconsistent log is removed");
     // refill logs
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: Some(LogId::new(1, 2)),
         entries: vec![blank(2, 3), blank(2, 4), blank(2, 5)],
         leader_commit: Some(LogId::new(1, 2)),
@@ -192,8 +184,7 @@ async fn append_conflicts() -> Result<()> {
 
     // prev_log_id matches
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: Some(LogId::new(2, 3)),
         entries: vec![blank(3, 4)],
         leader_commit: Some(LogId::new(1, 2)),
@@ -209,8 +200,7 @@ async fn append_conflicts() -> Result<()> {
 
     // refill logs
     let req = AppendEntriesRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         prev_log_id: Some(LogId::new(1, 200)),
         entries: vec![],
         leader_commit: Some(LogId::new(1, 2)),

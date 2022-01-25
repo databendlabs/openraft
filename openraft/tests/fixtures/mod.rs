@@ -690,22 +690,22 @@ impl RaftRouter {
             last_log_id
         );
 
-        let hs = storage.read_hard_state().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
+        let vote = storage.read_vote().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
 
         assert_eq!(
-            hs.current_term, expect_term,
+            vote.term, expect_term,
             "expected node {} to have term {}, got {:?}",
-            id, expect_term, hs
+            id, expect_term, vote
         );
 
         if let Some(voted_for) = &expect_voted_for {
             assert_eq!(
-                hs.voted_for.as_ref(),
+                vote.voted_for.as_ref(),
                 Some(voted_for),
                 "expected node {} to have voted for {}, got {:?}",
                 id,
                 voted_for,
-                hs
+                vote
             );
         }
 
@@ -836,7 +836,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
         tracing::debug!("append_entries to id={} {:?}", target, rpc);
         self.rand_send_delay().await;
 
-        self.check_reachable(rpc.leader_id, target).await?;
+        self.check_reachable(rpc.vote.voted_for.unwrap(), target).await?;
 
         let rt = self.routing_table.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
@@ -856,7 +856,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     ) -> std::result::Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>> {
         self.rand_send_delay().await;
 
-        self.check_reachable(rpc.leader_id, target).await?;
+        self.check_reachable(rpc.vote.voted_for.unwrap(), target).await?;
 
         let rt = self.routing_table.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
@@ -870,7 +870,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     async fn send_vote(&self, target: u64, rpc: VoteRequest) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
         self.rand_send_delay().await;
 
-        self.check_reachable(rpc.candidate_id, target).await?;
+        self.check_reachable(rpc.vote.voted_for.unwrap(), target).await?;
 
         let rt = self.routing_table.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");

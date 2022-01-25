@@ -6,7 +6,6 @@ use async_trait::async_trait;
 
 use crate::raft::Entry;
 use crate::raft_types::LogIdOptionExt;
-use crate::storage::HardState;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::DefensiveError;
@@ -15,6 +14,7 @@ use crate::LogId;
 use crate::RaftStorage;
 use crate::StorageError;
 use crate::Violation;
+use crate::Vote;
 use crate::Wrapper;
 
 /// Defines methods of defensive checks for RaftStorage.
@@ -56,36 +56,28 @@ where
 
     /// Ensure that current_term must increment for every update, and for every term there could be only one value for
     /// voted_for.
-    async fn defensive_incremental_hard_state(&self, hs: &HardState) -> Result<(), StorageError> {
+    async fn defensive_incremental_vote(&self, vote: &Vote) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
         }
 
-        let h = self.inner().read_hard_state().await?;
+        let h = self.inner().read_vote().await?;
 
         let curr = h.unwrap_or_default();
 
-        if hs.current_term < curr.current_term {
-            return Err(
-                DefensiveError::new(ErrorSubject::HardState, Violation::TermNotAscending {
-                    curr: curr.current_term,
-                    to: hs.current_term,
-                })
-                .into(),
-            );
+        if vote.term < curr.term {
+            return Err(DefensiveError::new(ErrorSubject::Vote, Violation::TermNotAscending {
+                curr: curr.term,
+                to: vote.term,
+            })
+            .into());
         }
 
-        if hs.current_term == curr.current_term && curr.voted_for.is_some() && hs.voted_for != curr.voted_for {
-            return Err(
-                DefensiveError::new(ErrorSubject::HardState, Violation::VotedForChanged {
-                    curr,
-                    to: hs.clone(),
-                })
-                .into(),
-            );
+        if vote >= &curr {
+            Ok(())
+        } else {
+            Err(DefensiveError::new(ErrorSubject::Vote, Violation::NonIncrementalVote { curr, to: *vote }).into())
         }
-
-        Ok(())
     }
 
     /// The log entries fed into a store must be consecutive otherwise it is a bug.

@@ -16,6 +16,7 @@ use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
+use crate::vote::Vote;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -36,7 +37,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let repl_stream = ReplicationStream::new(
             self.core.id,
             target,
-            self.core.current_term,
+            self.core.vote.term,
             self.core.config.clone(),
             self.core.last_log_id,
             self.core.committed,
@@ -83,10 +84,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Handle events from replication streams for when this node needs to revert to follower state.
     #[tracing::instrument(level = "trace", skip(self, term))]
     async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> Result<(), StorageError> {
-        if term > self.core.current_term {
-            self.core.update_current_term(term, None);
-            self.core.save_hard_state().await?;
-            self.core.current_leader = None;
+        if term > self.core.vote.term {
+            self.core.vote = Vote::new_uncommitted(term, None);
+            self.core.save_vote().await?;
             self.core.set_target_state(State::Follower);
         }
         Ok(())
@@ -208,7 +208,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // and that new leader may overrides any lower term logs.
             // Thus it is not considered as committed.
             if let Some(log_id) = matched {
-                if log_id.term == self.core.current_term {
+                if log_id.term == self.core.vote.term {
                     res.insert(*id, log_id);
                 }
             }

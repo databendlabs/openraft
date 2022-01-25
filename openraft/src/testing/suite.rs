@@ -6,13 +6,13 @@ use maplit::btreeset;
 
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
-use crate::storage::HardState;
 use crate::storage::InitialState;
 use crate::storage::LogState;
 use crate::testing::DefensiveStoreBuilder;
 use crate::testing::StoreBuilder;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::CommittedState;
 use crate::DefensiveError;
 use crate::EffectiveMembership;
 use crate::ErrorSubject;
@@ -21,6 +21,7 @@ use crate::Membership;
 use crate::RaftStorage;
 use crate::StorageError;
 use crate::Violation;
+use crate::Vote;
 
 const NODE_ID: u64 = 0;
 
@@ -73,7 +74,7 @@ where
         run_fut(Suite::get_initial_state_with_state(builder))?;
         run_fut(Suite::get_initial_state_last_log_gt_sm(builder))?;
         run_fut(Suite::get_initial_state_last_log_lt_sm(builder))?;
-        run_fut(Suite::save_hard_state(builder))?;
+        run_fut(Suite::save_vote(builder))?;
         run_fut(Suite::get_log_entries(builder))?;
         run_fut(Suite::try_get_log_entry(builder))?;
         run_fut(Suite::initial_logs(builder))?;
@@ -254,7 +255,7 @@ where
 
     pub async fn get_initial_state_with_state(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
-        Self::default_hard_state(&store).await?;
+        Self::default_vote(&store).await?;
 
         store
             .append_to_log(&[&Entry {
@@ -283,11 +284,12 @@ where
             "unexpected value for last applied log"
         );
         assert_eq!(
-            HardState {
-                current_term: 1,
+            Vote {
+                term: 1,
+                state: CommittedState::Uncommitted,
                 voted_for: Some(NODE_ID),
             },
-            initial.hard_state,
+            initial.vote,
             "unexpected value for default hard state"
         );
         Ok(())
@@ -297,7 +299,7 @@ where
         // It should never return membership from logs that are included in state machine present.
 
         let store = builder.build().await;
-        Self::default_hard_state(&store).await?;
+        Self::default_vote(&store).await?;
 
         // copy the test from get_membership_config
 
@@ -363,7 +365,7 @@ where
 
     pub async fn get_initial_state_last_log_gt_sm(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
-        Self::default_hard_state(&store).await?;
+        Self::default_vote(&store).await?;
 
         store
             .append_to_log(&[&Entry {
@@ -397,7 +399,7 @@ where
 
     pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
-        Self::default_hard_state(&store).await?;
+        Self::default_vote(&store).await?;
 
         store.append_to_log(&[&blank(1, 2)]).await?;
 
@@ -413,21 +415,23 @@ where
         Ok(())
     }
 
-    pub async fn save_hard_state(builder: &B) -> Result<(), StorageError> {
+    pub async fn save_vote(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         store
-            .save_hard_state(&HardState {
-                current_term: 100,
+            .save_vote(&Vote {
+                term: 100,
+                state: CommittedState::Uncommitted,
                 voted_for: Some(NODE_ID),
             })
             .await?;
 
-        let got = store.read_hard_state().await?;
+        let got = store.read_vote().await?;
 
         assert_eq!(
-            Some(HardState {
-                current_term: 100,
+            Some(Vote {
+                term: 100,
+                state: CommittedState::Uncommitted,
                 voted_for: Some(NODE_ID),
             }),
             got,
@@ -881,14 +885,15 @@ where
             .await?;
         }
 
-        Self::default_hard_state(sto).await?;
+        Self::default_vote(sto).await?;
 
         Ok(())
     }
 
-    pub async fn default_hard_state(sto: &S) -> Result<(), StorageError> {
-        sto.save_hard_state(&HardState {
-            current_term: 1,
+    pub async fn default_vote(sto: &S) -> Result<(), StorageError> {
+        sto.save_vote(&Vote {
+            term: 1,
+            state: CommittedState::Uncommitted,
             voted_for: Some(NODE_ID),
         })
         .await?;
@@ -910,7 +915,7 @@ where
     pub fn test_store_defensive(builder: &B) -> Result<(), StorageError> {
         run_fut(Suite::df_get_membership_config_dirty_log(builder))?;
         run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
-        run_fut(Suite::df_save_hard_state_ascending(builder))?;
+        run_fut(Suite::df_save_vote_ascending(builder))?;
         run_fut(Suite::df_get_log_entries(builder))?;
         run_fut(Suite::df_append_to_log_nonempty_input(builder))?;
         run_fut(Suite::df_append_to_log_nonconsecutive_input(builder))?;
@@ -1020,12 +1025,13 @@ where
         Ok(())
     }
 
-    pub async fn df_save_hard_state_ascending(builder: &B) -> Result<(), StorageError> {
+    pub async fn df_save_vote_ascending(builder: &B) -> Result<(), StorageError> {
         let store = builder.build().await;
 
         store
-            .save_hard_state(&HardState {
-                current_term: 10,
+            .save_vote(&Vote {
+                term: 10,
+                state: CommittedState::Uncommitted,
                 voted_for: Some(NODE_ID),
             })
             .await?;
@@ -1033,99 +1039,109 @@ where
         tracing::info!("--- lower term is rejected");
         {
             let res = store
-                .save_hard_state(&HardState {
-                    current_term: 9,
+                .save_vote(&Vote {
+                    term: 9,
+                    state: CommittedState::Uncommitted,
                     voted_for: Some(NODE_ID),
                 })
                 .await;
 
             let e = res.unwrap_err().into_defensive().unwrap();
             assert!(matches!(e, DefensiveError {
-                subject: ErrorSubject::HardState,
+                subject: ErrorSubject::Vote,
                 violation: Violation::TermNotAscending { curr: 10, to: 9 },
                 ..
             }));
 
-            let hs = store.read_hard_state().await?;
+            let vote = store.read_vote().await?;
 
             assert_eq!(
-                Some(HardState {
-                    current_term: 10,
+                Some(Vote {
+                    term: 10,
+                    state: CommittedState::Uncommitted,
                     voted_for: Some(NODE_ID),
                 }),
-                hs,
+                vote,
             );
         }
 
         tracing::info!("--- same term can not reset to None");
         {
             let res = store
-                .save_hard_state(&HardState {
-                    current_term: 10,
+                .save_vote(&Vote {
+                    term: 10,
+                    state: CommittedState::Uncommitted,
                     voted_for: None,
                 })
                 .await;
 
             let e = res.unwrap_err().into_defensive().unwrap();
             assert!(matches!(e, DefensiveError {
-                subject: ErrorSubject::HardState,
-                violation: Violation::VotedForChanged {
-                    curr: HardState {
-                        current_term: 10,
+                subject: ErrorSubject::Vote,
+                violation: Violation::NonIncrementalVote {
+                    curr: Vote {
+                        term: 10,
+                        state: CommittedState::Uncommitted,
                         voted_for: Some(NODE_ID)
                     },
-                    to: HardState {
-                        current_term: 10,
-                        voted_for: None
+                    to: Vote {
+                        term: 10,
+                        state: CommittedState::Uncommitted,
+                        voted_for: None,
                     }
                 },
                 ..
             }));
 
-            let hs = store.read_hard_state().await?;
+            let vote = store.read_vote().await?;
 
             assert_eq!(
-                Some(HardState {
-                    current_term: 10,
+                Some(Vote {
+                    term: 10,
+                    state: CommittedState::Uncommitted,
                     voted_for: Some(NODE_ID),
                 }),
-                hs,
+                vote,
             );
         }
 
         tracing::info!("--- same term can not change voted_for");
         {
             let res = store
-                .save_hard_state(&HardState {
-                    current_term: 10,
+                .save_vote(&Vote {
+                    term: 10,
+                    state: CommittedState::Uncommitted,
                     voted_for: Some(1000),
                 })
                 .await;
 
             let e = res.unwrap_err().into_defensive().unwrap();
             assert!(matches!(e, DefensiveError {
-                subject: ErrorSubject::HardState,
-                violation: Violation::VotedForChanged {
-                    curr: HardState {
-                        current_term: 10,
+                subject: ErrorSubject::Vote,
+                violation: Violation::NonIncrementalVote {
+                    curr: Vote {
+                        term: 10,
+                        state: CommittedState::Uncommitted,
                         voted_for: Some(NODE_ID)
                     },
-                    to: HardState {
-                        current_term: 10,
+                    to: Vote {
+                        term: 10,
+                        state: CommittedState::Uncommitted,
                         voted_for: Some(1000)
                     }
                 },
                 ..
             }));
 
-            let hs = store.read_hard_state().await?;
+            let vote = store.read_vote().await?;
 
             assert_eq!(
-                Some(HardState {
-                    current_term: 10,
+                Some(Vote {
+                    term: 10,
+                    state: CommittedState::Uncommitted,
                     voted_for: Some(NODE_ID),
                 }),
-                hs
+                vote
             );
         }
 

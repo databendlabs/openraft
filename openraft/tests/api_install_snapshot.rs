@@ -9,6 +9,7 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::SnapshotMeta;
 use openraft::State;
+use openraft::Vote;
 
 #[macro_use]
 mod fixtures;
@@ -45,8 +46,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
 
     let n = router.remove_node(0).await.ok_or_else(|| anyhow::anyhow!("node not found"))?;
     let req0 = InstallSnapshotRequest {
-        term: 1,
-        leader_id: 0,
+        vote: Vote::new_committed(1, 0),
         meta: SnapshotMeta {
             snapshot_id: "ss1".into(),
             last_log_id: LogId { term: 1, index: 0 },

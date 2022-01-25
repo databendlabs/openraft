@@ -50,8 +50,8 @@ or a wrapper of a remote sql DB.
 
 - Read/write raft state, e.g., term or vote.
     ```rust
-    fn save_hard_state(hs:&HardState)
-    fn read_hard_state() -> Result<Option<HardState>>
+    fn save_vote(vote:&Vote)
+    fn read_vote() -> Result<Option<Vote>>
     ```
 
 - Read/write logs.

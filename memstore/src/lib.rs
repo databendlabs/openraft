@@ -15,7 +15,6 @@ use anyerror::AnyError;
 use openraft::async_trait::async_trait;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::storage::HardState;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AppData;
@@ -30,6 +29,7 @@ use openraft::SnapshotMeta;
 use openraft::StateMachineChanges;
 use openraft::StorageError;
 use openraft::StorageIOError;
+use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -93,7 +93,7 @@ pub struct MemStore {
     sm: RwLock<MemStoreStateMachine>,
 
     /// The current hard state.
-    hs: RwLock<Option<HardState>>,
+    vote: RwLock<Option<Vote>>,
 
     snapshot_idx: Arc<Mutex<u64>>,
 
@@ -106,14 +106,13 @@ impl MemStore {
     pub async fn new() -> Self {
         let log = RwLock::new(BTreeMap::new());
         let sm = RwLock::new(MemStoreStateMachine::default());
-        let hs = RwLock::new(None);
         let current_snapshot = RwLock::new(None);
 
         Self {
             last_purged_log_id: RwLock::new(None),
             log,
             sm,
-            hs,
+            vote: RwLock::new(None),
             snapshot_idx: Arc::new(Mutex::new(0)),
             current_snapshot,
         }
@@ -133,16 +132,16 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     type SnapshotData = Cursor<Vec<u8>>;
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError> {
-        tracing::debug!(?hs, "save_hard_state");
-        let mut h = self.hs.write().await;
+    async fn save_vote(&self, vote: &Vote) -> Result<(), StorageError> {
+        tracing::debug!(?vote, "save_vote");
+        let mut h = self.vote.write().await;
 
-        *h = Some(hs.clone());
+        *h = Some(*vote);
         Ok(())
     }
 
-    async fn read_hard_state(&self) -> Result<Option<HardState>, StorageError> {
-        Ok(self.hs.read().await.clone())
+    async fn read_vote(&self) -> Result<Option<Vote>, StorageError> {
+        Ok(*self.vote.read().await)
     }
 
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(

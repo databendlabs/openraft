@@ -35,36 +35,25 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &mut self,
         req: InstallSnapshotRequest,
     ) -> Result<InstallSnapshotResponse, InstallSnapshotError> {
-        // If message's term is less than most recent term, then we do not honor the request.
-        if req.term < self.current_term {
-            return Ok(InstallSnapshotResponse {
-                term: self.current_term,
-            });
+        #[allow(clippy::neg_cmp_op_on_partial_ord)]
+        if !(req.vote >= self.vote) {
+            tracing::debug!(%self.vote, %req.vote, "InstallSnapshot RPC term is less than current term");
+
+            return Ok(InstallSnapshotResponse { vote: self.vote });
         }
 
         // Update election timeout.
         self.update_next_election_timeout(true);
 
-        // Update current term if needed.
-        let mut report_metrics = false;
-        if self.current_term != req.term {
-            self.update_current_term(req.term, None);
-            self.save_hard_state().await?;
-            report_metrics = true;
-        }
+        if req.vote > self.vote {
+            self.vote = req.vote;
+            self.save_vote().await?;
 
-        // Update current leader if needed.
-        if self.current_leader.as_ref() != Some(&req.leader_id) {
-            self.current_leader = Some(req.leader_id);
-            report_metrics = true;
-        }
+            // If not follower, become follower.
+            if !self.target_state.is_follower() && !self.target_state.is_learner() {
+                self.set_target_state(State::Follower); // State update will emit metrics.
+            }
 
-        // If not follower, become follower.
-        if !self.target_state.is_follower() && !self.target_state.is_learner() {
-            self.set_target_state(State::Follower); // State update will emit metrics.
-        }
-
-        if report_metrics {
             self.report_metrics(Update::AsIs);
         }
 
@@ -133,9 +122,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // If this was a small snapshot, and it is already done, then finish up.
         if req.done {
             self.finalize_snapshot_installation(req, snapshot).await?;
-            return Ok(InstallSnapshotResponse {
-                term: self.current_term,
-            });
+            return Ok(InstallSnapshotResponse { vote: self.vote });
         }
 
         // Else, retain snapshot components for later segments & respond.
@@ -144,9 +131,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             id,
             snapshot,
         });
-        Ok(InstallSnapshotResponse {
-            term: self.current_term,
-        })
+        Ok(InstallSnapshotResponse { vote: self.vote })
     }
 
     #[tracing::instrument(level = "debug", skip(self, req, snapshot), fields(req=%req.summary()))]
@@ -187,9 +172,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         } else {
             self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
         }
-        Ok(InstallSnapshotResponse {
-            term: self.current_term,
-        })
+        Ok(InstallSnapshotResponse { vote: self.vote })
     }
 
     /// Finalize the installation of a new snapshot.
