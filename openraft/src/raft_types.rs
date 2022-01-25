@@ -4,25 +4,20 @@ use std::fmt::Formatter;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::LeaderId;
 use crate::MessageSummary;
 
 /// The identity of a raft log.
-/// A term and an index identifies an log globally.
+/// A term, node_id and an index identifies an log globally.
 #[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogId {
-    pub term: u64,
+    pub leader_id: LeaderId,
     pub index: u64,
-}
-
-impl From<(u64, u64)> for LogId {
-    fn from(v: (u64, u64)) -> Self {
-        LogId::new(v.0, v.1)
-    }
 }
 
 impl Display for LogId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}-{}", self.term, self.index)
+        write!(f, "{}-{}", self.leader_id, self.index)
     }
 }
 
@@ -38,12 +33,25 @@ impl MessageSummary for Option<LogId> {
 }
 
 impl LogId {
-    pub fn new(term: u64, index: u64) -> Self {
-        if term == 0 || index == 0 {
-            assert_eq!(index, 0, "zero-th log entry must be (0,0), but {}, {}", term, index);
-            assert_eq!(term, 0, "zero-th log entry must be (0,0), but {}, {}", term, index);
+    pub fn new(leader_id: LeaderId, index: u64) -> Self {
+        if leader_id.term == 0 || index == 0 {
+            assert_eq!(
+                leader_id.term, 0,
+                "zero-th log entry must be (0,0,0), but {} {}",
+                leader_id, index
+            );
+            assert_eq!(
+                leader_id.node_id, 0,
+                "zero-th log entry must be (0,0,0), but {} {}",
+                leader_id, index
+            );
+            assert_eq!(
+                index, 0,
+                "zero-th log entry must be (0,0,0), but {} {}",
+                leader_id, index
+            );
         }
-        LogId { term, index }
+        LogId { leader_id, index }
     }
 }
 

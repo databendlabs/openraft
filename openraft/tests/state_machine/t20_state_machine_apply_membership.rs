@@ -6,6 +6,7 @@ use futures::stream::StreamExt;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::EffectiveMembership;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
@@ -50,7 +51,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         let sto = router.get_storage_handle(&i).await?;
         assert_eq!(
             Some(EffectiveMembership {
-                log_id: LogId { term: 0, index: 0 },
+                log_id: LogId::new(LeaderId::new(0, 0), 0),
                 membership: Membership::new_single(btreeset! {0})
             }),
             sto.last_applied_state().await?.1
@@ -100,10 +101,7 @@ async fn state_machine_apply_membership() -> Result<()> {
         let (_, last_membership) = sto.last_applied_state().await?;
         assert_eq!(
             Some(EffectiveMembership {
-                log_id: LogId {
-                    term: 1,
-                    index: log_index
-                },
+                log_id: LogId::new(LeaderId::new(1, 0), log_index),
                 membership: Membership::new_single_with_learners(btreeset! {0, 1, 2}, btreeset! {3,4})
             }),
             last_membership

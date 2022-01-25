@@ -5,6 +5,7 @@ use anyhow::Result;
 use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::State;
 
@@ -48,7 +49,7 @@ async fn single_node() -> Result<()> {
     // Write some data to the single node cluster.
     router.client_request_many(0, "0", 1000).await;
     router.assert_stable_cluster(Some(1), Some(1001)).await;
-    router.assert_storage_state(1, 1001, Some(0), LogId { term: 1, index: 1001 }, None).await?;
+    router.assert_storage_state(1, 1001, Some(0), LogId::new(LeaderId::new(1, 0), 1001), None).await?;
 
     // Read some data from the single node cluster.
     router.client_read(0).await?;

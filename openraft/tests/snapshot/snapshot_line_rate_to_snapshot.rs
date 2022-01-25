@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 
@@ -72,10 +73,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 timeout(),
                 "snapshot on node 0",
             )
@@ -90,10 +88,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![1],
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 timeout(),
                 "snapshot on node 1",
             )

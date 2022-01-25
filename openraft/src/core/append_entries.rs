@@ -31,9 +31,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let msg_entries = req.entries.as_slice();
 
         // Partial order compare: smaller than or incomparable
-        #[allow(clippy::neg_cmp_op_on_partial_ord)]
-        if !(req.vote >= self.vote) {
-            tracing::debug!(%self.vote, %req.vote, "AppendEntries RPC term is less than current term");
+        if req.vote < self.vote {
+            tracing::debug!(?self.vote, %req.vote, "AppendEntries RPC term is less than current term");
 
             return Ok(AppendEntriesResponse {
                 vote: self.vote,

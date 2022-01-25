@@ -14,6 +14,7 @@ use crate::LogId;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::StorageError;
+use crate::Vote;
 
 /// Fatal is unrecoverable and shuts down raft at once.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,7 +180,7 @@ impl From<StorageError> for AddLearnerError {
 #[allow(clippy::large_enum_variant)]
 pub enum ReplicationError {
     #[error(transparent)]
-    HigherTerm(#[from] HigherTerm),
+    HigherVote(#[from] HigherVote),
 
     #[error("Replication is closed")]
     Closed,
@@ -231,10 +232,10 @@ impl<T: std::error::Error> RemoteError<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error("seen a higher term: {higher} GT mine: {mine}")]
-pub struct HigherTerm {
-    pub higher: u64,
-    pub mine: u64,
+#[error("seen a higher vote: {higher} GT mine: {mine}")]
+pub struct HigherVote {
+    pub higher: Vote,
+    pub mine: Vote,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]

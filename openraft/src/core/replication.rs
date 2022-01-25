@@ -35,9 +35,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         caller_tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
     ) -> ReplicationState {
         let repl_stream = ReplicationStream::new(
-            self.core.id,
             target,
-            self.core.vote.term,
+            self.core.vote,
             self.core.config.clone(),
             self.core.last_log_id,
             self.core.committed,
@@ -60,8 +59,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         event: ReplicaEvent<S::SnapshotData>,
     ) -> Result<(), StorageError> {
         match event {
-            ReplicaEvent::RevertToFollower { target, term } => {
-                self.handle_revert_to_follower(target, term).await?;
+            ReplicaEvent::RevertToFollower { target, vote } => {
+                self.handle_revert_to_follower(target, vote).await?;
             }
             ReplicaEvent::UpdateMatched { target, matched } => {
                 self.handle_update_matched(target, matched).await?;
@@ -82,10 +81,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
-    #[tracing::instrument(level = "trace", skip(self, term))]
-    async fn handle_revert_to_follower(&mut self, _: NodeId, term: u64) -> Result<(), StorageError> {
-        if term > self.core.vote.term {
-            self.core.vote = Vote::new_uncommitted(term, None);
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn handle_revert_to_follower(&mut self, _: NodeId, vote: Vote) -> Result<(), StorageError> {
+        if vote > self.core.vote {
+            self.core.vote = vote;
             self.core.save_vote().await?;
             self.core.set_target_state(State::Follower);
         }
@@ -208,7 +207,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // and that new leader may overrides any lower term logs.
             // Thus it is not considered as committed.
             if let Some(log_id) = matched {
-                if log_id.term == self.core.vote.term {
+                if log_id.leader_id == self.core.vote.leader_id() {
                     res.insert(*id, log_id);
                 }
             }

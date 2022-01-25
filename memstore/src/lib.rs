@@ -292,7 +292,10 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             *l
         };
 
-        let snapshot_id = format!("{}-{}-{}", last_applied_log.term, last_applied_log.index, snapshot_idx);
+        let snapshot_id = format!(
+            "{}-{}-{}",
+            last_applied_log.leader_id, last_applied_log.index, snapshot_idx
+        );
 
         let meta = SnapshotMeta {
             last_log_id: last_applied_log,

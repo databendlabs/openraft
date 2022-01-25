@@ -9,7 +9,6 @@ use crate::error::VoteError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::summary::MessageSummary;
-use crate::vote::Vote;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::NodeId;
@@ -25,16 +24,15 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     pub(super) async fn handle_vote_request(&mut self, req: VoteRequest) -> Result<VoteResponse, VoteError> {
         tracing::debug!(
             %req.vote,
-            %self.vote,
+            ?self.vote,
             "start handle_vote_request"
         );
         let last_log_id = self.last_log_id;
 
-        #[allow(clippy::neg_cmp_op_on_partial_ord)]
-        if !(req.vote >= self.vote) {
+        if req.vote < self.vote {
             tracing::debug!(
                 %req.vote,
-                %self.vote,
+                ?self.vote,
                 "RequestVote RPC term is less than current term"
             );
             return Ok(VoteResponse {
@@ -60,15 +58,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                     last_log_id,
                 });
             }
-        }
-
-        // Always save a higher term
-        if req.vote.term > self.vote.term {
-            self.update_next_election_timeout(false);
-            self.vote = Vote::new_uncommitted(req.vote.term, None);
-            self.save_vote().await?;
-
-            self.set_target_state(State::Follower);
         }
 
         // Check if candidate's log is at least as up-to-date as this node's.
@@ -107,8 +96,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {
         // If peer's term is greater than current term, revert to follower state.
 
-        if res.vote.term > self.core.vote.term {
-            self.core.vote = Vote::new_uncommitted(res.vote.term, None);
+        if res.vote > self.core.vote {
+            self.core.vote = res.vote;
             self.core.save_vote().await?;
 
             // If a quorum of nodes have higher `last_log_id`, I have no chance to become a leader.
@@ -121,7 +110,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             } else {
                 tracing::debug!(
                     id = %self.core.id,
-                    %self.core.vote,
+                    ?self.core.vote,
                     %res.vote,
                     self_last_log_id=?self.core.last_log_id,
                     res_last_log_id=?res.last_log_id,

@@ -7,6 +7,7 @@ use maplit::btreeset;
 use openraft::raft::EntryPayload;
 use openraft::Config;
 use openraft::EffectiveMembership;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftStorage;
@@ -68,7 +69,7 @@ async fn initialization() -> Result<()> {
         let sm_mem = sto.last_applied_state().await?.1;
         assert_eq!(
             Some(EffectiveMembership {
-                log_id: LogId { term: 0, index: 0 },
+                log_id: LogId::new(LeaderId::new(0, 0), 0),
                 membership: Membership::new_single(btreeset! {0,1,2})
             }),
             sm_mem

@@ -23,7 +23,7 @@ use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::error::AppendEntriesError;
 use crate::error::CommittedAdvanceTooMany;
-use crate::error::HigherTerm;
+use crate::error::HigherVote;
 use crate::error::LackEntry;
 use crate::error::RPCError;
 use crate::error::ReplicationError;
@@ -68,9 +68,8 @@ pub(crate) struct ReplicationStream {
 impl ReplicationStream {
     /// Create a new replication stream for the target peer.
     pub(crate) fn new<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>(
-        id: NodeId,
         target: NodeId,
-        term: u64,
+        vote: Vote,
         config: Arc<Config>,
         last_log: Option<LogId>,
         committed: Option<LogId>,
@@ -79,9 +78,8 @@ impl ReplicationStream {
         replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
     ) -> Self {
         ReplicationCore::spawn(
-            id,
             target,
-            term,
+            vote,
             config,
             last_log,
             committed,
@@ -98,14 +96,11 @@ impl ReplicationStream {
 /// out-of-order delivery. We always buffer until we receive a success response, then send the
 /// next payload from the buffer.
 struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
-    //////////////////////////////////////////////////////////////////////////
-    // Static Fields /////////////////////////////////////////////////////////
-    /// The ID of this Raft node.
-    id: NodeId,
     /// The ID of the target Raft node which replication events are to be sent to.
     target: NodeId,
-    /// The current term, which will never change during the lifetime of this task.
-    term: u64,
+
+    /// The vote of the leader.
+    vote: Vote,
 
     /// A channel for sending events to the Raft node.
     raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
@@ -158,9 +153,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     /// Spawn a new replication task for the target node.
     #[tracing::instrument(level = "trace", skip(config, network, storage, raft_core_tx))]
     pub(self) fn spawn(
-        id: NodeId,
         target: NodeId,
-        term: u64,
+        vote: Vote,
         config: Arc<Config>,
         last_log: Option<LogId>,
         committed: Option<LogId>,
@@ -174,9 +168,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         let install_snapshot_timeout = Duration::from_millis(config.install_snapshot_timeout);
 
         let this = Self {
-            id,
             target,
-            term,
+            vote,
             network,
             storage,
             config,
@@ -200,7 +193,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, target=self.target, cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="trace", skip(self), fields(vote=%self.vote, target=self.target, cluster=%self.config.cluster_name))]
     async fn main(mut self) {
         loop {
             // If it returns Ok(), always go back to LineRate state.
@@ -227,11 +220,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 ReplicationError::Closed => {
                     self.set_target_repl_state(TargetReplState::Shutdown);
                 }
-                ReplicationError::HigherTerm(h) => {
+                ReplicationError::HigherVote(h) => {
                     let _ = self.raft_core_tx.send((
                         ReplicaEvent::RevertToFollower {
                             target: self.target,
-                            term: h.higher,
+                            vote: h.higher,
                         },
                         tracing::debug_span!("CH"),
                     ));
@@ -349,7 +342,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
-            vote: Vote::new_committed(self.term, self.id),
+            vote: self.vote,
             prev_log_id,
             leader_commit: self.committed,
             entries: logs,
@@ -382,7 +375,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 tracing::warn!(error=%timeout_err, "timeout while sending AppendEntries RPC to target");
                 return Err(ReplicationError::Timeout(Timeout {
                     action: RPCTypes::AppendEntries,
-                    id: self.id,
+                    id: self.vote.node_id,
                     target: self.target,
                     timeout: the_timeout,
                 }));
@@ -400,12 +393,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         // Failed
 
         // Replication was not successful, if a newer term has been returned, revert to follower.
-        if append_resp.vote.term > self.term {
+        if append_resp.vote > self.vote {
             tracing::debug!(%append_resp.vote, "append entries failed, reverting to follower");
 
-            return Err(ReplicationError::HigherTerm(HigherTerm {
-                higher: append_resp.vote.term,
-                mine: self.term,
+            return Err(ReplicationError::HigherVote(HigherVote {
+                higher: append_resp.vote,
+                mine: self.vote,
             }));
         }
 
@@ -616,8 +609,9 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
     RevertToFollower {
         /// The ID of the target node from which the new term was observed.
         target: NodeId,
-        /// The new term observed.
-        term: u64,
+
+        /// The new vote observed.
+        vote: Vote,
     },
     /// An event from a replication stream requesting snapshot info.
     NeedsSnapshot {
@@ -642,8 +636,8 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
             } => {
                 format!("UpdateMatchIndex: target: {}, matched: {:?}", target, matched)
             }
-            ReplicaEvent::RevertToFollower { ref target, ref term } => {
-                format!("RevertToFollower: target: {}, term: {}", target, term)
+            ReplicaEvent::RevertToFollower { ref target, ref vote } => {
+                format!("RevertToFollower: target: {}, vote: {}", target, vote)
             }
             ReplicaEvent::NeedsSnapshot {
                 ref target,
@@ -841,7 +835,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             let done = (offset + n_read as u64) == end; // If bytes read == 0, then we're done.
             let req = InstallSnapshotRequest {
-                vote: Vote::new_committed(self.term, self.id),
+                vote: self.vote,
                 meta: snapshot.meta.clone(),
                 offset,
                 data: Vec::from(&buf[..n_read]),
@@ -879,10 +873,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             };
 
             // Handle response conditions.
-            if res.vote.term > self.term {
-                return Err(ReplicationError::HigherTerm(HigherTerm {
-                    higher: res.vote.term,
-                    mine: self.term,
+            if res.vote > self.vote {
+                return Err(ReplicationError::HigherVote(HigherVote {
+                    higher: res.vote,
+                    mine: self.vote,
                 }));
             }
 
