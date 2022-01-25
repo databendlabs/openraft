@@ -5,6 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AddLearnerResponse;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftStorage;
@@ -39,7 +40,7 @@ async fn add_learner_basic() -> Result<()> {
         let res = router.add_learner(0, 0).await?;
         assert_eq!(
             AddLearnerResponse {
-                matched: Some(LogId::new(1, log_index))
+                matched: Some(LogId::new(LeaderId::new(1, 0), log_index))
             },
             res
         );
@@ -78,7 +79,7 @@ async fn add_learner_basic() -> Result<()> {
         let res = router.add_learner(0, 1).await?;
         assert_eq!(
             AddLearnerResponse {
-                matched: Some(LogId::new(1, log_index))
+                matched: Some(LogId::new(LeaderId::new(1, 0), log_index))
             },
             res
         );

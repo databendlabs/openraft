@@ -7,6 +7,7 @@ use maplit::btreeset;
 use maplit::hashmap;
 use openraft::raft::VoteRequest;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
 use openraft::ReplicationMetrics;
@@ -105,10 +106,7 @@ async fn leader_metrics() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(log_index)).await; // Still in term 1, so leader is still node 0.
 
     let ww = ReplicationMetrics {
-        matched: Some(LogId {
-            term: 1,
-            index: log_index,
-        }),
+        matched: Some(LogId::new(LeaderId::new(1, 0), log_index)),
     };
     let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone(), 4=>ww.clone(), };
     router
@@ -158,10 +156,7 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!("--- replication metrics should reflect the replication state");
     {
         let ww = ReplicationMetrics {
-            matched: Some(LogId {
-                term: 1,
-                index: log_index,
-            }),
+            matched: Some(LogId::new(LeaderId::new(1, 0), log_index)),
         };
         let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone()};
         router
@@ -186,8 +181,8 @@ async fn leader_metrics() -> Result<()> {
     {
         router
             .send_vote(leader, VoteRequest {
-                vote: Vote::new_uncommitted(100, Some(100)),
-                last_log_id: Some(LogId { term: 10, index: 100 }),
+                vote: Vote::new(100, 100),
+                last_log_id: Some(LogId::new(LeaderId::new(10, 0), 100)),
             })
             .await?;
 

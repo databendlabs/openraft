@@ -23,7 +23,6 @@ use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
-use crate::vote::Vote;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::MessageSummary;
@@ -157,8 +156,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             };
 
             // If we receive a response with a greater term, then revert to follower and abort this request.
-            if data.vote.term != self.core.vote.term {
-                self.core.vote = Vote::new_uncommitted(data.vote.term, None);
+            if data.vote > self.core.vote {
+                self.core.vote = data.vote;
                 // TODO(xp): deal with storage error
                 self.core.save_vote().await.unwrap();
                 // TODO(xp): if receives error about a higher term, it should stop at once?

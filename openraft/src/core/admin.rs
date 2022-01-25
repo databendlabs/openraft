@@ -38,7 +38,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         if self.core.last_log_id.is_some() || self.core.vote.term != 0 {
             tracing::error!(
-                last_log_id=?self.core.last_log_id, %self.core.vote,
+                last_log_id=?self.core.last_log_id, ?self.core.vote,
                 "rejecting init_with_config request as last_log_index is not None or current_term is not 0");
             return Err(InitializeError::NotAllowed);
         }

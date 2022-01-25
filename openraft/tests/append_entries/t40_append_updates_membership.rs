@@ -7,6 +7,7 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::State;
@@ -39,23 +40,23 @@ async fn append_updates_membership() -> Result<()> {
     tracing::info!("--- append-entries update membership");
     {
         let req = AppendEntriesRequest {
-            vote: Vote::new_committed(1, 0),
+            vote: Vote::new(1, 0),
             prev_log_id: None,
             entries: vec![
                 blank(0, 0),
                 blank(1, 1),
                 Entry {
-                    log_id: LogId { term: 1, index: 2 },
+                    log_id: LogId::new(LeaderId::new(1, 0), 2),
                     payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2})),
                 },
                 blank(1, 3),
                 Entry {
-                    log_id: LogId { term: 1, index: 4 },
+                    log_id: LogId::new(LeaderId::new(1, 0), 4),
                     payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3,4})),
                 },
                 blank(1, 5),
             ],
-            leader_commit: Some(LogId::new(0, 0)),
+            leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
         };
 
         let resp = r0.append_entries(req.clone()).await?;
@@ -68,10 +69,10 @@ async fn append_updates_membership() -> Result<()> {
     tracing::info!("--- delete inconsistent logs update membership");
     {
         let req = AppendEntriesRequest {
-            vote: Vote::new_committed(1, 0),
-            prev_log_id: Some(LogId::new(1, 2)),
+            vote: Vote::new(1, 0),
+            prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 2)),
             entries: vec![blank(2, 3)],
-            leader_commit: Some(LogId::new(0, 0)),
+            leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
         };
 
         let resp = r0.append_entries(req.clone()).await?;

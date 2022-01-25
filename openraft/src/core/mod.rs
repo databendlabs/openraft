@@ -55,6 +55,7 @@ use crate::replication::ReplicationStream;
 use crate::vote::Vote;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -82,7 +83,8 @@ pub struct EffectiveMembership {
 impl EffectiveMembership {
     pub fn new_initial(node_id: u64) -> Self {
         EffectiveMembership {
-            log_id: LogId::new(0, 0),
+            // TODO(xp): avoid using Vote::default()
+            log_id: LogId::new(LeaderId::default(), 0),
             membership: Membership::new_initial(node_id),
         }
     }
@@ -182,7 +184,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             target_state: State::Follower,
             committed: None,
             last_applied: None,
-            vote: Vote::new_uncommitted(0, None),
+            vote: Vote::default(),
             last_log_id: None,
             snapshot_state: None,
             snapshot_last_log_id: None,
@@ -519,7 +521,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     #[tracing::instrument(level = "debug", skip(self, payload))]
     pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> Result<Entry<D>, StorageError> {
-        let log_id = LogId::new(self.vote.term, self.last_log_id.next_index());
+        let log_id = LogId::new(self.vote.leader_id(), self.last_log_id.next_index());
 
         let entry = Entry { log_id, payload };
         self.storage.append_to_log(&[&entry]).await?;
@@ -539,20 +541,20 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     #[tracing::instrument(level = "debug", skip(self))]
     pub fn current_leader(&self) -> Option<NodeId> {
-        let l = self.vote.leader();
+        if !self.vote.committed {
+            return None;
+        }
 
-        if let Some(id) = l {
-            if id == self.id {
-                if self.target_state == State::Leader {
-                    Some(id)
-                } else {
-                    None
-                }
-            } else {
+        let id = self.vote.node_id;
+
+        if id == self.id {
+            if self.target_state == State::Leader {
                 Some(id)
+            } else {
+                None
             }
         } else {
-            None
+            Some(id)
         }
     }
 }
@@ -724,6 +726,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Transition to the Raft leader state.
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="leader"))]
     pub(self) async fn run(mut self) -> Result<(), Fatal> {
+        // Setup state as leader.
+        self.core.last_heartbeat = None;
+        self.core.next_election_timeout = None;
+        self.core.vote.commit();
+
         // Spawn replication streams.
         let targets = self
             .core
@@ -745,11 +752,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let state = self.spawn_replication_stream(*node_id, None);
             self.nodes.insert(*node_id, state);
         }
-
-        // Setup state as leader.
-        self.core.last_heartbeat = None;
-        self.core.next_election_timeout = None;
-        self.core.vote = Vote::new_committed(self.core.vote.term, self.core.id);
 
         self.leader_report_metrics();
 
@@ -904,7 +906,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // Setup new term.
             self.core.update_next_election_timeout(false); // Generates a new rand value within range.
 
-            self.core.vote = Vote::new_uncommitted(self.core.vote.term + 1, Some(self.core.id));
+            self.core.vote = Vote::new(self.core.vote.term + 1, self.core.id);
 
             self.core.save_vote().await?;
             self.core.report_metrics(Update::Update(None));

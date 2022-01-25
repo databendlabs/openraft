@@ -6,8 +6,8 @@ use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::CommittedState;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftStorage;
@@ -39,13 +39,13 @@ async fn elect_compare_last_log() -> Result<()> {
     {
         sto0.save_vote(&Vote {
             term: 10,
-            state: CommittedState::Uncommitted,
-            voted_for: None,
+            node_id: 0,
+            committed: false,
         })
         .await?;
 
         sto0.append_to_log(&[&blank(0, 0), &Entry {
-            log_id: LogId { term: 2, index: 1 },
+            log_id: LogId::new(LeaderId::new(2, 0), 1),
             payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
         }])
         .await?;
@@ -55,15 +55,15 @@ async fn elect_compare_last_log() -> Result<()> {
     {
         sto1.save_vote(&Vote {
             term: 10,
-            state: CommittedState::Uncommitted,
-            voted_for: None,
+            node_id: 0,
+            committed: false,
         })
         .await?;
 
         sto1.append_to_log(&[
             &blank(0, 0),
             &Entry {
-                log_id: LogId { term: 1, index: 1 },
+                log_id: LogId::new(LeaderId::new(1, 0), 1),
                 payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
             },
             &blank(1, 2),

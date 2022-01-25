@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 
@@ -53,10 +54,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 timeout(),
                 "snapshot",
             )
@@ -66,10 +64,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
                 1,
                 log_index,
                 Some(0),
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 Some((log_index.into(), 1)),
             )
             .await?;
@@ -92,15 +87,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
 
             router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
             router
-                .wait_for_snapshot(
-                    &btreeset![1],
-                    LogId {
-                        term: 1,
-                        index: log_index,
-                    },
-                    timeout(),
-                    "",
-                )
+                .wait_for_snapshot(&btreeset![1], LogId::new(LeaderId::new(1, 0), log_index), timeout(), "")
                 .await?;
 
             let expected_snap = Some((log_index.into(), 1));
@@ -110,10 +97,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
                     1,
                     log_index,
                     None, /* learner does not vote */
-                    LogId {
-                        term: 1,
-                        index: log_index,
-                    },
+                    LogId::new(LeaderId::new(1, 0), log_index),
                     expected_snap,
                 )
                 .await?;
