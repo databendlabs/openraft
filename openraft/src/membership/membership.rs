@@ -110,7 +110,7 @@ impl Membership {
         learners.insert(*id);
         let configs = self.configs.clone();
         let all_members = Self::build_all_members(&self.configs);
-        let turn_to_learner = self.turn_to_learner.clone();
+        let turn_to_learner = self.turn_to_learner;
         Membership {
             learners,
             configs,
