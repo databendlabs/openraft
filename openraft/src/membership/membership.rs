@@ -27,6 +27,9 @@ pub struct Membership {
 
     /// Cache of all node ids.
     all_members: BTreeSet<NodeId>,
+
+    /// default: true
+    turn_to_learner: bool,
 }
 
 impl MessageSummary for Membership {
@@ -55,41 +58,49 @@ impl MessageSummary for Membership {
 impl Membership {
     pub fn new_single(members: BTreeSet<NodeId>) -> Self {
         let configs = vec![members];
+        let turn_to_learner = true;
         let all_members = Self::build_all_members(&configs);
         let learners = BTreeSet::new();
         Membership {
             learners,
             configs,
             all_members,
+            turn_to_learner,
         }
     }
 
     pub fn new_single_with_learners(members: BTreeSet<NodeId>, learners: BTreeSet<NodeId>) -> Self {
         let configs = vec![members];
         let all_members = Self::build_all_members(&configs);
+        let turn_to_learner = true;
         Membership {
             learners,
             configs,
             all_members,
+            turn_to_learner,
         }
     }
 
     pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
         let all_members = Self::build_all_members(&configs);
         let learners = BTreeSet::new();
+        let turn_to_learner = true;
         Membership {
             learners,
             configs,
             all_members,
+            turn_to_learner,
         }
     }
 
     pub fn new_multi_with_learners(configs: Vec<BTreeSet<NodeId>>, learners: BTreeSet<NodeId>) -> Self {
         let all_members = Self::build_all_members(&configs);
+        let turn_to_learner = true;
         Membership {
             learners,
             configs,
             all_members,
+            turn_to_learner,
         }
     }
 
@@ -99,11 +110,21 @@ impl Membership {
         learners.insert(*id);
         let configs = self.configs.clone();
         let all_members = Self::build_all_members(&self.configs);
+        let turn_to_learner = self.turn_to_learner.clone();
         Membership {
             learners,
             configs,
             all_members,
+            turn_to_learner,
         }
+    }
+
+    pub fn set_turn_to_learner(&mut self, turn_to_learner: bool) {
+        self.turn_to_learner = turn_to_learner;
+    }
+
+    pub fn is_turn_to_learner(&self) -> bool {
+        self.turn_to_learner
     }
 
     pub fn remove_learner(&mut self, id: &NodeId) {

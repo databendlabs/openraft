@@ -450,7 +450,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 self.set_target_state(State::Follower);
             }
         } else {
-            self.set_target_state(State::Learner);
+            if self.effective_membership.membership.is_turn_to_learner() {
+                self.set_target_state(State::Learner);
+                tracing::debug!("node {} turn to learner", self.id);
+            } else {
+                self.set_target_state(State::Shutdown);
+                tracing::debug!("node {} has been removed,shutdowning...", self.id);
+            }
         }
     }
 
@@ -836,8 +842,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::AddLearner { id, tx, blocking } => {
                 self.add_learner(id, tx, blocking).await;
             }
-            RaftMsg::ChangeMembership { members, blocking, tx } => {
-                self.change_membership(members, blocking, tx).await?;
+            RaftMsg::ChangeMembership {
+                members,
+                blocking,
+                turn_to_learner,
+                tx,
+            } => {
+                self.change_membership(members, blocking, turn_to_learner, tx).await?;
             }
         };
 

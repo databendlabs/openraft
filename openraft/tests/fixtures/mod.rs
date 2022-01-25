@@ -475,7 +475,18 @@ impl RaftRouter {
     ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
-        node.0.change_membership(members, true).await
+        node.0.change_membership(members, true, true).await
+    }
+
+    pub async fn change_membership_with_turn_to_learner(
+        &self,
+        leader: NodeId,
+        members: BTreeSet<NodeId>,
+        turn_to_learner: bool,
+    ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
+        let rt = self.routing_table.read().await;
+        let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
+        node.0.change_membership(members, true, turn_to_learner).await
     }
 
     pub async fn change_membership_with_blocking(
@@ -486,7 +497,7 @@ impl RaftRouter {
     ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
         let rt = self.routing_table.read().await;
         let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
-        node.0.change_membership(members, blocking).await
+        node.0.change_membership(members, blocking, true).await
     }
 
     /// Send a client read request to the target node.

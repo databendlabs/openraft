@@ -34,6 +34,8 @@ fn test_membership() -> anyhow::Result<()> {
     assert!(m123_345.is_member(&4));
     assert!(!m123_345.is_member(&6));
 
+    assert_eq!(m1.is_turn_to_learner(), true);
+
     assert!(!m123.is_in_joint_consensus());
     assert!(m123_345.is_in_joint_consensus());
 
