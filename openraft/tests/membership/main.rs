@@ -2,7 +2,6 @@
 #[path = "../fixtures/mod.rs"]
 mod fixtures;
 
-/*
 // The number indicate the preferred running order for these case.
 // The later tests may depend on the earlier ones.
 mod t00_learner_restart;
@@ -19,6 +18,3 @@ mod t30_commit_joint_config;
 mod t30_step_down;
 mod t40_removed_follower;
 mod t99_new_leader_auto_commit_uniform_config;
-*/
-
-mod t20_change_membership;
