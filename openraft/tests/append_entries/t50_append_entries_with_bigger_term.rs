@@ -20,15 +20,22 @@ async fn append_entries_with_bigger_term() -> Result<()> {
     let _ent = ut_span.enter();
 
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut config = Arc::new(Config::default().validate()?);
+    let config = Arc::get_mut(&mut config).unwrap();
+    config.heartbeat_interval = 50_000;
+    config.election_timeout_min = 150_000;
+    config.election_timeout_max = 300_000;
+    let router = Arc::new(RaftRouter::new(Arc::new((*config).clone())));
+    println!("{}", "here0...");
     let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
+    println!("{}", "here1...");
     // before append entries, check hard state in term 1 and vote for node 0
     router
         .assert_storage_state(1, log_index, Some(0), LogId::new(LeaderId::new(1, 0), log_index), None)
         .await?;
 
+    println!("{}", "here2...");
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
     let req = AppendEntriesRequest::<memstore::ClientRequest> {
         vote: Vote::new(2, 1),

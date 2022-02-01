@@ -26,9 +26,11 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tokio::time::interval;
 use tokio::time::sleep_until;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use tokio::time::Interval;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Span;
@@ -741,12 +743,17 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
 
     /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
     pub(super) awaiting_committed: Vec<ClientRequestEntry<D, R>>,
+
+    /// Leader heartbeat interval
+    pub(super) heartbeat: Interval,
 }
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Create a new instance.
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         let (replication_tx, replication_rx) = mpsc::unbounded_channel();
+        let config = core.config.clone();
+        let heartbeat_timeout = Duration::from_millis(config.heartbeat_interval);
         Self {
             core,
             nodes: BTreeMap::new(),
@@ -754,6 +761,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             replication_tx,
             replication_rx,
             awaiting_committed: Vec::new(),
+            heartbeat: interval(heartbeat_timeout),
         }
     }
 
@@ -817,16 +825,21 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 Some(update) = self.core.rx_compaction.recv() => {
                     tracing::info!("leader recv from rx_compaction: {:?}", update);
                     self.core.update_snapshot_state(update);
-                }
+                },
 
                 Some((event, span)) = self.replication_rx.recv() => {
                     tracing::info!("leader recv from replication_rx: {:?}", event.summary());
                     self.handle_replica_event(event).instrument(span).await?;
-                }
+                },
 
                 Ok(_) = &mut self.core.rx_shutdown => {
                     tracing::info!("leader recv from rx_shudown");
                     self.core.set_target_state(State::Shutdown);
+                },
+
+                _ = self.heartbeat.tick() => {
+                    tracing::debug!("leader heartbeat triggered");
+                    self.core.append_payload_to_log(EntryPayload::Blank).await?;
                 }
             }
         }
