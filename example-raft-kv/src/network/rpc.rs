@@ -33,8 +33,8 @@ impl ExampleNetwork {
         Resp: DeserializeOwned,
     {
         let addr = {
-            let sm = self.store.sm.read().await;
-            sm.nodes.get(&target).unwrap().clone()
+            let state_machine = self.store.state_machine.read().await;
+            state_machine.nodes.get(&target).unwrap().clone()
         };
 
         let url = format!("http://{}/{}", addr, uri);

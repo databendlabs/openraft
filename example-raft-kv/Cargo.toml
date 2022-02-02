@@ -1,11 +1,13 @@
 [package]
-name = "example-raft-kv"
+name = "example-raft-key-value"
 version = "0.1.0"
 edition = "2021"
-authors = [ "drdr xp <drdr.xp@gmail.com>", ]
+authors = [ 
+    "drdr xp <drdr.xp@gmail.com>", 
+    "Pedro Paulo de Amorim <pepa.amorim@gmail.com>"
+]
 categories = ["algorithms", "asynchronous", "data-structures"]
-description = "An example distributed kv-store built upon `openraft`."
-#documentation = "https://docs.rs/memstore"
+description = "An example distributed key-value store built upon `openraft`."
 homepage = "https://github.com/datafuselabs/openraft"
 keywords = ["raft", "consensus"]
 license = "MIT/Apache-2.0"
@@ -13,9 +15,8 @@ repository = "https://github.com/datafuselabs/openraft"
 readme = "README.md"
 
 [[bin]]
-name = "raftkv"
-path = "src/bin/raftkv.rs"
-
+name = "raft-key-value"
+path = "src/bin/main.rs"
 
 [dependencies]
 actix-web = "4.0.0-rc.2"
@@ -30,7 +31,6 @@ serde_json = "1.0.57"
 tokio = { version="1.0", default-features=false, features=["sync"] }
 tracing = "0.1.29"
 tracing-futures = "0.2.4"
-
 
 [dev-dependencies]
 maplit = "1.0.2"

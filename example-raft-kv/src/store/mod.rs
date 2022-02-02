@@ -28,16 +28,29 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
-/// Request is a command to modify the state machine.
+/**
+ * Here you will set the types of request that will interact with the raft nodes.
+ * For example the `Set` will be used to write data (key and value) to the raft database.
+ * The `AddNode` will append a new node to the current existing shared list of nodes.
+ * You will want to add any request that can write data in all nodes here.
+ */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ExampleRequest {
     Set { key: String, value: String },
     AddNode { id: NodeId, addr: String },
 }
 
+// Inform to raft that `ExampleRequest` is an application data to be used by raft.
 impl AppData for ExampleRequest {}
 
-/// The state after applied a request.
+/**
+ * Here you will defined what type of answer you expect from reading the data of a node.
+ * In this example it will return a optional value from a given key in
+ * the `ExampleRequest.Set`.
+ *
+ * TODO: SHould we explain how to create multiple `AppDataResponse`?
+ *
+ */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ExampleResponse {
     pub value: Option<String>,
@@ -53,6 +66,12 @@ pub struct ExampleSnapshot {
     pub data: Vec<u8>,
 }
 
+/**
+ * Here defines a state machine of the raft, this state represents a copy of the data
+ * between each node. Note that we are using `serde` to serialize the `data`, which has
+ * a implementation to be serialized. Note that for this test we set both the key and
+ * value as String, but you could set any type of value that has the serialization impl.
+ */
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct ExampleStateMachine {
     pub last_applied_log: Option<LogId>,
@@ -63,7 +82,7 @@ pub struct ExampleStateMachine {
     pub nodes: BTreeMap<NodeId, String>,
 
     /// Application data.
-    pub kvs: BTreeMap<String, String>,
+    pub data: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Default)]
@@ -74,7 +93,7 @@ pub struct ExampleStore {
     log: RwLock<BTreeMap<u64, Entry<ExampleRequest>>>,
 
     /// The Raft state machine.
-    pub sm: RwLock<ExampleStateMachine>,
+    pub state_machine: RwLock<ExampleStateMachine>,
 
     /// The current granted vote.
     vote: RwLock<Option<Vote>>,
@@ -90,8 +109,8 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&self, vote: &Vote) -> Result<(), StorageError> {
+        // TODO: What `h` stands for?
         let mut h = self.vote.write().await;
-
         *h = Some(*vote);
         Ok(())
     }
@@ -121,12 +140,9 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
         &self,
         range: RB,
     ) -> Result<Vec<Entry<ExampleRequest>>, StorageError> {
-        let res = {
-            let log = self.log.read().await;
-            log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>()
-        };
-
-        Ok(res)
+        let log = self.log.read().await;
+        let response = log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>();
+        Ok(response)
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
@@ -142,13 +158,10 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
     async fn delete_conflict_logs_since(&self, log_id: LogId) -> Result<(), StorageError> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
-        {
-            let mut log = self.log.write().await;
-
-            let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
-            for key in keys {
-                log.remove(&key);
-            }
+        let mut log = self.log.write().await;
+        let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
+        for key in keys {
+            log.remove(&key);
         }
 
         Ok(())
@@ -177,8 +190,8 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
     }
 
     async fn last_applied_state(&self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError> {
-        let sm = self.sm.read().await;
-        Ok((sm.last_applied_log, sm.last_membership.clone()))
+        let state_machine = self.state_machine.read().await;
+        Ok((state_machine.last_applied_log, state_machine.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
@@ -188,7 +201,7 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
     ) -> Result<Vec<ExampleResponse>, StorageError> {
         let mut res = Vec::with_capacity(entries.len());
 
-        let mut sm = self.sm.write().await;
+        let mut sm = self.state_machine.write().await;
 
         for entry in entries {
             tracing::debug!(%entry.log_id, "replicate to sm");
@@ -199,7 +212,7 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
                 EntryPayload::Blank => res.push(ExampleResponse { value: None }),
                 EntryPayload::Normal(ref req) => match req {
                     ExampleRequest::Set { key, value } => {
-                        sm.kvs.insert(key.clone(), value.clone());
+                        sm.data.insert(key.clone(), value.clone());
                         res.push(ExampleResponse {
                             value: Some(value.clone()),
                         })
@@ -229,11 +242,11 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
 
         {
             // Serialize the data of the state machine.
-            let sm = self.sm.read().await;
-            data = serde_json::to_vec(&*sm)
+            let state_machine = self.state_machine.read().await;
+            data = serde_json::to_vec(&*state_machine)
                 .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
 
-            last_applied_log = sm.last_applied_log;
+            last_applied_log = state_machine.last_applied_log;
         }
 
         let last_applied_log = match last_applied_log {
@@ -298,15 +311,16 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
 
         // Update the state machine.
         {
-            let new_sm: ExampleStateMachine = serde_json::from_slice(&new_snapshot.data).map_err(|e| {
-                StorageIOError::new(
-                    ErrorSubject::Snapshot(new_snapshot.meta.clone()),
-                    ErrorVerb::Read,
-                    AnyError::new(&e),
-                )
-            })?;
-            let mut sm = self.sm.write().await;
-            *sm = new_sm;
+            let updated_state_machine: ExampleStateMachine =
+                serde_json::from_slice(&new_snapshot.data).map_err(|e| {
+                    StorageIOError::new(
+                        ErrorSubject::Snapshot(new_snapshot.meta.clone()),
+                        ErrorVerb::Read,
+                        AnyError::new(&e),
+                    )
+                })?;
+            let mut state_machine = self.state_machine.write().await;
+            *state_machine = updated_state_machine;
         }
 
         // Update current snapshot.
