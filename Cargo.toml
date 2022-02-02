@@ -2,4 +2,5 @@
 members = [
     "openraft",
     "memstore",
+    "example-raft-kv",
 ]
