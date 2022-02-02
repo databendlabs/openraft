@@ -2,5 +2,7 @@
 members = [
     "openraft",
     "memstore",
+]
+exclude = [
     "example-raft-kv",
 ]

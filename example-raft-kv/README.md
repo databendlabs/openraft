@@ -15,8 +15,9 @@ Includes:
 ## Run it
 
 ```shell
+cd example-raft-kv
 cargo build
-./example-raft-kv/test-cluster.sh
+./test-cluster.sh
 ```
 
 ## Cluster management
