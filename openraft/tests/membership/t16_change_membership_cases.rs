@@ -156,5 +156,5 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(500))
+    Some(Duration::from_millis(1000))
 }
