@@ -92,31 +92,34 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
     /// Handle response from a vote request sent to a peer.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self, res))]
     pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {
-        // If peer's term is greater than current term, revert to follower state.
+        tracing::debug!(res=?res, target, "recv vote response");
+
+        // If peer's vote is greater than current vote, revert to follower state.
 
         if res.vote > self.core.vote {
-            self.core.vote = res.vote;
-            self.core.save_vote().await?;
+            // If the core.vote is changed(to some greater value), then no further vote response would be valid.
+            // Because they just granted an old `vote`.
+            // A quorum does not mean the core is legal to use the new greater `vote`.
+            // Thus no matter the last_log_id is greater than the remote peer or not, revert to follower at once.
 
-            // If a quorum of nodes have higher `last_log_id`, I have no chance to become a leader.
             // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `last_log_id`.
             //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
             //           election.
-            if self.core.last_log_id < res.last_log_id {
-                self.core.set_target_state(State::Follower);
-                tracing::debug!("reverting to follower state due to greater term observed in RequestVote RPC response");
-            } else {
-                tracing::debug!(
-                    id = %self.core.id,
-                    ?self.core.vote,
-                    %res.vote,
-                    self_last_log_id=?self.core.last_log_id,
-                    res_last_log_id=?res.last_log_id,
-                    "I have lower term but higher or euqal last_log_id, keep trying to elect"
-                );
-            }
+            self.core.set_target_state(State::Follower);
+
+            tracing::debug!(
+                id = %self.core.id,
+                %res.vote,
+                %self.core.vote,
+                self_last_log_id=?self.core.last_log_id,
+                res_last_log_id=?res.last_log_id,
+                "reverting to follower state due to greater vote observed in RequestVote RPC response");
+
+            self.core.vote = res.vote;
+            self.core.save_vote().await?;
+
             return Ok(());
         }
 
