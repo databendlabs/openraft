@@ -23,6 +23,7 @@ use crate::ExampleStore;
 
 pub struct ExampleNetwork {
     pub store: Arc<ExampleStore>,
+    pub client: Arc<reqwest::Client>,
 }
 
 impl ExampleNetwork {
@@ -38,9 +39,8 @@ impl ExampleNetwork {
         };
 
         let url = format!("http://{}/{}", addr, uri);
-        let client = reqwest::Client::new();
 
-        let resp = client.post(url).json(&req).send().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+        let resp = self.client.post(url).json(&req).send().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
 
         let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
 

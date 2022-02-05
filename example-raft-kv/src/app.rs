@@ -12,5 +12,6 @@ pub struct ExampleApp {
     pub id: NodeId,
     pub raft: ExampleRaft,
     pub store: Arc<ExampleStore>,
+    pub client: Arc<reqwest::Client>,
     pub config: Arc<Config>,
 }

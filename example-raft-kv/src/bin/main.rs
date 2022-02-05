@@ -28,6 +28,7 @@ pub struct Opt {
 
     #[clap(long)]
     pub http_addr: String,
+    
 }
 
 #[actix_web::main]
@@ -45,9 +46,13 @@ async fn main() -> std::io::Result<()> {
     // Create a instance of where the Raft data will be stored.
     let store = Arc::new(ExampleStore::default());
 
+    // Create a instance of the HTTP client. This will be later used to redirect request
+    // from members and will be used in the RPC.
+    let client = Arc::new(reqwest::Client::new());
+
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
-    let network = Arc::new(ExampleNetwork { store: store.clone() });
+    let network = Arc::new(ExampleNetwork { store: store.clone(), client: client.clone() });
 
     // Create a local raft instance.
     let raft = Raft::new(node_id, config.clone(), network, store.clone());
@@ -58,6 +63,7 @@ async fn main() -> std::io::Result<()> {
         id: options.id,
         raft,
         store,
+        client: client.clone(),
         config,
     });
 
