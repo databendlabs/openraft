@@ -17,7 +17,7 @@ use crate::StorageError;
 use crate::Vote;
 
 /// Fatal is unrecoverable and shuts down raft at once.
-#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum Fatal {
     #[error(transparent)]
     StorageError(#[from] StorageError),
@@ -50,19 +50,19 @@ where E: TryInto<Fatal> + Clone
     }
 }
 
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum AppendEntriesError {
     #[error(transparent)]
     Fatal(#[from] Fatal),
 }
 
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum VoteError {
     #[error(transparent)]
     Fatal(#[from] Fatal),
 }
 
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum InstallSnapshotError {
     #[error(transparent)]
     SnapshotMismatch(#[from] SnapshotMismatch),
@@ -72,7 +72,7 @@ pub enum InstallSnapshotError {
 }
 
 /// An error related to a client read request.
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum ClientReadError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
@@ -85,7 +85,7 @@ pub enum ClientReadError {
 }
 
 /// An error related to a client write request.
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum ClientWriteError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),

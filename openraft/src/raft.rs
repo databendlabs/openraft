@@ -398,7 +398,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Cl
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddLearnerResponse {
     pub matched: Option<LogId>,
 }
