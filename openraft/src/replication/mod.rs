@@ -243,6 +243,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                     let _ = self.raft_core_tx.send((ReplicaEvent::Shutdown, tracing::debug_span!("CH")));
                     return;
                 }
+                ReplicationError::NodeNotFound(err) => {
+                    unreachable!("programming bug: {}", err)
+                }
                 ReplicationError::Timeout { .. } => {
                     // nothing to do
                 }
@@ -364,6 +367,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 Err(err) => {
                     tracing::warn!(error=%err, "error sending AppendEntries RPC to target");
                     let repl_err = match err {
+                        RPCError::NodeNotFound(e) => ReplicationError::NodeNotFound(e),
                         RPCError::Timeout(e) => ReplicationError::Timeout(e),
                         RPCError::Network(e) => ReplicationError::Network(e),
                         RPCError::RemoteError(e) => ReplicationError::RemoteError(e),

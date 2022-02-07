@@ -115,7 +115,7 @@ pub enum ChangeMembershipError {
     LearnerIsLagging(#[from] LearnerIsLagging),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum AddLearnerError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
@@ -197,6 +197,9 @@ pub enum ReplicationError {
     StorageError(#[from] StorageError),
 
     #[error(transparent)]
+    NodeNotFound(#[from] NodeNotFound),
+
+    #[error(transparent)]
     Timeout(#[from] Timeout),
 
     #[error(transparent)]
@@ -208,6 +211,9 @@ pub enum ReplicationError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum RPCError<T: Error> {
+    #[error(transparent)]
+    NodeNotFound(#[from] NodeNotFound),
+
     #[error(transparent)]
     Timeout(#[from] Timeout),
 
@@ -319,3 +325,14 @@ pub struct LearnerIsLagging {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("new membership can not be empty")]
 pub struct EmptyMembership {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("node not found: {node_id}, source: {source}")]
+pub struct NodeNotFound {
+    pub node_id: NodeId,
+    pub source: AnyError,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("infallible")]
+pub enum Infallible {}
