@@ -12,13 +12,27 @@ Includes:
 
 - Client and `RaftNetwork`([rpc](./src/network/rpc.rs)) are built upon [reqwest](https://docs.rs/reqwest).
 
+  [ExampleClient](./src/client.rs) is a minimal raft client in rust to talk to a raft cluster.
+  - It includes application API `write()` and `read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()` and `list_nodes()`.
+  - This client tracks the last known leader id, a write operation(such as `write()` or `change_membership()`) will be redirected to the leader on client side.
+
 ## Run it
 
-If you want to see a simulation of 3 nodes running and sharing data, you can run the cluster demo:
+There is a example in bash script and an example in rust:
 
-```shell
-./test-cluster.sh
-```
+- [test-cluster.sh](./test-cluster.sh) shows a simulation of 3 nodes running and sharing data,
+  It only uses `curl` and shows the communication between a client and the cluster in plain HTTP messages.
+  You can run the cluster demo with:
+
+  ```shell
+  ./test-cluster.sh
+  ```
+
+- [test_cluster.rs](./tests/cluster/test_cluster.rs) does almost the same as `test-cluster.sh` but in rust
+  with the `ExampleClient`.
+
+  Run it with `cargo test`.
+
 
 if you want to compile the application, run:
 
@@ -28,6 +42,8 @@ cargo build
 
 (If you append `--release` to make it compile in production, but we don't recommend to use
 this project in production yet.)
+
+## What the test script does
 
 To run it, get the binary `raft-key-value` inside `target/debug` and run:
 

@@ -5,7 +5,9 @@ use actix_web::post;
 use actix_web::web;
 use actix_web::web::Data;
 use actix_web::Responder;
+use openraft::error::Infallible;
 use openraft::NodeId;
+use openraft::RaftMetrics;
 use web::Json;
 
 use crate::app::ExampleApp;
@@ -19,8 +21,8 @@ use crate::app::ExampleApp;
 /// (by calling `change-membership`)
 #[post("/add-learner")]
 pub async fn add_learner(app: Data<ExampleApp>, req: Json<NodeId>) -> actix_web::Result<impl Responder> {
-    let response = app.raft.add_learner(req.0, true).await;
-    Ok(Json(response))
+    let res = app.raft.add_learner(req.0, true).await;
+    Ok(Json(res))
 }
 
 /// Changes specified learners to members, or remove members.
@@ -29,8 +31,8 @@ pub async fn change_membership(
     app: Data<ExampleApp>,
     req: Json<BTreeSet<NodeId>>,
 ) -> actix_web::Result<impl Responder> {
-    let response = app.raft.change_membership(req.0, true).await;
-    Ok(Json(response))
+    let res = app.raft.change_membership(req.0, true).await;
+    Ok(Json(res))
 }
 
 /// Initialize a single-node cluster.
@@ -38,21 +40,27 @@ pub async fn change_membership(
 pub async fn init(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
     let mut nodes = BTreeSet::new();
     nodes.insert(app.id);
-    let response = app.raft.initialize(nodes).await;
-    Ok(Json(response))
+    let res = app.raft.initialize(nodes).await;
+    Ok(Json(res))
 }
 
 /// Get the latest metrics of the cluster
 #[get("/metrics")]
 pub async fn metrics(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
-    let response = app.raft.metrics().borrow().clone();
-    Ok(Json(response))
+    let metrics = app.raft.metrics().borrow().clone();
+
+    let res: Result<RaftMetrics, Infallible> = Ok(metrics);
+    Ok(Json(res))
 }
 
 /// List known nodes of the cluster.
 #[get("/list-nodes")]
 pub async fn list_nodes(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
-    let state_machine = app.store.state_machine.read().await;
-    let response = state_machine.nodes.clone();
-    Ok(Json(response))
+    let nodes = {
+        let state_machine = app.store.state_machine.read().await;
+        state_machine.nodes.clone()
+    };
+
+    let res: Result<_, Infallible> = Ok(nodes);
+    Ok(Json(res))
 }

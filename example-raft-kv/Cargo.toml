@@ -33,6 +33,7 @@ tracing = "0.1.29"
 tracing-futures = "0.2.4"
 
 [dev-dependencies]
+anyhow = "1.0.32"
 maplit = "1.0.2"
 
 [features]
