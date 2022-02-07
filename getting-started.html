@@ -144,6 +144,10 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
+<p>In this chapter we are going to build a key-value store cluster with <a href="https://github.com/datafuselabs/openraft">openraft</a>.</p>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/example-raft-kv">example-raft-kv</a>
+is the complete example application including the server, the client and a demo cluster.</p>
+<hr />
 <p>Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients.</p>
 <p>
     <img style="max-width:600px;" src="./images/raft-overview.png"/>
@@ -169,12 +173,12 @@ e.g.:</p>
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ClientRequest {/* fields */}
-impl AppData for ClientRequest {}
+pub struct ExampleRequest {/* fields */}
+impl AppData for ExampleRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ClientResponse(Result&lt;Option&lt;String&gt;, ClientError&gt;);
-impl AppDataResponse for ClientResponse {}
+pub struct ExampleResponse(Result&lt;Option&lt;String&gt;, ClientError&gt;);
+impl AppDataResponse for ExampleResponse {}
 <span class="boring">}
 </span></code></pre></pre>
 <p>These two types are totally application specific, and are mainly related to the
@@ -235,7 +239,7 @@ fn install_snapshot(meta, snapshot)
 </li>
 </ul>
 <p>The APIs have been made quite obvious and there is a good example
-<a href="https://github.com/datafuselabs/openraft/blob/main/memstore/src/lib.rs"><code>MemStore</code></a>,
+<a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/store/mod.rs"><code>ExampleStore</code></a>,
 which is a pure-in-memory implementation that shows what should be done when a
 method is called.</p>
 <h3 id="how-do-i-impl-raftstorage-correctly"><a class="header" href="#how-do-i-impl-raftstorage-correctly">How do I impl RaftStorage correctly</a></h3>
@@ -276,97 +280,99 @@ where D: AppData
 }
 <span class="boring">}
 </span></code></pre></pre>
-<p>A mock impl in our tests explains what the impl has to do:
-<a href="https://github.com/datafuselabs/openraft/blob/main/openraft/tests/fixtures/mod.rs">fixture: mock impl RaftNetwork</a></p>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft.rs">ExampleNetwork</a>
+shows that how to forward message to other raft nodes.</p>
+<p>And there should be server endpoint for each of these RPCs.
+When the server receives a raft RPC, it just passes it to its <code>raft</code> instance and replies with what returned:
+<a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft.rs">raft-server-endpoint</a>.</p>
 <p>As a real world impl, you may want to use <a href="https://github.com/hyperium/tonic">Tonic gRPC</a>.
 <a href="https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89">databend-meta</a> would be a nice real world example.</p>
 <h2 id="4-put-everything-together"><a class="header" href="#4-put-everything-together">4. Put everything together</a></h2>
-<p>Finally, we put these part together and boot up a raft node:</p>
-<pre><pre class="playground"><code class="language-rust">/// The application data request type which the `MemStore` works with.
-///
-/// Conceptually, for demo purposes, this represents an update to a client's status info,
-/// returning the previously recorded status.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ClientRequest {
-    /// The ID of the client which has sent the request.
-    pub client: String,
-    /// The serial number of this request.
-    pub serial: u64,
-    /// A string describing the status of the client. For a real application, this should probably
-    /// be an enum representing all of the various types of requests / operations which a client
-    /// can perform.
-    pub status: String,
-}
-impl AppData for ClientRequest {}
-
-/// The application data response type which the `MemStore` works with.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ClientResponse(Result&lt;Option&lt;String&gt;, ClientError&gt;);
-impl AppDataResponse for ClientResponse {}
-
-/// A type which emulates a network transport and implements the `RaftNetwork` trait.
-pub struct RaftRouter {
-    // ... some internal state ...
-}
-
-#[async_trait]
-impl RaftNetwork&lt;ClientRequest&gt; for RaftRouter {
-    /// Send an AppendEntries RPC to the target Raft node (§5).
-    async fn append_entries(&amp;self, target: u64, rpc: AppendEntriesRequest&lt;ClientRequest&gt;) -&gt; Result&lt;AppendEntriesResponse&gt; {
-        // ... snip ...
-    }
-
-    /// Send an InstallSnapshot RPC to the target Raft node (§7).
-    async fn install_snapshot(&amp;self, target: u64, rpc: InstallSnapshotRequest) -&gt; Result&lt;InstallSnapshotResponse&gt; {
-        // ... snip ...
-    }
-
-    /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn vote(&amp;self, target: u64, rpc: VoteRequest) -&gt; Result&lt;VoteResponse&gt; {
-        // ... snip ...
-    }
-}
-
-#[async_trait]
-impl RaftStorage&lt;ClientRequest, ClientResponse&gt; for MemStore {
-    type Snapshot = Cursor&lt;Vec&lt;u8&gt;&gt;;
-
-    async fn get_membership_config(&amp;self) -&gt; Result&lt;MembershipConfig&gt; {
-        // ... snip ...
-    }
-
-    async fn get_initial_state(&amp;self) -&gt; Result&lt;InitialState&gt; {
-        // ... snip ...
-    }
-
-    // ... snip ...
-}
-
-#[tokio::main]
+<p>Finally, we put these part together and boot up a raft node
+<a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/bin/main.rs">main.rs</a>
+:</p>
+<pre><pre class="playground"><code class="language-rust">#[tokio::main]
 async fn main() {
-    // Get our node's ID from stable storage.
-    let node_id = get_id_from_storage().await;
+  #[actix_web::main]
+  async fn main() -&gt; std::io::Result&lt;()&gt; {
+    // Setup the logger
+    env_logger::init_from_env(Env::default().default_filter_or(&quot;info&quot;));
 
-    // Build our Raft runtime config, then instantiate our
-    // RaftNetwork &amp; RaftStorage impls.
-    let config = Arc::new(Config::build(&quot;primary-raft-group&quot;.into())
-        .validate()
-        .expect(&quot;failed to build Raft config&quot;));
-    let network = Arc::new(RaftRouter::new(config.clone()));
-    let storage = Arc::new(MemStore::new(node_id));
+    // Parse the parameters passed by arguments.
+    let options = Opt::parse();
+    let node_id = options.id;
 
-    // Create a new Raft node, which spawns an async task which
-    // runs the Raft core logic. Keep this Raft instance around
-    // for calling API methods based on events in your app.
-    let raft = Raft::new(node_id, config, network, storage);
+    // Create a configuration for the raft instance.
+    let config = Arc::new(Config::default().validate().unwrap());
 
-    let resp = raft.client_write(ClientWriteRequest::new(req)).await?;
+    // Create a instance of where the Raft data will be stored.
+    let store = Arc::new(ExampleStore::default());
+
+    // Create the network layer that will connect and communicate the raft instances and
+    // will be used in conjunction with the store created above.
+    let network = Arc::new(ExampleNetwork { store: store.clone() });
+
+    // Create a local raft instance.
+    let raft = Raft::new(node_id, config.clone(), network, store.clone());
+
+    // Create an application that will store all the instances created above, this will
+    // be later used on the actix-web services.
+    let app = Data::new(ExampleApp {
+      id: options.id,
+      raft,
+      store,
+      config,
+    });
+
+    // Start the actix-web server.
+    HttpServer::new(move || {
+      App::new()
+              .wrap(Logger::default())
+              .wrap(Logger::new(&quot;%a %{User-Agent}i&quot;))
+              .wrap(middleware::Compress::default())
+              .app_data(app.clone())
+              // raft internal RPC
+              .service(raft::append)
+              .service(raft::snapshot)
+              .service(raft::vote)
+              // admin API
+              .service(management::init)
+              .service(management::add_learner)
+              .service(management::change_membership)
+              .service(management::metrics)
+              .service(management::list_nodes)
+              // application API
+              .service(api::write)
+              .service(api::read)
+    })
+            .bind(options.http_addr)?
+            .run()
+            .await
+  }
 }
 
 </code></pre></pre>
-<p>Now it is time to write something to the cluster.
-As we did in our tests with <code>Raft::client_write()</code>:
-<a href="https://github.com/datafuselabs/openraft/blob/main/openraft/tests/client_writes.rs">client_writes</a></p>
+<h2 id="5-run-the-cluster"><a class="header" href="#5-run-the-cluster">5. Run the cluster</a></h2>
+<p>To set up a demo raft cluster includes:</p>
+<ul>
+<li>Bring up 3 uninitialized raft node;</li>
+<li>Initialize a single-node cluster;</li>
+<li>Add more raft nodes into it;</li>
+<li>Update the membership config.</li>
+</ul>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/example-raft-kv">example-raft-kv</a> describes these step in detail.</p>
+<p>And two test scripts for setting up cluster are provided:</p>
+<ul>
+<li>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/test-cluster.sh">test-cluster.sh</a>
+is a minimized bash script using curl to communicate with the raft cluster,
+in order to show what messages are exactly sent and received in plain HTTP. </p>
+</li>
+<li>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/tests/cluster/test_cluster.rs">test_cluster.rs</a>
+uses <code>ExampleClient</code> to set up a cluster and write data to it then read it.</p>
+</li>
+</ul>
 
                     </main>
 
