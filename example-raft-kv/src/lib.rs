@@ -13,7 +13,7 @@ use crate::app::ExampleApp;
 use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
-use crate::network::rpc::ExampleNetwork;
+use crate::network::raft_network_impl::ExampleNetwork;
 use crate::store::ExampleRequest;
 use crate::store::ExampleResponse;
 use crate::store::ExampleStore;

@@ -1,6 +1,6 @@
 use clap::Parser;
 use env_logger::Env;
-use example_raft_key_value::network::rpc::ExampleNetwork;
+use example_raft_key_value::network::raft_network_impl::ExampleNetwork;
 use example_raft_key_value::start_example_raft_node;
 use example_raft_key_value::store::ExampleRequest;
 use example_raft_key_value::store::ExampleResponse;
