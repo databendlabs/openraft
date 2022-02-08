@@ -3,14 +3,12 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use async_trait::async_trait;
 use openraft::error::AddLearnerError;
 use openraft::error::ClientWriteError;
 use openraft::error::ForwardToLeader;
 use openraft::error::Infallible;
 use openraft::error::InitializeError;
 use openraft::error::NetworkError;
-use openraft::error::NodeNotFound;
 use openraft::error::RPCError;
 use openraft::error::RemoteError;
 use openraft::raft::AddLearnerResponse;
@@ -22,25 +20,12 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::network::node_manager::NodeManager;
 use crate::ExampleRequest;
 use crate::ExampleResponse;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Empty {}
-
-#[async_trait]
-pub trait NodeManager {
-    async fn get_node_address(&self, node_id: NodeId) -> Result<String, NodeNotFound>;
-}
-
-#[async_trait]
-impl<T> NodeManager for T
-where T: Fn(NodeId) -> Result<String, NodeNotFound> + Sync
-{
-    async fn get_node_address(&self, node_id: NodeId) -> Result<String, NodeNotFound> {
-        self(node_id)
-    }
-}
 
 pub struct ExampleClient {
     /// The leader node to send request to.
