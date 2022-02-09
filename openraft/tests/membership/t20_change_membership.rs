@@ -158,7 +158,7 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
         // node [0,1] MUST recv the log
         router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "append a log").await?;
 
-        // node 2 MUST be shutdown
+        // node 2 MUST stay in learner state and is able to receive new logs
         router
             .wait_for_metrics(
                 &2,
