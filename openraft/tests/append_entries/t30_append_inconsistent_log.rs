@@ -5,11 +5,12 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::storage::HardState;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft::Vote;
 
 use crate::fixtures::RaftRouter;
 
@@ -53,27 +54,28 @@ async fn append_inconsistent_log() -> Result<()> {
 
     for i in n_logs + 1..=100 {
         sto0.append_to_log(&[&Entry {
-            log_id: LogId { term: 2, index: i },
+            log_id: LogId::new(LeaderId::new(2, 0), i),
             payload: EntryPayload::Blank,
         }])
         .await?;
 
         sto2.append_to_log(&[&Entry {
-            log_id: LogId { term: 3, index: i },
+            log_id: LogId::new(LeaderId::new(3, 0), i),
             payload: EntryPayload::Blank,
         }])
         .await?;
     }
 
-    sto0.save_hard_state(&HardState {
-        current_term: 2,
-        voted_for: Some(0),
+    sto0.save_vote(&Vote {
+        term: 2,
+        node_id: 0,
+        committed: false,
     })
     .await?;
-
-    sto2.save_hard_state(&HardState {
-        current_term: 3,
-        voted_for: Some(2),
+    sto2.save_vote(&Vote {
+        term: 3,
+        node_id: 0,
+        committed: false,
     })
     .await?;
 
@@ -122,7 +124,11 @@ async fn append_inconsistent_log() -> Result<()> {
         .await?;
 
     let logs = sto0.get_log_entries(60..=60).await?;
-    assert_eq!(3, logs.first().unwrap().log_id.term, "log is overridden by leader logs");
+    assert_eq!(
+        3,
+        logs.first().unwrap().log_id.leader_id.term,
+        "log is overridden by leader logs"
+    );
 
     Ok(())
 }

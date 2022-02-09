@@ -4,8 +4,10 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
+use openraft::Vote;
 
 use crate::fixtures::RaftRouter;
 
@@ -20,18 +22,19 @@ async fn append_entries_with_bigger_term() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
-    let n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
     // before append entries, check hard state in term 1 and vote for node 0
-    router.assert_storage_state(1, n_logs, Some(0), LogId { term: 1, index: n_logs }, None).await?;
+    router
+        .assert_storage_state(1, log_index, Some(0), LogId::new(LeaderId::new(1, 0), log_index), None)
+        .await?;
 
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
     let req = AppendEntriesRequest::<memstore::ClientRequest> {
-        term: 2,
-        leader_id: 1,
-        prev_log_id: Some(LogId::new(1, n_logs)),
+        vote: Vote::new(2, 1),
+        prev_log_id: Some(LogId::new(LeaderId::new(1, 0), log_index)),
         entries: vec![],
-        leader_commit: Some(LogId::new(1, n_logs)),
+        leader_commit: Some(LogId::new(LeaderId::new(1, 0), log_index)),
     };
 
     let resp = router.send_append_entries(0, req).await?;
@@ -39,7 +42,14 @@ async fn append_entries_with_bigger_term() -> Result<()> {
 
     // after append entries, check hard state in term 2 and vote for node 1
     router
-        .assert_storage_state_in_node(0, 2, n_logs, Some(1), LogId { term: 1, index: n_logs }, None)
+        .assert_storage_state_in_node(
+            0,
+            2,
+            log_index,
+            Some(1),
+            LogId::new(LeaderId::new(1, 0), log_index),
+            None,
+        )
         .await?;
 
     Ok(())

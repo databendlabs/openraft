@@ -7,12 +7,14 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftNetwork;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 use openraft::State;
+use openraft::Vote;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -71,10 +73,7 @@ async fn compaction() -> Result<()> {
     router
         .wait_for_snapshot(
             &btreeset![0],
-            LogId {
-                term: 1,
-                index: log_index,
-            },
+            LogId::new(LeaderId::new(1, 0), log_index),
             None,
             "snapshot",
         )
@@ -85,10 +84,7 @@ async fn compaction() -> Result<()> {
             1,
             log_index,
             Some(0),
-            LogId {
-                term: 1,
-                index: log_index,
-            },
+            LogId::new(LeaderId::new(1, 0), log_index),
             Some((log_index.into(), 1)),
         )
         .await?;
@@ -96,7 +92,7 @@ async fn compaction() -> Result<()> {
     // Add a new node and assert that it received the same snapshot.
     let sto1 = router.new_store().await;
     sto1.append_to_log(&[&blank(0, 0), &Entry {
-        log_id: LogId::new(1, 1),
+        log_id: LogId::new(LeaderId::new(1, 0), 1),
         payload: EntryPayload::Membership(Membership::new_single(btreeset! {0})),
     }])
     .await?;
@@ -118,13 +114,7 @@ async fn compaction() -> Result<()> {
         let sto = router.get_storage_handle(&1).await?;
         let logs = sto.get_log_entries(..).await?;
         assert_eq!(2, logs.len());
-        assert_eq!(
-            LogId {
-                term: 1,
-                index: log_index - 1,
-            },
-            logs[0].log_id
-        )
+        assert_eq!(LogId::new(LeaderId::new(1, 0), log_index - 1), logs[0].log_id)
     }
 
     // log 0 counts
@@ -134,10 +124,7 @@ async fn compaction() -> Result<()> {
             1,
             log_index,
             None, /* learner does not vote */
-            LogId {
-                term: 1,
-                index: log_index,
-            },
+            LogId::new(LeaderId::new(1, 0), log_index),
             expected_snap,
         )
         .await?;
@@ -148,13 +135,14 @@ async fn compaction() -> Result<()> {
     {
         let res = router
             .send_append_entries(1, AppendEntriesRequest {
-                term: 1,
-                leader_id: 0,
-                prev_log_id: Some(LogId::new(1, 2)),
+                vote: Vote::new_committed(1, 0),
+                prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 2)),
                 entries: vec![],
-                leader_commit: Some(LogId::new(0, 0)),
+                leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
             })
             .await?;
+
+        tracing::debug!("--- append-entries res: {:?}", res);
 
         assert!(res.success);
         assert!(!res.conflict);

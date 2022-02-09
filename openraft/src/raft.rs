@@ -36,6 +36,7 @@ use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::SnapshotMeta;
+use crate::Vote;
 
 struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     tx_api: mpsc::UnboundedSender<(RaftMsg<D, R>, Span)>,
@@ -412,7 +413,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Cl
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddLearnerResponse {
     pub matched: Option<LogId>,
 }
@@ -515,11 +516,7 @@ where
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppendEntriesRequest<D: AppData> {
-    /// The leader's current term.
-    pub term: u64,
-
-    /// The leader's ID. Useful in redirecting clients.
-    pub leader_id: u64,
+    pub vote: Vote,
 
     pub prev_log_id: Option<LogId>,
 
@@ -537,9 +534,8 @@ pub struct AppendEntriesRequest<D: AppData> {
 impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
     fn summary(&self) -> String {
         format!(
-            "leader={}-{}, prev_log_id={}, leader_commit={}, entries={}",
-            self.term,
-            self.leader_id,
+            "vote={}, prev_log_id={}, leader_commit={}, entries={}",
+            self.vote,
             self.prev_log_id.summary(),
             self.leader_commit.summary(),
             self.entries.as_slice().summary()
@@ -550,9 +546,7 @@ impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
 /// The response to an `AppendEntriesRequest`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppendEntriesResponse {
-    /// The responding node's current term, for leader to update itself.
-    pub term: u64,
-
+    pub vote: Vote,
     pub success: bool,
     pub conflict: bool,
 }
@@ -560,8 +554,8 @@ pub struct AppendEntriesResponse {
 impl MessageSummary for AppendEntriesResponse {
     fn summary(&self) -> String {
         format!(
-            "term:{}, success:{:?}, conflict:{:?}",
-            self.term, self.success, self.conflict
+            "vote:{}, success:{:?}, conflict:{:?}",
+            self.vote, self.success, self.conflict
         )
     }
 }
@@ -645,35 +639,26 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
 /// An RPC sent by candidates to gather votes (§5.2).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VoteRequest {
-    /// The candidate's current term.
-    pub term: u64,
-
-    pub candidate_id: u64,
-
+    pub vote: Vote,
     pub last_log_id: Option<LogId>,
 }
 
 impl MessageSummary for VoteRequest {
     fn summary(&self) -> String {
-        format!("{}-{}, last_log:{:?}", self.term, self.candidate_id, self.last_log_id)
+        format!("{}, last_log:{:?}", self.vote, self.last_log_id)
     }
 }
 
 impl VoteRequest {
-    pub fn new(term: u64, candidate_id: u64, last_log_id: Option<LogId>) -> Self {
-        Self {
-            term,
-            candidate_id,
-            last_log_id,
-        }
+    pub fn new(vote: Vote, last_log_id: Option<LogId>) -> Self {
+        Self { vote, last_log_id }
     }
 }
 
 /// The response to a `VoteRequest`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VoteResponse {
-    /// The current term of the responding node, for the candidate to update itself.
-    pub term: u64,
+    pub vote: Vote,
 
     /// Will be true if the candidate received a vote from the responder.
     pub vote_granted: bool,
@@ -687,10 +672,7 @@ pub struct VoteResponse {
 /// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InstallSnapshotRequest {
-    /// The leader's current term.
-    pub term: u64,
-    /// The leader's ID. Useful in redirecting clients.
-    pub leader_id: u64,
+    pub vote: Vote,
 
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
     pub meta: SnapshotMeta,
@@ -707,9 +689,8 @@ pub struct InstallSnapshotRequest {
 impl MessageSummary for InstallSnapshotRequest {
     fn summary(&self) -> String {
         format!(
-            "term={}, leader_id={}, meta={:?}, offset={}, len={}, done={}",
-            self.term,
-            self.leader_id,
+            "vote={}, meta={:?}, offset={}, len={}, done={}",
+            self.vote,
             self.meta,
             self.offset,
             self.data.len(),
@@ -721,8 +702,7 @@ impl MessageSummary for InstallSnapshotRequest {
 /// The response to an `InstallSnapshotRequest`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InstallSnapshotResponse {
-    /// The receiving node's current term, for leader to update itself.
-    pub term: u64,
+    pub vote: Vote,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

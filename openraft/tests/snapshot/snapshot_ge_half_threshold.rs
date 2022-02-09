@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 
@@ -49,10 +50,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 None,
                 "snapshot",
             )
@@ -62,10 +60,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
                 1,
                 log_index,
                 Some(0),
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 Some((log_index.into(), 1)),
             )
             .await?;
@@ -86,25 +81,14 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "add learner").await?;
         let expected_snap = Some((log_index.into(), 1));
         router
-            .wait_for_snapshot(
-                &btreeset![1],
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
-                None,
-                "",
-            )
+            .wait_for_snapshot(&btreeset![1], LogId::new(LeaderId::new(1, 0), log_index), None, "")
             .await?;
         router
             .assert_storage_state(
                 1,
                 log_index,
                 None, /* learner does not vote */
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 expected_snap,
             )
             .await?;

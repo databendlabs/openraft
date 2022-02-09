@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::State;
 
@@ -101,7 +102,7 @@ async fn step_down() -> Result<()> {
         assert!(metrics.state != State::Leader);
         assert_eq!(metrics.current_term, 1);
         assert_eq!(metrics.last_log_index, Some(8));
-        assert_eq!(metrics.last_applied, Some(LogId { index: 8, term: 1 }));
+        assert_eq!(metrics.last_applied, Some(LogId::new(LeaderId::new(1, 0), 8)));
         assert_eq!(cfg.get_configs().clone(), vec![btreeset![1, 2, 3]]);
         assert!(!cfg.is_in_joint_consensus());
     }

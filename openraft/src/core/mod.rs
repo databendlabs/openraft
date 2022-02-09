@@ -52,9 +52,10 @@ use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
-use crate::storage::HardState;
+use crate::vote::Vote;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -82,7 +83,8 @@ pub struct EffectiveMembership {
 impl EffectiveMembership {
     pub fn new_initial(node_id: u64) -> Self {
         EffectiveMembership {
-            log_id: LogId::new(0, 0),
+            // TODO(xp): avoid using Vote::default()
+            log_id: LogId::new(LeaderId::default(), 0),
             membership: Membership::new_initial(node_id),
         }
     }
@@ -124,21 +126,8 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// The log id of the highest log entry which has been applied to the local state machine.
     last_applied: Option<LogId>,
 
-    /// The current term.
-    ///
-    /// Is initialized to 0 on first boot, and increases monotonically. This is normally based on
-    /// the leader's term which is communicated to other members via the AppendEntries protocol,
-    /// but this may also be incremented when a follower becomes a candidate.
-    current_term: u64,
-
-    /// The ID of the current leader of the Raft cluster.
-    current_leader: Option<NodeId>,
-
-    /// The ID of the candidate which received this node's vote for the current term.
-    ///
-    /// Each server will vote for at most one candidate in a given term, on a
-    /// first-come-first-served basis. See §5.4.1 for additional restriction on votes.
-    voted_for: Option<NodeId>,
+    /// The vote state of this node.
+    vote: Vote,
 
     /// The last entry to be appended to the log.
     last_log_id: Option<LogId>,
@@ -195,9 +184,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             target_state: State::Follower,
             committed: None,
             last_applied: None,
-            current_term: 0,
-            current_leader: None,
-            voted_for: None,
+            vote: Vote::default(),
             last_log_id: None,
             snapshot_state: None,
             snapshot_last_log_id: None,
@@ -241,11 +228,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let state = self.storage.get_initial_state().await?;
 
         // TODO(xp): this is not necessary.
-        self.storage.save_hard_state(&state.hard_state).await?;
+        self.storage.save_vote(&state.vote).await?;
 
         self.last_log_id = state.last_log_id;
-        self.current_term = state.hard_state.current_term;
-        self.voted_for = state.hard_state.voted_for;
+        self.vote = state.vote;
         self.effective_membership = state.last_membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
         self.last_applied = state.last_applied;
 
@@ -345,10 +331,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
             id: self.id,
             state: self.target_state,
-            current_term: self.current_term,
+            current_term: self.vote.term,
             last_log_index: self.last_log_id.map(|id| id.index),
             last_applied: self.last_applied,
-            current_leader: self.current_leader,
+            current_leader: self.current_leader(),
             membership_config: self.effective_membership.clone(),
             snapshot: self.snapshot_last_log_id,
             leader_metrics,
@@ -372,12 +358,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Save the Raft node's current hard state to disk.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_hard_state(&mut self) -> Result<(), StorageError> {
-        let hs = HardState {
-            current_term: self.current_term,
-            voted_for: self.voted_for,
-        };
-        self.storage.save_hard_state(&hs).await
+    async fn save_vote(&mut self) -> Result<(), StorageError> {
+        self.storage.save_vote(&self.vote).await
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
@@ -420,15 +402,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.next_election_timeout = Some(now + t);
         if heartbeat {
             self.last_heartbeat = Some(now);
-        }
-    }
-
-    /// Encapsulate the process of updating the current term, as updating the `voted_for` state must also be updated.
-    #[tracing::instrument(level = "debug", skip(self))]
-    fn update_current_term(&mut self, new_term: u64, voted_for: Option<NodeId>) {
-        if new_term > self.current_term {
-            self.current_term = new_term;
-            self.voted_for = voted_for;
         }
     }
 
@@ -544,7 +517,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     fn reject_with_forward_to_leader<T, E>(&self, tx: RaftRespTx<T, E>)
     where E: From<ForwardToLeader> {
         let err = ForwardToLeader {
-            leader_id: self.current_leader,
+            leader_id: self.current_leader(),
         };
 
         let _ = tx.send(Err(err.into()));
@@ -552,7 +525,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     #[tracing::instrument(level = "debug", skip(self, payload))]
     pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<D>) -> Result<Entry<D>, StorageError> {
-        let log_id = LogId::new(self.current_term, self.last_log_id.next_index());
+        let log_id = LogId::new(self.vote.leader_id(), self.last_log_id.next_index());
 
         let entry = Entry { log_id, payload };
         self.storage.append_to_log(&[&entry]).await?;
@@ -568,6 +541,25 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         Ok(entry)
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub fn current_leader(&self) -> Option<NodeId> {
+        if !self.vote.committed {
+            return None;
+        }
+
+        let id = self.vote.node_id;
+
+        if id == self.id {
+            if self.target_state == State::Leader {
+                Some(id)
+            } else {
+                None
+            }
+        } else {
+            Some(id)
+        }
     }
 }
 
@@ -738,6 +730,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Transition to the Raft leader state.
     #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="leader"))]
     pub(self) async fn run(mut self) -> Result<(), Fatal> {
+        // Setup state as leader.
+        self.core.last_heartbeat = None;
+        self.core.next_election_timeout = None;
+        self.core.vote.commit();
+
         // Spawn replication streams.
         let targets = self
             .core
@@ -759,11 +756,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let state = self.spawn_replication_stream(*node_id, None);
             self.nodes.insert(*node_id, state);
         }
-
-        // Setup state as leader.
-        self.core.last_heartbeat = None;
-        self.core.next_election_timeout = None;
-        self.core.current_leader = Some(self.core.id);
 
         self.leader_report_metrics();
 
@@ -922,16 +914,16 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // Setup new term.
             self.core.update_next_election_timeout(false); // Generates a new rand value within range.
-            self.core.current_term += 1;
-            self.core.voted_for = Some(self.core.id);
-            self.core.current_leader = None;
-            self.core.save_hard_state().await?;
+
+            self.core.vote = Vote::new(self.core.vote.term + 1, self.core.id);
+
+            self.core.save_vote().await?;
             self.core.report_metrics(Update::Update(None));
 
             // vote for itself.
             self.handle_vote_response(
                 VoteResponse {
-                    term: self.core.current_term,
+                    vote: self.core.vote,
                     vote_granted: true,
                     last_log_id: self.core.last_log_id,
                 },

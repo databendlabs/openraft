@@ -6,9 +6,9 @@ use anyerror::AnyError;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::storage::HardState;
 use crate::LogId;
 use crate::SnapshotMeta;
+use crate::Vote;
 
 /// Convert error to StorageError::IO();
 pub trait ToStorageResult<T> {
@@ -68,7 +68,7 @@ pub enum ErrorSubject {
     Store,
 
     /// HardState related error.
-    HardState,
+    Vote,
 
     /// Error that is happened when operating a series of log entries
     Logs,
@@ -107,7 +107,7 @@ pub enum Violation {
     TermNotAscending { curr: u64, to: u64 },
 
     #[error("voted_for can not change from Some() to other Some(), current: {curr:?}, change to {to:?}")]
-    VotedForChanged { curr: HardState, to: HardState },
+    NonIncrementalVote { curr: Vote, to: Vote },
 
     #[error("log at higher index is obsolete: {higher_index_log_id:?} should GT {lower_index_log_id:?}")]
     DirtyLog {

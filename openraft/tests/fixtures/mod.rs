@@ -48,6 +48,7 @@ use openraft::storage::RaftStorage;
 use openraft::AppData;
 use openraft::Config;
 use openraft::DefensiveCheck;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::NodeId;
@@ -553,8 +554,9 @@ impl RaftRouter {
         for node in nodes.iter() {
             assert!(
                 node.current_leader.is_none(),
-                "node {} has a current leader, expected none",
-                node.id
+                "node {} has a current leader: {:?}, expected none",
+                node.id,
+                node.current_leader,
             );
             assert_eq!(
                 node.state,
@@ -701,22 +703,19 @@ impl RaftRouter {
             last_log_id
         );
 
-        let hs = storage.read_hard_state().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
+        let vote = storage.read_vote().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
 
         assert_eq!(
-            hs.current_term, expect_term,
+            vote.term, expect_term,
             "expected node {} to have term {}, got {:?}",
-            id, expect_term, hs
+            id, expect_term, vote
         );
 
         if let Some(voted_for) = &expect_voted_for {
             assert_eq!(
-                hs.voted_for.as_ref(),
-                Some(voted_for),
+                vote.node_id, *voted_for,
                 "expected node {} to have voted for {}, got {:?}",
-                id,
-                voted_for,
-                hs
+                id, voted_for, vote
             );
         }
 
@@ -744,9 +743,9 @@ impl RaftRouter {
             }
 
             assert_eq!(
-                &snap.meta.last_log_id.term, term,
+                &snap.meta.last_log_id.leader_id.term, term,
                 "expected node {} to have snapshot with term {}, got {}",
-                id, term, snap.meta.last_log_id.term
+                id, term, snap.meta.last_log_id.leader_id.term
             );
         }
 
@@ -847,7 +846,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
         tracing::debug!("append_entries to id={} {:?}", target, rpc);
         self.rand_send_delay().await;
 
-        self.check_reachable(rpc.leader_id, target).await?;
+        self.check_reachable(rpc.vote.node_id, target).await?;
 
         let rt = self.routing_table.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
@@ -867,7 +866,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     ) -> std::result::Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>> {
         self.rand_send_delay().await;
 
-        self.check_reachable(rpc.leader_id, target).await?;
+        self.check_reachable(rpc.vote.node_id, target).await?;
 
         let rt = self.routing_table.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
@@ -881,7 +880,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     async fn send_vote(&self, target: u64, rpc: VoteRequest) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
         self.rand_send_delay().await;
 
-        self.check_reachable(rpc.candidate_id, target).await?;
+        self.check_reachable(rpc.vote.node_id, target).await?;
 
         let rt = self.routing_table.read().await;
         let addr = rt.get(&target).expect("target node not found in routing table");
@@ -916,7 +915,7 @@ fn timeout() -> Option<Duration> {
 /// Create a blank log entry for test.
 pub fn blank<T: AppData>(term: u64, index: u64) -> Entry<T> {
     Entry {
-        log_id: LogId { term, index },
+        log_id: LogId::new(LeaderId::new(term, 0), index),
         payload: EntryPayload::Blank,
     }
 }

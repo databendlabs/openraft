@@ -4,6 +4,7 @@ use anyhow::Result;
 use futures::prelude::*;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 use openraft::State;
@@ -38,7 +39,7 @@ async fn client_writes() -> Result<()> {
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
 
-    let mut n_logs = 0;
+    let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], None, None, "empty").await?;
@@ -48,13 +49,13 @@ async fn client_writes() -> Result<()> {
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    n_logs += 1;
+    log_index += 1;
 
-    router.wait_for_log(&btreeset![0, 1, 2], Some(n_logs), None, "leader init log").await?;
+    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "leader init log").await?;
     router.wait_for_state(&btreeset![0], State::Leader, None, "cluster leader").await?;
     router.wait_for_state(&btreeset![1, 2], State::Follower, None, "cluster follower").await?;
 
-    router.assert_stable_cluster(Some(1), Some(n_logs)).await;
+    router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     // Write a bunch of data and assert that the cluster stayes stable.
     let leader = router.leader().await.expect("leader not found");
@@ -67,17 +68,17 @@ async fn client_writes() -> Result<()> {
     clients.push(router.client_request_many(leader, "5", 500));
     while clients.next().await.is_some() {}
 
-    n_logs += 500 * 6;
-    router.wait_for_log(&btreeset![0, 1, 2], Some(n_logs), None, "sync logs").await?;
+    log_index += 500 * 6;
+    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "sync logs").await?;
 
-    router.assert_stable_cluster(Some(1), Some(n_logs)).await; // The extra 1 is from the leader's initial commit entry.
+    router.assert_stable_cluster(Some(1), Some(log_index)).await; // The extra 1 is from the leader's initial commit entry.
 
     router
         .assert_storage_state(
             1,
-            n_logs,
+            log_index,
             Some(0),
-            LogId::new(1, n_logs),
+            LogId::new(LeaderId::new(1, 0), log_index),
             Some(((1999..2100).into(), 1)),
         )
         .await?;

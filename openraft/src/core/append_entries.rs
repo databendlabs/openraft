@@ -21,20 +21,21 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
     ///
     /// See `receiver implementation: AppendEntries RPC` in raft-essentials.md in this repo.
-    #[tracing::instrument(level = "debug", skip(self, msg))]
+    #[tracing::instrument(level = "debug", skip(self, req))]
     pub(super) async fn handle_append_entries_request(
         &mut self,
-        msg: AppendEntriesRequest<D>,
+        req: AppendEntriesRequest<D>,
     ) -> Result<AppendEntriesResponse, AppendEntriesError> {
-        tracing::debug!(last_log_id=?self.last_log_id, ?self.last_applied, msg=%msg.summary(), "handle_append_entries_request");
+        tracing::debug!(last_log_id=?self.last_log_id, ?self.last_applied, msg=%req.summary(), "handle_append_entries_request");
 
-        let msg_entries = msg.entries.as_slice();
+        let msg_entries = req.entries.as_slice();
 
-        // If message's term is less than most recent term, then we do not honor the request.
-        if msg.term < self.current_term {
-            tracing::debug!({self.current_term, rpc_term=msg.term}, "AppendEntries RPC term is less than current term");
+        // Partial order compare: smaller than or incomparable
+        if req.vote < self.vote {
+            tracing::debug!(?self.vote, %req.vote, "AppendEntries RPC term is less than current term");
+
             return Ok(AppendEntriesResponse {
-                term: self.current_term,
+                vote: self.vote,
                 success: false,
                 conflict: false,
             });
@@ -42,50 +43,24 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         self.update_next_election_timeout(true);
 
-        // Caveat: Because we can not just delete `log[prev_log_id.index..]`, (which results in loss of committed
-        // entry), the commit index must be update only after append-entries
-        // and must point to a log entry that is consistent to leader.
-        // Or there would be chance applying an uncommitted entry:
-        //
-        // ```
-        // R0 1,1  1,2  3,3
-        // R1 1,1  1,2  2,3
-        // R2 1,1  1,2  3,3
-        // ```
-        //
-        // - R0 to R1 append_entries: entries=[{1,2}], prev_log_id = {1,1}, commit_index = 3
-        // - R1 accepted this append_entries request but was not aware of that entry {2,3} is inconsistent to leader.
-        //   Then it will update commit_index to 3 and apply {2,3}
+        tracing::debug!("start to check and update to latest term/leader");
+        if req.vote > self.vote {
+            self.vote = req.vote;
+            self.save_vote().await?;
+
+            // If not follower, become follower.
+            if !self.target_state.is_follower() && !self.target_state.is_learner() {
+                self.set_target_state(State::Follower); // State update will emit metrics.
+            }
+
+            self.report_metrics(Update::AsIs);
+        }
+
+        // Caveat: [commit-index must not advance the last known consistent log](https://datafuselabs.github.io/openraft/replication.html#caveat-commit-index-must-not-advance-the-last-known-consistent-log)
 
         // TODO(xp): cleanup commit index at sender side.
-        let valid_commit_index = msg_entries.last().map(|x| Some(x.log_id)).unwrap_or_else(|| msg.prev_log_id);
-        let valid_committed = std::cmp::min(msg.leader_commit, valid_commit_index);
-
-        tracing::debug!("start to check and update to latest term/leader");
-        {
-            let mut report_metrics = false;
-
-            if msg.term > self.current_term {
-                self.update_current_term(msg.term, Some(msg.leader_id));
-                self.save_hard_state().await?;
-                report_metrics = true;
-            }
-
-            // Update current leader if needed.
-            if self.current_leader.as_ref() != Some(&msg.leader_id) {
-                self.current_leader = Some(msg.leader_id);
-                report_metrics = true;
-            }
-
-            if report_metrics {
-                self.report_metrics(Update::AsIs);
-            }
-        }
-
-        // Transition to follower state if needed.
-        if !self.target_state.is_follower() && !self.target_state.is_learner() {
-            self.set_target_state(State::Follower);
-        }
+        let valid_commit_index = msg_entries.last().map(|x| Some(x.log_id)).unwrap_or_else(|| req.prev_log_id);
+        let valid_committed = std::cmp::min(req.leader_commit, valid_commit_index);
 
         tracing::debug!("begin log consistency check");
 
@@ -94,7 +69,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //              +----------------+------------------------+
         //              ` 0              ` last_applied           ` last_log_id
 
-        let res = self.append_apply_log_entries(msg.prev_log_id, msg_entries, valid_committed).await?;
+        let res = self.append_apply_log_entries(req.prev_log_id, msg_entries, valid_committed).await?;
 
         Ok(res)
     }
@@ -219,7 +194,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             }
 
             return Ok(AppendEntriesResponse {
-                term: self.current_term,
+                vote: self.vote,
                 success: false,
                 conflict: true,
             });
@@ -251,7 +226,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.report_metrics(Update::AsIs);
 
         Ok(AppendEntriesResponse {
-            term: self.current_term,
+            vote: self.vote,
             success: true,
             conflict: false,
         })

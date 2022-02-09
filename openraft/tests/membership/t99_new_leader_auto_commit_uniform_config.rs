@@ -5,6 +5,7 @@ use maplit::btreeset;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::Raft;
@@ -29,26 +30,23 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let router = Arc::new(RaftRouter::new(config.clone()));
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
     let sto = router.get_storage_handle(&0).await?;
     router.remove_node(0).await;
 
     {
         sto.append_to_log(&[&Entry {
-            log_id: LogId {
-                term: 1,
-                index: n_logs + 1,
-            },
+            log_id: LogId::new(LeaderId::new(1, 0), log_index + 1),
             payload: EntryPayload::Membership(Membership::new_multi(vec![btreeset! {0}, btreeset! {0,1,2}])),
         }])
         .await?;
     }
 
     // A joint log and the leader should add a new final config log.
-    n_logs += 2;
+    log_index += 2;
 
-    let _ = n_logs;
+    let _ = log_index;
 
     // To let tne router not panic
     router.new_raft_node(1).await;

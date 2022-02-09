@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftStorage;
@@ -62,10 +63,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 timeout(),
                 "snapshot",
             )
@@ -82,7 +80,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         assert_eq!(Membership::new_single(btreeset! {0,1}), m.membership, "membership ");
 
         // TODO(xp): this assertion fails because when change-membership, a append-entries request does not update
-        //           voted_for and does not call save_hard_state.
+        //           voted_for and does not call save_vote.
         //           Thus the storage layer does not know about the leader==Some(0).
         //           Update voted_for whenever a new leader is seen would solve this issue.
         // router
@@ -108,10 +106,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 None,
                 "snapshot",
             )

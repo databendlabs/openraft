@@ -36,9 +36,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     ) -> Result<(), InitializeError> {
         // TODO(xp): simplify this condition
 
-        if self.core.last_log_id.is_some() || self.core.current_term != 0 {
+        if self.core.last_log_id.is_some() || self.core.vote.term != 0 {
             tracing::error!(
-                last_log_id=?self.core.last_log_id, self.core.current_term,
+                last_log_id=?self.core.last_log_id, ?self.core.vote,
                 "rejecting init_with_config request as last_log_index is not None or current_term is not 0");
             return Err(InitializeError::NotAllowed);
         }
@@ -251,7 +251,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             // TODO(xp): transfer leadership
             self.core.set_target_state(State::Learner);
-            self.core.current_leader = None;
             return;
         }
 

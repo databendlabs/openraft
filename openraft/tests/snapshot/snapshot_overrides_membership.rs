@@ -7,11 +7,13 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftNetwork;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
+use openraft::Vote;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -60,10 +62,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 timeout(),
                 "snapshot",
             )
@@ -73,10 +72,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 1,
                 log_index,
                 Some(0),
-                LogId {
-                    term: 1,
-                    index: log_index,
-                },
+                LogId::new(LeaderId::new(1, 0), log_index),
                 Some((log_index.into(), 1)),
             )
             .await?;
@@ -91,14 +87,13 @@ async fn snapshot_overrides_membership() -> Result<()> {
         tracing::info!("--- add a membership config log to the learner");
         {
             let req = AppendEntriesRequest {
-                term: 1,
-                leader_id: 0,
+                vote: Vote::new(1, 0),
                 prev_log_id: None,
                 entries: vec![blank(0, 0), Entry {
-                    log_id: LogId { term: 1, index: 1 },
+                    log_id: LogId::new(LeaderId::new(1, 0), 1),
                     payload: EntryPayload::Membership(Membership::new_single(btreeset! {2,3})),
                 }],
-                leader_commit: Some(LogId::new(0, 0)),
+                leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
             };
             router.send_append_entries(1, req).await?;
 
@@ -121,15 +116,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
             router
-                .wait_for_snapshot(
-                    &btreeset![1],
-                    LogId {
-                        term: 1,
-                        index: log_index,
-                    },
-                    timeout(),
-                    "",
-                )
+                .wait_for_snapshot(&btreeset![1], LogId::new(LeaderId::new(1, 0), log_index), timeout(), "")
                 .await?;
 
             let expected_snap = Some((log_index.into(), 1));
@@ -139,10 +126,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                     1,
                     log_index,
                     None, /* learner does not vote */
-                    LogId {
-                        term: 1,
-                        index: log_index,
-                    },
+                    LogId::new(LeaderId::new(1, 0), log_index),
                     expected_snap,
                 )
                 .await?;

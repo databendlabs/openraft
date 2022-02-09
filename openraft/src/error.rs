@@ -14,9 +14,10 @@ use crate::LogId;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::StorageError;
+use crate::Vote;
 
 /// Fatal is unrecoverable and shuts down raft at once.
-#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum Fatal {
     #[error(transparent)]
     StorageError(#[from] StorageError),
@@ -49,19 +50,19 @@ where E: TryInto<Fatal> + Clone
     }
 }
 
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum AppendEntriesError {
     #[error(transparent)]
     Fatal(#[from] Fatal),
 }
 
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum VoteError {
     #[error(transparent)]
     Fatal(#[from] Fatal),
 }
 
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum InstallSnapshotError {
     #[error(transparent)]
     SnapshotMismatch(#[from] SnapshotMismatch),
@@ -71,7 +72,7 @@ pub enum InstallSnapshotError {
 }
 
 /// An error related to a client read request.
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum ClientReadError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
@@ -84,7 +85,7 @@ pub enum ClientReadError {
 }
 
 /// An error related to a client write request.
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum ClientWriteError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
@@ -114,7 +115,7 @@ pub enum ChangeMembershipError {
     LearnerIsLagging(#[from] LearnerIsLagging),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum AddLearnerError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
@@ -179,7 +180,7 @@ impl From<StorageError> for AddLearnerError {
 #[allow(clippy::large_enum_variant)]
 pub enum ReplicationError {
     #[error(transparent)]
-    HigherTerm(#[from] HigherTerm),
+    HigherVote(#[from] HigherVote),
 
     #[error("Replication is closed")]
     Closed,
@@ -196,6 +197,9 @@ pub enum ReplicationError {
     StorageError(#[from] StorageError),
 
     #[error(transparent)]
+    NodeNotFound(#[from] NodeNotFound),
+
+    #[error(transparent)]
     Timeout(#[from] Timeout),
 
     #[error(transparent)]
@@ -207,6 +211,9 @@ pub enum ReplicationError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum RPCError<T: Error> {
+    #[error(transparent)]
+    NodeNotFound(#[from] NodeNotFound),
+
     #[error(transparent)]
     Timeout(#[from] Timeout),
 
@@ -231,10 +238,10 @@ impl<T: std::error::Error> RemoteError<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error("seen a higher term: {higher} GT mine: {mine}")]
-pub struct HigherTerm {
-    pub higher: u64,
-    pub mine: u64,
+#[error("seen a higher vote: {higher} GT mine: {mine}")]
+pub struct HigherVote {
+    pub higher: Vote,
+    pub mine: Vote,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -318,3 +325,14 @@ pub struct LearnerIsLagging {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("new membership can not be empty")]
 pub struct EmptyMembership {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("node not found: {node_id}, source: {source}")]
+pub struct NodeNotFound {
+    pub node_id: NodeId,
+    pub source: AnyError,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("infallible")]
+pub enum Infallible {}

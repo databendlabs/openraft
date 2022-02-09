@@ -1,0 +1,43 @@
+[package]
+name = "example-raft-key-value"
+version = "0.1.0"
+edition = "2021"
+authors = [ 
+    "drdr xp <drdr.xp@gmail.com>", 
+    "Pedro Paulo de Amorim <pepa.amorim@gmail.com>"
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An example distributed key-value store built upon `openraft`."
+homepage = "https://github.com/datafuselabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT/Apache-2.0"
+repository = "https://github.com/datafuselabs/openraft"
+readme = "README.md"
+
+[[bin]]
+name = "raft-key-value"
+path = "src/bin/main.rs"
+
+[dependencies]
+actix-web = "4.0.0-rc.2"
+anyerror = { version = "0.1.1"}
+async-trait = "0.1.36"
+clap = { version = "3.0.13", features = ["derive", "env"] }
+env_logger = "0.9.0"
+openraft = { version="0.6", path= "../openraft" }
+reqwest = { version = "0.11.9", features = ["json"] }
+serde = { version="1.0.114", features=["derive"] }
+serde_json = "1.0.57"
+tokio = { version="1.0", default-features=false, features=["sync"] }
+tracing = "0.1.29"
+tracing-futures = "0.2.4"
+
+[dev-dependencies]
+anyhow = "1.0.32"
+maplit = "1.0.2"
+
+[features]
+docinclude = [] # Used only for activating `doc(include="...")` on nightly.
+
+[package.metadata.docs.rs]
+features = ["docinclude"] # Activate `docinclude` during docs.rs build.

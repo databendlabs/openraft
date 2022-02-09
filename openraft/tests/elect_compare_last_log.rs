@@ -6,12 +6,13 @@ use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
-use openraft::storage::HardState;
 use openraft::Config;
+use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft::Vote;
 
 use crate::fixtures::blank;
 
@@ -36,14 +37,15 @@ async fn elect_compare_last_log() -> Result<()> {
 
     tracing::info!("--- fake store: sto0: last log: 2,1");
     {
-        sto0.save_hard_state(&HardState {
-            current_term: 10,
-            voted_for: None,
+        sto0.save_vote(&Vote {
+            term: 10,
+            node_id: 0,
+            committed: false,
         })
         .await?;
 
         sto0.append_to_log(&[&blank(0, 0), &Entry {
-            log_id: LogId { term: 2, index: 1 },
+            log_id: LogId::new(LeaderId::new(2, 0), 1),
             payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
         }])
         .await?;
@@ -51,16 +53,17 @@ async fn elect_compare_last_log() -> Result<()> {
 
     tracing::info!("--- fake store: sto1: last log: 1,2");
     {
-        sto1.save_hard_state(&HardState {
-            current_term: 10,
-            voted_for: None,
+        sto1.save_vote(&Vote {
+            term: 10,
+            node_id: 0,
+            committed: false,
         })
         .await?;
 
         sto1.append_to_log(&[
             &blank(0, 0),
             &Entry {
-                log_id: LogId { term: 1, index: 1 },
+                log_id: LogId::new(LeaderId::new(1, 0), 1),
                 payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
             },
             &blank(1, 2),
