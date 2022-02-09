@@ -167,6 +167,12 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
                 &format!("n{}.state -> {:?}", 2, State::Learner),
             )
             .await?;
+
+        // node [2] MUST recv the log
+        router.wait_for_log(&btreeset![2], Some(n_logs), timeout, "append a log").await?;
+
+        // check membership
+        router.wait_for_members(&btreeset![0, 1, 2], btreeset![0, 1], timeout, "members: [0,1]").await?;
     }
 
     Ok(())

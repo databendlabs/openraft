@@ -399,6 +399,25 @@ impl RaftRouter {
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", skip(self))]
+    pub async fn wait_for_members(
+        &self,
+        node_ids: &BTreeSet<u64>,
+        members: BTreeSet<u64>,
+        timeout: Option<Duration>,
+        msg: &str,
+    ) -> Result<()> {
+        for i in node_ids.iter() {
+            let wait = self.wait(i, timeout).await?;
+            wait.metrics(
+                |x| x.membership_config.membership.get_ith_config(0).cloned().unwrap() == members,
+                msg,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     /// Wait for specified nodes until their state becomes `state`.
     #[tracing::instrument(level = "info", skip(self))]
     pub async fn wait_for_state(
