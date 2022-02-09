@@ -259,19 +259,19 @@ impl Membership {
     /// }
     /// ```
     #[must_use]
-    pub fn next_safe(&self, goal: BTreeSet<NodeId>) -> Self {
-        if self.configs.contains(&goal) {
-            Membership::new_single_with_learners(goal, self.learners.clone())
+    pub fn next_safe(&self, goal: BTreeSet<NodeId>, turn_to_learner: bool) -> Self {
+        let learners = if turn_to_learner {
+            let curr = self.clone();
+            // add removed members into learners
+            let removed_members = curr.all_members().difference(&goal);
+            let mut learners = curr.all_learners().clone();
+            for id in removed_members {
+                learners.insert(*id);
+            }
+            learners
         } else {
-            Membership::new_multi_with_learners(
-                vec![self.configs.last().cloned().unwrap(), goal],
-                self.learners.clone(),
-            )
-        }
-    }
-
-    #[must_use]
-    pub fn next_safe_with_learners(&self, goal: BTreeSet<NodeId>, learners: BTreeSet<NodeId>) -> Self {
+            self.learners.clone()
+        };
         if self.configs.contains(&goal) {
             Membership::new_single_with_learners(goal, learners)
         } else {

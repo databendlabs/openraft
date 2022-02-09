@@ -166,17 +166,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let curr = self.core.effective_membership.membership.clone();
         let new_members = members.difference(curr.all_members());
-        let mut new_config = if turn_to_learner {
-            // add removed members into learners
-            let removed_members = curr.all_members().difference(&members);
-            let mut learners = curr.all_learners().clone();
-            for id in removed_members {
-                learners.insert(*id);
-            }
-            curr.next_safe_with_learners(members.clone(), learners)
-        } else {
-            curr.next_safe(members.clone())
-        };
+        let mut new_config = curr.next_safe(members.clone(), turn_to_learner);
 
         tracing::debug!(?new_config, "new_config");
 

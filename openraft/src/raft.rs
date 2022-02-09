@@ -249,10 +249,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// - It proposes a **joint** config.
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
-    /// If blocking is true, it blocks until every learner becomes up to date.
+    /// If `blocking` is true, it blocks until every learner becomes up to date.
     /// Otherwise it returns error `ChangeMembershipError::LearnerIsLagging` if there is a lagging learner.
     ///
-    /// If turn_to_learner is true, then all the members which not exists in the new membership,
+    /// If `turn_to_learner` is true, then all the members which not exists in the new membership,
     /// will be turned into learners, otherwise will be removed.
     ///
     /// If it lost leadership or crashed before committing the second **uniform** config log, the cluster is left in the
