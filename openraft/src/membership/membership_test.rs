@@ -252,9 +252,11 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
     assert_eq!(m2, m12.next_safe(c2(), false));
     assert_eq!(m23, m12.next_safe(c3(), false));
 
-    let learners = || btreeset! {10,20,30};
-    let m23_with_learners = Membership::new_multi_with_learners(vec![c2(), c3()], learners());
-    assert_eq!(m23_with_learners, m12.next_safe(c3(), true));
+    let old_learners = || btreeset! {1, 2};
+    let learners = || btreeset! {1, 2, 3, 4, 5};
+    let m23_with_learners_old = Membership::new_multi_with_learners(vec![c2(), c3()], old_learners());
+    let m23_with_learners_new = Membership::new_multi_with_learners(vec![c3()], learners());
+    assert_eq!(m23_with_learners_new, m23_with_learners_old.next_safe(c3(), true));
 
     Ok(())
 }
