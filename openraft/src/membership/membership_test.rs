@@ -34,8 +34,6 @@ fn test_membership() -> anyhow::Result<()> {
     assert!(m123_345.is_member(&4));
     assert!(!m123_345.is_member(&6));
 
-    assert!(m1.is_turn_to_learner());
-
     assert!(!m123.is_in_joint_consensus());
     assert!(m123_345.is_in_joint_consensus());
 
@@ -253,6 +251,10 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
     assert_eq!(m1, m12.next_safe(c1()));
     assert_eq!(m2, m12.next_safe(c2()));
     assert_eq!(m23, m12.next_safe(c3()));
+
+    let learners = || btreeset! {10,20,30};
+    let m23_with_learners = Membership::new_multi_with_learners(vec![c2(), c3()], learners());
+    assert_eq!(m23_with_learners, m12.next_safe_with_learners(c3(), learners()));
 
     Ok(())
 }

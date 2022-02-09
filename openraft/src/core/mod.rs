@@ -422,12 +422,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 // Transition to follower.
                 self.set_target_state(State::Follower);
             }
-        } else if self.effective_membership.membership.is_turn_to_learner() {
-            self.set_target_state(State::Learner);
-            tracing::debug!("node {} turn to learner", self.id);
         } else {
-            self.set_target_state(State::Shutdown);
-            tracing::debug!("node {} has been removed,shutdowning...", self.id);
+            self.set_target_state(State::Learner);
         }
     }
 

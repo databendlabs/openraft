@@ -121,7 +121,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn change_with_remove_not_exist_member() -> anyhow::Result<()> {
+async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
     // Add a member without adding it as learner, in blocking mode it should finish successfully.
 
     let (_log_guard, ut_span) = init_ut!();
@@ -142,7 +142,7 @@ async fn change_with_remove_not_exist_member() -> anyhow::Result<()> {
     }
 
     {
-        router.change_membership_with_turn_to_learner(0, btreeset![0, 1], false).await?;
+        router.change_membership_with_turn_to_learner(0, btreeset![0, 1], true).await?;
         // 2 for change_membership
         n_logs += 2;
 
@@ -162,9 +162,9 @@ async fn change_with_remove_not_exist_member() -> anyhow::Result<()> {
         router
             .wait_for_metrics(
                 &2,
-                |x| x.state == State::Shutdown,
+                |x| x.state == State::Learner,
                 timeout,
-                &format!("n{}.state -> {:?}", 2, State::Shutdown),
+                &format!("n{}.state -> {:?}", 2, State::Learner),
             )
             .await?;
     }

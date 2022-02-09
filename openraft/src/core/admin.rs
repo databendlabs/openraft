@@ -166,8 +166,18 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let curr = self.core.effective_membership.membership.clone();
         let new_members = members.difference(curr.all_members());
-        let mut new_config = curr.next_safe(members.clone());
-        new_config.set_turn_to_learner(turn_to_learner);
+        let mut new_config = if turn_to_learner {
+            // add removed members into learners
+            let removed_members = curr.all_members().difference(&members);
+            let mut learners = curr.all_learners().clone();
+            for id in removed_members {
+                learners.insert(*id);
+            }
+            curr.next_safe_with_learners(members.clone(), learners)
+        } else {
+            curr.next_safe(members.clone())
+        };
+
         tracing::debug!(?new_config, "new_config");
 
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
