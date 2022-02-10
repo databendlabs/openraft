@@ -246,11 +246,17 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
     let m12 = Membership::new_multi(vec![c1(), c2()]);
     let m23 = Membership::new_multi(vec![c2(), c3()]);
 
-    assert_eq!(m1, m1.next_safe(c1()));
-    assert_eq!(m12, m1.next_safe(c2()));
-    assert_eq!(m1, m12.next_safe(c1()));
-    assert_eq!(m2, m12.next_safe(c2()));
-    assert_eq!(m23, m12.next_safe(c3()));
+    assert_eq!(m1, m1.next_safe(c1(), false));
+    assert_eq!(m12, m1.next_safe(c2(), false));
+    assert_eq!(m1, m12.next_safe(c1(), false));
+    assert_eq!(m2, m12.next_safe(c2(), false));
+    assert_eq!(m23, m12.next_safe(c3(), false));
+
+    let old_learners = || btreeset! {1, 2};
+    let learners = || btreeset! {1, 2, 3, 4, 5};
+    let m23_with_learners_old = Membership::new_multi_with_learners(vec![c2(), c3()], old_learners());
+    let m23_with_learners_new = Membership::new_multi_with_learners(vec![c3()], learners());
+    assert_eq!(m23_with_learners_new, m23_with_learners_old.next_safe(c3(), true));
 
     Ok(())
 }

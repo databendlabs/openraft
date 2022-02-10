@@ -828,8 +828,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::AddLearner { id, tx, blocking } => {
                 self.add_learner(id, tx, blocking).await;
             }
-            RaftMsg::ChangeMembership { members, blocking, tx } => {
-                self.change_membership(members, blocking, tx).await?;
+            RaftMsg::ChangeMembership {
+                members,
+                blocking,
+                turn_to_learner,
+                tx,
+            } => {
+                self.change_membership(members, blocking, turn_to_learner, tx).await?;
             }
         };
 
