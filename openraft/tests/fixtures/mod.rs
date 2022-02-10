@@ -542,7 +542,9 @@ impl RaftRouter {
     ) -> std::result::Result<MemClientResponse, ClientWriteError> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
-            rt.get(&target).unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target)).clone()
+            rt.get(&target)
+                .unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target))
+                .clone()
         };
 
         let payload = EntryPayload::Normal(req);
