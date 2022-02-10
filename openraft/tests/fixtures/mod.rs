@@ -398,6 +398,28 @@ impl RaftRouter {
         Ok(())
     }
 
+    #[tracing::instrument(level = "info", skip(self))]
+    pub async fn wait_for_members(
+        &self,
+        node_ids: &BTreeSet<u64>,
+        members: BTreeSet<u64>,
+        timeout: Option<Duration>,
+        msg: &str,
+    ) -> Result<()> {
+        for i in node_ids.iter() {
+            let wait = self.wait(i, timeout).await?;
+            wait.metrics(
+                |x| {
+                    x.membership_config.membership.get_configs().len() == 1
+                        && x.membership_config.membership.get_ith_config(0).cloned().unwrap() == members
+                },
+                msg,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     /// Wait for specified nodes until their state becomes `state`.
     #[tracing::instrument(level = "info", skip(self))]
     pub async fn wait_for_state(
@@ -481,7 +503,18 @@ impl RaftRouter {
             let rt = self.routing_table.lock().unwrap();
             rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
         };
-        node.0.change_membership(members, true).await
+        node.0.change_membership(members, true, false).await
+    }
+
+    pub async fn change_membership_with_turn_to_learner(
+        &self,
+        leader: NodeId,
+        members: BTreeSet<NodeId>,
+        turn_to_learner: bool,
+    ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
+        let rt = self.routing_table.read().await;
+        let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
+        node.0.change_membership(members, true, turn_to_learner).await
     }
 
     pub async fn change_membership_with_blocking(
@@ -494,7 +527,7 @@ impl RaftRouter {
             let rt = self.routing_table.lock().unwrap();
             rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
         };
-        node.0.change_membership(members, blocking).await
+        node.0.change_membership(members, blocking, false).await
     }
 
     /// Send a client read request to the target node.

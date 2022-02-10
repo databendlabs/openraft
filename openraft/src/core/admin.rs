@@ -142,6 +142,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         &mut self,
         members: BTreeSet<NodeId>,
         blocking: bool,
+        turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) -> Result<(), StorageError> {
         // Ensure cluster will have at least one node.
@@ -165,7 +166,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let curr = self.core.effective_membership.membership.clone();
         let new_members = members.difference(curr.all_members());
-        let mut new_config = curr.next_safe(members.clone());
+        let mut new_config = curr.next_safe(members.clone(), turn_to_learner);
+
         tracing::debug!(?new_config, "new_config");
 
         // Check the proposed config for any new nodes. If ALL new nodes already have replication

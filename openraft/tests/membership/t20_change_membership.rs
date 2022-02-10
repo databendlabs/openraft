@@ -6,6 +6,7 @@ use maplit::btreeset;
 use openraft::error::ChangeMembershipError;
 use openraft::Config;
 use openraft::RaftStorage;
+use openraft::State;
 
 use crate::fixtures::RaftRouter;
 
@@ -114,6 +115,64 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
                 panic!("expect ChangeMembershipError::NonVoterNotFound");
             }
         }
+    }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
+    // Add a member without adding it as learner, in blocking mode it should finish successfully.
+
+    let (_log_guard, ut_span) = init_ut!();
+    let _ent = ut_span.enter();
+
+    let config = Arc::new(Config { ..Default::default() }.validate()?);
+    let router = Arc::new(RaftRouter::new(config.clone()));
+    let timeout = Some(Duration::from_millis(1000));
+    let mut n_logs = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    tracing::info!("--- write up to 1 logs");
+    {
+        router.client_request_many(0, "non_voter_add", 1).await;
+        n_logs += 1;
+
+        // all the nodes MUST recv the log
+        router.wait_for_log(&btreeset![0, 1, 2], Some(n_logs), timeout, "append a log").await?;
+    }
+
+    {
+        router.change_membership_with_turn_to_learner(0, btreeset![0, 1], true).await?;
+        // 2 for change_membership
+        n_logs += 2;
+
+        // all the nodes MUST recv the change_membership log
+        router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "append a log").await?;
+    }
+
+    tracing::info!("--- write up to 1 logs");
+    {
+        router.client_request_many(0, "non_voter_add", 1).await;
+        n_logs += 1;
+
+        // node [0,1] MUST recv the log
+        router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "append a log").await?;
+
+        // node 2 MUST stay in learner state and is able to receive new logs
+        router
+            .wait_for_metrics(
+                &2,
+                |x| x.state == State::Learner,
+                timeout,
+                &format!("n{}.state -> {:?}", 2, State::Learner),
+            )
+            .await?;
+
+        // node [2] MUST recv the log
+        router.wait_for_log(&btreeset![2], Some(n_logs), timeout, "append a log").await?;
+
+        // check membership
+        router.wait_for_members(&btreeset![0, 1, 2], btreeset![0, 1], timeout, "members: [0,1]").await?;
     }
 
     Ok(())
