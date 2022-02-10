@@ -410,7 +410,10 @@ impl RaftRouter {
         for i in node_ids.iter() {
             let wait = self.wait(i, timeout).await?;
             wait.metrics(
-                |x| x.membership_config.membership.get_ith_config(0).cloned().unwrap() == members,
+                |x| {
+                    x.membership_config.membership.get_configs().len() == 1
+                        && x.membership_config.membership.get_ith_config(0).cloned().unwrap() == members
+                },
                 msg,
             )
             .await?;
