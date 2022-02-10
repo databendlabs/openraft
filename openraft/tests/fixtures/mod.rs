@@ -512,8 +512,10 @@ impl RaftRouter {
         members: BTreeSet<NodeId>,
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
-        let rt = self.routing_table.read().await;
-        let node = rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader));
+        let node = {
+            let rt = self.routing_table.lock().unwrap();
+            rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
+        };
         node.0.change_membership(members, true, turn_to_learner).await
     }
 
