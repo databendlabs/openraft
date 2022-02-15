@@ -36,7 +36,7 @@ async fn total_order_apply() -> Result<()> {
 
     let (tx, rx) = watch::channel(false);
 
-    let sto1 = router.get_storage_handle(&1).await?;
+    let sto1 = router.get_storage_handle(&1)?;
 
     let mut prev = None;
     let h = tokio::spawn(async move {

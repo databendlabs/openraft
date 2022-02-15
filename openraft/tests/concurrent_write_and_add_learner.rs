@@ -71,7 +71,8 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
         tracing::info!("--- changing cluster config");
 
-        router.change_membership(0, candidates.clone()).await?;
+        let node = router.get_raft_handle(&0)?;
+        node.change_membership(candidates.clone(), true, false).await?;
         n_logs += 2; // Tow member change logs
 
         wait_log(router.clone(), &candidates, n_logs).await?;

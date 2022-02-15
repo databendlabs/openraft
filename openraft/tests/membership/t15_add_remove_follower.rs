@@ -38,7 +38,8 @@ async fn add_remove_voter() -> Result<()> {
 
     tracing::info!("--- remove n{}", 4);
     {
-        router.change_membership(0, cluster_of_4.clone()).await?;
+        let node = router.get_raft_handle(&0)?;
+        node.change_membership(cluster_of_4.clone(), true, false).await?;
         log_index += 2; // two member-change logs
 
         router.wait_for_log(&cluster_of_4, Some(log_index), timeout(), "removed node-4").await?;
@@ -55,7 +56,7 @@ async fn add_remove_voter() -> Result<()> {
 
     tracing::info!("--- log will not be sync to removed node");
     {
-        let x = router.latest_metrics().await;
+        let x = router.latest_metrics();
         assert!(x[4].last_log_index < Some(log_index - 50));
     }
 

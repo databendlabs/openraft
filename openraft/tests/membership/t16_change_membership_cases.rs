@@ -65,7 +65,8 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
             router.wait_for_log(&old, Some(log_index), timeout(), &format!("add learner, {}", mes)).await?;
         }
 
-        router.change_membership(0, new.clone()).await?;
+        let node = router.get_raft_handle(&0)?;
+        node.change_membership(new.clone(), true, false).await?;
         log_index += 2; // two member-change logs
 
         tracing::info!("--- wait for old leader or new leader");

@@ -111,7 +111,7 @@ async fn compaction() -> Result<()> {
 
     tracing::info!("--- logs should be deleted after installing snapshot; left only the last one");
     {
-        let sto = router.get_storage_handle(&1).await?;
+        let sto = router.get_storage_handle(&1)?;
         let logs = sto.get_log_entries(..).await?;
         assert_eq!(2, logs.len());
         assert_eq!(LogId::new(LeaderId::new(1, 0), log_index - 1), logs[0].log_id)

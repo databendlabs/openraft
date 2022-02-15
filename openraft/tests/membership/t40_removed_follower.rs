@@ -33,7 +33,8 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
     tracing::info!("--- changing config to 2,3,4");
     {
-        router.change_membership(0, btreeset![0, 3, 4]).await?;
+        let node = router.get_raft_handle(&0)?;
+        node.change_membership(btreeset![0, 3, 4], true, false).await?;
         n_logs += 2;
 
         for i in 0..5 {
