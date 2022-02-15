@@ -316,10 +316,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let last_conf_change = entries
             .iter()
             .filter_map(|ent| match &ent.payload {
-                EntryPayload::Membership(conf) => Some(EffectiveMembership {
-                    log_id: ent.log_id,
-                    membership: conf.clone(),
-                }),
+                EntryPayload::Membership(conf) => Some(EffectiveMembership::new(ent.log_id, conf.clone())),
                 _ => None,
             })
             .last();

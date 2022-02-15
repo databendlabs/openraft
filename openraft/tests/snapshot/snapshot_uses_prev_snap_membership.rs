@@ -1,3 +1,4 @@
+use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -77,7 +78,11 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
         let m = m.unwrap();
 
-        assert_eq!(Membership::new_single(btreeset! {0,1}), m.membership, "membership ");
+        assert_eq!(
+            Membership::new(vec![btreeset! {0,1}], None),
+            m.membership,
+            "membership "
+        );
 
         // TODO(xp): this assertion fails because when change-membership, a append-entries request does not update
         //           voted_for and does not call save_vote.
@@ -123,7 +128,11 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
         let m = m.unwrap();
 
-        assert_eq!(Membership::new_single(btreeset! {0,1}), m.membership, "membership ");
+        assert_eq!(
+            Membership::new(vec![btreeset! {0,1}], None),
+            m.membership,
+            "membership "
+        );
     }
 
     Ok(())

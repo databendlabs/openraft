@@ -78,15 +78,36 @@ pub struct EffectiveMembership {
     pub log_id: LogId,
 
     pub membership: Membership,
+
+    /// Cache of union of all members
+    all_members: BTreeSet<NodeId>,
 }
 
 impl EffectiveMembership {
     pub fn new_initial(node_id: u64) -> Self {
+        Self::new(LogId::new(LeaderId::default(), 0), Membership::new_initial(node_id))
+    }
+
+    pub fn new(log_id: LogId, membership: Membership) -> Self {
+        let all_members = membership.all_members();
         EffectiveMembership {
-            // TODO(xp): avoid using Vote::default()
-            log_id: LogId::new(LeaderId::default(), 0),
-            membership: Membership::new_initial(node_id),
+            log_id,
+            membership,
+            all_members,
         }
+    }
+
+    pub(crate) fn all_members(&self) -> &BTreeSet<NodeId> {
+        &self.all_members
+    }
+
+    pub(crate) fn all_learners(&self) -> &BTreeSet<NodeId> {
+        self.membership.all_learners()
+    }
+
+    // TODO(xp): unused
+    pub fn get_configs(&self) -> &Vec<BTreeSet<NodeId>> {
+        self.membership.get_configs()
     }
 }
 
@@ -175,10 +196,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let this = Self {
             id,
             config,
-            effective_membership: EffectiveMembership {
-                log_id: LogId::default(),
-                membership,
-            },
+            effective_membership: EffectiveMembership::new(LogId::default(), membership),
             network,
             storage,
             target_state: State::Follower,
@@ -530,10 +548,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.last_log_id = Some(log_id);
 
         if let EntryPayload::Membership(mem) = &entry.payload {
-            self.effective_membership = EffectiveMembership {
-                log_id: entry.log_id,
-                membership: mem.clone(),
-            };
+            self.effective_membership = EffectiveMembership::new(entry.log_id, mem.clone());
         }
 
         Ok(entry)
@@ -735,7 +750,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let targets = self
             .core
             .effective_membership
-            .membership
             .all_members()
             .iter()
             .filter(|elem| *elem != &self.core.id)
@@ -747,7 +761,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         // spawn replication streams for learners.
-        let learners = self.core.effective_membership.membership.all_learners();
+        let learners = self.core.effective_membership.all_learners();
         for node_id in learners {
             let state = self.spawn_replication_stream(*node_id, None);
             self.nodes.insert(*node_id, state);

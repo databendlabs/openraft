@@ -104,10 +104,7 @@ impl RaftMetrics {
             last_log_index: None,
             last_applied: None,
             current_leader: None,
-            membership_config: EffectiveMembership {
-                log_id: LogId::default(),
-                membership: membership_config,
-            },
+            membership_config: EffectiveMembership::new(LogId::default(), membership_config),
             snapshot: None,
             leader_metrics: None,
         }
@@ -259,6 +256,7 @@ impl Wait {
         .await
     }
 
+    // TODO(xp): remove this
     /// Wait for `membership_config.members_after_consensus` to become expected node set or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn next_members(

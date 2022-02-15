@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::option::Option::None;
 use std::sync::Arc;
 
 use crate::core::client::ClientRequestEntry;
@@ -48,7 +49,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             members.insert(self.core.id);
         }
 
-        let membership = Membership::new_single(members);
+        let membership = Membership::new(vec![members], None);
 
         let payload = EntryPayload::Membership(membership.clone());
         let _ent = self.core.append_payload_to_log(payload).await?;
@@ -165,8 +166,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         let curr = self.core.effective_membership.membership.clone();
-        let new_members = members.difference(curr.all_members());
-        let mut new_config = curr.next_safe(members.clone(), turn_to_learner);
+        let all_members = self.core.effective_membership.all_members();
+        let new_members = members.difference(all_members);
+
+        let new_config = curr.next_safe(members.clone(), turn_to_learner);
 
         tracing::debug!(?new_config, "new_config");
 
@@ -186,7 +189,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id, &self.core.config) {
                         // Node is ready to join.
-                        new_config.remove_learner(new_node);
                         continue;
                     }
 
