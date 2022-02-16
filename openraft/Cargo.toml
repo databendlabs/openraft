@@ -16,7 +16,7 @@ repository = "https://github.com/datafuselabs/openraft"
 readme = "../README.md"
 
 [dependencies]
-anyerror = { version = "0.1.2", features = ["anyhow"]}
+anyerror = { version = "0.1.4", features = ["anyhow"]}
 async-trait = "0.1.36"
 byte-unit = "4.0.12"
 bytes = "1.0"
