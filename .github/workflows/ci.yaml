@@ -34,6 +34,13 @@ jobs:
           RAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
 
 
+      - name: Test example-raft-kv
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --manifest-path example-raft-kv/Cargo.toml
+
+
       - name: Build | Release Mode
         uses: actions-rs/cargo@v1
         with:

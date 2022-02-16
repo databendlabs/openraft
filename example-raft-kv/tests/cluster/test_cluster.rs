@@ -54,6 +54,9 @@ async fn test_cluster() -> anyhow::Result<()> {
         println!("x: {:?}", x);
     });
 
+    // Wait for server to start up.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
     // --- Create a client to the first node, as a control handle to the cluster.
 
     let client = ExampleClient::new(1, get_addr.clone());
@@ -149,14 +152,17 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     let x = client.read(&("foo".to_string())).await?;
     println!("read `foo` on node 1: {:?}", x);
+    assert_eq!("bar", x);
 
     let client2 = ExampleClient::new(2, get_addr.clone());
     let x = client2.read(&("foo".to_string())).await?;
     println!("read `foo` on node 2: {:?}", x);
+    assert_eq!("bar", x);
 
     let client3 = ExampleClient::new(3, get_addr.clone());
     let x = client3.read(&("foo".to_string())).await?;
     println!("read `foo` on node 3: {:?}", x);
+    assert_eq!("bar", x);
 
     // --- A write to non-leader will be automatically forwarded to a known leader
 
@@ -174,14 +180,17 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     let x = client.read(&("foo".to_string())).await?;
     println!("read `foo` on node 1: {:?}", x);
+    assert_eq!("wow", x);
 
     let client2 = ExampleClient::new(2, get_addr.clone());
     let x = client2.read(&("foo".to_string())).await?;
     println!("read `foo` on node 2: {:?}", x);
+    assert_eq!("wow", x);
 
     let client3 = ExampleClient::new(3, get_addr.clone());
     let x = client3.read(&("foo".to_string())).await?;
     println!("read `foo` on node 3: {:?}", x);
+    assert_eq!("wow", x);
 
     Ok(())
 }

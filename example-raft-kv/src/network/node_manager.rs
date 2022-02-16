@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::sync::Arc;
 
 use openraft::async_trait::async_trait;
@@ -22,7 +21,7 @@ where T: Fn(NodeId) -> Result<String, NodeNotFound> + Sync
 }
 
 #[async_trait]
-impl<NM: NodeManager> NodeManager for Arc<NM> {
+impl<NM: NodeManager + Send + Sync> NodeManager for Arc<NM> {
     async fn get_node_address(&self, node_id: NodeId) -> Result<String, NodeNotFound> {
         self.as_ref().get_node_address(node_id).await
     }
