@@ -164,7 +164,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
-    let orig_leader = router.leader().await.expect("expected the cluster to have a leader");
+    let orig_leader = router.leader().expect("expected the cluster to have a leader");
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
 
     // add a learner
@@ -236,7 +236,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 
     tracing::info!("--- check learner in new cluster can receive new log");
     {
-        let new_leader = router.leader().await.expect("expected the cluster to have a new leader");
+        let new_leader = router.leader().expect("expected the cluster to have a new leader");
         router.client_request_many(new_leader, "0", 1).await;
         n_logs += 1;
         router

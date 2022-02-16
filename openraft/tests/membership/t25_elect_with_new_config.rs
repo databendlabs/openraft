@@ -100,7 +100,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     let leader_id = metrics.current_leader;
 
     router.assert_stable_cluster(Some(term), applied.index()).await;
-    let leader = router.leader().await.expect("expected new leader");
+    let leader = router.leader().expect("expected new leader");
     assert!(leader != 0, "expected new leader to be different from the old leader");
 
     // Restore isolated node.
@@ -116,7 +116,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
 
     router.assert_stable_cluster(Some(term), applied.index()).await;
 
-    let current_leader = router.leader().await.expect("expected to find current leader");
+    let current_leader = router.leader().expect("expected to find current leader");
     assert_eq!(leader, current_leader, "expected cluster leadership to stay the same");
 
     Ok(())

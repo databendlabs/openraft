@@ -351,6 +351,7 @@ impl RaftRouter {
         Ok(metrics)
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     pub fn get_raft_handle(&self, node_id: &NodeId) -> std::result::Result<MemRaft, NodeNotFound> {
         let rt = self.routing_table.lock().unwrap();
         let raft_and_sto = rt.get(node_id).ok_or_else(|| NodeNotFound {
@@ -462,9 +463,13 @@ impl RaftRouter {
     }
 
     /// Get the ID of the current leader.
-    pub async fn leader(&self) -> Option<NodeId> {
-        self.latest_metrics().into_iter().find_map(|node| {
+    pub fn leader(&self) -> Option<NodeId> {
+        let isolated = {
             let isolated = self.isolated_nodes.lock().unwrap();
+            isolated.clone()
+        };
+
+        self.latest_metrics().into_iter().find_map(|node| {
             if node.current_leader == Some(node.id) {
                 if isolated.contains(&node.id) {
                     None
@@ -612,7 +617,10 @@ impl RaftRouter {
     /// log index and last applied log match the given value. Else, the leader's last_log_index
     /// will be used for the assertion.
     pub async fn assert_stable_cluster(&self, expected_term: Option<u64>, expected_last_log: Option<u64>) {
-        let isolated = self.isolated_nodes.lock().unwrap();
+        let isolated = {
+            let x = self.isolated_nodes.lock().unwrap();
+            x.clone()
+        };
         let nodes = self.latest_metrics();
 
         let non_isolated_nodes: Vec<_> = nodes.iter().filter(|node| !isolated.contains(&node.id)).collect();
@@ -829,7 +837,8 @@ impl RaftRouter {
         Ok(())
     }
 
-    pub async fn check_reachable(&self, id: NodeId, target: NodeId) -> std::result::Result<(), NetworkError> {
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub fn check_reachable(&self, id: NodeId, target: NodeId) -> std::result::Result<(), NetworkError> {
         let isolated = self.isolated_nodes.lock().unwrap();
 
         if isolated.contains(&target) || isolated.contains(&id) {
@@ -852,7 +861,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
         tracing::debug!("append_entries to id={} {:?}", target, rpc);
         self.rand_send_delay().await;
 
-        self.check_reachable(rpc.vote.node_id, target).await?;
+        self.check_reachable(rpc.vote.node_id, target)?;
 
         let node = self.get_raft_handle(&target)?;
 
@@ -871,7 +880,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     ) -> std::result::Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>> {
         self.rand_send_delay().await;
 
-        self.check_reachable(rpc.vote.node_id, target).await?;
+        self.check_reachable(rpc.vote.node_id, target)?;
 
         let node = self.get_raft_handle(&target)?;
 
@@ -884,7 +893,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     async fn send_vote(&self, target: u64, rpc: VoteRequest) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
         self.rand_send_delay().await;
 
-        self.check_reachable(rpc.vote.node_id, target).await?;
+        self.check_reachable(rpc.vote.node_id, target)?;
 
         let node = self.get_raft_handle(&target)?;
 

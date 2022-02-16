@@ -79,7 +79,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         router.assert_stable_cluster(Some(1), Some(n_logs)).await; // Still in term 1, so leader is still node 0.
     }
 
-    let leader = router.leader().await.unwrap();
+    let leader = router.leader().unwrap();
 
     tracing::info!("--- write one log");
     {

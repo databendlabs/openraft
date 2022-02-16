@@ -58,7 +58,7 @@ async fn client_writes() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     // Write a bunch of data and assert that the cluster stayes stable.
-    let leader = router.leader().await.expect("leader not found");
+    let leader = router.leader().expect("leader not found");
     let mut clients = futures::stream::FuturesUnordered::new();
     clients.push(router.client_request_many(leader, "0", 500));
     clients.push(router.client_request_many(leader, "1", 500));

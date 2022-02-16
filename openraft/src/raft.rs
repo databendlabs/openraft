@@ -114,7 +114,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
-    #[tracing::instrument(level = "trace", skip(self, rpc), fields(rpc=%rpc.summary()))]
+    #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
     pub async fn append_entries(
         &self,
         rpc: AppendEntriesRequest<D>,
