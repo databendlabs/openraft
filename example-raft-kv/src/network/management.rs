@@ -31,7 +31,7 @@ pub async fn change_membership(
     app: Data<ExampleApp>,
     req: Json<BTreeSet<NodeId>>,
 ) -> actix_web::Result<impl Responder> {
-    let res = app.raft.change_membership(req.0, true).await;
+    let res = app.raft.change_membership(req.0, true, false).await;
     Ok(Json(res))
 }
 
