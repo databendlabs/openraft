@@ -54,7 +54,7 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
         router.wait_for_log(&old, Some(log_index), timeout(), &format!("write 100 logs, {}", mes)).await?;
     }
 
-    let orig_leader = router.leader().await.expect("expected the cluster to have a leader");
+    let orig_leader = router.leader().expect("expected the cluster to have a leader");
 
     tracing::info!("--- change to {:?}", new);
     {
@@ -83,7 +83,7 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
             }
         }
 
-        let new_leader = router.leader().await.expect("expected the cluster to have a leader");
+        let new_leader = router.leader().expect("expected the cluster to have a leader");
         for id in new.iter() {
             // new leader may already elected and committed a blank log.
             router

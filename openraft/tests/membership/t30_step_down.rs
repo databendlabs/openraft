@@ -33,7 +33,7 @@ async fn step_down() -> Result<()> {
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {}).await?;
 
     // Submit a config change which adds two new nodes and removes the current leader.
-    let orig_leader = router.leader().await.expect("expected the cluster to have a leader");
+    let orig_leader = router.leader().expect("expected the cluster to have a leader");
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
     router.new_raft_node(2).await;
     router.new_raft_node(3).await;

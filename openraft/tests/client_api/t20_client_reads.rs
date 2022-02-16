@@ -42,7 +42,7 @@ async fn client_reads() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Get the ID of the leader, and assert that client_read succeeds.
-    let leader = router.leader().await.expect("leader not found");
+    let leader = router.leader().expect("leader not found");
     assert_eq!(leader, 0, "expected leader to be node 0, got {}", leader);
     router
         .client_read(leader)

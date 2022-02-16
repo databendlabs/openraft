@@ -24,7 +24,7 @@ async fn current_leader() -> Result<()> {
     let _log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 
     // Get the ID of the leader, and assert that current_leader succeeds.
-    let leader = router.leader().await.expect("leader not found");
+    let leader = router.leader().expect("leader not found");
     assert_eq!(leader, 0, "expected leader to be node 0, got {}", leader);
 
     for i in 0..3 {
