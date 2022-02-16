@@ -127,10 +127,7 @@ where
 
             for ent in entries.iter().rev() {
                 if let EntryPayload::Membership(ref mem) = ent.payload {
-                    return Ok(Some(EffectiveMembership {
-                        log_id: ent.log_id,
-                        membership: mem.clone(),
-                    }));
+                    return Ok(Some(EffectiveMembership::new(ent.log_id, mem.clone())));
                 }
             }
 

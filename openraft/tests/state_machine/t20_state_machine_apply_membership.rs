@@ -1,3 +1,4 @@
+use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -50,10 +51,10 @@ async fn state_machine_apply_membership() -> Result<()> {
     for i in 0..=0 {
         let sto = router.get_storage_handle(&i)?;
         assert_eq!(
-            Some(EffectiveMembership {
-                log_id: LogId::new(LeaderId::new(0, 0), 0),
-                membership: Membership::new_single(btreeset! {0})
-            }),
+            Some(EffectiveMembership::new(
+                LogId::new(LeaderId::new(0, 0), 0),
+                Membership::new(vec![btreeset! {0}], None)
+            )),
             sto.last_applied_state().await?.1
         );
     }
@@ -102,10 +103,10 @@ async fn state_machine_apply_membership() -> Result<()> {
         let sto = router.get_storage_handle(&i)?;
         let (_, last_membership) = sto.last_applied_state().await?;
         assert_eq!(
-            Some(EffectiveMembership {
-                log_id: LogId::new(LeaderId::new(1, 0), log_index),
-                membership: Membership::new_single_with_learners(btreeset! {0, 1, 2}, btreeset! {3,4})
-            }),
+            Some(EffectiveMembership::new(
+                LogId::new(LeaderId::new(1, 0), log_index),
+                Membership::new(vec![btreeset! {0, 1, 2}], Some(btreeset! {3,4}))
+            )),
             last_membership
         );
     }

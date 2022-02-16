@@ -1,3 +1,4 @@
+use std::option::Option::None;
 use std::time::Duration;
 
 use maplit::btreeset;
@@ -85,7 +86,8 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config.membership.replace(vec![btreeset![1, 2]]);
+            update.membership_config =
+                EffectiveMembership::new(LogId::default(), Membership::new(vec![btreeset! {1,2}], None));
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
@@ -105,7 +107,10 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config.membership.push(btreeset![1, 2]);
+            update.membership_config = EffectiveMembership::new(
+                LogId::default(),
+                Membership::new(vec![btreeset! {}, btreeset! {1,2}], None),
+            );
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
@@ -194,10 +199,7 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
         last_log_index: None,
         last_applied: None,
         current_leader: None,
-        membership_config: EffectiveMembership {
-            log_id: LogId::default(),
-            membership: Membership::new_single(btreeset! {}),
-        },
+        membership_config: EffectiveMembership::new(LogId::default(), Membership::new(vec![btreeset! {}], None)),
 
         snapshot: None,
         leader_metrics: None,

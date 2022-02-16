@@ -1,3 +1,4 @@
+use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -46,7 +47,7 @@ async fn elect_compare_last_log() -> Result<()> {
 
         sto0.append_to_log(&[&blank(0, 0), &Entry {
             log_id: LogId::new(LeaderId::new(2, 0), 1),
-            payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
+            payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0,1}], None)),
         }])
         .await?;
     }
@@ -64,7 +65,7 @@ async fn elect_compare_last_log() -> Result<()> {
             &blank(0, 0),
             &Entry {
                 log_id: LogId::new(LeaderId::new(1, 0), 1),
-                payload: EntryPayload::Membership(Membership::new_single(btreeset! {0,1})),
+                payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0,1}], None)),
             },
             &blank(1, 2),
         ])
