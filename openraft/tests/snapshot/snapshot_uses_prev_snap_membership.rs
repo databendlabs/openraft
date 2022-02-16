@@ -45,7 +45,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {}).await?;
 
-    let sto0 = router.get_storage_handle(&0).await?;
+    let sto0 = router.get_storage_handle(&0)?;
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {

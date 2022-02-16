@@ -48,7 +48,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     for i in 0..=0 {
-        let sto = router.get_storage_handle(&i).await?;
+        let sto = router.get_storage_handle(&i)?;
         assert_eq!(
             Some(EffectiveMembership {
                 log_id: LogId::new(LeaderId::new(0, 0), 0),
@@ -77,7 +77,9 @@ async fn state_machine_apply_membership() -> Result<()> {
     router.wait_for_log(&btreeset![0], Some(log_index), None, "add learner").await?;
 
     tracing::info!("--- changing cluster config");
-    router.change_membership(0, btreeset![0, 1, 2]).await?;
+    let node = router.get_raft_handle(&0)?;
+    node.change_membership(btreeset![0, 1, 2], true, false).await?;
+
     log_index += 2;
 
     tracing::info!("--- every node receives joint log");
@@ -97,7 +99,7 @@ async fn state_machine_apply_membership() -> Result<()> {
             .metrics(|x| x.last_applied.index() == Some(log_index), "uniform log applied")
             .await?;
 
-        let sto = router.get_storage_handle(&i).await?;
+        let sto = router.get_storage_handle(&i)?;
         let (_, last_membership) = sto.last_applied_state().await?;
         assert_eq!(
             Some(EffectiveMembership {

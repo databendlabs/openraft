@@ -68,7 +68,8 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     router.wait_for_log(&btreeset![0], Some(n_logs), None, "cluster of 4 learners").await?;
 
     tracing::info!("--- changing cluster config");
-    router.change_membership(0, btreeset![0, 1, 2, 3, 4]).await?;
+    let node = router.get_raft_handle(&0)?;
+    node.change_membership(btreeset![0, 1, 2, 3, 4], true, false).await?;
     n_logs += 2;
 
     router
@@ -93,7 +94,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     // Wait for election and for everything to stabilize (this is way longer than needed).
     sleep(Duration::from_millis(1000)).await;
 
-    let metrics = &router.latest_metrics().await[1];
+    let metrics = &router.latest_metrics()[1];
     let term = metrics.current_term;
     let applied = metrics.last_applied;
     let leader_id = metrics.current_leader;

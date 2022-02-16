@@ -54,7 +54,7 @@ async fn initialization() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     for i in 0..3 {
-        let sto = router.get_storage_handle(&1).await?;
+        let sto = router.get_storage_handle(&1)?;
         let first = sto.get_log_entries(0..2).await?.first().cloned();
 
         tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);

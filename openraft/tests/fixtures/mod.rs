@@ -12,7 +12,6 @@ use std::sync::Once;
 use std::time::Duration;
 
 use anyerror::AnyError;
-use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use lazy_static::lazy_static;
@@ -29,6 +28,7 @@ use openraft::error::ClientReadError;
 use openraft::error::ClientWriteError;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
+use openraft::error::NodeNotFound;
 use openraft::error::RPCError;
 use openraft::error::RemoteError;
 use openraft::error::VoteError;
@@ -37,7 +37,6 @@ use openraft::raft::AddLearnerResponse;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::ClientWriteRequest;
-use openraft::raft::ClientWriteResponse;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
 use openraft::raft::InstallSnapshotRequest;
@@ -225,7 +224,8 @@ impl RaftRouter {
         if node_ids.len() > 1 {
             tracing::info!("--- change membership to setup voters: {:?}", node_ids);
 
-            self.change_membership(0, node_ids.clone()).await?;
+            let node = self.get_raft_handle(&0)?;
+            node.change_membership(node_ids.clone(), true, false).await?;
             log_index += 2;
 
             self.wait_for_log(
@@ -295,36 +295,37 @@ impl RaftRouter {
 
     /// Remove the target node from the routing table & isolation.
     pub async fn remove_node(&self, id: NodeId) -> Option<(MemRaft, Arc<StoreWithDefensive>)> {
-        let mut rt = self.routing_table.lock().unwrap();
-        let opt_handles = rt.remove(&id);
-        let mut isolated = self.isolated_nodes.lock().unwrap();
-        isolated.remove(&id);
+        let opt_handles = {
+            let mut rt = self.routing_table.lock().unwrap();
+            rt.remove(&id)
+        };
+
+        {
+            let mut isolated = self.isolated_nodes.lock().unwrap();
+            isolated.remove(&id);
+        }
 
         opt_handles
     }
 
     /// Initialize all nodes based on the config in the routing table.
-    pub async fn initialize_from_single_node(&self, node: NodeId) -> Result<()> {
-        tracing::info!({ node }, "initializing cluster from single node");
-        let rt = self.routing_table.lock().unwrap();
-        let members: BTreeSet<NodeId> = rt.keys().cloned().collect();
-        rt.get(&node)
-            .ok_or_else(|| anyhow!("node {} not found in routing table", node))?
-            .0
-            .initialize(members.clone())
-            .await?;
+    pub async fn initialize_from_single_node(&self, node_id: NodeId) -> Result<()> {
+        tracing::info!({ node_id }, "initializing cluster from single node");
+        let members: BTreeSet<NodeId> = {
+            let rt = self.routing_table.lock().unwrap();
+            rt.keys().cloned().collect()
+        };
+
+        let node = self.get_raft_handle(&node_id)?;
+        node.initialize(members.clone()).await?;
         Ok(())
     }
 
     /// Initialize cluster with specified node ids.
-    pub async fn initialize_with(&self, node: NodeId, members: BTreeSet<NodeId>) -> Result<()> {
-        tracing::info!({ node }, "initializing cluster from single node");
-        let rt = self.routing_table.lock().unwrap();
-        rt.get(&node)
-            .ok_or_else(|| anyhow!("node {} not found in routing table", node))?
-            .0
-            .initialize(members.clone())
-            .await?;
+    pub async fn initialize_with(&self, node_id: NodeId, members: BTreeSet<NodeId>) -> Result<()> {
+        tracing::info!({ node_id }, "initializing cluster from single node");
+        let n = self.get_raft_handle(&node_id)?;
+        n.initialize(members.clone()).await?;
         Ok(())
     }
 
@@ -335,7 +336,7 @@ impl RaftRouter {
     }
 
     /// Get a payload of the latest metrics from each node in the cluster.
-    pub async fn latest_metrics(&self) -> Vec<RaftMetrics> {
+    pub fn latest_metrics(&self) -> Vec<RaftMetrics> {
         let rt = self.routing_table.lock().unwrap();
         let mut metrics = vec![];
         for node in rt.values() {
@@ -344,15 +345,23 @@ impl RaftRouter {
         metrics
     }
 
-    pub async fn get_metrics(&self, node_id: &NodeId) -> Result<RaftMetrics> {
-        let rt = self.routing_table.lock().unwrap();
-        let x = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
-        let metrics = x.0.metrics().borrow().clone();
+    pub fn get_metrics(&self, node_id: &NodeId) -> Result<RaftMetrics> {
+        let node = self.get_raft_handle(node_id)?;
+        let metrics = node.metrics().borrow().clone();
         Ok(metrics)
     }
 
-    /// Get a handle to the storage backend for the target node.
-    pub async fn get_storage_handle(&self, node_id: &NodeId) -> Result<Arc<StoreWithDefensive>> {
+    pub fn get_raft_handle(&self, node_id: &NodeId) -> std::result::Result<MemRaft, NodeNotFound> {
+        let rt = self.routing_table.lock().unwrap();
+        let raft_and_sto = rt.get(node_id).ok_or_else(|| NodeNotFound {
+            node_id: *node_id,
+            source: AnyError::error(""),
+        })?;
+        let r = raft_and_sto.clone().0;
+        Ok(r)
+    }
+
+    pub fn get_storage_handle(&self, node_id: &NodeId) -> Result<Arc<StoreWithDefensive>> {
         let rt = self.routing_table.lock().unwrap();
         let addr = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
         let sto = addr.clone().1;
@@ -377,10 +386,12 @@ impl RaftRouter {
     }
 
     pub async fn wait(&self, node_id: &NodeId, timeout: Option<Duration>) -> Result<Wait> {
-        let rt = self.routing_table.lock().unwrap();
-        let node = rt.get(node_id).with_context(|| format!("node {} not found", node_id))?;
+        let node = {
+            let rt = self.routing_table.lock().unwrap();
+            rt.get(node_id).expect("target node not found in routing table").clone().0
+        };
 
-        Ok(node.0.wait(timeout))
+        Ok(node.wait(timeout))
     }
 
     /// Wait for specified nodes until they applied upto `want_log`(inclusive) logs.
@@ -452,8 +463,8 @@ impl RaftRouter {
 
     /// Get the ID of the current leader.
     pub async fn leader(&self) -> Option<NodeId> {
-        let isolated = self.isolated_nodes.lock().unwrap();
-        self.latest_metrics().await.into_iter().find_map(|node| {
+        self.latest_metrics().into_iter().find_map(|node| {
+            let isolated = self.isolated_nodes.lock().unwrap();
             if node.current_leader == Some(node.id) {
                 if isolated.contains(&node.id) {
                     None
@@ -474,11 +485,8 @@ impl RaftRouter {
     }
 
     pub async fn add_learner(&self, leader: NodeId, target: NodeId) -> Result<AddLearnerResponse, AddLearnerError> {
-        let node = {
-            let rt = self.routing_table.lock().unwrap();
-            rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
-        };
-        node.0.add_learner(target, true).await
+        let node = self.get_raft_handle(&leader).unwrap();
+        node.add_learner(target, true).await
     }
 
     pub async fn add_learner_with_blocking(
@@ -492,44 +500,6 @@ impl RaftRouter {
             rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
         };
         node.0.add_learner(target, blocking).await
-    }
-
-    pub async fn change_membership(
-        &self,
-        leader: NodeId,
-        members: BTreeSet<NodeId>,
-    ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
-        let node = {
-            let rt = self.routing_table.lock().unwrap();
-            rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
-        };
-        node.0.change_membership(members, true, false).await
-    }
-
-    pub async fn change_membership_with_turn_to_learner(
-        &self,
-        leader: NodeId,
-        members: BTreeSet<NodeId>,
-        turn_to_learner: bool,
-    ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
-        let node = {
-            let rt = self.routing_table.lock().unwrap();
-            rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
-        };
-        node.0.change_membership(members, true, turn_to_learner).await
-    }
-
-    pub async fn change_membership_with_blocking(
-        &self,
-        leader: NodeId,
-        members: BTreeSet<NodeId>,
-        blocking: bool,
-    ) -> Result<ClientWriteResponse<MemClientResponse>, ClientWriteError> {
-        let node = {
-            let rt = self.routing_table.lock().unwrap();
-            rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
-        };
-        node.0.change_membership(members, blocking, false).await
     }
 
     /// Send a client read request to the target node.
@@ -556,11 +526,8 @@ impl RaftRouter {
 
     /// Request the current leader from the target node.
     pub async fn current_leader(&self, target: NodeId) -> Option<NodeId> {
-        let node = {
-            let rt = self.routing_table.lock().unwrap();
-            rt.get(&target).unwrap_or_else(|| panic!("node with ID {} does not exist", target)).clone()
-        };
-        node.0.current_leader().await
+        let node = self.get_raft_handle(&target).unwrap();
+        node.current_leader().await
     }
 
     /// Send multiple client requests to the target node, causing test failure on error.
@@ -589,7 +556,7 @@ impl RaftRouter {
 
     /// Assert that the cluster is in a pristine state, with all nodes as learners.
     pub async fn assert_pristine_cluster(&self) {
-        let nodes = self.latest_metrics().await;
+        let nodes = self.latest_metrics();
         for node in nodes.iter() {
             assert!(
                 node.current_leader.is_none(),
@@ -646,7 +613,7 @@ impl RaftRouter {
     /// will be used for the assertion.
     pub async fn assert_stable_cluster(&self, expected_term: Option<u64>, expected_last_log: Option<u64>) {
         let isolated = self.isolated_nodes.lock().unwrap();
-        let nodes = self.latest_metrics().await;
+        let nodes = self.latest_metrics();
 
         let non_isolated_nodes: Vec<_> = nodes.iter().filter(|node| !isolated.contains(&node.id)).collect();
         let leader = nodes
@@ -887,12 +854,9 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
 
         self.check_reachable(rpc.vote.node_id, target).await?;
 
-        let addr = {
-            let rt = self.routing_table.lock().unwrap();
-            rt.get(&target).expect("target node not found in routing table").clone()
-        };
+        let node = self.get_raft_handle(&target)?;
 
-        let resp = addr.0.append_entries(rpc).await;
+        let resp = node.append_entries(rpc).await;
 
         tracing::debug!("append_entries: recv resp from id={} {:?}", target, resp);
         let resp = resp.map_err(|e| RemoteError::new(target, e))?;
@@ -909,12 +873,9 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
 
         self.check_reachable(rpc.vote.node_id, target).await?;
 
-        let addr = {
-            let rt = self.routing_table.lock().unwrap();
-            rt.get(&target).expect("target node not found in routing table").clone()
-        };
+        let node = self.get_raft_handle(&target)?;
 
-        let resp = addr.0.install_snapshot(rpc).await;
+        let resp = node.install_snapshot(rpc).await;
         let resp = resp.map_err(|e| RemoteError::new(target, e))?;
         Ok(resp)
     }
@@ -925,12 +886,9 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
 
         self.check_reachable(rpc.vote.node_id, target).await?;
 
-        let addr = {
-            let rt = self.routing_table.lock().unwrap();
-            rt.get(&target).expect("target node not found in routing table").clone()
-        };
+        let node = self.get_raft_handle(&target)?;
 
-        let resp = addr.0.vote(rpc).await;
+        let resp = node.vote(rpc).await;
         let resp = resp.map_err(|e| RemoteError::new(target, e))?;
         Ok(resp)
     }

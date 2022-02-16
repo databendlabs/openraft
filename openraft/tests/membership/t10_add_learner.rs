@@ -63,7 +63,7 @@ async fn add_learner_basic() -> Result<()> {
         router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "add learner").await?;
 
         tracing::info!("--- add_learner blocks until the replication catches up");
-        let sto1 = router.get_storage_handle(&1).await?;
+        let sto1 = router.get_storage_handle(&1)?;
 
         let logs = sto1.get_log_entries(..).await?;
 
@@ -180,7 +180,9 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     n_logs += 2;
     router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "add learner").await?;
 
-    router.change_membership(orig_leader, btreeset![1, 3, 4]).await?;
+    let node = router.get_raft_handle(&orig_leader)?;
+    node.change_membership(btreeset![1, 3, 4], true, false).await?;
+
     // 2 for change_membership
     n_logs += 2;
 
@@ -221,7 +223,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 
     tracing::info!("--- check new cluster membership");
     {
-        let sto = router.get_storage_handle(&1).await?;
+        let sto = router.get_storage_handle(&1)?;
         let m = sto.get_membership().await?;
         let m = m.unwrap();
 

@@ -65,7 +65,8 @@ async fn lagging_network_write() -> Result<()> {
     log_index += 1;
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "write one log").await?;
 
-    router.change_membership(0, btreeset![0, 1, 2]).await?;
+    let node = router.get_raft_handle(&0)?;
+    node.change_membership(btreeset![0, 1, 2], true, false).await?;
     log_index += 2;
     router.wait_for_state(&btreeset![0], State::Leader, None, "changed").await?;
     router.wait_for_state(&btreeset![1, 2], State::Follower, None, "changed").await?;

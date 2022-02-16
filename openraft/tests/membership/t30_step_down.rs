@@ -41,7 +41,9 @@ async fn step_down() -> Result<()> {
     router.add_learner(0, 3).await?;
     log_index += 2;
     router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
-    router.change_membership(orig_leader, btreeset![1, 2, 3]).await?;
+
+    let node = router.get_raft_handle(&orig_leader)?;
+    node.change_membership(btreeset![1, 2, 3], true, false).await?;
     // 2 for change_membership
     log_index += 2;
 
@@ -96,7 +98,7 @@ async fn step_down() -> Result<()> {
 
     tracing::info!("--- check state of the old leader");
     {
-        let metrics = router.get_metrics(&0).await?;
+        let metrics = router.get_metrics(&0)?;
         let cfg = metrics.membership_config.membership;
 
         assert!(metrics.state != State::Leader);

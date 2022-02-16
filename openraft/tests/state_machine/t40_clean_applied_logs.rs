@@ -45,7 +45,7 @@ async fn clean_applied_logs() -> Result<()> {
     tracing::info!("--- logs before max_applied_log_to_keep should be cleaned");
     {
         for node_id in 0..1 {
-            let sto = router.get_storage_handle(&node_id).await?;
+            let sto = router.get_storage_handle(&node_id)?;
             let logs = sto.get_log_entries(..).await?;
             assert_eq!(2, logs.len(), "node {} should have only {} logs", node_id, 2);
         }

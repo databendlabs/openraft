@@ -61,7 +61,8 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     tokio::spawn({
         let router = router.clone();
         async move {
-            let _x = router.change_membership(0, btreeset! {0,1,2}).await;
+            let node = router.get_raft_handle(&0).unwrap();
+            let _x = node.change_membership(btreeset! {0,1,2}, true, false).await;
         }
         .instrument(tracing::debug_span!("spawn-change-membership"))
     });
@@ -104,7 +105,8 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
     router.isolate_node(4).await;
 
     tracing::info!("--- changing config to 0,1,2");
-    router.change_membership(0, btreeset![0, 1, 2]).await?;
+    let node = router.get_raft_handle(&0)?;
+    node.change_membership(btreeset![0, 1, 2], true, false).await?;
     log_index += 2;
 
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "cluster of 0,1,2").await?;
@@ -115,7 +117,8 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
         // this is expected to be blocked since 3 and 4 are isolated.
         tokio::spawn(
             async move {
-                router.change_membership(0, btreeset![2, 3, 4]).await?;
+                let node = router.get_raft_handle(&0)?;
+                node.change_membership(btreeset![2, 3, 4], true, false).await?;
                 Ok::<(), anyhow::Error>(())
             }
             .instrument(tracing::debug_span!("spawn-change-membership")),

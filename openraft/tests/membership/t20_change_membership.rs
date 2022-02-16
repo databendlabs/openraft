@@ -45,12 +45,13 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         n_logs += 1;
         router.wait_for_log(&btreeset![0], Some(n_logs), timeout(), "add learner").await?;
 
-        let res = router.change_membership_with_blocking(0, btreeset! {0,1}, true).await?;
+        let node = router.get_raft_handle(&0)?;
+        let res = node.change_membership(btreeset! {0,1}, true, false).await?;
         n_logs += 2;
         tracing::info!("--- change_membership blocks until success: {:?}", res);
 
         for node_id in 0..2 {
-            let sto = router.get_storage_handle(&node_id).await?;
+            let sto = router.get_storage_handle(&node_id)?;
             let logs = sto.get_log_entries(..).await?;
             assert_eq!(n_logs, logs[logs.len() - 1].log_id.index, "node: {}", node_id);
             // 0-th log
@@ -97,7 +98,8 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
     tracing::info!("--- restore replication and change membership at once, expect NonVoterIsLagging");
     {
         router.restore_node(1).await;
-        let res = router.change_membership_with_blocking(0, btreeset! {0,1}, false).await;
+        let node = router.get_raft_handle(&0)?;
+        let res = node.change_membership(btreeset! {0,1}, false, false).await;
 
         tracing::info!("--- got res: {:?}", res);
 
@@ -142,7 +144,8 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
     }
 
     {
-        router.change_membership_with_turn_to_learner(0, btreeset![0, 1], true).await?;
+        let node = router.get_raft_handle(&0)?;
+        node.change_membership(btreeset![0, 1], true, true).await?;
         // 2 for change_membership
         n_logs += 2;
 
