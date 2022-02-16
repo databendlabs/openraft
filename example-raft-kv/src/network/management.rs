@@ -21,7 +21,7 @@ use crate::app::ExampleApp;
 /// (by calling `change-membership`)
 #[post("/add-learner")]
 pub async fn add_learner(app: Data<ExampleApp>, req: Json<NodeId>) -> actix_web::Result<impl Responder> {
-    let res = app.raft.add_learner(req.0, true).await;
+    let res = app.raft.add_learner(req.0, None, true).await;
     Ok(Json(res))
 }
 

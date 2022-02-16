@@ -492,7 +492,7 @@ impl RaftRouter {
 
     pub async fn add_learner(&self, leader: NodeId, target: NodeId) -> Result<AddLearnerResponse, AddLearnerError> {
         let node = self.get_raft_handle(&leader).unwrap();
-        node.add_learner(target, true).await
+        node.add_learner(target, None, true).await
     }
 
     pub async fn add_learner_with_blocking(
@@ -505,7 +505,7 @@ impl RaftRouter {
             let rt = self.routing_table.lock().unwrap();
             rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
         };
-        node.0.add_learner(target, blocking).await
+        node.0.add_learner(target, None, blocking).await
     }
 
     /// Send a client read request to the target node.

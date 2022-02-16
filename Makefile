@@ -5,6 +5,7 @@ defensive_test:
 
 test: lint fmt
 	cargo test
+	cargo test --manifest-path example-raft-kv/Cargo.toml
 
 fmt:
 	cargo fmt

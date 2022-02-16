@@ -5,6 +5,7 @@ mod config;
 mod core;
 mod defensive;
 mod membership;
+mod node;
 mod raft_types;
 mod replication;
 mod storage_error;
@@ -37,6 +38,8 @@ pub use crate::membership::Membership;
 pub use crate::metrics::RaftMetrics;
 pub use crate::network::RPCTypes;
 pub use crate::network::RaftNetwork;
+pub use crate::node::Node;
+pub use crate::node::NodeId;
 pub use crate::raft::Raft;
 pub use crate::raft_types::LogId;
 pub use crate::raft_types::LogIdOptionExt;
@@ -60,9 +63,6 @@ pub use crate::store_wrapper::Wrapper;
 pub use crate::summary::MessageSummary;
 pub use crate::vote::LeaderId;
 pub use crate::vote::Vote;
-
-/// A Raft node's ID.
-pub type NodeId = u64;
 
 /// A trait defining application specific data.
 ///

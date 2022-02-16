@@ -113,6 +113,9 @@ pub enum ChangeMembershipError {
 
     #[error(transparent)]
     LearnerIsLagging(#[from] LearnerIsLagging),
+
+    #[error(transparent)]
+    NodeNotInCluster(#[from] NodeIdNotInNodes),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
@@ -124,6 +127,9 @@ pub enum AddLearnerError {
     Exists(NodeId),
 
     #[error(transparent)]
+    NodeNotInCluster(#[from] NodeIdNotInNodes),
+
+    #[error(transparent)]
     Fatal(#[from] Fatal),
 }
 
@@ -133,6 +139,9 @@ pub enum InitializeError {
     /// The requested action is not allowed due to the Raft node's current state.
     #[error("the requested action is not allowed due to the Raft node's current state")]
     NotAllowed,
+
+    #[error(transparent)]
+    NodeNotInCluster(#[from] NodeIdNotInNodes),
 
     #[error(transparent)]
     Fatal(#[from] Fatal),
@@ -320,6 +329,13 @@ pub struct LearnerIsLagging {
     pub node_id: NodeId,
     pub matched: Option<LogId>,
     pub distance: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[error("node {node_id} not found in cluster: {node_ids:?}")]
+pub struct NodeIdNotInNodes {
+    pub node_id: NodeId,
+    pub node_ids: BTreeSet<NodeId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]

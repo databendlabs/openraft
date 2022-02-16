@@ -2,6 +2,8 @@ use std::collections::BTreeSet;
 use std::option::Option::None;
 use std::sync::Arc;
 
+use tracing::warn;
+
 use crate::core::client::ClientRequestEntry;
 use crate::core::LeaderState;
 use crate::core::LearnerState;
@@ -14,6 +16,8 @@ use crate::error::InProgress;
 use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
+use crate::error::NodeIdNotInNodes;
+use crate::membership::EitherNodesOrIds;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::EntryPayload;
@@ -23,6 +27,7 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
 use crate::Membership;
+use crate::Node;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -31,10 +36,7 @@ use crate::StorageError;
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
     /// Handle the admin `init_with_config` command.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) async fn handle_init_with_config(
-        &mut self,
-        mut members: BTreeSet<NodeId>,
-    ) -> Result<(), InitializeError> {
+    pub(super) async fn handle_init_with_config(&mut self, members: EitherNodesOrIds) -> Result<(), InitializeError> {
         // TODO(xp): simplify this condition
 
         if self.core.last_log_id.is_some() || self.core.vote.term != 0 {
@@ -44,12 +46,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return Err(InitializeError::NotAllowed);
         }
 
-        // Ensure given config contains this nodes ID as well.
-        if !members.contains(&self.core.id) {
-            members.insert(self.core.id);
+        let node_ids = members.node_ids();
+
+        if !node_ids.contains(&self.core.id) {
+            let e = NodeIdNotInNodes {
+                node_id: self.core.id,
+                node_ids,
+            };
+            return Err(InitializeError::NodeNotInCluster(e));
         }
 
-        let membership = Membership::new(vec![members], None);
+        let membership = Membership::new(vec![node_ids], None).set_nodes(members.nodes())?;
 
         let payload = EntryPayload::Membership(membership.clone());
         let _ent = self.core.append_payload_to_log(payload).await?;
@@ -63,29 +70,31 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     // add node into learner,return true if the node is already a member or learner
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn add_learner_into_membership(&mut self, target: &NodeId) -> bool {
+    async fn add_learner_into_membership(
+        &mut self,
+        target: NodeId,
+        node: Option<Node>,
+    ) -> Result<bool, NodeIdNotInNodes> {
         tracing::debug!(
-            "add_learner_into_membership target node {} into learner {:?}",
+            "add_learner_into_membership target node {:?} into learner {:?}",
             target,
             self.nodes.keys()
         );
 
         let curr = &self.core.effective_membership.membership;
-        if curr.contains(target) {
-            tracing::debug!(
-                "target node {} is already a member or learner,cannot add as learner",
-                target
-            );
-            return true;
+
+        let new_membership = curr.add_learner(target, node)?;
+
+        if new_membership.all_learners() == curr.all_learners() {
+            tracing::debug!("target {:?} already member or learner, can't add", target);
+            return Ok(true);
         }
 
-        let new_config = curr.add_learner(target);
+        tracing::debug!(?new_membership, "new_config");
 
-        tracing::debug!(?new_config, "new_config");
+        let _ = self.append_membership_log(new_membership, None).await;
 
-        let _ = self.append_membership_log(new_config, None).await;
-
-        false
+        Ok(false)
     }
 
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
@@ -94,6 +103,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn add_learner(
         &mut self,
         target: NodeId,
+        node: Option<Node>,
         tx: RaftRespTx<AddLearnerResponse, AddLearnerError>,
         blocking: bool,
     ) {
@@ -115,7 +125,15 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             return;
         }
 
-        let exist = self.add_learner_into_membership(&target).await;
+        let exist = self.add_learner_into_membership(target, node).await;
+        let exist = match exist {
+            Ok(x) => x,
+            Err(e) => {
+                let _ = tx.send(Err(AddLearnerError::from(e)));
+                return;
+            }
+        };
+
         if exist {
             return;
         }
@@ -169,7 +187,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let all_members = self.core.effective_membership.all_members();
         let new_members = members.difference(all_members);
 
-        let new_config = curr.next_safe(members.clone(), turn_to_learner);
+        let new_config = {
+            let res = curr.next_safe(members.clone(), turn_to_learner);
+            match res {
+                Ok(x) => x,
+                Err(e) => {
+                    let change_err = ChangeMembershipError::NodeNotInCluster(e);
+                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(change_err)));
+                    return Ok(());
+                }
+            }
+        };
 
         tracing::debug!(?new_config, "new_config");
 

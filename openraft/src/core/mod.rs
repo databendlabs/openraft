@@ -839,8 +839,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
             }
-            RaftMsg::AddLearner { id, tx, blocking } => {
-                self.add_learner(id, tx, blocking).await;
+            RaftMsg::AddLearner { id, node, tx, blocking } => {
+                self.add_learner(id, node, tx, blocking).await;
             }
             RaftMsg::ChangeMembership {
                 members,
