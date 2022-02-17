@@ -1,3 +1,4 @@
+use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -93,7 +94,7 @@ async fn compaction() -> Result<()> {
     let sto1 = router.new_store().await;
     sto1.append_to_log(&[&blank(0, 0), &Entry {
         log_id: LogId::new(LeaderId::new(1, 0), 1),
-        payload: EntryPayload::Membership(Membership::new_single(btreeset! {0})),
+        payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
     }])
     .await?;
 

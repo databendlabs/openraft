@@ -1,3 +1,4 @@
+use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -64,14 +65,14 @@ async fn initialization() -> Result<()> {
                 panic!("expect Membership payload")
             }
         };
-        assert_eq!(btreeset![0, 1, 2], mem.get_ith_config(0).cloned().unwrap());
+        assert_eq!(btreeset![0, 1, 2], mem.get_configs()[0].clone());
 
         let sm_mem = sto.last_applied_state().await?.1;
         assert_eq!(
-            Some(EffectiveMembership {
-                log_id: LogId::new(LeaderId::new(0, 0), 0),
-                membership: Membership::new_single(btreeset! {0,1,2})
-            }),
+            Some(EffectiveMembership::new(
+                LogId::new(LeaderId::new(0, 0), 0),
+                Membership::new(vec![btreeset! {0,1,2}], None)
+            )),
             sm_mem
         );
     }

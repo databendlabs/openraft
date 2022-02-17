@@ -1,3 +1,4 @@
+use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -47,12 +48,12 @@ async fn append_updates_membership() -> Result<()> {
                 blank(1, 1),
                 Entry {
                     log_id: LogId::new(LeaderId::new(1, 0), 2),
-                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2})),
+                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {1,2}], None)),
                 },
                 blank(1, 3),
                 Entry {
                     log_id: LogId::new(LeaderId::new(1, 0), 4),
-                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3,4})),
+                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {1,2,3,4}], None)),
                 },
                 blank(1, 5),
             ],

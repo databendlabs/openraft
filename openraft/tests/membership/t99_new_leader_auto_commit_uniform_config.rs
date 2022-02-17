@@ -38,7 +38,10 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     {
         sto.append_to_log(&[&Entry {
             log_id: LogId::new(LeaderId::new(1, 0), log_index + 1),
-            payload: EntryPayload::Membership(Membership::new_multi(vec![btreeset! {0}, btreeset! {0,1,2}])),
+            payload: EntryPayload::Membership(Membership::new(
+                vec![btreeset! {0}, btreeset! {0,1,2}],
+                Some(btreeset! {}),
+            )),
         }])
         .await?;
     }

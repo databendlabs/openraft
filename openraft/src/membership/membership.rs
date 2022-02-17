@@ -1,7 +1,5 @@
 use core::cmp::Ord;
 use core::option::Option;
-use core::option::Option::None;
-use core::option::Option::Some;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
@@ -19,14 +17,13 @@ use crate::NodeId;
 /// every config.
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Membership {
-    /// learners set
+    /// Learners set
     learners: BTreeSet<NodeId>,
 
-    /// Multi configs.
+    /// Multi configs of members.
+    ///
+    /// AKA a joint config in original raft paper.
     configs: Vec<BTreeSet<NodeId>>,
-
-    /// Cache of all node ids.
-    all_members: BTreeSet<NodeId>,
 }
 
 impl MessageSummary for Membership {
@@ -53,100 +50,51 @@ impl MessageSummary for Membership {
 }
 
 impl Membership {
-    pub fn new_single(members: BTreeSet<NodeId>) -> Self {
-        let configs = vec![members];
+    /// Create a new Membership of multiple configs(joint) and optinally a set of learners
+    ///
+    /// A learner that is already in configs will be filtered out.
+    pub fn new(configs: Vec<BTreeSet<NodeId>>, learners: Option<BTreeSet<NodeId>>) -> Self {
         let all_members = Self::build_all_members(&configs);
-        let learners = BTreeSet::new();
-        Membership {
-            learners,
-            configs,
-            all_members,
-        }
-    }
-
-    pub fn new_single_with_learners(members: BTreeSet<NodeId>, learners: BTreeSet<NodeId>) -> Self {
-        let configs = vec![members];
-        let all_members = Self::build_all_members(&configs);
-        Membership {
-            learners,
-            configs,
-            all_members,
-        }
-    }
-
-    pub fn new_multi(configs: Vec<BTreeSet<NodeId>>) -> Self {
-        let all_members = Self::build_all_members(&configs);
-        let learners = BTreeSet::new();
-        Membership {
-            learners,
-            configs,
-            all_members,
-        }
-    }
-
-    pub fn new_multi_with_learners(configs: Vec<BTreeSet<NodeId>>, learners: BTreeSet<NodeId>) -> Self {
-        let all_members = Self::build_all_members(&configs);
-        Membership {
-            learners,
-            configs,
-            all_members,
-        }
-    }
-
-    #[must_use]
-    pub fn add_learner(&self, id: &NodeId) -> Self {
-        let mut learners = self.learners.clone();
-        learners.insert(*id);
-        let configs = self.configs.clone();
-        let all_members = Self::build_all_members(&self.configs);
-        Membership {
-            learners,
-            configs,
-            all_members,
-        }
-    }
-
-    pub fn remove_learner(&mut self, id: &NodeId) {
-        self.learners.remove(id);
-    }
-
-    pub fn all_learners(&self) -> &BTreeSet<NodeId> {
-        &self.learners
-    }
-
-    pub fn all_members(&self) -> &BTreeSet<NodeId> {
-        &self.all_members
-    }
-
-    pub fn replace(&mut self, new_configs: Vec<BTreeSet<NodeId>>) {
-        self.configs = new_configs;
-        self.all_members = Self::build_all_members(&self.configs);
-    }
-
-    pub fn push(&mut self, new_config: BTreeSet<NodeId>) {
-        self.configs.push(new_config);
-        self.all_members = Self::build_all_members(&self.configs);
+        let learners = learners.unwrap_or_default();
+        let learners = learners.difference(&all_members).cloned().collect::<BTreeSet<_>>();
+        Membership { learners, configs }
     }
 
     pub fn get_configs(&self) -> &Vec<BTreeSet<NodeId>> {
         &self.configs
     }
 
-    pub fn get_ith_config(&self, i: usize) -> Option<&BTreeSet<NodeId>> {
+    /// Check to see if the config is currently in joint consensus.
+    pub fn is_in_joint_consensus(&self) -> bool {
+        self.configs.len() > 1
+    }
+
+    #[must_use]
+    pub(crate) fn add_learner(&self, id: &NodeId) -> Self {
+        let mut learners = self.learners.clone();
+        learners.insert(*id);
+        let configs = self.configs.clone();
+        Self::new(configs, Some(learners))
+    }
+
+    pub(crate) fn all_learners(&self) -> &BTreeSet<NodeId> {
+        &self.learners
+    }
+
+    pub(crate) fn all_members(&self) -> BTreeSet<NodeId> {
+        Self::build_all_members(&self.configs)
+    }
+
+    pub(crate) fn get_ith_config(&self, i: usize) -> Option<&BTreeSet<NodeId>> {
         self.configs.get(i)
     }
 
-    // TODO(xp): remove this
-    pub fn ith_config(&self, i: usize) -> Vec<NodeId> {
-        self.configs[i].iter().cloned().collect()
-    }
-
-    pub fn contains(&self, target: &NodeId) -> bool {
+    pub(crate) fn contains(&self, target: &NodeId) -> bool {
         self.is_member(target) || self.is_learner(target)
     }
 
     /// Check if the given NodeId exists in this membership config.
-    pub fn is_member(&self, x: &NodeId) -> bool {
+    pub(crate) fn is_member(&self, x: &NodeId) -> bool {
         for c in self.configs.iter() {
             if c.contains(x) {
                 return true;
@@ -155,33 +103,20 @@ impl Membership {
         false
     }
 
-    pub fn is_learner(&self, x: &NodeId) -> bool {
+    pub(crate) fn is_learner(&self, x: &NodeId) -> bool {
         self.learners.contains(x)
-    }
-
-    /// Check to see if the config is currently in joint consensus.
-    pub fn is_in_joint_consensus(&self) -> bool {
-        self.configs.len() > 1
     }
 
     // TODO(xp): rename this
     /// Create a new initial config containing only the given node ID.
-    pub fn new_initial(id: NodeId) -> Self {
-        Membership::new_single(btreeset! {id})
-    }
-
-    #[must_use]
-    pub fn to_final_config(&self) -> Self {
-        assert!(!self.configs.is_empty());
-
-        let last = self.configs.last().cloned().unwrap();
-        Membership::new_single(last)
+    pub(crate) fn new_initial(id: NodeId) -> Self {
+        Membership::new(vec![btreeset! {id}], None)
     }
 
     /// Return true if the given set of ids constitutes a majority.
     ///
     /// I.e. the id set includes a majority of every config.
-    pub fn is_majority(&self, granted: &BTreeSet<NodeId>) -> bool {
+    pub(crate) fn is_majority(&self, granted: &BTreeSet<NodeId>) -> bool {
         for config in self.configs.iter() {
             if !Self::is_majority_of_single_config(granted, config) {
                 return false;
@@ -197,7 +132,7 @@ impl Membership {
     /// `10` constitutes a majoirty in the first config {1,2,3}.
     /// `20` constitutes a majority in the second config {4,5,6}.
     /// Thus the minimal value `10` is the greatest joint majority for this membership config.
-    pub fn greatest_majority_value<'v, V>(&self, values: &'v BTreeMap<NodeId, V>) -> Option<&'v V>
+    pub(crate) fn greatest_majority_value<'v, V>(&self, values: &'v BTreeMap<NodeId, V>) -> Option<&'v V>
     where V: Ord {
         let mut res = vec![];
         for config in self.configs.iter() {
@@ -231,7 +166,9 @@ impl Membership {
     ///
     /// Read more about:
     /// [safe-membership-change](https://datafuselabs.github.io/openraft/dynamic-membership.html#the-safe-to-relation)
-    pub fn is_safe_to(&self, other: &Self) -> bool {
+    // TODO(xp): not used.
+    #[allow(dead_code)]
+    pub(crate) fn is_safe_to(&self, other: &Self) -> bool {
         for d in &other.configs {
             if self.configs.contains(d) {
                 return true;
@@ -259,24 +196,22 @@ impl Membership {
     /// }
     /// ```
     #[must_use]
-    pub fn next_safe(&self, goal: BTreeSet<NodeId>, turn_to_learner: bool) -> Self {
-        let learners = if turn_to_learner {
-            let curr = self.clone();
-            // add removed members into learners
-            let removed_members = curr.all_members().difference(&goal);
-            let mut learners = curr.all_learners().clone();
-            for id in removed_members {
-                learners.insert(*id);
-            }
-            learners
+    pub(crate) fn next_safe(&self, goal: BTreeSet<NodeId>, turn_to_learner: bool) -> Self {
+        let new_configs = if self.configs.contains(&goal) {
+            vec![goal]
         } else {
-            self.learners.clone()
+            vec![self.configs.last().cloned().unwrap(), goal]
         };
-        if self.configs.contains(&goal) {
-            Membership::new_single_with_learners(goal, learners)
-        } else {
-            Membership::new_multi_with_learners(vec![self.configs.last().cloned().unwrap(), goal], learners)
-        }
+
+        let mut new_learners = self.all_learners().clone();
+
+        if turn_to_learner {
+            // Add all members as learners.
+            // The learners that are already a member will be filtered out in Self::new()
+            new_learners.append(&mut self.all_members());
+        };
+
+        Membership::new(new_configs, Some(new_learners))
     }
 
     fn is_majority_of_single_config(granted: &BTreeSet<NodeId>, single_config: &BTreeSet<NodeId>) -> bool {

@@ -253,10 +253,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
                     res.push(ClientResponse(previous));
                 }
                 EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = Some(EffectiveMembership {
-                        log_id: entry.log_id,
-                        membership: mem.clone(),
-                    });
+                    sm.last_membership = Some(EffectiveMembership::new(entry.log_id, mem.clone()));
                     res.push(ClientResponse(None))
                 }
             };

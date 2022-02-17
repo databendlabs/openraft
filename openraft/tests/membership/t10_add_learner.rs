@@ -228,7 +228,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
         let m = m.unwrap();
 
         assert_eq!(
-            Membership::new_single_with_learners(btreeset! {1,3,4}, btreeset! {2}),
+            Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),
             m.membership,
             "membership should be overridden by the snapshot"
         );

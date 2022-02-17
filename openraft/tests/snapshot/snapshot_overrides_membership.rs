@@ -1,3 +1,4 @@
+use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -91,7 +92,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 prev_log_id: None,
                 entries: vec![blank(0, 0), Entry {
                     log_id: LogId::new(LeaderId::new(1, 0), 1),
-                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {2,3})),
+                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {2,3}], None)),
                 }],
                 leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
             };
@@ -103,7 +104,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
                 let m = m.unwrap();
 
-                assert_eq!(Membership::new_single(btreeset! {2,3}), m.membership);
+                assert_eq!(Membership::new(vec![btreeset! {2,3}], None), m.membership);
             }
         }
 
@@ -136,7 +137,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             let m = m.unwrap();
 
             assert_eq!(
-                Membership::new_single_with_learners(btreeset! {0}, btreeset! {1}),
+                Membership::new(vec![btreeset! {0}], Some(btreeset! {1})),
                 m.membership,
                 "membership should be overridden by the snapshot"
             );

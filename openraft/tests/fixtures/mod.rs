@@ -166,6 +166,7 @@ impl RaftRouter {
         self.send_delay = ms;
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn rand_send_delay(&self) {
         if self.send_delay == 0 {
             return;
@@ -422,8 +423,8 @@ impl RaftRouter {
             let wait = self.wait(i, timeout).await?;
             wait.metrics(
                 |x| {
-                    x.membership_config.membership.get_configs().len() == 1
-                        && x.membership_config.membership.get_ith_config(0).cloned().unwrap() == members
+                    x.membership_config.get_configs().len() == 1
+                        && x.membership_config.get_configs()[0].clone() == members
                 },
                 msg,
             )
@@ -592,9 +593,9 @@ impl RaftRouter {
                 "node {} has last_log_index {:?}, expected None",
                 node.id, node.last_log_index
             );
-            let members = node.membership_config.membership.ith_config(0);
+            let members = node.membership_config.get_configs()[0].clone();
             assert_eq!(
-                members,
+                members.iter().cloned().collect::<Vec<_>>(),
                 vec![node.id],
                 "node {0} has membership {1:?}, expected [{0}]",
                 node.id,
@@ -680,7 +681,8 @@ impl RaftRouter {
                 "node {} has last_log_index {:?}, expected {:?}",
                 node.id, node.last_log_index, expected_last_log
             );
-            let mut members = node.membership_config.membership.ith_config(0);
+            let members = node.membership_config.get_configs()[0].clone();
+            let mut members = members.into_iter().collect::<Vec<_>>();
             members.sort_unstable();
             assert_eq!(
                 members, all_nodes,
@@ -842,7 +844,7 @@ impl RaftRouter {
         let isolated = self.isolated_nodes.lock().unwrap();
 
         if isolated.contains(&target) || isolated.contains(&id) {
-            let network_err = NetworkError::new(&AnyError::error("target node is isolated"));
+            let network_err = NetworkError::new(&AnyError::error(format!("isolated:{} -> {}", id, target)));
             return Err(network_err);
         }
 
