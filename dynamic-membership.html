@@ -157,10 +157,9 @@ and immediately begin syncing logs from the leader.</p>
 <li>
 <p>A <strong>Learner</strong> is not persistently stored by <code>Raft</code>, i.e., if a new leader is
 elected, a Learner will no longer receive logs from the new leader.</p>
-<p>TODO(xp): store learners in <code>MembershipConfig</code>.</p>
 </li>
 </ul>
-<h2 id="raftchange_membershipnode_list"><a class="header" href="#raftchange_membershipnode_list"><code>Raft::change_membership(node_list)</code></a></h2>
+<h2 id="raftchange_membershipnode_list-turn_to_learner"><a class="header" href="#raftchange_membershipnode_list-turn_to_learner"><code>Raft::change_membership(node_list, turn_to_learner)</code></a></h2>
 <p>This method will initiate a membership change and returns when the effective
 membership becomes <code>node_list</code>.</p>
 <p>If there are nodes in the given membership that is not a <code>Learner</code>, this method will add it
@@ -168,8 +167,16 @@ as Learner first.
 Thus it is recommended that the application always call <code>Raft::add_learner</code> first.
 Otherwise, <code>Raft::change_membership</code> may block for long before committing the
 given membership and return.</p>
-<p>Once the new membership is committed, a <code>Voter</code> that is not in the new membership will
-revert to a <code>Learner</code> and is ready to remove.</p>
+<p>Once the new membership is committed, whether or not a <code>Voter</code> that is not in the new membership will
+revert to a <code>Learner</code> is base on the <code>turn_to_learner</code>.</p>
+<p>If <code>turn_to_learner</code> is true, then all the members which not exists in the new membership,
+will be turned into learners, otherwise will be removed.</p>
+<p>Example of <code>turn_to_learner</code> usage:
+If the original membership is {&quot;members&quot;:{1,2,3}, &quot;learners&quot;:{}}, and call <code>change_membership</code> 
+with <code>node_list</code> {3,4,5}, then:
+- If <code>turn_to_learner</code> is true, after commit the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}.
+- Otherwise if <code>turn_to_learner</code> is false, then the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}, 
+in which the members not exists in the new membership just be removed from the cluster.</p>
 <h2 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h2>
 <p>Openraft tries to commit one or more membership logs to finally change the
 membership to <code>node_list</code>.
