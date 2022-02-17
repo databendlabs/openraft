@@ -255,6 +255,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// If `turn_to_learner` is true, then all the members which not exists in the new membership,
     /// will be turned into learners, otherwise will be removed.
     ///
+    /// Example of `turn_to_learner` usage:
+    /// If the original membership is {"members":{1,2,3}, "learners":{}}, and call `change_membership`
+    /// with `node_list` {3,4,5}, then:
+    ///    - If `turn_to_learner` is true, after commit the new membership is {"members":{3,4,5}, "learners":{1,2}}.
+    ///    - Otherwise if `turn_to_learner` is false, then the new membership is {"members":{3,4,5}, "learners":{}}, in
+    ///      which the members not exists in the new membership just be removed from the cluster.
+    ///
+    /// if change_membership from {1,2,3} to {}
     /// If it lost leadership or crashed before committing the second **uniform** config log, the cluster is left in the
     /// **joint** config.
     #[tracing::instrument(level = "debug", skip(self))]
