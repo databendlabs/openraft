@@ -15,10 +15,8 @@ and immediately begin syncing logs from the leader.
 - A **Learner** is not persistently stored by `Raft`, i.e., if a new leader is
     elected, a Learner will no longer receive logs from the new leader.
 
-    TODO(xp): store learners in `MembershipConfig`.
 
-
-## `Raft::change_membership(node_list)`
+## `Raft::change_membership(node_list, turn_to_learner)`
 
 This method will initiate a membership change and returns when the effective
 membership becomes `node_list`.
@@ -29,8 +27,18 @@ Thus it is recommended that the application always call `Raft::add_learner` firs
 Otherwise, `Raft::change_membership` may block for long before committing the
 given membership and return.
 
-Once the new membership is committed, a `Voter` that is not in the new membership will
-revert to a `Learner` and is ready to remove.
+Once the new membership is committed, whether or not a `Voter` that is not in the new membership will
+revert to a `Learner` is base on the `turn_to_learner`.
+
+If `turn_to_learner` is true, then all the members which not exists in the new membership,
+will be turned into learners, otherwise will be removed.
+
+Example of `turn_to_learner` usage:
+If the original membership is {"members":{1,2,3}, "learners":{}}, and call `change_membership` 
+with `node_list` {3,4,5}, then:
+    - If `turn_to_learner` is true, after commit the new membership is {"members":{3,4,5}, "learners":{1,2}}.
+    - Otherwise if `turn_to_learner` is false, then the new membership is {"members":{3,4,5}, "learners":{}}, 
+      in which the members not exists in the new membership just be removed from the cluster.
 
 ## Extended membership change algo
 
