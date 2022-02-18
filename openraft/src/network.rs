@@ -17,6 +17,7 @@ use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::AppData;
+use crate::Node;
 use crate::NodeId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,6 +45,7 @@ where D: AppData
     async fn send_append_entries(
         &self,
         target: NodeId,
+        node: Option<&Node>,
         rpc: AppendEntriesRequest<D>,
     ) -> Result<AppendEntriesResponse, RPCError<AppendEntriesError>>;
 
@@ -51,9 +53,15 @@ where D: AppData
     async fn send_install_snapshot(
         &self,
         target: NodeId,
+        node: Option<&Node>,
         rpc: InstallSnapshotRequest,
     ) -> Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>>;
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn send_vote(&self, target: NodeId, rpc: VoteRequest) -> Result<VoteResponse, RPCError<VoteError>>;
+    async fn send_vote(
+        &self,
+        target: NodeId,
+        node: Option<&Node>,
+        rpc: VoteRequest,
+    ) -> Result<VoteResponse, RPCError<VoteError>>;
 }

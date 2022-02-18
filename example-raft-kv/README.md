@@ -13,7 +13,7 @@ Includes:
 - Client and `RaftNetwork`([rpc](./src/network/raft_network_impl)) are built upon [reqwest](https://docs.rs/reqwest).
 
   [ExampleClient](./src/client.rs) is a minimal raft client in rust to talk to a raft cluster.
-  - It includes application API `write()` and `read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()` and `list_nodes()`.
+  - It includes application API `write()` and `read()`, and administrative API `init()`, `add_learner()`, `change_membership()`, `metrics()`.
   - This client tracks the last known leader id, a write operation(such as `write()` or `change_membership()`) will be redirected to the leader on client side.
 
 ## Run it
@@ -69,24 +69,17 @@ POST - 127.0.0.1:21001/init
 
 It will define the first node created as the leader.
 
-After that you will need to notify the leader node about the other nodes:
-
-```
-POST - 127.0.0.1:21001/write '{"AddNode":{"id":1,"addr":"127.0.0.1:21001"}}'
-POST - 127.0.0.1:21001/write '{"AddNode":{"id":2,"addr":"127.0.0.1:21002"}}'
-...
-```
-
 Then you need to inform to the leader that these nodes are learners:
 
 ```
-POST - 127.0.0.1:21001/add-learner "2"
+POST - 127.0.0.1:21001/add-learner '[2, "127.0.0.1:21002"]'
+POST - 127.0.0.1:21001/add-learner '[3, "127.0.0.1:21003"]'
 ```
 
 Now you need to tell the leader to add all learners as members of the cluster:
 
 ```
-POST - 127.0.0.1:21001/change-membership  "[1, 2]"
+POST - 127.0.0.1:21001/change-membership  "[1, 2, 3]"
 ```
 
 Write some data in any of the nodes:

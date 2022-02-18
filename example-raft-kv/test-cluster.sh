@@ -77,48 +77,23 @@ echo
 rpc 21001/metrics
 sleep 1
 
-echo "Add 3 node addresses so that RaftNetwork is able to find peers by the ID"
-echo
-sleep 2
-echo "Adding node 1"
-echo
-rpc 21001/write   '{"AddNode":{"id":1,"addr":"127.0.0.1:21001"}}'
-sleep 2
-echo "Node 1 added"
-echo
-sleep 2
-echo "Adding node 2"
-echo
-rpc 21001/write   '{"AddNode":{"id":2,"addr":"127.0.0.1:21002"}}'
-sleep 2
-echo "Node 2 added"
-echo
-sleep 2
-echo "Adding node 3"
-echo
-rpc 21001/write   '{"AddNode":{"id":3,"addr":"127.0.0.1:21003"}}'
-sleep 2
-echo "Node 3 added"
-echo
-
-sleep 2
-echo "Listing all known nodes in the clusters..."
-
-echo
-rpc 21001/list-nodes
-
-sleep 1
 
 echo "Adding node 2 and node 3 as learners, to receive log from leader node 1"
 
 sleep 1
 echo
-rpc 21001/add-learner       '2'
+rpc 21001/add-learner       '[2, "127.0.0.1:21002"]'
 echo "Node 2 added as leaner"
 sleep 1
 echo
-rpc 21001/add-learner       '3'
+rpc 21001/add-learner       '[3, "127.0.0.1:21003"]'
 echo "Node 3 added as leaner"
+sleep 1
+
+echo "Get metrics from the leader, after adding 2 learners"
+sleep 2
+echo
+rpc 21001/metrics
 sleep 1
 
 echo "Changing membership from [1] to 3 nodes cluster: [1, 2, 3]"

@@ -17,7 +17,6 @@ use openraft::EffectiveMembership;
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::LogId;
-use openraft::NodeId;
 use openraft::RaftStorage;
 use openraft::SnapshotMeta;
 use openraft::StateMachineChanges;
@@ -37,7 +36,6 @@ use tokio::sync::RwLock;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ExampleRequest {
     Set { key: String, value: String },
-    AddNode { id: NodeId, addr: String },
 }
 
 // Inform to raft that `ExampleRequest` is an application data to be used by raft.
@@ -77,9 +75,6 @@ pub struct ExampleStateMachine {
     pub last_applied_log: Option<LogId>,
 
     pub last_membership: Option<EffectiveMembership>,
-
-    /// Node addresses in this cluster.
-    pub nodes: BTreeMap<NodeId, String>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -215,12 +210,6 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
                         sm.data.insert(key.clone(), value.clone());
                         res.push(ExampleResponse {
                             value: Some(value.clone()),
-                        })
-                    }
-                    ExampleRequest::AddNode { id, addr } => {
-                        sm.nodes.insert(*id, addr.clone());
-                        res.push(ExampleResponse {
-                            value: Some(format!("cluster: {:?}", sm.nodes)),
                         })
                     }
                 },

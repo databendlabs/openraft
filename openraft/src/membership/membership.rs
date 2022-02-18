@@ -3,13 +3,49 @@ use core::option::Option;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use maplit::btreemap;
 use maplit::btreeset;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::error::NodeIdNotInNodes;
 use crate::membership::quorum;
 use crate::MessageSummary;
+use crate::Node;
 use crate::NodeId;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum EitherNodesOrIds {
+    Nodes(BTreeMap<NodeId, Node>),
+    NodeIds(BTreeSet<NodeId>),
+}
+
+impl From<BTreeSet<NodeId>> for EitherNodesOrIds {
+    fn from(node_ids: BTreeSet<NodeId>) -> Self {
+        Self::NodeIds(node_ids)
+    }
+}
+impl From<BTreeMap<NodeId, Node>> for EitherNodesOrIds {
+    fn from(nodes: BTreeMap<NodeId, Node>) -> Self {
+        Self::Nodes(nodes)
+    }
+}
+
+impl EitherNodesOrIds {
+    pub fn node_ids(&self) -> BTreeSet<NodeId> {
+        match self {
+            EitherNodesOrIds::NodeIds(ids) => ids.clone(),
+            EitherNodesOrIds::Nodes(nodes) => nodes.keys().cloned().collect::<BTreeSet<_>>(),
+        }
+    }
+
+    pub fn nodes(&self) -> Option<BTreeMap<NodeId, Node>> {
+        match self {
+            EitherNodesOrIds::NodeIds(_ids) => None,
+            EitherNodesOrIds::Nodes(nodes) => Some(nodes.clone()),
+        }
+    }
+}
 
 /// The membership configuration of the cluster.
 ///
@@ -24,16 +60,35 @@ pub struct Membership {
     ///
     /// AKA a joint config in original raft paper.
     configs: Vec<BTreeSet<NodeId>>,
+
+    /// Nodes info, e.g. the connecting host and port.
+    ///
+    /// If it is Some, it has to contain all node id in `configs` and `learners`.
+    nodes: Option<BTreeMap<NodeId, Node>>,
 }
 
 impl MessageSummary for Membership {
     fn summary(&self) -> String {
+        let nodes = self.get_nodes();
+
         let mut res = vec!["members:[".to_string()];
         for (i, c) in self.configs.iter().enumerate() {
             if i > 0 {
                 res.push(",".to_string());
             }
-            res.push(format!("{:?}", c));
+
+            res.push("{".to_string());
+            for (i, node_id) in c.iter().enumerate() {
+                if i > 0 {
+                    res.push(",".to_string());
+                }
+                res.push(format!("{}", node_id));
+
+                if let Some(ns) = nodes {
+                    res.push(format!(":{{{}}}", ns.get(node_id).unwrap()));
+                }
+            }
+            res.push("}".to_string());
         }
         res.push("]".to_string());
 
@@ -42,7 +97,12 @@ impl MessageSummary for Membership {
             if learner_cnt > 0 {
                 res.push(",".to_string());
             }
-            res.push(format!("{:?}", learner_id));
+
+            res.push(format!("{}", learner_id));
+
+            if let Some(ns) = nodes {
+                res.push(format!(":{{{}}}", ns.get(learner_id).unwrap()));
+            }
         }
         res.push("]".to_string());
         res.join("")
@@ -57,7 +117,108 @@ impl Membership {
         let all_members = Self::build_all_members(&configs);
         let learners = learners.unwrap_or_default();
         let learners = learners.difference(&all_members).cloned().collect::<BTreeSet<_>>();
-        Membership { learners, configs }
+
+        Membership {
+            learners,
+            configs,
+            nodes: None,
+        }
+    }
+
+    /// Attatch nodes info to a Membership and returns a new instance.
+    ///
+    /// The provided `nodes` has to contain every node-id presents in `configs` or `learners` if it is `Some`.
+    pub(crate) fn set_nodes(mut self, nodes: Option<BTreeMap<NodeId, Node>>) -> Result<Self, NodeIdNotInNodes> {
+        self.check_node_ids_in_nodes(&nodes)?;
+
+        self.nodes = self.remove_unused_nodes(&nodes);
+
+        Ok(self)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn get_nodes(&self) -> &Option<BTreeMap<NodeId, Node>> {
+        &self.nodes
+    }
+
+    // TODO(xp)
+    #[allow(dead_code)]
+    pub(crate) fn get_node(&self, node_id: NodeId) -> Option<&Node> {
+        if let Some(ns) = &self.nodes {
+            return ns.get(&node_id);
+        }
+
+        None
+    }
+
+    pub(crate) fn remove_unused_nodes(&self, nodes: &Option<BTreeMap<NodeId, Node>>) -> Option<BTreeMap<NodeId, Node>> {
+        let ns = match nodes {
+            None => {
+                return None;
+            }
+            Some(x) => x,
+        };
+
+        let mut c = btreemap! {};
+
+        let all_members = self.all_members();
+        let learners = self.all_learners();
+
+        for node_id in all_members.iter().chain(learners) {
+            c.insert(*node_id, ns[node_id].clone());
+        }
+
+        Some(c)
+    }
+
+    /// Extends nodes with another.
+    ///
+    /// Node that present in `old` will not be replaced because changing the address of a node potentially breaks
+    /// consensus guarantee.
+    pub fn extend_nodes(
+        old: Option<BTreeMap<NodeId, Node>>,
+        new: &Option<BTreeMap<NodeId, Node>>,
+    ) -> Option<BTreeMap<NodeId, Node>> {
+        let new_nodes = match new {
+            None => return old,
+            Some(x) => x,
+        };
+
+        let mut res = old.unwrap_or_default();
+
+        for (k, v) in new_nodes.iter() {
+            if res.contains_key(k) {
+                continue;
+            }
+            res.insert(*k, v.clone());
+        }
+
+        Some(res)
+    }
+
+    /// Check if all member node-id and learner node id are included in `self.nodes`, if `self.nodes` is `Some`.
+    pub(crate) fn check_node_ids_in_nodes(
+        &self,
+        nodes: &Option<BTreeMap<NodeId, Node>>,
+    ) -> Result<(), NodeIdNotInNodes> {
+        let ns = match nodes {
+            None => return Ok(()),
+            Some(x) => x,
+        };
+
+        let all_members = self.all_members();
+
+        for node_id in all_members.iter().chain(self.learners.iter()) {
+            if !ns.contains_key(node_id) {
+                let e = NodeIdNotInNodes {
+                    node_id: *node_id,
+                    node_ids: ns.keys().cloned().collect::<BTreeSet<NodeId>>(),
+                };
+                return Err(e);
+            }
+        }
+
+        Ok(())
     }
 
     pub fn get_configs(&self) -> &Vec<BTreeSet<NodeId>> {
@@ -69,12 +230,20 @@ impl Membership {
         self.configs.len() > 1
     }
 
-    #[must_use]
-    pub(crate) fn add_learner(&self, id: &NodeId) -> Self {
-        let mut learners = self.learners.clone();
-        learners.insert(*id);
+    pub(crate) fn add_learner(&self, node_id: NodeId, node: Option<Node>) -> Result<Self, NodeIdNotInNodes> {
+        let extension = node.map(|n| btreemap! {node_id=>n});
+
         let configs = self.configs.clone();
-        Self::new(configs, Some(learners))
+        let mut learners = self.learners.clone();
+
+        learners.insert(node_id);
+
+        let nodes = Self::extend_nodes(self.nodes.clone(), &extension);
+
+        let m = Self::new(configs, Some(learners));
+        let m = m.set_nodes(nodes)?;
+
+        Ok(m)
     }
 
     pub(crate) fn all_learners(&self) -> &BTreeSet<NodeId> {
@@ -195,12 +364,16 @@ impl Membership {
     ///     curr = next;
     /// }
     /// ```
-    #[must_use]
-    pub(crate) fn next_safe(&self, goal: BTreeSet<NodeId>, turn_to_learner: bool) -> Self {
-        let new_configs = if self.configs.contains(&goal) {
-            vec![goal]
+    pub(crate) fn next_safe<T>(&self, goal: T, turn_to_learner: bool) -> Result<Self, NodeIdNotInNodes>
+    where T: Into<EitherNodesOrIds> {
+        let goal: EitherNodesOrIds = goal.into();
+
+        let goal_ids = goal.node_ids();
+
+        let new_configs = if self.configs.contains(&goal_ids) {
+            vec![goal_ids]
         } else {
-            vec![self.configs.last().cloned().unwrap(), goal]
+            vec![self.configs.last().cloned().unwrap(), goal_ids]
         };
 
         let mut new_learners = self.all_learners().clone();
@@ -211,7 +384,11 @@ impl Membership {
             new_learners.append(&mut self.all_members());
         };
 
-        Membership::new(new_configs, Some(new_learners))
+        let new_nodes = Self::extend_nodes(self.nodes.clone(), &goal.nodes());
+
+        let m = Membership::new(new_configs, Some(new_learners));
+        let res = m.set_nodes(new_nodes)?;
+        Ok(res)
     }
 
     fn is_majority_of_single_config(granted: &BTreeSet<NodeId>, single_config: &BTreeSet<NodeId>) -> bool {

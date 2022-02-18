@@ -50,6 +50,7 @@ use openraft::DefensiveCheck;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
+use openraft::Node;
 use openraft::NodeId;
 use openraft::Raft;
 use openraft::RaftMetrics;
@@ -492,7 +493,7 @@ impl RaftRouter {
 
     pub async fn add_learner(&self, leader: NodeId, target: NodeId) -> Result<AddLearnerResponse, AddLearnerError> {
         let node = self.get_raft_handle(&leader).unwrap();
-        node.add_learner(target, true).await
+        node.add_learner(target, None, true).await
     }
 
     pub async fn add_learner_with_blocking(
@@ -505,7 +506,7 @@ impl RaftRouter {
             let rt = self.routing_table.lock().unwrap();
             rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
         };
-        node.0.add_learner(target, blocking).await
+        node.0.add_learner(target, None, blocking).await
     }
 
     /// Send a client read request to the target node.
@@ -858,6 +859,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     async fn send_append_entries(
         &self,
         target: u64,
+        _target_node: Option<&Node>,
         rpc: AppendEntriesRequest<MemClientRequest>,
     ) -> std::result::Result<AppendEntriesResponse, RPCError<AppendEntriesError>> {
         tracing::debug!("append_entries to id={} {:?}", target, rpc);
@@ -878,6 +880,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     async fn send_install_snapshot(
         &self,
         target: u64,
+        _target_node: Option<&Node>,
         rpc: InstallSnapshotRequest,
     ) -> std::result::Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>> {
         self.rand_send_delay().await;
@@ -892,7 +895,12 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn send_vote(&self, target: u64, rpc: VoteRequest) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
+    async fn send_vote(
+        &self,
+        target: u64,
+        _target_node: Option<&Node>,
+        rpc: VoteRequest,
+    ) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
         self.rand_send_delay().await;
 
         self.check_reachable(rpc.vote.node_id, target)?;

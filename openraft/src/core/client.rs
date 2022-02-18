@@ -109,13 +109,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             let my_id = self.core.id;
             let target = *target;
+            let target_node = self.core.effective_membership.get_node(target).cloned();
             let network = self.core.network.clone();
 
             let ttl = Duration::from_millis(self.core.config.heartbeat_interval);
 
             let task = tokio::spawn(
                 async move {
-                    let outer_res = timeout(ttl, network.send_append_entries(target, rpc)).await;
+                    let outer_res = timeout(ttl, network.send_append_entries(target, target_node.as_ref(), rpc)).await;
                     match outer_res {
                         Ok(append_res) => match append_res {
                             Ok(x) => Ok((target, x)),

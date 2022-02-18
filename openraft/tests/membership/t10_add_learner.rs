@@ -1,3 +1,4 @@
+use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -119,7 +120,8 @@ async fn add_learner_non_blocking() -> Result<()> {
         router.wait(&0, timeout()).await?.log(Some(log_index), "received 100 logs").await?;
 
         router.new_raft_node(1).await;
-        let res = router.add_learner_with_blocking(0, 1, false).await?;
+        let raft = router.get_raft_handle(&0)?;
+        let res = raft.add_learner(1, None, false).await?;
 
         assert_eq!(AddLearnerResponse { matched: None }, res);
     }

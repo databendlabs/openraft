@@ -34,7 +34,7 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
-    let network = Arc::new(ExampleNetwork { store: store.clone() });
+    let network = Arc::new(ExampleNetwork {});
 
     // Create a local raft instance.
     let raft = Raft::new(node_id, config.clone(), network, store.clone());
@@ -43,6 +43,7 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
     // be later used on the actix-web services.
     let app = Data::new(ExampleApp {
         id: node_id,
+        addr: http_addr.clone(),
         raft,
         store,
         config,
@@ -64,7 +65,6 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
             .service(management::add_learner)
             .service(management::change_membership)
             .service(management::metrics)
-            .service(management::list_nodes)
             // application API
             .service(api::write)
             .service(api::read)

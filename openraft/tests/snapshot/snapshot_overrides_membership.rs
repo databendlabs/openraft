@@ -96,7 +96,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 }],
                 leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
             };
-            router.send_append_entries(1, req).await?;
+            router.send_append_entries(1, None, req).await?;
 
             tracing::info!("--- check that learner membership is affected");
             {

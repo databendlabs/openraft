@@ -25,6 +25,7 @@ use crate::error::Fatal;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::error::VoteError;
+use crate::membership::EitherNodesOrIds;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::AppData;
@@ -32,6 +33,7 @@ use crate::AppDataResponse;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
+use crate::Node;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -217,9 +219,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// free, and Raft guarantees that the first node to become the cluster leader will propagate
     /// only its own config.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn initialize(&self, members: BTreeSet<NodeId>) -> Result<(), InitializeError> {
+    pub async fn initialize<T>(&self, members: T) -> Result<(), InitializeError>
+    where T: Into<EitherNodesOrIds> + Debug {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::Initialize { members, tx }, rx).await
+        self.call_core(
+            RaftMsg::Initialize {
+                members: members.into(),
+                tx,
+            },
+            rx,
+        )
+        .await
     }
 
     /// Synchronize a new Raft node, optionally, blocking until up-to-speed (§6).
@@ -234,10 +244,19 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// If blocking is false, this function returns at once as successfully setting up the replication.
     ///
     /// If the node to add is already a voter or learner, it returns `RaftResponse::NoChange` at once.
+    ///
+    /// The caller can attach additional info `node` to this node id.
+    /// A `node` can be used to store the network address of a node. Thus an application does not need another store for
+    /// mapping node-id to ip-addr when implementing the RaftNetwork.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=id))]
-    pub async fn add_learner(&self, id: NodeId, blocking: bool) -> Result<AddLearnerResponse, AddLearnerError> {
+    pub async fn add_learner(
+        &self,
+        id: NodeId,
+        node: Option<Node>,
+        blocking: bool,
+    ) -> Result<AddLearnerResponse, AddLearnerError> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::AddLearner { id, blocking, tx }, rx).await
+        self.call_core(RaftMsg::AddLearner { id, node, blocking, tx }, rx).await
     }
 
     /// Propose a cluster configuration change.
@@ -448,13 +467,15 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         tx: RaftRespTx<(), ClientReadError>,
     },
     Initialize {
-        members: BTreeSet<NodeId>,
+        members: EitherNodesOrIds,
         tx: RaftRespTx<(), InitializeError>,
     },
     // TODO(xp): make tx a field of a struct
     /// Request raft core to setup a new replication to a learner.
     AddLearner {
         id: NodeId,
+
+        node: Option<Node>,
 
         /// If block until the newly added learner becomes line-rate.
         blocking: bool,

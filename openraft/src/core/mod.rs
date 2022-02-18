@@ -59,6 +59,7 @@ use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
+use crate::Node;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -108,6 +109,14 @@ impl EffectiveMembership {
     // TODO(xp): unused
     pub fn get_configs(&self) -> &Vec<BTreeSet<NodeId>> {
         self.membership.get_configs()
+    }
+
+    pub fn get_node(&self, node_id: NodeId) -> Option<&Node> {
+        self.membership.get_node(node_id)
+    }
+
+    pub fn get_nodes(&self) -> Option<&BTreeMap<NodeId, Node>> {
+        self.membership.get_nodes().as_ref()
     }
 }
 
@@ -530,8 +539,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self, tx))]
     fn reject_with_forward_to_leader<T, E>(&self, tx: RaftRespTx<T, E>)
     where E: From<ForwardToLeader> {
+        let l = self.current_leader();
         let err = ForwardToLeader {
-            leader_id: self.current_leader(),
+            leader_id: l,
+            leader_node: self.get_leader_node(l),
         };
 
         let _ = tx.send(Err(err.into()));
@@ -570,6 +581,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             }
         } else {
             Some(id)
+        }
+    }
+
+    pub(crate) fn get_leader_node(&self, leader_id: Option<NodeId>) -> Option<Node> {
+        match leader_id {
+            None => None,
+            Some(id) => self.effective_membership.get_node(id).cloned(),
         }
     }
 }
@@ -839,8 +857,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::Initialize { tx, .. } => {
                 self.core.reject_init_with_config(tx);
             }
-            RaftMsg::AddLearner { id, tx, blocking } => {
-                self.add_learner(id, tx, blocking).await;
+            RaftMsg::AddLearner { id, node, tx, blocking } => {
+                self.add_learner(id, node, tx, blocking).await;
             }
             RaftMsg::ChangeMembership {
                 members,
