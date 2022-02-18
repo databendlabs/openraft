@@ -146,10 +146,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         for member in all_nodes.into_iter().filter(|member| member != &self.core.id) {
             let rpc = VoteRequest::new(self.core.vote, self.core.last_log_id);
 
+            let target_node = self.core.effective_membership.get_node(member).cloned();
+
             let (network, tx_inner) = (self.core.network.clone(), tx.clone());
             let _ = tokio::spawn(
                 async move {
-                    let res = network.send_vote(member, rpc).await;
+                    let res = network.send_vote(member, target_node.as_ref(), rpc).await;
 
                     match res {
                         Ok(vote_resp) => {

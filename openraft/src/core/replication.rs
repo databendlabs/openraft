@@ -36,6 +36,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     ) -> ReplicationState {
         let repl_stream = ReplicationStream::new(
             target,
+            self.core.effective_membership.get_node(target).cloned(),
             self.core.vote,
             self.core.config.clone(),
             self.core.last_log_id,

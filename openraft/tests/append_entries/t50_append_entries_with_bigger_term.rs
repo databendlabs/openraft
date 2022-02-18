@@ -37,7 +37,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), log_index)),
     };
 
-    let resp = router.send_append_entries(0, req).await?;
+    let resp = router.send_append_entries(0, None, req).await?;
     assert!(resp.success);
 
     // after append entries, check hard state in term 2 and vote for node 1

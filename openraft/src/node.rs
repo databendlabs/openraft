@@ -21,6 +21,15 @@ pub struct Node {
     pub data: BTreeMap<String, String>,
 }
 
+impl Node {
+    pub fn new(addr: impl ToString) -> Self {
+        Self {
+            addr: addr.to_string(),
+            ..Default::default()
+        }
+    }
+}
+
 impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}; ", self.addr)?;

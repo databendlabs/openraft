@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use actix_web::get;
@@ -6,6 +7,7 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::Responder;
 use openraft::error::Infallible;
+use openraft::Node;
 use openraft::NodeId;
 use openraft::RaftMetrics;
 use web::Json;
@@ -20,8 +22,13 @@ use crate::app::ExampleApp;
 /// This should be done before adding a node as a member into the cluster
 /// (by calling `change-membership`)
 #[post("/add-learner")]
-pub async fn add_learner(app: Data<ExampleApp>, req: Json<NodeId>) -> actix_web::Result<impl Responder> {
-    let res = app.raft.add_learner(req.0, None, true).await;
+pub async fn add_learner(app: Data<ExampleApp>, req: Json<(NodeId, String)>) -> actix_web::Result<impl Responder> {
+    let node_id = req.0 .0;
+    let node = Node {
+        addr: req.0 .1.clone(),
+        ..Default::default()
+    };
+    let res = app.raft.add_learner(node_id, Some(node), true).await;
     Ok(Json(res))
 }
 
@@ -38,8 +45,11 @@ pub async fn change_membership(
 /// Initialize a single-node cluster.
 #[post("/init")]
 pub async fn init(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
-    let mut nodes = BTreeSet::new();
-    nodes.insert(app.id);
+    let mut nodes = BTreeMap::new();
+    nodes.insert(app.id, Node {
+        addr: app.addr.clone(),
+        data: Default::default(),
+    });
     let res = app.raft.initialize(nodes).await;
     Ok(Json(res))
 }
@@ -50,17 +60,5 @@ pub async fn metrics(app: Data<ExampleApp>) -> actix_web::Result<impl Responder>
     let metrics = app.raft.metrics().borrow().clone();
 
     let res: Result<RaftMetrics, Infallible> = Ok(metrics);
-    Ok(Json(res))
-}
-
-/// List known nodes of the cluster.
-#[get("/list-nodes")]
-pub async fn list_nodes(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
-    let nodes = {
-        let state_machine = app.store.state_machine.read().await;
-        state_machine.nodes.clone()
-    };
-
-    let res: Result<_, Infallible> = Ok(nodes);
     Ok(Json(res))
 }

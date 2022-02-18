@@ -39,6 +39,7 @@ use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LogId;
 use crate::MessageSummary;
+use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
@@ -69,6 +70,7 @@ impl ReplicationStream {
     /// Create a new replication stream for the target peer.
     pub(crate) fn new<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>(
         target: NodeId,
+        target_node: Option<Node>,
         vote: Vote,
         config: Arc<Config>,
         last_log: Option<LogId>,
@@ -79,6 +81,7 @@ impl ReplicationStream {
     ) -> Self {
         ReplicationCore::spawn(
             target,
+            target_node,
             vote,
             config,
             last_log,
@@ -98,6 +101,8 @@ impl ReplicationStream {
 struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     /// The ID of the target Raft node which replication events are to be sent to.
     target: NodeId,
+
+    target_node: Option<Node>,
 
     /// The vote of the leader.
     vote: Vote,
@@ -154,6 +159,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     #[tracing::instrument(level = "trace", skip(config, network, storage, raft_core_tx))]
     pub(self) fn spawn(
         target: NodeId,
+        target_node: Option<Node>,
         vote: Vote,
         config: Arc<Config>,
         last_log: Option<LogId>,
@@ -169,6 +175,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         let this = Self {
             target,
+            target_node,
             vote,
             network,
             storage,
@@ -359,7 +366,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         );
 
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
-        let res = timeout(the_timeout, self.network.send_append_entries(self.target, payload)).await;
+        let res = timeout(
+            the_timeout,
+            self.network.send_append_entries(self.target, self.target_node.as_ref(), payload),
+        )
+        .await;
 
         let append_resp = match res {
             Ok(append_res) => match append_res {
@@ -858,7 +869,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             let res = timeout(
                 self.install_snapshot_timeout,
-                self.network.send_install_snapshot(self.target, req),
+                self.network.send_install_snapshot(self.target, self.target_node.as_ref(), req),
             )
             .await;
 

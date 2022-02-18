@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
+use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::StorageError;
@@ -237,12 +238,24 @@ pub enum RPCError<T: Error> {
 #[error("error occur on remote peer {target}: {source}")]
 pub struct RemoteError<T: std::error::Error> {
     pub target: NodeId,
+    pub target_node: Option<Node>,
     pub source: T,
 }
 
 impl<T: std::error::Error> RemoteError<T> {
     pub fn new(target: NodeId, e: T) -> Self {
-        Self { target, source: e }
+        Self {
+            target,
+            target_node: None,
+            source: e,
+        }
+    }
+    pub fn new_with_node(target: NodeId, node: Node, e: T) -> Self {
+        Self {
+            target,
+            target_node: Some(node),
+            source: e,
+        }
     }
 }
 
@@ -292,9 +305,10 @@ pub struct LackEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error("has to forward request to: {leader_id:?}")]
+#[error("has to forward request to: {leader_id:?}, {leader_node:?}")]
 pub struct ForwardToLeader {
     pub leader_id: Option<NodeId>,
+    pub leader_node: Option<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]

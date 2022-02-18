@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use openraft::error::AppendEntriesError;
 use openraft::error::InstallSnapshotError;
@@ -13,29 +11,30 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
+use openraft::Node;
 use openraft::NodeId;
 use openraft::RaftNetwork;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::store::ExampleRequest;
-use crate::ExampleStore;
 
-pub struct ExampleNetwork {
-    pub store: Arc<ExampleStore>,
-}
+pub struct ExampleNetwork {}
 
 impl ExampleNetwork {
-    pub async fn send_rpc<Req, Resp, Err>(&self, target: NodeId, uri: &str, req: Req) -> Result<Resp, RPCError<Err>>
+    pub async fn send_rpc<Req, Resp, Err>(
+        &self,
+        target: NodeId,
+        target_node: Option<&Node>,
+        uri: &str,
+        req: Req,
+    ) -> Result<Resp, RPCError<Err>>
     where
         Req: Serialize,
         Err: std::error::Error + DeserializeOwned,
         Resp: DeserializeOwned,
     {
-        let addr = {
-            let state_machine = self.store.state_machine.read().await;
-            state_machine.nodes.get(&target).unwrap().clone()
-        };
+        let addr = target_node.map(|x| &x.addr).unwrap();
 
         let url = format!("http://{}/{}", addr, uri);
         let client = reqwest::Client::new();
@@ -53,20 +52,28 @@ impl RaftNetwork<ExampleRequest> for ExampleNetwork {
     async fn send_append_entries(
         &self,
         target: NodeId,
+        target_node: Option<&Node>,
         req: AppendEntriesRequest<ExampleRequest>,
     ) -> Result<AppendEntriesResponse, RPCError<AppendEntriesError>> {
-        self.send_rpc(target, "raft-append", req).await
+        self.send_rpc(target, target_node, "raft-append", req).await
     }
 
     async fn send_install_snapshot(
         &self,
         target: NodeId,
+        target_node: Option<&Node>,
         req: InstallSnapshotRequest,
     ) -> Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>> {
-        self.send_rpc(target, "raft-snapshot", req).await
+        self.send_rpc(target, target_node, "raft-snapshot", req).await
     }
 
-    async fn send_vote(&self, target: NodeId, req: VoteRequest) -> Result<VoteResponse, RPCError<VoteError>> {
-        self.send_rpc(target, "raft-vote", req).await
+    async fn send_vote(
+        &self,
+        target: NodeId,
+        target_node: Option<&Node>,
+
+        req: VoteRequest,
+    ) -> Result<VoteResponse, RPCError<VoteError>> {
+        self.send_rpc(target, target_node, "raft-vote", req).await
     }
 }

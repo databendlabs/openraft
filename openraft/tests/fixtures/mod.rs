@@ -50,6 +50,7 @@ use openraft::DefensiveCheck;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
+use openraft::Node;
 use openraft::NodeId;
 use openraft::Raft;
 use openraft::RaftMetrics;
@@ -858,6 +859,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     async fn send_append_entries(
         &self,
         target: u64,
+        _target_node: Option<&Node>,
         rpc: AppendEntriesRequest<MemClientRequest>,
     ) -> std::result::Result<AppendEntriesResponse, RPCError<AppendEntriesError>> {
         tracing::debug!("append_entries to id={} {:?}", target, rpc);
@@ -878,6 +880,7 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     async fn send_install_snapshot(
         &self,
         target: u64,
+        _target_node: Option<&Node>,
         rpc: InstallSnapshotRequest,
     ) -> std::result::Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>> {
         self.rand_send_delay().await;
@@ -892,7 +895,12 @@ impl RaftNetwork<MemClientRequest> for RaftRouter {
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn send_vote(&self, target: u64, rpc: VoteRequest) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
+    async fn send_vote(
+        &self,
+        target: u64,
+        _target_node: Option<&Node>,
+        rpc: VoteRequest,
+    ) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
         self.rand_send_delay().await;
 
         self.check_reachable(rpc.vote.node_id, target)?;

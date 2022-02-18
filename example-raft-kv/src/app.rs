@@ -10,6 +10,7 @@ use crate::ExampleStore;
 // instances of raft, store and more.
 pub struct ExampleApp {
     pub id: NodeId,
+    pub addr: String,
     pub raft: ExampleRaft,
     pub store: Arc<ExampleStore>,
     pub config: Arc<Config>,

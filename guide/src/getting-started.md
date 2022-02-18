@@ -24,12 +24,12 @@ includes:
 
 - Define client request and response;
 - Implement a storage to let raft store its state;
-- Implement a network layer for raft to transmit messages.
+- Implement a network layer for the raft to transmit messages.
 
 ## 1. Define client request and response
 
 A request is some data that modifies the raft state machine.
-A response is some data that the raft state machine returns to client.
+A response is some data that the raft state machine returns to the client.
 
 Request and response can be any types that impl `AppData` and `AppDataResponse`,
 e.g.:
@@ -44,17 +44,17 @@ pub struct ExampleResponse(Result<Option<String>, ClientError>);
 impl AppDataResponse for ExampleResponse {}
 ```
 
-These two types are totally application specific, and are mainly related to the
+These two types are totally application-specific and are mainly related to the
 state machine implementation in `RaftStorage`.
 
 
 ## 2. Implement `RaftStorage`
 
 The trait `RaftStorage` defines the way that data is stored and consumed.
-It could be a wrapper of some local KV store such [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/),
-or a wrapper of a remote sql DB.
+It could be a wrapper of some local KV store such [RocksDB](https://docs.rs/rocksdb/latest/rocksdb/)
+or a wrapper of a remote SQL DB.
 
-`RaftStorage` defines 4 sets of APIs an application needs to implement:
+`RaftStorage` defines four sets of APIs an application needs to implement:
 
 - Read/write raft state, e.g., term or vote.
     ```rust
@@ -88,13 +88,13 @@ or a wrapper of a remote sql DB.
     fn install_snapshot(meta, snapshot)
     ```
 
-The APIs have been made quite obvious and there is a good example
+The APIs have been made quite obvious, and there is a good example
 [`ExampleStore`](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/store/mod.rs),
 which is a pure-in-memory implementation that shows what should be done when a
 method is called.
 
 
-### How do I impl RaftStorage correctly
+### How do I impl RaftStorage correctly?
 
 There is a [Test suite for RaftStorage](https://github.com/datafuselabs/openraft/blob/main/memstore/src/test.rs),
 if an implementation passes the test, openraft will work happily with it.
@@ -112,10 +112,10 @@ pub fn test_mem_store() -> anyhow::Result<()> {
 
 In our design, there is at most one thread at a time writing data to it.
 But there may be several threads reading from it concurrently,
-e.g., more than one replication tasks reading log entries from store.
+e.g., more than one replication task reading log entries from the store.
 
 
-### An implementation has to guarantee data durability
+### An implementation has to guarantee data durability.
 
 The caller always assumes a completed write is persistent.
 The raft correctness highly depends on a reliable store.
@@ -134,26 +134,69 @@ corresponding methods of a remote `Raft`.
 pub trait RaftNetwork<D>: Send + Sync + 'static
 where D: AppData
 {
-    async fn send_append_entries(&self, target: NodeId, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse>;
-    async fn send_install_snapshot( &self, target: NodeId, rpc: InstallSnapshotRequest,) -> Result<InstallSnapshotResponse>;
-    async fn send_vote(&self, target: NodeId, rpc: VoteRequest) -> Result<VoteResponse>;
+    async fn send_append_entries(&self, target: NodeId, node:Option<Node>, rpc: AppendEntriesRequest<D>) -> Result<AppendEntriesResponse>;
+    async fn send_install_snapshot( &self, target: NodeId, node:Option<Node>, rpc: InstallSnapshotRequest,) -> Result<InstallSnapshotResponse>;
+    async fn send_vote(&self, target: NodeId, node:Option<Node>, rpc: VoteRequest) -> Result<VoteResponse>;
 }
 ```
 
-[ExampleNetwork](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft.rs)
-shows that how to forward message to other raft nodes.
+[ExampleNetwork](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft_network_impl.rs)
+shows how to forward messages to other raft nodes.
 
-And there should be server endpoint for each of these RPCs.
+And there should be a server endpoint for each of these RPCs.
 When the server receives a raft RPC, it just passes it to its `raft` instance and replies with what returned:
 [raft-server-endpoint](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft.rs).
 
-As a real world impl, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic).
-[databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) would be a nice real world example.
+As a real-world impl, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic).
+[databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) would be an excellent real-world example.
+
+
+### Find the address of the target node.
+
+An implementation of `RaftNetwork` need to connect to the remote raft peer,
+through TCP etc.
+
+You have two ways to find the address of a remote peer:
+
+1. Managing the mapping from node-id to address by yourself.
+
+2. `openraft` allows you to store the additional info in its internal Membership,
+   which is automatically replicated as regular logs.
+
+   To use this feature, you need to pass a `Node` instance, which contains
+   address and other info, to `Raft::add_learner()`:
+
+   - `Raft::add_learner(node_id, None, ...)` tells `openraft` to store only node-id
+     in `Membership`. The membership data then would be like:
+
+     ```json
+     "membership": {
+        "learners": [],
+        "configs": [ [ 1, 2, 3 ] ],
+        "nodes": {}
+     }
+     ```
+
+   - `Raft::add_learner(node_id, Some(Node::new("127.0.0.1")), ...)` tells `openraft`
+     to store node-id, and its address in `Membership` too:
+
+     ```json
+     "membership": {
+        "learners": [],
+        "configs": [ [ 1, 2, 3 ] ],
+        "nodes": {
+          "1": { "addr": "127.0.0.1:21001", "data": {} },
+          "2": { "addr": "127.0.0.1:21002", "data": {} },
+          "3": { "addr": "127.0.0.1:21003", "data": {} }
+        }
+     }
+     ```
+
 
 
 ## 4. Put everything together
 
-Finally, we put these part together and boot up a raft node
+Finally, we put these parts together and boot up a raft node
 [main.rs](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/bin/main.rs)
 :
 
@@ -223,21 +266,21 @@ async fn main() {
 ## 5. Run the cluster
 
 To set up a demo raft cluster includes:
-- Bring up 3 uninitialized raft node;
+- Bring up three uninitialized raft nodes;
 - Initialize a single-node cluster;
 - Add more raft nodes into it;
 - Update the membership config.
 
-[example-raft-kv](https://github.com/datafuselabs/openraft/tree/main/example-raft-kv) describes these step in detail.
+[example-raft-kv](https://github.com/datafuselabs/openraft/tree/main/example-raft-kv) describes these steps in detail.
 
-And two test scripts for setting up cluster are provided:
+And two test scripts for setting up a cluster are provided:
 
 - [test-cluster.sh](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/test-cluster.sh)
   is a minimized bash script using curl to communicate with the raft cluster,
-  in order to show what messages are exactly sent and received in plain HTTP. 
+  to show what messages are sent and received in plain HTTP.
 
 - [test_cluster.rs](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/tests/cluster/test_cluster.rs)
-  uses `ExampleClient` to set up a cluster and write data to it then read it.
+  Use ExampleClient to set up a cluster, write data, and then read it.
 
 
 

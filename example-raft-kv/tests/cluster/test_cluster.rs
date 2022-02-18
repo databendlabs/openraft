@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -6,8 +5,10 @@ use anyerror::AnyError;
 use example_raft_key_value::client::ExampleClient;
 use example_raft_key_value::start_example_raft_node;
 use example_raft_key_value::store::ExampleRequest;
+use maplit::btreemap;
 use maplit::btreeset;
 use openraft::error::NodeNotFound;
+use openraft::Node;
 use tokio::runtime::Runtime;
 
 /// Setup a cluster of 3 nodes.
@@ -32,7 +33,6 @@ async fn test_cluster() -> anyhow::Result<()> {
         };
         Ok(addr)
     };
-    let get_addr = Arc::new(get_addr);
 
     // --- Start 3 raft node in 3 threads.
 
@@ -59,62 +59,45 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     // --- Create a client to the first node, as a control handle to the cluster.
 
-    let client = ExampleClient::new(1, get_addr.clone());
+    let client = ExampleClient::new(1, get_addr(1)?);
 
     // --- 1. Initialize the target node as a cluster of only one node.
     //        After init(), the single node cluster will be fully functional.
 
+    println!("=== init single node cluster");
     client.init().await?;
 
-    let m = client.metrics().await?;
-    println!("metrics after init: {:?}", m);
+    println!("=== metrics after init");
+    let _x = client.metrics().await?;
 
-    // --- 2. Before adding more members to the cluster, first we need to let the cluster know the address of every node
-    //        to add.
-    //        This is done with a regular raft protocol: replicate a log that contains node info and then apply the log
-    //        to state machine.
-    //        Then `RaftNetwork` will be able to read node address from its store.
-
-    let x = client
-        .write(&ExampleRequest::AddNode {
-            id: 1,
-            addr: "127.0.0.1:21001".to_string(),
-        })
-        .await?;
-    println!("add node 1 res: {:?}", x);
-
-    let x = client
-        .write(&ExampleRequest::AddNode {
-            id: 2,
-            addr: "127.0.0.1:21002".to_string(),
-        })
-        .await?;
-    println!("add node 2 res: {:?}", x);
-
-    let x = client
-        .write(&ExampleRequest::AddNode {
-            id: 3,
-            addr: "127.0.0.1:21003".to_string(),
-        })
-        .await?;
-    println!("add node 3 res: {:?}", x);
-
-    let x = client.list_nodes().await?;
-    println!("list-nodes: {:?}", x);
-
-    // --- 3. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication from the
+    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication from the
     //        leader.
 
-    let x = client.add_learner(&2).await?;
-    println!("add-learner 2: {:?}", x);
+    println!("=== add-learner 2");
+    let _x = client.add_learner((2, get_addr(2)?)).await?;
 
-    let x = client.add_learner(&3).await?;
-    println!("add-learner 3: {:?}", x);
+    println!("=== add-learner 3");
+    let _x = client.add_learner((3, get_addr(3)?)).await?;
 
-    // --- 4. Turn the two learners to members. A member node can vote or elect itself as leader.
+    println!("=== metrics after add-learner");
+    let x = client.metrics().await?;
 
-    let x = client.change_membership(&btreeset! {1,2,3}).await?;
-    println!("change-membership to 1,2,3: {:?}", x);
+    assert_eq!(&vec![btreeset! {1}], x.membership_config.get_configs());
+
+    let nodes_in_cluster = x.membership_config.get_nodes();
+    assert_eq!(
+        Some(&btreemap! {
+            1 => Node::new("127.0.0.1:21001"),
+            2 => Node::new("127.0.0.1:21002"),
+            3 => Node::new("127.0.0.1:21003"),
+        }),
+        nodes_in_cluster
+    );
+
+    // --- 3. Turn the two learners to members. A member node can vote or elect itself as leader.
+
+    println!("=== change-membership to 1,2,3");
+    let _x = client.change_membership(&btreeset! {1,2,3}).await?;
 
     // --- After change-membership, some cluster state will be seen in the metrics.
     //
@@ -123,7 +106,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     //   current_leader: Some(1),
     //   membership_config: EffectiveMembership {
     //        log_id: LogId { leader_id: LeaderId { term: 1, node_id: 1 }, index: 8 },
-    //        membership: Membership { learners: {}, configs: [{1, 2, 3}], all_members: {1, 2, 3} }
+    //        membership: Membership { learners: {}, configs: [{1, 2, 3}] }
     //   },
     //   leader_metrics: Some(LeaderMetrics { replication: {
     //     2: ReplicationMetrics { matched: Some(LogId { leader_id: LeaderId { term: 1, node_id: 1 }, index: 7 }) },
@@ -131,18 +114,19 @@ async fn test_cluster() -> anyhow::Result<()> {
     // }
     // ```
 
+    println!("=== metrics after change-member");
     let x = client.metrics().await?;
-    println!("metrics after change-member: {:?}", x);
+    assert_eq!(&vec![btreeset! {1,2,3}], x.membership_config.get_configs());
 
     // --- Try to write some application data through the leader.
 
-    let x = client
+    println!("=== write `foo=bar`");
+    let _x = client
         .write(&ExampleRequest::Set {
             key: "foo".to_string(),
             value: "bar".to_string(),
         })
         .await?;
-    println!("write `foo` res: {:?}", x);
 
     // --- Wait for a while to let the replication get done.
 
@@ -150,46 +134,46 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     // --- Read it on every node.
 
+    println!("=== read `foo` on node 1");
     let x = client.read(&("foo".to_string())).await?;
-    println!("read `foo` on node 1: {:?}", x);
     assert_eq!("bar", x);
 
-    let client2 = ExampleClient::new(2, get_addr.clone());
+    println!("=== read `foo` on node 2");
+    let client2 = ExampleClient::new(2, get_addr(2)?);
     let x = client2.read(&("foo".to_string())).await?;
-    println!("read `foo` on node 2: {:?}", x);
     assert_eq!("bar", x);
 
-    let client3 = ExampleClient::new(3, get_addr.clone());
+    println!("=== read `foo` on node 3");
+    let client3 = ExampleClient::new(3, get_addr(3)?);
     let x = client3.read(&("foo".to_string())).await?;
-    println!("read `foo` on node 3: {:?}", x);
     assert_eq!("bar", x);
 
     // --- A write to non-leader will be automatically forwarded to a known leader
 
-    let x = client2
+    println!("=== read `foo` on node 2");
+    let _x = client2
         .write(&ExampleRequest::Set {
             key: "foo".to_string(),
             value: "wow".to_string(),
         })
         .await?;
-    println!("write `foo` to node-2 res: {:?}", x);
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // --- Read it on every node.
 
+    println!("=== read `foo` on node 1");
     let x = client.read(&("foo".to_string())).await?;
-    println!("read `foo` on node 1: {:?}", x);
     assert_eq!("wow", x);
 
-    let client2 = ExampleClient::new(2, get_addr.clone());
+    println!("=== read `foo` on node 2");
+    let client2 = ExampleClient::new(2, get_addr(2)?);
     let x = client2.read(&("foo".to_string())).await?;
-    println!("read `foo` on node 2: {:?}", x);
     assert_eq!("wow", x);
 
-    let client3 = ExampleClient::new(3, get_addr.clone());
+    println!("=== read `foo` on node 3");
+    let client3 = ExampleClient::new(3, get_addr(3)?);
     let x = client3.read(&("foo".to_string())).await?;
-    println!("read `foo` on node 3: {:?}", x);
     assert_eq!("wow", x);
 
     Ok(())
