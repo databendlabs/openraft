@@ -9,3 +9,19 @@ description = "The openraft user guide."
 [build]
 build-dir = "guide/book"
 create-missing = false
+
+[preprocessor.svgbob]
+text_width = 8.0
+text_height = 16.0
+class = "bob"
+font_family = "arial"
+font_size = 14.0
+stroke_width = 2.0
+# there's using css-variables from theme:
+stroke_color = "var(--fg)" # see default theme / variables.css
+background_color = "transparent" # also useful `var(--bg)`
+# all properties are optional.
+
+
+[output.html]
+additional-css = ["guide/src/custom.css"]

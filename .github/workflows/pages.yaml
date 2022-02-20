@@ -10,18 +10,22 @@ jobs:
   deploy-guide:
     runs-on: ubuntu-18.04
     steps:
-      - name: Setup | Checkout
+      - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Setup | mdbook
+      - name: Install mdbook plugins
+        run: |
+          cargo install mdbook-svgbob
+
+      - name: Install mdbook
         uses: peaceiris/actions-mdbook@v1
         with:
           mdbook-version: '0.4.10'
 
-      - name: Build
+      - name: Build mdbook
         run: mdbook build
 
-      - name: Deploy
+      - name: Deploy to github page
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
