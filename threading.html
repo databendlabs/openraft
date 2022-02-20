@@ -31,6 +31,7 @@
         <link rel="stylesheet" href="ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
+                <link rel="stylesheet" href="guide/src/custom.css">
         
             </head>
     <body>
@@ -150,13 +151,17 @@
 <p>RaftCore: all logs and state machine operations are done in this thread.
 Thus there is no race condition</p>
 <ul>
-<li>All raft state runs in this task, such as LeaderState, CandidateState etc.</li>
-<li>All write to store is done in this task, i.e., write to store is serialized.</li>
-</ul>
-<p>Lifecycle:</p>
-<ul>
-<li>RaftCore thread is spawnd when a raft node is created and keeps running until
-the raft node is dropped.</li>
+<li>
+<p>All raft state runs in this task, such as LeaderState, CandidateState etc.</p>
+</li>
+<li>
+<p>All write to store is done in this task, i.e., write to store is serialized.
+Lifecycle:</p>
+</li>
+<li>
+<p>RaftCore thread is spawnd when a raft node is created and keeps running until
+the raft node is dropped.</p>
+</li>
 </ul>
 </li>
 <li>

@@ -31,6 +31,7 @@
         <link rel="stylesheet" href="ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
+                <link rel="stylesheet" href="guide/src/custom.css">
         
             </head>
     <body>
@@ -173,10 +174,12 @@ revert to a <code>Learner</code> is base on the <code>turn_to_learner</code>.</p
 will be turned into learners, otherwise will be removed.</p>
 <p>Example of <code>turn_to_learner</code> usage:
 If the original membership is {&quot;members&quot;:{1,2,3}, &quot;learners&quot;:{}}, and call <code>change_membership</code> 
-with <code>node_list</code> {3,4,5}, then:
-- If <code>turn_to_learner</code> is true, after commit the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}.
-- Otherwise if <code>turn_to_learner</code> is false, then the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}, 
-in which the members not exists in the new membership just be removed from the cluster.</p>
+with <code>node_list</code> {3,4,5}, then:</p>
+<ul>
+<li>If <code>turn_to_learner</code> is true, after commit the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}.</li>
+<li>Otherwise if <code>turn_to_learner</code> is false, then the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}, 
+in which the members not exists in the new membership just be removed from the cluster.</li>
+</ul>
 <h2 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h2>
 <p>Openraft tries to commit one or more membership logs to finally change the
 membership to <code>node_list</code>.
