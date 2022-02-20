@@ -1,0 +1,15 @@
+svg.bob line {
+    stroke: #888;
+}
+
+svg.bob path {
+    stroke: #888;
+}
+
+svg.bob line.dashed {
+    stroke: #ccc;
+}
+
+svg.bob circle {
+    stroke: #bbb;
+}
