@@ -344,12 +344,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     where E: From<Fatal> {
         let span = tracing::Span::current();
 
-        let sum = mes.summary();
+        let sum = if span.is_disabled() { None } else { Some(mes.summary()) };
 
         let send_res = self.inner.tx_api.send((mes, span));
         if let Err(send_err) = send_res {
             let last_err = self.inner.rx_metrics.borrow().running_state.clone();
-            tracing::error!(%send_err, mes=%sum, last_error=?last_err, "error send tx to RaftCore");
+            tracing::error!(%send_err, mes=%sum.unwrap_or_default(), last_error=?last_err, "error send tx to RaftCore");
 
             let err = match last_err {
                 Ok(_) => {
@@ -367,7 +367,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             Ok(x) => x,
             Err(e) => {
                 let last_err = self.inner.rx_metrics.borrow().running_state.clone();
-                tracing::error!(%e, mes=%sum, last_error=?last_err, "error recv rx from RaftCore");
+                tracing::error!(%e, mes=%sum.unwrap_or_default(), last_error=?last_err, "error recv rx from RaftCore");
 
                 let err = match last_err {
                     Ok(_) => {
