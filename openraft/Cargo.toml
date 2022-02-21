@@ -43,6 +43,7 @@ tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
+guid_nodeid = [] # Increase NodeId size to 16B to store GUIDs
 
 [package.metadata.docs.rs]
 features = ["docinclude"] # Activate `docinclude` during docs.rs build.

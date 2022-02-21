@@ -5,6 +5,16 @@ use std::fmt::Formatter;
 use serde::Deserialize;
 use serde::Serialize;
 
+// If GUID-based `NodeId` is activated, include the definition from submodule.
+//
+// NOTE: If you are using IDE with rust-analyzer with all-features turned on by default,
+// turn it off for the workspace to prevent showing errors in test files, which are not
+// adjusted to use `NodeId`, but rather use `u64` directly.
+#[cfg(feature = "guid_nodeid")]
+pub mod guid_nodeid;
+#[cfg(feature = "guid_nodeid")]
+pub use guid_nodeid::NodeId;
+#[cfg(not(feature = "guid_nodeid"))]
 /// A Raft node's ID.
 pub type NodeId = u64;
 

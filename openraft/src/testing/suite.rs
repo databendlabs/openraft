@@ -25,7 +25,34 @@ use crate::StorageError;
 use crate::Violation;
 use crate::Vote;
 
-const NODE_ID: NodeId = 0;
+// Depending on the actual `NodeId` type, use either a simple 64-bit IDs or GUIDs for constants.
+#[cfg(feature = "guid_nodeid")]
+mod node_id_switch {
+    use super::NodeId;
+    pub(super) const NODE_ID: NodeId = NodeId::new_from_parts(0, 0);
+    pub(super) const NODE_9: NodeId = NodeId::new_from_parts(9, 0);
+    pub(super) const NODE_10: NodeId = NodeId::new_from_parts(10, 0);
+}
+#[cfg(not(feature = "guid_nodeid"))]
+mod node_id_switch {
+    use super::NodeId;
+    pub(super) const NODE_ID: NodeId = 0;
+    pub(super) const NODE_9: NodeId = 9;
+    pub(super) const NODE_10: NodeId = 10;
+}
+use node_id_switch::*;
+
+// For GUID `NodeId`, we need to redefine `btreeset!` to build sets with real `NodeId` type from u64.
+// Instead of doing millions of changes below, since rewrite the macro to produce `NodeId`s from u64.
+#[cfg(feature = "guid_nodeid")]
+macro_rules! btreeset {
+    ( $($key:expr,)+ ) => (btreeset!($($key),+));
+    ( $($key:expr),* ) => {{
+        let mut _set = ::std::collections::BTreeSet::new();
+        $( _set.insert(NodeId::new_from_parts($key, 0)); )*
+        _set
+    }};
+}
 
 /// Test suite to ensure a `RaftStore` impl works as expected.
 ///
@@ -1052,7 +1079,7 @@ where
         store
             .save_vote(&Vote {
                 term: 10,
-                node_id: 10,
+                node_id: NODE_10,
                 committed: false,
             })
             .await?;
@@ -1062,7 +1089,7 @@ where
             let res = store
                 .save_vote(&Vote {
                     term: 9,
-                    node_id: 10,
+                    node_id: NODE_10,
                     committed: false,
                 })
                 .await;
@@ -1079,7 +1106,7 @@ where
             assert_eq!(
                 Some(Vote {
                     term: 10,
-                    node_id: 10,
+                    node_id: NODE_10,
                     committed: false
                 }),
                 vote,
@@ -1091,7 +1118,7 @@ where
             let res = store
                 .save_vote(&Vote {
                     term: 10,
-                    node_id: 9,
+                    node_id: NODE_9,
                     committed: false,
                 })
                 .await;
@@ -1102,12 +1129,12 @@ where
                 violation: Violation::NonIncrementalVote {
                     curr: Vote {
                         term: 10,
-                        node_id: 10,
+                        node_id: NODE_10,
                         committed: false
                     },
                     to: Vote {
                         term: 10,
-                        node_id: 9,
+                        node_id: NODE_9,
                         committed: false
                     }
                 },
@@ -1119,7 +1146,7 @@ where
             assert_eq!(
                 Some(Vote {
                     term: 10,
-                    node_id: 10,
+                    node_id: NODE_10,
                     committed: false
                 }),
                 vote

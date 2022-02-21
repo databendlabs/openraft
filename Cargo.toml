@@ -5,4 +5,5 @@ members = [
 ]
 exclude = [
     "example-raft-kv",
+    "test_guid_nodeid"
 ]

@@ -1,0 +1,8 @@
+[package]
+name = "test_guid_nodeid"
+version = "0.1.0"
+edition = "2021"
+description = "Helper crate to test whether GUID-based NodeId for openraft is compiling properly"
+
+[dependencies]
+openraft = { version="0.6", path = "../openraft", features = ["guid_nodeid"] }
