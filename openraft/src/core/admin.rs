@@ -247,7 +247,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=self.core.id))]
+    #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=display(self.core.id)))]
     pub async fn append_membership_log(
         &mut self,
         mem: Membership,
@@ -315,7 +315,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Return true if removed.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn try_remove_replication(&mut self, target: NodeId) -> bool {
-        tracing::debug!(target, "try_remove_replication");
+        tracing::debug!(target = display(target), "try_remove_replication");
 
         {
             let n = self.nodes.get(&target);
