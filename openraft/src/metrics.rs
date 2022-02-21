@@ -9,6 +9,7 @@
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -45,14 +46,14 @@ pub struct RaftMetrics {
     /// The current cluster leader.
     pub current_leader: Option<NodeId>,
     /// The current membership config of the cluster.
-    pub membership_config: EffectiveMembership,
+    pub membership_config: Arc<EffectiveMembership>,
 
     /// The id of the last log included in snapshot.
     /// If there is no snapshot, it is (0,0).
     pub snapshot: Option<LogId>,
 
     /// The metrics about the leader. It is Some() only when this node is leader.
-    pub leader_metrics: Option<LeaderMetrics>,
+    pub leader_metrics: Option<Arc<LeaderMetrics>>,
 }
 
 impl MessageSummary for RaftMetrics {
@@ -104,7 +105,7 @@ impl RaftMetrics {
             last_log_index: None,
             last_applied: None,
             current_leader: None,
-            membership_config: EffectiveMembership::new(LogId::default(), membership_config),
+            membership_config: Arc::new(EffectiveMembership::new(LogId::default(), membership_config)),
             snapshot: None,
             leader_metrics: None,
         }
