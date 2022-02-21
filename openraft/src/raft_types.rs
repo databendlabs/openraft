@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::LeaderId;
 use crate::MessageSummary;
+use crate::NodeId;
 
 /// The identity of a raft log.
 /// A term, node_id and an index identifies an log globally.
@@ -41,9 +42,11 @@ impl LogId {
                 leader_id, index
             );
             assert_eq!(
-                leader_id.node_id, 0,
+                leader_id.node_id,
+                NodeId::default(),
                 "zero-th log entry must be (0,0,0), but {} {}",
-                leader_id, index
+                leader_id,
+                index
             );
             assert_eq!(
                 index, 0,
