@@ -1,4 +1,5 @@
 use std::option::Option::None;
+use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
@@ -86,8 +87,10 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config =
-                EffectiveMembership::new(LogId::default(), Membership::new(vec![btreeset! {1,2}], None));
+            update.membership_config = Arc::new(EffectiveMembership::new(
+                LogId::default(),
+                Membership::new(vec![btreeset! {1,2}], None),
+            ));
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
@@ -107,10 +110,10 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config = EffectiveMembership::new(
+            update.membership_config = Arc::new(EffectiveMembership::new(
                 LogId::default(),
                 Membership::new(vec![btreeset! {}, btreeset! {1,2}], None),
-            );
+            ));
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
@@ -199,7 +202,10 @@ fn init_wait_test() -> (RaftMetrics, Wait, watch::Sender<RaftMetrics>) {
         last_log_index: None,
         last_applied: None,
         current_leader: None,
-        membership_config: EffectiveMembership::new(LogId::default(), Membership::new(vec![btreeset! {}], None)),
+        membership_config: Arc::new(EffectiveMembership::new(
+            LogId::default(),
+            Membership::new(vec![btreeset! {}], None),
+        )),
 
         snapshot: None,
         leader_metrics: None,
