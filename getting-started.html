@@ -352,7 +352,7 @@ async fn main() {
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
-    let network = Arc::new(ExampleNetwork { store: store.clone() });
+    let network = Arc::new(ExampleNetwork {});
 
     // Create a local raft instance.
     let raft = Raft::new(node_id, config.clone(), network, store.clone());
