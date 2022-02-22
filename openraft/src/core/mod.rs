@@ -135,7 +135,7 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     config: Arc<Config>,
 
     /// The cluster's current membership configuration.
-    effective_membership: EffectiveMembership,
+    effective_membership: Arc<EffectiveMembership>,
 
     /// The `RaftNetwork` implementation.
     network: Arc<N>,
@@ -205,7 +205,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let this = Self {
             id,
             config,
-            effective_membership: EffectiveMembership::new(LogId::default(), membership),
+            effective_membership: Arc::new(EffectiveMembership::new(LogId::default(), membership)),
             network,
             storage,
             target_state: State::Follower,
@@ -259,7 +259,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         self.last_log_id = state.last_log_id;
         self.vote = state.vote;
-        self.effective_membership = state.last_membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
+        self.effective_membership =
+            Arc::new(state.last_membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id)));
         self.last_applied = state.last_applied;
 
         // NOTE: The commit index must be determined by a leader after
@@ -349,7 +350,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self))]
     fn report_metrics(&mut self, leader_metrics: Update<Option<&LeaderMetrics>>) {
         let leader_metrics = match leader_metrics {
-            Update::Update(v) => v.cloned(),
+            Update::Update(v) => v.map(|m| Arc::new(m.clone())),
             Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
         };
 
@@ -442,7 +443,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // - the node has been removed from the cluster. The parent application can observe the
         // transition to the learner state as a signal for when it is safe to shutdown a node
         // being removed.
-        self.effective_membership = cfg;
+        self.effective_membership = Arc::new(cfg);
         if self.effective_membership.membership.is_member(&self.id) {
             if self.target_state == State::Learner {
                 // The node is a Learner and the new config has it configured as a normal member.
@@ -559,7 +560,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.last_log_id = Some(log_id);
 
         if let EntryPayload::Membership(mem) = &entry.payload {
-            self.effective_membership = EffectiveMembership::new(entry.log_id, mem.clone());
+            self.effective_membership = Arc::new(EffectiveMembership::new(entry.log_id, mem.clone()));
         }
 
         Ok(entry)
