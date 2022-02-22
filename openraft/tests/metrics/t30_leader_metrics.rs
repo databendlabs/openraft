@@ -106,9 +106,7 @@ async fn leader_metrics() -> Result<()> {
 
     router.assert_stable_cluster(Some(1), Some(log_index)).await; // Still in term 1, so leader is still node 0.
 
-    let ww = ReplicationMetrics {
-        matched: Some(LogId::new(LeaderId::new(1, 0), log_index)),
-    };
+    let ww = ReplicationMetrics::new(Some(LogId::new(LeaderId::new(1, 0), log_index)));
     let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone(), 4=>ww.clone(), };
     router
         .wait_for_metrics(
@@ -157,9 +155,7 @@ async fn leader_metrics() -> Result<()> {
 
     tracing::info!("--- replication metrics should reflect the replication state");
     {
-        let ww = ReplicationMetrics {
-            matched: Some(LogId::new(LeaderId::new(1, 0), log_index)),
-        };
+        let ww = ReplicationMetrics::new(Some(LogId::new(LeaderId::new(1, 0), log_index)));
         let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone()};
         router
             .wait_for_metrics(

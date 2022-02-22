@@ -348,9 +348,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn report_metrics(&mut self, leader_metrics: Update<Option<&LeaderMetrics>>) {
+    fn report_metrics(&mut self, leader_metrics: Update<Option<&Arc<LeaderMetrics>>>) {
         let leader_metrics = match leader_metrics {
-            Update::Update(v) => v.map(|m| Arc::new(m.clone())),
+            Update::Update(v) => v.cloned(),
             Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
         };
 
@@ -731,7 +731,7 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     pub(super) nodes: BTreeMap<NodeId, ReplicationState>,
 
     /// The metrics about a leader
-    pub leader_metrics: LeaderMetrics,
+    pub leader_metrics: Arc<LeaderMetrics>,
 
     /// The stream of events coming from replication streams.
     pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<S::SnapshotData>, Span)>,
@@ -750,7 +750,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         Self {
             core,
             nodes: BTreeMap::new(),
-            leader_metrics: LeaderMetrics::default(),
+            leader_metrics: Arc::new(LeaderMetrics::default()),
             replication_tx,
             replication_rx,
             awaiting_committed: Vec::new(),

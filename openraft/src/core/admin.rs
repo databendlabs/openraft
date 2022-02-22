@@ -336,7 +336,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         tracing::info!("removed replication to: {}", target);
         self.nodes.remove(&target);
-        self.leader_metrics.replication.remove(&target);
+        let mut metrics_clone = self.leader_metrics.as_ref().clone();
+        metrics_clone.replication.remove(&target);
+        self.leader_metrics = Arc::new(metrics_clone);
         true
     }
 }

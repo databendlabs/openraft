@@ -1,4 +1,7 @@
 use std::collections::BTreeMap;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use tokio::sync::oneshot;
 use tracing_futures::Instrument;
@@ -175,7 +178,26 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_leader_metrics(&mut self, target: NodeId, matched: Option<LogId>) {
         tracing::debug!(%target, ?matched, "update_leader_metrics");
-        self.leader_metrics.replication.insert(target, ReplicationMetrics { matched });
+        let (matched_leader_id, matched_index) = if let Some(log_id) = matched {
+            (Some(log_id.leader_id), log_id.index)
+        } else {
+            (None, 0)
+        };
+        if let Some(target_metrics) = self.leader_metrics.replication.get(&target) {
+            if target_metrics.matched_leader_id == matched_leader_id {
+                // we can update the metrics in-place
+                target_metrics.matched_index.store(matched_index, Ordering::Relaxed);
+                return;
+            }
+        }
+        // either the record does not exist or the leader ID is different
+        // create a new object with updated metrics
+        let mut metrics_clone = self.leader_metrics.as_ref().clone();
+        metrics_clone.replication.insert(target, ReplicationMetrics {
+            matched_leader_id,
+            matched_index: AtomicU64::new(matched_index),
+        });
+        self.leader_metrics = Arc::new(metrics_clone);
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
