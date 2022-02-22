@@ -52,6 +52,7 @@ use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
+use crate::storage::RaftSnapshotBuilder;
 use crate::vote::Vote;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -61,7 +62,7 @@ use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
-use crate::RaftNetwork;
+use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::StorageError;
 use crate::Update;
@@ -127,7 +128,7 @@ impl MessageSummary for EffectiveMembership {
 }
 
 /// The core type implementing the Raft protocol.
-pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
     /// This node's ID.
     id: NodeId,
 
@@ -137,11 +138,11 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     /// The cluster's current membership configuration.
     effective_membership: Arc<EffectiveMembership>,
 
-    /// The `RaftNetwork` implementation.
-    network: Arc<N>,
+    /// The `RaftNetworkFactory` implementation.
+    network: N,
 
     /// The `RaftStorage` implementation.
-    storage: Arc<S>,
+    storage: S,
 
     /// The target state of the system.
     target_state: State,
@@ -186,12 +187,12 @@ pub struct RaftCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftSt
     rx_shutdown: oneshot::Receiver<()>,
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     pub(crate) fn spawn(
         id: NodeId,
         config: Arc<Config>,
-        network: Arc<N>,
-        storage: Arc<S>,
+        network: N,
+        storage: S,
         rx_api: mpsc::UnboundedReceiver<(RaftMsg<D, R>, Span)>,
         tx_metrics: watch::Sender<RaftMetrics>,
         rx_shutdown: oneshot::Receiver<()>,
@@ -471,7 +472,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Trigger a log compaction (snapshot) job if needed.
     /// If force is True, it will skip the threshold check and start creating snapshot as demanded.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(self) fn trigger_log_compaction_if_needed(&mut self, force: bool) {
+    pub(self) async fn trigger_log_compaction_if_needed(&mut self, force: bool) {
         if self.snapshot_state.is_some() {
             return;
         }
@@ -497,7 +498,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // At this point, we are clear to begin a new compaction process.
-        let storage = self.storage.clone();
+        let mut builder = self.storage.get_snapshot_builder().await;
         let (handle, reg) = AbortHandle::new_pair();
         let (chan_tx, _) = broadcast::channel(1);
         let tx_compaction = self.tx_compaction.clone();
@@ -508,7 +509,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         tokio::spawn(
             async move {
-                let f = storage.build_snapshot();
+                let f = builder.build_snapshot();
                 let res = Abortable::new(f, reg).await;
                 match res {
                     Ok(res) => match res {
@@ -595,7 +596,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
 #[tracing::instrument(level = "trace", skip(sto), fields(entries=%entries.summary()))]
 async fn apply_to_state_machine<D, R, S>(
-    sto: Arc<S>,
+    sto: &mut S,
     entries: &[&Entry<D>],
     max_keep: u64,
 ) -> Result<Vec<R>, StorageError>
@@ -619,7 +620,7 @@ where
 }
 
 #[tracing::instrument(level = "trace", skip(sto))]
-async fn purge_applied_logs<D, R, S>(sto: Arc<S>, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
+async fn purge_applied_logs<D, R, S>(sto: &mut S, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
 where
     D: AppData,
     R: AppDataResponse,
@@ -724,7 +725,7 @@ impl State {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to the Raft leader.
-struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
     pub(super) core: &'a mut RaftCore<D, R, N, S>,
 
     /// A mapping of node IDs the replication state of the target node.
@@ -743,7 +744,7 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     pub(super) awaiting_committed: Vec<ClientRequestEntry<D, R>>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Create a new instance.
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         let (replication_tx, replication_rx) = mpsc::unbounded_channel();
@@ -765,25 +766,20 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.core.next_election_timeout = None;
         self.core.vote.commit();
 
-        // Spawn replication streams.
+        // Spawn replication streams for followers and learners.
         let targets = self
             .core
             .effective_membership
             .all_members()
             .iter()
             .filter(|elem| *elem != &self.core.id)
+            .chain(self.core.effective_membership.all_learners().iter())
+            .cloned()
             .collect::<Vec<_>>();
 
         for target in targets {
-            let state = self.spawn_replication_stream(*target, None);
-            self.nodes.insert(*target, state);
-        }
-
-        // spawn replication streams for learners.
-        let learners = self.core.effective_membership.all_learners();
-        for node_id in learners {
-            let state = self.spawn_replication_stream(*node_id, None);
-            self.nodes.insert(*node_id, state);
+            let state = self.spawn_replication_stream(target, None).await;
+            self.nodes.insert(target, state);
         }
 
         self.leader_report_metrics();
@@ -916,14 +912,16 @@ pub fn is_matched_upto_date(matched: &Option<LogId>, last_log_id: &Option<LogId>
 }
 
 /// Volatile state specific to a Raft node in candidate state.
-struct CandidateState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+struct CandidateState<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
     core: &'a mut RaftCore<D, R, N, S>,
 
     /// Ids of the nodes that has granted our vote request.
     granted: BTreeSet<NodeId>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>>
+    CandidateState<'a, D, R, N, S>
+{
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         Self {
             core,
@@ -964,7 +962,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
 
             // Send RPCs to all members in parallel.
-            let mut pending_votes = self.spawn_parallel_vote_requests();
+            let mut pending_votes = self.spawn_parallel_vote_requests().await;
 
             // Inner processing loop for this Raft state.
             loop {
@@ -1031,11 +1029,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to a Raft node in follower state.
-pub struct FollowerState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+pub struct FollowerState<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
     core: &'a mut RaftCore<D, R, N, S>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> FollowerState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> FollowerState<'a, D, R, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         Self { core }
     }
@@ -1107,11 +1105,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to a Raft node in learner state.
-pub struct LearnerState<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+pub struct LearnerState<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
     core: &'a mut RaftCore<D, R, N, S>,
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<D, R, N, S>) -> Self {
         Self { core }
     }

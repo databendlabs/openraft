@@ -12,6 +12,7 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftNetwork;
+use openraft::RaftNetworkFactory;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
@@ -41,7 +42,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
@@ -83,7 +84,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
     {
         tracing::info!("--- create learner");
         router.new_raft_node(1).await;
-        let sto = router.get_storage_handle(&1)?;
+        let mut sto = router.get_storage_handle(&1)?;
 
         tracing::info!("--- add a membership config log to the learner");
         {
@@ -96,7 +97,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 }],
                 leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
             };
-            router.send_append_entries(1, None, req).await?;
+            router.connect(1, None).await.send_append_entries(req).await?;
 
             tracing::info!("--- check that learner membership is affected");
             {

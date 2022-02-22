@@ -9,6 +9,7 @@ use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
+use openraft::RaftNetworkFactory;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -39,7 +40,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     router.new_raft_node(0).await;
 
@@ -52,7 +53,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.send_append_entries(0, None, rpc).await?;
+    let resp = router.connect(0, None).await.send_append_entries(rpc).await?;
     assert!(!resp.success);
     assert!(resp.conflict);
 
@@ -72,7 +73,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.send_append_entries(0, None, rpc).await?;
+    let resp = router.connect(0, None).await.send_append_entries(rpc).await?;
     assert!(resp.success);
     assert!(!resp.conflict);
 
@@ -85,7 +86,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.send_append_entries(0, None, rpc).await?;
+    let resp = router.connect(0, None).await.send_append_entries(rpc).await?;
     assert!(!resp.success);
     assert!(resp.conflict);
 

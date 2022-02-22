@@ -11,6 +11,7 @@ use openraft::EffectiveMembership;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
+use openraft::RaftLogReader;
 use openraft::RaftStorage;
 use openraft::State;
 
@@ -34,7 +35,7 @@ async fn initialization() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;
@@ -55,7 +56,7 @@ async fn initialization() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     for i in 0..3 {
-        let sto = router.get_storage_handle(&1)?;
+        let mut sto = router.get_storage_handle(&1)?;
         let first = sto.get_log_entries(0..2).await?.first().cloned();
 
         tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);

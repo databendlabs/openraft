@@ -5,7 +5,7 @@ use std::time::Duration;
 use maplit::btreeset;
 use openraft::error::ChangeMembershipError;
 use openraft::Config;
-use openraft::RaftStorage;
+use openraft::RaftLogReader;
 use openraft::State;
 
 use crate::fixtures::RaftRouter;
@@ -26,7 +26,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
@@ -51,7 +51,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         tracing::info!("--- change_membership blocks until success: {:?}", res);
 
         for node_id in 0..2 {
-            let sto = router.get_storage_handle(&node_id)?;
+            let mut sto = router.get_storage_handle(&node_id)?;
             let logs = sto.get_log_entries(..).await?;
             assert_eq!(n_logs, logs[logs.len() - 1].log_id.index, "node: {}", node_id);
             // 0-th log
@@ -78,7 +78,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
@@ -130,7 +130,7 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
     let _ent = ut_span.enter();
 
     let config = Arc::new(Config { ..Default::default() }.validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     let timeout = Some(Duration::from_millis(1000));
     let mut n_logs = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 

@@ -13,10 +13,11 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::NodeId;
 use crate::RaftNetwork;
+use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::StorageError;
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// An RPC invoked by candidates to gather votes (§5.2).
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
@@ -90,7 +91,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>>
+    CandidateState<'a, D, R, N, S>
+{
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level = "debug", skip(self, res))]
     pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {
@@ -139,7 +142,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) fn spawn_parallel_vote_requests(&self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
+    pub(super) async fn spawn_parallel_vote_requests(&mut self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
         let all_nodes = self.core.effective_membership.all_members().clone();
         let (tx, rx) = mpsc::channel(all_nodes.len());
 
@@ -148,10 +151,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
             let target_node = self.core.effective_membership.get_node(member).cloned();
 
-            let (network, tx_inner) = (self.core.network.clone(), tx.clone());
+            let (mut network, tx_inner) = (
+                self.core.network.connect(member, target_node.as_ref()).await,
+                tx.clone(),
+            );
             let _ = tokio::spawn(
                 async move {
-                    let res = network.send_vote(member, target_node.as_ref(), rpc).await;
+                    let res = network.send_vote(rpc).await;
 
                     match res {
                         Ok(vote_resp) => {

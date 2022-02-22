@@ -26,6 +26,6 @@ use crate::MemStore;
 /// ```
 #[test]
 pub fn test_mem_store() -> Result<(), StorageError> {
-    Suite::test_all(MemStore::new)?;
+    Suite::test_all(MemStore::new_arc)?;
     Ok(())
 }

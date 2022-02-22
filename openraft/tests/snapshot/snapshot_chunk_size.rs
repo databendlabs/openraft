@@ -33,7 +33,7 @@ async fn snapshot_chunk_size() -> Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = 0;
 

@@ -28,11 +28,11 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
-    let sto = router.get_storage_handle(&0)?;
+    let mut sto = router.get_storage_handle(&0)?;
     router.remove_node(0).await;
 
     {

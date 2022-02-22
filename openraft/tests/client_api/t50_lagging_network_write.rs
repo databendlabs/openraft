@@ -30,8 +30,7 @@ async fn lagging_network_write() -> Result<()> {
         }
         .validate()?,
     );
-    let router = RaftRouter::builder(config).send_delay(50).build();
-    let router = Arc::new(router);
+    let mut router = RaftRouter::builder(config).send_delay(50).build();
 
     router.new_raft_node(0).await;
     let mut log_index = 0;

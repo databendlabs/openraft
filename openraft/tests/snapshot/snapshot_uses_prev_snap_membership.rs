@@ -8,6 +8,7 @@ use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
+use openraft::RaftLogReader;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 
@@ -42,11 +43,11 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {}).await?;
 
-    let sto0 = router.get_storage_handle(&0)?;
+    let mut sto0 = router.get_storage_handle(&0)?;
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {

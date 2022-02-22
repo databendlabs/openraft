@@ -22,7 +22,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
     let _ent = ut_span.enter();
 
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 

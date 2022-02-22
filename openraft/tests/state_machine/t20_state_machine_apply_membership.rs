@@ -30,7 +30,7 @@ async fn state_machine_apply_membership() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
     let mut log_index = 0;
@@ -49,7 +49,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     for i in 0..=0 {
-        let sto = router.get_storage_handle(&i)?;
+        let mut sto = router.get_storage_handle(&i)?;
         assert_eq!(
             Some(EffectiveMembership::new(
                 LogId::new(LeaderId::new(0, 0), 0),
@@ -100,7 +100,7 @@ async fn state_machine_apply_membership() -> Result<()> {
             .metrics(|x| x.last_applied.index() == Some(log_index), "uniform log applied")
             .await?;
 
-        let sto = router.get_storage_handle(&i)?;
+        let mut sto = router.get_storage_handle(&i)?;
         let (_, last_membership) = sto.last_applied_state().await?;
         assert_eq!(
             Some(EffectiveMembership::new(

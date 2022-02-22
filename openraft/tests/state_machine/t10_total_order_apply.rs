@@ -19,7 +19,7 @@ async fn total_order_apply() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
@@ -36,7 +36,7 @@ async fn total_order_apply() -> Result<()> {
 
     let (tx, rx) = watch::channel(false);
 
-    let sto1 = router.get_storage_handle(&1)?;
+    let mut sto1 = router.get_storage_handle(&1)?;
 
     let mut prev = None;
     let h = tokio::spawn(async move {

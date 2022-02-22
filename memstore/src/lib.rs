@@ -16,6 +16,8 @@ use openraft::async_trait::async_trait;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
 use openraft::storage::LogState;
+use openraft::storage::RaftLogReader;
+use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::Snapshot;
 use openraft::AppData;
 use openraft::AppDataResponse;
@@ -117,35 +119,24 @@ impl MemStore {
             current_snapshot,
         }
     }
+
+    pub async fn new_arc() -> Arc<Self> {
+        Arc::new(Self::new().await)
+    }
 }
 
 #[async_trait]
-impl RaftStorageDebug<MemStoreStateMachine> for MemStore {
+impl RaftStorageDebug<MemStoreStateMachine> for Arc<MemStore> {
     /// Get a handle to the state machine for testing purposes.
-    async fn get_state_machine(&self) -> MemStoreStateMachine {
+    async fn get_state_machine(&mut self) -> MemStoreStateMachine {
         self.sm.write().await.clone()
     }
 }
 
 #[async_trait]
-impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
-    type SnapshotData = Cursor<Vec<u8>>;
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&self, vote: &Vote) -> Result<(), StorageError> {
-        tracing::debug!(?vote, "save_vote");
-        let mut h = self.vote.write().await;
-
-        *h = Some(*vote);
-        Ok(())
-    }
-
-    async fn read_vote(&self) -> Result<Option<Vote>, StorageError> {
-        Ok(*self.vote.read().await)
-    }
-
+impl RaftLogReader<ClientRequest, ClientResponse> for Arc<MemStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &self,
+        &mut self,
         range: RB,
     ) -> Result<Vec<Entry<ClientRequest>>, StorageError> {
         let res = {
@@ -156,7 +147,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         Ok(res)
     }
 
-    async fn get_log_state(&self) -> Result<LogState, StorageError> {
+    async fn get_log_state(&mut self) -> Result<LogState, StorageError> {
         let log = self.log.read().await;
         let last = log.iter().rev().next().map(|(_, ent)| ent.log_id);
 
@@ -172,97 +163,12 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             last_log_id: last,
         })
     }
+}
 
-    async fn last_applied_state(&self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError> {
-        let sm = self.sm.read().await;
-        Ok((sm.last_applied_log, sm.last_membership.clone()))
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&self, log_id: LogId) -> Result<(), StorageError> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
-
-        {
-            let mut log = self.log.write().await;
-
-            let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
-            for key in keys {
-                log.remove(&key);
-            }
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge_logs_upto(&self, log_id: LogId) -> Result<(), StorageError> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
-
-        {
-            let mut ld = self.last_purged_log_id.write().await;
-            assert!(*ld <= Some(log_id));
-            *ld = Some(log_id);
-        }
-
-        {
-            let mut log = self.log.write().await;
-
-            let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
-            for key in keys {
-                log.remove(&key);
-            }
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&self, entries: &[&Entry<ClientRequest>]) -> Result<(), StorageError> {
-        let mut log = self.log.write().await;
-        for entry in entries {
-            log.insert(entry.log_id.index, (*entry).clone());
-        }
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply_to_state_machine(
-        &self,
-        entries: &[&Entry<ClientRequest>],
-    ) -> Result<Vec<ClientResponse>, StorageError> {
-        let mut res = Vec::with_capacity(entries.len());
-
-        let mut sm = self.sm.write().await;
-
-        for entry in entries {
-            tracing::debug!(%entry.log_id, "replicate to sm");
-
-            sm.last_applied_log = Some(entry.log_id);
-
-            match entry.payload {
-                EntryPayload::Blank => res.push(ClientResponse(None)),
-                EntryPayload::Normal(ref data) => {
-                    if let Some((serial, r)) = sm.client_serial_responses.get(&data.client) {
-                        if serial == &data.serial {
-                            res.push(ClientResponse(r.clone()));
-                            continue;
-                        }
-                    }
-                    let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
-                    sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
-                    res.push(ClientResponse(previous));
-                }
-                EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = Some(EffectiveMembership::new(entry.log_id, mem.clone()));
-                    res.push(ClientResponse(None))
-                }
-            };
-        }
-        Ok(res)
-    }
-
+#[async_trait]
+impl RaftSnapshotBuilder<ClientRequest, ClientResponse, Cursor<Vec<u8>>> for Arc<MemStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<Cursor<Vec<u8>>>, StorageError> {
         let (data, last_applied_log);
 
         {
@@ -316,15 +222,121 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             snapshot: Box::new(Cursor::new(data)),
         })
     }
+}
+
+#[async_trait]
+impl RaftStorage<ClientRequest, ClientResponse> for Arc<MemStore> {
+    type SnapshotData = Cursor<Vec<u8>>;
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>, StorageError> {
+    async fn save_vote(&mut self, vote: &Vote) -> Result<(), StorageError> {
+        tracing::debug!(?vote, "save_vote");
+        let mut h = self.vote.write().await;
+
+        *h = Some(*vote);
+        Ok(())
+    }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote>, StorageError> {
+        Ok(*self.vote.read().await)
+    }
+
+    async fn last_applied_state(&mut self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError> {
+        let sm = self.sm.read().await;
+        Ok((sm.last_applied_log, sm.last_membership.clone()))
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn delete_conflict_logs_since(&mut self, log_id: LogId) -> Result<(), StorageError> {
+        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+
+        {
+            let mut log = self.log.write().await;
+
+            let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
+            for key in keys {
+                log.remove(&key);
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn purge_logs_upto(&mut self, log_id: LogId) -> Result<(), StorageError> {
+        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+
+        {
+            let mut ld = self.last_purged_log_id.write().await;
+            assert!(*ld <= Some(log_id));
+            *ld = Some(log_id);
+        }
+
+        {
+            let mut log = self.log.write().await;
+
+            let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
+            for key in keys {
+                log.remove(&key);
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self, entries))]
+    async fn append_to_log(&mut self, entries: &[&Entry<ClientRequest>]) -> Result<(), StorageError> {
+        let mut log = self.log.write().await;
+        for entry in entries {
+            log.insert(entry.log_id.index, (*entry).clone());
+        }
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self, entries))]
+    async fn apply_to_state_machine(
+        &mut self,
+        entries: &[&Entry<ClientRequest>],
+    ) -> Result<Vec<ClientResponse>, StorageError> {
+        let mut res = Vec::with_capacity(entries.len());
+
+        let mut sm = self.sm.write().await;
+
+        for entry in entries {
+            tracing::debug!(%entry.log_id, "replicate to sm");
+
+            sm.last_applied_log = Some(entry.log_id);
+
+            match entry.payload {
+                EntryPayload::Blank => res.push(ClientResponse(None)),
+                EntryPayload::Normal(ref data) => {
+                    if let Some((serial, r)) = sm.client_serial_responses.get(&data.client) {
+                        if serial == &data.serial {
+                            res.push(ClientResponse(r.clone()));
+                            continue;
+                        }
+                    }
+                    let previous = sm.client_status.insert(data.client.clone(), data.status.clone());
+                    sm.client_serial_responses.insert(data.client.clone(), (data.serial, previous.clone()));
+                    res.push(ClientResponse(previous));
+                }
+                EntryPayload::Membership(ref mem) => {
+                    sm.last_membership = Some(EffectiveMembership::new(entry.log_id, mem.clone()));
+                    res.push(ClientResponse(None))
+                }
+            };
+        }
+        Ok(res)
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
-        &self,
+        &mut self,
         meta: &SnapshotMeta,
         snapshot: Box<Self::SnapshotData>,
     ) -> Result<StateMachineChanges, StorageError> {
@@ -368,7 +380,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
@@ -379,5 +391,16 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             }
             None => Ok(None),
         }
+    }
+
+    type LogReader = Self;
+    type SnapshotBuilder = Self;
+
+    async fn get_log_reader(&mut self) -> Self::LogReader {
+        self.clone()
+    }
+
+    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
+        self.clone()
     }
 }

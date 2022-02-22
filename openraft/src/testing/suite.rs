@@ -94,7 +94,7 @@ where
     }
 
     pub async fn last_membership_in_log_initial(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let membership = store.last_membership_in_log(0).await?;
 
@@ -104,7 +104,7 @@ where
     }
 
     pub async fn last_membership_in_log(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         tracing::info!("--- no log, do not read membership from state machine");
         {
@@ -178,7 +178,7 @@ where
     }
 
     pub async fn get_membership_initial(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let membership = store.get_membership().await?;
 
@@ -188,7 +188,7 @@ where
     }
 
     pub async fn get_membership_from_log_and_sm(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         tracing::info!("--- no log, read membership from state machine");
         {
@@ -247,7 +247,7 @@ where
     }
 
     pub async fn get_initial_state_without_init(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let initial = store.get_initial_state().await?;
         assert_eq!(InitialState::default(), initial, "uninitialized state");
@@ -255,8 +255,8 @@ where
     }
 
     pub async fn get_initial_state_with_state(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
-        Self::default_vote(&store).await?;
+        let mut store = builder.build().await;
+        Self::default_vote(&mut store).await?;
 
         store
             .append_to_log(&[&Entry {
@@ -299,8 +299,8 @@ where
     pub async fn get_initial_state_membership_from_log_and_sm(builder: &B) -> Result<(), StorageError> {
         // It should never return membership from logs that are included in state machine present.
 
-        let store = builder.build().await;
-        Self::default_vote(&store).await?;
+        let mut store = builder.build().await;
+        Self::default_vote(&mut store).await?;
 
         // copy the test from get_membership_config
 
@@ -365,8 +365,8 @@ where
     }
 
     pub async fn get_initial_state_last_log_gt_sm(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
-        Self::default_vote(&store).await?;
+        let mut store = builder.build().await;
+        Self::default_vote(&mut store).await?;
 
         store
             .append_to_log(&[&Entry {
@@ -399,8 +399,8 @@ where
     }
 
     pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
-        Self::default_vote(&store).await?;
+        let mut store = builder.build().await;
+        Self::default_vote(&mut store).await?;
 
         store.append_to_log(&[&blank(1, 2)]).await?;
 
@@ -417,7 +417,7 @@ where
     }
 
     pub async fn save_vote(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         store
             .save_vote(&Vote {
@@ -441,8 +441,8 @@ where
     }
 
     pub async fn get_log_entries(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
-        Self::feed_10_logs_vote_self(&store).await?;
+        let mut store = builder.build().await;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
         tracing::info!("--- get start == stop");
         {
@@ -463,8 +463,8 @@ where
     }
 
     pub async fn try_get_log_entry(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
-        Self::feed_10_logs_vote_self(&store).await?;
+        let mut store = builder.build().await;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.purge_logs_upto(LogId::new(LeaderId::new(0, 0), 0)).await?;
 
@@ -481,7 +481,7 @@ where
     }
 
     pub async fn initial_logs(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let ent = store.try_get_log_entry(0).await?;
         assert!(ent.is_none(), "store initialized");
@@ -490,7 +490,7 @@ where
     }
 
     pub async fn get_log_state(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let st = store.get_log_state().await?;
 
@@ -537,8 +537,8 @@ where
     }
 
     pub async fn get_log_id(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
-        Self::feed_10_logs_vote_self(&store).await?;
+        let mut store = builder.build().await;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.purge_logs_upto(LogId::new(LeaderId::new(1, NODE_ID), 3)).await?;
 
@@ -558,7 +558,7 @@ where
     }
 
     pub async fn last_id_in_log(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let log_id = store.get_log_state().await?.last_log_id;
         assert_eq!(None, log_id);
@@ -595,7 +595,7 @@ where
     }
 
     pub async fn last_applied_state(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let (applied, membership) = store.last_applied_state().await?;
         assert_eq!(None, applied);
@@ -647,8 +647,8 @@ where
     pub async fn delete_logs(builder: &B) -> Result<(), StorageError> {
         tracing::info!("--- delete (-oo, 0]");
         {
-            let store = builder.build().await;
-            Self::feed_10_logs_vote_self(&store).await?;
+            let mut store = builder.build().await;
+            Self::feed_10_logs_vote_self(&mut store).await?;
 
             store.purge_logs_upto(LogId::new(LeaderId::new(0, NODE_ID), 0)).await?;
 
@@ -667,8 +667,8 @@ where
 
         tracing::info!("--- delete (-oo, 5]");
         {
-            let store = builder.build().await;
-            Self::feed_10_logs_vote_self(&store).await?;
+            let mut store = builder.build().await;
+            Self::feed_10_logs_vote_self(&mut store).await?;
 
             store.purge_logs_upto(LogId::new(LeaderId::new(1, NODE_ID), 5)).await?;
 
@@ -687,8 +687,8 @@ where
 
         tracing::info!("--- delete (-oo, 20]");
         {
-            let store = builder.build().await;
-            Self::feed_10_logs_vote_self(&store).await?;
+            let mut store = builder.build().await;
+            Self::feed_10_logs_vote_self(&mut store).await?;
 
             store.purge_logs_upto(LogId::new(LeaderId::new(1, NODE_ID), 20)).await?;
 
@@ -706,8 +706,8 @@ where
 
         tracing::info!("--- delete [11, +oo)");
         {
-            let store = builder.build().await;
-            Self::feed_10_logs_vote_self(&store).await?;
+            let mut store = builder.build().await;
+            Self::feed_10_logs_vote_self(&mut store).await?;
 
             store.delete_conflict_logs_since(LogId::new(LeaderId::new(1, NODE_ID), 11)).await?;
 
@@ -725,8 +725,8 @@ where
 
         tracing::info!("--- delete [0, +oo)");
         {
-            let store = builder.build().await;
-            Self::feed_10_logs_vote_self(&store).await?;
+            let mut store = builder.build().await;
+            Self::feed_10_logs_vote_self(&mut store).await?;
 
             store.delete_conflict_logs_since(LogId::new(LeaderId::new(0, NODE_ID), 0)).await?;
 
@@ -746,8 +746,8 @@ where
     }
 
     pub async fn append_to_log(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
-        Self::feed_10_logs_vote_self(&store).await?;
+        let mut store = builder.build().await;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.purge_logs_upto(LogId::new(LeaderId::new(0, NODE_ID), 0)).await?;
 
@@ -766,7 +766,7 @@ where
     }
 
     // pub async fn apply_single(builder: &B) -> Result<(), StorageError> {
-    //     let store = builder.build().await;
+    //     let mut store = builder.build().await;
     //
     //     let entry = Entry {
     //         log_id: LogId::new(LeaderId::new(3, NODE_ID), 1),
@@ -879,7 +879,7 @@ where
     //     Ok(())
     // }
 
-    pub async fn feed_10_logs_vote_self(sto: &S) -> Result<(), StorageError> {
+    pub async fn feed_10_logs_vote_self(sto: &mut S) -> Result<(), StorageError> {
         sto.append_to_log(&[&blank(0, 0)]).await?;
 
         for i in 1..=10 {
@@ -895,7 +895,7 @@ where
         Ok(())
     }
 
-    pub async fn default_vote(sto: &S) -> Result<(), StorageError> {
+    pub async fn default_vote(sto: &mut S) -> Result<(), StorageError> {
         sto.save_vote(&Vote {
             term: 1,
             node_id: NODE_ID,
@@ -938,7 +938,7 @@ where
     }
 
     pub async fn df_get_membership_config_dirty_log(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
@@ -990,7 +990,7 @@ where
     }
 
     pub async fn df_get_initial_state_dirty_log(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
@@ -1043,7 +1043,7 @@ where
     }
 
     pub async fn df_save_vote_ascending(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         store
             .save_vote(&Vote {
@@ -1126,8 +1126,8 @@ where
     }
 
     pub async fn df_get_log_entries(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
-        Self::feed_10_logs_vote_self(&store).await?;
+        let mut store = builder.build().await;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.apply_to_state_machine(&[&blank(0, 0)]).await?;
 
@@ -1190,7 +1190,7 @@ where
     }
 
     pub async fn df_append_to_log_nonempty_input(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let res = store.append_to_log(Vec::<&Entry<_>>::new().as_slice()).await;
 
@@ -1202,7 +1202,7 @@ where
     }
 
     pub async fn df_append_to_log_nonconsecutive_input(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let res = store
             .append_to_log(&[
@@ -1231,7 +1231,7 @@ where
     }
 
     pub async fn df_append_to_log_eq_last_plus_one(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         tracing::info!("-- log_id <= last_applied");
         tracing::info!("-- nonconsecutive log");
@@ -1260,7 +1260,7 @@ where
         // last_log: 1,1
         // last_applied: 1,2
         // append_to_log: 1,4
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         tracing::info!("-- log_id <= last_applied");
         tracing::info!("-- nonconsecutive log");
@@ -1288,7 +1288,7 @@ where
     pub async fn df_append_to_log_gt_last_log_id(builder: &B) -> Result<(), StorageError> {
         // last_log: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
@@ -1311,7 +1311,7 @@ where
         // last_log: 2,1
         // last_applied: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
@@ -1335,7 +1335,7 @@ where
     }
 
     pub async fn df_apply_nonempty_input(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let res = store.apply_to_state_machine(Vec::<&Entry<_>>::new().as_slice()).await;
 
@@ -1347,7 +1347,7 @@ where
     }
 
     pub async fn df_apply_index_eq_last_applied_plus_one(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let entry = blank(3, 1);
 
@@ -1388,7 +1388,7 @@ where
     }
 
     pub async fn df_apply_gt_last_applied_id(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         let entry = blank(3, 1);
 
@@ -1415,7 +1415,7 @@ where
     }
 
     pub async fn df_purge_applied_le_last_applied(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
 
@@ -1438,7 +1438,7 @@ where
     }
 
     pub async fn df_delete_conflict_gt_last_applied(builder: &B) -> Result<(), StorageError> {
-        let store = builder.build().await;
+        let mut store = builder.build().await;
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
 

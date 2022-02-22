@@ -9,5 +9,5 @@ where
     R: AppDataResponse,
     T: RaftStorage<D, R>,
 {
-    fn inner(&self) -> &T;
+    fn inner(&mut self) -> &mut T;
 }

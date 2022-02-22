@@ -6,7 +6,7 @@ use async_trait::async_trait;
 
 use crate::AppData;
 use crate::AppDataResponse;
-use crate::DefensiveCheck;
+use crate::DefensiveCheckBase;
 use crate::RaftStorage;
 use crate::StoreExt;
 

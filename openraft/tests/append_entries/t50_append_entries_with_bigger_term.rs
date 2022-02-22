@@ -7,6 +7,7 @@ use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
+use openraft::RaftNetworkFactory;
 use openraft::Vote;
 
 use crate::fixtures::RaftRouter;
@@ -21,7 +22,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
     // before append entries, check hard state in term 1 and vote for node 0
@@ -37,7 +38,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), log_index)),
     };
 
-    let resp = router.send_append_entries(0, None, req).await?;
+    let resp = router.connect(0, None).await.send_append_entries(req).await?;
     assert!(resp.success);
 
     // after append entries, check hard state in term 2 and vote for node 1

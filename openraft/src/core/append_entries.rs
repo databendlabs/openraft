@@ -12,12 +12,12 @@ use crate::AppDataResponse;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::RaftNetwork;
+use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::StorageError;
 use crate::Update;
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
     ///
     /// See `receiver implementation: AppendEntries RPC` in raft-essentials.md in this repo.
@@ -238,7 +238,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// The entries in request that are matches local ones does not need to be append again.
     /// Filter them out.
     pub async fn skip_matching_entries<'s, 'e>(
-        &'s self,
+        &'s mut self,
         entries: &'e [Entry<D>],
     ) -> Result<(usize, &'e [Entry<D>]), StorageError> {
         let l = entries.len();
@@ -271,7 +271,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// This way to check if the entries in append-entries request is consecutive with local logs.
     /// Raft only accept consecutive logs to be appended.
-    pub async fn does_log_id_match(&self, remote_log_id: Option<LogId>) -> Result<Option<LogId>, StorageError> {
+    pub async fn does_log_id_match(&mut self, remote_log_id: Option<LogId>) -> Result<Option<LogId>, StorageError> {
         let log_id = match remote_log_id {
             None => {
                 return Ok(None);
@@ -368,12 +368,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         let entries_refs: Vec<_> = entries.iter().collect();
 
-        apply_to_state_machine(self.storage.clone(), &entries_refs, self.config.max_applied_log_to_keep).await?;
+        apply_to_state_machine(&mut self.storage, &entries_refs, self.config.max_applied_log_to_keep).await?;
 
         self.last_applied = Some(last_log_id);
 
         self.report_metrics(Update::AsIs);
-        self.trigger_log_compaction_if_needed(false);
+        self.trigger_log_compaction_if_needed(false).await;
 
         Ok(())
     }

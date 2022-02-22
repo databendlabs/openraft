@@ -32,6 +32,7 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::LogIndexOptionExt;
+use crate::storage::RaftLogReader;
 use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -43,6 +44,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
+use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::ToStorageResult;
 use crate::Vote;
@@ -68,18 +70,18 @@ pub(crate) struct ReplicationStream {
 
 impl ReplicationStream {
     /// Create a new replication stream for the target peer.
-    pub(crate) fn new<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>>(
+    pub(crate) fn new<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>>(
         target: NodeId,
         target_node: Option<Node>,
         vote: Vote,
         config: Arc<Config>,
         last_log: Option<LogId>,
         committed: Option<LogId>,
-        network: Arc<N>,
-        storage: Arc<S>,
+        network: N::Network,
+        log_reader: S::LogReader,
         replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
     ) -> Self {
-        ReplicationCore::spawn(
+        ReplicationCore::<D, R, N, S>::spawn(
             target,
             target_node,
             vote,
@@ -87,7 +89,7 @@ impl ReplicationStream {
             last_log,
             committed,
             network,
-            storage,
+            log_reader,
             replication_tx,
         )
     }
@@ -98,11 +100,9 @@ impl ReplicationStream {
 /// NOTE: we do not stack replication requests to targets because this could result in
 /// out-of-order delivery. We always buffer until we receive a success response, then send the
 /// next payload from the buffer.
-struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
     /// The ID of the target Raft node which replication events are to be sent to.
     target: NodeId,
-
-    target_node: Option<Node>,
 
     /// The vote of the leader.
     vote: Vote,
@@ -114,10 +114,10 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     repl_rx: mpsc::UnboundedReceiver<(RaftEvent, Span)>,
 
     /// The `RaftNetwork` interface.
-    network: Arc<N>,
+    network: N::Network,
 
-    /// The `RaftStorage` interface.
-    storage: Arc<S>,
+    /// The `RaftLogReader` of a `RaftStorage` interface.
+    log_reader: S::LogReader,
 
     /// The Raft's runtime config.
     config: Arc<Config>,
@@ -154,9 +154,9 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: Raf
     install_snapshot_timeout: Duration,
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
     /// Spawn a new replication task for the target node.
-    #[tracing::instrument(level = "trace", skip(config, network, storage, raft_core_tx))]
+    #[tracing::instrument(level = "trace", skip(config, network, log_reader, raft_core_tx))]
     pub(self) fn spawn(
         target: NodeId,
         target_node: Option<Node>,
@@ -164,8 +164,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         config: Arc<Config>,
         last_log: Option<LogId>,
         committed: Option<LogId>,
-        network: Arc<N>,
-        storage: Arc<S>,
+        network: N::Network,
+        log_reader: S::LogReader,
         raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
     ) -> ReplicationStream {
         // other component to ReplicationStream
@@ -175,10 +175,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
         let this = Self {
             target,
-            target_node,
             vote,
             network,
-            storage,
+            log_reader,
             config,
             marker_r: std::marker::PhantomData,
             target_repl_state: TargetReplState::LineRate,
@@ -287,7 +286,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         let (prev_log_id, logs) = loop {
             // TODO(xp): test heartbeat when all logs are removed.
 
-            let log_state = self.storage.get_log_state().await?;
+            let log_state = self.log_reader.get_log_state().await?;
 
             let last_purged = log_state.last_purged_log_id;
 
@@ -314,7 +313,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             let prev_log_id = if prev_index == last_purged.index() {
                 last_purged
             } else if let Some(prev_i) = prev_index {
-                let first = self.storage.try_get_log_entry(prev_i).await?;
+                let first = self.log_reader.try_get_log_entry(prev_i).await?;
                 match first {
                     Some(f) => Some(f.log_id),
                     None => {
@@ -329,7 +328,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             let logs = if start == end {
                 vec![]
             } else {
-                let logs = self.storage.try_get_log_entries(start..end).await?;
+                let logs = self.log_reader.try_get_log_entries(start..end).await?;
                 if !logs.is_empty() && logs[0].log_id.index > prev_log_id.next_index() {
                     // There is still chance the first log is removed.
                     // log entry is just deleted after fetching first_log_id.
@@ -366,11 +365,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         );
 
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
-        let res = timeout(
-            the_timeout,
-            self.network.send_append_entries(self.target, self.target_node.as_ref(), payload),
-        )
-        .await;
+        let res = timeout(the_timeout, self.network.send_append_entries(payload)).await;
 
         let append_resp = match res {
             Ok(append_res) => match append_res {
@@ -666,7 +661,7 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
     }
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError> {
         loop {
@@ -867,11 +862,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 "sending snapshot chunk"
             );
 
-            let res = timeout(
-                self.install_snapshot_timeout,
-                self.network.send_install_snapshot(self.target, self.target_node.as_ref(), req),
-            )
-            .await;
+            let res = timeout(self.install_snapshot_timeout, self.network.send_install_snapshot(req)).await;
 
             let res = match res {
                 Ok(outer_res) => match outer_res {

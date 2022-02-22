@@ -29,7 +29,7 @@ async fn append_conflicts() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
     tracing::info!("--- wait for init node to ready");
@@ -37,8 +37,8 @@ async fn append_conflicts() -> Result<()> {
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
 
-    let (r0, sto0) = router.remove_node(0).await.unwrap();
-    check_logs(&sto0, vec![]).await?;
+    let (r0, mut sto0) = router.remove_node(0).await.unwrap();
+    check_logs(&mut sto0, vec![]).await?;
 
     tracing::info!("--- case 0: prev_log_id == None, no logs");
 
@@ -80,7 +80,7 @@ async fn append_conflicts() -> Result<()> {
     assert!(resp.success);
     assert!(!resp.conflict);
 
-    check_logs(&sto0, vec![0]).await?;
+    check_logs(&mut sto0, vec![0]).await?;
 
     tracing::info!("--- case 0: prev_log_id.index == 0, ");
 
@@ -96,7 +96,7 @@ async fn append_conflicts() -> Result<()> {
     assert!(resp.success);
     assert!(!resp.conflict);
 
-    check_logs(&sto0, vec![0, 1, 1, 1, 1]).await?;
+    check_logs(&mut sto0, vec![0, 1, 1, 1, 1]).await?;
 
     tracing::info!("--- case 0: prev_log_id.index == 0, last_log_id mismatch");
 
@@ -104,7 +104,7 @@ async fn append_conflicts() -> Result<()> {
     assert!(resp.success);
     assert!(!resp.conflict);
 
-    check_logs(&sto0, vec![0, 1, 1, 1, 1]).await?;
+    check_logs(&mut sto0, vec![0, 1, 1, 1, 1]).await?;
 
     // committed index is 2
     tracing::info!("--- case 1: 0 < prev_log_id.index < commit_index");
@@ -120,7 +120,7 @@ async fn append_conflicts() -> Result<()> {
     assert!(resp.success);
     assert!(!resp.conflict);
 
-    check_logs(&sto0, vec![0, 1, 1, 1, 1]).await?;
+    check_logs(&mut sto0, vec![0, 1, 1, 1, 1]).await?;
 
     tracing::info!("--- case 2:  prev_log_id.index == last_applied, inconsistent log should be removed");
 
@@ -136,7 +136,7 @@ async fn append_conflicts() -> Result<()> {
     assert!(resp.success);
     assert!(!resp.conflict);
 
-    check_logs(&sto0, vec![0, 1, 1, 2]).await?;
+    check_logs(&mut sto0, vec![0, 1, 1, 2]).await?;
 
     // check last_log_id is updated:
     let req = AppendEntriesRequest {
@@ -150,7 +150,7 @@ async fn append_conflicts() -> Result<()> {
     assert!(!resp.success);
     assert!(resp.conflict);
 
-    check_logs(&sto0, vec![0, 1, 1, 2]).await?;
+    check_logs(&mut sto0, vec![0, 1, 1, 2]).await?;
 
     tracing::info!("--- case 3,4: prev_log_id.index <= last_log_id, prev_log_id mismatch, inconsistent log is removed");
 
@@ -165,7 +165,7 @@ async fn append_conflicts() -> Result<()> {
     assert!(!resp.success);
     assert!(resp.conflict);
 
-    check_logs(&sto0, vec![0, 1, 1]).await?;
+    check_logs(&mut sto0, vec![0, 1, 1]).await?;
 
     tracing::info!("--- case 3,4: prev_log_id.index <= last_log_id, prev_log_id matches, inconsistent log is removed");
     // refill logs
@@ -181,7 +181,7 @@ async fn append_conflicts() -> Result<()> {
     assert!(!resp.conflict);
 
     // check prepared store
-    check_logs(&sto0, vec![0, 1, 1, 2, 2, 2]).await?;
+    check_logs(&mut sto0, vec![0, 1, 1, 2, 2, 2]).await?;
 
     // prev_log_id matches
     let req = AppendEntriesRequest {
@@ -195,7 +195,7 @@ async fn append_conflicts() -> Result<()> {
     assert!(resp.success);
     assert!(!resp.conflict);
 
-    check_logs(&sto0, vec![0, 1, 1, 2, 3]).await?;
+    check_logs(&mut sto0, vec![0, 1, 1, 2, 3]).await?;
 
     tracing::info!("--- case 5: last_log_id.index < prev_log_id.index");
 
@@ -215,7 +215,7 @@ async fn append_conflicts() -> Result<()> {
 }
 
 /// To check if logs is as expected.
-async fn check_logs<D, R, Sto>(sto: &Arc<Sto>, terms: Vec<u64>) -> Result<()>
+async fn check_logs<D, R, Sto>(sto: &mut Sto, terms: Vec<u64>) -> Result<()>
 where
     D: AppData,
     R: AppDataResponse,
