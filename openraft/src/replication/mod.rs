@@ -243,7 +243,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(vote=%self.vote, target=self.target, cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="trace", skip(self), fields(vote=%self.vote, target=display(self.target), cluster=%self.config.cluster_name))]
     async fn main(mut self) {
         loop {
             // If it returns Ok(), always go back to LineRate state.
