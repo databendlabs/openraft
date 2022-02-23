@@ -85,7 +85,7 @@ pub struct EffectiveMembership {
 }
 
 impl EffectiveMembership {
-    pub fn new_initial(node_id: u64) -> Self {
+    pub fn new_initial(node_id: NodeId) -> Self {
         Self::new(LogId::new(LeaderId::default(), 0), Membership::new_initial(node_id))
     }
 

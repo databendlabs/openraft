@@ -314,7 +314,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     ///
     /// Return true if removed.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn try_remove_replication(&mut self, target: u64) -> bool {
+    pub fn try_remove_replication(&mut self, target: NodeId) -> bool {
         tracing::debug!(target, "try_remove_replication");
 
         {
