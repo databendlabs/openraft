@@ -17,6 +17,8 @@ use openraft::EffectiveMembership;
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::LogId;
+use openraft::RaftLogReader;
+use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
 use openraft::SnapshotMeta;
 use openraft::StateMachineChanges;
@@ -99,22 +101,8 @@ pub struct ExampleStore {
 }
 
 #[async_trait]
-impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
-    type SnapshotData = Cursor<Vec<u8>>;
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&self, vote: &Vote) -> Result<(), StorageError> {
-        // TODO: What `h` stands for?
-        let mut h = self.vote.write().await;
-        *h = Some(*vote);
-        Ok(())
-    }
-
-    async fn read_vote(&self) -> Result<Option<Vote>, StorageError> {
-        Ok(*self.vote.read().await)
-    }
-
-    async fn get_log_state(&self) -> Result<LogState, StorageError> {
+impl RaftLogReader<ExampleRequest, ExampleResponse> for Arc<ExampleStore> {
+    async fn get_log_state(&mut self) -> Result<LogState, StorageError> {
         let log = self.log.read().await;
         let last = log.iter().rev().next().map(|(_, ent)| ent.log_id);
 
@@ -132,98 +120,19 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
     }
 
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &self,
+        &mut self,
         range: RB,
     ) -> Result<Vec<Entry<ExampleRequest>>, StorageError> {
         let log = self.log.read().await;
         let response = log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>();
         Ok(response)
     }
+}
 
-    #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&self, entries: &[&Entry<ExampleRequest>]) -> Result<(), StorageError> {
-        let mut log = self.log.write().await;
-        for entry in entries {
-            log.insert(entry.log_id.index, (*entry).clone());
-        }
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&self, log_id: LogId) -> Result<(), StorageError> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
-
-        let mut log = self.log.write().await;
-        let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
-        for key in keys {
-            log.remove(&key);
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge_logs_upto(&self, log_id: LogId) -> Result<(), StorageError> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
-
-        {
-            let mut ld = self.last_purged_log_id.write().await;
-            assert!(*ld <= Some(log_id));
-            *ld = Some(log_id);
-        }
-
-        {
-            let mut log = self.log.write().await;
-
-            let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
-            for key in keys {
-                log.remove(&key);
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn last_applied_state(&self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError> {
-        let state_machine = self.state_machine.read().await;
-        Ok((state_machine.last_applied_log, state_machine.last_membership.clone()))
-    }
-
-    #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn apply_to_state_machine(
-        &self,
-        entries: &[&Entry<ExampleRequest>],
-    ) -> Result<Vec<ExampleResponse>, StorageError> {
-        let mut res = Vec::with_capacity(entries.len());
-
-        let mut sm = self.state_machine.write().await;
-
-        for entry in entries {
-            tracing::debug!(%entry.log_id, "replicate to sm");
-
-            sm.last_applied_log = Some(entry.log_id);
-
-            match entry.payload {
-                EntryPayload::Blank => res.push(ExampleResponse { value: None }),
-                EntryPayload::Normal(ref req) => match req {
-                    ExampleRequest::Set { key, value } => {
-                        sm.data.insert(key.clone(), value.clone());
-                        res.push(ExampleResponse {
-                            value: Some(value.clone()),
-                        })
-                    }
-                },
-                EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = Some(EffectiveMembership::new(entry.log_id, mem.clone()));
-                    res.push(ExampleResponse { value: None })
-                }
-            };
-        }
-        Ok(res)
-    }
-
+#[async_trait]
+impl RaftSnapshotBuilder<ExampleRequest, ExampleResponse, Cursor<Vec<u8>>> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<Cursor<Vec<u8>>>, StorageError> {
         let (data, last_applied_log);
 
         {
@@ -273,15 +182,116 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
             snapshot: Box::new(Cursor::new(data)),
         })
     }
+}
+
+#[async_trait]
+impl RaftStorage<ExampleRequest, ExampleResponse> for Arc<ExampleStore> {
+    type SnapshotData = Cursor<Vec<u8>>;
+    type LogReader = Self;
+    type SnapshotBuilder = Self;
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>, StorageError> {
+    async fn save_vote(&mut self, vote: &Vote) -> Result<(), StorageError> {
+        // TODO: What `h` stands for?
+        let mut h = self.vote.write().await;
+        *h = Some(*vote);
+        Ok(())
+    }
+
+    async fn read_vote(&mut self) -> Result<Option<Vote>, StorageError> {
+        Ok(*self.vote.read().await)
+    }
+
+    #[tracing::instrument(level = "trace", skip(self, entries))]
+    async fn append_to_log(&mut self, entries: &[&Entry<ExampleRequest>]) -> Result<(), StorageError> {
+        let mut log = self.log.write().await;
+        for entry in entries {
+            log.insert(entry.log_id.index, (*entry).clone());
+        }
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn delete_conflict_logs_since(&mut self, log_id: LogId) -> Result<(), StorageError> {
+        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+
+        let mut log = self.log.write().await;
+        let keys = log.range(log_id.index..).map(|(k, _v)| *k).collect::<Vec<_>>();
+        for key in keys {
+            log.remove(&key);
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn purge_logs_upto(&mut self, log_id: LogId) -> Result<(), StorageError> {
+        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+
+        {
+            let mut ld = self.last_purged_log_id.write().await;
+            assert!(*ld <= Some(log_id));
+            *ld = Some(log_id);
+        }
+
+        {
+            let mut log = self.log.write().await;
+
+            let keys = log.range(..=log_id.index).map(|(k, _v)| *k).collect::<Vec<_>>();
+            for key in keys {
+                log.remove(&key);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn last_applied_state(&mut self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError> {
+        let state_machine = self.state_machine.read().await;
+        Ok((state_machine.last_applied_log, state_machine.last_membership.clone()))
+    }
+
+    #[tracing::instrument(level = "trace", skip(self, entries))]
+    async fn apply_to_state_machine(
+        &mut self,
+        entries: &[&Entry<ExampleRequest>],
+    ) -> Result<Vec<ExampleResponse>, StorageError> {
+        let mut res = Vec::with_capacity(entries.len());
+
+        let mut sm = self.state_machine.write().await;
+
+        for entry in entries {
+            tracing::debug!(%entry.log_id, "replicate to sm");
+
+            sm.last_applied_log = Some(entry.log_id);
+
+            match entry.payload {
+                EntryPayload::Blank => res.push(ExampleResponse { value: None }),
+                EntryPayload::Normal(ref req) => match req {
+                    ExampleRequest::Set { key, value } => {
+                        sm.data.insert(key.clone(), value.clone());
+                        res.push(ExampleResponse {
+                            value: Some(value.clone()),
+                        })
+                    }
+                },
+                EntryPayload::Membership(ref mem) => {
+                    sm.last_membership = Some(EffectiveMembership::new(entry.log_id, mem.clone()));
+                    res.push(ExampleResponse { value: None })
+                }
+            };
+        }
+        Ok(res)
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError> {
         Ok(Box::new(Cursor::new(Vec::new())))
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
-        &self,
+        &mut self,
         meta: &SnapshotMeta,
         snapshot: Box<Self::SnapshotData>,
     ) -> Result<StateMachineChanges, StorageError> {
@@ -319,7 +329,7 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
@@ -330,5 +340,13 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for ExampleStore {
             }
             None => Ok(None),
         }
+    }
+
+    async fn get_log_reader(&mut self) -> Self::LogReader {
+        self.clone()
+    }
+
+    async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
+        self.clone()
     }
 }
