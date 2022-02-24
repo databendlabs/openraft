@@ -86,7 +86,7 @@ pub struct EffectiveMembership {
 }
 
 impl EffectiveMembership {
-    pub fn new_initial(node_id: u64) -> Self {
+    pub fn new_initial(node_id: NodeId) -> Self {
         Self::new(LogId::new(LeaderId::default(), 0), Membership::new_initial(node_id))
     }
 
@@ -232,7 +232,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     }
 
     /// The main loop of the Raft protocol.
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="trace", skip(self), fields(id=display(self.id), cluster=%self.config.cluster_name))]
     async fn main(mut self) -> Result<(), Fatal> {
         let res = self.do_main().await;
         match res {
@@ -249,7 +249,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
         }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="trace", skip(self), fields(id=display(self.id), cluster=%self.config.cluster_name))]
     async fn do_main(&mut self) -> Result<(), Fatal> {
         tracing::debug!("raft node is initializing");
 
@@ -349,9 +349,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn report_metrics(&mut self, leader_metrics: Update<Option<&LeaderMetrics>>) {
+    fn report_metrics(&mut self, leader_metrics: Update<Option<&Arc<LeaderMetrics>>>) {
         let leader_metrics = match leader_metrics {
-            Update::Update(v) => v.map(|m| Arc::new(m.clone())),
+            Update::Update(v) => v.cloned(),
             Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
         };
 
@@ -381,7 +381,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
         let res = self.tx_metrics.send(m);
 
         if let Err(err) = res {
-            tracing::error!(error=%err, id=self.id, "error reporting metrics");
+            tracing::error!(error=%err, id=display(self.id), "error reporting metrics");
         }
     }
 
@@ -392,9 +392,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
-    #[tracing::instrument(level = "trace", skip(self), fields(id=self.id))]
+    #[tracing::instrument(level = "trace", skip(self), fields(id=display(self.id)))]
     fn set_target_state(&mut self, target_state: State) {
-        tracing::debug!(id = self.id, ?target_state, "set_target_state");
+        tracing::debug!(id = display(self.id), ?target_state, "set_target_state");
 
         if target_state == State::Follower && !self.effective_membership.membership.is_member(&self.id) {
             self.target_state = State::Learner;
@@ -732,7 +732,7 @@ struct LeaderState<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>,
     pub(super) nodes: BTreeMap<NodeId, ReplicationState>,
 
     /// The metrics about a leader
-    pub leader_metrics: LeaderMetrics,
+    pub leader_metrics: Arc<LeaderMetrics>,
 
     /// The stream of events coming from replication streams.
     pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<S::SnapshotData>, Span)>,
@@ -751,7 +751,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
         Self {
             core,
             nodes: BTreeMap::new(),
-            leader_metrics: LeaderMetrics::default(),
+            leader_metrics: Arc::new(LeaderMetrics::default()),
             replication_tx,
             replication_rx,
             awaiting_committed: Vec::new(),
@@ -759,7 +759,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
     }
 
     /// Transition to the Raft leader state.
-    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="leader"))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="leader"))]
     pub(self) async fn run(mut self) -> Result<(), Fatal> {
         // Setup state as leader.
         self.core.last_heartbeat = None;
@@ -791,7 +791,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
         Ok(())
     }
 
-    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id)))]
     pub(self) async fn leader_loop(mut self) -> Result<(), Fatal> {
         loop {
             if !self.core.target_state.is_leader() {
@@ -828,7 +828,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
         }
     }
 
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "leader", id=self.core.id))]
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "leader", id=display(self.core.id)))]
     pub async fn handle_msg(&mut self, msg: RaftMsg<D, R>) -> Result<(), Fatal> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
@@ -930,7 +930,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
     }
 
     /// Run the candidate loop.
-    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="candidate"))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="candidate"))]
     pub(self) async fn run(mut self) -> Result<(), Fatal> {
         // Each iteration of the outer loop represents a new term.
 
@@ -993,7 +993,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
         }
     }
 
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "candidate", id=self.core.id))]
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "candidate", id=display(self.core.id)))]
     pub async fn handle_msg(&mut self, msg: RaftMsg<D, R>) -> Result<(), Fatal> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
         match msg {
@@ -1039,7 +1039,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
     }
 
     /// Run the follower loop.
-    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="follower"))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="follower"))]
     pub(self) async fn run(mut self) -> Result<(), Fatal> {
         self.core.report_metrics(Update::Update(None));
 
@@ -1068,7 +1068,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
         }
     }
 
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "follower", id=self.core.id))]
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "follower", id=display(self.core.id)))]
     pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<D, R>) -> Result<(), Fatal> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
@@ -1115,7 +1115,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
     }
 
     /// Run the learner loop.
-    #[tracing::instrument(level="debug", skip(self), fields(id=self.core.id, raft_state="learner"))]
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="learner"))]
     pub(self) async fn run(mut self) -> Result<(), Fatal> {
         self.core.report_metrics(Update::Update(None));
 
@@ -1142,7 +1142,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
     }
 
     // TODO(xp): define a handle_msg method in RaftCore that decides what to do by current State.
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "learner", id=self.core.id))]
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "learner", id=display(self.core.id)))]
     pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<D, R>) -> Result<(), Fatal> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 

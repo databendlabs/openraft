@@ -19,12 +19,13 @@ use crate::ErrorSubject;
 use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
+use crate::NodeId;
 use crate::RaftStorage;
 use crate::StorageError;
 use crate::Violation;
 use crate::Vote;
 
-const NODE_ID: u64 = 0;
+const NODE_ID: NodeId = 0;
 
 /// Test suite to ensure a `RaftStore` impl works as expected.
 ///
@@ -466,7 +467,7 @@ where
         let mut store = builder.build().await;
         Self::feed_10_logs_vote_self(&mut store).await?;
 
-        store.purge_logs_upto(LogId::new(LeaderId::new(0, 0), 0)).await?;
+        store.purge_logs_upto(LogId::new(LeaderId::new(0, NodeId::default()), 0)).await?;
 
         let ent = store.try_get_log_entry(3).await?;
         assert_eq!(Some(LogId::new(LeaderId::new(1, NODE_ID), 3)), ent.map(|x| x.log_id));
@@ -511,7 +512,10 @@ where
             store.purge_logs_upto(LogId::new(LeaderId::new(0, NODE_ID), 0)).await?;
 
             let st = store.get_log_state().await?;
-            assert_eq!(Some(LogId::new(LeaderId::new(0, 0), 0)), st.last_purged_log_id);
+            assert_eq!(
+                Some(LogId::new(LeaderId::new(0, NodeId::default()), 0)),
+                st.last_purged_log_id
+            );
             assert_eq!(Some(LogId::new(LeaderId::new(1, NODE_ID), 2)), st.last_log_id);
         }
 
@@ -1131,7 +1135,7 @@ where
 
         store.apply_to_state_machine(&[&blank(0, 0)]).await?;
 
-        store.purge_logs_upto(LogId::new(LeaderId::new(0, 0), 0)).await?;
+        store.purge_logs_upto(LogId::new(LeaderId::new(0, NodeId::default()), 0)).await?;
 
         store.get_log_entries(..).await?;
         store.get_log_entries(5..).await?;

@@ -97,7 +97,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level = "debug", skip(self, res))]
     pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {
-        tracing::debug!(res=?res, target, "recv vote response");
+        tracing::debug!(res=?res, target=display(target), "recv vote response");
 
         // If peer's vote is greater than current vote, revert to follower state.
 
@@ -163,10 +163,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
                         Ok(vote_resp) => {
                             let _ = tx_inner.send((vote_resp, member)).await;
                         }
-                        Err(err) => tracing::error!({error=%err, target=member}, "while requesting vote"),
+                        Err(err) => tracing::error!({error=%err, target=display(member)}, "while requesting vote"),
                     }
                 }
-                .instrument(tracing::debug_span!("send_vote_req", target = member)),
+                .instrument(tracing::debug_span!("send_vote_req", target = display(member))),
             );
         }
         rx

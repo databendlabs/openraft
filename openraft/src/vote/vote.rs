@@ -21,14 +21,14 @@ impl std::fmt::Display for Vote {
 }
 
 impl Vote {
-    pub fn new(term: u64, node_id: u64) -> Self {
+    pub fn new(term: u64, node_id: NodeId) -> Self {
         Self {
             term,
             node_id,
             committed: false,
         }
     }
-    pub fn new_committed(term: u64, node_id: u64) -> Self {
+    pub fn new_committed(term: u64, node_id: NodeId) -> Self {
         Self {
             term,
             node_id,

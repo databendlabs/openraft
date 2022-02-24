@@ -148,11 +148,11 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
             let (target, data) = match res {
                 Ok(Ok(res)) => res,
                 Ok(Err((target, err))) => {
-                    tracing::error!(target, error=%err, "timeout while confirming leadership for read request");
+                    tracing::error!(target=display(target), error=%err, "timeout while confirming leadership for read request");
                     continue;
                 }
                 Err((target, err)) => {
-                    tracing::error!(target, "{}", err);
+                    tracing::error!(target = display(target), "{}", err);
                     continue;
                 }
             };

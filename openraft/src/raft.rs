@@ -248,7 +248,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     /// The caller can attach additional info `node` to this node id.
     /// A `node` can be used to store the network address of a node. Thus an application does not need another store for
     /// mapping node-id to ip-addr when implementing the RaftNetwork.
-    #[tracing::instrument(level = "debug", skip(self, id), fields(target=id))]
+    #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(id)))]
     pub async fn add_learner(
         &self,
         id: NodeId,

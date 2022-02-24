@@ -247,7 +247,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=self.core.id))]
+    #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=display(self.core.id)))]
     pub async fn append_membership_log(
         &mut self,
         mem: Membership,
@@ -314,8 +314,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
     ///
     /// Return true if removed.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn try_remove_replication(&mut self, target: u64) -> bool {
-        tracing::debug!(target, "try_remove_replication");
+    pub fn try_remove_replication(&mut self, target: NodeId) -> bool {
+        tracing::debug!(target = display(target), "try_remove_replication");
 
         {
             let n = self.nodes.get(&target);
@@ -336,7 +336,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
 
         tracing::info!("removed replication to: {}", target);
         self.nodes.remove(&target);
-        self.leader_metrics.replication.remove(&target);
+        let mut metrics_clone = self.leader_metrics.as_ref().clone();
+        metrics_clone.replication.remove(&target);
+        self.leader_metrics = Arc::new(metrics_clone);
         true
     }
 }

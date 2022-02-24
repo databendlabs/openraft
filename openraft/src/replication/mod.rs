@@ -1,6 +1,8 @@
 //! Replication stream.
 
 use std::io::SeekFrom;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
@@ -38,6 +40,7 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
+use crate::LeaderId;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::Node;
@@ -49,14 +52,54 @@ use crate::RaftStorage;
 use crate::ToStorageResult;
 use crate::Vote;
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct ReplicationMetrics {
-    pub matched: Option<LogId>,
+    pub(crate) matched_leader_id: Option<LeaderId>,
+    pub(crate) matched_index: AtomicU64,
+}
+
+impl Clone for ReplicationMetrics {
+    fn clone(&self) -> Self {
+        Self {
+            matched_leader_id: self.matched_leader_id,
+            matched_index: AtomicU64::new(self.matched_index.load(Ordering::Relaxed)),
+        }
+    }
+}
+
+impl PartialEq for ReplicationMetrics {
+    fn eq(&self, other: &Self) -> bool {
+        self.matched_leader_id == other.matched_leader_id
+            && self.matched_index.load(Ordering::Relaxed) == other.matched_index.load(Ordering::Relaxed)
+    }
+}
+
+impl Eq for ReplicationMetrics {}
+
+impl ReplicationMetrics {
+    pub fn new(log_id: Option<LogId>) -> Self {
+        if let Some(log_id) = log_id {
+            Self {
+                matched_leader_id: Some(log_id.leader_id),
+                matched_index: AtomicU64::new(log_id.index),
+            }
+        } else {
+            Self::default()
+        }
+    }
+    pub fn matched(&self) -> Option<LogId> {
+        if let Some(leader_id) = self.matched_leader_id {
+            let index = self.matched_index.load(Ordering::Relaxed);
+            Some(LogId { leader_id, index })
+        } else {
+            None
+        }
+    }
 }
 
 impl MessageSummary for ReplicationMetrics {
     fn summary(&self) -> String {
-        format!("{:?}", self.matched)
+        format!("{:?}", self.matched())
     }
 }
 
@@ -199,7 +242,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
         }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(vote=%self.vote, target=self.target, cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="trace", skip(self), fields(vote=%self.vote, target=display(self.target), cluster=%self.config.cluster_name))]
     async fn main(mut self) {
         loop {
             // If it returns Ok(), always go back to LineRate state.
