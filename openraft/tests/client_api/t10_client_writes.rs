@@ -34,7 +34,7 @@ async fn client_writes() -> Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;

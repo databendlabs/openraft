@@ -27,7 +27,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
     let _ent = ut_span.enter();
 
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = 0;
 

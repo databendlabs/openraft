@@ -42,7 +42,7 @@ async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow:
     let only_in_new = new.difference(&old);
 
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(old.clone(), btreeset! {}).await?;
 

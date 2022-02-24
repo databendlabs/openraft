@@ -37,31 +37,52 @@ impl std::fmt::Display for RPCTypes {
 ///
 /// See the [network chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#3-impl-raftnetwork)
 /// for details and discussion on this trait and how to implement it.
+///
+/// Typically, the network implementation as such will be hidden behind a `Box<T>` or `Arc<T>` and
+/// this interface implemented on the `Box<T>` or `Arc<T>`.
+///
+/// A single network instance is used to connect to a single target node. The network instance is
+/// constructed by the [`RaftNetworkFactory`].
 #[async_trait]
 pub trait RaftNetwork<D>: Send + Sync + 'static
 where D: AppData
 {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn send_append_entries(
-        &self,
-        target: NodeId,
-        node: Option<&Node>,
+        &mut self,
         rpc: AppendEntriesRequest<D>,
     ) -> Result<AppendEntriesResponse, RPCError<AppendEntriesError>>;
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
     async fn send_install_snapshot(
-        &self,
-        target: NodeId,
-        node: Option<&Node>,
+        &mut self,
         rpc: InstallSnapshotRequest,
     ) -> Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>>;
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn send_vote(
-        &self,
-        target: NodeId,
-        node: Option<&Node>,
-        rpc: VoteRequest,
-    ) -> Result<VoteResponse, RPCError<VoteError>>;
+    async fn send_vote(&mut self, rpc: VoteRequest) -> Result<VoteResponse, RPCError<VoteError>>;
+}
+
+/// A trait defining the interface for a Raft network factory to create connections between cluster members.
+///
+/// See the [network chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#3-impl-raftnetwork)
+/// for details and discussion on this trait and how to implement it.
+///
+/// Typically, the network implementation as such will be hidden behind a `Box<T>` or `Arc<T>` and
+/// this interface implemented on the `Box<T>` or `Arc<T>`.
+#[async_trait]
+pub trait RaftNetworkFactory<D>: Send + Sync + 'static
+where D: AppData
+{
+    /// Actual type of the network handling a single connection.
+    type Network: RaftNetwork<D>;
+
+    /// Create a new network instance sending RPCs to the target node.
+    ///
+    /// This doesn't have to be a "real" connection, the network instance is just configured to send
+    /// RPCs to the specified target node.
+    ///
+    /// The method is intentionally async to give the implementation a chance to use asynchronous
+    /// sync primitives to serialize access to the common internal object, if needed.
+    async fn connect(&mut self, target: NodeId, node: Option<&Node>) -> Self::Network;
 }

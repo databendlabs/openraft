@@ -23,7 +23,7 @@ pub mod client;
 pub mod network;
 pub mod store;
 
-pub type ExampleRaft = Raft<ExampleRequest, ExampleResponse, ExampleNetwork, ExampleStore>;
+pub type ExampleRaft = Raft<ExampleRequest, ExampleResponse, ExampleNetwork, Arc<ExampleStore>>;
 
 pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std::io::Result<()> {
     // Create a configuration for the raft instance.
@@ -34,7 +34,7 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
 
     // Create the network layer that will connect and communicate the raft instances and
     // will be used in conjunction with the store created above.
-    let network = Arc::new(ExampleNetwork {});
+    let network = ExampleNetwork {};
 
     // Create a local raft instance.
     let raft = Raft::new(node_id, config.clone(), network, store.clone());

@@ -34,7 +34,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 

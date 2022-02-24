@@ -19,7 +19,7 @@ async fn current_leader() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let _log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 

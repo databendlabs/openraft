@@ -24,7 +24,7 @@ async fn add_remove_voter() -> Result<()> {
     let cluster_of_4 = btreeset![0, 1, 2, 3];
 
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(cluster_of_5.clone(), btreeset! {}).await?;
 

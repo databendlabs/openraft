@@ -29,11 +29,11 @@ use crate::LogId;
 use crate::Membership;
 use crate::Node;
 use crate::NodeId;
-use crate::RaftNetwork;
+use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::StorageError;
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
     /// Handle the admin `init_with_config` command.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_init_with_config(&mut self, members: EitherNodesOrIds) -> Result<(), InitializeError> {
@@ -67,7 +67,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     // add node into learner,return true if the node is already a member or learner
     #[tracing::instrument(level = "debug", skip(self))]
     async fn add_learner_into_membership(
@@ -139,10 +139,10 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         if blocking {
-            let state = self.spawn_replication_stream(target, Some(tx));
+            let state = self.spawn_replication_stream(target, Some(tx)).await;
             self.nodes.insert(target, state);
         } else {
-            let state = self.spawn_replication_stream(target, None);
+            let state = self.spawn_replication_stream(target, None).await;
             self.nodes.insert(target, state);
 
             // non-blocking mode, do not know about the replication stat.

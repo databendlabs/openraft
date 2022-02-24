@@ -46,7 +46,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     router.new_raft_node(0).await;
 
@@ -57,7 +57,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         router.initialize_from_single_node(0).await?;
         n_logs = 1;
 
-        wait_log(router.clone(), &btreeset![0], n_logs).await?;
+        wait_log(&router, &btreeset![0], n_logs).await?;
     }
 
     tracing::info!("--- adding two candidate nodes");
@@ -75,7 +75,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         node.change_membership(candidates.clone(), true, false).await?;
         n_logs += 2; // Tow member change logs
 
-        wait_log(router.clone(), &candidates, n_logs).await?;
+        wait_log(&router, &candidates, n_logs).await?;
         router.assert_stable_cluster(Some(1), Some(n_logs)).await; // Still in term 1, so leader is still node 0.
     }
 
@@ -86,7 +86,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         router.client_request_many(leader, "client", 1).await;
         n_logs += 1;
 
-        wait_log(router.clone(), &candidates, n_logs).await?;
+        wait_log(&router, &candidates, n_logs).await?;
     }
 
     // Concurrently add Learner and write another log.
@@ -111,7 +111,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         let _ = handle.await?;
     };
 
-    wait_log(router.clone(), &candidates, n_logs).await?;
+    wait_log(&router, &candidates, n_logs).await?;
     router
         .wait_for_metrics(
             &3u64,
@@ -134,11 +134,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     Ok(())
 }
 
-async fn wait_log(
-    router: std::sync::Arc<fixtures::RaftRouter>,
-    node_ids: &BTreeSet<u64>,
-    want_log: u64,
-) -> anyhow::Result<()> {
+async fn wait_log(router: &fixtures::RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) -> anyhow::Result<()> {
     let timeout = Duration::from_millis(500);
     for i in node_ids.iter() {
         router

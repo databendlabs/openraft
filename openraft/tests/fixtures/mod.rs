@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::env;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Once;
@@ -43,10 +45,11 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
+use openraft::storage::RaftLogReader;
 use openraft::storage::RaftStorage;
 use openraft::AppData;
 use openraft::Config;
-use openraft::DefensiveCheck;
+use openraft::DefensiveCheckBase;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
@@ -55,6 +58,7 @@ use openraft::NodeId;
 use openraft::Raft;
 use openraft::RaftMetrics;
 use openraft::RaftNetwork;
+use openraft::RaftNetworkFactory;
 use openraft::State;
 use openraft::StoreExt;
 #[allow(unused_imports)]
@@ -92,7 +96,7 @@ macro_rules! init_ut {
     }};
 }
 
-pub type StoreWithDefensive = StoreExt<ClientRequest, ClientResponse, MemStore>;
+pub type StoreWithDefensive = StoreExt<ClientRequest, ClientResponse, Arc<MemStore>>;
 
 /// A concrete Raft type used during testing.
 pub type MemRaft = Raft<MemClientRequest, MemClientResponse, RaftRouter, StoreWithDefensive>;
@@ -118,18 +122,18 @@ pub fn init_global_tracing(app_name: &str, dir: &str, level: &str) -> WorkerGuar
     g
 }
 
-/// A type which emulates a network transport and implements the `RaftNetwork` trait.
+/// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
 pub struct RaftRouter {
     /// The Raft runtime config which all nodes are using.
     config: Arc<Config>,
     /// The table of all nodes currently known to this router instance.
-    routing_table: Mutex<BTreeMap<NodeId, (MemRaft, Arc<StoreWithDefensive>)>>,
+    routing_table: Arc<Mutex<BTreeMap<NodeId, (MemRaft, StoreWithDefensive)>>>,
     /// Nodes which are isolated can neither send nor receive frames.
-    isolated_nodes: Mutex<HashSet<NodeId>>,
+    isolated_nodes: Arc<Mutex<HashSet<NodeId>>>,
 
-    /// To enumlate network delay for sending, in milli second.
+    /// To emulate network delay for sending, in milliseconds.
     /// 0 means no delay.
-    send_delay: u64,
+    send_delay: Arc<AtomicU64>,
 }
 
 pub struct Builder {
@@ -148,7 +152,18 @@ impl Builder {
             config: self.config,
             routing_table: Default::default(),
             isolated_nodes: Default::default(),
-            send_delay: self.send_delay,
+            send_delay: Arc::new(AtomicU64::new(self.send_delay)),
+        }
+    }
+}
+
+impl Clone for RaftRouter {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            routing_table: self.routing_table.clone(),
+            isolated_nodes: self.isolated_nodes.clone(),
+            send_delay: self.send_delay.clone(),
         }
     }
 }
@@ -164,16 +179,17 @@ impl RaftRouter {
     }
 
     pub fn network_send_delay(&mut self, ms: u64) {
-        self.send_delay = ms;
+        self.send_delay.store(ms, Ordering::Relaxed);
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
     async fn rand_send_delay(&self) {
-        if self.send_delay == 0 {
+        let send_delay = self.send_delay.load(Ordering::Relaxed);
+        if send_delay == 0 {
             return;
         }
 
-        let r = rand::random::<u64>() % self.send_delay;
+        let r = rand::random::<u64>() % send_delay;
         let timeout = Duration::from_millis(r);
         tokio::time::sleep(timeout).await;
     }
@@ -182,7 +198,7 @@ impl RaftRouter {
     /// NOTE: it create a single node cluster first, then change it to a multi-voter cluster.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn new_nodes_from_single(
-        self: &Arc<Self>,
+        &mut self,
         node_ids: BTreeSet<NodeId>,
         learners: BTreeSet<NodeId>,
     ) -> anyhow::Result<u64> {
@@ -257,15 +273,15 @@ impl RaftRouter {
     }
 
     /// Create and register a new Raft node bearing the given ID.
-    pub async fn new_raft_node(self: &Arc<Self>, id: NodeId) {
+    pub async fn new_raft_node(&mut self, id: NodeId) {
         let memstore = self.new_store().await;
         self.new_raft_node_with_sto(id, memstore).await
     }
 
-    pub async fn new_store(self: &Arc<Self>) -> Arc<StoreWithDefensive> {
+    pub async fn new_store(&mut self) -> StoreWithDefensive {
         let defensive = env::var("RAFT_STORE_DEFENSIVE").ok();
 
-        let sto = Arc::new(StoreExt::new(MemStore::new().await));
+        let sto = StoreExt::new(Arc::new(MemStore::new().await));
 
         if let Some(d) = defensive {
             tracing::info!("RAFT_STORE_DEFENSIVE set store defensive to {}", d);
@@ -289,14 +305,14 @@ impl RaftRouter {
     }
 
     #[tracing::instrument(level = "debug", skip(self, sto))]
-    pub async fn new_raft_node_with_sto(self: &Arc<Self>, id: NodeId, sto: Arc<StoreWithDefensive>) {
+    pub async fn new_raft_node_with_sto(&mut self, id: NodeId, sto: StoreWithDefensive) {
         let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone());
         let mut rt = self.routing_table.lock().unwrap();
         rt.insert(id, (node, sto));
     }
 
     /// Remove the target node from the routing table & isolation.
-    pub async fn remove_node(&self, id: NodeId) -> Option<(MemRaft, Arc<StoreWithDefensive>)> {
+    pub async fn remove_node(&mut self, id: NodeId) -> Option<(MemRaft, StoreWithDefensive)> {
         let opt_handles = {
             let mut rt = self.routing_table.lock().unwrap();
             rt.remove(&id)
@@ -364,7 +380,7 @@ impl RaftRouter {
         Ok(r)
     }
 
-    pub fn get_storage_handle(&self, node_id: &NodeId) -> Result<Arc<StoreWithDefensive>> {
+    pub fn get_storage_handle(&self, node_id: &NodeId) -> Result<StoreWithDefensive> {
         let rt = self.routing_table.lock().unwrap();
         let addr = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
         let sto = addr.clone().1;
@@ -701,7 +717,7 @@ impl RaftRouter {
     /// Assert against the state of the storage system one node in the cluster.
     pub async fn assert_storage_state_with_sto(
         &self,
-        storage: &Arc<StoreWithDefensive>,
+        storage: &mut StoreWithDefensive,
         id: &u64,
         expect_term: u64,
         expect_last_log: u64,
@@ -790,9 +806,9 @@ impl RaftRouter {
         expect_sm_last_applied_log: LogId,
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
-        let rt = self.routing_table.lock().unwrap();
+        let mut rt = self.routing_table.lock().unwrap();
 
-        for (id, (_node, storage)) in rt.iter() {
+        for (id, (_node, storage)) in rt.iter_mut() {
             if *id != node_id {
                 continue;
             }
@@ -822,9 +838,9 @@ impl RaftRouter {
         expect_sm_last_applied_log: LogId,
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
-        let rt = self.routing_table.lock().unwrap();
+        let mut rt = self.routing_table.lock().unwrap();
 
-        for (id, (_node, storage)) in rt.iter() {
+        for (id, (_node, storage)) in rt.iter_mut() {
             self.assert_storage_state_with_sto(
                 storage,
                 id,
@@ -854,61 +870,69 @@ impl RaftRouter {
 }
 
 #[async_trait]
-impl RaftNetwork<MemClientRequest> for RaftRouter {
+impl RaftNetworkFactory<MemClientRequest> for RaftRouter {
+    type Network = RaftRouterNetwork;
+
+    async fn connect(&mut self, target: NodeId, _node: Option<&Node>) -> Self::Network {
+        RaftRouterNetwork {
+            target,
+            owner: self.clone(),
+        }
+    }
+}
+
+pub struct RaftRouterNetwork {
+    target: NodeId,
+    owner: RaftRouter,
+}
+
+#[async_trait]
+impl RaftNetwork<MemClientRequest> for RaftRouterNetwork {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn send_append_entries(
-        &self,
-        target: u64,
-        _target_node: Option<&Node>,
+        &mut self,
         rpc: AppendEntriesRequest<MemClientRequest>,
     ) -> std::result::Result<AppendEntriesResponse, RPCError<AppendEntriesError>> {
-        tracing::debug!("append_entries to id={} {:?}", target, rpc);
-        self.rand_send_delay().await;
+        tracing::debug!("append_entries to id={} {:?}", self.target, rpc);
+        self.owner.rand_send_delay().await;
 
-        self.check_reachable(rpc.vote.node_id, target)?;
+        self.owner.check_reachable(rpc.vote.node_id, self.target)?;
 
-        let node = self.get_raft_handle(&target)?;
+        let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = node.append_entries(rpc).await;
 
-        tracing::debug!("append_entries: recv resp from id={} {:?}", target, resp);
-        let resp = resp.map_err(|e| RemoteError::new(target, e))?;
+        tracing::debug!("append_entries: recv resp from id={} {:?}", self.target, resp);
+        let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
     }
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
     async fn send_install_snapshot(
-        &self,
-        target: u64,
-        _target_node: Option<&Node>,
+        &mut self,
         rpc: InstallSnapshotRequest,
     ) -> std::result::Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>> {
-        self.rand_send_delay().await;
+        self.owner.rand_send_delay().await;
 
-        self.check_reachable(rpc.vote.node_id, target)?;
+        self.owner.check_reachable(rpc.vote.node_id, self.target)?;
 
-        let node = self.get_raft_handle(&target)?;
+        let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = node.install_snapshot(rpc).await;
-        let resp = resp.map_err(|e| RemoteError::new(target, e))?;
+        let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
     }
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn send_vote(
-        &self,
-        target: u64,
-        _target_node: Option<&Node>,
-        rpc: VoteRequest,
-    ) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
-        self.rand_send_delay().await;
+    async fn send_vote(&mut self, rpc: VoteRequest) -> std::result::Result<VoteResponse, RPCError<VoteError>> {
+        self.owner.rand_send_delay().await;
 
-        self.check_reachable(rpc.vote.node_id, target)?;
+        self.owner.check_reachable(rpc.vote.node_id, self.target)?;
 
-        let node = self.get_raft_handle(&target)?;
+        let node = self.owner.get_raft_handle(&self.target)?;
 
         let resp = node.vote(rpc).await;
-        let resp = resp.map_err(|e| RemoteError::new(target, e))?;
+        let resp = resp.map_err(|e| RemoteError::new(self.target, e))?;
         Ok(resp)
     }
 }

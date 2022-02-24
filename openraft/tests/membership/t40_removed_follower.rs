@@ -16,7 +16,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
     let mut n_logs = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;

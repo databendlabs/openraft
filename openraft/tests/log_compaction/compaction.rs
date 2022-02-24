@@ -11,7 +11,9 @@ use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
+use openraft::RaftLogReader;
 use openraft::RaftNetwork;
+use openraft::RaftNetworkFactory;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 use openraft::State;
@@ -43,7 +45,7 @@ async fn compaction() -> Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
     let mut log_index = 0;
@@ -91,7 +93,7 @@ async fn compaction() -> Result<()> {
         .await?;
 
     // Add a new node and assert that it received the same snapshot.
-    let sto1 = router.new_store().await;
+    let mut sto1 = router.new_store().await;
     sto1.append_to_log(&[&blank(0, 0), &Entry {
         log_id: LogId::new(LeaderId::new(1, 0), 1),
         payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
@@ -112,7 +114,7 @@ async fn compaction() -> Result<()> {
 
     tracing::info!("--- logs should be deleted after installing snapshot; left only the last one");
     {
-        let sto = router.get_storage_handle(&1)?;
+        let mut sto = router.get_storage_handle(&1)?;
         let logs = sto.get_log_entries(..).await?;
         assert_eq!(2, logs.len());
         assert_eq!(LogId::new(LeaderId::new(1, 0), log_index - 1), logs[0].log_id)
@@ -135,7 +137,9 @@ async fn compaction() -> Result<()> {
     );
     {
         let res = router
-            .send_append_entries(1, None, AppendEntriesRequest {
+            .connect(1, None)
+            .await
+            .send_append_entries(AppendEntriesRequest {
                 vote: Vote::new_committed(1, 0),
                 prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 2)),
                 entries: vec![],

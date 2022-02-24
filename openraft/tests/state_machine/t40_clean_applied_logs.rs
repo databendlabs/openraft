@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::RaftStorage;
+use openraft::RaftLogReader;
 use tokio::time::sleep;
 
 use crate::fixtures::RaftRouter;
@@ -26,7 +26,7 @@ async fn clean_applied_logs() -> Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
@@ -45,7 +45,7 @@ async fn clean_applied_logs() -> Result<()> {
     tracing::info!("--- logs before max_applied_log_to_keep should be cleaned");
     {
         for node_id in 0..1 {
-            let sto = router.get_storage_handle(&node_id)?;
+            let mut sto = router.get_storage_handle(&node_id)?;
             let logs = sto.get_log_entries(..).await?;
             assert_eq!(2, logs.len(), "node {} should have only {} logs", node_id, 2);
         }

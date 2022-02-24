@@ -8,6 +8,7 @@ use openraft::raft::EntryPayload;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
+use openraft::RaftLogReader;
 use openraft::RaftStorage;
 use openraft::State;
 use openraft::Vote;
@@ -37,16 +38,16 @@ async fn append_inconsistent_log() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
     let mut n_logs = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!("--- remove all nodes and fake the logs");
 
-    let (r0, sto0) = router.remove_node(0).await.unwrap();
+    let (r0, mut sto0) = router.remove_node(0).await.unwrap();
     let (r1, sto1) = router.remove_node(1).await.unwrap();
-    let (r2, sto2) = router.remove_node(2).await.unwrap();
+    let (r2, mut sto2) = router.remove_node(2).await.unwrap();
 
     r0.shutdown().await?;
     r1.shutdown().await?;

@@ -17,14 +17,14 @@ use crate::AppDataResponse;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::MessageSummary;
-use crate::RaftNetwork;
+use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::SnapshotSegmentId;
 use crate::StorageError;
 use crate::StorageIOError;
 use crate::Update;
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// Invoked by leader to send chunks of a snapshot to a follower (§7).
     ///
     /// Leaders always send chunks in order. It is important to note that, according to the Raft spec,
@@ -218,7 +218,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let last_applied = changes.last_applied;
 
         // Applied logs are not needed.
-        purge_applied_logs(self.storage.clone(), &last_applied, self.config.max_applied_log_to_keep).await?;
+        purge_applied_logs(&mut self.storage, &last_applied, self.config.max_applied_log_to_keep).await?;
 
         // snapshot is installed
         self.last_applied = Some(last_applied);

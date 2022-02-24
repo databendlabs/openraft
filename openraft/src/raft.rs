@@ -35,12 +35,12 @@ use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
-use crate::RaftNetwork;
+use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::SnapshotMeta;
 use crate::Vote;
 
-struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
     tx_api: mpsc::UnboundedSender<(RaftMsg<D, R>, Span)>,
     rx_metrics: watch::Receiver<RaftMetrics>,
     raft_handle: Mutex<Option<JoinHandle<Result<(), Fatal>>>>,
@@ -70,11 +70,11 @@ struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStora
 /// is shutting down (potentially for data safety reasons due to a storage error), and the `shutdown`
 /// method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the trick.
-pub struct Raft<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
+pub struct Raft<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
     inner: Arc<RaftInner<D, R, N, S>>,
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Raft<D, R, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> Raft<D, R, N, S> {
     /// Create and spawn a new Raft task.
     ///
     /// ### `id`
@@ -87,14 +87,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Raft's runtime config. See the docs on the `Config` object for more details.
     ///
     /// ### `network`
-    /// An implementation of the `RaftNetwork` trait which will be used by Raft for sending RPCs to
-    /// peer nodes within the cluster. See the docs on the `RaftNetwork` trait for more details.
+    /// An implementation of the `RaftNetworkFactory` trait which will be used by Raft for sending RPCs to
+    /// peer nodes within the cluster. See the docs on the `RaftNetworkFactory` trait for more details.
     ///
     /// ### `storage`
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
     /// See the docs on the `RaftStorage` trait for more details.
     #[tracing::instrument(level="debug", skip(config, network, storage), fields(cluster=%config.cluster_name))]
-    pub fn new(id: NodeId, config: Arc<Config>, network: Arc<N>, storage: Arc<S>) -> Self {
+    pub fn new(id: NodeId, config: Arc<Config>, network: N, storage: S) -> Self {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
@@ -429,7 +429,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Clone for Raft<D, R, N, S> {
+impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> Clone for Raft<D, R, N, S> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -597,6 +597,15 @@ pub struct Entry<D: AppData> {
     /// This entry's payload.
     #[serde(bound = "D: AppData")]
     pub payload: EntryPayload<D>,
+}
+
+impl<D: AppData> Default for Entry<D> {
+    fn default() -> Self {
+        Self {
+            log_id: LogId::default(),
+            payload: EntryPayload::Blank,
+        }
+    }
 }
 
 impl<D: AppData> MessageSummary for Entry<D> {

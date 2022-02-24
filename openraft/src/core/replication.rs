@@ -24,28 +24,29 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
 use crate::NodeId;
-use crate::RaftNetwork;
+use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::ReplicationMetrics;
 use crate::StorageError;
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self, caller_tx))]
-    pub(super) fn spawn_replication_stream(
-        &self,
+    pub(super) async fn spawn_replication_stream(
+        &mut self,
         target: NodeId,
         caller_tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
     ) -> ReplicationState {
-        let repl_stream = ReplicationStream::new(
+        let target_node = self.core.effective_membership.get_node(target);
+        let repl_stream = ReplicationStream::new::<D, R, N, S>(
             target,
-            self.core.effective_membership.get_node(target).cloned(),
+            target_node.cloned(),
             self.core.vote,
             self.core.config.clone(),
             self.core.last_log_id,
             self.core.committed,
-            self.core.network.clone(),
-            self.core.storage.clone(),
+            self.core.network.connect(target, target_node).await,
+            self.core.storage.get_log_reader().await,
             self.replication_tx.clone(),
         );
         ReplicationState {
@@ -303,7 +304,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         //
         // If snapshot is too old, i.e., the distance from last_log_index is greater than half of snapshot threshold,
         // always force a snapshot creation.
-        self.core.trigger_log_compaction_if_needed(true);
+        self.core.trigger_log_compaction_if_needed(true).await;
         Ok(())
     }
 }

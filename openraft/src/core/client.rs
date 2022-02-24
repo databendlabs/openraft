@@ -28,6 +28,7 @@ use crate::AppDataResponse;
 use crate::MessageSummary;
 use crate::RPCTypes;
 use crate::RaftNetwork;
+use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::StorageError;
 
@@ -49,7 +50,7 @@ impl<D: AppData, R: AppDataResponse> MessageSummary for ClientRequestEntry<D, R>
     }
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Commit the initial entry which new leaders are obligated to create when first coming to power, per §8.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn commit_initial_leader_entry(&mut self) -> Result<(), StorageError> {
@@ -110,13 +111,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let my_id = self.core.id;
             let target = *target;
             let target_node = self.core.effective_membership.get_node(target).cloned();
-            let network = self.core.network.clone();
+            let mut network = self.core.network.connect(target, target_node.as_ref()).await;
 
             let ttl = Duration::from_millis(self.core.config.heartbeat_interval);
 
             let task = tokio::spawn(
                 async move {
-                    let outer_res = timeout(ttl, network.send_append_entries(target, target_node.as_ref(), rpc)).await;
+                    let outer_res = timeout(ttl, network.send_append_entries(rpc)).await;
                     match outer_res {
                         Ok(append_res) => match append_res {
                             Ok(x) => Ok((target, x)),
@@ -254,7 +255,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         self.send_response(entry, apply_res, req.tx).await;
 
         // Trigger log compaction if needed.
-        self.core.trigger_log_compaction_if_needed(false);
+        self.core.trigger_log_compaction_if_needed(false).await;
         Ok(())
     }
 
@@ -332,7 +333,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             let data_entries: Vec<_> = entries.iter().collect();
             if !data_entries.is_empty() {
                 apply_to_state_machine(
-                    self.core.storage.clone(),
+                    &mut self.core.storage,
                     &data_entries,
                     self.core.config.max_applied_log_to_keep,
                 )
@@ -342,7 +343,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         // Apply this entry to the state machine and return its data response.
         let apply_res = apply_to_state_machine(
-            self.core.storage.clone(),
+            &mut self.core.storage,
             &[entry],
             self.core.config.max_applied_log_to_keep,
         )

@@ -25,7 +25,7 @@ async fn initialization() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
     router.new_raft_node(2).await;

@@ -9,6 +9,7 @@ use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
+use openraft::RaftLogReader;
 use openraft::RaftStorage;
 use openraft::State;
 
@@ -32,7 +33,7 @@ async fn add_learner_basic() -> Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
@@ -64,7 +65,7 @@ async fn add_learner_basic() -> Result<()> {
         router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "add learner").await?;
 
         tracing::info!("--- add_learner blocks until the replication catches up");
-        let sto1 = router.get_storage_handle(&1)?;
+        let mut sto1 = router.get_storage_handle(&1)?;
 
         let logs = sto1.get_log_entries(..).await?;
 
@@ -106,7 +107,7 @@ async fn add_learner_non_blocking() -> Result<()> {
         }
         .validate()?,
     );
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
@@ -146,7 +147,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
         .validate()?,
     );
     let timeout = Some(Duration::from_millis(2000));
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
 
@@ -225,7 +226,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 
     tracing::info!("--- check new cluster membership");
     {
-        let sto = router.get_storage_handle(&1)?;
+        let mut sto = router.get_storage_handle(&1)?;
         let m = sto.get_membership().await?;
         let m = m.unwrap();
 

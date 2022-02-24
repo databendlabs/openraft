@@ -30,7 +30,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
     let mut n_logs = 0;

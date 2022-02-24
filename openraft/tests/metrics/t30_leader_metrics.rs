@@ -10,6 +10,7 @@ use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
+use openraft::RaftNetworkFactory;
 use openraft::ReplicationMetrics;
 use openraft::State;
 use openraft::Vote;
@@ -43,7 +44,7 @@ async fn leader_metrics() -> Result<()> {
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
-    let router = Arc::new(RaftRouter::new(config.clone()));
+    let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
     // Assert all nodes are in learner state & have no entries.
@@ -85,13 +86,15 @@ async fn leader_metrics() -> Result<()> {
 
     tracing::info!("--- adding 4 new nodes to cluster");
 
-    let mut new_nodes = futures::stream::FuturesUnordered::new();
-    new_nodes.push(router.add_learner(0, 1));
-    new_nodes.push(router.add_learner(0, 2));
-    new_nodes.push(router.add_learner(0, 3));
-    new_nodes.push(router.add_learner(0, 4));
-    while let Some(inner) = new_nodes.next().await {
-        inner?;
+    {
+        let mut new_nodes = futures::stream::FuturesUnordered::new();
+        new_nodes.push(router.add_learner(0, 1));
+        new_nodes.push(router.add_learner(0, 2));
+        new_nodes.push(router.add_learner(0, 3));
+        new_nodes.push(router.add_learner(0, 4));
+        while let Some(inner) = new_nodes.next().await {
+            inner?;
+        }
     }
     log_index += 4; // 4 add_learner log
     router.wait_for_log(&all_members, Some(log_index), timeout(), "add learner 1,2,3,4").await?;
@@ -178,7 +181,9 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!("--- take leadership of node {}", leader);
     {
         router
-            .send_vote(leader, None, VoteRequest {
+            .connect(leader, None)
+            .await
+            .send_vote(VoteRequest {
                 vote: Vote::new(100, 100),
                 last_log_id: Some(LogId::new(LeaderId::new(10, 0), 100)),
             })
