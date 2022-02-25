@@ -18,7 +18,7 @@ use openraft::RaftNetworkFactory;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::store::ExampleRequest;
+use crate::ExampleConfig;
 
 pub struct ExampleNetwork {}
 
@@ -50,7 +50,7 @@ impl ExampleNetwork {
 
 // NOTE: This could be implemented also on `Arc<ExampleNetwork>`, but since it's empty, implemented directly.
 #[async_trait]
-impl RaftNetworkFactory<ExampleRequest> for ExampleNetwork {
+impl RaftNetworkFactory<ExampleConfig> for ExampleNetwork {
     type Network = ExampleNetworkConnection;
 
     async fn connect(&mut self, target: NodeId, node: Option<&Node>) -> Self::Network {
@@ -69,10 +69,10 @@ pub struct ExampleNetworkConnection {
 }
 
 #[async_trait]
-impl RaftNetwork<ExampleRequest> for ExampleNetworkConnection {
+impl RaftNetwork<ExampleConfig> for ExampleNetworkConnection {
     async fn send_append_entries(
         &mut self,
-        req: AppendEntriesRequest<ExampleRequest>,
+        req: AppendEntriesRequest<ExampleConfig>,
     ) -> Result<AppendEntriesResponse, RPCError<AppendEntriesError>> {
         self.owner.send_rpc(self.target, self.target_node.as_ref(), "raft-append", req).await
     }

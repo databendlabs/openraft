@@ -43,6 +43,7 @@ pub use crate::network::RaftNetworkFactory;
 pub use crate::node::Node;
 pub use crate::node::NodeId;
 pub use crate::raft::Raft;
+pub use crate::raft::RaftConfig;
 pub use crate::raft_types::LogId;
 pub use crate::raft_types::LogIdOptionExt;
 pub use crate::raft_types::SnapshotId;

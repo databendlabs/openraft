@@ -16,9 +16,9 @@ use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::AppData;
 use crate::Node;
 use crate::NodeId;
+use crate::RaftConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RPCTypes {
@@ -44,13 +44,13 @@ impl std::fmt::Display for RPCTypes {
 /// A single network instance is used to connect to a single target node. The network instance is
 /// constructed by the [`RaftNetworkFactory`].
 #[async_trait]
-pub trait RaftNetwork<D>: Send + Sync + 'static
-where D: AppData
+pub trait RaftNetwork<C>: Send + Sync + 'static
+where C: RaftConfig
 {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn send_append_entries(
         &mut self,
-        rpc: AppendEntriesRequest<D>,
+        rpc: AppendEntriesRequest<C>,
     ) -> Result<AppendEntriesResponse, RPCError<AppendEntriesError>>;
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
@@ -71,11 +71,11 @@ where D: AppData
 /// Typically, the network implementation as such will be hidden behind a `Box<T>` or `Arc<T>` and
 /// this interface implemented on the `Box<T>` or `Arc<T>`.
 #[async_trait]
-pub trait RaftNetworkFactory<D>: Send + Sync + 'static
-where D: AppData
+pub trait RaftNetworkFactory<C>: Send + Sync + 'static
+where C: RaftConfig
 {
     /// Actual type of the network handling a single connection.
-    type Network: RaftNetwork<D>;
+    type Network: RaftNetwork<C>;
 
     /// Create a new network instance sending RPCs to the target node.
     ///

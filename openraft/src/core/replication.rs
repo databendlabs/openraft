@@ -20,16 +20,15 @@ use crate::replication::ReplicationStream;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
 use crate::vote::Vote;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::LogId;
 use crate::NodeId;
+use crate::RaftConfig;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::ReplicationMetrics;
 use crate::StorageError;
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self, caller_tx))]
     pub(super) async fn spawn_replication_stream(
@@ -38,7 +37,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
         caller_tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
     ) -> ReplicationState {
         let target_node = self.core.effective_membership.get_node(target);
-        let repl_stream = ReplicationStream::new::<D, R, N, S>(
+        let repl_stream = ReplicationStream::new::<C, N, S>(
             target,
             target_node.cloned(),
             self.core.vote,

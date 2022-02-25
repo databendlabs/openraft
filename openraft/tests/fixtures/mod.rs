@@ -19,9 +19,8 @@ use anyhow::Result;
 use lazy_static::lazy_static;
 use maplit::btreeset;
 use memstore::ClientRequest as MemClientRequest;
-use memstore::ClientRequest;
-use memstore::ClientResponse;
 use memstore::ClientResponse as MemClientResponse;
+use memstore::Config as MemConfig;
 use memstore::MemStore;
 use openraft::async_trait::async_trait;
 use openraft::error::AddLearnerError;
@@ -47,7 +46,6 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::storage::RaftLogReader;
 use openraft::storage::RaftStorage;
-use openraft::AppData;
 use openraft::Config;
 use openraft::DefensiveCheckBase;
 use openraft::LeaderId;
@@ -56,6 +54,7 @@ use openraft::LogIdOptionExt;
 use openraft::Node;
 use openraft::NodeId;
 use openraft::Raft;
+use openraft::RaftConfig;
 use openraft::RaftMetrics;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
@@ -96,10 +95,10 @@ macro_rules! init_ut {
     }};
 }
 
-pub type StoreWithDefensive = StoreExt<ClientRequest, ClientResponse, Arc<MemStore>>;
+pub type StoreWithDefensive = StoreExt<MemConfig, Arc<MemStore>>;
 
 /// A concrete Raft type used during testing.
-pub type MemRaft = Raft<MemClientRequest, MemClientResponse, RaftRouter, StoreWithDefensive>;
+pub type MemRaft = Raft<MemConfig, RaftRouter, StoreWithDefensive>;
 
 pub fn init_default_ut_tracing() {
     static START: Once = Once::new();
@@ -870,7 +869,7 @@ impl RaftRouter {
 }
 
 #[async_trait]
-impl RaftNetworkFactory<MemClientRequest> for RaftRouter {
+impl RaftNetworkFactory<MemConfig> for RaftRouter {
     type Network = RaftRouterNetwork;
 
     async fn connect(&mut self, target: NodeId, _node: Option<&Node>) -> Self::Network {
@@ -887,11 +886,11 @@ pub struct RaftRouterNetwork {
 }
 
 #[async_trait]
-impl RaftNetwork<MemClientRequest> for RaftRouterNetwork {
+impl RaftNetwork<MemConfig> for RaftRouterNetwork {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn send_append_entries(
         &mut self,
-        rpc: AppendEntriesRequest<MemClientRequest>,
+        rpc: AppendEntriesRequest<MemConfig>,
     ) -> std::result::Result<AppendEntriesResponse, RPCError<AppendEntriesError>> {
         tracing::debug!("append_entries to id={} {:?}", self.target, rpc);
         self.owner.rand_send_delay().await;
@@ -959,7 +958,7 @@ fn timeout() -> Option<Duration> {
 }
 
 /// Create a blank log entry for test.
-pub fn blank<T: AppData>(term: u64, index: u64) -> Entry<T> {
+pub fn blank<C: RaftConfig>(term: u64, index: u64) -> Entry<C> {
     Entry {
         log_id: LogId::new(LeaderId::new(term, 0), index),
         payload: EntryPayload::Blank,

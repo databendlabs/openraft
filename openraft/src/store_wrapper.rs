@@ -1,13 +1,11 @@
-use crate::AppData;
-use crate::AppDataResponse;
+use crate::RaftConfig;
 use crate::RaftStorage;
 
 /// A wrapper extends the APIs of a base RaftStore.
-pub trait Wrapper<D, R, T>
+pub trait Wrapper<C, T>
 where
-    D: AppData,
-    R: AppDataResponse,
-    T: RaftStorage<D, R>,
+    C: RaftConfig,
+    T: RaftStorage<C>,
 {
     fn inner(&mut self) -> &mut T;
 }

@@ -16,10 +16,9 @@ use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::LogId;
 use crate::LogIdOptionExt;
+use crate::RaftConfig;
 use crate::StorageError;
 use crate::Vote;
 
@@ -82,10 +81,8 @@ pub struct LogState {
 /// this interface implemented on the `Arc<T>`. It can be co-implemented with [`RaftStorage`]
 /// interface on the same cloneable object, if the underlying state machine is anyway synchronized.
 #[async_trait]
-pub trait RaftLogReader<D, R>: Send + Sync + 'static
-where
-    D: AppData,
-    R: AppDataResponse,
+pub trait RaftLogReader<C>: Send + Sync + 'static
+where C: RaftConfig
 {
     /// Get a series of log entries from storage.
     ///
@@ -94,7 +91,7 @@ where
     async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<D>>, StorageError> {
+    ) -> Result<Vec<Entry<C>>, StorageError> {
         let res = self.try_get_log_entries(range.clone()).await?;
 
         check_range_matches_entries(range, &res)?;
@@ -105,7 +102,7 @@ where
     /// Try to get an log entry.
     ///
     /// It does not return an error if the log entry at `log_index` is not found.
-    async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<Entry<D>>, StorageError> {
+    async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<Entry<C>>, StorageError> {
         let mut res = self.try_get_log_entries(log_index..(log_index + 1)).await?;
         Ok(res.pop())
     }
@@ -126,7 +123,7 @@ where
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<D>>, StorageError>;
+    ) -> Result<Vec<Entry<C>>, StorageError>;
 }
 
 /// A trait defining the interface for a Raft state machine snapshot subsystem.
@@ -138,10 +135,9 @@ where
 /// co-implemented with [`RaftStorage`] interface on the same cloneable object, if the underlying
 /// state machine is anyway synchronized.
 #[async_trait]
-pub trait RaftSnapshotBuilder<D, R, SD>: Send + Sync + 'static
+pub trait RaftSnapshotBuilder<C, SD>: Send + Sync + 'static
 where
-    D: AppData,
-    R: AppDataResponse,
+    C: RaftConfig,
     SD: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static,
 {
     /// Build snapshot
@@ -172,10 +168,8 @@ where
 /// The implementation of the API has to cope with (infrequent) concurrent access from these two
 /// components.
 #[async_trait]
-pub trait RaftStorage<D, R>: RaftLogReader<D, R> + Send + Sync + 'static
-where
-    D: AppData,
-    R: AppDataResponse,
+pub trait RaftStorage<C>: RaftLogReader<C> + Send + Sync + 'static
+where C: RaftConfig
 {
     // TODO(xp): simplify storage API
 
@@ -186,10 +180,10 @@ where
     type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
 
     /// Log reader type.
-    type LogReader: RaftLogReader<D, R>;
+    type LogReader: RaftLogReader<C>;
 
     /// Snapshot builder type.
-    type SnapshotBuilder: RaftSnapshotBuilder<D, R, Self::SnapshotData>;
+    type SnapshotBuilder: RaftSnapshotBuilder<C, Self::SnapshotData>;
 
     /// Returns the last membership config found in log or state machine.
     async fn get_membership(&mut self) -> Result<Option<EffectiveMembership>, StorageError> {
@@ -292,7 +286,7 @@ where
     ///
     /// Though the entries will always be presented in order, each entry's index should be used to
     /// determine its location to be written in the log.
-    async fn append_to_log(&mut self, entries: &[&Entry<D>]) -> Result<(), StorageError>;
+    async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError>;
 
     /// Delete conflict log entries since `log_id`, inclusive.
     async fn delete_conflict_logs_since(&mut self, log_id: LogId) -> Result<(), StorageError>;
@@ -326,7 +320,7 @@ where
     // then collect completions on this channel and update the client with the result once all
     // the preceding operations have been applied to the state machine. This way we'll reach
     // operation pipelining w/o the need to wait for the completion of each operation inline.
-    async fn apply_to_state_machine(&mut self, entries: &[&Entry<D>]) -> Result<Vec<R>, StorageError>;
+    async fn apply_to_state_machine(&mut self, entries: &[&Entry<C>]) -> Result<Vec<C::R>, StorageError>;
 
     // --- Snapshot
 

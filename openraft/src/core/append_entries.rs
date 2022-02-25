@@ -7,24 +7,23 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft_types::LogIdOptionExt;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::MessageSummary;
+use crate::RaftConfig;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::StorageError;
 use crate::Update;
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
+impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
     ///
     /// See `receiver implementation: AppendEntries RPC` in raft-essentials.md in this repo.
     #[tracing::instrument(level = "debug", skip(self, req))]
     pub(super) async fn handle_append_entries_request(
         &mut self,
-        req: AppendEntriesRequest<D>,
+        req: AppendEntriesRequest<C>,
     ) -> Result<AppendEntriesResponse, AppendEntriesError> {
         tracing::debug!(last_log_id=?self.last_log_id, ?self.last_applied, msg=%req.summary(), "handle_append_entries_request");
 
@@ -134,10 +133,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     /// R5 2 4 4
     /// ```
     ///
-    /// If log 5 is committed by R1, and log 3 is not removed, R5 in future could become a new leader and overrides log
+    /// If log 5 is committed by R1, and log 3 is not removeC5 in future could become a new leader and overrides log
     /// 5 on R3.
     #[tracing::instrument(level="trace", skip(self, msg_entries), fields(msg_entries=%msg_entries.summary()))]
-    async fn find_and_delete_conflict_logs(&mut self, msg_entries: &[Entry<D>]) -> Result<(), StorageError> {
+    async fn find_and_delete_conflict_logs(&mut self, msg_entries: &[Entry<C>]) -> Result<(), StorageError> {
         // all msg_entries are inconsistent logs
 
         tracing::debug!(msg_entries=%msg_entries.summary(), "try to delete_inconsistent_log");
@@ -172,7 +171,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     async fn append_apply_log_entries(
         &mut self,
         prev_log_id: Option<LogId>,
-        entries: &[Entry<D>],
+        entries: &[Entry<C>],
         committed: Option<LogId>,
     ) -> Result<AppendEntriesResponse, StorageError> {
         let mismatched = self.does_log_id_match(prev_log_id).await?;
@@ -239,8 +238,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     /// Filter them out.
     pub async fn skip_matching_entries<'s, 'e>(
         &'s mut self,
-        entries: &'e [Entry<D>],
-    ) -> Result<(usize, &'e [Entry<D>]), StorageError> {
+        entries: &'e [Entry<C>],
+    ) -> Result<(usize, &'e [Entry<C>]), StorageError> {
         let l = entries.len();
 
         for i in 0..l {
@@ -307,7 +306,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     /// Configuration changes are also detected and applied here. See `configuration changes`
     /// in the raft-essentials.md in this repo.
     #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
-    async fn append_log_entries(&mut self, entries: &[Entry<D>]) -> Result<(), StorageError> {
+    async fn append_log_entries(&mut self, entries: &[Entry<C>]) -> Result<(), StorageError> {
         if entries.is_empty() {
             return Ok(());
         }

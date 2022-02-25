@@ -9,15 +9,14 @@ use crate::error::VoteError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::summary::MessageSummary;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::NodeId;
+use crate::RaftConfig;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::StorageError;
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
+impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     /// An RPC invoked by candidates to gather votes (§5.2).
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
@@ -91,9 +90,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     }
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>>
-    CandidateState<'a, D, R, N, S>
-{
+impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> CandidateState<'a, C, N, S> {
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level = "debug", skip(self, res))]
     pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {

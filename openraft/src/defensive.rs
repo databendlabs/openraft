@@ -6,11 +6,10 @@ use async_trait::async_trait;
 
 use crate::raft::Entry;
 use crate::raft_types::LogIdOptionExt;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::DefensiveError;
 use crate::ErrorSubject;
 use crate::LogId;
+use crate::RaftConfig;
 use crate::RaftStorage;
 use crate::StorageError;
 use crate::Violation;
@@ -59,12 +58,11 @@ pub trait DefensiveCheckBase {
 
 /// Defines methods of defensive checks for RaftStorage.
 #[async_trait]
-pub trait DefensiveCheck<D, R, T>: DefensiveCheckBase
+pub trait DefensiveCheck<C, T>: DefensiveCheckBase
 where
-    D: AppData,
-    R: AppDataResponse,
-    T: RaftStorage<D, R>,
-    Self: Wrapper<D, R, T>,
+    C: RaftConfig,
+    T: RaftStorage<C>,
+    Self: Wrapper<C, T>,
 {
     /// Ensure that logs that have greater index than last_applied should have greater log_id.
     /// Invariant must hold: `log.log_id.index > last_applied.index` implies `log.log_id > last_applied`.
@@ -116,7 +114,7 @@ where
     }
 
     /// The log entries fed into a store must be consecutive otherwise it is a bug.
-    async fn defensive_consecutive_input(&self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
+    async fn defensive_consecutive_input(&self, entries: &[&Entry<C>]) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
         }
@@ -145,7 +143,7 @@ where
     /// Trying to feed in emtpy entries slice is an inappropriate action.
     ///
     /// The impl has to avoid this otherwise it may be a bug.
-    async fn defensive_nonempty_input(&self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
+    async fn defensive_nonempty_input(&self, entries: &[&Entry<C>]) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
         }
@@ -158,7 +156,7 @@ where
     }
 
     /// The entries to append has to be last_log_id.index + 1
-    async fn defensive_append_log_index_is_last_plus_one(&mut self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
+    async fn defensive_append_log_index_is_last_plus_one(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
         }
@@ -180,7 +178,7 @@ where
     }
 
     /// The entries to append has to be greater than any known log ids
-    async fn defensive_append_log_id_gt_last(&mut self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
+    async fn defensive_append_log_id_gt_last(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
         }
@@ -234,7 +232,7 @@ where
     /// The entries to apply to state machien has to be last_applied_log_id.index + 1
     async fn defensive_apply_index_is_last_applied_plus_one(
         &mut self,
-        entries: &[&Entry<D>],
+        entries: &[&Entry<C>],
     ) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
@@ -285,7 +283,7 @@ where
     async fn defensive_range_hits_logs<RB: RangeBounds<u64> + Debug + Send>(
         &self,
         range: RB,
-        logs: &[Entry<D>],
+        logs: &[Entry<C>],
     ) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
@@ -296,7 +294,7 @@ where
     }
 
     /// The log id of the entries to apply has to be greater than the last known one.
-    async fn defensive_apply_log_id_gt_last(&mut self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
+    async fn defensive_apply_log_id_gt_last(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError> {
         if !self.is_defensive() {
             return Ok(());
         }
@@ -319,9 +317,9 @@ where
     }
 }
 
-pub fn check_range_matches_entries<D: AppData, RB: RangeBounds<u64> + Debug + Send>(
+pub fn check_range_matches_entries<C: RaftConfig, RB: RangeBounds<u64> + Debug + Send>(
     range: RB,
-    entries: &[Entry<D>],
+    entries: &[Entry<C>],
 ) -> Result<(), StorageError> {
     let want_first = match range.start_bound() {
         Bound::Included(i) => Some(*i),

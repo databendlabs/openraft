@@ -40,8 +40,13 @@ use crate::RaftStorage;
 use crate::SnapshotMeta;
 use crate::Vote;
 
-struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
-    tx_api: mpsc::UnboundedSender<(RaftMsg<D, R>, Span)>,
+pub trait RaftConfig: Sized + Send + Sync + 'static {
+    type D: AppData;
+    type R: AppDataResponse;
+}
+
+struct RaftInner<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+    tx_api: mpsc::UnboundedSender<(RaftMsg<C>, Span)>,
     rx_metrics: watch::Receiver<RaftMetrics>,
     raft_handle: Mutex<Option<JoinHandle<Result<(), Fatal>>>>,
     tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
@@ -70,11 +75,11 @@ struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: Ra
 /// is shutting down (potentially for data safety reasons due to a storage error), and the `shutdown`
 /// method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the trick.
-pub struct Raft<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
-    inner: Arc<RaftInner<D, R, N, S>>,
+pub struct Raft<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+    inner: Arc<RaftInner<C, N, S>>,
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> Raft<D, R, N, S> {
+impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, S> {
     /// Create and spawn a new Raft task.
     ///
     /// ### `id`
@@ -119,7 +124,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
     pub async fn append_entries(
         &self,
-        rpc: AppendEntriesRequest<D>,
+        rpc: AppendEntriesRequest<C>,
     ) -> Result<AppendEntriesResponse, AppendEntriesError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
@@ -185,7 +190,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
     #[tracing::instrument(level = "debug", skip(self, rpc))]
-    pub async fn client_write(&self, rpc: ClientWriteRequest<D>) -> Result<ClientWriteResponse<R>, ClientWriteError> {
+    pub async fn client_write(&self, rpc: ClientWriteRequest<C>) -> Result<ClientWriteResponse<C>, ClientWriteError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::ClientWriteRequest { rpc, tx }, rx).await
     }
@@ -290,7 +295,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
         members: BTreeSet<NodeId>,
         blocking: bool,
         turn_to_learner: bool,
-    ) -> Result<ClientWriteResponse<R>, ClientWriteError> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError> {
         tracing::info!("change_membership: start to commit joint config");
 
         let (tx, rx) = oneshot::channel();
@@ -340,7 +345,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
-    pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<D, R>, rx: RaftRespRx<T, E>) -> Result<T, E>
+    pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<C>, rx: RaftRespRx<T, E>) -> Result<T, E>
     where E: From<Fatal> {
         let span = tracing::Span::current();
 
@@ -429,7 +434,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
     }
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> Clone for Raft<D, R, N, S> {
+impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Clone for Raft<C, N, S> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -446,9 +451,9 @@ pub struct AddLearnerResponse {
 }
 
 /// A message coming from the Raft API.
-pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
+pub(crate) enum RaftMsg<C: RaftConfig> {
     AppendEntries {
-        rpc: AppendEntriesRequest<D>,
+        rpc: AppendEntriesRequest<C>,
         tx: RaftRespTx<AppendEntriesResponse, AppendEntriesError>,
     },
     RequestVote {
@@ -460,8 +465,8 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         tx: RaftRespTx<InstallSnapshotResponse, InstallSnapshotError>,
     },
     ClientWriteRequest {
-        rpc: ClientWriteRequest<D>,
-        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
+        rpc: ClientWriteRequest<C>,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError>,
     },
     ClientReadRequest {
         tx: RaftRespTx<(), ClientReadError>,
@@ -495,14 +500,12 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         /// will be turned into learners, otherwise will be removed.
         turn_to_learner: bool,
 
-        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError>,
     },
 }
 
-impl<D, R> MessageSummary for RaftMsg<D, R>
-where
-    D: AppData,
-    R: AppDataResponse,
+impl<C> MessageSummary for RaftMsg<C>
+where C: RaftConfig
 {
     fn summary(&self) -> String {
         match self {
@@ -543,8 +546,8 @@ where
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppendEntriesRequest<D: AppData> {
+#[derive(Serialize, Deserialize)]
+pub struct AppendEntriesRequest<C: RaftConfig> {
     pub vote: Vote,
 
     pub prev_log_id: Option<LogId>,
@@ -553,14 +556,38 @@ pub struct AppendEntriesRequest<D: AppData> {
     ///
     /// This may be empty when the leader is sending heartbeats. Entries
     /// are batched for efficiency.
-    #[serde(bound = "D: AppData")]
-    pub entries: Vec<Entry<D>>,
+    #[serde(bound = "C::D: AppData")]
+    pub entries: Vec<Entry<C>>,
 
     /// The leader's committed log id.
     pub leader_commit: Option<LogId>,
 }
 
-impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
+impl<C: RaftConfig> Clone for AppendEntriesRequest<C> {
+    fn clone(&self) -> Self {
+        Self {
+            vote: self.vote,
+            prev_log_id: self.prev_log_id,
+            entries: self.entries.clone(),
+            leader_commit: self.leader_commit,
+        }
+    }
+}
+
+impl<C: RaftConfig> Debug for AppendEntriesRequest<C>
+where C::D: Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppendEntriesRequest")
+            .field("vote", &self.vote)
+            .field("prev_log_id", &self.prev_log_id)
+            .field("entries", &self.entries)
+            .field("leader_commit", &self.leader_commit)
+            .finish()
+    }
+}
+
+impl<C: RaftConfig> MessageSummary for AppendEntriesRequest<C> {
     fn summary(&self) -> String {
         format!(
             "vote={}, prev_log_id={}, leader_commit={}, entries={}",
@@ -590,16 +617,33 @@ impl MessageSummary for AppendEntriesResponse {
 }
 
 /// A Raft log entry.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Entry<D: AppData> {
+#[derive(Serialize, Deserialize)]
+pub struct Entry<C: RaftConfig> {
     pub log_id: LogId,
 
     /// This entry's payload.
-    #[serde(bound = "D: AppData")]
-    pub payload: EntryPayload<D>,
+    #[serde(bound = "C::D: AppData")]
+    pub payload: EntryPayload<C>,
 }
 
-impl<D: AppData> Default for Entry<D> {
+impl<C: RaftConfig> Clone for Entry<C> {
+    fn clone(&self) -> Self {
+        Self {
+            log_id: self.log_id,
+            payload: self.payload.clone(),
+        }
+    }
+}
+
+impl<C: RaftConfig> Debug for Entry<C>
+where C::D: Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
+    }
+}
+
+impl<C: RaftConfig> Default for Entry<C> {
     fn default() -> Self {
         Self {
             log_id: LogId::default(),
@@ -608,13 +652,13 @@ impl<D: AppData> Default for Entry<D> {
     }
 }
 
-impl<D: AppData> MessageSummary for Entry<D> {
+impl<C: RaftConfig> MessageSummary for Entry<C> {
     fn summary(&self) -> String {
         format!("{}:{}", self.log_id, self.payload.summary())
     }
 }
 
-impl<D: AppData> MessageSummary for Option<Entry<D>> {
+impl<C: RaftConfig> MessageSummary for Option<Entry<C>> {
     fn summary(&self) -> String {
         match self {
             None => "None".to_string(),
@@ -623,14 +667,14 @@ impl<D: AppData> MessageSummary for Option<Entry<D>> {
     }
 }
 
-impl<D: AppData> MessageSummary for &[Entry<D>] {
+impl<C: RaftConfig> MessageSummary for &[Entry<C>] {
     fn summary(&self) -> String {
         let entry_refs: Vec<_> = self.iter().collect();
         entry_refs.as_slice().summary()
     }
 }
 
-impl<D: AppData> MessageSummary for &[&Entry<D>] {
+impl<C: RaftConfig> MessageSummary for &[&Entry<C>] {
     fn summary(&self) -> String {
         let mut res = Vec::with_capacity(self.len());
         if self.len() <= 5 {
@@ -650,19 +694,41 @@ impl<D: AppData> MessageSummary for &[&Entry<D>] {
 }
 
 /// Log entry payload variants.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum EntryPayload<D: AppData> {
+#[derive(PartialEq, Serialize, Deserialize)]
+pub enum EntryPayload<C: RaftConfig> {
     /// An empty payload committed by a new cluster leader.
     Blank,
 
-    #[serde(bound = "D: AppData")]
-    Normal(D),
+    #[serde(bound = "C::D: AppData")]
+    Normal(C::D),
 
     /// A change-membership log entry.
     Membership(Membership),
 }
 
-impl<D: AppData> MessageSummary for EntryPayload<D> {
+impl<C: RaftConfig> Clone for EntryPayload<C> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Blank => Self::Blank,
+            Self::Normal(e) => Self::Normal(e.clone()),
+            Self::Membership(m) => Self::Membership(m.clone()),
+        }
+    }
+}
+
+impl<C: RaftConfig> Debug for EntryPayload<C>
+where C::D: Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Blank => write!(f, "Blank"),
+            Self::Normal(e) => f.debug_tuple("Normal").field(e).finish(),
+            Self::Membership(m) => f.debug_tuple("Membership").field(m).finish(),
+        }
+    }
+}
+
+impl<C: RaftConfig> MessageSummary for EntryPayload<C> {
     fn summary(&self) -> String {
         match self {
             EntryPayload::Blank => "blank".to_string(),
@@ -749,39 +815,59 @@ pub struct InstallSnapshotResponse {
 ///
 /// The entry of this payload will be appended to the Raft log and then applied to the Raft state
 /// machine according to the Raft protocol.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClientWriteRequest<D: AppData> {
+#[derive(Serialize, Deserialize)]
+pub struct ClientWriteRequest<C: RaftConfig> {
     /// The application specific contents of this client request.
-    #[serde(bound = "D: AppData")]
-    pub(crate) payload: EntryPayload<D>,
+    #[serde(bound = "C::D: AppData")]
+    pub(crate) payload: EntryPayload<C>,
 }
 
-impl<D: AppData> MessageSummary for ClientWriteRequest<D> {
+impl<C: RaftConfig> Debug for ClientWriteRequest<C>
+where C::D: Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientWriteRequest").field("payload", &self.payload).finish()
+    }
+}
+
+impl<C: RaftConfig> MessageSummary for ClientWriteRequest<C> {
     fn summary(&self) -> String {
         self.payload.summary()
     }
 }
 
-impl<D: AppData> ClientWriteRequest<D> {
-    pub fn new(entry: EntryPayload<D>) -> Self {
+impl<C: RaftConfig> ClientWriteRequest<C> {
+    pub fn new(entry: EntryPayload<C>) -> Self {
         Self { payload: entry }
     }
 }
 
 /// The response to a `ClientRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClientWriteResponse<R: AppDataResponse> {
+#[derive(Serialize, Deserialize)]
+pub struct ClientWriteResponse<C: RaftConfig> {
     pub log_id: LogId,
 
     /// Application specific response data.
-    #[serde(bound = "R: AppDataResponse")]
-    pub data: R,
+    #[serde(bound = "C::R: AppDataResponse")]
+    pub data: C::R,
 
     /// If the log entry is a change-membership entry.
     pub membership: Option<Membership>,
 }
 
-impl<R: AppDataResponse> MessageSummary for ClientWriteResponse<R> {
+impl<C: RaftConfig> Debug for ClientWriteResponse<C>
+where C::R: Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientWriteResponse")
+            .field("log_id", &self.log_id)
+            .field("data", &self.data)
+            .field("membership", &self.membership)
+            .finish()
+    }
+}
+
+impl<C: RaftConfig> MessageSummary for ClientWriteResponse<C> {
     fn summary(&self) -> String {
         format!("log_id: {}, membership: {:?}", self.log_id, self.membership)
     }
