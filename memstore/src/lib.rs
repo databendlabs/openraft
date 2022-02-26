@@ -25,6 +25,7 @@ use openraft::EffectiveMembership;
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::LogId;
+use openraft::RaftConfig;
 use openraft::RaftStorage;
 use openraft::RaftStorageDebug;
 use openraft::SnapshotMeta;
@@ -62,6 +63,13 @@ pub struct ClientResponse(Option<String>);
 
 impl AppDataResponse for ClientResponse {}
 
+pub struct Config {}
+
+impl RaftConfig for Config {
+    type D = ClientRequest;
+    type R = ClientResponse;
+}
+
 /// The application snapshot type which the `MemStore` works with.
 #[derive(Debug)]
 pub struct MemStoreSnapshot {
@@ -89,7 +97,7 @@ pub struct MemStore {
     last_purged_log_id: RwLock<Option<LogId>>,
 
     /// The Raft log.
-    log: RwLock<BTreeMap<u64, Entry<ClientRequest>>>,
+    log: RwLock<BTreeMap<u64, Entry<Config>>>,
 
     /// The Raft state machine.
     sm: RwLock<MemStoreStateMachine>,
@@ -134,11 +142,11 @@ impl RaftStorageDebug<MemStoreStateMachine> for Arc<MemStore> {
 }
 
 #[async_trait]
-impl RaftLogReader<ClientRequest, ClientResponse> for Arc<MemStore> {
+impl RaftLogReader<Config> for Arc<MemStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<ClientRequest>>, StorageError> {
+    ) -> Result<Vec<Entry<Config>>, StorageError> {
         let res = {
             let log = self.log.read().await;
             log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>()
@@ -166,7 +174,7 @@ impl RaftLogReader<ClientRequest, ClientResponse> for Arc<MemStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<ClientRequest, ClientResponse, Cursor<Vec<u8>>> for Arc<MemStore> {
+impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<MemStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<Cursor<Vec<u8>>>, StorageError> {
         let (data, last_applied_log);
@@ -225,7 +233,7 @@ impl RaftSnapshotBuilder<ClientRequest, ClientResponse, Cursor<Vec<u8>>> for Arc
 }
 
 #[async_trait]
-impl RaftStorage<ClientRequest, ClientResponse> for Arc<MemStore> {
+impl RaftStorage<Config> for Arc<MemStore> {
     type SnapshotData = Cursor<Vec<u8>>;
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -285,7 +293,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for Arc<MemStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[&Entry<ClientRequest>]) -> Result<(), StorageError> {
+    async fn append_to_log(&mut self, entries: &[&Entry<Config>]) -> Result<(), StorageError> {
         let mut log = self.log.write().await;
         for entry in entries {
             log.insert(entry.log_id.index, (*entry).clone());
@@ -296,7 +304,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for Arc<MemStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<ClientRequest>],
+        entries: &[&Entry<Config>],
     ) -> Result<Vec<ClientResponse>, StorageError> {
         let mut res = Vec::with_capacity(entries.len());
 

@@ -23,17 +23,16 @@ use crate::raft::ClientWriteResponse;
 use crate::raft::EntryPayload;
 use crate::raft::RaftRespTx;
 use crate::raft_types::LogIdOptionExt;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::LogId;
 use crate::Membership;
 use crate::Node;
 use crate::NodeId;
+use crate::RaftConfig;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::StorageError;
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
+impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
     /// Handle the admin `init_with_config` command.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_init_with_config(&mut self, members: EitherNodesOrIds) -> Result<(), InitializeError> {
@@ -67,7 +66,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
     }
 }
 
-impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
+impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     // add node into learner,return true if the node is already a member or learner
     #[tracing::instrument(level = "debug", skip(self))]
     async fn add_learner_into_membership(
@@ -162,7 +161,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
         members: BTreeSet<NodeId>,
         blocking: bool,
         turn_to_learner: bool,
-        tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError>,
     ) -> Result<(), StorageError> {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
@@ -251,7 +250,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorag
     pub async fn append_membership_log(
         &mut self,
         mem: Membership,
-        resp_tx: Option<RaftRespTx<ClientWriteResponse<R>, ClientWriteError>>,
+        resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError>>,
     ) -> Result<(), StorageError> {
         let payload = EntryPayload::Membership(mem.clone());
         let entry = self.core.append_payload_to_log(payload).await?;

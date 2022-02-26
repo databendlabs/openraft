@@ -3,15 +3,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use memstore::ClientRequest;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
-use openraft::AppData;
-use openraft::AppDataResponse;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::MessageSummary;
+use openraft::RaftConfig;
 use openraft::RaftStorage;
 use openraft::State;
 use openraft::Vote;
@@ -215,15 +213,14 @@ async fn append_conflicts() -> Result<()> {
 }
 
 /// To check if logs is as expected.
-async fn check_logs<D, R, Sto>(sto: &mut Sto, terms: Vec<u64>) -> Result<()>
+async fn check_logs<C, Sto>(sto: &mut Sto, terms: Vec<u64>) -> Result<()>
 where
-    D: AppData,
-    R: AppDataResponse,
-    Sto: RaftStorage<D, R>,
+    C: RaftConfig,
+    Sto: RaftStorage<C>,
 {
     let logs = sto.get_log_entries(..).await?;
     let skip = 0;
-    let want: Vec<Entry<ClientRequest>> = terms
+    let want: Vec<Entry<memstore::Config>> = terms
         .iter()
         .skip(skip)
         .enumerate()

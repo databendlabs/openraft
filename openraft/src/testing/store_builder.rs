@@ -7,16 +7,16 @@ use async_trait::async_trait;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::DefensiveCheckBase;
+use crate::RaftConfig;
 use crate::RaftStorage;
 use crate::StoreExt;
 
 /// The trait to build a [`RaftStorage`] implementation.
 #[async_trait]
-pub trait StoreBuilder<D, R, S>: Send + Sync
+pub trait StoreBuilder<C, S>: Send + Sync
 where
-    D: AppData,
-    R: AppDataResponse,
-    S: RaftStorage<D, R>,
+    C: RaftConfig,
+    S: RaftStorage<C>,
 {
     async fn build(&self) -> S;
 }
@@ -26,11 +26,10 @@ where
 /// E.g. to run tests on your [`RaftStorage`] implementation, just use `Suite::test_all(|| new_store())`,
 /// if your have already provided `async fn new_store() -> MyStore`
 #[async_trait]
-impl<D, R, S, Fu, F> StoreBuilder<D, R, S> for F
+impl<C, S, Fu, F> StoreBuilder<C, S> for F
 where
-    D: AppData,
-    R: AppDataResponse,
-    S: RaftStorage<D, R>,
+    C: RaftConfig,
+    S: RaftStorage<C>,
     Fu: Future<Output = S> + Send,
     F: Fn() -> Fu + Sync + Send,
 {
@@ -40,30 +39,30 @@ where
 }
 
 /// A builder for testing [`StoreExt`].
-pub struct DefensiveStoreBuilder<D, R, BaseStore, BaseBuilder>
+pub struct DefensiveStoreBuilder<C, BaseStore, BaseBuilder>
 where
-    D: AppData + Debug,
-    R: AppDataResponse + Debug,
-    BaseStore: RaftStorage<D, R>,
-    BaseBuilder: StoreBuilder<D, R, BaseStore>,
+    C: RaftConfig,
+    C::D: AppData + Debug,
+    C::R: AppDataResponse + Debug,
+    BaseStore: RaftStorage<C>,
+    BaseBuilder: StoreBuilder<C, BaseStore>,
 {
     pub base_builder: BaseBuilder,
 
-    pub d: PhantomData<D>,
-    pub r: PhantomData<R>,
-    pub s: PhantomData<BaseStore>,
+    pub s: PhantomData<(C, BaseStore)>,
 }
 
 #[async_trait]
-impl<D, R, BaseStore, BaseBuilder> StoreBuilder<D, R, StoreExt<D, R, BaseStore>>
-    for DefensiveStoreBuilder<D, R, BaseStore, BaseBuilder>
+impl<C, BaseStore, BaseBuilder> StoreBuilder<C, StoreExt<C, BaseStore>>
+    for DefensiveStoreBuilder<C, BaseStore, BaseBuilder>
 where
-    D: AppData + Debug,
-    R: AppDataResponse + Debug,
-    BaseStore: RaftStorage<D, R>,
-    BaseBuilder: StoreBuilder<D, R, BaseStore>,
+    C: RaftConfig,
+    C::D: AppData + Debug,
+    C::R: AppDataResponse + Debug,
+    BaseStore: RaftStorage<C>,
+    BaseBuilder: StoreBuilder<C, BaseStore>,
 {
-    async fn build(&self) -> StoreExt<D, R, BaseStore> {
+    async fn build(&self) -> StoreExt<C, BaseStore> {
         let sto = self.base_builder.build().await;
         let sto_ext = StoreExt::new(sto);
         sto_ext.set_defensive(true);

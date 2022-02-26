@@ -13,11 +13,10 @@ use crate::storage::RaftLogReader;
 use crate::storage::RaftSnapshotBuilder;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::DefensiveCheck;
 use crate::EffectiveMembership;
 use crate::LogId;
+use crate::RaftConfig;
 use crate::RaftStorage;
 use crate::RaftStorageDebug;
 use crate::SnapshotMeta;
@@ -30,49 +29,47 @@ use crate::Wrapper;
 ///
 /// It provides defensive check against input and the state of underlying store.
 /// And it provides more APIs.
-pub struct StoreExt<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> {
+pub struct StoreExt<C: RaftConfig, T: RaftStorage<C>> {
     defensive: Arc<AtomicBool>,
     inner: T,
-    p: PhantomData<(D, R)>,
+    c: PhantomData<C>,
 }
 
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R> + Clone> Clone for StoreExt<D, R, T> {
+impl<C: RaftConfig, T: RaftStorage<C> + Clone> Clone for StoreExt<C, T> {
     fn clone(&self) -> Self {
         Self {
             defensive: self.defensive.clone(),
             inner: self.inner.clone(),
-            p: PhantomData,
+            c: PhantomData,
         }
     }
 }
 
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> StoreExt<D, R, T> {
+impl<C: RaftConfig, T: RaftStorage<C>> StoreExt<C, T> {
     /// Create a StoreExt backed by another store.
     pub fn new(inner: T) -> Self {
         StoreExt {
             defensive: Arc::new(AtomicBool::new(false)),
             inner,
-            p: PhantomData,
+            c: PhantomData,
         }
     }
 }
 
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> Wrapper<D, R, T> for StoreExt<D, R, T>
+impl<C: RaftConfig, T: RaftStorage<C>> Wrapper<C, T> for StoreExt<C, T>
 where
-    D: AppData,
-    R: AppDataResponse,
-    T: RaftStorage<D, R>,
+    C: RaftConfig,
+    T: RaftStorage<C>,
 {
     fn inner(&mut self) -> &mut T {
         &mut self.inner
     }
 }
 
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> DefensiveCheckBase for StoreExt<D, R, T>
+impl<C: RaftConfig, T: RaftStorage<C>> DefensiveCheckBase for StoreExt<C, T>
 where
-    D: AppData,
-    R: AppDataResponse,
-    T: RaftStorage<D, R>,
+    C: RaftConfig,
+    T: RaftStorage<C>,
 {
     fn set_defensive(&self, d: bool) {
         self.defensive.store(d, Ordering::Relaxed);
@@ -83,20 +80,18 @@ where
     }
 }
 
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> DefensiveCheck<D, R, T> for StoreExt<D, R, T>
+impl<C: RaftConfig, T: RaftStorage<C>> DefensiveCheck<C, T> for StoreExt<C, T>
 where
-    D: AppData,
-    R: AppDataResponse,
-    T: RaftStorage<D, R>,
+    C: RaftConfig,
+    T: RaftStorage<C>,
 {
 }
 
 #[async_trait]
-impl<D, R, T, SM> RaftStorageDebug<SM> for StoreExt<D, R, T>
+impl<C, T, SM> RaftStorageDebug<SM> for StoreExt<C, T>
 where
-    T: RaftStorage<D, R> + RaftStorageDebug<SM>,
-    D: AppData,
-    R: AppDataResponse,
+    T: RaftStorage<C> + RaftStorageDebug<SM>,
+    C: RaftConfig,
 {
     async fn get_state_machine(&mut self) -> SM {
         self.inner().get_state_machine().await
@@ -104,17 +99,16 @@ where
 }
 
 #[async_trait]
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> RaftStorage<D, R> for StoreExt<D, R, T>
+impl<C: RaftConfig, T: RaftStorage<C>> RaftStorage<C> for StoreExt<C, T>
 where
-    T: RaftStorage<D, R>,
-    D: AppData,
-    R: AppDataResponse,
+    T: RaftStorage<C>,
+    C: RaftConfig,
 {
     type SnapshotData = T::SnapshotData;
 
-    type LogReader = LogReaderExt<D, R, T>;
+    type LogReader = LogReaderExt<C, T>;
 
-    type SnapshotBuilder = SnapshotBuilderExt<D, R, T>;
+    type SnapshotBuilder = SnapshotBuilderExt<C, T>;
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote) -> Result<(), StorageError> {
@@ -145,7 +139,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
-    async fn append_to_log(&mut self, entries: &[&Entry<D>]) -> Result<(), StorageError> {
+    async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_consecutive_input(entries).await?;
         self.defensive_append_log_index_is_last_plus_one(entries).await?;
@@ -155,7 +149,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
-    async fn apply_to_state_machine(&mut self, entries: &[&Entry<D>]) -> Result<Vec<R>, StorageError> {
+    async fn apply_to_state_machine(&mut self, entries: &[&Entry<C>]) -> Result<Vec<C::R>, StorageError> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_apply_index_is_last_applied_plus_one(entries).await?;
         self.defensive_apply_log_id_gt_last(entries).await?;
@@ -197,12 +191,12 @@ where
 }
 
 #[async_trait]
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> RaftLogReader<D, R> for StoreExt<D, R, T> {
+impl<C: RaftConfig, T: RaftStorage<C>> RaftLogReader<C> for StoreExt<C, T> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<D>>, StorageError> {
+    ) -> Result<Vec<Entry<C>>, StorageError> {
         self.defensive_nonempty_range(range.clone())?;
         self.inner().try_get_log_entries(range).await
     }
@@ -216,14 +210,12 @@ impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> RaftLogReader<D, R> f
 /// Extended snapshot builder backed by another impl.
 ///
 /// It provides defensive check against input and the state of underlying snapshot builder.
-pub struct SnapshotBuilderExt<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> {
+pub struct SnapshotBuilderExt<C: RaftConfig, T: RaftStorage<C>> {
     inner: T::SnapshotBuilder,
 }
 
 #[async_trait]
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> RaftSnapshotBuilder<D, R, T::SnapshotData>
-    for SnapshotBuilderExt<D, R, T>
-{
+impl<C: RaftConfig, T: RaftStorage<C>> RaftSnapshotBuilder<C, T::SnapshotData> for SnapshotBuilderExt<C, T> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<T::SnapshotData>, StorageError> {
         self.inner.build_snapshot().await
@@ -233,18 +225,18 @@ impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> RaftSnapshotBuilder<D
 /// Extended log reader backed by another impl.
 ///
 /// It provides defensive check against input and the state of underlying log reader.
-pub struct LogReaderExt<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> {
+pub struct LogReaderExt<C: RaftConfig, T: RaftStorage<C>> {
     defensive: Arc<AtomicBool>,
     inner: T::LogReader,
 }
 
 #[async_trait]
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> RaftLogReader<D, R> for LogReaderExt<D, R, T> {
+impl<C: RaftConfig, T: RaftStorage<C>> RaftLogReader<C> for LogReaderExt<C, T> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<D>>, StorageError> {
+    ) -> Result<Vec<Entry<C>>, StorageError> {
         self.defensive_nonempty_range(range.clone())?;
         self.inner.try_get_log_entries(range).await
     }
@@ -257,11 +249,10 @@ impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> RaftLogReader<D, R> f
     }
 }
 
-impl<D: AppData, R: AppDataResponse, T: RaftStorage<D, R>> DefensiveCheckBase for LogReaderExt<D, R, T>
+impl<C: RaftConfig, T: RaftStorage<C>> DefensiveCheckBase for LogReaderExt<C, T>
 where
-    D: AppData,
-    R: AppDataResponse,
-    T: RaftStorage<D, R>,
+    C: RaftConfig,
+    T: RaftStorage<C>,
 {
     fn set_defensive(&self, d: bool) {
         self.defensive.store(d, Ordering::Relaxed);

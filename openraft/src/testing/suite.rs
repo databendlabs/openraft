@@ -20,6 +20,7 @@ use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
+use crate::RaftConfig;
 use crate::RaftStorage;
 use crate::StorageError;
 use crate::Violation;
@@ -30,34 +31,33 @@ const NODE_ID: NodeId = 0;
 /// Test suite to ensure a `RaftStore` impl works as expected.
 ///
 /// Usage:
-pub struct Suite<D, R, S, B>
+pub struct Suite<C, S, B>
 where
-    D: AppData + Debug,
-    R: AppDataResponse + Debug,
-    S: RaftStorage<D, R>,
-    B: StoreBuilder<D, R, S>,
+    C: RaftConfig,
+    C::D: AppData + Debug,
+    C::R: AppDataResponse + Debug,
+    S: RaftStorage<C>,
+    B: StoreBuilder<C, S>,
 {
-    d: PhantomData<D>,
-    r: PhantomData<R>,
+    c: PhantomData<C>,
     p: PhantomData<S>,
     f: PhantomData<B>,
 }
 
-impl<D, R, S, B> Suite<D, R, S, B>
+impl<C, S, B> Suite<C, S, B>
 where
-    D: AppData + Debug,
-    R: AppDataResponse + Debug,
-    S: RaftStorage<D, R>,
-    B: StoreBuilder<D, R, S>,
+    C: RaftConfig,
+    C::D: AppData + Debug,
+    C::R: AppDataResponse + Debug,
+    S: RaftStorage<C>,
+    B: StoreBuilder<C, S>,
 {
     pub fn test_all(builder: B) -> Result<(), StorageError> {
         Suite::test_store(&builder)?;
 
-        let df_builder = DefensiveStoreBuilder::<D, R, S, B> {
+        let df_builder = DefensiveStoreBuilder::<C, S, B> {
             base_builder: builder,
 
-            d: Default::default(),
-            r: Default::default(),
             s: Default::default(),
         };
 
@@ -758,7 +758,7 @@ where
         store.append_to_log(&[&blank(2, 10)]).await?;
 
         let l = store.try_get_log_entries(0..).await?.len();
-        let last = store.try_get_log_entries(0..).await?.last().unwrap().clone();
+        let last = store.try_get_log_entries(0..).await?.last().cloned().unwrap();
 
         assert_eq!(l, 10, "expected 10 entries to exist in the log");
         assert_eq!(
@@ -914,12 +914,13 @@ where
 // Defensive test:
 // If a RaftStore impl support defensive check, enable it and check if it returns errors when abnormal input is seen.
 // A RaftStore with defensive check is able to expose bugs in raft core.
-impl<D, R, S, B> Suite<D, R, S, B>
+impl<C, S, B> Suite<C, S, B>
 where
-    D: AppData + Debug,
-    R: AppDataResponse + Debug,
-    S: RaftStorage<D, R>,
-    B: StoreBuilder<D, R, S>,
+    C: RaftConfig,
+    C::D: AppData + Debug,
+    C::R: AppDataResponse + Debug,
+    S: RaftStorage<C>,
+    B: StoreBuilder<C, S>,
 {
     pub fn test_store_defensive(builder: &B) -> Result<(), StorageError> {
         run_fut(Suite::df_get_membership_config_dirty_log(builder))?;
@@ -1466,7 +1467,7 @@ where
 }
 
 /// Create a blank log entry for test
-fn blank<D: AppData>(term: u64, index: u64) -> Entry<D> {
+fn blank<C: RaftConfig>(term: u64, index: u64) -> Entry<C> {
     Entry {
         log_id: LogId::new(LeaderId::new(term, NODE_ID), index),
         payload: EntryPayload::Blank,

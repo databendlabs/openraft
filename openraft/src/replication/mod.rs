@@ -36,8 +36,6 @@ use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::LogIndexOptionExt;
 use crate::storage::RaftLogReader;
 use crate::storage::Snapshot;
-use crate::AppData;
-use crate::AppDataResponse;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LeaderId;
@@ -46,6 +44,7 @@ use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
+use crate::RaftConfig;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
@@ -113,7 +112,7 @@ pub(crate) struct ReplicationStream {
 
 impl ReplicationStream {
     /// Create a new replication stream for the target peer.
-    pub(crate) fn new<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>>(
+    pub(crate) fn new<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>>(
         target: NodeId,
         target_node: Option<Node>,
         vote: Vote,
@@ -124,7 +123,7 @@ impl ReplicationStream {
         log_reader: S::LogReader,
         replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
     ) -> Self {
-        ReplicationCore::<D, R, N, S>::spawn(
+        ReplicationCore::<C, N, S>::spawn(
             target,
             target_node,
             vote,
@@ -143,7 +142,7 @@ impl ReplicationStream {
 /// NOTE: we do not stack replication requests to targets because this could result in
 /// out-of-order delivery. We always buffer until we receive a success response, then send the
 /// next payload from the buffer.
-struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> {
+struct ReplicationCore<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     /// The ID of the target Raft node which replication events are to be sent to.
     target: NodeId,
 
@@ -164,8 +163,6 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>,
 
     /// The Raft's runtime config.
     config: Arc<Config>,
-
-    marker_r: std::marker::PhantomData<R>,
 
     //////////////////////////////////////////////////////////////////////////
     // Dynamic Fields ////////////////////////////////////////////////////////
@@ -197,7 +194,7 @@ struct ReplicationCore<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>,
     install_snapshot_timeout: Duration,
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
+impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
     /// Spawn a new replication task for the target node.
     #[tracing::instrument(level = "trace", skip(config, network, log_reader, raft_core_tx))]
     pub(self) fn spawn(
@@ -222,7 +219,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
             network,
             log_reader,
             config,
-            marker_r: std::marker::PhantomData,
             target_repl_state: TargetReplState::LineRate,
             last_log_id: last_log,
             committed,
@@ -445,9 +441,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D,
 
         // Failed
 
-        // Replication was not successful, if a newer term has been returned, revert to follower.
+        // Replication was not successful, if a newer term has been returneCevert to follower.
         if append_resp.vote > self.vote {
-            tracing::debug!(%append_resp.vote, "append entries failed, reverting to follower");
+            tracing::debug!(%append_resp.vote, "append entries faileCeverting to follower");
 
             return Err(ReplicationError::HigherVote(HigherVote {
                 higher: append_resp.vote,
@@ -704,7 +700,7 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
     }
 }
 
-impl<D: AppData, R: AppDataResponse, N: RaftNetworkFactory<D>, S: RaftStorage<D, R>> ReplicationCore<D, R, N, S> {
+impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError> {
         loop {

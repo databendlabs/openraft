@@ -29,6 +29,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
+use crate::ExampleConfig;
+
 /**
  * Here you will set the types of request that will interact with the raft nodes.
  * For example the `Set` will be used to write data (key and value) to the raft database.
@@ -87,7 +89,7 @@ pub struct ExampleStore {
     last_purged_log_id: RwLock<Option<LogId>>,
 
     /// The Raft log.
-    log: RwLock<BTreeMap<u64, Entry<ExampleRequest>>>,
+    log: RwLock<BTreeMap<u64, Entry<ExampleConfig>>>,
 
     /// The Raft state machine.
     pub state_machine: RwLock<ExampleStateMachine>,
@@ -101,7 +103,7 @@ pub struct ExampleStore {
 }
 
 #[async_trait]
-impl RaftLogReader<ExampleRequest, ExampleResponse> for Arc<ExampleStore> {
+impl RaftLogReader<ExampleConfig> for Arc<ExampleStore> {
     async fn get_log_state(&mut self) -> Result<LogState, StorageError> {
         let log = self.log.read().await;
         let last = log.iter().rev().next().map(|(_, ent)| ent.log_id);
@@ -122,7 +124,7 @@ impl RaftLogReader<ExampleRequest, ExampleResponse> for Arc<ExampleStore> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<ExampleRequest>>, StorageError> {
+    ) -> Result<Vec<Entry<ExampleConfig>>, StorageError> {
         let log = self.log.read().await;
         let response = log.range(range.clone()).map(|(_, val)| val.clone()).collect::<Vec<_>>();
         Ok(response)
@@ -130,7 +132,7 @@ impl RaftLogReader<ExampleRequest, ExampleResponse> for Arc<ExampleStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<ExampleRequest, ExampleResponse, Cursor<Vec<u8>>> for Arc<ExampleStore> {
+impl RaftSnapshotBuilder<ExampleConfig, Cursor<Vec<u8>>> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<Cursor<Vec<u8>>>, StorageError> {
         let (data, last_applied_log);
@@ -185,7 +187,7 @@ impl RaftSnapshotBuilder<ExampleRequest, ExampleResponse, Cursor<Vec<u8>>> for A
 }
 
 #[async_trait]
-impl RaftStorage<ExampleRequest, ExampleResponse> for Arc<ExampleStore> {
+impl RaftStorage<ExampleConfig> for Arc<ExampleStore> {
     type SnapshotData = Cursor<Vec<u8>>;
     type LogReader = Self;
     type SnapshotBuilder = Self;
@@ -203,7 +205,7 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for Arc<ExampleStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[&Entry<ExampleRequest>]) -> Result<(), StorageError> {
+    async fn append_to_log(&mut self, entries: &[&Entry<ExampleConfig>]) -> Result<(), StorageError> {
         let mut log = self.log.write().await;
         for entry in entries {
             log.insert(entry.log_id.index, (*entry).clone());
@@ -254,7 +256,7 @@ impl RaftStorage<ExampleRequest, ExampleResponse> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<ExampleRequest>],
+        entries: &[&Entry<ExampleConfig>],
     ) -> Result<Vec<ExampleResponse>, StorageError> {
         let mut res = Vec::with_capacity(entries.len());
 
