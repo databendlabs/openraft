@@ -59,7 +59,6 @@ use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
-use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -73,54 +72,70 @@ use crate::Update;
 /// - and the config.
 ///
 /// An active config is just the last seen config in raft spec.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EffectiveMembership {
+#[derive(Clone, Eq, Serialize, Deserialize)]
+pub struct EffectiveMembership<C: RaftTypeConfig> {
     /// The id of the log that applies this membership config
-    pub log_id: LogId,
+    pub log_id: LogId<C>,
 
-    pub membership: Membership,
+    pub membership: Membership<C>,
 
     /// Cache of union of all members
-    all_members: BTreeSet<NodeId>,
+    all_members: BTreeSet<C::NodeId>,
 }
 
-impl EffectiveMembership {
-    pub fn new_initial(node_id: NodeId) -> Self {
+impl<C: RaftTypeConfig> Debug for EffectiveMembership<C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EffectiveMembership")
+            .field("log_id", &self.log_id)
+            .field("membership", &self.membership)
+            .field("all_members", &self.all_members)
+            .finish()
+    }
+}
+
+impl<C: RaftTypeConfig> PartialEq for EffectiveMembership<C> {
+    fn eq(&self, other: &Self) -> bool {
+        self.log_id == other.log_id && self.membership == other.membership && self.all_members == other.all_members
+    }
+}
+
+impl<C: RaftTypeConfig> EffectiveMembership<C> {
+    pub fn new_initial(node_id: C::NodeId) -> Self {
         Self::new(LogId::new(LeaderId::default(), 0), Membership::new_initial(node_id))
     }
 
-    pub fn new(log_id: LogId, membership: Membership) -> Self {
+    pub fn new(log_id: LogId<C>, membership: Membership<C>) -> Self {
         let all_members = membership.all_members();
-        EffectiveMembership {
+        Self {
             log_id,
             membership,
             all_members,
         }
     }
 
-    pub(crate) fn all_members(&self) -> &BTreeSet<NodeId> {
+    pub(crate) fn all_members(&self) -> &BTreeSet<C::NodeId> {
         &self.all_members
     }
 
-    pub(crate) fn all_learners(&self) -> &BTreeSet<NodeId> {
+    pub(crate) fn all_learners(&self) -> &BTreeSet<C::NodeId> {
         self.membership.all_learners()
     }
 
     // TODO(xp): unused
-    pub fn get_configs(&self) -> &Vec<BTreeSet<NodeId>> {
+    pub fn get_configs(&self) -> &Vec<BTreeSet<C::NodeId>> {
         self.membership.get_configs()
     }
 
-    pub fn get_node(&self, node_id: NodeId) -> Option<&Node> {
+    pub fn get_node(&self, node_id: C::NodeId) -> Option<&Node> {
         self.membership.get_node(node_id)
     }
 
-    pub fn get_nodes(&self) -> Option<&BTreeMap<NodeId, Node>> {
+    pub fn get_nodes(&self) -> Option<&BTreeMap<C::NodeId, Node>> {
         self.membership.get_nodes().as_ref()
     }
 }
 
-impl MessageSummary for EffectiveMembership {
+impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
     fn summary(&self) -> String {
         format!("{{log_id:{} membership:{}}}", self.log_id, self.membership.summary())
     }
@@ -129,13 +144,13 @@ impl MessageSummary for EffectiveMembership {
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     /// This node's ID.
-    id: NodeId,
+    id: C::NodeId,
 
     /// This node's runtime config.
     config: Arc<Config>,
 
     /// The cluster's current membership configuration.
-    effective_membership: Arc<EffectiveMembership>,
+    effective_membership: Arc<EffectiveMembership<C>>,
 
     /// The `RaftNetworkFactory` implementation.
     network: N,
@@ -151,16 +166,16 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// Committed means:
     /// - a log that is replicated to a quorum of the cluster and it is of the term of the leader.
     /// - A quorum could be a joint quorum.
-    committed: Option<LogId>,
+    committed: Option<LogId<C>>,
 
     /// The log id of the highest log entry which has been applied to the local state machine.
-    last_applied: Option<LogId>,
+    last_applied: Option<LogId<C>>,
 
     /// The vote state of this node.
-    vote: Vote,
+    vote: Vote<C>,
 
     /// The last entry to be appended to the log.
-    last_log_id: Option<LogId>,
+    last_log_id: Option<LogId<C>>,
 
     /// The node's current snapshot state.
     snapshot_state: Option<SnapshotState<S::SnapshotData>>,
@@ -168,7 +183,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
     ///
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
-    snapshot_last_log_id: Option<LogId>,
+    snapshot_last_log_id: Option<LogId<C>>,
 
     /// The last time a heartbeat was received.
     last_heartbeat: Option<Instant>,
@@ -176,26 +191,26 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The duration until the next election timeout.
     next_election_timeout: Option<Instant>,
 
-    tx_compaction: mpsc::Sender<SnapshotUpdate>,
-    rx_compaction: mpsc::Receiver<SnapshotUpdate>,
+    tx_compaction: mpsc::Sender<SnapshotUpdate<C>>,
+    rx_compaction: mpsc::Receiver<SnapshotUpdate<C>>,
 
     rx_api: mpsc::UnboundedReceiver<(RaftMsg<C>, Span)>,
 
-    tx_metrics: watch::Sender<RaftMetrics>,
+    tx_metrics: watch::Sender<RaftMetrics<C>>,
 
     rx_shutdown: oneshot::Receiver<()>,
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     pub(crate) fn spawn(
-        id: NodeId,
+        id: C::NodeId,
         config: Arc<Config>,
         network: N,
         storage: S,
         rx_api: mpsc::UnboundedReceiver<(RaftMsg<C>, Span)>,
-        tx_metrics: watch::Sender<RaftMetrics>,
+        tx_metrics: watch::Sender<RaftMetrics<C>>,
         rx_shutdown: oneshot::Receiver<()>,
-    ) -> JoinHandle<Result<(), Fatal>> {
+    ) -> JoinHandle<Result<(), Fatal<C>>> {
         //
 
         // TODO(xp): remove this.
@@ -232,7 +247,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// The main loop of the Raft protocol.
     #[tracing::instrument(level="trace", skip(self), fields(id=display(self.id), cluster=%self.config.cluster_name))]
-    async fn main(mut self) -> Result<(), Fatal> {
+    async fn main(mut self) -> Result<(), Fatal<C>> {
         let res = self.do_main().await;
         match res {
             Ok(_) => Ok(()),
@@ -249,7 +264,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level="trace", skip(self), fields(id=display(self.id), cluster=%self.config.cluster_name))]
-    async fn do_main(&mut self) -> Result<(), Fatal> {
+    async fn do_main(&mut self) -> Result<(), Fatal<C>> {
         tracing::debug!("raft node is initializing");
 
         let state = self.storage.get_initial_state().await?;
@@ -348,7 +363,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn report_metrics(&mut self, leader_metrics: Update<Option<&Arc<LeaderMetrics>>>) {
+    fn report_metrics(&mut self, leader_metrics: Update<Option<&Arc<LeaderMetrics<C>>>>) {
         let leader_metrics = match leader_metrics {
             Update::Update(v) => v.cloned(),
             Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
@@ -386,7 +401,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Save the Raft node's current hard state to disk.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self) -> Result<(), StorageError> {
+    async fn save_vote(&mut self) -> Result<(), StorageError<C>> {
         self.storage.save_vote(&self.vote).await
     }
 
@@ -435,7 +450,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Update the node's current membership config & save hard state.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_membership(&mut self, cfg: EffectiveMembership) {
+    fn update_membership(&mut self, cfg: EffectiveMembership<C>) {
         // If the given config does not contain this node's ID, it means one of the following:
         //
         // - the node is currently a learner and is replicating an old config to which it has
@@ -457,7 +472,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Update the system's snapshot state based on the given data.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_snapshot_state(&mut self, update: SnapshotUpdate) {
+    fn update_snapshot_state(&mut self, update: SnapshotUpdate<C>) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
             self.snapshot_last_log_id = Some(log_id);
             self.report_metrics(Update::AsIs);
@@ -532,14 +547,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Reject an init config request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn reject_init_with_config(&self, tx: oneshot::Sender<Result<(), InitializeError>>) {
+    fn reject_init_with_config(&self, tx: oneshot::Sender<Result<(), InitializeError<C>>>) {
         let _ = tx.send(Err(InitializeError::NotAllowed));
     }
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     fn reject_with_forward_to_leader<T, E>(&self, tx: RaftRespTx<T, E>)
-    where E: From<ForwardToLeader> {
+    where E: From<ForwardToLeader<C>> {
         let l = self.current_leader();
         let err = ForwardToLeader {
             leader_id: l,
@@ -550,7 +565,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip(self, payload))]
-    pub(super) async fn append_payload_to_log(&mut self, payload: EntryPayload<C>) -> Result<Entry<C>, StorageError> {
+    pub(super) async fn append_payload_to_log(
+        &mut self,
+        payload: EntryPayload<C>,
+    ) -> Result<Entry<C>, StorageError<C>> {
         let log_id = LogId::new(self.vote.leader_id(), self.last_log_id.next_index());
 
         let entry = Entry { log_id, payload };
@@ -567,7 +585,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn current_leader(&self) -> Option<NodeId> {
+    pub fn current_leader(&self) -> Option<C::NodeId> {
         if !self.vote.committed {
             return None;
         }
@@ -585,7 +603,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
-    pub(crate) fn get_leader_node(&self, leader_id: Option<NodeId>) -> Option<Node> {
+    pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<Node> {
         match leader_id {
             None => None,
             Some(id) => self.effective_membership.get_node(id).cloned(),
@@ -598,7 +616,7 @@ async fn apply_to_state_machine<C, S>(
     sto: &mut S,
     entries: &[&Entry<C>],
     max_keep: u64,
-) -> Result<Vec<C::R>, StorageError>
+) -> Result<Vec<C::R>, StorageError<C>>
 where
     C: RaftTypeConfig,
     S: RaftStorage<C>,
@@ -618,7 +636,7 @@ where
 }
 
 #[tracing::instrument(level = "trace", skip(sto))]
-async fn purge_applied_logs<C, S>(sto: &mut S, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
+async fn purge_applied_logs<C, S>(sto: &mut S, last_applied: &LogId<C>, max_keep: u64) -> Result<(), StorageError<C>>
 where
     C: RaftTypeConfig,
     S: RaftStorage<C>,
@@ -673,9 +691,9 @@ pub(self) enum SnapshotState<S> {
 
 /// An update on a snapshot creation process.
 #[derive(Debug)]
-pub(self) enum SnapshotUpdate {
+pub(self) enum SnapshotUpdate<C: RaftTypeConfig> {
     /// Snapshot creation has finished successfully and covers the given index.
-    SnapshotComplete(LogId),
+    SnapshotComplete(LogId<C>),
     /// Snapshot creation failed.
     SnapshotFailed,
 }
@@ -726,16 +744,16 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     pub(super) core: &'a mut RaftCore<C, N, S>,
 
     /// A mapping of node IDs the replication state of the target node.
-    pub(super) nodes: BTreeMap<NodeId, ReplicationState>,
+    pub(super) nodes: BTreeMap<C::NodeId, ReplicationState<C>>,
 
     /// The metrics about a leader
-    pub leader_metrics: Arc<LeaderMetrics>,
+    pub leader_metrics: Arc<LeaderMetrics<C>>,
 
     /// The stream of events coming from replication streams.
-    pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<S::SnapshotData>, Span)>,
+    pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<C, S::SnapshotData>, Span)>,
 
     /// The cloneable sender channel for replication stream events.
-    pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
+    pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<C, S::SnapshotData>, Span)>,
 
     /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
     pub(super) awaiting_committed: Vec<ClientRequestEntry<C>>,
@@ -757,7 +775,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
     /// Transition to the Raft leader state.
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="leader"))]
-    pub(self) async fn run(mut self) -> Result<(), Fatal> {
+    pub(self) async fn run(mut self) -> Result<(), Fatal<C>> {
         // Setup state as leader.
         self.core.last_heartbeat = None;
         self.core.next_election_timeout = None;
@@ -789,7 +807,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id)))]
-    pub(self) async fn leader_loop(mut self) -> Result<(), Fatal> {
+    pub(self) async fn leader_loop(mut self) -> Result<(), Fatal<C>> {
         loop {
             if !self.core.target_state.is_leader() {
                 tracing::info!("id={} state becomes: {:?}", self.core.id, self.core.target_state);
@@ -826,7 +844,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "leader", id=display(self.core.id)))]
-    pub async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal> {
+    pub async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
@@ -875,16 +893,16 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 }
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-struct ReplicationState {
-    pub matched: Option<LogId>,
+struct ReplicationState<C: RaftTypeConfig> {
+    pub matched: Option<LogId<C>>,
     pub remove_since: Option<u64>,
-    pub repl_stream: ReplicationStream,
+    pub repl_stream: ReplicationStream<C>,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
-    pub tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
+    pub tx: Option<RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C>>>,
 }
 
-impl MessageSummary for ReplicationState {
+impl<C: RaftTypeConfig> MessageSummary for ReplicationState<C> {
     fn summary(&self) -> String {
         format!(
             "matched: {:?}, remove_after_commit: {:?}",
@@ -893,16 +911,20 @@ impl MessageSummary for ReplicationState {
     }
 }
 
-impl ReplicationState {
+impl<C: RaftTypeConfig> ReplicationState<C> {
     // TODO(xp): make this a method of Config?
 
     /// Return true if the distance behind last_log_id is smaller than the threshold to join.
-    pub fn is_line_rate(&self, last_log_id: &Option<LogId>, config: &Config) -> bool {
+    pub fn is_line_rate(&self, last_log_id: &Option<LogId<C>>, config: &Config) -> bool {
         is_matched_upto_date(&self.matched, last_log_id, config)
     }
 }
 
-pub fn is_matched_upto_date(matched: &Option<LogId>, last_log_id: &Option<LogId>, config: &Config) -> bool {
+pub fn is_matched_upto_date<C: RaftTypeConfig>(
+    matched: &Option<LogId<C>>,
+    last_log_id: &Option<LogId<C>>,
+    config: &Config,
+) -> bool {
     let my_index = matched.next_index();
     let distance = last_log_id.next_index().saturating_sub(my_index);
     distance <= config.replication_lag_threshold
@@ -913,7 +935,7 @@ struct CandidateState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftSt
     core: &'a mut RaftCore<C, N, S>,
 
     /// Ids of the nodes that has granted our vote request.
-    granted: BTreeSet<NodeId>,
+    granted: BTreeSet<C::NodeId>,
 }
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> CandidateState<'a, C, N, S> {
@@ -926,7 +948,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
 
     /// Run the candidate loop.
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="candidate"))]
-    pub(self) async fn run(mut self) -> Result<(), Fatal> {
+    pub(self) async fn run(mut self) -> Result<(), Fatal<C>> {
         // Each iteration of the outer loop represents a new term.
 
         loop {
@@ -989,7 +1011,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
     }
 
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "candidate", id=display(self.core.id)))]
-    pub async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal> {
+    pub async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
@@ -1035,7 +1057,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
 
     /// Run the follower loop.
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="follower"))]
-    pub(self) async fn run(mut self) -> Result<(), Fatal> {
+    pub(self) async fn run(mut self) -> Result<(), Fatal<C>> {
         self.core.report_metrics(Update::Update(None));
 
         loop {
@@ -1064,7 +1086,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
     }
 
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "follower", id=display(self.core.id)))]
-    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal> {
+    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
@@ -1111,7 +1133,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
 
     /// Run the learner loop.
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="learner"))]
-    pub(self) async fn run(mut self) -> Result<(), Fatal> {
+    pub(self) async fn run(mut self) -> Result<(), Fatal<C>> {
         self.core.report_metrics(Update::Update(None));
 
         loop {
@@ -1138,7 +1160,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
 
     // TODO(xp): define a handle_msg method in RaftCore that decides what to do by current State.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "learner", id=display(self.core.id)))]
-    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal> {
+    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {

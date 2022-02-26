@@ -42,7 +42,6 @@ use crate::LeaderId;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::Node;
-use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
@@ -52,12 +51,12 @@ use crate::ToStorageResult;
 use crate::Vote;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
-pub struct ReplicationMetrics {
-    pub(crate) matched_leader_id: Option<LeaderId>,
+pub struct ReplicationMetrics<C: RaftTypeConfig> {
+    pub(crate) matched_leader_id: Option<LeaderId<C>>,
     pub(crate) matched_index: AtomicU64,
 }
 
-impl Clone for ReplicationMetrics {
+impl<C: RaftTypeConfig> Clone for ReplicationMetrics<C> {
     fn clone(&self) -> Self {
         Self {
             matched_leader_id: self.matched_leader_id,
@@ -66,17 +65,17 @@ impl Clone for ReplicationMetrics {
     }
 }
 
-impl PartialEq for ReplicationMetrics {
+impl<C: RaftTypeConfig> PartialEq for ReplicationMetrics<C> {
     fn eq(&self, other: &Self) -> bool {
         self.matched_leader_id == other.matched_leader_id
             && self.matched_index.load(Ordering::Relaxed) == other.matched_index.load(Ordering::Relaxed)
     }
 }
 
-impl Eq for ReplicationMetrics {}
+impl<C: RaftTypeConfig> Eq for ReplicationMetrics<C> {}
 
-impl ReplicationMetrics {
-    pub fn new(log_id: Option<LogId>) -> Self {
+impl<C: RaftTypeConfig> ReplicationMetrics<C> {
+    pub fn new(log_id: Option<LogId<C>>) -> Self {
         if let Some(log_id) = log_id {
             Self {
                 matched_leader_id: Some(log_id.leader_id),
@@ -86,7 +85,7 @@ impl ReplicationMetrics {
             Self::default()
         }
     }
-    pub fn matched(&self) -> Option<LogId> {
+    pub fn matched(&self) -> Option<LogId<C>> {
         if let Some(leader_id) = self.matched_leader_id {
             let index = self.matched_index.load(Ordering::Relaxed);
             Some(LogId { leader_id, index })
@@ -96,32 +95,32 @@ impl ReplicationMetrics {
     }
 }
 
-impl MessageSummary for ReplicationMetrics {
+impl<C: RaftTypeConfig> MessageSummary for ReplicationMetrics<C> {
     fn summary(&self) -> String {
         format!("{:?}", self.matched())
     }
 }
 
 /// The public handle to a spawned replication stream.
-pub(crate) struct ReplicationStream {
+pub(crate) struct ReplicationStream<C: RaftTypeConfig> {
     /// The spawn handle the `ReplicationCore` task.
     // pub handle: JoinHandle<()>,
     /// The channel used for communicating with the replication task.
-    pub repl_tx: mpsc::UnboundedSender<(RaftEvent, Span)>,
+    pub repl_tx: mpsc::UnboundedSender<(RaftEvent<C>, Span)>,
 }
 
-impl ReplicationStream {
+impl<C: RaftTypeConfig> ReplicationStream<C> {
     /// Create a new replication stream for the target peer.
-    pub(crate) fn new<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>>(
-        target: NodeId,
+    pub(crate) fn new<N: RaftNetworkFactory<C>, S: RaftStorage<C>>(
+        target: C::NodeId,
         target_node: Option<Node>,
-        vote: Vote,
+        vote: Vote<C>,
         config: Arc<Config>,
-        last_log: Option<LogId>,
-        committed: Option<LogId>,
+        last_log: Option<LogId<C>>,
+        committed: Option<LogId<C>>,
         network: N::Network,
         log_reader: S::LogReader,
-        replication_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
+        replication_tx: mpsc::UnboundedSender<(ReplicaEvent<C, S::SnapshotData>, Span)>,
     ) -> Self {
         ReplicationCore::<C, N, S>::spawn(
             target,
@@ -144,16 +143,16 @@ impl ReplicationStream {
 /// next payload from the buffer.
 struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     /// The ID of the target Raft node which replication events are to be sent to.
-    target: NodeId,
+    target: C::NodeId,
 
     /// The vote of the leader.
-    vote: Vote,
+    vote: Vote<C>,
 
     /// A channel for sending events to the Raft node.
-    raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
+    raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<C, S::SnapshotData>, Span)>,
 
     /// A channel for receiving events from the Raft node.
-    repl_rx: mpsc::UnboundedReceiver<(RaftEvent, Span)>,
+    repl_rx: mpsc::UnboundedReceiver<(RaftEvent<C>, Span)>,
 
     /// The `RaftNetwork` interface.
     network: N::Network,
@@ -167,13 +166,13 @@ struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     //////////////////////////////////////////////////////////////////////////
     // Dynamic Fields ////////////////////////////////////////////////////////
     /// The target state of this replication stream.
-    target_repl_state: TargetReplState,
+    target_repl_state: TargetReplState<C>,
 
     /// The id of the log entry to most recently be appended to the log by the leader.
-    last_log_id: Option<LogId>,
+    last_log_id: Option<LogId<C>>,
 
     /// The log id of the highest log entry which is known to be committed in the cluster.
-    committed: Option<LogId>,
+    committed: Option<LogId<C>>,
 
     /// The last know log to be successfully replicated on the target.
     ///
@@ -182,7 +181,7 @@ struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     /// behind. This is defined in §5.3.
     /// This will be initialized to the leader's (last_log_term, last_log_index), and will be updated as
     /// replication proceeds.
-    matched: Option<LogId>,
+    matched: Option<LogId<C>>,
 
     // The last possible matching entry on a follower.
     max_possible_matched_index: Option<u64>,
@@ -198,16 +197,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     /// Spawn a new replication task for the target node.
     #[tracing::instrument(level = "trace", skip(config, network, log_reader, raft_core_tx))]
     pub(self) fn spawn(
-        target: NodeId,
+        target: C::NodeId,
         target_node: Option<Node>,
-        vote: Vote,
+        vote: Vote<C>,
         config: Arc<Config>,
-        last_log: Option<LogId>,
-        committed: Option<LogId>,
+        last_log: Option<LogId<C>>,
+        committed: Option<LogId<C>>,
         network: N::Network,
         log_reader: S::LogReader,
-        raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<S::SnapshotData>, Span)>,
-    ) -> ReplicationStream {
+        raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<C, S::SnapshotData>, Span)>,
+    ) -> ReplicationStream<C> {
         // other component to ReplicationStream
         let (repl_tx, repl_rx) = mpsc::unbounded_channel();
         let heartbeat_timeout = Duration::from_millis(config.heartbeat_interval);
@@ -315,7 +314,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     /// This request will timeout if no response is received within the
     /// configured heartbeat interval.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn send_append_entries(&mut self) -> Result<(), ReplicationError> {
+    async fn send_append_entries(&mut self) -> Result<(), ReplicationError<C>> {
         // find the mid position aligning to 8
         let diff = self.max_possible_matched_index.next_index() - self.matched.next_index();
         let offset = diff / 16 * 8;
@@ -475,7 +474,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
     #[tracing::instrument(level = "trace", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
-    fn check_consecutive(&self, last_purged: Option<LogId>) -> Result<(), ReplicationError> {
+    fn check_consecutive(&self, last_purged: Option<LogId<C>>) -> Result<(), ReplicationError<C>> {
         tracing::debug!(?last_purged, ?self.max_possible_matched_index, "check_consecutive");
 
         if last_purged.index() > self.max_possible_matched_index {
@@ -489,7 +488,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn set_target_repl_state(&mut self, state: TargetReplState) {
+    fn set_target_repl_state(&mut self, state: TargetReplState<C>) {
         tracing::debug!(?state, "set_target_repl_state");
         self.target_repl_state = state;
     }
@@ -498,7 +497,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     /// follower replication(the left and right cursor in a bsearch).
     /// And also report the matched log id to RaftCore to commit an entry etc.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_matched(&mut self, new_matched: Option<LogId>) {
+    fn update_matched(&mut self, new_matched: Option<LogId<C>>) {
         tracing::debug!(
             self.max_possible_matched_index,
             ?self.matched,
@@ -547,7 +546,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError> {
+    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError<C>> {
         tracing::debug!("try_drain_raft_rx");
 
         for _i in 0..self.config.max_payload_entries {
@@ -576,7 +575,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
-    pub fn process_raft_event(&mut self, event: RaftEvent) -> Result<(), ReplicationError> {
+    pub fn process_raft_event(&mut self, event: RaftEvent<C>) -> Result<(), ReplicationError<C>> {
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
         match event {
@@ -600,12 +599,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
 /// The state of the replication stream.
 #[derive(Debug, Eq, PartialEq)]
-enum TargetReplState {
+enum TargetReplState<C: RaftTypeConfig> {
     /// The replication stream is running at line rate.
     LineRate,
 
     /// The replication stream is streaming a snapshot over to the target node.
-    Snapshotting { must_include: Option<LogId> },
+    Snapshotting { must_include: Option<LogId<C>> },
 
     /// The replication stream is shutting down.
     Shutdown,
@@ -613,25 +612,25 @@ enum TargetReplState {
 
 // TODO(xp): remove Replicate
 /// An event from the Raft node.
-pub(crate) enum RaftEvent {
+pub(crate) enum RaftEvent<C: RaftTypeConfig> {
     Replicate {
         /// The new entry which needs to be replicated.
         ///
         /// The logId of the most recent entry to have been appended to the log, its index is the
         /// new last_log_index value.
-        appended: LogId,
+        appended: LogId<C>,
 
         /// The index of the highest log entry which is known to be committed in the cluster.
-        committed: Option<LogId>,
+        committed: Option<LogId<C>>,
     },
     /// A message from Raft indicating a new commit index value.
     UpdateCommittedLogId {
         /// The index of the highest log entry which is known to be committed in the cluster.
-        committed: Option<LogId>,
+        committed: Option<LogId<C>>,
     },
 }
 
-impl MessageSummary for RaftEvent {
+impl<C: RaftTypeConfig> MessageSummary for RaftEvent<C> {
     fn summary(&self) -> String {
         match self {
             RaftEvent::Replicate { appended: _, committed } => {
@@ -647,39 +646,41 @@ impl MessageSummary for RaftEvent {
 }
 
 /// An event coming from a replication stream.
-pub(crate) enum ReplicaEvent<S>
-where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
+pub(crate) enum ReplicaEvent<C, S>
+where
+    C: RaftTypeConfig,
+    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     /// An event from a replication stream which updates the target node's match index.
     UpdateMatched {
         /// The ID of the target node for which the match index is to be updated.
-        target: NodeId,
+        target: C::NodeId,
         /// The log of the most recent log known to have been successfully replicated on the target.
-        matched: Option<LogId>,
+        matched: Option<LogId<C>>,
     },
     /// An event indicating that the Raft node needs to revert to follower state.
     RevertToFollower {
         /// The ID of the target node from which the new term was observed.
-        target: NodeId,
+        target: C::NodeId,
 
         /// The new vote observed.
-        vote: Vote,
+        vote: Vote<C>,
     },
     /// An event from a replication stream requesting snapshot info.
     NeedsSnapshot {
-        target: NodeId,
+        target: C::NodeId,
 
         /// The log id the caller requires the snapshot has to include.
-        must_include: Option<LogId>,
+        must_include: Option<LogId<C>>,
 
         /// The response channel for delivering the snapshot data.
-        tx: oneshot::Sender<Snapshot<S>>,
+        tx: oneshot::Sender<Snapshot<C, S>>,
     },
     /// Some critical error has taken place, and Raft needs to shutdown.
     Shutdown,
 }
 
-impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for ReplicaEvent<S> {
+impl<C: RaftTypeConfig, S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for ReplicaEvent<C, S> {
     fn summary(&self) -> String {
         match self {
             ReplicaEvent::UpdateMatched {
@@ -705,7 +706,7 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError> {
+    pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError<C>> {
         loop {
             loop {
                 tracing::debug!(
@@ -779,7 +780,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "debug", skip(self), fields(state = "snapshotting"))]
-    pub async fn replicate_snapshot(&mut self, snapshot_must_include: Option<LogId>) -> Result<(), ReplicationError> {
+    pub async fn replicate_snapshot(
+        &mut self,
+        snapshot_must_include: Option<LogId<C>>,
+    ) -> Result<(), ReplicationError<C>> {
         let snapshot = self.wait_for_snapshot(snapshot_must_include).await?;
         self.stream_snapshot(snapshot).await?;
 
@@ -793,8 +797,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[tracing::instrument(level = "debug", skip(self))]
     async fn wait_for_snapshot(
         &mut self,
-        snapshot_must_include: Option<LogId>,
-    ) -> Result<Snapshot<S::SnapshotData>, ReplicationError> {
+        snapshot_must_include: Option<LogId<C>>,
+    ) -> Result<Snapshot<C, S::SnapshotData>, ReplicationError<C>> {
         // Ask raft core for a snapshot.
         // - If raft core has a ready snapshot, it sends back through tx.
         // - Otherwise raft core starts a new task taking snapshot, and **close** `tx` when finished. Thus there has to
@@ -870,7 +874,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn stream_snapshot(&mut self, mut snapshot: Snapshot<S::SnapshotData>) -> Result<(), ReplicationError> {
+    async fn stream_snapshot(&mut self, mut snapshot: Snapshot<C, S::SnapshotData>) -> Result<(), ReplicationError<C>> {
         let err_x = || (ErrorSubject::Snapshot(snapshot.meta.clone()), ErrorVerb::Read);
 
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;

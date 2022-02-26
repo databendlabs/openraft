@@ -32,8 +32,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
     pub(super) async fn handle_install_snapshot_request(
         &mut self,
-        req: InstallSnapshotRequest,
-    ) -> Result<InstallSnapshotResponse, InstallSnapshotError> {
+        req: InstallSnapshotRequest<C>,
+    ) -> Result<InstallSnapshotResponse<C>, InstallSnapshotError<C>> {
         if req.vote < self.vote {
             tracing::debug!(?self.vote, %req.vote, "InstallSnapshot RPC term is less than current term");
 
@@ -92,8 +92,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
     async fn begin_installing_snapshot(
         &mut self,
-        req: InstallSnapshotRequest,
-    ) -> Result<InstallSnapshotResponse, InstallSnapshotError> {
+        req: InstallSnapshotRequest<C>,
+    ) -> Result<InstallSnapshotResponse<C>, InstallSnapshotError<C>> {
         let id = req.meta.snapshot_id.clone();
 
         if req.offset > 0 {
@@ -135,10 +135,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self, req, snapshot), fields(req=%req.summary()))]
     async fn continue_installing_snapshot(
         &mut self,
-        req: InstallSnapshotRequest,
+        req: InstallSnapshotRequest<C>,
         mut offset: u64,
         mut snapshot: Box<S::SnapshotData>,
-    ) -> Result<InstallSnapshotResponse, InstallSnapshotError> {
+    ) -> Result<InstallSnapshotResponse<C>, InstallSnapshotError<C>> {
         let id = req.meta.snapshot_id.clone();
 
         // Always seek to the target offset if not an exact match.
@@ -179,9 +179,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self, req, snapshot), fields(req=%req.summary()))]
     async fn finalize_snapshot_installation(
         &mut self,
-        req: InstallSnapshotRequest,
+        req: InstallSnapshotRequest<C>,
         mut snapshot: Box<S::SnapshotData>,
-    ) -> Result<(), StorageError> {
+    ) -> Result<(), StorageError<C>> {
         snapshot.as_mut().shutdown().await.map_err(|e| StorageError::IO {
             source: StorageIOError::new(
                 ErrorSubject::Snapshot(req.meta.clone()),

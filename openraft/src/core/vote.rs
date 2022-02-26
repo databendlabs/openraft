@@ -9,7 +9,6 @@ use crate::error::VoteError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::summary::MessageSummary;
-use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
@@ -21,7 +20,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
     #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
-    pub(super) async fn handle_vote_request(&mut self, req: VoteRequest) -> Result<VoteResponse, VoteError> {
+    pub(super) async fn handle_vote_request(&mut self, req: VoteRequest<C>) -> Result<VoteResponse<C>, VoteError<C>> {
         tracing::debug!(
             %req.vote,
             ?self.vote,
@@ -93,7 +92,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> CandidateState<'a, C, N, S> {
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level = "debug", skip(self, res))]
-    pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {
+    pub(super) async fn handle_vote_response(
+        &mut self,
+        res: VoteResponse<C>,
+        target: C::NodeId,
+    ) -> Result<(), StorageError<C>> {
         tracing::debug!(res=?res, target=display(target), "recv vote response");
 
         // If peer's vote is greater than current vote, revert to follower state.
@@ -139,7 +142,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
 
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn spawn_parallel_vote_requests(&mut self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
+    pub(super) async fn spawn_parallel_vote_requests(&mut self) -> mpsc::Receiver<(VoteResponse<C>, C::NodeId)> {
         let all_nodes = self.core.effective_membership.all_members().clone();
         let (tx, rx) = mpsc::channel(all_nodes.len());
 
