@@ -9,8 +9,8 @@ use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::MessageSummary;
-use openraft::RaftConfig;
 use openraft::RaftStorage;
+use openraft::RaftTypeConfig;
 use openraft::State;
 use openraft::Vote;
 
@@ -215,7 +215,7 @@ async fn append_conflicts() -> Result<()> {
 /// To check if logs is as expected.
 async fn check_logs<C, Sto>(sto: &mut Sto, terms: Vec<u64>) -> Result<()>
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     Sto: RaftStorage<C>,
 {
     let logs = sto.get_log_entries(..).await?;

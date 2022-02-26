@@ -18,7 +18,7 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::Node;
 use crate::NodeId;
-use crate::RaftConfig;
+use crate::RaftTypeConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RPCTypes {
@@ -45,7 +45,7 @@ impl std::fmt::Display for RPCTypes {
 /// constructed by the [`RaftNetworkFactory`].
 #[async_trait]
 pub trait RaftNetwork<C>: Send + Sync + 'static
-where C: RaftConfig
+where C: RaftTypeConfig
 {
     /// Send an AppendEntries RPC to the target Raft node (§5).
     async fn send_append_entries(
@@ -72,7 +72,7 @@ where C: RaftConfig
 /// this interface implemented on the `Box<T>` or `Arc<T>`.
 #[async_trait]
 pub trait RaftNetworkFactory<C>: Send + Sync + 'static
-where C: RaftConfig
+where C: RaftTypeConfig
 {
     /// Actual type of the network handling a single connection.
     type Network: RaftNetwork<C>;

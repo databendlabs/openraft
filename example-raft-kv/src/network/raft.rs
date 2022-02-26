@@ -8,7 +8,7 @@ use openraft::raft::VoteRequest;
 use web::Json;
 
 use crate::app::ExampleApp;
-use crate::ExampleConfig;
+use crate::ExampleTypeConfig;
 
 // --- Raft communication
 
@@ -21,7 +21,7 @@ pub async fn vote(app: Data<ExampleApp>, req: Json<VoteRequest>) -> actix_web::R
 #[post("/raft-append")]
 pub async fn append(
     app: Data<ExampleApp>,
-    req: Json<AppendEntriesRequest<ExampleConfig>>,
+    req: Json<AppendEntriesRequest<ExampleTypeConfig>>,
 ) -> actix_web::Result<impl Responder> {
     let res = app.raft.append_entries(req.0).await;
     Ok(Json(res))

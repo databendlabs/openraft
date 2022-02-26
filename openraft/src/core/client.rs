@@ -25,14 +25,14 @@ use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
 use crate::MessageSummary;
 use crate::RPCTypes;
-use crate::RaftConfig;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::StorageError;
 
 /// A wrapper around a ClientRequest which has been transformed into an Entry, along with its response channel.
-pub(super) struct ClientRequestEntry<C: RaftConfig> {
+pub(super) struct ClientRequestEntry<C: RaftTypeConfig> {
     /// The Arc'd entry of the ClientRequest.
     ///
     /// This value is Arc'd so that it may be sent across thread boundaries for replication
@@ -43,13 +43,13 @@ pub(super) struct ClientRequestEntry<C: RaftConfig> {
     pub tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError>>,
 }
 
-impl<C: RaftConfig> MessageSummary for ClientRequestEntry<C> {
+impl<C: RaftTypeConfig> MessageSummary for ClientRequestEntry<C> {
     fn summary(&self) -> String {
         format!("entry:{}", self.entry.summary())
     }
 }
 
-impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Commit the initial entry which new leaders are obligated to create when first coming to power, per §8.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(super) async fn commit_initial_leader_entry(&mut self) -> Result<(), StorageError> {

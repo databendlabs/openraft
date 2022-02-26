@@ -19,7 +19,7 @@ use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::ExampleConfig;
+use crate::ExampleTypeConfig;
 use crate::ExampleRequest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,7 +54,7 @@ impl ExampleClient {
     pub async fn write(
         &self,
         req: &ExampleRequest,
-    ) -> Result<ClientWriteResponse<ExampleConfig>, RPCError<ClientWriteError>> {
+    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ClientWriteError>> {
         self.send_rpc_to_leader("write", Some(req)).await
     }
 
@@ -91,7 +91,7 @@ impl ExampleClient {
     pub async fn change_membership(
         &self,
         req: &BTreeSet<NodeId>,
-    ) -> Result<ClientWriteResponse<ExampleConfig>, RPCError<ClientWriteError>> {
+    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ClientWriteError>> {
         self.send_rpc_to_leader("change-membership", Some(req)).await
     }
 

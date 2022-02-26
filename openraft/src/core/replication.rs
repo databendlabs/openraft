@@ -22,13 +22,13 @@ use crate::summary::MessageSummary;
 use crate::vote::Vote;
 use crate::LogId;
 use crate::NodeId;
-use crate::RaftConfig;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::ReplicationMetrics;
 use crate::StorageError;
 
-impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self, caller_tx))]
     pub(super) async fn spawn_replication_stream(

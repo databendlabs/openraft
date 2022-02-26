@@ -10,13 +10,13 @@ use crate::raft_types::LogIdOptionExt;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::RaftConfig;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Update;
 
-impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
+impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
     ///
     /// See `receiver implementation: AppendEntries RPC` in raft-essentials.md in this repo.

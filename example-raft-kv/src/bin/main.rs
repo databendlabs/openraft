@@ -3,10 +3,10 @@ use env_logger::Env;
 use example_raft_key_value::network::raft_network_impl::ExampleNetwork;
 use example_raft_key_value::start_example_raft_node;
 use example_raft_key_value::store::ExampleStore;
-use example_raft_key_value::ExampleConfig;
+use example_raft_key_value::ExampleTypeConfig;
 use openraft::Raft;
 
-pub type ExampleRaft = Raft<ExampleConfig, ExampleNetwork, ExampleStore>;
+pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, ExampleStore>;
 
 #[derive(Parser, Clone, Debug)]
 #[clap(author, version, about, long_about = None)]

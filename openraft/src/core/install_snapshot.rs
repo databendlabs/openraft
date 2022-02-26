@@ -15,15 +15,15 @@ use crate::raft::InstallSnapshotResponse;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::MessageSummary;
-use crate::RaftConfig;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::SnapshotSegmentId;
 use crate::StorageError;
 use crate::StorageIOError;
 use crate::Update;
 
-impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
+impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     /// Invoked by leader to send chunks of a snapshot to a follower (§7).
     ///
     /// Leaders always send chunks in order. It is important to note that, according to the Raft spec,

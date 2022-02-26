@@ -25,9 +25,9 @@ use openraft::EffectiveMembership;
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::LogId;
-use openraft::RaftConfig;
 use openraft::RaftStorage;
 use openraft::RaftStorageDebug;
+use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StateMachineChanges;
 use openraft::StorageError;
@@ -65,7 +65,7 @@ impl AppDataResponse for ClientResponse {}
 
 pub struct Config {}
 
-impl RaftConfig for Config {
+impl RaftTypeConfig for Config {
     type D = ClientRequest;
     type R = ClientResponse;
 }

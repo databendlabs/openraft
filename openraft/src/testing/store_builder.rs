@@ -7,15 +7,15 @@ use async_trait::async_trait;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::DefensiveCheckBase;
-use crate::RaftConfig;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::StoreExt;
 
 /// The trait to build a [`RaftStorage`] implementation.
 #[async_trait]
 pub trait StoreBuilder<C, S>: Send + Sync
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     S: RaftStorage<C>,
 {
     async fn build(&self) -> S;
@@ -28,7 +28,7 @@ where
 #[async_trait]
 impl<C, S, Fu, F> StoreBuilder<C, S> for F
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     S: RaftStorage<C>,
     Fu: Future<Output = S> + Send,
     F: Fn() -> Fu + Sync + Send,
@@ -41,7 +41,7 @@ where
 /// A builder for testing [`StoreExt`].
 pub struct DefensiveStoreBuilder<C, BaseStore, BaseBuilder>
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     C::D: AppData + Debug,
     C::R: AppDataResponse + Debug,
     BaseStore: RaftStorage<C>,
@@ -56,7 +56,7 @@ where
 impl<C, BaseStore, BaseBuilder> StoreBuilder<C, StoreExt<C, BaseStore>>
     for DefensiveStoreBuilder<C, BaseStore, BaseBuilder>
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     C::D: AppData + Debug,
     C::R: AppDataResponse + Debug,
     BaseStore: RaftStorage<C>,
