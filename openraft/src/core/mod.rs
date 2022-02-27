@@ -60,9 +60,9 @@ use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
-use crate::RaftConfig;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Update;
 
@@ -127,7 +127,7 @@ impl MessageSummary for EffectiveMembership {
 }
 
 /// The core type implementing the Raft protocol.
-pub struct RaftCore<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     /// This node's ID.
     id: NodeId,
 
@@ -186,7 +186,7 @@ pub struct RaftCore<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> 
     rx_shutdown: oneshot::Receiver<()>,
 }
 
-impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
+impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     pub(crate) fn spawn(
         id: NodeId,
         config: Arc<Config>,
@@ -600,7 +600,7 @@ async fn apply_to_state_machine<C, S>(
     max_keep: u64,
 ) -> Result<Vec<C::R>, StorageError>
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     S: RaftStorage<C>,
 {
     tracing::debug!(entries=%entries.summary(), max_keep, "apply_to_state_machine");
@@ -620,7 +620,7 @@ where
 #[tracing::instrument(level = "trace", skip(sto))]
 async fn purge_applied_logs<C, S>(sto: &mut S, last_applied: &LogId, max_keep: u64) -> Result<(), StorageError>
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     S: RaftStorage<C>,
 {
     // TODO(xp): periodically batch delete
@@ -722,7 +722,7 @@ impl State {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to the Raft leader.
-struct LeaderState<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     pub(super) core: &'a mut RaftCore<C, N, S>,
 
     /// A mapping of node IDs the replication state of the target node.
@@ -741,7 +741,7 @@ struct LeaderState<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C
     pub(super) awaiting_committed: Vec<ClientRequestEntry<C>>,
 }
 
-impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Create a new instance.
     pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
         let (replication_tx, replication_rx) = mpsc::unbounded_channel();
@@ -909,14 +909,14 @@ pub fn is_matched_upto_date(matched: &Option<LogId>, last_log_id: &Option<LogId>
 }
 
 /// Volatile state specific to a Raft node in candidate state.
-struct CandidateState<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+struct CandidateState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     core: &'a mut RaftCore<C, N, S>,
 
     /// Ids of the nodes that has granted our vote request.
     granted: BTreeSet<NodeId>,
 }
 
-impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> CandidateState<'a, C, N, S> {
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> CandidateState<'a, C, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
         Self {
             core,
@@ -1024,11 +1024,11 @@ impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> CandidateSt
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to a Raft node in follower state.
-pub struct FollowerState<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+pub struct FollowerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     core: &'a mut RaftCore<C, N, S>,
 }
 
-impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> FollowerState<'a, C, N, S> {
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> FollowerState<'a, C, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
         Self { core }
     }
@@ -1100,11 +1100,11 @@ impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> FollowerSta
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to a Raft node in learner state.
-pub struct LearnerState<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+pub struct LearnerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     core: &'a mut RaftCore<C, N, S>,
 }
 
-impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
         Self { core }
     }

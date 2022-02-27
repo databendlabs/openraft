@@ -8,7 +8,7 @@ use actix_web::HttpServer;
 use openraft::Config;
 use openraft::NodeId;
 use openraft::Raft;
-use openraft::RaftConfig;
+use openraft::RaftTypeConfig;
 
 use crate::app::ExampleApp;
 use crate::network::api;
@@ -24,14 +24,14 @@ pub mod client;
 pub mod network;
 pub mod store;
 
-pub struct ExampleConfig {}
+pub struct ExampleTypeConfig {}
 
-impl RaftConfig for ExampleConfig {
+impl RaftTypeConfig for ExampleTypeConfig {
     type D = ExampleRequest;
     type R = ExampleResponse;
 }
 
-pub type ExampleRaft = Raft<ExampleConfig, ExampleNetwork, Arc<ExampleStore>>;
+pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
 
 pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std::io::Result<()> {
     // Create a configuration for the raft instance.

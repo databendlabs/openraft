@@ -20,8 +20,8 @@ use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
-use crate::RaftConfig;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Violation;
 use crate::Vote;
@@ -33,7 +33,7 @@ const NODE_ID: NodeId = 0;
 /// Usage:
 pub struct Suite<C, S, B>
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     C::D: AppData + Debug,
     C::R: AppDataResponse + Debug,
     S: RaftStorage<C>,
@@ -46,7 +46,7 @@ where
 
 impl<C, S, B> Suite<C, S, B>
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     C::D: AppData + Debug,
     C::R: AppDataResponse + Debug,
     S: RaftStorage<C>,
@@ -916,7 +916,7 @@ where
 // A RaftStore with defensive check is able to expose bugs in raft core.
 impl<C, S, B> Suite<C, S, B>
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     C::D: AppData + Debug,
     C::R: AppDataResponse + Debug,
     S: RaftStorage<C>,
@@ -1467,7 +1467,7 @@ where
 }
 
 /// Create a blank log entry for test
-fn blank<C: RaftConfig>(term: u64, index: u64) -> Entry<C> {
+fn blank<C: RaftTypeConfig>(term: u64, index: u64) -> Entry<C> {
     Entry {
         log_id: LogId::new(LeaderId::new(term, NODE_ID), index),
         payload: EntryPayload::Blank,
