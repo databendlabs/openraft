@@ -54,10 +54,10 @@ use openraft::LogIdOptionExt;
 use openraft::Node;
 use openraft::NodeId;
 use openraft::Raft;
-use openraft::RaftConfig;
 use openraft::RaftMetrics;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
+use openraft::RaftTypeConfig;
 use openraft::State;
 use openraft::StoreExt;
 #[allow(unused_imports)]
@@ -960,7 +960,7 @@ fn timeout() -> Option<Duration> {
 }
 
 /// Create a blank log entry for test.
-pub fn blank<C: RaftConfig>(term: u64, index: u64) -> Entry<C> {
+pub fn blank<C: RaftTypeConfig>(term: u64, index: u64) -> Entry<C> {
     Entry {
         log_id: LogId::new(LeaderId::new(term, 0), index),
         payload: EntryPayload::Blank,

@@ -9,8 +9,8 @@ use crate::raft_types::LogIdOptionExt;
 use crate::DefensiveError;
 use crate::ErrorSubject;
 use crate::LogId;
-use crate::RaftConfig;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Violation;
 use crate::Vote;
@@ -60,7 +60,7 @@ pub trait DefensiveCheckBase {
 #[async_trait]
 pub trait DefensiveCheck<C, T>: DefensiveCheckBase
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     T: RaftStorage<C>,
     Self: Wrapper<C, T>,
 {
@@ -317,7 +317,7 @@ where
     }
 }
 
-pub fn check_range_matches_entries<C: RaftConfig, RB: RangeBounds<u64> + Debug + Send>(
+pub fn check_range_matches_entries<C: RaftTypeConfig, RB: RangeBounds<u64> + Debug + Send>(
     range: RB,
     entries: &[Entry<C>],
 ) -> Result<(), StorageError> {

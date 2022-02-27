@@ -44,10 +44,10 @@ use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
-use crate::RaftConfig;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::ToStorageResult;
 use crate::Vote;
 
@@ -112,7 +112,7 @@ pub(crate) struct ReplicationStream {
 
 impl ReplicationStream {
     /// Create a new replication stream for the target peer.
-    pub(crate) fn new<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>>(
+    pub(crate) fn new<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>>(
         target: NodeId,
         target_node: Option<Node>,
         vote: Vote,
@@ -142,7 +142,7 @@ impl ReplicationStream {
 /// NOTE: we do not stack replication requests to targets because this could result in
 /// out-of-order delivery. We always buffer until we receive a success response, then send the
 /// next payload from the buffer.
-struct ReplicationCore<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     /// The ID of the target Raft node which replication events are to be sent to.
     target: NodeId,
 
@@ -194,7 +194,7 @@ struct ReplicationCore<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C
     install_snapshot_timeout: Duration,
 }
 
-impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
+impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
     /// Spawn a new replication task for the target node.
     #[tracing::instrument(level = "trace", skip(config, network, log_reader, raft_core_tx))]
     pub(self) fn spawn(
@@ -700,7 +700,7 @@ impl<S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for Repli
     }
 }
 
-impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
+impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError> {
         loop {

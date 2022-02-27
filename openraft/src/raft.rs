@@ -40,12 +40,12 @@ use crate::RaftStorage;
 use crate::SnapshotMeta;
 use crate::Vote;
 
-pub trait RaftConfig: Sized + Send + Sync + 'static {
+pub trait RaftTypeConfig: Sized + Send + Sync + 'static {
     type D: AppData;
     type R: AppDataResponse;
 }
 
-struct RaftInner<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     tx_api: mpsc::UnboundedSender<(RaftMsg<C>, Span)>,
     rx_metrics: watch::Receiver<RaftMetrics>,
     raft_handle: Mutex<Option<JoinHandle<Result<(), Fatal>>>>,
@@ -75,11 +75,11 @@ struct RaftInner<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
 /// is shutting down (potentially for data safety reasons due to a storage error), and the `shutdown`
 /// method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the trick.
-pub struct Raft<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+pub struct Raft<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     inner: Arc<RaftInner<C, N, S>>,
 }
 
-impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, S> {
+impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, S> {
     /// Create and spawn a new Raft task.
     ///
     /// ### `id`
@@ -434,7 +434,7 @@ impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, S> {
     }
 }
 
-impl<C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Clone for Raft<C, N, S> {
+impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Clone for Raft<C, N, S> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -451,7 +451,7 @@ pub struct AddLearnerResponse {
 }
 
 /// A message coming from the Raft API.
-pub(crate) enum RaftMsg<C: RaftConfig> {
+pub(crate) enum RaftMsg<C: RaftTypeConfig> {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
         tx: RaftRespTx<AppendEntriesResponse, AppendEntriesError>,
@@ -505,7 +505,7 @@ pub(crate) enum RaftMsg<C: RaftConfig> {
 }
 
 impl<C> MessageSummary for RaftMsg<C>
-where C: RaftConfig
+where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         match self {
@@ -547,7 +547,7 @@ where C: RaftConfig
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
 #[derive(Serialize, Deserialize)]
-pub struct AppendEntriesRequest<C: RaftConfig> {
+pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub vote: Vote,
 
     pub prev_log_id: Option<LogId>,
@@ -563,7 +563,7 @@ pub struct AppendEntriesRequest<C: RaftConfig> {
     pub leader_commit: Option<LogId>,
 }
 
-impl<C: RaftConfig> Clone for AppendEntriesRequest<C> {
+impl<C: RaftTypeConfig> Clone for AppendEntriesRequest<C> {
     fn clone(&self) -> Self {
         Self {
             vote: self.vote,
@@ -574,7 +574,7 @@ impl<C: RaftConfig> Clone for AppendEntriesRequest<C> {
     }
 }
 
-impl<C: RaftConfig> Debug for AppendEntriesRequest<C>
+impl<C: RaftTypeConfig> Debug for AppendEntriesRequest<C>
 where C::D: Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -587,7 +587,7 @@ where C::D: Debug
     }
 }
 
-impl<C: RaftConfig> MessageSummary for AppendEntriesRequest<C> {
+impl<C: RaftTypeConfig> MessageSummary for AppendEntriesRequest<C> {
     fn summary(&self) -> String {
         format!(
             "vote={}, prev_log_id={}, leader_commit={}, entries={}",
@@ -618,7 +618,7 @@ impl MessageSummary for AppendEntriesResponse {
 
 /// A Raft log entry.
 #[derive(Serialize, Deserialize)]
-pub struct Entry<C: RaftConfig> {
+pub struct Entry<C: RaftTypeConfig> {
     pub log_id: LogId,
 
     /// This entry's payload.
@@ -626,7 +626,7 @@ pub struct Entry<C: RaftConfig> {
     pub payload: EntryPayload<C>,
 }
 
-impl<C: RaftConfig> Clone for Entry<C> {
+impl<C: RaftTypeConfig> Clone for Entry<C> {
     fn clone(&self) -> Self {
         Self {
             log_id: self.log_id,
@@ -635,7 +635,7 @@ impl<C: RaftConfig> Clone for Entry<C> {
     }
 }
 
-impl<C: RaftConfig> Debug for Entry<C>
+impl<C: RaftTypeConfig> Debug for Entry<C>
 where C::D: Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -643,7 +643,7 @@ where C::D: Debug
     }
 }
 
-impl<C: RaftConfig> Default for Entry<C> {
+impl<C: RaftTypeConfig> Default for Entry<C> {
     fn default() -> Self {
         Self {
             log_id: LogId::default(),
@@ -652,13 +652,13 @@ impl<C: RaftConfig> Default for Entry<C> {
     }
 }
 
-impl<C: RaftConfig> MessageSummary for Entry<C> {
+impl<C: RaftTypeConfig> MessageSummary for Entry<C> {
     fn summary(&self) -> String {
         format!("{}:{}", self.log_id, self.payload.summary())
     }
 }
 
-impl<C: RaftConfig> MessageSummary for Option<Entry<C>> {
+impl<C: RaftTypeConfig> MessageSummary for Option<Entry<C>> {
     fn summary(&self) -> String {
         match self {
             None => "None".to_string(),
@@ -667,14 +667,14 @@ impl<C: RaftConfig> MessageSummary for Option<Entry<C>> {
     }
 }
 
-impl<C: RaftConfig> MessageSummary for &[Entry<C>] {
+impl<C: RaftTypeConfig> MessageSummary for &[Entry<C>] {
     fn summary(&self) -> String {
         let entry_refs: Vec<_> = self.iter().collect();
         entry_refs.as_slice().summary()
     }
 }
 
-impl<C: RaftConfig> MessageSummary for &[&Entry<C>] {
+impl<C: RaftTypeConfig> MessageSummary for &[&Entry<C>] {
     fn summary(&self) -> String {
         let mut res = Vec::with_capacity(self.len());
         if self.len() <= 5 {
@@ -695,7 +695,7 @@ impl<C: RaftConfig> MessageSummary for &[&Entry<C>] {
 
 /// Log entry payload variants.
 #[derive(PartialEq, Serialize, Deserialize)]
-pub enum EntryPayload<C: RaftConfig> {
+pub enum EntryPayload<C: RaftTypeConfig> {
     /// An empty payload committed by a new cluster leader.
     Blank,
 
@@ -706,7 +706,7 @@ pub enum EntryPayload<C: RaftConfig> {
     Membership(Membership),
 }
 
-impl<C: RaftConfig> Clone for EntryPayload<C> {
+impl<C: RaftTypeConfig> Clone for EntryPayload<C> {
     fn clone(&self) -> Self {
         match self {
             Self::Blank => Self::Blank,
@@ -716,7 +716,7 @@ impl<C: RaftConfig> Clone for EntryPayload<C> {
     }
 }
 
-impl<C: RaftConfig> Debug for EntryPayload<C>
+impl<C: RaftTypeConfig> Debug for EntryPayload<C>
 where C::D: Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -728,7 +728,7 @@ where C::D: Debug
     }
 }
 
-impl<C: RaftConfig> MessageSummary for EntryPayload<C> {
+impl<C: RaftTypeConfig> MessageSummary for EntryPayload<C> {
     fn summary(&self) -> String {
         match self {
             EntryPayload::Blank => "blank".to_string(),
@@ -816,13 +816,13 @@ pub struct InstallSnapshotResponse {
 /// The entry of this payload will be appended to the Raft log and then applied to the Raft state
 /// machine according to the Raft protocol.
 #[derive(Serialize, Deserialize)]
-pub struct ClientWriteRequest<C: RaftConfig> {
+pub struct ClientWriteRequest<C: RaftTypeConfig> {
     /// The application specific contents of this client request.
     #[serde(bound = "C::D: AppData")]
     pub(crate) payload: EntryPayload<C>,
 }
 
-impl<C: RaftConfig> Debug for ClientWriteRequest<C>
+impl<C: RaftTypeConfig> Debug for ClientWriteRequest<C>
 where C::D: Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -830,13 +830,13 @@ where C::D: Debug
     }
 }
 
-impl<C: RaftConfig> MessageSummary for ClientWriteRequest<C> {
+impl<C: RaftTypeConfig> MessageSummary for ClientWriteRequest<C> {
     fn summary(&self) -> String {
         self.payload.summary()
     }
 }
 
-impl<C: RaftConfig> ClientWriteRequest<C> {
+impl<C: RaftTypeConfig> ClientWriteRequest<C> {
     pub fn new(entry: EntryPayload<C>) -> Self {
         Self { payload: entry }
     }
@@ -844,7 +844,7 @@ impl<C: RaftConfig> ClientWriteRequest<C> {
 
 /// The response to a `ClientRequest`.
 #[derive(Serialize, Deserialize)]
-pub struct ClientWriteResponse<C: RaftConfig> {
+pub struct ClientWriteResponse<C: RaftTypeConfig> {
     pub log_id: LogId,
 
     /// Application specific response data.
@@ -855,7 +855,7 @@ pub struct ClientWriteResponse<C: RaftConfig> {
     pub membership: Option<Membership>,
 }
 
-impl<C: RaftConfig> Debug for ClientWriteResponse<C>
+impl<C: RaftTypeConfig> Debug for ClientWriteResponse<C>
 where C::R: Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -867,7 +867,7 @@ where C::R: Debug
     }
 }
 
-impl<C: RaftConfig> MessageSummary for ClientWriteResponse<C> {
+impl<C: RaftTypeConfig> MessageSummary for ClientWriteResponse<C> {
     fn summary(&self) -> String {
         format!("log_id: {}, membership: {:?}", self.log_id, self.membership)
     }

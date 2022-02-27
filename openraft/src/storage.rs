@@ -18,7 +18,7 @@ use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::RaftConfig;
+use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
 
@@ -82,7 +82,7 @@ pub struct LogState {
 /// interface on the same cloneable object, if the underlying state machine is anyway synchronized.
 #[async_trait]
 pub trait RaftLogReader<C>: Send + Sync + 'static
-where C: RaftConfig
+where C: RaftTypeConfig
 {
     /// Get a series of log entries from storage.
     ///
@@ -137,7 +137,7 @@ where C: RaftConfig
 #[async_trait]
 pub trait RaftSnapshotBuilder<C, SD>: Send + Sync + 'static
 where
-    C: RaftConfig,
+    C: RaftTypeConfig,
     SD: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static,
 {
     /// Build snapshot
@@ -169,7 +169,7 @@ where
 /// components.
 #[async_trait]
 pub trait RaftStorage<C>: RaftLogReader<C> + Send + Sync + 'static
-where C: RaftConfig
+where C: RaftTypeConfig
 {
     // TODO(xp): simplify storage API
 

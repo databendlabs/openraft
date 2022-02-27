@@ -27,12 +27,12 @@ use crate::LogId;
 use crate::Membership;
 use crate::Node;
 use crate::NodeId;
-use crate::RaftConfig;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
+use crate::RaftTypeConfig;
 use crate::StorageError;
 
-impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
     /// Handle the admin `init_with_config` command.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_init_with_config(&mut self, members: EitherNodesOrIds) -> Result<(), InitializeError> {
@@ -66,7 +66,7 @@ impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerStat
     }
 }
 
-impl<'a, C: RaftConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     // add node into learner,return true if the node is already a member or learner
     #[tracing::instrument(level = "debug", skip(self))]
     async fn add_learner_into_membership(
