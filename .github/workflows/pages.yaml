@@ -13,14 +13,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Install mdbook plugins
-        run: |
-          cargo install mdbook-svgbob
-
       - name: Install mdbook
-        uses: peaceiris/actions-mdbook@v1
-        with:
-          mdbook-version: '0.4.10'
+        uses: drmingdrmer/mdbook-full@main
 
       - name: Build mdbook
         run: mdbook build
