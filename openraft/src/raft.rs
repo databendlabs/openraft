@@ -601,18 +601,29 @@ impl<C: RaftTypeConfig> MessageSummary for AppendEntriesRequest<C> {
 
 /// The response to an `AppendEntriesRequest`.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AppendEntriesResponse {
-    pub vote: Vote,
-    pub success: bool,
-    pub conflict: bool,
+pub enum AppendEntriesResponse {
+    Success,
+    Conflict,
+    HigherVote(Vote),
+}
+
+impl AppendEntriesResponse {
+    pub fn is_success(&self) -> bool {
+        matches!(*self, AppendEntriesResponse::Success)
+    }
+
+    pub fn is_conflict(&self) -> bool {
+        matches!(*self, AppendEntriesResponse::Conflict)
+    }
 }
 
 impl MessageSummary for AppendEntriesResponse {
     fn summary(&self) -> String {
-        format!(
-            "vote:{}, success:{:?}, conflict:{:?}",
-            self.vote, self.success, self.conflict
-        )
+        match self {
+            AppendEntriesResponse::Success => "Success".to_string(),
+            AppendEntriesResponse::HigherVote(vote) => format!("Higher vote, {}", vote),
+            AppendEntriesResponse::Conflict => "Conflict".to_string(),
+        }
     }
 }
 

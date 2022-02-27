@@ -61,8 +61,8 @@ async fn append_updates_membership() -> Result<()> {
         };
 
         let resp = r0.append_entries(req.clone()).await?;
-        assert!(resp.success);
-        assert!(!resp.conflict);
+        assert!(resp.is_success());
+        assert!(!resp.is_conflict());
 
         r0.wait(timeout()).members(btreeset! {1,2,3,4}, "append-entries update membership").await?;
     }
@@ -77,8 +77,8 @@ async fn append_updates_membership() -> Result<()> {
         };
 
         let resp = r0.append_entries(req.clone()).await?;
-        assert!(resp.success);
-        assert!(!resp.conflict);
+        assert!(resp.is_success());
+        assert!(!resp.is_conflict());
 
         r0.wait(timeout()).members(btreeset! {1,2}, "deleting inconsistent lgos updates membership").await?;
     }

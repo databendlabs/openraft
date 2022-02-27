@@ -31,6 +31,7 @@ use crate::error::RPCError;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
 use crate::raft::AppendEntriesRequest;
+use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::LogIndexOptionExt;
@@ -433,41 +434,34 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         tracing::debug!("append_entries resp: {:?}", append_resp);
 
-        // Handle success conditions.
-        if append_resp.success {
-            self.update_matched(matched);
-            return Ok(());
+        match append_resp {
+            AppendEntriesResponse::Success => {
+                self.update_matched(matched);
+                Ok(())
+            }
+            AppendEntriesResponse::HigherVote(vote) => {
+                assert!(vote > self.vote, "higher vote should be greater than leader's vote");
+                tracing::debug!(%vote, "append entries faileCeverting to follower");
+
+                Err(ReplicationError::HigherVote(HigherVote {
+                    higher: vote,
+                    mine: self.vote,
+                }))
+            }
+            _ => {
+                assert!(conflict.is_some(), "prev_log_id=None never conflict");
+                let conflict = conflict.unwrap();
+
+                // Continue to find the matching log id on follower.
+                self.max_possible_matched_index = if conflict.index == 0 {
+                    None
+                } else {
+                    Some(conflict.index - 1)
+                };
+
+                Ok(())
+            }
         }
-
-        // Failed
-
-        // Replication was not successful, if a newer term has been returneCevert to follower.
-        if append_resp.vote > self.vote {
-            tracing::debug!(%append_resp.vote, "append entries faileCeverting to follower");
-
-            return Err(ReplicationError::HigherVote(HigherVote {
-                higher: append_resp.vote,
-                mine: self.vote,
-            }));
-        }
-
-        tracing::debug!(
-            ?conflict,
-            %append_resp.vote,
-            "append entries failed, handling conflict opt"
-        );
-
-        assert!(conflict.is_some(), "prev_log_id=None never conflict");
-        let conflict = conflict.unwrap();
-
-        // Continue to find the matching log id on follower.
-        self.max_possible_matched_index = if conflict.index == 0 {
-            None
-        } else {
-            Some(conflict.index - 1)
-        };
-
-        Ok(())
     }
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence

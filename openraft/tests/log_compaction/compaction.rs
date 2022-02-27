@@ -149,8 +149,8 @@ async fn compaction() -> Result<()> {
 
         tracing::debug!("--- append-entries res: {:?}", res);
 
-        assert!(res.success);
-        assert!(!res.conflict);
+        assert!(res.is_success());
+        assert!(!res.is_conflict());
     }
 
     Ok(())

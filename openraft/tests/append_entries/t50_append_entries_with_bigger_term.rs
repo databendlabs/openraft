@@ -39,7 +39,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
     };
 
     let resp = router.connect(0, None).await.send_append_entries(req).await?;
-    assert!(resp.success);
+    assert!(resp.is_success());
 
     // after append entries, check hard state in term 2 and vote for node 1
     router

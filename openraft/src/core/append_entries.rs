@@ -32,12 +32,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Partial order compare: smaller than or incomparable
         if req.vote < self.vote {
             tracing::debug!(?self.vote, %req.vote, "AppendEntries RPC term is less than current term");
-
-            return Ok(AppendEntriesResponse {
-                vote: self.vote,
-                success: false,
-                conflict: false,
-            });
+            return Ok(AppendEntriesResponse::HigherVote(self.vote));
         }
 
         self.update_next_election_timeout(true);
@@ -192,11 +187,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
 
-            return Ok(AppendEntriesResponse {
-                vote: self.vote,
-                success: false,
-                conflict: true,
-            });
+            return Ok(AppendEntriesResponse::Conflict);
         }
 
         // The entries left are all inconsistent log or absent
@@ -224,11 +215,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.report_metrics(Update::AsIs);
 
-        Ok(AppendEntriesResponse {
-            vote: self.vote,
-            success: true,
-            conflict: false,
-        })
+        Ok(AppendEntriesResponse::Success)
     }
 
     /// Returns number of entries that match local storage by comparing log_id,
