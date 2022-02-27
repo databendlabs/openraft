@@ -14,6 +14,7 @@ use crate::app::ExampleApp;
 use crate::network::api;
 use crate::network::management;
 use crate::network::raft;
+use crate::network::profile;
 use crate::network::raft_network_impl::ExampleNetwork;
 use crate::store::ExampleRequest;
 use crate::store::ExampleResponse;
@@ -73,6 +74,8 @@ pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std:
             .service(management::add_learner)
             .service(management::change_membership)
             .service(management::metrics)
+            // profile API
+            .service(profile::dump_flamegraph)
             // application API
             .service(api::write)
             .service(api::read)
