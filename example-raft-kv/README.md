@@ -126,3 +126,18 @@ To add a node to a cluster, it includes 3 steps:
 - Write a `node` through raft protocol to the storage.
 - Add the node as a `Learner` to let it start receiving replication data from the leader.
 - Invoke `change-membership` to change the learner node to a member.
+
+## Profile
+Use 
+
+```shell
+./test-cluster-and-dump-flamegraph.sh
+```
+
+can to dump flame graph file.
+
+Before that, must turn on `perf_event_paranoid` kernel flag,such as:
+
+```
+echo 0 | sudo tee /proc/sys/kernel/perf_event_paranoid
+```
