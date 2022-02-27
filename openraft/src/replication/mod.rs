@@ -336,7 +336,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             }
 
             let start = prev_index.next_index();
-            let end = std::cmp::min(start + self.config.max_payload_entries, self.last_log_id.next_index());
+            let end = std::cmp::min(
+                start + self.config.max_payload_entries,
+                log_state.last_log_id.next_index(),
+            );
 
             tracing::debug!(
                 ?self.matched,
