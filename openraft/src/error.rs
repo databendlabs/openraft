@@ -72,9 +72,9 @@ pub enum InstallSnapshotError {
     Fatal(#[from] Fatal),
 }
 
-/// An error related to a client read request.
+/// An error related to a is_leader request.
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum ClientReadError {
+pub enum CheckIsLeaderError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
 
@@ -166,7 +166,7 @@ impl From<StorageError> for InstallSnapshotError {
         f.into()
     }
 }
-impl From<StorageError> for ClientReadError {
+impl From<StorageError> for CheckIsLeaderError {
     fn from(s: StorageError) -> Self {
         let f: Fatal = s.into();
         f.into()

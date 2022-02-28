@@ -842,8 +842,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 let res = self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?;
                 let _ = tx.send(res);
             }
-            RaftMsg::ClientReadRequest { tx } => {
-                self.handle_client_read_request(tx).await;
+            RaftMsg::CheckIsLeaderRequest { tx } => {
+                self.handle_check_is_leader_request(tx).await;
             }
             RaftMsg::ClientWriteRequest { rpc, tx } => {
                 self.handle_client_write_request(rpc, tx).await?;
@@ -1001,7 +1001,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
             RaftMsg::InstallSnapshot { rpc, tx } => {
                 let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
-            RaftMsg::ClientReadRequest { tx } => {
+            RaftMsg::CheckIsLeaderRequest { tx } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ClientWriteRequest { rpc: _, tx } => {
@@ -1077,7 +1077,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
             RaftMsg::InstallSnapshot { rpc, tx } => {
                 let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
-            RaftMsg::ClientReadRequest { tx } => {
+            RaftMsg::CheckIsLeaderRequest { tx } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ClientWriteRequest { rpc: _, tx } => {
@@ -1151,7 +1151,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
             RaftMsg::InstallSnapshot { rpc, tx } => {
                 let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
-            RaftMsg::ClientReadRequest { tx } => {
+            RaftMsg::CheckIsLeaderRequest { tx } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ClientWriteRequest { rpc: _, tx } => {
