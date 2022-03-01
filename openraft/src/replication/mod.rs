@@ -543,16 +543,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     // return if or not has more logs to replicate, other ReplicationError consider as Error
     pub fn process_event_result(&self, ret: Result<(), ReplicationError<C>>) -> Result<bool, ReplicationError<C>> {
         match ret {
-            Ok(_) => return Ok(false),
+            Ok(_) => Ok(false),
             Err(err) => match err {
-                ReplicationError::HasMoreLogs { .. } => {
-                    return Ok(true);
-                }
-                _ => {
-                    return Err(err);
-                }
+                ReplicationError::HasMoreLogs { .. } => Ok(true),
+                _ => Err(err),
             },
-        };
+        }
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
