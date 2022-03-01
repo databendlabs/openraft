@@ -40,7 +40,7 @@ pub(super) struct ClientRequestEntry<C: RaftTypeConfig> {
     pub entry: Arc<Entry<C>>,
 
     /// The response channel for the request.
-    pub tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>>,
+    pub tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for ClientRequestEntry<C> {

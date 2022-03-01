@@ -28,7 +28,7 @@ pub trait DefensiveCheckBase<C: RaftTypeConfig> {
     fn defensive_nonempty_range<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
         range: RB,
-    ) -> Result<(), StorageError<C>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
         }
@@ -204,7 +204,7 @@ where
         Ok(())
     }
 
-    async fn defensive_purge_applied_le_last_applied(&mut self, upto: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn defensive_purge_applied_le_last_applied(&mut self, upto: LogId<C::NodeId>) -> Result<(), StorageError<C>> {
         let (last_applied, _) = self.inner().last_applied_state().await?;
         if Some(upto.index) > last_applied.index() {
             return Err(
@@ -218,7 +218,10 @@ where
         Ok(())
     }
 
-    async fn defensive_delete_conflict_gt_last_applied(&mut self, since: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn defensive_delete_conflict_gt_last_applied(
+        &mut self,
+        since: LogId<C::NodeId>,
+    ) -> Result<(), StorageError<C>> {
         let (last_applied, _) = self.inner().last_applied_state().await?;
         if Some(since.index) <= last_applied.index() {
             return Err(
@@ -323,7 +326,7 @@ where
 pub fn check_range_matches_entries<C: RaftTypeConfig, RB: RangeBounds<u64> + Debug + Send>(
     range: RB,
     entries: &[Entry<C>],
-) -> Result<(), StorageError<C>> {
+) -> Result<(), StorageError<C::NodeId>> {
     let want_first = match range.start_bound() {
         Bound::Included(i) => Some(*i),
         Bound::Excluded(i) => Some(*i + 1),

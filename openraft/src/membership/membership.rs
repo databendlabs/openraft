@@ -12,34 +12,35 @@ use crate::error::NodeIdNotInNodes;
 use crate::membership::quorum;
 use crate::MessageSummary;
 use crate::Node;
+use crate::NodeId;
 use crate::RaftTypeConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum EitherNodesOrIds<C: RaftTypeConfig> {
-    Nodes(BTreeMap<C::NodeId, Node>),
-    NodeIds(BTreeSet<C::NodeId>),
+pub enum EitherNodesOrIds<NID: NodeId> {
+    Nodes(BTreeMap<NID, Node>),
+    NodeIds(BTreeSet<NID>),
 }
 
-impl<C: RaftTypeConfig> From<BTreeSet<C::NodeId>> for EitherNodesOrIds<C> {
-    fn from(node_ids: BTreeSet<C::NodeId>) -> Self {
+impl<NID: NodeId> From<BTreeSet<NID>> for EitherNodesOrIds<NID> {
+    fn from(node_ids: BTreeSet<NID>) -> Self {
         Self::NodeIds(node_ids)
     }
 }
-impl<C: RaftTypeConfig> From<BTreeMap<C::NodeId, Node>> for EitherNodesOrIds<C> {
-    fn from(nodes: BTreeMap<C::NodeId, Node>) -> Self {
+impl<NID: NodeId> From<BTreeMap<NID, Node>> for EitherNodesOrIds<NID> {
+    fn from(nodes: BTreeMap<NID, Node>) -> Self {
         Self::Nodes(nodes)
     }
 }
 
-impl<C: RaftTypeConfig> EitherNodesOrIds<C> {
-    pub fn node_ids(&self) -> BTreeSet<C::NodeId> {
+impl<NID: NodeId> EitherNodesOrIds<NID> {
+    pub fn node_ids(&self) -> BTreeSet<NID> {
         match self {
             EitherNodesOrIds::NodeIds(ids) => ids.clone(),
             EitherNodesOrIds::Nodes(nodes) => nodes.keys().cloned().collect::<BTreeSet<_>>(),
         }
     }
 
-    pub fn nodes(&self) -> Option<BTreeMap<C::NodeId, Node>> {
+    pub fn nodes(&self) -> Option<BTreeMap<NID, Node>> {
         match self {
             EitherNodesOrIds::NodeIds(_ids) => None,
             EitherNodesOrIds::Nodes(nodes) => Some(nodes.clone()),
@@ -52,22 +53,22 @@ impl<C: RaftTypeConfig> EitherNodesOrIds<C> {
 /// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset of a majority of
 /// every config.
 #[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Membership<C: RaftTypeConfig> {
+pub struct Membership<NID: NodeId> {
     /// Learners set
-    learners: BTreeSet<C::NodeId>,
+    learners: BTreeSet<NID>,
 
     /// Multi configs of members.
     ///
     /// AKA a joint config in original raft paper.
-    configs: Vec<BTreeSet<C::NodeId>>,
+    configs: Vec<BTreeSet<NID>>,
 
     /// Nodes info, e.g. the connecting host and port.
     ///
     /// If it is Some, it has to contain all node id in `configs` and `learners`.
-    nodes: Option<BTreeMap<C::NodeId, Node>>,
+    nodes: Option<BTreeMap<NID, Node>>,
 }
 
-impl<C: RaftTypeConfig> MessageSummary for Membership<C> {
+impl<NID: NodeId> MessageSummary for Membership<NID> {
     fn summary(&self) -> String {
         let nodes = self.get_nodes();
 
@@ -109,11 +110,11 @@ impl<C: RaftTypeConfig> MessageSummary for Membership<C> {
     }
 }
 
-impl<C: RaftTypeConfig> Membership<C> {
+impl<NID: NodeId> Membership<NID> {
     /// Create a new Membership of multiple configs(joint) and optinally a set of learners
     ///
     /// A learner that is already in configs will be filtered out.
-    pub fn new(configs: Vec<BTreeSet<C::NodeId>>, learners: Option<BTreeSet<C::NodeId>>) -> Self {
+    pub fn new(configs: Vec<BTreeSet<NID>>, learners: Option<BTreeSet<NID>>) -> Self {
         let all_members = Self::build_all_members(&configs);
         let learners = learners.unwrap_or_default();
         let learners = learners.difference(&all_members).cloned().collect::<BTreeSet<_>>();
@@ -128,7 +129,7 @@ impl<C: RaftTypeConfig> Membership<C> {
     /// Attatch nodes info to a Membership and returns a new instance.
     ///
     /// The provided `nodes` has to contain every node-id presents in `configs` or `learners` if it is `Some`.
-    pub(crate) fn set_nodes(mut self, nodes: Option<BTreeMap<C::NodeId, Node>>) -> Result<Self, NodeIdNotInNodes<C>> {
+    pub(crate) fn set_nodes(mut self, nodes: Option<BTreeMap<NID, Node>>) -> Result<Self, NodeIdNotInNodes<NID>> {
         self.check_node_ids_in_nodes(&nodes)?;
 
         self.nodes = self.remove_unused_nodes(&nodes);
@@ -137,13 +138,13 @@ impl<C: RaftTypeConfig> Membership<C> {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn get_nodes(&self) -> &Option<BTreeMap<C::NodeId, Node>> {
+    pub(crate) fn get_nodes(&self) -> &Option<BTreeMap<NID, Node>> {
         &self.nodes
     }
 
     // TODO(xp)
     #[allow(dead_code)]
-    pub(crate) fn get_node(&self, node_id: C::NodeId) -> Option<&Node> {
+    pub(crate) fn get_node(&self, node_id: NID) -> Option<&Node> {
         if let Some(ns) = &self.nodes {
             return ns.get(&node_id);
         }
@@ -151,10 +152,7 @@ impl<C: RaftTypeConfig> Membership<C> {
         None
     }
 
-    pub(crate) fn remove_unused_nodes(
-        &self,
-        nodes: &Option<BTreeMap<C::NodeId, Node>>,
-    ) -> Option<BTreeMap<C::NodeId, Node>> {
+    pub(crate) fn remove_unused_nodes(&self, nodes: &Option<BTreeMap<NID, Node>>) -> Option<BTreeMap<NID, Node>> {
         let ns = match nodes {
             None => {
                 return None;
@@ -179,9 +177,9 @@ impl<C: RaftTypeConfig> Membership<C> {
     /// Node that present in `old` will not be replaced because changing the address of a node potentially breaks
     /// consensus guarantee.
     pub fn extend_nodes(
-        old: Option<BTreeMap<C::NodeId, Node>>,
-        new: &Option<BTreeMap<C::NodeId, Node>>,
-    ) -> Option<BTreeMap<C::NodeId, Node>> {
+        old: Option<BTreeMap<NID, Node>>,
+        new: &Option<BTreeMap<NID, Node>>,
+    ) -> Option<BTreeMap<NID, Node>> {
         let new_nodes = match new {
             None => return old,
             Some(x) => x,
@@ -202,8 +200,8 @@ impl<C: RaftTypeConfig> Membership<C> {
     /// Check if all member node-id and learner node id are included in `self.nodes`, if `self.nodes` is `Some`.
     pub(crate) fn check_node_ids_in_nodes(
         &self,
-        nodes: &Option<BTreeMap<C::NodeId, Node>>,
-    ) -> Result<(), NodeIdNotInNodes<C>> {
+        nodes: &Option<BTreeMap<NID, Node>>,
+    ) -> Result<(), NodeIdNotInNodes<NID>> {
         let ns = match nodes {
             None => return Ok(()),
             Some(x) => x,
@@ -215,7 +213,7 @@ impl<C: RaftTypeConfig> Membership<C> {
             if !ns.contains_key(node_id) {
                 let e = NodeIdNotInNodes {
                     node_id: *node_id,
-                    node_ids: ns.keys().cloned().collect::<BTreeSet<C::NodeId>>(),
+                    node_ids: ns.keys().cloned().collect::<BTreeSet<NID>>(),
                 };
                 return Err(e);
             }
@@ -224,7 +222,7 @@ impl<C: RaftTypeConfig> Membership<C> {
         Ok(())
     }
 
-    pub fn get_configs(&self) -> &Vec<BTreeSet<C::NodeId>> {
+    pub fn get_configs(&self) -> &Vec<BTreeSet<NID>> {
         &self.configs
     }
 
@@ -233,7 +231,7 @@ impl<C: RaftTypeConfig> Membership<C> {
         self.configs.len() > 1
     }
 
-    pub(crate) fn add_learner(&self, node_id: C::NodeId, node: Option<Node>) -> Result<Self, NodeIdNotInNodes<C>> {
+    pub(crate) fn add_learner(&self, node_id: NID, node: Option<Node>) -> Result<Self, NodeIdNotInNodes<NID>> {
         let extension = node.map(|n| btreemap! {node_id=>n});
 
         let configs = self.configs.clone();
@@ -249,24 +247,24 @@ impl<C: RaftTypeConfig> Membership<C> {
         Ok(m)
     }
 
-    pub(crate) fn all_learners(&self) -> &BTreeSet<C::NodeId> {
+    pub(crate) fn all_learners(&self) -> &BTreeSet<NID> {
         &self.learners
     }
 
-    pub(crate) fn all_members(&self) -> BTreeSet<C::NodeId> {
+    pub(crate) fn all_members(&self) -> BTreeSet<NID> {
         Self::build_all_members(&self.configs)
     }
 
-    pub(crate) fn get_ith_config(&self, i: usize) -> Option<&BTreeSet<C::NodeId>> {
+    pub(crate) fn get_ith_config(&self, i: usize) -> Option<&BTreeSet<NID>> {
         self.configs.get(i)
     }
 
-    pub(crate) fn contains(&self, target: &C::NodeId) -> bool {
+    pub(crate) fn contains(&self, target: &NID) -> bool {
         self.is_member(target) || self.is_learner(target)
     }
 
     /// Check if the given `NodeId` exists in this membership config.
-    pub(crate) fn is_member(&self, x: &C::NodeId) -> bool {
+    pub(crate) fn is_member(&self, x: &NID) -> bool {
         for c in self.configs.iter() {
             if c.contains(x) {
                 return true;
@@ -275,20 +273,20 @@ impl<C: RaftTypeConfig> Membership<C> {
         false
     }
 
-    pub(crate) fn is_learner(&self, x: &C::NodeId) -> bool {
+    pub(crate) fn is_learner(&self, x: &NID) -> bool {
         self.learners.contains(x)
     }
 
     // TODO(xp): rename this
     /// Create a new initial config containing only the given node ID.
-    pub(crate) fn new_initial(id: C::NodeId) -> Self {
+    pub(crate) fn new_initial(id: NID) -> Self {
         Membership::new(vec![btreeset! {id}], None)
     }
 
     /// Return true if the given set of ids constitutes a majority.
     ///
     /// I.e. the id set includes a majority of every config.
-    pub(crate) fn is_majority(&self, granted: &BTreeSet<C::NodeId>) -> bool {
+    pub(crate) fn is_majority(&self, granted: &BTreeSet<NID>) -> bool {
         for config in self.configs.iter() {
             if !Self::is_majority_of_single_config(granted, config) {
                 return false;
@@ -304,7 +302,7 @@ impl<C: RaftTypeConfig> Membership<C> {
     /// `10` constitutes a majoirty in the first config {1,2,3}.
     /// `20` constitutes a majority in the second config {4,5,6}.
     /// Thus the minimal value `10` is the greatest joint majority for this membership config.
-    pub(crate) fn greatest_majority_value<'v, V>(&self, values: &'v BTreeMap<C::NodeId, V>) -> Option<&'v V>
+    pub(crate) fn greatest_majority_value<'v, V>(&self, values: &'v BTreeMap<NID, V>) -> Option<&'v V>
     where V: Ord {
         let mut res = vec![];
         for config in self.configs.iter() {
@@ -367,9 +365,9 @@ impl<C: RaftTypeConfig> Membership<C> {
     ///     curr = next;
     /// }
     /// ```
-    pub(crate) fn next_safe<T>(&self, goal: T, turn_to_learner: bool) -> Result<Self, NodeIdNotInNodes<C>>
-    where T: Into<EitherNodesOrIds<C>> {
-        let goal: EitherNodesOrIds<C> = goal.into();
+    pub(crate) fn next_safe<T>(&self, goal: T, turn_to_learner: bool) -> Result<Self, NodeIdNotInNodes<NID>>
+    where T: Into<EitherNodesOrIds<NID>> {
+        let goal: EitherNodesOrIds<NID> = goal.into();
 
         let goal_ids = goal.node_ids();
 
@@ -394,7 +392,7 @@ impl<C: RaftTypeConfig> Membership<C> {
         Ok(res)
     }
 
-    fn is_majority_of_single_config(granted: &BTreeSet<C::NodeId>, single_config: &BTreeSet<C::NodeId>) -> bool {
+    fn is_majority_of_single_config(granted: &BTreeSet<NID>, single_config: &BTreeSet<NID>) -> bool {
         let d = granted.intersection(single_config);
         let n_granted = d.fold(0, |a, _x| a + 1);
 
@@ -402,7 +400,7 @@ impl<C: RaftTypeConfig> Membership<C> {
         n_granted >= majority
     }
 
-    fn build_all_members(configs: &[BTreeSet<C::NodeId>]) -> BTreeSet<C::NodeId> {
+    fn build_all_members(configs: &[BTreeSet<NID>]) -> BTreeSet<NID> {
         let mut members = BTreeSet::new();
         for config in configs.iter() {
             members.extend(config)

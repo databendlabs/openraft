@@ -62,7 +62,7 @@ where
     S: RaftStorage<C>,
     B: StoreBuilder<C, S>,
 {
-    pub fn test_all(builder: B) -> Result<(), StorageError<C>> {
+    pub fn test_all(builder: B) -> Result<(), StorageError<C::NodeId>> {
         Suite::test_store(&builder)?;
 
         let df_builder = DefensiveStoreBuilder::<C, S, B> {
@@ -76,7 +76,7 @@ where
         Ok(())
     }
 
-    pub fn test_store(builder: &B) -> Result<(), StorageError<C>> {
+    pub fn test_store(builder: &B) -> Result<(), StorageError<C::NodeId>> {
         run_fut(Suite::last_membership_in_log_initial(builder))?;
         run_fut(Suite::last_membership_in_log(builder))?;
         run_fut(Suite::get_membership_initial(builder))?;
@@ -942,7 +942,7 @@ where
     S: RaftStorage<C>,
     B: StoreBuilder<C, S>,
 {
-    pub fn test_store_defensive(builder: &B) -> Result<(), StorageError<C>> {
+    pub fn test_store_defensive(builder: &B) -> Result<(), StorageError<C::NodeId>> {
         run_fut(Suite::df_get_membership_config_dirty_log(builder))?;
         run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
         run_fut(Suite::df_save_vote_ascending(builder))?;
@@ -1524,8 +1524,8 @@ where C::NodeId: From<u64> {
 
 /// Block until a future is finished.
 /// The future will be running in a clean tokio runtime, to prevent an unfinished task affecting the test.
-pub fn run_fut<C: RaftTypeConfig, F>(f: F) -> Result<(), StorageError<C>>
-where F: Future<Output = Result<(), StorageError<C>>> {
+pub fn run_fut<C: RaftTypeConfig, F>(f: F) -> Result<(), StorageError<C::NodeId>>
+where F: Future<Output = Result<(), StorageError<C::NodeId>>> {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(f)?;
     Ok(())

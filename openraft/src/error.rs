@@ -12,6 +12,7 @@ use serde::Serialize;
 use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
 use crate::Node;
+use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -19,9 +20,9 @@ use crate::Vote;
 
 /// Fatal is unrecoverable and shuts down raft at once.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-pub enum Fatal<C: RaftTypeConfig> {
+pub enum Fatal<NID: NodeId> {
     #[error(transparent)]
-    StorageError(#[from] StorageError<C>),
+    StorageError(#[from] StorageError<NID>),
 
     #[error("raft stopped")]
     Stopped,
@@ -31,16 +32,16 @@ pub enum Fatal<C: RaftTypeConfig> {
 ///
 /// Fatal will shutdown the raft and needs to be dealt separately,
 /// such as StorageError.
-pub trait ExtractFatal<C: RaftTypeConfig>
+pub trait ExtractFatal<NID: NodeId>
 where Self: Sized
 {
-    fn extract_fatal(self) -> Result<Self, Fatal<C>>;
+    fn extract_fatal(self) -> Result<Self, Fatal<NID>>;
 }
 
-impl<C: RaftTypeConfig, T, E> ExtractFatal<C> for Result<T, E>
-where E: TryInto<Fatal<C>> + Clone
+impl<NID: NodeId, T, E> ExtractFatal<NID> for Result<T, E>
+where E: TryInto<Fatal<NID>> + Clone
 {
-    fn extract_fatal(self) -> Result<Self, Fatal<C>> {
+    fn extract_fatal(self) -> Result<Self, Fatal<NID>> {
         if let Err(e) = &self {
             let fatal = e.clone().try_into();
             if let Ok(f) = fatal {
@@ -52,92 +53,92 @@ where E: TryInto<Fatal<C>> + Clone
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum AppendEntriesError<C: RaftTypeConfig> {
+pub enum AppendEntriesError<NID: NodeId> {
     #[error(transparent)]
-    Fatal(#[from] Fatal<C>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum VoteError<C: RaftTypeConfig> {
+pub enum VoteError<NID: NodeId> {
     #[error(transparent)]
-    Fatal(#[from] Fatal<C>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum InstallSnapshotError<C: RaftTypeConfig> {
+pub enum InstallSnapshotError<NID: NodeId> {
     #[error(transparent)]
     SnapshotMismatch(#[from] SnapshotMismatch),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 /// An error related to a is_leader request.
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum CheckIsLeaderError<C: RaftTypeConfig> {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C>),
+    ForwardToLeader(#[from] ForwardToLeader<NID>),
 
     #[error(transparent)]
-    QuorumNotEnough(#[from] QuorumNotEnough<C>),
+    QuorumNotEnough(#[from] QuorumNotEnough<NID>),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 /// An error related to a client write request.
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum ClientWriteError<C: RaftTypeConfig> {
+pub enum ClientWriteError<NID: NodeId> {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C>),
+    ForwardToLeader(#[from] ForwardToLeader<NID>),
 
     /// When writing a change-membership entry.
     #[error(transparent)]
-    ChangeMembershipError(#[from] ChangeMembershipError<C>),
+    ChangeMembershipError(#[from] ChangeMembershipError<NID>),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-pub enum ChangeMembershipError<C: RaftTypeConfig> {
+pub enum ChangeMembershipError<NID: NodeId> {
     #[error(transparent)]
-    InProgress(#[from] InProgress<C>),
+    InProgress(#[from] InProgress<NID>),
 
     #[error(transparent)]
     EmptyMembership(#[from] EmptyMembership),
 
     // TODO(xp): 111 test it
     #[error(transparent)]
-    LearnerNotFound(#[from] LearnerNotFound<C>),
+    LearnerNotFound(#[from] LearnerNotFound<NID>),
 
     #[error(transparent)]
-    LearnerIsLagging(#[from] LearnerIsLagging<C>),
+    LearnerIsLagging(#[from] LearnerIsLagging<NID>),
 
     #[error(transparent)]
-    NodeNotInCluster(#[from] NodeIdNotInNodes<C>),
+    NodeNotInCluster(#[from] NodeIdNotInNodes<NID>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-pub enum AddLearnerError<C: RaftTypeConfig> {
+pub enum AddLearnerError<NID: NodeId> {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C>),
+    ForwardToLeader(#[from] ForwardToLeader<NID>),
 
     #[error("node {0} is already a learner")]
-    Exists(C::NodeId),
+    Exists(NID),
 
     #[error(transparent)]
-    NodeNotInCluster(#[from] NodeIdNotInNodes<C>),
+    NodeNotInCluster(#[from] NodeIdNotInNodes<NID>),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C>),
+    Fatal(#[from] Fatal<NID>),
 }
 
-impl<C: RaftTypeConfig> TryFrom<AddLearnerError<C>> for ForwardToLeader<C> {
-    type Error = AddLearnerError<C>;
+impl<NID: NodeId> TryFrom<AddLearnerError<NID>> for ForwardToLeader<NID> {
+    type Error = AddLearnerError<NID>;
 
-    fn try_from(value: AddLearnerError<C>) -> Result<Self, Self::Error> {
+    fn try_from(value: AddLearnerError<NID>) -> Result<Self, Self::Error> {
         if let AddLearnerError::ForwardToLeader(e) = value {
             return Ok(e);
         }
@@ -147,33 +148,33 @@ impl<C: RaftTypeConfig> TryFrom<AddLearnerError<C>> for ForwardToLeader<C> {
 
 /// The set of errors which may take place when initializing a pristine Raft node.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-pub enum InitializeError<C: RaftTypeConfig> {
+pub enum InitializeError<NID: NodeId> {
     /// The requested action is not allowed due to the Raft node's current state.
     #[error("the requested action is not allowed due to the Raft node's current state")]
     NotAllowed,
 
     #[error(transparent)]
-    NodeNotInCluster(#[from] NodeIdNotInNodes<C>),
+    NodeNotInCluster(#[from] NodeIdNotInNodes<NID>),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C>),
+    Fatal(#[from] Fatal<NID>),
 }
 
-impl<C: RaftTypeConfig> From<StorageError<C>> for AppendEntriesError<C> {
-    fn from(s: StorageError<C>) -> Self {
-        let f: Fatal<C> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for AppendEntriesError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C>> for VoteError<C> {
-    fn from(s: StorageError<C>) -> Self {
-        let f: Fatal<C> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for VoteError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C>> for InstallSnapshotError<C> {
-    fn from(s: StorageError<C>) -> Self {
-        let f: Fatal<C> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for InstallSnapshotError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
@@ -183,15 +184,15 @@ impl<C: RaftTypeConfig> From<StorageError<C>> for CheckIsLeaderError<C> {
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C>> for InitializeError<C> {
-    fn from(s: StorageError<C>) -> Self {
-        let f: Fatal<C> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for InitializeError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C>> for AddLearnerError<C> {
-    fn from(s: StorageError<C>) -> Self {
-        let f: Fatal<C> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for AddLearnerError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
@@ -312,13 +313,13 @@ pub struct Timeout<C: RaftTypeConfig> {
 #[error("store has no log at: {index:?}, last purged: {last_purged_log_id:?}")]
 pub struct LackEntry<C: RaftTypeConfig> {
     pub index: Option<u64>,
-    pub last_purged_log_id: Option<LogId<C>>,
+    pub last_purged_log_id: Option<LogId<C::NodeId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("has to forward request to: {leader_id:?}, {leader_node:?}")]
-pub struct ForwardToLeader<C: RaftTypeConfig> {
-    pub leader_id: Option<C::NodeId>,
+pub struct ForwardToLeader<NID: NodeId> {
+    pub leader_id: Option<NID>,
     pub leader_node: Option<Node>,
 }
 
@@ -331,36 +332,36 @@ pub struct SnapshotMismatch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("not enough for a quorum, cluster: {cluster}, got: {got:?}")]
-pub struct QuorumNotEnough<C: RaftTypeConfig> {
+pub struct QuorumNotEnough<NID: NodeId> {
     pub cluster: String,
-    pub got: BTreeSet<C::NodeId>,
+    pub got: BTreeSet<NID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
-pub struct InProgress<C: RaftTypeConfig> {
-    pub membership_log_id: LogId<C>,
+pub struct InProgress<NID: NodeId> {
+    pub membership_log_id: LogId<NID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("to add a member {node_id} first need to add it as learner")]
-pub struct LearnerNotFound<C: RaftTypeConfig> {
-    pub node_id: C::NodeId,
+pub struct LearnerNotFound<NID: NodeId> {
+    pub node_id: NID,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("replication to learner {node_id} is lagging {distance}, matched: {matched:?}, can not add as member")]
-pub struct LearnerIsLagging<C: RaftTypeConfig> {
-    pub node_id: C::NodeId,
-    pub matched: Option<LogId<C>>,
+pub struct LearnerIsLagging<NID: NodeId> {
+    pub node_id: NID,
+    pub matched: Option<LogId<NID>>,
     pub distance: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("node {node_id} not found in cluster: {node_ids:?}")]
-pub struct NodeIdNotInNodes<C: RaftTypeConfig> {
-    pub node_id: C::NodeId,
-    pub node_ids: BTreeSet<C::NodeId>,
+pub struct NodeIdNotInNodes<NID: NodeId> {
+    pub node_id: NID,
+    pub node_ids: BTreeSet<NID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -369,8 +370,8 @@ pub struct EmptyMembership {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("node not found: {node_id}, source: {source}")]
-pub struct NodeNotFound<C: RaftTypeConfig> {
-    pub node_id: C::NodeId,
+pub struct NodeNotFound<NID: NodeId> {
+    pub node_id: NID,
     pub source: AnyError,
 }
 

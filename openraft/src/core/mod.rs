@@ -59,6 +59,7 @@ use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
+use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -73,17 +74,18 @@ use crate::Update;
 ///
 /// An active config is just the last seen config in raft spec.
 #[derive(Clone, Eq, Serialize, Deserialize)]
-pub struct EffectiveMembership<C: RaftTypeConfig> {
+pub struct EffectiveMembership<NID: NodeId> {
     /// The id of the log that applies this membership config
-    pub log_id: LogId<C>,
+    pub log_id: LogId<NID>,
 
-    pub membership: Membership<C>,
+    #[serde(bound = "")]
+    pub membership: Membership<NID>,
 
     /// Cache of union of all members
-    all_members: BTreeSet<C::NodeId>,
+    all_members: BTreeSet<NID>,
 }
 
-impl<C: RaftTypeConfig> Debug for EffectiveMembership<C> {
+impl<NID: NodeId> Debug for EffectiveMembership<NID> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EffectiveMembership")
             .field("log_id", &self.log_id)
@@ -93,18 +95,18 @@ impl<C: RaftTypeConfig> Debug for EffectiveMembership<C> {
     }
 }
 
-impl<C: RaftTypeConfig> PartialEq for EffectiveMembership<C> {
+impl<NID: NodeId> PartialEq for EffectiveMembership<NID> {
     fn eq(&self, other: &Self) -> bool {
         self.log_id == other.log_id && self.membership == other.membership && self.all_members == other.all_members
     }
 }
 
-impl<C: RaftTypeConfig> EffectiveMembership<C> {
-    pub fn new_initial(node_id: C::NodeId) -> Self {
+impl<NID: NodeId> EffectiveMembership<NID> {
+    pub fn new_initial(node_id: NID) -> Self {
         Self::new(LogId::new(LeaderId::default(), 0), Membership::new_initial(node_id))
     }
 
-    pub fn new(log_id: LogId<C>, membership: Membership<C>) -> Self {
+    pub fn new(log_id: LogId<NID>, membership: Membership<NID>) -> Self {
         let all_members = membership.all_members();
         Self {
             log_id,
@@ -113,29 +115,29 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
         }
     }
 
-    pub(crate) fn all_members(&self) -> &BTreeSet<C::NodeId> {
+    pub(crate) fn all_members(&self) -> &BTreeSet<NID> {
         &self.all_members
     }
 
-    pub(crate) fn all_learners(&self) -> &BTreeSet<C::NodeId> {
+    pub(crate) fn all_learners(&self) -> &BTreeSet<NID> {
         self.membership.all_learners()
     }
 
     // TODO(xp): unused
-    pub fn get_configs(&self) -> &Vec<BTreeSet<C::NodeId>> {
+    pub fn get_configs(&self) -> &Vec<BTreeSet<NID>> {
         self.membership.get_configs()
     }
 
-    pub fn get_node(&self, node_id: C::NodeId) -> Option<&Node> {
+    pub fn get_node(&self, node_id: NID) -> Option<&Node> {
         self.membership.get_node(node_id)
     }
 
-    pub fn get_nodes(&self) -> Option<&BTreeMap<C::NodeId, Node>> {
+    pub fn get_nodes(&self) -> Option<&BTreeMap<NID, Node>> {
         self.membership.get_nodes().as_ref()
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
+impl<NID: NodeId> MessageSummary for EffectiveMembership<NID> {
     fn summary(&self) -> String {
         format!("{{log_id:{} membership:{}}}", self.log_id, self.membership.summary())
     }
@@ -150,7 +152,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     config: Arc<Config>,
 
     /// The cluster's current membership configuration.
-    effective_membership: Arc<EffectiveMembership<C>>,
+    effective_membership: Arc<EffectiveMembership<C::NodeId>>,
 
     /// The `RaftNetworkFactory` implementation.
     network: N,
@@ -166,16 +168,16 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// Committed means:
     /// - a log that is replicated to a quorum of the cluster and it is of the term of the leader.
     /// - A quorum could be a joint quorum.
-    committed: Option<LogId<C>>,
+    committed: Option<LogId<C::NodeId>>,
 
     /// The log id of the highest log entry which has been applied to the local state machine.
-    last_applied: Option<LogId<C>>,
+    last_applied: Option<LogId<C::NodeId>>,
 
     /// The vote state of this node.
-    vote: Vote<C>,
+    vote: Vote<C::NodeId>,
 
     /// The last entry to be appended to the log.
-    last_log_id: Option<LogId<C>>,
+    last_log_id: Option<LogId<C::NodeId>>,
 
     /// The node's current snapshot state.
     snapshot_state: Option<SnapshotState<S::SnapshotData>>,
@@ -183,7 +185,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
     ///
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
-    snapshot_last_log_id: Option<LogId<C>>,
+    snapshot_last_log_id: Option<LogId<C::NodeId>>,
 
     /// The last time a heartbeat was received.
     last_heartbeat: Option<Instant>,
@@ -191,12 +193,12 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The duration until the next election timeout.
     next_election_timeout: Option<Instant>,
 
-    tx_compaction: mpsc::Sender<SnapshotUpdate<C>>,
-    rx_compaction: mpsc::Receiver<SnapshotUpdate<C>>,
+    tx_compaction: mpsc::Sender<SnapshotUpdate<C::NodeId>>,
+    rx_compaction: mpsc::Receiver<SnapshotUpdate<C::NodeId>>,
 
     rx_api: mpsc::UnboundedReceiver<(RaftMsg<C>, Span)>,
 
-    tx_metrics: watch::Sender<RaftMetrics<C>>,
+    tx_metrics: watch::Sender<RaftMetrics<C::NodeId>>,
 
     rx_shutdown: oneshot::Receiver<()>,
 }
@@ -208,9 +210,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         network: N,
         storage: S,
         rx_api: mpsc::UnboundedReceiver<(RaftMsg<C>, Span)>,
-        tx_metrics: watch::Sender<RaftMetrics<C>>,
+        tx_metrics: watch::Sender<RaftMetrics<C::NodeId>>,
         rx_shutdown: oneshot::Receiver<()>,
-    ) -> JoinHandle<Result<(), Fatal<C>>> {
+    ) -> JoinHandle<Result<(), Fatal<C::NodeId>>> {
         //
 
         // TODO(xp): remove this.
@@ -636,7 +638,11 @@ where
 }
 
 #[tracing::instrument(level = "trace", skip(sto))]
-async fn purge_applied_logs<C, S>(sto: &mut S, last_applied: &LogId<C>, max_keep: u64) -> Result<(), StorageError<C>>
+async fn purge_applied_logs<C, S>(
+    sto: &mut S,
+    last_applied: &LogId<C::NodeId>,
+    max_keep: u64,
+) -> Result<(), StorageError<C>>
 where
     C: RaftTypeConfig,
     S: RaftStorage<C>,
@@ -691,9 +697,9 @@ pub(self) enum SnapshotState<S> {
 
 /// An update on a snapshot creation process.
 #[derive(Debug)]
-pub(self) enum SnapshotUpdate<C: RaftTypeConfig> {
+pub(self) enum SnapshotUpdate<NID: NodeId> {
     /// Snapshot creation has finished successfully and covers the given index.
-    SnapshotComplete(LogId<C>),
+    SnapshotComplete(LogId<NID>),
     /// Snapshot creation failed.
     SnapshotFailed,
 }
@@ -747,7 +753,7 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     pub(super) nodes: BTreeMap<C::NodeId, ReplicationState<C>>,
 
     /// The metrics about a leader
-    pub leader_metrics: Arc<LeaderMetrics<C>>,
+    pub leader_metrics: Arc<LeaderMetrics<C::NodeId>>,
 
     /// The stream of events coming from replication streams.
     pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<C, S::SnapshotData>, Span)>,
@@ -894,12 +900,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 struct ReplicationState<C: RaftTypeConfig> {
-    pub matched: Option<LogId<C>>,
+    pub matched: Option<LogId<C::NodeId>>,
     pub remove_since: Option<u64>,
     pub repl_stream: ReplicationStream<C>,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
-    pub tx: Option<RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C>>>,
+    pub tx: Option<RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C::NodeId>>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for ReplicationState<C> {
@@ -915,14 +921,14 @@ impl<C: RaftTypeConfig> ReplicationState<C> {
     // TODO(xp): make this a method of Config?
 
     /// Return true if the distance behind last_log_id is smaller than the threshold to join.
-    pub fn is_line_rate(&self, last_log_id: &Option<LogId<C>>, config: &Config) -> bool {
+    pub fn is_line_rate(&self, last_log_id: &Option<LogId<C::NodeId>>, config: &Config) -> bool {
         is_matched_upto_date(&self.matched, last_log_id, config)
     }
 }
 
-pub fn is_matched_upto_date<C: RaftTypeConfig>(
-    matched: &Option<LogId<C>>,
-    last_log_id: &Option<LogId<C>>,
+pub fn is_matched_upto_date<NID: NodeId>(
+    matched: &Option<LogId<NID>>,
+    last_log_id: &Option<LogId<NID>>,
     config: &Config,
 ) -> bool {
     let my_index = matched.next_index();

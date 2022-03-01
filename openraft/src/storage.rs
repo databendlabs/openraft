@@ -18,14 +18,15 @@ use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
 use crate::LogId;
 use crate::LogIdOptionExt;
+use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct SnapshotMeta<C: RaftTypeConfig> {
+pub struct SnapshotMeta<NID: NodeId> {
     // Log entries upto which this snapshot includes, inclusive.
-    pub last_log_id: LogId<C>,
+    pub last_log_id: LogId<NID>,
 
     /// To identify a snapshot when transferring.
     /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be different in bytes.
@@ -50,10 +51,10 @@ where
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InitialState<C: RaftTypeConfig> {
     /// The last entry.
-    pub last_log_id: Option<LogId<C>>,
+    pub last_log_id: Option<LogId<C::NodeId>>,
 
     /// The LogId of the last log applied to the state machine.
-    pub last_applied: Option<LogId<C>>,
+    pub last_applied: Option<LogId<C::NodeId>>,
 
     pub vote: Vote<C>,
 
@@ -68,11 +69,11 @@ pub struct InitialState<C: RaftTypeConfig> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LogState<C: RaftTypeConfig> {
     /// The greatest log id that has been purged after being applied to state machine.
-    pub last_purged_log_id: Option<LogId<C>>,
+    pub last_purged_log_id: Option<LogId<C::NodeId>>,
 
     /// The log id of the last present entry if there are any entries.
     /// Otherwise the same value as `last_purged_log_id`.
-    pub last_log_id: Option<LogId<C>>,
+    pub last_log_id: Option<LogId<C::NodeId>>,
 }
 
 /// A trait defining the interface for a Raft log subsystem.
@@ -261,7 +262,7 @@ where C: RaftTypeConfig
     }
 
     /// Get the log id of the entry at `index`.
-    async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C>, StorageError<C>> {
+    async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C::NodeId>, StorageError<C>> {
         let st = self.get_log_state().await?;
 
         if Some(log_index) == st.last_purged_log_id.index() {
@@ -294,10 +295,10 @@ where C: RaftTypeConfig
     async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError<C>>;
 
     /// Delete conflict log entries since `log_id`, inclusive.
-    async fn delete_conflict_logs_since(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>>;
+    async fn delete_conflict_logs_since(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C>>;
 
     /// Delete applied log entries upto `log_id`, inclusive.
-    async fn purge_logs_upto(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>>;
+    async fn purge_logs_upto(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C>>;
 
     // --- State Machine
 
@@ -306,7 +307,7 @@ where C: RaftTypeConfig
     // NOTE: This can be made into sync, provided all state machines will use atomic read or the like.
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<C>>, Option<EffectiveMembership<C>>), StorageError<C>>;
+    ) -> Result<(Option<LogId<C::NodeId>>, Option<EffectiveMembership<C>>), StorageError<C>>;
 
     /// Apply the given payload of entries to the state machine.
     ///
