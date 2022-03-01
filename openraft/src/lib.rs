@@ -77,7 +77,13 @@ pub use crate::vote::Vote;
 /// models as-is to Raft, Raft will present it to the application's `RaftStorage` impl when ready,
 /// and the application may then deal with the data directly in the storage engine without having
 /// to do a preliminary deserialization.
+///
+/// ## Note
+///
+/// The trait is automatically implemented for all types which satisfy its supertraits.
 pub trait AppData: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
+
+impl<T> AppData for T where T: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
 
 /// A trait defining application specific response data.
 ///
@@ -92,4 +98,10 @@ pub trait AppData: Clone + Send + Sync + Serialize + DeserializeOwned + 'static 
 /// related to the success or failure of a client request — application specific validation logic,
 /// enforcing of data constraints, and anything of that nature — are expressly out of the realm of
 /// the Raft consensus protocol.
+///
+/// ## Note
+///
+/// The trait is automatically implemented for all types which satisfy its supertraits.
 pub trait AppDataResponse: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
+
+impl<T> AppDataResponse for T where T: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}

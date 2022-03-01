@@ -6,9 +6,7 @@ use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
 use openraft::Config;
-use openraft::NodeId;
 use openraft::Raft;
-use openraft::RaftTypeConfig;
 
 use crate::app::ExampleApp;
 use crate::network::api;
@@ -24,16 +22,16 @@ pub mod client;
 pub mod network;
 pub mod store;
 
-pub struct ExampleTypeConfig {}
+pub type ExampleNodeId = u64;
 
-impl RaftTypeConfig for ExampleTypeConfig {
-    type D = ExampleRequest;
-    type R = ExampleResponse;
-}
+openraft::declare_raft_types!(
+    /// Declare the type configuration for example K/V store.
+    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId
+);
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
 
-pub async fn start_example_raft_node(node_id: NodeId, http_addr: String) -> std::io::Result<()> {
+pub async fn start_example_raft_node(node_id: ExampleNodeId, http_addr: String) -> std::io::Result<()> {
     // Create a configuration for the raft instance.
     let config = Arc::new(Config::default().validate().unwrap());
 

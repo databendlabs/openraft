@@ -1,6 +1,7 @@
 use openraft::testing::Suite;
 use openraft::StorageError;
 
+use crate::Config;
 use crate::MemStore;
 
 /// To customize a builder:
@@ -25,7 +26,7 @@ use crate::MemStore;
 /// }
 /// ```
 #[test]
-pub fn test_mem_store() -> Result<(), StorageError> {
-    Suite::test_all(MemStore::new_arc)?;
+pub fn test_mem_store() -> Result<(), StorageError<Config>> {
+    Suite::test_all(MemStore::new_async)?;
     Ok(())
 }

@@ -5,10 +5,11 @@ use maplit::btreemap;
 use maplit::btreeset;
 
 use crate::error::NodeIdNotInNodes;
+use crate::testing::DummyConfig as Config;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 #[test]
 fn test_membership_summary() -> anyhow::Result<()> {
@@ -17,10 +18,10 @@ fn test_membership_summary() -> anyhow::Result<()> {
         data: btreemap! {k.to_string() => k.to_string()},
     };
 
-    let m = Membership::new(vec![btreeset! {1,2}, btreeset! {3}], None);
+    let m = Membership::<Config>::new(vec![btreeset! {1,2}, btreeset! {3}], None);
     assert_eq!("members:[{1,2},{3}],learners:[]", m.summary());
 
-    let m = Membership::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
+    let m = Membership::<Config>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
     assert_eq!("members:[{1,2},{3}],learners:[4]", m.summary());
 
     let m = m.set_nodes(Some(btreemap! {
@@ -40,9 +41,9 @@ fn test_membership_summary() -> anyhow::Result<()> {
 
 #[test]
 fn test_membership() -> anyhow::Result<()> {
-    let m1 = Membership::new(vec![btreeset! {1}], None);
-    let m123 = Membership::new(vec![btreeset! {1,2,3}], None);
-    let m123_345 = Membership::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None);
+    let m1 = Membership::<Config>::new(vec![btreeset! {1}], None);
+    let m123 = Membership::<Config>::new(vec![btreeset! {1,2,3}], None);
+    let m123_345 = Membership::<Config>::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None);
 
     assert_eq!(Some(btreeset! {1}), m1.get_ith_config(0).cloned());
     assert_eq!(Some(btreeset! {1,2,3}), m123.get_ith_config(0).cloned());
@@ -71,7 +72,7 @@ fn test_membership() -> anyhow::Result<()> {
 fn test_membership_with_learners() -> anyhow::Result<()> {
     // test multi membership with learners
     {
-        let m1_2 = Membership::new(vec![btreeset! {1}], Some(btreeset! {2}));
+        let m1_2 = Membership::<Config>::new(vec![btreeset! {1}], Some(btreeset! {2}));
         let m1_23 = m1_2.add_learner(3, None)?;
 
         // test learner and membership
@@ -98,7 +99,7 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
 
     // overlapping members and learners
     {
-        let s1_2 = Membership::new(vec![btreeset! {1,2,3}, btreeset! {5,6,7}], Some(btreeset! {3,4,5}));
+        let s1_2 = Membership::<Config>::new(vec![btreeset! {1,2,3}, btreeset! {5,6,7}], Some(btreeset! {3,4,5}));
         let x = s1_2.all_learners();
         assert_eq!(&btreeset! {4}, x);
     }
@@ -113,7 +114,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
         data: Default::default(),
     };
 
-    let m_1_2 = Membership::new(vec![btreeset! {1}, btreeset! {2}], None)
+    let m_1_2 = Membership::<Config>::new(vec![btreeset! {1}, btreeset! {2}], None)
         .set_nodes(Some(btreemap! {1=>node("1"), 2=>node("2")}))?;
 
     // Add learner that presents in old cluster has no effect.
@@ -125,7 +126,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
     let m_1_2_3 = m_1_2.add_learner(3, Some(node("3")))?;
     assert_eq!(
-        Membership::new(vec![btreeset! {1}, btreeset! {2}], Some(btreeset! {3}))
+        Membership::<Config>::new(vec![btreeset! {1}, btreeset! {2}], Some(btreeset! {3}))
             .set_nodes(Some(btreemap! {1=>node("1"), 2=>node("2"), 3=>node("3")}))?,
         m_1_2_3
     );
@@ -144,7 +145,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
     // Illegal to add node id with node info into cluster without node info.
     {
-        let m_1_2 = Membership::new(vec![btreeset! {1}, btreeset! {2}], None);
+        let m_1_2 = Membership::<Config>::new(vec![btreeset! {1}, btreeset! {2}], None);
 
         let res = m_1_2.add_learner(3, Some(node("3")));
         assert_eq!(
@@ -163,7 +164,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 fn test_membership_check_ndoe_ids_in_nodes() -> anyhow::Result<()> {
     let node = Node::default;
 
-    let mem = |c1, c2, l| Membership::new(vec![btreeset! {c1}, btreeset! {c2}], Some(btreeset! {l}));
+    let mem = |c1, c2, l| Membership::<Config>::new(vec![btreeset! {c1}, btreeset! {c2}], Some(btreeset! {l}));
     let nodes = Some(btreemap! {1 => node(), 2=>node(), 3=>node()});
     let all = || btreeset! {1,2,3};
 
@@ -203,7 +204,7 @@ fn test_membership_extend_nodes() -> anyhow::Result<()> {
         data: Default::default(),
     };
 
-    let ext = |a, b| Membership::extend_nodes(a, &b);
+    let ext = |a, b| Membership::<Config>::extend_nodes(a, &b);
 
     assert_eq!(None, ext(None, None));
     assert_eq!(
@@ -237,7 +238,7 @@ fn test_membership_extend_nodes() -> anyhow::Result<()> {
 fn test_membership_remove_unused_nodes() -> anyhow::Result<()> {
     let node = Node::default;
 
-    let m = Membership::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
+    let m = Membership::<Config>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
 
     assert_eq!(None, m.remove_unused_nodes(&None));
 
@@ -256,7 +257,7 @@ fn test_membership_remove_unused_nodes() -> anyhow::Result<()> {
 #[test]
 fn test_membership_set_nodes() -> anyhow::Result<()> {
     let node = Node::default;
-    let m = || Membership::new(vec![btreeset! {1}, btreeset! {2}], Some(btreeset! {3}));
+    let m = || Membership::<Config>::new(vec![btreeset! {1}, btreeset! {2}], Some(btreeset! {3}));
     let ns_12 = || Some(btreemap! {1=>node(), 2=>node()});
     let ns_123 = || Some(btreemap! {1=>node(), 2=>node(), 3=>node()});
     let ns_1234 = || Some(btreemap! {1=>node(), 2=>node(), 3=>node(), 4=>node()});
@@ -284,7 +285,7 @@ fn test_membership_set_nodes() -> anyhow::Result<()> {
 #[test]
 fn test_membership_majority() -> anyhow::Result<()> {
     {
-        let m12345 = Membership::new(vec![btreeset! {1,2,3,4,5}], None);
+        let m12345 = Membership::<Config>::new(vec![btreeset! {1,2,3,4,5}], None);
         assert!(!m12345.is_majority(&btreeset! {0}));
         assert!(!m12345.is_majority(&btreeset! {0,1,2}));
         assert!(!m12345.is_majority(&btreeset! {6,7,8}));
@@ -294,7 +295,7 @@ fn test_membership_majority() -> anyhow::Result<()> {
     }
 
     {
-        let m12345_678 = Membership::new(vec![btreeset! {1,2,3,4,5}, btreeset! {6,7,8}], None);
+        let m12345_678 = Membership::<Config>::new(vec![btreeset! {1,2,3,4,5}, btreeset! {6,7,8}], None);
         assert!(!m12345_678.is_majority(&btreeset! {0}));
         assert!(!m12345_678.is_majority(&btreeset! {0,1,2}));
         assert!(!m12345_678.is_majority(&btreeset! {6,7,8}));
@@ -309,8 +310,11 @@ fn test_membership_majority() -> anyhow::Result<()> {
 #[test]
 fn test_membership_greatest_majority_value() -> anyhow::Result<()> {
     {
-        let m123 = Membership::new(vec![btreeset! {1,2,3}], None);
-        assert_eq!(None, m123.greatest_majority_value(&BTreeMap::<NodeId, u64>::new()));
+        let m123 = Membership::<Config>::new(vec![btreeset! {1,2,3}], None);
+        assert_eq!(
+            None,
+            m123.greatest_majority_value(&BTreeMap::<<Config as RaftTypeConfig>::NodeId, u64>::new())
+        );
         assert_eq!(None, m123.greatest_majority_value(&btreemap! {0=>10}));
         assert_eq!(None, m123.greatest_majority_value(&btreemap! {0=>10,1=>10}));
         assert_eq!(Some(&10), m123.greatest_majority_value(&btreemap! {0=>10,1=>10,2=>20}));
@@ -321,7 +325,7 @@ fn test_membership_greatest_majority_value() -> anyhow::Result<()> {
     }
 
     {
-        let m123_678 = Membership::new(vec![btreeset! {1,2,3}, btreeset! {6,7,8}], None);
+        let m123_678 = Membership::<Config>::new(vec![btreeset! {1,2,3}, btreeset! {6,7,8}], None);
         assert_eq!(None, m123_678.greatest_majority_value(&btreemap! {0=>10}));
         assert_eq!(None, m123_678.greatest_majority_value(&btreemap! {0=>10,1=>10}));
         assert_eq!(None, m123_678.greatest_majority_value(&btreemap! {0=>10,1=>10,2=>20}));
@@ -348,10 +352,10 @@ fn test_membership_is_safe_to() -> anyhow::Result<()> {
     let set345 = || btreeset! {3,4,5};
     let set789 = || btreeset! {7,8,9};
 
-    let m123 = Membership::new(vec![set123()], None);
-    let m345 = Membership::new(vec![set345()], None);
-    let m123_345 = Membership::new(vec![set123(), set345()], None);
-    let m345_789 = Membership::new(vec![set345(), set789()], None);
+    let m123 = Membership::<Config>::new(vec![set123()], None);
+    let m345 = Membership::<Config>::new(vec![set345()], None);
+    let m123_345 = Membership::<Config>::new(vec![set123(), set345()], None);
+    let m345_789 = Membership::<Config>::new(vec![set345(), set789()], None);
 
     assert!(m123.is_safe_to(&m123));
     assert!(!m123.is_safe_to(&m345));
@@ -382,10 +386,10 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
     let c2 = || btreeset! {3,4,5};
     let c3 = || btreeset! {7,8,9};
 
-    let m1 = Membership::new(vec![c1()], None);
-    let m2 = Membership::new(vec![c2()], None);
-    let m12 = Membership::new(vec![c1(), c2()], None);
-    let m23 = Membership::new(vec![c2(), c3()], None);
+    let m1 = Membership::<Config>::new(vec![c1()], None);
+    let m2 = Membership::<Config>::new(vec![c2()], None);
+    let m12 = Membership::<Config>::new(vec![c1(), c2()], None);
+    let m23 = Membership::<Config>::new(vec![c2(), c3()], None);
 
     assert_eq!(m1, m1.next_safe(c1(), false)?);
     assert_eq!(m12, m1.next_safe(c2(), false)?);
@@ -397,8 +401,8 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
 
     let old_learners = || btreeset! {1, 2};
     let learners = || btreeset! {1, 2, 3, 4, 5};
-    let m23_with_learners_old = Membership::new(vec![c2(), c3()], Some(old_learners()));
-    let m23_with_learners_new = Membership::new(vec![c3()], Some(learners()));
+    let m23_with_learners_old = Membership::<Config>::new(vec![c2(), c3()], Some(old_learners()));
+    let m23_with_learners_new = Membership::<Config>::new(vec![c3()], Some(learners()));
     assert_eq!(m23_with_learners_new, m23_with_learners_old.next_safe(c3(), true)?);
 
     Ok(())
@@ -416,7 +420,7 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
 
     // change from a Membership without nodes
     {
-        let without_nodes = Membership::new(vec![c1(), c2()], None);
+        let without_nodes = Membership::<Config>::new(vec![c1(), c2()], None);
 
         // [{2}, {1,2}] has all nodes info provided.
 
@@ -442,8 +446,8 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
 
     // change from a Membership with nodes
     {
-        let with_nodes =
-            Membership::new(vec![c1(), c2()], None).set_nodes(Some(btreemap! {1=>node("1"), 2=>node("2")}))?;
+        let with_nodes = Membership::<Config>::new(vec![c1(), c2()], None)
+            .set_nodes(Some(btreemap! {1=>node("1"), 2=>node("2")}))?;
 
         // joint [{2}, {1,2}]
 

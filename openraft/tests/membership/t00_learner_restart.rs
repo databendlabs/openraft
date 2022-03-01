@@ -1,12 +1,15 @@
+use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use memstore::IntoMemClientRequest;
 use openraft::Config;
 use openraft::LogIdOptionExt;
-use openraft::NodeId;
 use openraft::Raft;
+use openraft::RaftStorage;
+use openraft::RaftTypeConfig;
 use openraft::State;
 use tokio::time::sleep;
 
@@ -69,7 +72,17 @@ async fn learner_restart() -> Result<()> {
     Ok(())
 }
 
-fn assert_node_state(id: NodeId, node: &MemRaft, expected_term: u64, expected_log: u64, state: State) {
+fn assert_node_state<C: RaftTypeConfig, S: RaftStorage<C>>(
+    id: C::NodeId,
+    node: &MemRaft<C, S>,
+    expected_term: u64,
+    expected_log: u64,
+    state: State,
+) where
+    C::D: Debug + IntoMemClientRequest<C::D>,
+    C::R: Debug,
+    S: Default + Clone,
+{
     let m = node.metrics().borrow().clone();
     tracing::info!("node {} metrics: {:?}", id, m);
 

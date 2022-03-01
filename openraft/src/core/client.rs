@@ -40,7 +40,7 @@ pub(super) struct ClientRequestEntry<C: RaftTypeConfig> {
     pub entry: Arc<Entry<C>>,
 
     /// The response channel for the request.
-    pub tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError>>,
+    pub tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for ClientRequestEntry<C> {
@@ -52,7 +52,7 @@ impl<C: RaftTypeConfig> MessageSummary for ClientRequestEntry<C> {
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Commit the initial entry which new leaders are obligated to create when first coming to power, per §8.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn commit_initial_leader_entry(&mut self) -> Result<(), StorageError> {
+    pub(super) async fn commit_initial_leader_entry(&mut self) -> Result<(), StorageError<C>> {
         let entry = self.core.append_payload_to_log(EntryPayload::Blank).await?;
 
         self.leader_report_metrics();
@@ -80,7 +80,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     /// handles this by having the leader exchange heartbeat messages with a majority of the
     /// cluster before responding to read-only requests.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_client_read_request(&mut self, tx: RaftRespTx<(), ClientReadError>) {
+    pub(super) async fn handle_client_read_request(&mut self, tx: RaftRespTx<(), ClientReadError<C>>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let mem = &self.core.effective_membership.membership;
@@ -189,8 +189,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub(super) async fn handle_client_write_request(
         &mut self,
         rpc: ClientWriteRequest<C>,
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError>,
-    ) -> Result<(), StorageError> {
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
+    ) -> Result<(), StorageError<C>> {
         let entry = self.core.append_payload_to_log(rpc.payload).await?;
         let entry = ClientRequestEntry {
             entry: Arc::new(entry),
@@ -209,7 +209,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     /// merely beings the process. Once the request is committed to the cluster, its response will
     /// be generated asynchronously.
     #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
-    pub(super) async fn replicate_client_request(&mut self, req: ClientRequestEntry<C>) -> Result<(), StorageError> {
+    pub(super) async fn replicate_client_request(&mut self, req: ClientRequestEntry<C>) -> Result<(), StorageError<C>> {
         // Replicate the request if there are other cluster members. The client response will be
         // returned elsewhere after the entry has been committed to the cluster.
 
@@ -243,7 +243,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
     /// Handle the post-commit logic for a client request.
     #[tracing::instrument(level = "debug", skip(self, req))]
-    pub(super) async fn client_request_post_commit(&mut self, req: ClientRequestEntry<C>) -> Result<(), StorageError> {
+    pub(super) async fn client_request_post_commit(
+        &mut self,
+        req: ClientRequestEntry<C>,
+    ) -> Result<(), StorageError<C>> {
         let entry = &req.entry;
 
         let apply_res = self.apply_entry_to_state_machine(entry).await?;
@@ -260,7 +263,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         entry: &Entry<C>,
         resp: C::R,
-        tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError>>,
+        tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>>,
     ) {
         let tx = match tx {
             None => return,
@@ -302,7 +305,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
     /// Apply the given log entry to the state machine.
     #[tracing::instrument(level = "debug", skip(self, entry))]
-    pub(super) async fn apply_entry_to_state_machine(&mut self, entry: &Entry<C>) -> Result<C::R, StorageError> {
+    pub(super) async fn apply_entry_to_state_machine(&mut self, entry: &Entry<C>) -> Result<C::R, StorageError<C>> {
         self.handle_special_log(entry);
 
         // First, we just ensure that we apply any outstanding up to, but not including, the index

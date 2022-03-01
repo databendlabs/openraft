@@ -24,7 +24,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn handle_append_entries_request(
         &mut self,
         req: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse, AppendEntriesError> {
+    ) -> Result<AppendEntriesResponse<C>, AppendEntriesError<C>> {
         tracing::debug!(last_log_id=?self.last_log_id, ?self.last_applied, msg=%req.summary(), "handle_append_entries_request");
 
         let msg_entries = req.entries.as_slice();
@@ -74,7 +74,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, start: LogId) -> Result<(), StorageError> {
+    async fn delete_conflict_logs_since(&mut self, start: LogId<C>) -> Result<(), StorageError<C>> {
         self.storage.delete_conflict_logs_since(start).await?;
 
         self.last_log_id = self.storage.get_log_state().await?.last_log_id;
@@ -136,7 +136,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// If log 5 is committed by R1, and log 3 is not removeC5 in future could become a new leader and overrides log
     /// 5 on R3.
     #[tracing::instrument(level="trace", skip(self, msg_entries), fields(msg_entries=%msg_entries.summary()))]
-    async fn find_and_delete_conflict_logs(&mut self, msg_entries: &[Entry<C>]) -> Result<(), StorageError> {
+    async fn find_and_delete_conflict_logs(&mut self, msg_entries: &[Entry<C>]) -> Result<(), StorageError<C>> {
         // all msg_entries are inconsistent logs
 
         tracing::debug!(msg_entries=%msg_entries.summary(), "try to delete_inconsistent_log");
@@ -170,10 +170,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level="trace", skip(self, entries), fields(entries=%entries.summary()))]
     async fn append_apply_log_entries(
         &mut self,
-        prev_log_id: Option<LogId>,
+        prev_log_id: Option<LogId<C>>,
         entries: &[Entry<C>],
-        committed: Option<LogId>,
-    ) -> Result<AppendEntriesResponse, StorageError> {
+        committed: Option<LogId<C>>,
+    ) -> Result<AppendEntriesResponse<C>, StorageError<C>> {
         let mismatched = self.does_log_id_match(prev_log_id).await?;
 
         tracing::debug!(
@@ -239,7 +239,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub async fn skip_matching_entries<'s, 'e>(
         &'s mut self,
         entries: &'e [Entry<C>],
-    ) -> Result<(usize, &'e [Entry<C>]), StorageError> {
+    ) -> Result<(usize, &'e [Entry<C>]), StorageError<C>> {
         let l = entries.len();
 
         for i in 0..l {
@@ -270,7 +270,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ///
     /// This way to check if the entries in append-entries request is consecutive with local logs.
     /// Raft only accept consecutive logs to be appended.
-    pub async fn does_log_id_match(&mut self, remote_log_id: Option<LogId>) -> Result<Option<LogId>, StorageError> {
+    pub async fn does_log_id_match(
+        &mut self,
+        remote_log_id: Option<LogId<C>>,
+    ) -> Result<Option<LogId<C>>, StorageError<C>> {
         let log_id = match remote_log_id {
             None => {
                 return Ok(None);
@@ -306,7 +309,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Configuration changes are also detected and applied here. See `configuration changes`
     /// in the raft-essentials.md in this repo.
     #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
-    async fn append_log_entries(&mut self, entries: &[Entry<C>]) -> Result<(), StorageError> {
+    async fn append_log_entries(&mut self, entries: &[Entry<C>]) -> Result<(), StorageError<C>> {
         if entries.is_empty() {
             return Ok(());
         }
@@ -343,7 +346,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Very importantly, this routine must not block the main control loop main task, else it
     /// may cause the Raft leader to timeout the requests to this node.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), StorageError> {
+    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), StorageError<C>> {
         tracing::debug!(?self.last_applied, "replicate_to_sm_if_needed");
 
         // If we don't have any new entries to replicate, then do nothing.

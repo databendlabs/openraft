@@ -7,21 +7,22 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::LogId;
+use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::Vote;
 
 /// Convert error to StorageError::IO();
-pub trait ToStorageResult<T> {
+pub trait ToStorageResult<C: RaftTypeConfig, T> {
     /// Convert Result<T, E> to Result<T, StorageError::IO(StorageIOError)>
     ///
     /// `f` provides error context for building the StorageIOError.
-    fn sto_res<F>(self, f: F) -> Result<T, StorageError>
-    where F: FnOnce() -> (ErrorSubject, ErrorVerb);
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
+    where F: FnOnce() -> (ErrorSubject<C>, ErrorVerb);
 }
 
-impl<T> ToStorageResult<T> for Result<T, std::io::Error> {
-    fn sto_res<F>(self, f: F) -> Result<T, StorageError>
-    where F: FnOnce() -> (ErrorSubject, ErrorVerb) {
+impl<C: RaftTypeConfig, T> ToStorageResult<C, T> for Result<T, std::io::Error> {
+    fn sto_res<F>(self, f: F) -> Result<T, StorageError<C>>
+    where F: FnOnce() -> (ErrorSubject<C>, ErrorVerb) {
         match self {
             Ok(x) => Ok(x),
             Err(e) => {
@@ -36,19 +37,19 @@ impl<T> ToStorageResult<T> for Result<T, std::io::Error> {
 /// An error that occurs when the RaftStore impl runs defensive check of input or output.
 /// E.g. re-applying an log entry is a violation that may be a potential bug.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DefensiveError {
+pub struct DefensiveError<C: RaftTypeConfig> {
     /// The subject that violates store defensive check, e.g. hard-state, log or state machine.
-    pub subject: ErrorSubject,
+    pub subject: ErrorSubject<C>,
 
     /// The description of the violation.
-    pub violation: Violation,
+    pub violation: Violation<C>,
 
     pub backtrace: String,
 }
 
-impl DefensiveError {
-    pub fn new(subject: ErrorSubject, violation: Violation) -> DefensiveError {
-        DefensiveError {
+impl<C: RaftTypeConfig> DefensiveError<C> {
+    pub fn new(subject: ErrorSubject<C>, violation: Violation<C>) -> Self {
+        Self {
             subject,
             violation,
             backtrace: format!("{:?}", Backtrace::capture()),
@@ -56,14 +57,14 @@ impl DefensiveError {
     }
 }
 
-impl std::fmt::Display for DefensiveError {
+impl<C: RaftTypeConfig> std::fmt::Display for DefensiveError<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "'{:?}' violates: '{}'", self.subject, self.violation)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ErrorSubject {
+pub enum ErrorSubject<C: RaftTypeConfig> {
     /// A general storage error
     Store,
 
@@ -74,19 +75,19 @@ pub enum ErrorSubject {
     Logs,
 
     /// Error about a single log entry
-    Log(LogId),
+    Log(LogId<C>),
 
     /// Error about a single log entry without knowing the log term.
     LogIndex(u64),
 
     /// Error happened when applying a log entry
-    Apply(LogId),
+    Apply(LogId<C>),
 
     /// Error happened when operating state machine.
     StateMachine,
 
     /// Error happened when operating snapshot.
-    Snapshot(SnapshotMeta),
+    Snapshot(SnapshotMeta<C>),
 
     None,
 }
@@ -102,17 +103,17 @@ pub enum ErrorVerb {
 
 /// Violations a store would return when running defensive check.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Violation {
+pub enum Violation<C: RaftTypeConfig> {
     #[error("term can only be change to a greater value, current: {curr}, change to {to}")]
     TermNotAscending { curr: u64, to: u64 },
 
     #[error("voted_for can not change from Some() to other Some(), current: {curr:?}, change to {to:?}")]
-    NonIncrementalVote { curr: Vote, to: Vote },
+    NonIncrementalVote { curr: Vote<C>, to: Vote<C> },
 
     #[error("log at higher index is obsolete: {higher_index_log_id:?} should GT {lower_index_log_id:?}")]
     DirtyLog {
-        higher_index_log_id: LogId,
-        lower_index_log_id: LogId,
+        higher_index_log_id: LogId<C>,
+        lower_index_log_id: LogId<C>,
     },
 
     #[error("try to get log at index {want} but got {got:?}")]
@@ -132,33 +133,33 @@ pub enum Violation {
     StoreLogsEmpty,
 
     #[error("logs are not consecutive, prev: {prev:?}, next: {next}")]
-    LogsNonConsecutive { prev: Option<LogId>, next: LogId },
+    LogsNonConsecutive { prev: Option<LogId<C>>, next: LogId<C> },
 
     #[error("invalid next log to apply: prev: {prev:?}, next: {next}")]
-    ApplyNonConsecutive { prev: Option<LogId>, next: LogId },
+    ApplyNonConsecutive { prev: Option<LogId<C>>, next: LogId<C> },
 
     #[error("applied log can not conflict, last_applied: {last_applied:?}, delete since: {first_conflict_log_id}")]
     AppliedWontConflict {
-        last_applied: Option<LogId>,
-        first_conflict_log_id: LogId,
+        last_applied: Option<LogId<C>>,
+        first_conflict_log_id: LogId<C>,
     },
 
     #[error("not allowed to purge non-applied logs, last_applied: {last_applied:?}, purge upto: {purge_upto}")]
     PurgeNonApplied {
-        last_applied: Option<LogId>,
-        purge_upto: LogId,
+        last_applied: Option<LogId<C>>,
+        purge_upto: LogId<C>,
     },
 }
 
 /// A storage error could be either a defensive check error or an error occurred when doing the actual io operation.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StorageError {
+pub enum StorageError<C: RaftTypeConfig> {
     /// An error raised by defensive check.
     #[error(transparent)]
     Defensive {
         #[from]
         #[backtrace]
-        source: DefensiveError,
+        source: DefensiveError<C>,
     },
 
     /// An error raised by io operation.
@@ -166,26 +167,26 @@ pub enum StorageError {
     IO {
         #[from]
         #[backtrace]
-        source: StorageIOError,
+        source: StorageIOError<C>,
     },
 }
 
-impl StorageError {
-    pub fn into_defensive(self) -> Option<DefensiveError> {
+impl<C: RaftTypeConfig> StorageError<C> {
+    pub fn into_defensive(self) -> Option<DefensiveError<C>> {
         match self {
             StorageError::Defensive { source } => Some(source),
             _ => None,
         }
     }
 
-    pub fn into_io(self) -> Option<StorageIOError> {
+    pub fn into_io(self) -> Option<StorageIOError<C>> {
         match self {
             StorageError::IO { source } => Some(source),
             _ => None,
         }
     }
 
-    pub fn from_io_error(subject: ErrorSubject, verb: ErrorVerb, io_error: std::io::Error) -> Self {
+    pub fn from_io_error(subject: ErrorSubject<C>, verb: ErrorVerb, io_error: std::io::Error) -> Self {
         let sto_io_err = StorageIOError::new(subject, verb, AnyError::new(&io_error));
         StorageError::IO { source: sto_io_err }
     }
@@ -193,22 +194,22 @@ impl StorageError {
 
 /// Error that occurs when operating the store.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StorageIOError {
-    subject: ErrorSubject,
+pub struct StorageIOError<C: RaftTypeConfig> {
+    subject: ErrorSubject<C>,
     verb: ErrorVerb,
     source: AnyError,
     backtrace: String,
 }
 
-impl std::fmt::Display for StorageIOError {
+impl<C: RaftTypeConfig> std::fmt::Display for StorageIOError<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "when {:?} {:?}: {}", self.verb, self.subject, self.source)
     }
 }
 
-impl StorageIOError {
-    pub fn new(subject: ErrorSubject, verb: ErrorVerb, source: AnyError) -> StorageIOError {
-        StorageIOError {
+impl<C: RaftTypeConfig> StorageIOError<C> {
+    pub fn new(subject: ErrorSubject<C>, verb: ErrorVerb, source: AnyError) -> Self {
+        Self {
             subject,
             verb,
             source,
