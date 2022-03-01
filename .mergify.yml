@@ -12,6 +12,7 @@ pull_request_rules:
   - name: put into queue if approved
     conditions:
       - "#approved-reviews-by>=1"
+      - "#changes-requested-reviews-by=0"
       - check-success=check-subject
       - check-success=unittest (on)
     actions:

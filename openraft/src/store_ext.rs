@@ -66,7 +66,7 @@ where
     }
 }
 
-impl<C: RaftTypeConfig, T: RaftStorage<C>> DefensiveCheckBase for StoreExt<C, T>
+impl<C: RaftTypeConfig, T: RaftStorage<C>> DefensiveCheckBase<C> for StoreExt<C, T>
 where
     C: RaftTypeConfig,
     T: RaftStorage<C>,
@@ -111,35 +111,37 @@ where
     type SnapshotBuilder = SnapshotBuilderExt<C, T>;
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn save_vote(&mut self, vote: &Vote) -> Result<(), StorageError> {
+    async fn save_vote(&mut self, vote: &Vote<C>) -> Result<(), StorageError<C>> {
         self.defensive_incremental_vote(vote).await?;
         self.inner().save_vote(vote).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn read_vote(&mut self) -> Result<Option<Vote>, StorageError> {
+    async fn read_vote(&mut self) -> Result<Option<Vote<C>>, StorageError<C>> {
         self.inner().read_vote().await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn last_applied_state(&mut self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError> {
+    async fn last_applied_state(
+        &mut self,
+    ) -> Result<(Option<LogId<C>>, Option<EffectiveMembership<C>>), StorageError<C>> {
         self.inner().last_applied_state().await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, log_id: LogId) -> Result<(), StorageError> {
+    async fn delete_conflict_logs_since(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>> {
         self.defensive_delete_conflict_gt_last_applied(log_id).await?;
         self.inner().delete_conflict_logs_since(log_id).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn purge_logs_upto(&mut self, log_id: LogId) -> Result<(), StorageError> {
+    async fn purge_logs_upto(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>> {
         self.defensive_purge_applied_le_last_applied(log_id).await?;
         self.inner().purge_logs_upto(log_id).await
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
-    async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError> {
+    async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError<C>> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_consecutive_input(entries).await?;
         self.defensive_append_log_index_is_last_plus_one(entries).await?;
@@ -149,7 +151,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
-    async fn apply_to_state_machine(&mut self, entries: &[&Entry<C>]) -> Result<Vec<C::R>, StorageError> {
+    async fn apply_to_state_machine(&mut self, entries: &[&Entry<C>]) -> Result<Vec<C::R>, StorageError<C>> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_apply_index_is_last_applied_plus_one(entries).await?;
         self.defensive_apply_log_id_gt_last(entries).await?;
@@ -158,21 +160,21 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<C>> {
         self.inner().begin_receiving_snapshot().await
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta,
+        meta: &SnapshotMeta<C>,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<StateMachineChanges, StorageError> {
+    ) -> Result<StateMachineChanges<C>, StorageError<C>> {
         self.inner().install_snapshot(meta, snapshot).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError> {
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C, Self::SnapshotData>>, StorageError<C>> {
         self.inner().get_current_snapshot().await
     }
 
@@ -196,12 +198,12 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftLogReader<C> for StoreExt<C, T> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<C>>, StorageError> {
+    ) -> Result<Vec<Entry<C>>, StorageError<C>> {
         self.defensive_nonempty_range(range.clone())?;
         self.inner().try_get_log_entries(range).await
     }
 
-    async fn get_log_state(&mut self) -> Result<LogState, StorageError> {
+    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C>> {
         self.defensive_no_dirty_log().await?;
         self.inner().get_log_state().await
     }
@@ -217,7 +219,7 @@ pub struct SnapshotBuilderExt<C: RaftTypeConfig, T: RaftStorage<C>> {
 #[async_trait]
 impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftSnapshotBuilder<C, T::SnapshotData> for SnapshotBuilderExt<C, T> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<T::SnapshotData>, StorageError> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<C, T::SnapshotData>, StorageError<C>> {
         self.inner.build_snapshot().await
     }
 }
@@ -236,12 +238,12 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftLogReader<C> for LogReaderExt<C, 
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<C>>, StorageError> {
+    ) -> Result<Vec<Entry<C>>, StorageError<C>> {
         self.defensive_nonempty_range(range.clone())?;
         self.inner.try_get_log_entries(range).await
     }
 
-    async fn get_log_state(&mut self) -> Result<LogState, StorageError> {
+    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C>> {
         // TODO self.defensive_no_dirty_log().await?;
         // Log state via LogReader is requested exactly at one place in the replication loop.
         // Find a way how to either remove it there or assert here properly.
@@ -249,7 +251,7 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftLogReader<C> for LogReaderExt<C, 
     }
 }
 
-impl<C: RaftTypeConfig, T: RaftStorage<C>> DefensiveCheckBase for LogReaderExt<C, T>
+impl<C: RaftTypeConfig, T: RaftStorage<C>> DefensiveCheckBase<C> for LogReaderExt<C, T>
 where
     C: RaftTypeConfig,
     T: RaftStorage<C>,

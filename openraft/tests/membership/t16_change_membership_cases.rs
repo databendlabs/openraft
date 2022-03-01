@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
+use memstore::MemNodeId;
 use openraft::Config;
-use openraft::NodeId;
 use openraft::State;
 use tracing_futures::Instrument;
 
@@ -35,7 +35,7 @@ async fn change_membership_cases() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(level = "debug")]
-async fn change_from_to(old: BTreeSet<NodeId>, new: BTreeSet<NodeId>) -> anyhow::Result<()> {
+async fn change_from_to(old: BTreeSet<MemNodeId>, new: BTreeSet<MemNodeId>) -> anyhow::Result<()> {
     let mes = format!("from {:?} to {:?}", old, new);
 
     let only_in_old = old.difference(&new);

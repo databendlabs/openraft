@@ -17,7 +17,6 @@ use crate::raft::InstallSnapshotResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::Node;
-use crate::NodeId;
 use crate::RaftTypeConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,16 +50,16 @@ where C: RaftTypeConfig
     async fn send_append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse, RPCError<AppendEntriesError>>;
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C, AppendEntriesError<C>>>;
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
     async fn send_install_snapshot(
         &mut self,
-        rpc: InstallSnapshotRequest,
-    ) -> Result<InstallSnapshotResponse, RPCError<InstallSnapshotError>>;
+        rpc: InstallSnapshotRequest<C>,
+    ) -> Result<InstallSnapshotResponse<C>, RPCError<C, InstallSnapshotError<C>>>;
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn send_vote(&mut self, rpc: VoteRequest) -> Result<VoteResponse, RPCError<VoteError>>;
+    async fn send_vote(&mut self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, RPCError<C, VoteError<C>>>;
 }
 
 /// A trait defining the interface for a Raft network factory to create connections between cluster members.
@@ -84,5 +83,5 @@ where C: RaftTypeConfig
     ///
     /// The method is intentionally async to give the implementation a chance to use asynchronous
     /// sync primitives to serialize access to the common internal object, if needed.
-    async fn connect(&mut self, target: NodeId, node: Option<&Node>) -> Self::Network;
+    async fn connect(&mut self, target: C::NodeId, node: Option<&Node>) -> Self::Network;
 }

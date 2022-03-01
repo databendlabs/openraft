@@ -1,12 +1,58 @@
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::hash::Hash;
 
 use serde::Deserialize;
 use serde::Serialize;
 
 /// A Raft node's ID.
-pub type NodeId = u64;
+///
+/// A `NodeId` uniquely identifies a node in the Raft cluster.
+///
+/// ## Notes
+///
+/// Currently, `serde` support is not optional, so the `NodeId` must be serializable via `serde` as well.
+pub trait NodeId:
+    Sized
+    + Send
+    + Sync
+    + Eq
+    + PartialEq
+    + Ord
+    + PartialOrd
+    + Debug
+    + Display
+    + Hash
+    + Copy
+    + Clone
+    + Default
+    + serde::Serialize
+    + for<'a> serde::Deserialize<'a>
+    + 'static
+{
+}
+
+impl<T> NodeId for T where T: Sized
+        + Send
+        + Sync
+        + Eq
+        + PartialEq
+        + Ord
+        + PartialOrd
+        + Debug
+        + Display
+        + Hash
+        + Copy
+        + Clone
+        + Default
+        + serde::Serialize
+        + for<'a> serde::Deserialize<'a>
+        + From<u64>
+        + 'static
+{
+}
 
 /// Additional node information.
 ///
