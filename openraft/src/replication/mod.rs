@@ -52,7 +52,7 @@ use crate::Vote;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct ReplicationMetrics<C: RaftTypeConfig> {
-    pub(crate) matched_leader_id: Option<LeaderId<C>>,
+    pub(crate) matched_leader_id: Option<LeaderId<C::NodeId>>,
     pub(crate) matched_index: AtomicU64,
 }
 
