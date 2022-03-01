@@ -206,6 +206,9 @@ pub enum ReplicationError<C: RaftTypeConfig> {
     #[error("Replication is closed")]
     Closed,
 
+    #[error("Has more logs")]
+    HasMoreLogs,
+
     #[error(transparent)]
     LackEntry(#[from] LackEntry<C>),
 

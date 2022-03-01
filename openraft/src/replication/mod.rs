@@ -168,9 +168,6 @@ struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     /// The target state of this replication stream.
     target_repl_state: TargetReplState<C>,
 
-    /// The id of the log entry to most recently be appended to the log by the leader.
-    last_log_id: Option<LogId<C>>,
-
     /// The log id of the highest log entry which is known to be committed in the cluster.
     committed: Option<LogId<C>>,
 
@@ -219,7 +216,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             log_reader,
             config,
             target_repl_state: TargetReplState::LineRate,
-            last_log_id: last_log,
             committed,
             matched: None,
             max_possible_matched_index: last_log.index(),
@@ -296,6 +292,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 ReplicationError::Network { .. } => {
                     // nothing to do
                 }
+                ReplicationError::HasMoreLogs { .. } => {
+                    // nothing to do
+                }
                 ReplicationError::RemoteError(remote_err) => {
                     tracing::error!(%remote_err, "remote peer error");
                     match remote_err.source {
@@ -321,7 +320,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         let mut prev_index = self.matched.index().add(offset);
 
-        let (prev_log_id, logs) = loop {
+        let (prev_log_id, logs, has_more_logs) = loop {
             // TODO(xp): test heartbeat when all logs are removed.
 
             let log_state = self.log_reader.get_log_state().await?;
@@ -334,11 +333,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 prev_index = last_purged.index();
             }
 
+            let last_log_id = log_state.last_log_id.next_index();
             let start = prev_index.next_index();
-            let end = std::cmp::min(
-                start + self.config.max_payload_entries,
-                log_state.last_log_id.next_index(),
-            );
+            let end = std::cmp::min(start + self.config.max_payload_entries, last_log_id);
 
             tracing::debug!(
                 ?self.matched,
@@ -380,7 +377,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 logs
             };
 
-            break (prev_log_id, logs);
+            break (prev_log_id, logs, end < last_log_id);
         };
 
         let conflict = prev_log_id;
@@ -469,6 +466,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             Some(conflict.index - 1)
         };
 
+        if has_more_logs {
+            return Err(ReplicationError::HasMoreLogs);
+        }
+
         Ok(())
     }
 
@@ -539,10 +540,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         }
     }
 
-    /// Perform a check to see if this replication stream has more log to replicate
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(self) fn has_more_log(&self) -> bool {
-        self.last_log_id.index() > self.matched.index()
+    // return if or not has more logs to replicate, other ReplicationError consider as Error
+    pub fn process_event_result(&self, ret: Result<(), ReplicationError<C>>) -> Result<bool, ReplicationError<C>> {
+        match ret {
+            Ok(_) => return Ok(false),
+            Err(err) => match err {
+                ReplicationError::HasMoreLogs { .. } => {
+                    return Ok(true);
+                }
+                _ => {
+                    return Err(err);
+                }
+            },
+        };
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -586,8 +596,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             RaftEvent::Replicate { appended, committed } => {
                 self.committed = committed;
 
-                assert!(self.last_log_id < Some(appended));
-                self.last_log_id = Some(appended);
+                if Some(appended).index() > self.matched.index() {
+                    return Err(ReplicationError::HasMoreLogs);
+                }
             }
         }
 
@@ -728,6 +739,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                         ReplicationError::Network { .. } => {
                             break;
                         }
+                        ReplicationError::HasMoreLogs { .. } => {
+                            // continue to call `send_append_entries` directly
+                            continue;
+                        }
                         _ => {
                             return Err(err);
                         }
@@ -751,8 +766,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             let _en = span.enter();
 
             // Check raft channel to ensure we are staying up-to-date
-            self.try_drain_raft_rx().await?;
-            if self.has_more_log() {
+            let ret = self.try_drain_raft_rx().await;
+            let has_more_logs = self.process_event_result(ret)?;
+            if has_more_logs {
                 // if there is more log, continue to send_append_entries
                 continue;
             }
@@ -766,8 +782,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 event_span = self.repl_rx.recv() => {
                     match event_span {
                         Some((event, _span)) => {
-                            self.process_raft_event(event)?;
-                            self.try_drain_raft_rx().await?;
+                            let ret = self.process_raft_event(event);
+                            self.process_event_result(ret)?;
+                            let ret = self.try_drain_raft_rx().await;
+                            self.process_event_result(ret)?;
                         },
                         None => {
                             tracing::debug!("received: RaftEvent::Terminate: closed");
