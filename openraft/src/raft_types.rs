@@ -12,7 +12,7 @@ use crate::RaftTypeConfig;
 /// A term, node_id and an index identifies an log globally.
 #[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogId<C: RaftTypeConfig> {
-    pub leader_id: LeaderId<C>,
+    pub leader_id: LeaderId<C::NodeId>,
     pub index: u64,
 }
 
@@ -34,7 +34,7 @@ impl<C: RaftTypeConfig> MessageSummary for Option<LogId<C>> {
 }
 
 impl<C: RaftTypeConfig> LogId<C> {
-    pub fn new(leader_id: LeaderId<C>, index: u64) -> Self {
+    pub fn new(leader_id: LeaderId<C::NodeId>, index: u64) -> Self {
         if leader_id.term == 0 || index == 0 {
             assert_eq!(
                 leader_id.term, 0,
