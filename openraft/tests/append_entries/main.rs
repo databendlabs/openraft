@@ -11,3 +11,4 @@ mod t30_append_inconsistent_log;
 mod t40_append_updates_membership;
 mod t50_append_entries_with_bigger_term;
 mod t60_large_heartbeat;
+mod t90_issue_216_stale_last_log_id;

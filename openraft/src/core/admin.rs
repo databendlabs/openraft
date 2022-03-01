@@ -26,7 +26,6 @@ use crate::raft_types::LogIdOptionExt;
 use crate::LogId;
 use crate::Membership;
 use crate::Node;
-use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -35,7 +34,10 @@ use crate::StorageError;
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
     /// Handle the admin `init_with_config` command.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) async fn handle_init_with_config(&mut self, members: EitherNodesOrIds) -> Result<(), InitializeError> {
+    pub(super) async fn handle_init_with_config(
+        &mut self,
+        members: EitherNodesOrIds<C>,
+    ) -> Result<(), InitializeError<C>> {
         // TODO(xp): simplify this condition
 
         if self.core.last_log_id.is_some() || self.core.vote.term != 0 {
@@ -71,9 +73,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "debug", skip(self))]
     async fn add_learner_into_membership(
         &mut self,
-        target: NodeId,
+        target: C::NodeId,
         node: Option<Node>,
-    ) -> Result<bool, NodeIdNotInNodes> {
+    ) -> Result<bool, NodeIdNotInNodes<C>> {
         tracing::debug!(
             "add_learner_into_membership target node {:?} into learner {:?}",
             target,
@@ -101,9 +103,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn add_learner(
         &mut self,
-        target: NodeId,
+        target: C::NodeId,
         node: Option<Node>,
-        tx: RaftRespTx<AddLearnerResponse, AddLearnerError>,
+        tx: RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C>>,
         blocking: bool,
     ) {
         tracing::debug!("add target node {} as learner {:?}", target, self.nodes.keys());
@@ -112,7 +114,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         // config, in the set of new nodes already being synced, or in the nodes being removed.
         if target == self.core.id {
             tracing::debug!("target node is this node");
-            let _ = tx.send(Ok(AddLearnerResponse {
+            let _ = tx.send(Ok(AddLearnerResponse::<C> {
                 matched: self.core.last_log_id,
             }));
             return;
@@ -128,7 +130,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let exist = match exist {
             Ok(x) => x,
             Err(e) => {
-                let _ = tx.send(Err(AddLearnerError::from(e)));
+                let _ = tx.send(Err(AddLearnerError::<C>::from(e)));
                 return;
             }
         };
@@ -158,11 +160,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(
         &mut self,
-        members: BTreeSet<NodeId>,
+        members: BTreeSet<C::NodeId>,
         blocking: bool,
         turn_to_learner: bool,
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError>,
-    ) -> Result<(), StorageError> {
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
+    ) -> Result<(), StorageError<C>> {
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
@@ -249,9 +251,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=display(self.core.id)))]
     pub async fn append_membership_log(
         &mut self,
-        mem: Membership,
-        resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError>>,
-    ) -> Result<(), StorageError> {
+        mem: Membership<C>,
+        resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>>,
+    ) -> Result<(), StorageError<C>> {
         let payload = EntryPayload::Membership(mem.clone());
         let entry = self.core.append_payload_to_log(payload).await?;
 
@@ -271,7 +273,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// This is ony called by leader.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) fn handle_uniform_consensus_committed(&mut self, log_id: &LogId) {
+    pub(super) fn handle_uniform_consensus_committed(&mut self, log_id: &LogId<C>) {
         let index = log_id.index;
 
         // Step down if needed.
@@ -313,7 +315,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// Return true if removed.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn try_remove_replication(&mut self, target: NodeId) -> bool {
+    pub fn try_remove_replication(&mut self, target: C::NodeId) -> bool {
         tracing::debug!(target = display(target), "try_remove_replication");
 
         {

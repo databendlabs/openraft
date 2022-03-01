@@ -6,7 +6,6 @@ use std::time::Instant;
 
 use maplit::btreeset;
 use openraft::Config;
-use openraft::NodeId;
 use tokio::runtime::Builder;
 
 use crate::fixtures::RaftRouter;
@@ -14,7 +13,7 @@ use crate::fixtures::RaftRouter;
 struct BenchConfig {
     pub worker_threads: usize,
     pub n_operations: usize,
-    pub members: BTreeSet<NodeId>,
+    pub members: BTreeSet<u64>,
 }
 
 impl Display for BenchConfig {

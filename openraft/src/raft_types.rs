@@ -6,23 +6,23 @@ use serde::Serialize;
 
 use crate::LeaderId;
 use crate::MessageSummary;
-use crate::NodeId;
+use crate::RaftTypeConfig;
 
 /// The identity of a raft log.
 /// A term, node_id and an index identifies an log globally.
 #[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LogId {
-    pub leader_id: LeaderId,
+pub struct LogId<C: RaftTypeConfig> {
+    pub leader_id: LeaderId<C>,
     pub index: u64,
 }
 
-impl Display for LogId {
+impl<C: RaftTypeConfig> Display for LogId<C> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}-{}", self.leader_id, self.index)
     }
 }
 
-impl MessageSummary for Option<LogId> {
+impl<C: RaftTypeConfig> MessageSummary for Option<LogId<C>> {
     fn summary(&self) -> String {
         match self {
             None => "None".to_string(),
@@ -33,8 +33,8 @@ impl MessageSummary for Option<LogId> {
     }
 }
 
-impl LogId {
-    pub fn new(leader_id: LeaderId, index: u64) -> Self {
+impl<C: RaftTypeConfig> LogId<C> {
+    pub fn new(leader_id: LeaderId<C>, index: u64) -> Self {
         if leader_id.term == 0 || index == 0 {
             assert_eq!(
                 leader_id.term, 0,
@@ -43,7 +43,7 @@ impl LogId {
             );
             assert_eq!(
                 leader_id.node_id,
-                NodeId::default(),
+                C::NodeId::default(),
                 "zero-th log entry must be (0,0,0), but {} {}",
                 leader_id,
                 index
@@ -58,12 +58,12 @@ impl LogId {
     }
 }
 
-pub trait LogIdOptionExt {
+pub trait LogIdOptionExt<C: RaftTypeConfig> {
     fn index(&self) -> Option<u64>;
     fn next_index(&self) -> u64;
 }
 
-impl LogIdOptionExt for Option<LogId> {
+impl<C: RaftTypeConfig> LogIdOptionExt<C> for Option<LogId<C>> {
     fn index(&self) -> Option<u64> {
         self.map(|x| x.index)
     }
@@ -145,7 +145,7 @@ pub enum Update<T> {
 /// The changes of a state machine.
 /// E.g. when applying a log to state machine, or installing a state machine from snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StateMachineChanges {
-    pub last_applied: LogId,
+pub struct StateMachineChanges<C: RaftTypeConfig> {
+    pub last_applied: LogId<C>,
     pub is_snapshot: bool,
 }

@@ -5,6 +5,7 @@ use anyerror::AnyError;
 use example_raft_key_value::client::ExampleClient;
 use example_raft_key_value::start_example_raft_node;
 use example_raft_key_value::store::ExampleRequest;
+use example_raft_key_value::ExampleTypeConfig;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::error::NodeNotFound;
@@ -25,7 +26,7 @@ async fn test_cluster() -> anyhow::Result<()> {
             2 => "127.0.0.1:21002".to_string(),
             3 => "127.0.0.1:21003".to_string(),
             _ => {
-                return Err(NodeNotFound {
+                return Err(NodeNotFound::<ExampleTypeConfig> {
                     node_id,
                     source: AnyError::error("node not found"),
                 });

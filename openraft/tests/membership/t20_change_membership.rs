@@ -104,7 +104,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         tracing::info!("--- got res: {:?}", res);
 
         let err = res.unwrap_err();
-        let err: ChangeMembershipError = err.try_into().unwrap();
+        let err: ChangeMembershipError<memstore::Config> = err.try_into().unwrap();
 
         match err {
             ChangeMembershipError::LearnerIsLagging(e) => {

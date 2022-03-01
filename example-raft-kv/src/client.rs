@@ -12,15 +12,15 @@ use openraft::error::RPCError;
 use openraft::error::RemoteError;
 use openraft::raft::AddLearnerResponse;
 use openraft::raft::ClientWriteResponse;
-use openraft::NodeId;
 use openraft::RaftMetrics;
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::ExampleTypeConfig;
+use crate::ExampleNodeId;
 use crate::ExampleRequest;
+use crate::ExampleTypeConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Empty {}
@@ -29,14 +29,14 @@ pub struct ExampleClient {
     /// The leader node to send request to.
     ///
     /// All traffic should be sent to the leader in a cluster.
-    pub leader: Arc<Mutex<(NodeId, String)>>,
+    pub leader: Arc<Mutex<(ExampleNodeId, String)>>,
 
     pub inner: Client,
 }
 
 impl ExampleClient {
     /// Create a client with a leader node id and a node manager to get node address by node id.
-    pub fn new(leader_id: NodeId, leader_addr: String) -> Self {
+    pub fn new(leader_id: ExampleNodeId, leader_addr: String) -> Self {
         Self {
             leader: Arc::new(Mutex::new((leader_id, leader_addr))),
             inner: reqwest::Client::new(),
@@ -54,14 +54,15 @@ impl ExampleClient {
     pub async fn write(
         &self,
         req: &ExampleRequest,
-    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ClientWriteError>> {
+    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ExampleTypeConfig, ClientWriteError<ExampleTypeConfig>>>
+    {
         self.send_rpc_to_leader("write", Some(req)).await
     }
 
     /// Read value by key, in an inconsistent mode.
     ///
     /// This method may return stale value because it does not force to read on a legal leader.
-    pub async fn read(&self, req: &String) -> Result<String, RPCError<Infallible>> {
+    pub async fn read(&self, req: &String) -> Result<String, RPCError<ExampleTypeConfig, Infallible>> {
         self.do_send_rpc_to_leader("read", Some(req)).await
     }
 
@@ -73,14 +74,18 @@ impl ExampleClient {
     /// With a initialized cluster, new node can be added with [`write`].
     /// Then setup replication with [`add_learner`].
     /// Then make the new node a member with [`change_membership`].
-    pub async fn init(&self) -> Result<(), RPCError<InitializeError>> {
+    pub async fn init(&self) -> Result<(), RPCError<ExampleTypeConfig, InitializeError<ExampleTypeConfig>>> {
         self.do_send_rpc_to_leader("init", Some(&Empty {})).await
     }
 
     /// Add a node as learner.
     ///
     /// The node to add has to exist, i.e., being added with `write(ExampleRequest::AddNode{})`
-    pub async fn add_learner(&self, req: (NodeId, String)) -> Result<AddLearnerResponse, RPCError<AddLearnerError>> {
+    pub async fn add_learner(
+        &self,
+        req: (ExampleNodeId, String),
+    ) -> Result<AddLearnerResponse<ExampleTypeConfig>, RPCError<ExampleTypeConfig, AddLearnerError<ExampleTypeConfig>>>
+    {
         self.send_rpc_to_leader("add-learner", Some(&req)).await
     }
 
@@ -90,8 +95,9 @@ impl ExampleClient {
     /// or an error [`LearnerNotFound`] will be returned.
     pub async fn change_membership(
         &self,
-        req: &BTreeSet<NodeId>,
-    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ClientWriteError>> {
+        req: &BTreeSet<ExampleNodeId>,
+    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ExampleTypeConfig, ClientWriteError<ExampleTypeConfig>>>
+    {
         self.send_rpc_to_leader("change-membership", Some(req)).await
     }
 
@@ -100,7 +106,7 @@ impl ExampleClient {
     /// Metrics contains various information about the cluster, such as current leader,
     /// membership config, replication status etc.
     /// See [`RaftMetrics`].
-    pub async fn metrics(&self) -> Result<RaftMetrics, RPCError<Infallible>> {
+    pub async fn metrics(&self) -> Result<RaftMetrics<ExampleTypeConfig>, RPCError<ExampleTypeConfig, Infallible>> {
         self.do_send_rpc_to_leader("metrics", None::<&()>).await
     }
 
@@ -111,7 +117,11 @@ impl ExampleClient {
     /// It sends out a POST request if `req` is Some. Otherwise a GET request.
     /// The remote endpoint must respond a reply in form of `Result<T, E>`.
     /// An `Err` happened on remote will be wrapped in an [`RPCError::RemoteError`].
-    async fn do_send_rpc_to_leader<Req, Resp, Err>(&self, uri: &str, req: Option<&Req>) -> Result<Resp, RPCError<Err>>
+    async fn do_send_rpc_to_leader<Req, Resp, Err>(
+        &self,
+        uri: &str,
+        req: Option<&Req>,
+    ) -> Result<Resp, RPCError<ExampleTypeConfig, Err>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
@@ -152,17 +162,21 @@ impl ExampleClient {
     ///
     /// If the target node is not a leader, a `ForwardToLeader` error will be
     /// returned and this client will retry at most 3 times to contact the updated leader.
-    async fn send_rpc_to_leader<Req, Resp, Err>(&self, uri: &str, req: Option<&Req>) -> Result<Resp, RPCError<Err>>
+    async fn send_rpc_to_leader<Req, Resp, Err>(
+        &self,
+        uri: &str,
+        req: Option<&Req>,
+    ) -> Result<Resp, RPCError<ExampleTypeConfig, Err>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
-        Err: std::error::Error + Serialize + DeserializeOwned + TryInto<ForwardToLeader> + Clone,
+        Err: std::error::Error + Serialize + DeserializeOwned + TryInto<ForwardToLeader<ExampleTypeConfig>> + Clone,
     {
         // Retry at most 3 times to find a valid leader.
         let mut n_retry = 3;
 
         loop {
-            let res: Result<Resp, RPCError<Err>> = self.do_send_rpc_to_leader(uri, req).await;
+            let res: Result<Resp, RPCError<ExampleTypeConfig, Err>> = self.do_send_rpc_to_leader(uri, req).await;
 
             let rpc_err = match res {
                 Ok(x) => return Ok(x),
@@ -170,7 +184,8 @@ impl ExampleClient {
             };
 
             if let RPCError::RemoteError(remote_err) = &rpc_err {
-                let forward_err_res = <Err as TryInto<ForwardToLeader>>::try_into(remote_err.source.clone());
+                let forward_err_res =
+                    <Err as TryInto<ForwardToLeader<ExampleTypeConfig>>>::try_into(remote_err.source.clone());
 
                 if let Ok(ForwardToLeader {
                     leader_id: Some(leader_id),

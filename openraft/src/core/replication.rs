@@ -21,7 +21,6 @@ use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
 use crate::vote::Vote;
 use crate::LogId;
-use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -33,11 +32,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "debug", skip(self, caller_tx))]
     pub(super) async fn spawn_replication_stream(
         &mut self,
-        target: NodeId,
-        caller_tx: Option<RaftRespTx<AddLearnerResponse, AddLearnerError>>,
-    ) -> ReplicationState {
+        target: C::NodeId,
+        caller_tx: Option<RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C>>>,
+    ) -> ReplicationState<C> {
         let target_node = self.core.effective_membership.get_node(target);
-        let repl_stream = ReplicationStream::new::<C, N, S>(
+        let repl_stream = ReplicationStream::new::<N, S>(
             target,
             target_node.cloned(),
             self.core.vote,
@@ -60,8 +59,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "trace", skip(self, event), fields(event=%event.summary()))]
     pub(super) async fn handle_replica_event(
         &mut self,
-        event: ReplicaEvent<S::SnapshotData>,
-    ) -> Result<(), StorageError> {
+        event: ReplicaEvent<C, S::SnapshotData>,
+    ) -> Result<(), StorageError<C>> {
         match event {
             ReplicaEvent::RevertToFollower { target, vote } => {
                 self.handle_revert_to_follower(target, vote).await?;
@@ -86,7 +85,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn handle_revert_to_follower(&mut self, _: NodeId, vote: Vote) -> Result<(), StorageError> {
+    async fn handle_revert_to_follower(&mut self, _: C::NodeId, vote: Vote<C>) -> Result<(), StorageError<C>> {
         if vote > self.core.vote {
             self.core.vote = vote;
             self.core.save_vote().await?;
@@ -96,7 +95,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn handle_update_matched(&mut self, target: NodeId, matched: Option<LogId>) -> Result<(), StorageError> {
+    async fn handle_update_matched(
+        &mut self,
+        target: C::NodeId,
+        matched: Option<LogId<C>>,
+    ) -> Result<(), StorageError<C>> {
         // Update target's match index & check if it is awaiting removal.
 
         if let Some(state) = self.nodes.get_mut(&target) {
@@ -176,7 +179,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_leader_metrics(&mut self, target: NodeId, matched: Option<LogId>) {
+    fn update_leader_metrics(&mut self, target: C::NodeId, matched: Option<LogId<C>>) {
         tracing::debug!(%target, ?matched, "update_leader_metrics");
         let (matched_leader_id, matched_index) = if let Some(log_id) = matched {
             (Some(log_id.leader_id), log_id.index)
@@ -201,7 +204,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn calc_commit_log_id(&self) -> Option<LogId> {
+    fn calc_commit_log_id(&self) -> Option<LogId<C>> {
         let repl_indexes = self.get_match_log_ids();
 
         let committed = self.core.effective_membership.membership.greatest_majority_value(&repl_indexes);
@@ -213,7 +216,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     /// Collect indexes of the greatest matching log on every replica(include the leader itself)
-    fn get_match_log_ids(&self) -> BTreeMap<NodeId, LogId> {
+    fn get_match_log_ids(&self) -> BTreeMap<C::NodeId, LogId<C>> {
         let node_ids = self.core.effective_membership.membership.all_members();
 
         let mut res = BTreeMap::new();
@@ -245,9 +248,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "debug", skip(self, tx))]
     async fn handle_needs_snapshot(
         &mut self,
-        must_include: Option<LogId>,
-        tx: oneshot::Sender<Snapshot<S::SnapshotData>>,
-    ) -> Result<(), StorageError> {
+        must_include: Option<LogId<C>>,
+        tx: oneshot::Sender<Snapshot<C, S::SnapshotData>>,
+    ) -> Result<(), StorageError<C>> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => *threshold,

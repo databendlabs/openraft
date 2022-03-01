@@ -23,9 +23,9 @@ use crate::StorageError;
 use crate::Vote;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct SnapshotMeta {
+pub struct SnapshotMeta<C: RaftTypeConfig> {
     // Log entries upto which this snapshot includes, inclusive.
-    pub last_log_id: LogId,
+    pub last_log_id: LogId<C>,
 
     /// To identify a snapshot when transferring.
     /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be different in bytes.
@@ -34,11 +34,13 @@ pub struct SnapshotMeta {
 
 /// The data associated with the current snapshot.
 #[derive(Debug)]
-pub struct Snapshot<S>
-where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
+pub struct Snapshot<C, S>
+where
+    C: RaftTypeConfig,
+    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     /// metadata of a snapshot
-    pub meta: SnapshotMeta,
+    pub meta: SnapshotMeta<C>,
 
     /// A read handle to the associated snapshot.
     pub snapshot: Box<S>,
@@ -46,31 +48,31 @@ where S: AsyncRead + AsyncSeek + Send + Unpin + 'static
 
 /// A struct used to represent the initial state which a Raft node needs when first starting.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct InitialState {
+pub struct InitialState<C: RaftTypeConfig> {
     /// The last entry.
-    pub last_log_id: Option<LogId>,
+    pub last_log_id: Option<LogId<C>>,
 
     /// The LogId of the last log applied to the state machine.
-    pub last_applied: Option<LogId>,
+    pub last_applied: Option<LogId<C>>,
 
-    pub vote: Vote,
+    pub vote: Vote<C>,
 
     /// The latest cluster membership configuration found, in log or in state machine, else a new initial
     /// membership config consisting only of this node's ID.
-    pub last_membership: Option<EffectiveMembership>,
+    pub last_membership: Option<EffectiveMembership<C>>,
 }
 
 /// The state about logs.
 ///
 /// Invariance: last_purged_log_id <= last_applied <= last_log_id
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct LogState {
+pub struct LogState<C: RaftTypeConfig> {
     /// The greatest log id that has been purged after being applied to state machine.
-    pub last_purged_log_id: Option<LogId>,
+    pub last_purged_log_id: Option<LogId<C>>,
 
     /// The log id of the last present entry if there are any entries.
     /// Otherwise the same value as `last_purged_log_id`.
-    pub last_log_id: Option<LogId>,
+    pub last_log_id: Option<LogId<C>>,
 }
 
 /// A trait defining the interface for a Raft log subsystem.
@@ -91,7 +93,7 @@ where C: RaftTypeConfig
     async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<C>>, StorageError> {
+    ) -> Result<Vec<Entry<C>>, StorageError<C>> {
         let res = self.try_get_log_entries(range.clone()).await?;
 
         check_range_matches_entries(range, &res)?;
@@ -102,7 +104,7 @@ where C: RaftTypeConfig
     /// Try to get an log entry.
     ///
     /// It does not return an error if the log entry at `log_index` is not found.
-    async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<Entry<C>>, StorageError> {
+    async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<Entry<C>>, StorageError<C>> {
         let mut res = self.try_get_log_entries(log_index..(log_index + 1)).await?;
         Ok(res.pop())
     }
@@ -113,7 +115,7 @@ where C: RaftTypeConfig
     /// The returned `last_log_id` could be the log id of the last present log entry, or the `last_purged_log_id` if
     /// there is no entry at all.
     // NOTE: This can be made into sync, provided all state machines will use atomic read or the like.
-    async fn get_log_state(&mut self) -> Result<LogState, StorageError>;
+    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C>>;
 
     /// Get a series of log entries from storage.
     ///
@@ -123,7 +125,7 @@ where C: RaftTypeConfig
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<C>>, StorageError>;
+    ) -> Result<Vec<Entry<C>>, StorageError<C>>;
 }
 
 /// A trait defining the interface for a Raft state machine snapshot subsystem.
@@ -147,7 +149,7 @@ where
     /// Building snapshot can be done by:
     /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a LSM-tree does,
     /// - or by fetching a snapshot from the state machine.
-    async fn build_snapshot(&mut self) -> Result<Snapshot<SD>, StorageError>;
+    async fn build_snapshot(&mut self) -> Result<Snapshot<C, SD>, StorageError<C>>;
 
     // NOTES:
     // This interface is geared toward small file-based snapshots. However, not all snapshots can
@@ -186,7 +188,7 @@ where C: RaftTypeConfig
     type SnapshotBuilder: RaftSnapshotBuilder<C, Self::SnapshotData>;
 
     /// Returns the last membership config found in log or state machine.
-    async fn get_membership(&mut self) -> Result<Option<EffectiveMembership>, StorageError> {
+    async fn get_membership(&mut self) -> Result<Option<EffectiveMembership<C>>, StorageError<C>> {
         let (_, sm_mem) = self.last_applied_state().await?;
 
         let sm_mem_index = match &sm_mem {
@@ -208,7 +210,10 @@ where C: RaftTypeConfig
     /// This method should returns membership with the greatest log index which is `>=since_index`.
     /// If no such membership log is found, it returns `None`, e.g., when logs are cleaned after being applied.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn last_membership_in_log(&mut self, since_index: u64) -> Result<Option<EffectiveMembership>, StorageError> {
+    async fn last_membership_in_log(
+        &mut self,
+        since_index: u64,
+    ) -> Result<Option<EffectiveMembership<C>>, StorageError<C>> {
         let st = self.get_log_state().await?;
 
         let mut end = st.last_log_id.next_index();
@@ -234,7 +239,7 @@ where C: RaftTypeConfig
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
     /// storage.
-    async fn get_initial_state(&mut self) -> Result<InitialState, StorageError> {
+    async fn get_initial_state(&mut self) -> Result<InitialState<C>, StorageError<C>> {
         let vote = self.read_vote().await?;
         let st = self.get_log_state().await?;
         let mut last_log_id = st.last_log_id;
@@ -256,7 +261,7 @@ where C: RaftTypeConfig
     }
 
     /// Get the log id of the entry at `index`.
-    async fn get_log_id(&mut self, log_index: u64) -> Result<LogId, StorageError> {
+    async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C>, StorageError<C>> {
         let st = self.get_log_state().await?;
 
         if Some(log_index) == st.last_purged_log_id.index() {
@@ -270,9 +275,9 @@ where C: RaftTypeConfig
 
     // --- Vote
 
-    async fn save_vote(&mut self, vote: &Vote) -> Result<(), StorageError>;
+    async fn save_vote(&mut self, vote: &Vote<C>) -> Result<(), StorageError<C>>;
 
-    async fn read_vote(&mut self) -> Result<Option<Vote>, StorageError>;
+    async fn read_vote(&mut self) -> Result<Option<Vote<C>>, StorageError<C>>;
 
     // --- Log
 
@@ -286,20 +291,22 @@ where C: RaftTypeConfig
     ///
     /// Though the entries will always be presented in order, each entry's index should be used to
     /// determine its location to be written in the log.
-    async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError>;
+    async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError<C>>;
 
     /// Delete conflict log entries since `log_id`, inclusive.
-    async fn delete_conflict_logs_since(&mut self, log_id: LogId) -> Result<(), StorageError>;
+    async fn delete_conflict_logs_since(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>>;
 
     /// Delete applied log entries upto `log_id`, inclusive.
-    async fn purge_logs_upto(&mut self, log_id: LogId) -> Result<(), StorageError>;
+    async fn purge_logs_upto(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>>;
 
     // --- State Machine
 
     /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
     /// membership config.
     // NOTE: This can be made into sync, provided all state machines will use atomic read or the like.
-    async fn last_applied_state(&mut self) -> Result<(Option<LogId>, Option<EffectiveMembership>), StorageError>;
+    async fn last_applied_state(
+        &mut self,
+    ) -> Result<(Option<LogId<C>>, Option<EffectiveMembership<C>>), StorageError<C>>;
 
     /// Apply the given payload of entries to the state machine.
     ///
@@ -320,7 +327,7 @@ where C: RaftTypeConfig
     // then collect completions on this channel and update the client with the result once all
     // the preceding operations have been applied to the state machine. This way we'll reach
     // operation pipelining w/o the need to wait for the completion of each operation inline.
-    async fn apply_to_state_machine(&mut self, entries: &[&Entry<C>]) -> Result<Vec<C::R>, StorageError>;
+    async fn apply_to_state_machine(&mut self, entries: &[&Entry<C>]) -> Result<Vec<C::R>, StorageError<C>>;
 
     // --- Snapshot
 
@@ -337,7 +344,7 @@ where C: RaftTypeConfig
     /// ### implementation guide
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
     /// for details on log compaction / snapshotting.
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError>;
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<C>>;
 
     /// Install a snapshot which has finished streaming from the cluster leader.
     ///
@@ -347,9 +354,9 @@ where C: RaftTypeConfig
     /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the snapshot.
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta,
+        meta: &SnapshotMeta<C>,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<StateMachineChanges, StorageError>;
+    ) -> Result<StateMachineChanges<C>, StorageError<C>>;
 
     /// Get a readable handle to the current snapshot, along with its metadata.
     ///
@@ -362,7 +369,7 @@ where C: RaftTypeConfig
     ///
     /// A proper snapshot implementation will store the term, index and membership config as part
     /// of the snapshot, which should be decoded for creating this method's response data.
-    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError>;
+    async fn get_current_snapshot(&mut self) -> Result<Option<Snapshot<C, Self::SnapshotData>>, StorageError<C>>;
 }
 
 /// APIs for debugging a store.

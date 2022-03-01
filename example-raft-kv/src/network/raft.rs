@@ -13,7 +13,10 @@ use crate::ExampleTypeConfig;
 // --- Raft communication
 
 #[post("/raft-vote")]
-pub async fn vote(app: Data<ExampleApp>, req: Json<VoteRequest>) -> actix_web::Result<impl Responder> {
+pub async fn vote(
+    app: Data<ExampleApp>,
+    req: Json<VoteRequest<ExampleTypeConfig>>,
+) -> actix_web::Result<impl Responder> {
     let res = app.raft.vote(req.0).await;
     Ok(Json(res))
 }
@@ -28,7 +31,10 @@ pub async fn append(
 }
 
 #[post("/raft-snapshot")]
-pub async fn snapshot(app: Data<ExampleApp>, req: Json<InstallSnapshotRequest>) -> actix_web::Result<impl Responder> {
+pub async fn snapshot(
+    app: Data<ExampleApp>,
+    req: Json<InstallSnapshotRequest<ExampleTypeConfig>>,
+) -> actix_web::Result<impl Responder> {
     let res = app.raft.install_snapshot(req.0).await;
     Ok(Json(res))
 }
