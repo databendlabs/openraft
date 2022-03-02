@@ -19,7 +19,7 @@ use crate::config::Config;
 use crate::core::RaftCore;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
-use crate::error::ClientReadError;
+use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::InitializeError;
@@ -214,7 +214,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// Get the ID of the current leader from this Raft node.
     ///
     /// This method is based on the Raft metrics system which does a good job at staying
-    /// up-to-date; however, the `client_read` method must still be used to guard against stale
+    /// up-to-date; however, the `is_leader` method must still be used to guard against stale
     /// reads. This method is perfect for making decisions on where to route client requests.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn current_leader(&self) -> Option<C::NodeId> {
@@ -226,9 +226,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// The actual read operation itself is up to the application, this method just ensures that
     /// the read will not be stale.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn client_read(&self) -> Result<(), ClientReadError<C>> {
+    pub async fn is_leader(&self) -> Result<(), CheckIsLeaderError<C>> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::ClientReadRequest { tx }, rx).await
+        self.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await
     }
 
     /// Submit a mutating client request to Raft to update the state of the system (§5.1).
@@ -530,8 +530,8 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig> {
         rpc: ClientWriteRequest<C>,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
     },
-    ClientReadRequest {
-        tx: RaftRespTx<(), ClientReadError<C>>,
+    CheckIsLeaderRequest {
+        tx: RaftRespTx<(), CheckIsLeaderError<C>>,
     },
     Initialize {
         members: EitherNodesOrIds<C>,
@@ -583,7 +583,7 @@ where C: RaftTypeConfig
             RaftMsg::ClientWriteRequest { rpc, .. } => {
                 format!("ClientWriteRequest: {}", rpc.summary())
             }
-            RaftMsg::ClientReadRequest { .. } => "ClientReadRequest".to_string(),
+            RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),
             RaftMsg::Initialize { members, .. } => {
                 format!("Initialize: {:?}", members)
             }

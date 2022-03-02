@@ -220,9 +220,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // This is guaranteed by caller.
         self.committed = committed;
 
-        self.replicate_to_state_machine_if_needed().await?;
+        let need_to_report_metrics = !self.replicate_to_state_machine_if_needed().await?;
 
-        self.report_metrics(Update::AsIs);
+        if need_to_report_metrics {
+            self.report_metrics(Update::AsIs);
+        }
 
         Ok(AppendEntriesResponse {
             vote: self.vote,
@@ -345,8 +347,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ///
     /// Very importantly, this routine must not block the main control loop main task, else it
     /// may cause the Raft leader to timeout the requests to this node.
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), StorageError<C>> {
+    /// return if or not has `report_metrics`， than caller donot need to call it again.
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<bool, StorageError<C>> {
         tracing::debug!(?self.last_applied, "replicate_to_sm_if_needed");
 
         // If we don't have any new entries to replicate, then do nothing.
@@ -356,7 +359,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.committed,
                 self.last_applied
             );
-            return Ok(());
+            return Ok(false);
         }
 
         // Drain entries from the beginning of the cache up to commit index.
@@ -377,6 +380,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.report_metrics(Update::AsIs);
         self.trigger_log_compaction_if_needed(false).await;
 
-        Ok(())
+        Ok(true)
     }
 }

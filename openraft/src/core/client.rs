@@ -11,7 +11,7 @@ use tracing::Instrument;
 use crate::core::apply_to_state_machine;
 use crate::core::LeaderState;
 use crate::core::State;
-use crate::error::ClientReadError;
+use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
@@ -67,7 +67,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         Ok(())
     }
 
-    /// Handle client read requests.
+    /// Handle `is_leader` requests.
     ///
     /// Spawn requests to all members of the cluster, include members being added in joint
     /// consensus. Each request will have a timeout, and we respond once we have a majority
@@ -80,7 +80,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     /// handles this by having the leader exchange heartbeat messages with a majority of the
     /// cluster before responding to read-only requests.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_client_read_request(&mut self, tx: RaftRespTx<(), ClientReadError<C>>) {
+    pub(super) async fn handle_check_is_leader_request(&mut self, tx: RaftRespTx<(), CheckIsLeaderError<C>>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let mem = &self.core.effective_membership.membership;

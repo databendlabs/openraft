@@ -72,9 +72,9 @@ pub enum InstallSnapshotError<C: RaftTypeConfig> {
     Fatal(#[from] Fatal<C>),
 }
 
-/// An error related to a client read request.
+/// An error related to a is_leader request.
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum ClientReadError<C: RaftTypeConfig> {
+pub enum CheckIsLeaderError<C: RaftTypeConfig> {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader<C>),
 
@@ -177,7 +177,7 @@ impl<C: RaftTypeConfig> From<StorageError<C>> for InstallSnapshotError<C> {
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C>> for ClientReadError<C> {
+impl<C: RaftTypeConfig> From<StorageError<C>> for CheckIsLeaderError<C> {
     fn from(s: StorageError<C>) -> Self {
         let f: Fatal<C> = s.into();
         f.into()

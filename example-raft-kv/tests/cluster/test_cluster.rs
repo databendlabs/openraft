@@ -177,5 +177,21 @@ async fn test_cluster() -> anyhow::Result<()> {
     let x = client3.read(&("foo".to_string())).await?;
     assert_eq!("wow", x);
 
+    println!("=== consistent_read `foo` on node 1");
+    let x = client.consistent_read(&("foo".to_string())).await?;
+    assert_eq!("wow", x);
+
+    println!("=== consistent_read `foo` on node 2 MUST return CheckIsLeaderError");
+    let x = client2.consistent_read(&("foo".to_string())).await;
+    match x {
+        Err(e) => {
+            let s = e.to_string();
+            let expect_err:String = "error occur on remote peer 2: has to forward request to: Some(1), Some(Node { addr: \"127.0.0.1:21001\", data: {} })".to_string();
+
+            assert_eq!(s, expect_err);
+        }
+        Ok(_) => panic!("MUST return CheckIsLeaderError"),
+    }
+
     Ok(())
 }

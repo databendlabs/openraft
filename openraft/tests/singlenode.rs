@@ -52,7 +52,7 @@ async fn single_node() -> Result<()> {
     router.assert_storage_state(1, 1001, Some(0), LogId::new(LeaderId::new(1, 0), 1001), None).await?;
 
     // Read some data from the single node cluster.
-    router.client_read(0).await?;
+    router.is_leader(0).await?;
 
     Ok(())
 }
