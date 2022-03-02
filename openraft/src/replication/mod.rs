@@ -312,8 +312,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     ///
     /// This request will timeout if no response is received within the
     /// configured heartbeat interval.
+    /// return true if there is more logs to replicate
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn send_append_entries(&mut self) -> Result<(), ReplicationError<C>> {
+    async fn send_append_entries(&mut self) -> Result<bool, ReplicationError<C>> {
         // find the mid position aligning to 8
         let diff = self.max_possible_matched_index.next_index() - self.matched.next_index();
         let offset = diff / 16 * 8;
@@ -435,7 +436,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         // Handle success conditions.
         if append_resp.success {
             self.update_matched(matched);
-            return Ok(());
+            return Ok(has_more_logs);
         }
 
         // Failed
@@ -466,11 +467,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             Some(conflict.index - 1)
         };
 
-        if has_more_logs {
-            return Err(ReplicationError::HasMoreLogs);
-        }
-
-        Ok(())
+        Ok(has_more_logs)
     }
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
@@ -540,19 +537,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         }
     }
 
-    // return if or not has more logs to replicate, other ReplicationError consider as Error
-    pub fn process_event_result(&self, ret: Result<(), ReplicationError<C>>) -> Result<bool, ReplicationError<C>> {
-        match ret {
-            Ok(_) => Ok(false),
-            Err(err) => match err {
-                ReplicationError::HasMoreLogs { .. } => Ok(true),
-                _ => Err(err),
-            },
-        }
-    }
-
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError<C>> {
+    pub async fn try_drain_raft_rx(&mut self) -> Result<bool, ReplicationError<C>> {
         tracing::debug!("try_drain_raft_rx");
 
         for _i in 0..self.config.max_payload_entries {
@@ -560,7 +546,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             let ev = match ev {
                 None => {
                     // no event in self.repl_rx
-                    return Ok(());
+                    return Ok(false);
                 }
                 Some(x) => x,
             };
@@ -574,14 +560,22 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             };
 
             // TODO(xp): the span is not used. remove it from event.
-            self.process_raft_event(ev_and_span.0)?;
+            match self.process_raft_event(ev_and_span.0) {
+                Ok(e) => {
+                    if e {
+                        return Ok(true);
+                    }
+                }
+                Err(e) => return Err(e),
+            }
         }
 
-        Ok(())
+        Ok(false)
     }
 
     #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
-    pub fn process_raft_event(&mut self, event: RaftEvent<C>) -> Result<(), ReplicationError<C>> {
+    /// return true if there is more log to replicate
+    pub fn process_raft_event(&mut self, event: RaftEvent<C>) -> Result<bool, ReplicationError<C>> {
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
         match event {
@@ -593,12 +587,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 self.committed = committed;
 
                 if Some(appended).index() > self.matched.index() {
-                    return Err(ReplicationError::HasMoreLogs);
+                    return Ok(true);
                 }
             }
         }
 
-        Ok(())
+        Ok(false)
     }
 }
 
@@ -762,8 +756,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             let _en = span.enter();
 
             // Check raft channel to ensure we are staying up-to-date
-            let ret = self.try_drain_raft_rx().await;
-            let has_more_logs = self.process_event_result(ret)?;
+            let has_more_logs = self.try_drain_raft_rx().await?;
             if has_more_logs {
                 // if there is more log, continue to send_append_entries
                 continue;
@@ -778,10 +771,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 event_span = self.repl_rx.recv() => {
                     match event_span {
                         Some((event, _span)) => {
-                            let ret = self.process_raft_event(event);
-                            self.process_event_result(ret)?;
-                            let ret = self.try_drain_raft_rx().await;
-                            self.process_event_result(ret)?;
+                            self.process_raft_event(event)?;
+                            self.try_drain_raft_rx().await?;
                         },
                         None => {
                             tracing::debug!("received: RaftEvent::Terminate: closed");
@@ -856,10 +847,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
                     event_span = self.repl_rx.recv() =>  {
                         match event_span {
-
                             Some((event, _span)) => {
                                 self.process_raft_event(event)?;
-                                self.try_drain_raft_rx().await?
+                                self.try_drain_raft_rx().await?;
                             },
                             None => {
                                 tracing::info!("repl_rx is closed");
