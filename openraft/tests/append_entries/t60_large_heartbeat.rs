@@ -32,7 +32,7 @@ async fn large_heartbeat() -> Result<()> {
     router.client_request_many(0, "foo", 100).await;
     log_index += 100;
 
-    router.wait(&1, Some(Duration::from_millis(600))).await?.log(Some(log_index), "").await?;
+    router.wait(&1, Some(Duration::from_millis(1000))).await?.log(Some(log_index), "").await?;
 
     Ok(())
 }
