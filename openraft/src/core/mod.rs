@@ -75,7 +75,7 @@ use crate::Update;
 #[derive(Clone, Eq, Serialize, Deserialize)]
 pub struct EffectiveMembership<C: RaftTypeConfig> {
     /// The id of the log that applies this membership config
-    pub log_id: LogId<C>,
+    pub log_id: LogId<C::NodeId>,
 
     pub membership: Membership<C>,
 
@@ -104,7 +104,7 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
         Self::new(LogId::new(LeaderId::default(), 0), Membership::new_initial(node_id))
     }
 
-    pub fn new(log_id: LogId<C>, membership: Membership<C>) -> Self {
+    pub fn new(log_id: LogId<C::NodeId>, membership: Membership<C>) -> Self {
         let all_members = membership.all_members();
         Self {
             log_id,
@@ -166,16 +166,16 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// Committed means:
     /// - a log that is replicated to a quorum of the cluster and it is of the term of the leader.
     /// - A quorum could be a joint quorum.
-    committed: Option<LogId<C>>,
+    committed: Option<LogId<C::NodeId>>,
 
     /// The log id of the highest log entry which has been applied to the local state machine.
-    last_applied: Option<LogId<C>>,
+    last_applied: Option<LogId<C::NodeId>>,
 
     /// The vote state of this node.
     vote: Vote<C>,
 
     /// The last entry to be appended to the log.
-    last_log_id: Option<LogId<C>>,
+    last_log_id: Option<LogId<C::NodeId>>,
 
     /// The node's current snapshot state.
     snapshot_state: Option<SnapshotState<S::SnapshotData>>,
@@ -183,7 +183,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
     ///
     /// This is primarily used in making a determination on when a compaction job needs to be triggered.
-    snapshot_last_log_id: Option<LogId<C>>,
+    snapshot_last_log_id: Option<LogId<C::NodeId>>,
 
     /// The last time a heartbeat was received.
     last_heartbeat: Option<Instant>,
@@ -636,7 +636,11 @@ where
 }
 
 #[tracing::instrument(level = "trace", skip(sto))]
-async fn purge_applied_logs<C, S>(sto: &mut S, last_applied: &LogId<C>, max_keep: u64) -> Result<(), StorageError<C>>
+async fn purge_applied_logs<C, S>(
+    sto: &mut S,
+    last_applied: &LogId<C::NodeId>,
+    max_keep: u64,
+) -> Result<(), StorageError<C>>
 where
     C: RaftTypeConfig,
     S: RaftStorage<C>,
@@ -693,7 +697,7 @@ pub(self) enum SnapshotState<S> {
 #[derive(Debug)]
 pub(self) enum SnapshotUpdate<C: RaftTypeConfig> {
     /// Snapshot creation has finished successfully and covers the given index.
-    SnapshotComplete(LogId<C>),
+    SnapshotComplete(LogId<C::NodeId>),
     /// Snapshot creation failed.
     SnapshotFailed,
 }
@@ -894,7 +898,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 struct ReplicationState<C: RaftTypeConfig> {
-    pub matched: Option<LogId<C>>,
+    pub matched: Option<LogId<C::NodeId>>,
     pub remove_since: Option<u64>,
     pub repl_stream: ReplicationStream<C>,
 
@@ -915,14 +919,14 @@ impl<C: RaftTypeConfig> ReplicationState<C> {
     // TODO(xp): make this a method of Config?
 
     /// Return true if the distance behind last_log_id is smaller than the threshold to join.
-    pub fn is_line_rate(&self, last_log_id: &Option<LogId<C>>, config: &Config) -> bool {
-        is_matched_upto_date(&self.matched, last_log_id, config)
+    pub fn is_line_rate(&self, last_log_id: &Option<LogId<C::NodeId>>, config: &Config) -> bool {
+        is_matched_upto_date::<C>(&self.matched, last_log_id, config)
     }
 }
 
 pub fn is_matched_upto_date<C: RaftTypeConfig>(
-    matched: &Option<LogId<C>>,
-    last_log_id: &Option<LogId<C>>,
+    matched: &Option<LogId<C::NodeId>>,
+    last_log_id: &Option<LogId<C::NodeId>>,
     config: &Config,
 ) -> bool {
     let my_index = matched.next_index();

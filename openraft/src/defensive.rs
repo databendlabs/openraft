@@ -204,7 +204,7 @@ where
         Ok(())
     }
 
-    async fn defensive_purge_applied_le_last_applied(&mut self, upto: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn defensive_purge_applied_le_last_applied(&mut self, upto: LogId<C::NodeId>) -> Result<(), StorageError<C>> {
         let (last_applied, _) = self.inner().last_applied_state().await?;
         if Some(upto.index) > last_applied.index() {
             return Err(
@@ -218,7 +218,10 @@ where
         Ok(())
     }
 
-    async fn defensive_delete_conflict_gt_last_applied(&mut self, since: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn defensive_delete_conflict_gt_last_applied(
+        &mut self,
+        since: LogId<C::NodeId>,
+    ) -> Result<(), StorageError<C>> {
         let (last_applied, _) = self.inner().last_applied_state().await?;
         if Some(since.index) <= last_applied.index() {
             return Err(

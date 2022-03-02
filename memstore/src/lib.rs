@@ -90,7 +90,7 @@ pub struct MemStoreSnapshot {
 /// The state machine of the `MemStore`.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct MemStoreStateMachine {
-    pub last_applied_log: Option<LogId<Config>>,
+    pub last_applied_log: Option<LogId<MemNodeId>>,
 
     pub last_membership: Option<EffectiveMembership<Config>>,
 
@@ -102,7 +102,7 @@ pub struct MemStoreStateMachine {
 
 /// An in-memory storage system implementing the `RaftStorage` trait.
 pub struct MemStore {
-    last_purged_log_id: RwLock<Option<LogId<Config>>>,
+    last_purged_log_id: RwLock<Option<LogId<MemNodeId>>>,
 
     /// The Raft log.
     log: RwLock<BTreeMap<u64, Entry<Config>>>,
@@ -265,13 +265,13 @@ impl RaftStorage<Config> for Arc<MemStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<Config>>, Option<EffectiveMembership<Config>>), StorageError<Config>> {
+    ) -> Result<(Option<LogId<MemNodeId>>, Option<EffectiveMembership<Config>>), StorageError<Config>> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, log_id: LogId<Config>) -> Result<(), StorageError<Config>> {
+    async fn delete_conflict_logs_since(&mut self, log_id: LogId<MemNodeId>) -> Result<(), StorageError<Config>> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         {
@@ -287,7 +287,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge_logs_upto(&mut self, log_id: LogId<Config>) -> Result<(), StorageError<Config>> {
+    async fn purge_logs_upto(&mut self, log_id: LogId<MemNodeId>) -> Result<(), StorageError<Config>> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         {

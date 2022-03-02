@@ -500,7 +500,7 @@ where
     pub async fn wait_for_snapshot(
         &self,
         node_ids: &BTreeSet<C::NodeId>,
-        want: LogId<C>,
+        want: LogId<C::NodeId>,
         timeout: Option<Duration>,
         msg: &str,
     ) -> Result<()> {
@@ -752,7 +752,7 @@ where
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<C::NodeId>,
-        expect_sm_last_applied_log: LogId<C>,
+        expect_sm_last_applied_log: LogId<C::NodeId>,
         expect_snapshot: &Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let last_log_id = storage.get_log_state().await?.last_log_id;
@@ -833,7 +833,7 @@ where
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<C::NodeId>,
-        expect_sm_last_applied_log: LogId<C>,
+        expect_sm_last_applied_log: LogId<C::NodeId>,
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let mut rt = self.routing_table.lock().unwrap();
@@ -865,7 +865,7 @@ where
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<C::NodeId>,
-        expect_sm_last_applied_log: LogId<C>,
+        expect_sm_last_applied_log: LogId<C::NodeId>,
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let mut rt = self.routing_table.lock().unwrap();

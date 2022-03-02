@@ -312,7 +312,7 @@ pub struct Timeout<C: RaftTypeConfig> {
 #[error("store has no log at: {index:?}, last purged: {last_purged_log_id:?}")]
 pub struct LackEntry<C: RaftTypeConfig> {
     pub index: Option<u64>,
-    pub last_purged_log_id: Option<LogId<C>>,
+    pub last_purged_log_id: Option<LogId<C::NodeId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -339,7 +339,7 @@ pub struct QuorumNotEnough<C: RaftTypeConfig> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
 pub struct InProgress<C: RaftTypeConfig> {
-    pub membership_log_id: LogId<C>,
+    pub membership_log_id: LogId<C::NodeId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -352,7 +352,7 @@ pub struct LearnerNotFound<C: RaftTypeConfig> {
 #[error("replication to learner {node_id} is lagging {distance}, matched: {matched:?}, can not add as member")]
 pub struct LearnerIsLagging<C: RaftTypeConfig> {
     pub node_id: C::NodeId,
-    pub matched: Option<LogId<C>>,
+    pub matched: Option<LogId<C::NodeId>>,
     pub distance: u64,
 }
 

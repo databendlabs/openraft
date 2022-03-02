@@ -37,6 +37,7 @@ impl<C: RaftTypeConfig, T> ToStorageResult<C, T> for Result<T, std::io::Error> {
 /// An error that occurs when the RaftStore impl runs defensive check of input or output.
 /// E.g. re-applying an log entry is a violation that may be a potential bug.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct DefensiveError<C: RaftTypeConfig> {
     /// The subject that violates store defensive check, e.g. hard-state, log or state machine.
     pub subject: ErrorSubject<C>,
@@ -64,6 +65,7 @@ impl<C: RaftTypeConfig> std::fmt::Display for DefensiveError<C> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub enum ErrorSubject<C: RaftTypeConfig> {
     /// A general storage error
     Store,
@@ -75,13 +77,13 @@ pub enum ErrorSubject<C: RaftTypeConfig> {
     Logs,
 
     /// Error about a single log entry
-    Log(LogId<C>),
+    Log(LogId<C::NodeId>),
 
     /// Error about a single log entry without knowing the log term.
     LogIndex(u64),
 
     /// Error happened when applying a log entry
-    Apply(LogId<C>),
+    Apply(LogId<C::NodeId>),
 
     /// Error happened when operating state machine.
     StateMachine,
@@ -103,6 +105,7 @@ pub enum ErrorVerb {
 
 /// Violations a store would return when running defensive check.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub enum Violation<C: RaftTypeConfig> {
     #[error("term can only be change to a greater value, current: {curr}, change to {to}")]
     TermNotAscending { curr: u64, to: u64 },
@@ -112,8 +115,8 @@ pub enum Violation<C: RaftTypeConfig> {
 
     #[error("log at higher index is obsolete: {higher_index_log_id:?} should GT {lower_index_log_id:?}")]
     DirtyLog {
-        higher_index_log_id: LogId<C>,
-        lower_index_log_id: LogId<C>,
+        higher_index_log_id: LogId<C::NodeId>,
+        lower_index_log_id: LogId<C::NodeId>,
     },
 
     #[error("try to get log at index {want} but got {got:?}")]
@@ -133,26 +136,33 @@ pub enum Violation<C: RaftTypeConfig> {
     StoreLogsEmpty,
 
     #[error("logs are not consecutive, prev: {prev:?}, next: {next}")]
-    LogsNonConsecutive { prev: Option<LogId<C>>, next: LogId<C> },
+    LogsNonConsecutive {
+        prev: Option<LogId<C::NodeId>>,
+        next: LogId<C::NodeId>,
+    },
 
     #[error("invalid next log to apply: prev: {prev:?}, next: {next}")]
-    ApplyNonConsecutive { prev: Option<LogId<C>>, next: LogId<C> },
+    ApplyNonConsecutive {
+        prev: Option<LogId<C::NodeId>>,
+        next: LogId<C::NodeId>,
+    },
 
     #[error("applied log can not conflict, last_applied: {last_applied:?}, delete since: {first_conflict_log_id}")]
     AppliedWontConflict {
-        last_applied: Option<LogId<C>>,
-        first_conflict_log_id: LogId<C>,
+        last_applied: Option<LogId<C::NodeId>>,
+        first_conflict_log_id: LogId<C::NodeId>,
     },
 
     #[error("not allowed to purge non-applied logs, last_applied: {last_applied:?}, purge upto: {purge_upto}")]
     PurgeNonApplied {
-        last_applied: Option<LogId<C>>,
-        purge_upto: LogId<C>,
+        last_applied: Option<LogId<C::NodeId>>,
+        purge_upto: LogId<C::NodeId>,
     },
 }
 
 /// A storage error could be either a defensive check error or an error occurred when doing the actual io operation.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub enum StorageError<C: RaftTypeConfig> {
     /// An error raised by defensive check.
     #[error(transparent)]
@@ -194,6 +204,7 @@ impl<C: RaftTypeConfig> StorageError<C> {
 
 /// Error that occurs when operating the store.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct StorageIOError<C: RaftTypeConfig> {
     subject: ErrorSubject<C>,
     verb: ErrorVerb,
