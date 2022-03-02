@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use openraft::error::AddLearnerError;
+use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::ForwardToLeader;
 use openraft::error::Infallible;
@@ -64,6 +65,16 @@ impl ExampleClient {
     /// This method may return stale value because it does not force to read on a legal leader.
     pub async fn read(&self, req: &String) -> Result<String, RPCError<ExampleTypeConfig, Infallible>> {
         self.do_send_rpc_to_leader("read", Some(req)).await
+    }
+
+    /// Consistent Read value by key, in an inconsistent mode.
+    ///
+    /// This method MUST return consitent value or CheckIsLeaderError.
+    pub async fn consistent_read(
+        &self,
+        req: &String,
+    ) -> Result<String, RPCError<ExampleTypeConfig, CheckIsLeaderError<ExampleTypeConfig>>> {
+        self.do_send_rpc_to_leader("consistent_read", Some(req)).await
     }
 
     // --- Cluster management API

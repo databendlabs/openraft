@@ -8,7 +8,7 @@
         !          |                      !
         !          |                      !
         !          | "client_write(impl AppData) -> impl AppDataResponse"
-        !          | "client_read()"      !
+        !          | "is_leader()"        !
         !          | "add_learner()"      !
         !          | "change_membership()"!
         !          v                      !
