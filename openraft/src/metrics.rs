@@ -42,7 +42,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     /// The last log index has been appended to this Raft node's log.
     pub last_log_index: Option<u64>,
     /// The last log index has been applied to this Raft node's state machine.
-    pub last_applied: Option<LogId<C>>,
+    pub last_applied: Option<LogId<C::NodeId>>,
     /// The current cluster leader.
     pub current_leader: Option<C::NodeId>,
     /// The current membership config of the cluster.
@@ -50,7 +50,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
 
     /// The id of the last log included in snapshot.
     /// If there is no snapshot, it is (0,0).
-    pub snapshot: Option<LogId<C>>,
+    pub snapshot: Option<LogId<C::NodeId>>,
 
     /// The metrics about the leader. It is Some() only when this node is leader.
     pub leader_metrics: Option<Arc<LeaderMetrics<C>>>,
@@ -278,7 +278,11 @@ impl<C: RaftTypeConfig> Wait<C> {
 
     /// Wait for `snapshot` to become `want_snapshot` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn snapshot(&self, want_snapshot: LogId<C>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn snapshot(
+        &self,
+        want_snapshot: LogId<C::NodeId>,
+        msg: impl ToString,
+    ) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
             |x| x.snapshot == Some(want_snapshot),
             &format!("{} .snapshot -> {:?}", msg.to_string(), want_snapshot),

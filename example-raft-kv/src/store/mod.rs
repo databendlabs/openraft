@@ -27,6 +27,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
+use crate::ExampleNodeId;
 use crate::ExampleTypeConfig;
 
 /**
@@ -69,7 +70,7 @@ pub struct ExampleSnapshot {
  */
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct ExampleStateMachine {
-    pub last_applied_log: Option<LogId<ExampleTypeConfig>>,
+    pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
     pub last_membership: Option<EffectiveMembership<ExampleTypeConfig>>,
 
@@ -79,7 +80,7 @@ pub struct ExampleStateMachine {
 
 #[derive(Debug, Default)]
 pub struct ExampleStore {
-    last_purged_log_id: RwLock<Option<LogId<ExampleTypeConfig>>>,
+    last_purged_log_id: RwLock<Option<LogId<ExampleNodeId>>>,
 
     /// The Raft log.
     log: RwLock<BTreeMap<u64, Entry<ExampleTypeConfig>>>,
@@ -189,9 +190,8 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<ExampleTypeConfig>) -> Result<(), StorageError<ExampleTypeConfig>> {
-        // TODO: What `h` stands for?
-        let mut h = self.vote.write().await;
-        *h = Some(*vote);
+        let mut v = self.vote.write().await;
+        *v = Some(*vote);
         Ok(())
     }
 
@@ -214,7 +214,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "debug", skip(self))]
     async fn delete_conflict_logs_since(
         &mut self,
-        log_id: LogId<ExampleTypeConfig>,
+        log_id: LogId<ExampleNodeId>,
     ) -> Result<(), StorageError<ExampleTypeConfig>> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
@@ -228,10 +228,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn purge_logs_upto(
-        &mut self,
-        log_id: LogId<ExampleTypeConfig>,
-    ) -> Result<(), StorageError<ExampleTypeConfig>> {
+    async fn purge_logs_upto(&mut self, log_id: LogId<ExampleNodeId>) -> Result<(), StorageError<ExampleTypeConfig>> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 
         {
@@ -256,7 +253,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
         &mut self,
     ) -> Result<
         (
-            Option<LogId<ExampleTypeConfig>>,
+            Option<LogId<ExampleNodeId>>,
             Option<EffectiveMembership<ExampleTypeConfig>>,
         ),
         StorageError<ExampleTypeConfig>,

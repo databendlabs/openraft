@@ -74,7 +74,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, start: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn delete_conflict_logs_since(&mut self, start: LogId<C::NodeId>) -> Result<(), StorageError<C>> {
         self.storage.delete_conflict_logs_since(start).await?;
 
         self.last_log_id = self.storage.get_log_state().await?.last_log_id;
@@ -170,9 +170,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level="trace", skip(self, entries), fields(entries=%entries.summary()))]
     async fn append_apply_log_entries(
         &mut self,
-        prev_log_id: Option<LogId<C>>,
+        prev_log_id: Option<LogId<C::NodeId>>,
         entries: &[Entry<C>],
-        committed: Option<LogId<C>>,
+        committed: Option<LogId<C::NodeId>>,
     ) -> Result<AppendEntriesResponse<C>, StorageError<C>> {
         let mismatched = self.does_log_id_match(prev_log_id).await?;
 
@@ -274,8 +274,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Raft only accept consecutive logs to be appended.
     pub async fn does_log_id_match(
         &mut self,
-        remote_log_id: Option<LogId<C>>,
-    ) -> Result<Option<LogId<C>>, StorageError<C>> {
+        remote_log_id: Option<LogId<C::NodeId>>,
+    ) -> Result<Option<LogId<C::NodeId>>, StorageError<C>> {
         let log_id = match remote_log_id {
             None => {
                 return Ok(None);

@@ -60,7 +60,7 @@ use crate::Vote;
 /// );
 /// ```
 pub trait RaftTypeConfig:
-    Sized + Send + Sync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + serde::Serialize + 'static
+    Sized + Send + Sync + Debug + Clone + Copy + Default + Eq + PartialEq + Ord + PartialOrd + 'static
 {
     /// Application-specific request data passed to the state machine.
     type D: AppData;
@@ -509,7 +509,7 @@ pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AddLearnerResponse<C: RaftTypeConfig> {
-    pub matched: Option<LogId<C>>,
+    pub matched: Option<LogId<C::NodeId>>,
 }
 
 /// A message coming from the Raft API.
@@ -612,7 +612,7 @@ where C: RaftTypeConfig
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub vote: Vote<C>,
 
-    pub prev_log_id: Option<LogId<C>>,
+    pub prev_log_id: Option<LogId<C::NodeId>>,
 
     /// The new log entries to store.
     ///
@@ -622,7 +622,7 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub entries: Vec<Entry<C>>,
 
     /// The leader's committed log id.
-    pub leader_commit: Option<LogId<C>>,
+    pub leader_commit: Option<LogId<C::NodeId>>,
 }
 
 impl<C: RaftTypeConfig> Clone for AppendEntriesRequest<C> {
@@ -680,8 +680,9 @@ impl<C: RaftTypeConfig> MessageSummary for AppendEntriesResponse<C> {
 
 /// A Raft log entry.
 #[derive(Serialize, Deserialize)]
+// #[serde(bound = "")]
 pub struct Entry<C: RaftTypeConfig> {
-    pub log_id: LogId<C>,
+    pub log_id: LogId<C::NodeId>,
 
     /// This entry's payload.
     #[serde(bound = "C::D: AppData")]
@@ -768,6 +769,7 @@ pub enum EntryPayload<C: RaftTypeConfig> {
     Normal(C::D),
 
     /// A change-membership log entry.
+    #[serde(bound = "")]
     Membership(Membership<C>),
 }
 
@@ -809,7 +811,7 @@ impl<C: RaftTypeConfig> MessageSummary for EntryPayload<C> {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VoteRequest<C: RaftTypeConfig> {
     pub vote: Vote<C>,
-    pub last_log_id: Option<LogId<C>>,
+    pub last_log_id: Option<LogId<C::NodeId>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for VoteRequest<C> {
@@ -819,7 +821,7 @@ impl<C: RaftTypeConfig> MessageSummary for VoteRequest<C> {
 }
 
 impl<C: RaftTypeConfig> VoteRequest<C> {
-    pub fn new(vote: Vote<C>, last_log_id: Option<LogId<C>>) -> Self {
+    pub fn new(vote: Vote<C>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
         Self { vote, last_log_id }
     }
 }
@@ -833,7 +835,7 @@ pub struct VoteResponse<C: RaftTypeConfig> {
     pub vote_granted: bool,
 
     /// The last log id stored on the remote voter.
-    pub last_log_id: Option<LogId<C>>,
+    pub last_log_id: Option<LogId<C::NodeId>>,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -909,7 +911,7 @@ impl<C: RaftTypeConfig> ClientWriteRequest<C> {
 /// The response to a `ClientRequest`.
 #[derive(Serialize, Deserialize)]
 pub struct ClientWriteResponse<C: RaftTypeConfig> {
-    pub log_id: LogId<C>,
+    pub log_id: LogId<C::NodeId>,
 
     /// Application specific response data.
     #[serde(bound = "C::R: AppDataResponse")]

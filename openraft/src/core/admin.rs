@@ -273,7 +273,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// This is ony called by leader.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) fn handle_uniform_consensus_committed(&mut self, log_id: &LogId<C>) {
+    pub(super) fn handle_uniform_consensus_committed(&mut self, log_id: &LogId<C::NodeId>) {
         let index = log_id.index;
 
         // Step down if needed.
