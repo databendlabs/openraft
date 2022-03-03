@@ -572,12 +572,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         match event {
             RaftEvent::UpdateCommittedLogId { committed } => {
-                self.need_to_replicate = committed > self.committed;
+                self.need_to_replicate = self.need_to_replicate || committed > self.committed;
                 self.committed = committed;
             }
 
             RaftEvent::Replicate { appended, committed } => {
-                self.need_to_replicate = committed > self.committed;
+                self.need_to_replicate = self.need_to_replicate || committed > self.committed;
                 self.committed = committed;
 
                 if Some(appended).index() > self.matched.index() {
