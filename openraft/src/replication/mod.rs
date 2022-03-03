@@ -189,7 +189,7 @@ struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     /// The timeout for sending snapshot segment.
     install_snapshot_timeout: Duration,
 
-    /// if or not need to replicate
+    /// if or not need to replicate log entries or states, e.g., `commit_index` etc.
     need_to_replicate: bool,
 }
 
@@ -226,7 +226,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             repl_rx,
             heartbeat: interval(heartbeat_timeout),
             install_snapshot_timeout,
-            need_to_replicate: false,
+            need_to_replicate: true,
         };
 
         let _handle = tokio::spawn(this.main().instrument(tracing::trace_span!("spawn").or_current()));
@@ -315,8 +315,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     /// configured heartbeat interval.
     #[tracing::instrument(level = "debug", skip(self))]
     async fn send_append_entries(&mut self) -> Result<(), ReplicationError<C>> {
-        // first reset need_to_replicate flag
-        self.need_to_replicate = false;
         // find the mid position aligning to 8
         let diff = self.max_possible_matched_index.next_index() - self.matched.next_index();
         let offset = diff / 16 * 8;
@@ -336,9 +334,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 prev_index = last_purged.index();
             }
 
-            let last_log_id = log_state.last_log_id.next_index();
+            let last_log_index = log_state.last_log_id.next_index();
             let start = prev_index.next_index();
-            let end = std::cmp::min(start + self.config.max_payload_entries, last_log_id);
+            let end = std::cmp::min(start + self.config.max_payload_entries, last_log_index);
 
             tracing::debug!(
                 ?self.matched,
@@ -380,7 +378,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 logs
             };
 
-            break (prev_log_id, logs, end < last_log_id);
+            break (prev_log_id, logs, end < last_log_index);
         };
 
         // set the need_to_replicate flag if there is more
@@ -570,31 +568,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         Ok(())
     }
 
-    /// return true if commit index update, in this way, MUST `send_append_entries` to sync new commit index
-    fn check_if_update_commit_index(&mut self, new_committed_index: Option<LogId<C::NodeId>>) -> bool {
-        assert!(new_committed_index >= self.committed);
-        if new_committed_index > self.committed {
-            self.committed = new_committed_index;
-            return true;
-        }
-        false
-    }
-
     #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
     pub fn process_raft_event(&mut self, event: RaftEvent<C>) -> Result<(), ReplicationError<C>> {
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
         match event {
             RaftEvent::UpdateCommittedLogId { committed } => {
-                if self.check_if_update_commit_index(committed) {
-                    self.need_to_replicate = true;
-                }
+                self.need_to_replicate = committed > self.committed;
+                self.committed = committed;
             }
 
             RaftEvent::Replicate { appended, committed } => {
-                if self.check_if_update_commit_index(committed) {
-                    self.need_to_replicate = true;
-                }
+                self.need_to_replicate = committed > self.committed;
+                self.committed = committed;
 
                 if Some(appended).index() > self.matched.index() {
                     self.need_to_replicate = true;
