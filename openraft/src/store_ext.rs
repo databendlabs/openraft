@@ -124,18 +124,18 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<C>>, Option<EffectiveMembership<C>>), StorageError<C>> {
+    ) -> Result<(Option<LogId<C::NodeId>>, Option<EffectiveMembership<C>>), StorageError<C>> {
         self.inner().last_applied_state().await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn delete_conflict_logs_since(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C>> {
         self.defensive_delete_conflict_gt_last_applied(log_id).await?;
         self.inner().delete_conflict_logs_since(log_id).await
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn purge_logs_upto(&mut self, log_id: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn purge_logs_upto(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C>> {
         self.defensive_purge_applied_le_last_applied(log_id).await?;
         self.inner().purge_logs_upto(log_id).await
     }
