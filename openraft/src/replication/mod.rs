@@ -93,7 +93,7 @@ impl<C: RaftTypeConfig> ReplicationMetrics<C> {
 
 impl<C: RaftTypeConfig> MessageSummary for ReplicationMetrics<C> {
     fn summary(&self) -> String {
-        format!("{:?}", self.matched())
+        format!("{}", self.matched())
     }
 }
 

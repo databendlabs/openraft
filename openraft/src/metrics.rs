@@ -8,7 +8,6 @@
 //! return a stream of metrics.
 
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::Deserialize;
@@ -21,12 +20,13 @@ use tokio::time::Instant;
 use crate::core::EffectiveMembership;
 use crate::core::State;
 use crate::error::Fatal;
+use crate::leader_metrics::LeaderMetrics;
 use crate::raft_types::LogIdOptionExt;
+use crate::versioned::Versioned;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
-use crate::ReplicationMetrics;
 
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,7 +53,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub snapshot: Option<LogId<C::NodeId>>,
 
     /// The metrics about the leader. It is Some() only when this node is leader.
-    pub leader_metrics: Option<Arc<LeaderMetrics<C>>>,
+    pub leader_metrics: Option<Versioned<LeaderMetrics<C>>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for RaftMetrics<C> {
@@ -69,28 +69,6 @@ impl<C: RaftTypeConfig> MessageSummary for RaftMetrics<C> {
             self.snapshot,
             self.leader_metrics.as_ref().map(|x| x.summary()).unwrap_or_default(),
         )
-    }
-}
-
-/// The metrics about the leader. It is Some() only when this node is leader.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LeaderMetrics<C: RaftTypeConfig> {
-    /// Replication metrics of all known replication target: voters and learners
-    pub replication: HashMap<C::NodeId, ReplicationMetrics<C>>,
-}
-
-impl<C: RaftTypeConfig> MessageSummary for LeaderMetrics<C> {
-    fn summary(&self) -> String {
-        let mut res = vec!["LeaderMetrics{".to_string()];
-        for (i, (k, v)) in self.replication.iter().enumerate() {
-            if i > 0 {
-                res.push(",".to_string());
-            }
-            res.push(format!("{}:{}", k, v.summary()));
-        }
-
-        res.push("}".to_string());
-        res.join("")
     }
 }
 

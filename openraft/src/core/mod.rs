@@ -41,7 +41,7 @@ use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
-use crate::metrics::LeaderMetrics;
+use crate::leader_metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
 use crate::raft::AddLearnerResponse;
 use crate::raft::Entry;
@@ -53,6 +53,7 @@ use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::RaftSnapshotBuilder;
+use crate::versioned::Versioned;
 use crate::vote::Vote;
 use crate::LeaderId;
 use crate::LogId;
@@ -363,7 +364,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn report_metrics(&mut self, leader_metrics: Update<Option<&Arc<LeaderMetrics<C>>>>) {
+    fn report_metrics(&mut self, leader_metrics: Update<Option<&Versioned<LeaderMetrics<C>>>>) {
         let leader_metrics = match leader_metrics {
             Update::Update(v) => v.cloned(),
             Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
@@ -751,7 +752,7 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     pub(super) nodes: BTreeMap<C::NodeId, ReplicationState<C>>,
 
     /// The metrics about a leader
-    pub leader_metrics: Arc<LeaderMetrics<C>>,
+    pub leader_metrics: Versioned<LeaderMetrics<C>>,
 
     /// The stream of events coming from replication streams.
     pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<C, S::SnapshotData>, Span)>,
@@ -770,7 +771,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         Self {
             core,
             nodes: BTreeMap::new(),
-            leader_metrics: Arc::new(LeaderMetrics::default()),
+            leader_metrics: Versioned::new(LeaderMetrics::default()),
             replication_tx,
             replication_rx,
             awaiting_committed: Vec::new(),
