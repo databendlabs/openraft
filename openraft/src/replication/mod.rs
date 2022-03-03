@@ -450,7 +450,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     mine: self.vote,
                 }))
             }
-            _ => {
+            AppendEntriesResponse::Conflict => {
                 assert!(conflict.is_some(), "prev_log_id=None never conflict");
                 let conflict = conflict.unwrap();
 
