@@ -98,16 +98,16 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     async fn handle_update_matched(
         &mut self,
         target: C::NodeId,
-        matched: Option<LogId<C::NodeId>>,
+        matched: LogId<C::NodeId>,
     ) -> Result<(), StorageError<C>> {
         // Update target's match index & check if it is awaiting removal.
 
         if let Some(state) = self.nodes.get_mut(&target) {
             tracing::debug!("state.matched: {:?}, update to matched: {:?}", state.matched, matched);
 
-            assert!(matched >= state.matched, "the matched increments monotonically");
+            assert!(Some(matched) >= state.matched, "the matched increments monotonically");
 
-            state.matched = matched;
+            state.matched = Some(matched);
 
             // Issue a response on the learners response channel if needed.
             if state.is_line_rate(&self.core.last_log_id, &self.core.config) {
@@ -131,7 +131,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.update_leader_metrics(target, matched);
         }
 
-        if matched <= self.core.committed {
+        if Some(matched) <= self.core.committed {
             self.leader_report_metrics();
             return Ok(());
         }
@@ -179,13 +179,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_leader_metrics(&mut self, target: C::NodeId, matched: Option<LogId<C::NodeId>>) {
+    fn update_leader_metrics(&mut self, target: C::NodeId, matched: LogId<C::NodeId>) {
         tracing::debug!(%target, ?matched, "update_leader_metrics");
-        let (matched_leader_id, matched_index) = if let Some(log_id) = matched {
-            (Some(log_id.leader_id), log_id.index)
-        } else {
-            (None, 0)
-        };
+        let (matched_leader_id, matched_index) = (matched.leader_id, matched.index);
+
         if let Some(target_metrics) = self.leader_metrics.replication.get(&target) {
             if target_metrics.matched_leader_id == matched_leader_id {
                 // we can update the metrics in-place
