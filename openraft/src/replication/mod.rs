@@ -188,6 +188,9 @@ struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
 
     /// The timeout for sending snapshot segment.
     install_snapshot_timeout: Duration,
+
+    /// if or not need to replicate
+    need_to_replicate: bool,
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
@@ -223,6 +226,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             repl_rx,
             heartbeat: interval(heartbeat_timeout),
             install_snapshot_timeout,
+            need_to_replicate: false,
         };
 
         let _handle = tokio::spawn(this.main().instrument(tracing::trace_span!("spawn").or_current()));
@@ -309,9 +313,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     ///
     /// This request will timeout if no response is received within the
     /// configured heartbeat interval.
-    /// return true if there is more logs to replicate
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn send_append_entries(&mut self) -> Result<bool, ReplicationError<C>> {
+    async fn send_append_entries(&mut self) -> Result<(), ReplicationError<C>> {
+        // first reset need_to_replicate flag
+        self.need_to_replicate = false;
         // find the mid position aligning to 8
         let diff = self.max_possible_matched_index.next_index() - self.matched.next_index();
         let offset = diff / 16 * 8;
@@ -378,6 +383,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             break (prev_log_id, logs, end < last_log_id);
         };
 
+        // set the need_to_replicate flag if there is more
+        self.need_to_replicate = has_more_logs;
         let conflict = prev_log_id;
         let matched = if logs.is_empty() {
             prev_log_id
@@ -433,7 +440,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         // Handle success conditions.
         if append_resp.success {
             self.update_matched(matched);
-            return Ok(has_more_logs);
+            return Ok(());
         }
 
         // Failed
@@ -464,7 +471,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             Some(conflict.index - 1)
         };
 
-        Ok(has_more_logs)
+        Ok(())
     }
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
@@ -534,9 +541,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         }
     }
 
-    /// return true if there is more log to replicate, false if no event in self.repl_rx
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn try_drain_raft_rx(&mut self) -> Result<bool, ReplicationError<C>> {
+    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError<C>> {
         tracing::debug!("try_drain_raft_rx");
 
         for _i in 0..self.config.max_payload_entries {
@@ -544,7 +550,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             let ev = match ev {
                 None => {
                     // no event in self.repl_rx
-                    return Ok(false);
+                    return Ok(());
                 }
                 Some(x) => x,
             };
@@ -558,17 +564,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             };
 
             // TODO(xp): the span is not used. remove it from event.
-            match self.process_raft_event(ev_and_span.0) {
-                Ok(has_more_logs) => {
-                    if has_more_logs {
-                        return Ok(true);
-                    }
-                }
-                Err(e) => return Err(e),
-            }
+            self.process_raft_event(ev_and_span.0)?
         }
 
-        Ok(false)
+        Ok(())
     }
 
     /// return true if commit index update, in this way, MUST `send_append_entries` to sync new commit index
@@ -581,30 +580,29 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         false
     }
 
-    /// return true if there is more log to replicate
     #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
-    pub fn process_raft_event(&mut self, event: RaftEvent<C>) -> Result<bool, ReplicationError<C>> {
+    pub fn process_raft_event(&mut self, event: RaftEvent<C>) -> Result<(), ReplicationError<C>> {
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
         match event {
             RaftEvent::UpdateCommittedLogId { committed } => {
                 if self.check_if_update_commit_index(committed) {
-                    return Ok(true);
+                    self.need_to_replicate = true;
                 }
             }
 
             RaftEvent::Replicate { appended, committed } => {
                 if self.check_if_update_commit_index(committed) {
-                    return Ok(true);
+                    self.need_to_replicate = true;
                 }
 
                 if Some(appended).index() > self.matched.index() {
-                    return Ok(true);
+                    self.need_to_replicate = true;
                 }
             }
         }
 
-        Ok(false)
+        Ok(())
     }
 }
 
@@ -730,27 +728,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
                 let res = self.send_append_entries().await;
 
-                match res {
-                    Err(err) => {
-                        tracing::error!(error=%err, "error replication to target={}", self.target);
+                if let Err(err) = res {
+                    tracing::error!(error=%err, "error replication to target={}", self.target);
 
-                        // For transport error, just keep retrying.
-                        match err {
-                            ReplicationError::Timeout { .. } => {
-                                break;
-                            }
-                            ReplicationError::Network { .. } => {
-                                break;
-                            }
-                            _ => {
-                                return Err(err);
-                            }
+                    // For transport error, just keep retrying.
+                    match err {
+                        ReplicationError::Timeout { .. } => {
+                            break;
                         }
-                    }
-                    Ok(has_more_logs) => {
-                        if has_more_logs {
-                            // return true means there is more logs to replicate, call `send_append_entries` again
-                            continue;
+                        ReplicationError::Network { .. } => {
+                            break;
+                        }
+                        _ => {
+                            return Err(err);
                         }
                     }
                 }
@@ -772,8 +762,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             let _en = span.enter();
 
             // Check raft channel to ensure we are staying up-to-date
-            let has_more_logs = self.try_drain_raft_rx().await?;
-            if has_more_logs {
+            self.try_drain_raft_rx().await?;
+            if self.need_to_replicate {
                 // if there is more log, continue to send_append_entries
                 continue;
             }
@@ -787,12 +777,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 event_span = self.repl_rx.recv() => {
                     match event_span {
                         Some((event, _span)) => {
-                            if self.process_raft_event(event)? {
-                                continue;
-                            }
-                            if self.try_drain_raft_rx().await? {
-                                continue;
-                            }
+                            self.process_raft_event(event)?;
+                            self.try_drain_raft_rx().await?;
                         },
                         None => {
                             tracing::debug!("received: RaftEvent::Terminate: closed");
