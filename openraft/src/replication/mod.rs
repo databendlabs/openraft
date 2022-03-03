@@ -52,7 +52,7 @@ use crate::Vote;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct ReplicationMetrics<C: RaftTypeConfig> {
-    pub(crate) matched_leader_id: Option<LeaderId<C::NodeId>>,
+    pub(crate) matched_leader_id: LeaderId<C::NodeId>,
     pub(crate) matched_index: AtomicU64,
 }
 
@@ -75,22 +75,18 @@ impl<C: RaftTypeConfig> PartialEq for ReplicationMetrics<C> {
 impl<C: RaftTypeConfig> Eq for ReplicationMetrics<C> {}
 
 impl<C: RaftTypeConfig> ReplicationMetrics<C> {
-    pub fn new(log_id: Option<LogId<C::NodeId>>) -> Self {
-        if let Some(log_id) = log_id {
-            Self {
-                matched_leader_id: Some(log_id.leader_id),
-                matched_index: AtomicU64::new(log_id.index),
-            }
-        } else {
-            Self::default()
+    pub fn new(log_id: LogId<C::NodeId>) -> Self {
+        Self {
+            matched_leader_id: log_id.leader_id,
+            matched_index: AtomicU64::new(log_id.index),
         }
     }
-    pub fn matched(&self) -> Option<LogId<C::NodeId>> {
-        if let Some(leader_id) = self.matched_leader_id {
-            let index = self.matched_index.load(Ordering::Relaxed);
-            Some(LogId { leader_id, index })
-        } else {
-            None
+
+    pub fn matched(&self) -> LogId<C::NodeId> {
+        let index = self.matched_index.load(Ordering::Relaxed);
+        LogId {
+            leader_id: self.matched_leader_id,
+            index,
         }
     }
 }
@@ -515,7 +511,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             let _ = self.raft_core_tx.send((
                 ReplicaEvent::UpdateMatched {
                     target: self.target,
-                    matched: self.matched,
+                    // `self.matched < new_matched` implies new_matched can not be None.
+                    // Thus unwrap is safe.
+                    matched: self.matched.unwrap(),
                 },
                 tracing::debug_span!("CH"),
             ));
@@ -656,7 +654,7 @@ where
         /// The ID of the target node for which the match index is to be updated.
         target: C::NodeId,
         /// The log of the most recent log known to have been successfully replicated on the target.
-        matched: Option<LogId<C::NodeId>>,
+        matched: LogId<C::NodeId>,
     },
     /// An event indicating that the Raft node needs to revert to follower state.
     RevertToFollower {
