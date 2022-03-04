@@ -7,3 +7,7 @@ vendor
 # File Ignores ###############################################################
 **/*.rs.bk
 Cargo.lock
+*log
+perf.data*
+nohup*
+*svg

@@ -6,23 +6,25 @@ use serde::Serialize;
 
 use crate::LeaderId;
 use crate::MessageSummary;
+use crate::NodeId;
 use crate::RaftTypeConfig;
 
 /// The identity of a raft log.
 /// A term, node_id and an index identifies an log globally.
 #[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LogId<C: RaftTypeConfig> {
-    pub leader_id: LeaderId<C>,
+#[serde(bound = "")]
+pub struct LogId<NID: NodeId> {
+    pub leader_id: LeaderId<NID>,
     pub index: u64,
 }
 
-impl<C: RaftTypeConfig> Display for LogId<C> {
+impl<NID: NodeId> Display for LogId<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}-{}", self.leader_id, self.index)
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for Option<LogId<C>> {
+impl<NID: NodeId> MessageSummary for Option<LogId<NID>> {
     fn summary(&self) -> String {
         match self {
             None => "None".to_string(),
@@ -33,8 +35,8 @@ impl<C: RaftTypeConfig> MessageSummary for Option<LogId<C>> {
     }
 }
 
-impl<C: RaftTypeConfig> LogId<C> {
-    pub fn new(leader_id: LeaderId<C>, index: u64) -> Self {
+impl<NID: NodeId> LogId<NID> {
+    pub fn new(leader_id: LeaderId<NID>, index: u64) -> Self {
         if leader_id.term == 0 || index == 0 {
             assert_eq!(
                 leader_id.term, 0,
@@ -43,7 +45,7 @@ impl<C: RaftTypeConfig> LogId<C> {
             );
             assert_eq!(
                 leader_id.node_id,
-                C::NodeId::default(),
+                NID::default(),
                 "zero-th log entry must be (0,0,0), but {} {}",
                 leader_id,
                 index
@@ -58,12 +60,12 @@ impl<C: RaftTypeConfig> LogId<C> {
     }
 }
 
-pub trait LogIdOptionExt<C: RaftTypeConfig> {
+pub trait LogIdOptionExt {
     fn index(&self) -> Option<u64>;
     fn next_index(&self) -> u64;
 }
 
-impl<C: RaftTypeConfig> LogIdOptionExt<C> for Option<LogId<C>> {
+impl<NID: NodeId> LogIdOptionExt for Option<LogId<NID>> {
     fn index(&self) -> Option<u64> {
         self.map(|x| x.index)
     }
@@ -146,6 +148,6 @@ pub enum Update<T> {
 /// E.g. when applying a log to state machine, or installing a state machine from snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateMachineChanges<C: RaftTypeConfig> {
-    pub last_applied: LogId<C>,
+    pub last_applied: LogId<C::NodeId>,
     pub is_snapshot: bool,
 }

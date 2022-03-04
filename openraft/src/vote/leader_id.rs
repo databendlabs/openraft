@@ -3,7 +3,7 @@ use std::fmt::Formatter;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::RaftTypeConfig;
+use crate::NodeId;
 
 /// LeaderId is identifier of a `leader`.
 ///
@@ -14,19 +14,23 @@ use crate::RaftTypeConfig;
 /// But under this(dirty and stupid) simplification, a `Leader` is actually identified by `(term, node_id)`.
 /// By introducing `LeaderId {term, node_id}`, things become easier to understand.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct LeaderId<C: RaftTypeConfig> {
+// Clear the bound so that serde will generate required bounds.
+#[serde(bound = "")]
+pub struct LeaderId<NID>
+where NID: NodeId
+{
     pub term: u64,
-    pub node_id: C::NodeId,
+    pub node_id: NID,
 }
 
-impl<C: RaftTypeConfig> std::fmt::Display for LeaderId<C> {
+impl<NID: NodeId> std::fmt::Display for LeaderId<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}-{}", self.term, self.node_id)
     }
 }
 
-impl<C: RaftTypeConfig> LeaderId<C> {
-    pub fn new(term: u64, node_id: C::NodeId) -> Self {
+impl<NID: NodeId> LeaderId<NID> {
+    pub fn new(term: u64, node_id: NID) -> Self {
         Self { term, node_id }
     }
 }

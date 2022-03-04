@@ -6,7 +6,7 @@ use crate::LogId;
 
 #[test]
 fn test_is_line_rate() -> anyhow::Result<()> {
-    let m = Some(LogId::<DummyConfig>::new(LeaderId::new(1, 0), 10));
+    let m = Some(LogId::<u64>::new(LeaderId::new(1, 0), 10));
 
     let cfg = |n| Config {
         replication_lag_threshold: n,
@@ -54,7 +54,7 @@ fn test_is_line_rate() -> anyhow::Result<()> {
         "overflow, threshold=0"
     );
     assert!(
-        !is_matched_upto_date(&m, &Some(LogId::new(LeaderId::new(2, 0), 11)), &cfg(0)),
+        !is_matched_upto_date::<DummyConfig>(&m, &Some(LogId::new(LeaderId::new(2, 0), 11)), &cfg(0)),
         "not caught up, threshold=0"
     );
     assert!(

@@ -69,7 +69,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, start: LogId<C>) -> Result<(), StorageError<C>> {
+    async fn delete_conflict_logs_since(&mut self, start: LogId<C::NodeId>) -> Result<(), StorageError<C>> {
         self.storage.delete_conflict_logs_since(start).await?;
 
         self.last_log_id = self.storage.get_log_state().await?.last_log_id;
@@ -165,9 +165,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level="trace", skip(self, entries), fields(entries=%entries.summary()))]
     async fn append_apply_log_entries(
         &mut self,
-        prev_log_id: Option<LogId<C>>,
+        prev_log_id: Option<LogId<C::NodeId>>,
         entries: &[Entry<C>],
-        committed: Option<LogId<C>>,
+        committed: Option<LogId<C::NodeId>>,
     ) -> Result<AppendEntriesResponse<C>, StorageError<C>> {
         let mismatched = self.does_log_id_match(prev_log_id).await?;
 
@@ -211,9 +211,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // This is guaranteed by caller.
         self.committed = committed;
 
-        self.replicate_to_state_machine_if_needed().await?;
+        let need_to_report_metrics = !self.replicate_to_state_machine_if_needed().await?;
 
-        self.report_metrics(Update::AsIs);
+        if need_to_report_metrics {
+            self.report_metrics(Update::AsIs);
+        }
 
         Ok(AppendEntriesResponse::Success)
     }
@@ -259,8 +261,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Raft only accept consecutive logs to be appended.
     pub async fn does_log_id_match(
         &mut self,
-        remote_log_id: Option<LogId<C>>,
-    ) -> Result<Option<LogId<C>>, StorageError<C>> {
+        remote_log_id: Option<LogId<C::NodeId>>,
+    ) -> Result<Option<LogId<C::NodeId>>, StorageError<C>> {
         let log_id = match remote_log_id {
             None => {
                 return Ok(None);
@@ -332,9 +334,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ///
     /// Very importantly, this routine must not block the main control loop main task, else it
     /// may cause the Raft leader to timeout the requests to this node.
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), StorageError<C>> {
-        tracing::debug!(?self.last_applied, "replicate_to_sm_if_needed");
+    /// return if or not has `report_metrics`， than caller donot need to call it again.
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<bool, StorageError<C>> {
+        tracing::debug!(?self.last_applied, ?self.committed, "replicate_to_sm_if_needed");
 
         // If we don't have any new entries to replicate, then do nothing.
         if self.committed <= self.last_applied {
@@ -343,7 +346,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.committed,
                 self.last_applied
             );
-            return Ok(());
+            return Ok(false);
         }
 
         // Drain entries from the beginning of the cache up to commit index.
@@ -364,6 +367,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.report_metrics(Update::AsIs);
         self.trigger_log_compaction_if_needed(false).await;
 
-        Ok(())
+        Ok(true)
     }
 }

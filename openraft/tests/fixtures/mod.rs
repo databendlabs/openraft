@@ -26,7 +26,7 @@ use memstore::MemStore;
 use openraft::async_trait::async_trait;
 use openraft::error::AddLearnerError;
 use openraft::error::AppendEntriesError;
-use openraft::error::ClientReadError;
+use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
@@ -500,7 +500,7 @@ where
     pub async fn wait_for_snapshot(
         &self,
         node_ids: &BTreeSet<C::NodeId>,
-        want: LogId<C>,
+        want: LogId<C::NodeId>,
         timeout: Option<Duration>,
         msg: &str,
     ) -> Result<()> {
@@ -559,13 +559,13 @@ where
         node.0.add_learner(target, None, blocking).await
     }
 
-    /// Send a client read request to the target node.
-    pub async fn client_read(&self, target: C::NodeId) -> Result<(), ClientReadError<C>> {
+    /// Send a is_leader request to the target node.
+    pub async fn is_leader(&self, target: C::NodeId) -> Result<(), CheckIsLeaderError<C>> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
             rt.get(&target).unwrap_or_else(|| panic!("node with ID {} does not exist", target)).clone()
         };
-        node.0.client_read().await
+        node.0.is_leader().await
     }
 
     /// Send a client request to the target node, causing test failure on error.
@@ -752,7 +752,7 @@ where
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<C::NodeId>,
-        expect_sm_last_applied_log: LogId<C>,
+        expect_sm_last_applied_log: LogId<C::NodeId>,
         expect_snapshot: &Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let last_log_id = storage.get_log_state().await?.last_log_id;
@@ -833,7 +833,7 @@ where
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<C::NodeId>,
-        expect_sm_last_applied_log: LogId<C>,
+        expect_sm_last_applied_log: LogId<C::NodeId>,
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let mut rt = self.routing_table.lock().unwrap();
@@ -865,7 +865,7 @@ where
         expect_term: u64,
         expect_last_log: u64,
         expect_voted_for: Option<C::NodeId>,
-        expect_sm_last_applied_log: LogId<C>,
+        expect_sm_last_applied_log: LogId<C::NodeId>,
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
         let mut rt = self.routing_table.lock().unwrap();

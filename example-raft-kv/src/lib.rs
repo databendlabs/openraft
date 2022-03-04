@@ -74,6 +74,7 @@ pub async fn start_example_raft_node(node_id: ExampleNodeId, http_addr: String) 
             // application API
             .service(api::write)
             .service(api::read)
+            .service(api::consistent_read)
     });
 
     let x = server.bind(http_addr)?;

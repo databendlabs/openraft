@@ -40,7 +40,7 @@ impl<C: RaftTypeConfig> Vote<C> {
         self.committed = true
     }
 
-    pub fn leader_id(&self) -> LeaderId<C> {
+    pub fn leader_id(&self) -> LeaderId<C::NodeId> {
         LeaderId::new(self.term, self.node_id)
     }
 
