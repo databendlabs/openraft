@@ -1,7 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use tokio::sync::oneshot;
 use tracing_futures::Instrument;
@@ -12,6 +9,7 @@ use crate::core::ReplicationState;
 use crate::core::SnapshotState;
 use crate::core::State;
 use crate::error::AddLearnerError;
+use crate::leader_metrics::UpdateMatchedLogId;
 use crate::raft::AddLearnerResponse;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
@@ -19,12 +17,12 @@ use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
+use crate::versioned::Updatable;
 use crate::vote::Vote;
 use crate::LogId;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
-use crate::ReplicationMetrics;
 use crate::StorageError;
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
@@ -181,23 +179,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_leader_metrics(&mut self, target: C::NodeId, matched: LogId<C::NodeId>) {
         tracing::debug!(%target, ?matched, "update_leader_metrics");
-        let (matched_leader_id, matched_index) = (matched.leader_id, matched.index);
 
-        if let Some(target_metrics) = self.leader_metrics.replication.get(&target) {
-            if target_metrics.matched_leader_id == matched_leader_id {
-                // we can update the metrics in-place
-                target_metrics.matched_index.store(matched_index, Ordering::Relaxed);
-                return;
-            }
-        }
-        // either the record does not exist or the leader ID is different
-        // create a new object with updated metrics
-        let mut metrics_clone = self.leader_metrics.as_ref().clone();
-        metrics_clone.replication.insert(target, ReplicationMetrics {
-            matched_leader_id,
-            matched_index: AtomicU64::new(matched_index),
-        });
-        self.leader_metrics = Arc::new(metrics_clone);
+        self.leader_metrics.update(UpdateMatchedLogId { target, matched });
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
