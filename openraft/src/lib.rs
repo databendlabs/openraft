@@ -4,6 +4,7 @@
 mod config;
 mod core;
 mod defensive;
+mod leader_metrics;
 mod membership;
 mod node;
 mod raft_types;
@@ -20,7 +21,10 @@ pub mod network;
 pub mod raft;
 pub mod storage;
 pub mod testing;
+pub mod versioned;
 
+#[cfg(test)]
+mod leader_metrics_test;
 #[cfg(test)]
 mod metrics_wait_test;
 

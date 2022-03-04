@@ -17,12 +17,14 @@ use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
 use crate::error::NodeIdNotInNodes;
+use crate::leader_metrics::RemoveTarget;
 use crate::membership::EitherNodesOrIds;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::EntryPayload;
 use crate::raft::RaftRespTx;
 use crate::raft_types::LogIdOptionExt;
+use crate::versioned::Updatable;
 use crate::LogId;
 use crate::Membership;
 use crate::Node;
@@ -337,9 +339,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         tracing::info!("removed replication to: {}", target);
         self.nodes.remove(&target);
-        let mut metrics_clone = self.leader_metrics.as_ref().clone();
-        metrics_clone.replication.remove(&target);
-        self.leader_metrics = Arc::new(metrics_clone);
+
+        self.leader_metrics.update(RemoveTarget { target });
+
         true
     }
 }

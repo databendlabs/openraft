@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use futures::stream::StreamExt;
+use maplit::btreemap;
 use maplit::btreeset;
-use maplit::hashmap;
 use openraft::raft::VoteRequest;
 use openraft::Config;
 use openraft::LeaderId;
@@ -68,7 +68,7 @@ async fn leader_metrics() -> Result<()> {
             &0,
             |x| {
                 if let Some(ref q) = x.leader_metrics {
-                    q.replication.is_empty()
+                    q.data().replication.is_empty()
                 } else {
                     false
                 }
@@ -110,13 +110,13 @@ async fn leader_metrics() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(log_index)).await; // Still in term 1, so leader is still node 0.
 
     let ww = ReplicationMetrics::new(LogId::new(LeaderId::new(1, 0), log_index));
-    let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone(), 4=>ww.clone(), };
+    let want_repl = btreemap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone(), 4=>ww.clone(), };
     router
         .wait_for_metrics(
             &0,
             |x| {
                 if let Some(ref q) = x.leader_metrics {
-                    q.replication == want_repl
+                    q.data().replication == want_repl
                 } else {
                     false
                 }
@@ -159,13 +159,13 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!("--- replication metrics should reflect the replication state");
     {
         let ww = ReplicationMetrics::new(LogId::new(LeaderId::new(1, 0), log_index));
-        let want_repl = hashmap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone()};
+        let want_repl = btreemap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone()};
         router
             .wait_for_metrics(
                 &0,
                 |x| {
                     if let Some(ref q) = x.leader_metrics {
-                        q.replication == want_repl
+                        q.data().replication == want_repl
                     } else {
                         false
                     }
