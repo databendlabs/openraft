@@ -739,6 +739,9 @@ impl<C: RaftTypeConfig> MessageSummary for &[Entry<C>] {
 
 impl<C: RaftTypeConfig> MessageSummary for &[&Entry<C>] {
     fn summary(&self) -> String {
+        if self.is_empty() {
+            return "{}".to_string();
+        }
         let mut res = Vec::with_capacity(self.len());
         if self.len() <= 5 {
             for x in self.iter() {

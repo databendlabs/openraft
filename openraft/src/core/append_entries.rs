@@ -350,7 +350,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// return if or not has `report_metrics`， than caller donot need to call it again.
     #[tracing::instrument(level = "debug", skip(self))]
     async fn replicate_to_state_machine_if_needed(&mut self) -> Result<bool, StorageError<C>> {
-        tracing::debug!(?self.last_applied, "replicate_to_sm_if_needed");
+        tracing::debug!(?self.last_applied, ?self.committed, "replicate_to_sm_if_needed");
 
         // If we don't have any new entries to replicate, then do nothing.
         if self.committed <= self.last_applied {
