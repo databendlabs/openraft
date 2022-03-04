@@ -18,7 +18,7 @@ use crate::ReplicationMetrics;
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeaderMetrics<C: RaftTypeConfig> {
     /// Replication metrics of all known replication target: voters and learners
-    pub replication: BTreeMap<C::NodeId, ReplicationMetrics<C>>,
+    pub replication: BTreeMap<C::NodeId, ReplicationMetrics<C::NodeId>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for LeaderMetrics<C> {

@@ -43,6 +43,7 @@ use crate::LeaderId;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::Node;
+use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
@@ -52,12 +53,13 @@ use crate::ToStorageResult;
 use crate::Vote;
 
 #[derive(Default, Debug, Serialize, Deserialize)]
-pub struct ReplicationMetrics<C: RaftTypeConfig> {
-    pub(crate) matched_leader_id: LeaderId<C::NodeId>,
+#[serde(bound = "")]
+pub struct ReplicationMetrics<NID: NodeId> {
+    pub(crate) matched_leader_id: LeaderId<NID>,
     pub(crate) matched_index: AtomicU64,
 }
 
-impl<C: RaftTypeConfig> Clone for ReplicationMetrics<C> {
+impl<NID: NodeId> Clone for ReplicationMetrics<NID> {
     fn clone(&self) -> Self {
         Self {
             matched_leader_id: self.matched_leader_id,
@@ -66,24 +68,24 @@ impl<C: RaftTypeConfig> Clone for ReplicationMetrics<C> {
     }
 }
 
-impl<C: RaftTypeConfig> PartialEq for ReplicationMetrics<C> {
+impl<NID: NodeId> PartialEq for ReplicationMetrics<NID> {
     fn eq(&self, other: &Self) -> bool {
         self.matched_leader_id == other.matched_leader_id
             && self.matched_index.load(Ordering::Relaxed) == other.matched_index.load(Ordering::Relaxed)
     }
 }
 
-impl<C: RaftTypeConfig> Eq for ReplicationMetrics<C> {}
+impl<NID: NodeId> Eq for ReplicationMetrics<NID> {}
 
-impl<C: RaftTypeConfig> ReplicationMetrics<C> {
-    pub fn new(log_id: LogId<C::NodeId>) -> Self {
+impl<NID: NodeId> ReplicationMetrics<NID> {
+    pub fn new(log_id: LogId<NID>) -> Self {
         Self {
             matched_leader_id: log_id.leader_id,
             matched_index: AtomicU64::new(log_id.index),
         }
     }
 
-    pub fn matched(&self) -> LogId<C::NodeId> {
+    pub fn matched(&self) -> LogId<NID> {
         let index = self.matched_index.load(Ordering::Relaxed);
         LogId {
             leader_id: self.matched_leader_id,
@@ -92,7 +94,7 @@ impl<C: RaftTypeConfig> ReplicationMetrics<C> {
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for ReplicationMetrics<C> {
+impl<NID: NodeId> MessageSummary for ReplicationMetrics<NID> {
     fn summary(&self) -> String {
         format!("{}", self.matched())
     }
