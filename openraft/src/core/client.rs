@@ -159,8 +159,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
             // If we receive a response with a greater term, then revert to follower and abort this request.
             if let AppendEntriesResponse::HigherVote(vote) = data {
-                self.core.vote = vote;
                 assert!(vote > self.core.vote);
+                self.core.vote = vote;
                 // TODO(xp): deal with storage error
                 self.core.save_vote().await.unwrap();
                 // TODO(xp): if receives error about a higher term, it should stop at once?
