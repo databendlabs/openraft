@@ -577,6 +577,19 @@ where
         }
     }
 
+    /// Send external request to the particular node.
+    pub fn external_request<F: FnOnce(State, &mut StoreExt<C, S>, &mut TypedRaftRouter<C, S>) + Send + 'static>(
+        &self,
+        target: C::NodeId,
+        req: F,
+    ) {
+        let rt = self.routing_table.lock().unwrap();
+        rt.get(&target)
+            .unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target))
+            .0
+            .external_request(req)
+    }
+
     /// Request the current leader from the target node.
     pub async fn current_leader(&self, target: C::NodeId) -> Option<C::NodeId> {
         let node = self.get_raft_handle(&target).unwrap();

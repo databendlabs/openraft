@@ -14,6 +14,7 @@ use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::RaftStorage;
 use openraft::State;
+use tokio::sync::oneshot;
 
 #[macro_use]
 mod fixtures;
@@ -47,6 +48,23 @@ async fn initialization() -> Result<()> {
     router.wait_for_state(&btreeset![0, 1, 2], State::Learner, timeout(), "empty").await?;
     router.assert_pristine_cluster().await;
 
+    // Sending an external requests will also find all nodes in Learner state.
+    //
+    // This demonstrates fire-and-forget external request, which will be serialized
+    // with other processing. It is not required for the correctness of the test
+    //
+    // Since the execution of API messages is serialized, even if the request executes
+    // some unknown time in the future (due to fire-and-forget semantics), it will
+    // properly receive the state before initialization, as that state will appear
+    // later in the sequence.
+    //
+    // Also, this external request will be definitely executed, since it's ordered
+    // before other requests in the Raft core API queue, which definitely are executed
+    // (since they are awaited).
+    for node in [0, 1, 2] {
+        router.external_request(node, |s, _sm, _net| assert_eq!(s, State::Learner));
+    }
+
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
@@ -77,6 +95,31 @@ async fn initialization() -> Result<()> {
             sm_mem
         );
     }
+
+    // At this time, one of the nodes is the leader, all the others are followers.
+    // Check via an external request as well. Again, this is not required for the
+    // correctness of the test.
+    //
+    // This demonstrates how to synchronize on the execution of the external
+    // request by using a oneshot channel.
+    let mut found_leader = false;
+    let mut follower_count = 0;
+    for node in [0, 1, 2] {
+        let (tx, rx) = oneshot::channel();
+        router.external_request(node, |s, _sm, _net| tx.send(s).unwrap());
+        match rx.await.unwrap() {
+            State::Leader => {
+                assert!(!found_leader);
+                found_leader = true;
+            }
+            State::Follower => {
+                follower_count += 1;
+            }
+            s => panic!("Unexpected node {} state: {:?}", node, s),
+        }
+    }
+    assert!(found_leader);
+    assert_eq!(2, follower_count);
 
     Ok(())
 }

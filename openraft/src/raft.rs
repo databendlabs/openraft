@@ -38,6 +38,7 @@ use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::SnapshotMeta;
+use crate::State;
 use crate::Vote;
 
 /// Configuration of types used by the [`Raft`] core engine.
@@ -104,7 +105,7 @@ macro_rules! declare_raft_types {
 }
 
 struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
-    tx_api: mpsc::UnboundedSender<(RaftMsg<C>, Span)>,
+    tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
     rx_metrics: watch::Receiver<RaftMetrics<C>>,
     #[allow(clippy::type_complexity)]
     raft_handle: Mutex<Option<JoinHandle<Result<(), Fatal<C>>>>>,
@@ -407,7 +408,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
-    pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<C>, rx: RaftRespRx<T, E>) -> Result<T, E>
+    pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<C, N, S>, rx: RaftRespRx<T, E>) -> Result<T, E>
     where E: From<Fatal<C>> {
         let span = tracing::Span::current();
 
@@ -449,6 +450,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         };
 
         res
+    }
+
+    /// Send a request to the Raft core loop in a fire-and-forget manner.
+    ///
+    /// The request functor will be called with a mutable reference to both the state machine
+    /// and the network factory and serialized with other Raft core loop processing (e.g., client
+    /// requests or general state changes). The current state of the system is passed as well.
+    ///
+    /// If a response is required, then the caller can store the sender of a one-shot channel
+    /// in the closure of the request functor, which can then be used to send the response
+    /// asynchronously.
+    ///
+    /// If the API channel is already closed (Raft is in shutdown), then the request functor is
+    /// destroyed right away and not called at all.
+    pub fn external_request<F: FnOnce(State, &mut S, &mut N) + Send + 'static>(&self, req: F) {
+        let _ignore_error = self.inner.tx_api.send((
+            RaftMsg::ExternalRequest { req: Box::new(req) },
+            tracing::span::Span::none(), // fire-and-forget, so no span
+        ));
     }
 
     /// Get a handle to the metrics channel.
@@ -513,7 +533,7 @@ pub struct AddLearnerResponse<C: RaftTypeConfig> {
 }
 
 /// A message coming from the Raft API.
-pub(crate) enum RaftMsg<C: RaftTypeConfig> {
+pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
         tx: RaftRespTx<AppendEntriesResponse<C>, AppendEntriesError<C>>,
@@ -564,10 +584,16 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig> {
 
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
     },
+    ExternalRequest {
+        req: Box<dyn FnOnce(State, &mut S, &mut N) + Send + 'static>,
+    },
 }
 
-impl<C> MessageSummary for RaftMsg<C>
-where C: RaftTypeConfig
+impl<C, N, S> MessageSummary for RaftMsg<C, N, S>
+where
+    C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
+    S: RaftStorage<C>,
 {
     fn summary(&self) -> String {
         match self {
@@ -601,6 +627,7 @@ where C: RaftTypeConfig
                     members, blocking, turn_to_learner,
                 )
             }
+            RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
         }
     }
 }
