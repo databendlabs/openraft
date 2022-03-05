@@ -53,7 +53,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub snapshot: Option<LogId<C::NodeId>>,
 
     /// The metrics about the leader. It is Some() only when this node is leader.
-    pub leader_metrics: Option<Versioned<LeaderMetrics<C>>>,
+    pub leader_metrics: Option<Versioned<LeaderMetrics<C::NodeId>>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for RaftMetrics<C> {
