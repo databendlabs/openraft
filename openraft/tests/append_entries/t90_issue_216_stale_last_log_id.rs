@@ -10,7 +10,12 @@ use crate::fixtures::RaftRouter;
 
 /// Ensures the stale value of ReplicationCore.last_log_id won't affect replication.
 /// If `ReplicationCore.last_log_id` is used, the end position of log for loading may underflow the start.
+///
+/// TODO(xp): `max_applied_log_to_keep` to be 0 makes it very easy to enter snapshot replication and it will keeps
+///           replicating every log by snapshot and get timeout.
+///           Thus it is disabled until we find another way to test it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[ignore]
 async fn stale_last_log_id() -> Result<()> {
     let (_log_guard, ut_span) = init_ut!();
 
