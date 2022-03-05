@@ -364,7 +364,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn report_metrics(&mut self, leader_metrics: Update<Option<&Versioned<LeaderMetrics<C>>>>) {
+    fn report_metrics(&mut self, leader_metrics: Update<Option<&Versioned<LeaderMetrics<C::NodeId>>>>) {
         let leader_metrics = match leader_metrics {
             Update::Update(v) => v.cloned(),
             Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
@@ -752,7 +752,7 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     pub(super) nodes: BTreeMap<C::NodeId, ReplicationState<C>>,
 
     /// The metrics about a leader
-    pub leader_metrics: Versioned<LeaderMetrics<C>>,
+    pub leader_metrics: Versioned<LeaderMetrics<C::NodeId>>,
 
     /// The stream of events coming from replication streams.
     pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<C, S::SnapshotData>, Span)>,

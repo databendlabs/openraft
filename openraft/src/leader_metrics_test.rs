@@ -1,6 +1,5 @@
 use crate::leader_metrics::LeaderMetrics;
 use crate::leader_metrics::UpdateMatchedLogId;
-use crate::testing::DummyConfig;
 use crate::versioned::Updatable;
 use crate::versioned::Versioned;
 use crate::LeaderId;
@@ -9,7 +8,7 @@ use crate::MessageSummary;
 
 #[test]
 fn test_versioned() -> anyhow::Result<()> {
-    let mut a = Versioned::new(LeaderMetrics::<DummyConfig> {
+    let mut a = Versioned::new(LeaderMetrics::<u64> {
         replication: Default::default(),
     });
 
@@ -86,7 +85,7 @@ fn test_versioned() -> anyhow::Result<()> {
 
 #[test]
 fn test_versioned_methods() -> anyhow::Result<()> {
-    let mut a = Versioned::new(LeaderMetrics::<DummyConfig> {
+    let mut a = Versioned::new(LeaderMetrics::<u64> {
         replication: Default::default(),
     });
 
