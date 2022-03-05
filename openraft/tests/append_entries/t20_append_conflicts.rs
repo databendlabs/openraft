@@ -49,8 +49,8 @@ async fn append_conflicts() -> Result<()> {
 
     let resp = r0.append_entries(req.clone()).await?;
 
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     tracing::info!("--- case 0: prev_log_id == None, 1 logs");
 
@@ -62,8 +62,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req.clone()).await?;
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     tracing::info!("--- case 0: prev_log_id == 1-1, 0 logs");
 
@@ -75,8 +75,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req.clone()).await?;
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     check_logs(&mut sto0, vec![0]).await?;
 
@@ -91,16 +91,16 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req.clone()).await?;
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     check_logs(&mut sto0, vec![0, 1, 1, 1, 1]).await?;
 
     tracing::info!("--- case 0: prev_log_id.index == 0, last_log_id mismatch");
 
     let resp = r0.append_entries(req.clone()).await?;
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     check_logs(&mut sto0, vec![0, 1, 1, 1, 1]).await?;
 
@@ -115,8 +115,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     check_logs(&mut sto0, vec![0, 1, 1, 1, 1]).await?;
 
@@ -131,8 +131,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     check_logs(&mut sto0, vec![0, 1, 1, 2]).await?;
 
@@ -145,8 +145,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(!resp.success);
-    assert!(resp.conflict);
+    assert!(!resp.is_success());
+    assert!(resp.is_conflict());
 
     check_logs(&mut sto0, vec![0, 1, 1, 2]).await?;
 
@@ -160,8 +160,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(!resp.success);
-    assert!(resp.conflict);
+    assert!(!resp.is_success());
+    assert!(resp.is_conflict());
 
     check_logs(&mut sto0, vec![0, 1, 1]).await?;
 
@@ -175,8 +175,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     // check prepared store
     check_logs(&mut sto0, vec![0, 1, 1, 2, 2, 2]).await?;
@@ -190,8 +190,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     check_logs(&mut sto0, vec![0, 1, 1, 2, 3]).await?;
 
@@ -206,8 +206,8 @@ async fn append_conflicts() -> Result<()> {
     };
 
     let resp = r0.append_entries(req).await?;
-    assert!(!resp.success);
-    assert!(resp.conflict);
+    assert!(!resp.is_success());
+    assert!(resp.is_conflict());
 
     Ok(())
 }

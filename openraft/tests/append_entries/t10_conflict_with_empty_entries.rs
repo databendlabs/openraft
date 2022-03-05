@@ -54,8 +54,8 @@ async fn conflict_with_empty_entries() -> Result<()> {
     };
 
     let resp = router.connect(0, None).await.send_append_entries(rpc).await?;
-    assert!(!resp.success);
-    assert!(resp.conflict);
+    assert!(!resp.is_success());
+    assert!(resp.is_conflict());
 
     // Feed logs
 
@@ -74,8 +74,8 @@ async fn conflict_with_empty_entries() -> Result<()> {
     };
 
     let resp = router.connect(0, None).await.send_append_entries(rpc).await?;
-    assert!(resp.success);
-    assert!(!resp.conflict);
+    assert!(resp.is_success());
+    assert!(!resp.is_conflict());
 
     // Expect a conflict with prev_log_index == 3
 
@@ -87,8 +87,8 @@ async fn conflict_with_empty_entries() -> Result<()> {
     };
 
     let resp = router.connect(0, None).await.send_append_entries(rpc).await?;
-    assert!(!resp.success);
-    assert!(resp.conflict);
+    assert!(!resp.is_success());
+    assert!(resp.is_conflict());
 
     Ok(())
 }

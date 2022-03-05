@@ -17,6 +17,7 @@ use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
 use crate::raft::AppendEntriesRequest;
+use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
@@ -157,8 +158,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             };
 
             // If we receive a response with a greater term, then revert to follower and abort this request.
-            if data.vote > self.core.vote {
-                self.core.vote = data.vote;
+            if let AppendEntriesResponse::HigherVote(vote) = data {
+                assert!(vote > self.core.vote);
+                self.core.vote = vote;
                 // TODO(xp): deal with storage error
                 self.core.save_vote().await.unwrap();
                 // TODO(xp): if receives error about a higher term, it should stop at once?
