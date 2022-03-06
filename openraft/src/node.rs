@@ -49,7 +49,6 @@ impl<T> NodeId for T where T: Sized
         + Default
         + serde::Serialize
         + for<'a> serde::Deserialize<'a>
-        + From<u64>
         + 'static
 {
 }
