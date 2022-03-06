@@ -195,7 +195,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     tx_compaction: mpsc::Sender<SnapshotUpdate<C>>,
     rx_compaction: mpsc::Receiver<SnapshotUpdate<C>>,
 
-    rx_api: mpsc::UnboundedReceiver<(RaftMsg<C>, Span)>,
+    rx_api: mpsc::UnboundedReceiver<(RaftMsg<C, N, S>, Span)>,
 
     tx_metrics: watch::Sender<RaftMetrics<C>>,
 
@@ -208,7 +208,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         config: Arc<Config>,
         network: N,
         storage: S,
-        rx_api: mpsc::UnboundedReceiver<(RaftMsg<C>, Span)>,
+        rx_api: mpsc::UnboundedReceiver<(RaftMsg<C, N, S>, Span)>,
         tx_metrics: watch::Sender<RaftMetrics<C>>,
         rx_shutdown: oneshot::Receiver<()>,
     ) -> JoinHandle<Result<(), Fatal<C>>> {
@@ -849,7 +849,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "leader", id=display(self.core.id)))]
-    pub async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal<C>> {
+    pub async fn handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
@@ -884,6 +884,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 tx,
             } => {
                 self.change_membership(members, blocking, turn_to_learner, tx).await?;
+            }
+            RaftMsg::ExternalRequest { req } => {
+                req(State::Leader, &mut self.core.storage, &mut self.core.network);
             }
         };
 
@@ -1016,7 +1019,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
     }
 
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "candidate", id=display(self.core.id)))]
-    pub async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal<C>> {
+    pub async fn handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
@@ -1042,6 +1045,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
             }
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::ExternalRequest { req } => {
+                req(State::Candidate, &mut self.core.storage, &mut self.core.network);
             }
         };
         Ok(())
@@ -1091,7 +1097,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
     }
 
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "follower", id=display(self.core.id)))]
-    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal<C>> {
+    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
@@ -1118,6 +1124,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
             }
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::ExternalRequest { req } => {
+                req(State::Follower, &mut self.core.storage, &mut self.core.network);
             }
         };
         Ok(())
@@ -1165,7 +1174,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
 
     // TODO(xp): define a handle_msg method in RaftCore that decides what to do by current State.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "learner", id=display(self.core.id)))]
-    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C>) -> Result<(), Fatal<C>> {
+    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
@@ -1192,6 +1201,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
             }
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::ExternalRequest { req } => {
+                req(State::Learner, &mut self.core.storage, &mut self.core.network);
             }
         };
         Ok(())
