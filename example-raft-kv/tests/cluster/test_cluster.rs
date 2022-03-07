@@ -87,11 +87,11 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     let nodes_in_cluster = x.membership_config.get_nodes();
     assert_eq!(
-        Some(&btreemap! {
-            1 => Node::new("127.0.0.1:21001"),
-            2 => Node::new("127.0.0.1:21002"),
-            3 => Node::new("127.0.0.1:21003"),
-        }),
+        &btreemap! {
+            1 => Some(Node::new("127.0.0.1:21001")),
+            2 => Some(Node::new("127.0.0.1:21002")),
+            3 => Some(Node::new("127.0.0.1:21003")),
+        },
         nodes_in_cluster
     );
 

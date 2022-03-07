@@ -118,7 +118,8 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
         &self.all_members
     }
 
-    pub(crate) fn all_learners(&self) -> &BTreeSet<C::NodeId> {
+    // TODO(xp): make it an iter
+    pub(crate) fn all_learners(&self) -> BTreeSet<C::NodeId> {
         self.membership.all_learners()
     }
 
@@ -127,12 +128,12 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
         self.membership.get_configs()
     }
 
-    pub fn get_node(&self, node_id: C::NodeId) -> Option<&Node> {
+    pub fn get_node(&self, node_id: &C::NodeId) -> Option<&Node> {
         self.membership.get_node(node_id)
     }
 
-    pub fn get_nodes(&self) -> Option<&BTreeMap<C::NodeId, Node>> {
-        self.membership.get_nodes().as_ref()
+    pub fn get_nodes(&self) -> &BTreeMap<C::NodeId, Option<Node>> {
+        self.membership.get_nodes()
     }
 }
 
@@ -607,7 +608,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<Node> {
         match leader_id {
             None => None,
-            Some(id) => self.effective_membership.get_node(id).cloned(),
+            Some(id) => self.effective_membership.get_node(&id).cloned(),
         }
     }
 }

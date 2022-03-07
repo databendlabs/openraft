@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::option::Option::None;
 use std::sync::Arc;
@@ -14,11 +15,10 @@ use crate::error::ClientWriteError;
 use crate::error::EmptyMembership;
 use crate::error::InProgress;
 use crate::error::InitializeError;
+use crate::error::LackNodeInfo;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
-use crate::error::NodeIdNotInNodes;
 use crate::leader_metrics::RemoveTarget;
-use crate::membership::EitherNodesOrIds;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::EntryPayload;
@@ -38,7 +38,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_init_with_config(
         &mut self,
-        members: EitherNodesOrIds<C>,
+        members: BTreeMap<C::NodeId, Option<Node>>,
     ) -> Result<(), InitializeError<C>> {
         // TODO(xp): simplify this condition
 
@@ -49,17 +49,17 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
             return Err(InitializeError::NotAllowed);
         }
 
-        let node_ids = members.node_ids();
+        let node_ids = members.keys().cloned().collect::<BTreeSet<C::NodeId>>();
 
         if !node_ids.contains(&self.core.id) {
-            let e = NodeIdNotInNodes {
+            let e = LackNodeInfo {
                 node_id: self.core.id,
-                node_ids,
+                reason: "can not be initialized: it is not a member".to_string(),
             };
-            return Err(InitializeError::NodeNotInCluster(e));
+            return Err(InitializeError::LackNodeInfo(e));
         }
 
-        let membership = Membership::new(vec![node_ids], None).set_nodes(members.nodes())?;
+        let membership = Membership::with_nodes(vec![node_ids], members)?;
 
         let payload = EntryPayload::Membership(membership.clone());
         let _ent = self.core.append_payload_to_log(payload).await?;
@@ -77,7 +77,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         target: C::NodeId,
         node: Option<Node>,
-    ) -> Result<bool, NodeIdNotInNodes<C>> {
+    ) -> Result<bool, LackNodeInfo<C>> {
         tracing::debug!(
             "add_learner_into_membership target node {:?} into learner {:?}",
             target,
@@ -195,7 +195,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             match res {
                 Ok(x) => x,
                 Err(e) => {
-                    let change_err = ChangeMembershipError::NodeNotInCluster(e);
+                    let change_err = ChangeMembershipError::LackNodeInfo(e);
                     let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(change_err)));
                     return Ok(());
                 }

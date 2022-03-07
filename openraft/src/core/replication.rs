@@ -33,7 +33,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         target: C::NodeId,
         caller_tx: Option<RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C>>>,
     ) -> ReplicationState<C> {
-        let target_node = self.core.effective_membership.get_node(target);
+        let target_node = self.core.effective_membership.get_node(&target);
         let repl_stream = ReplicationStream::new::<N, S>(
             target,
             target_node.cloned(),

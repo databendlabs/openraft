@@ -149,7 +149,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
         for member in all_nodes.into_iter().filter(|member| member != &self.core.id) {
             let rpc = VoteRequest::new(self.core.vote, self.core.last_log_id);
 
-            let target_node = self.core.effective_membership.get_node(member).cloned();
+            let target_node = self.core.effective_membership.get_node(&member).cloned();
 
             let (mut network, tx_inner) = (
                 self.core.network.connect(member, target_node.as_ref()).await,
