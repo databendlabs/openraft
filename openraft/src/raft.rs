@@ -278,7 +278,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// Then it starts to work, i.e., entering Candidate state and try electing itself as the leader.
     ///
     /// More than one node performing `initialize()` with the same config is safe,
-    /// with different config will result in brain split.
+    /// with different config will result in split brain condition.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize<T>(&self, members: T) -> Result<(), InitializeError<C>>
     where T: IntoOptionNodes<C::NodeId> + Debug {
