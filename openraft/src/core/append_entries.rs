@@ -14,7 +14,7 @@ use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::Update;
+use crate::UpdateMetricsOption;
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -47,7 +47,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.set_target_state(State::Follower); // State update will emit metrics.
             }
 
-            self.report_metrics(Update::AsIs);
+            self.update_metrics_option(UpdateMetricsOption::AsIs);
         }
 
         // Caveat: [commit-index must not advance the last known consistent log](https://datafuselabs.github.io/openraft/replication.html#caveat-commit-index-must-not-advance-the-last-known-consistent-log)
@@ -160,6 +160,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
+    pub fn update_metrics_option(&mut self, option: UpdateMetricsOption) {
+        if self.update_metrics == Some(UpdateMetricsOption::Update) {
+            return;
+        }
+
+        self.update_metrics = Some(option);
+    }
+
     /// Append logs only when the first entry(prev_log_id) matches local store
     /// This way we keeps the log continuity.
     #[tracing::instrument(level="trace", skip(self, entries), fields(entries=%entries.summary()))]
@@ -214,7 +222,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let need_to_report_metrics = !self.replicate_to_state_machine_if_needed().await?;
 
         if need_to_report_metrics {
-            self.report_metrics(Update::AsIs);
+            self.update_metrics_option(UpdateMetricsOption::AsIs);
         }
 
         Ok(AppendEntriesResponse::Success)
@@ -364,7 +372,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.last_applied = Some(last_log_id);
 
-        self.report_metrics(Update::AsIs);
+        self.update_metrics_option(UpdateMetricsOption::AsIs);
         self.trigger_log_compaction_if_needed(false).await;
 
         Ok(true)
