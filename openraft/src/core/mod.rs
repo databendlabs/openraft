@@ -143,6 +143,22 @@ impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
     }
 }
 
+#[allow(clippy::complexity)]
+pub trait MetricsReporter<C: RaftTypeConfig> {
+    fn get_update_metrics_option(
+        &self,
+        option: Option<UpdateMetricsOption>,
+    ) -> Option<Update<Option<Versioned<LeaderMetrics<C::NodeId>>>>> {
+        match option {
+            Some(op) => match op {
+                UpdateMetricsOption::AsIs => Some(Update::AsIs),
+                UpdateMetricsOption::Update => Some(Update::Update(None)),
+            },
+            None => None,
+        }
+    }
+}
+
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     /// This node's ID.
@@ -374,17 +390,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Hook function that executes after every state loop
-    pub fn post_state_loop(&mut self, leader_metrics: Option<Update<Option<&Versioned<LeaderMetrics<C::NodeId>>>>>) {
-        if let Some(op) = leader_metrics {
+    pub fn post_state_loop(&self, metrics_reporter: &dyn MetricsReporter<C>) {
+        if let Some(op) = metrics_reporter.get_update_metrics_option(self.update_metrics.clone()) {
             self.report_metrics(op)
         }
     }
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn report_metrics(&mut self, leader_metrics: Update<Option<&Versioned<LeaderMetrics<C::NodeId>>>>) {
+    fn report_metrics(&self, leader_metrics: Update<Option<Versioned<LeaderMetrics<C::NodeId>>>>) {
         let leader_metrics = match leader_metrics {
-            Update::Update(v) => v.cloned(),
+            Update::Update(v) => v,
             Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
         };
 
@@ -782,6 +798,23 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     pub(super) awaiting_committed: Vec<ClientRequestEntry<C>>,
 }
 
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsReporter<C>
+    for LeaderState<'a, C, N, S>
+{
+    fn get_update_metrics_option(
+        &self,
+        option: Option<UpdateMetricsOption>,
+    ) -> Option<Update<Option<Versioned<LeaderMetrics<C::NodeId>>>>> {
+        match option {
+            Some(op) => match op {
+                UpdateMetricsOption::AsIs => Some(Update::AsIs),
+                UpdateMetricsOption::Update => Some(Update::Update(Some(self.leader_metrics.clone()))),
+            },
+            None => None,
+        }
+    }
+}
+
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Create a new instance.
     pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
@@ -866,14 +899,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 }
             }
 
-            let option = match self.core.update_metrics.clone() {
-                Some(op) => match op {
-                    UpdateMetricsOption::AsIs => Some(Update::AsIs),
-                    UpdateMetricsOption::Update => Some(Update::Update(Some(&self.leader_metrics))),
-                },
-                None => None,
-            };
-            self.core.post_state_loop(option);
+            self.core.post_state_loop(&self);
         }
     }
 
@@ -975,6 +1001,11 @@ struct CandidateState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftSt
     granted: BTreeSet<C::NodeId>,
 }
 
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsReporter<C>
+    for CandidateState<'a, C, N, S>
+{
+}
+
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> CandidateState<'a, C, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
         Self {
@@ -1052,14 +1083,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
                 }
             }
 
-            let option = match self.core.update_metrics.clone() {
-                Some(op) => match op {
-                    UpdateMetricsOption::AsIs => Some(Update::AsIs),
-                    UpdateMetricsOption::Update => Some(Update::Update(None)),
-                },
-                None => None,
-            };
-            self.core.post_state_loop(option);
+            self.core.post_state_loop(&self);
         }
     }
 
@@ -1106,6 +1130,11 @@ pub struct FollowerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: Raf
     core: &'a mut RaftCore<C, N, S>,
 }
 
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsReporter<C>
+    for FollowerState<'a, C, N, S>
+{
+}
+
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> FollowerState<'a, C, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
         Self { core }
@@ -1147,14 +1176,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
 
-            let option = match self.core.update_metrics.clone() {
-                Some(op) => match op {
-                    UpdateMetricsOption::AsIs => Some(Update::AsIs),
-                    UpdateMetricsOption::Update => Some(Update::Update(None)),
-                },
-                None => None,
-            };
-            self.core.post_state_loop(option);
+            self.core.post_state_loop(&self);
         }
     }
 
@@ -1202,6 +1224,11 @@ pub struct LearnerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: Raft
     core: &'a mut RaftCore<C, N, S>,
 }
 
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsReporter<C>
+    for LearnerState<'a, C, N, S>
+{
+}
+
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
     pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
         Self { core }
@@ -1238,14 +1265,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
 
-            let option = match self.core.update_metrics.clone() {
-                Some(op) => match op {
-                    UpdateMetricsOption::AsIs => Some(Update::AsIs),
-                    UpdateMetricsOption::Update => Some(Update::Update(None)),
-                },
-                None => None,
-            };
-            self.core.post_state_loop(option);
+            self.core.post_state_loop(&self);
         }
     }
 
