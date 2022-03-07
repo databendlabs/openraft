@@ -4,7 +4,7 @@ use std::option::Option::None;
 use maplit::btreemap;
 use maplit::btreeset;
 
-use crate::error::LackNodeInfo;
+use crate::error::MissingNodeInfo;
 use crate::testing::DummyConfig as Config;
 use crate::Membership;
 use crate::MessageSummary;
@@ -141,7 +141,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
     {
         let res = m_1_2.add_learner(3, None);
         assert_eq!(
-            Err(LackNodeInfo {
+            Err(MissingNodeInfo {
                 node_id: 3,
                 reason: "is None".to_string(),
             }),
@@ -155,7 +155,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
         let res = m_1_2.add_learner(3, Some(node("3")));
         assert_eq!(
-            Err(LackNodeInfo {
+            Err(MissingNodeInfo {
                 node_id: 1,
                 reason: "is None".to_string(),
             }),
@@ -226,7 +226,7 @@ fn test_membership_with_nodes() -> anyhow::Result<()> {
     // errors:
     let res = m(btreemap! {1=>None});
     assert_eq!(
-        Err(LackNodeInfo {
+        Err(MissingNodeInfo {
             node_id: 2,
             reason: "is not in cluster: [1]".to_string(),
         }),
@@ -235,7 +235,7 @@ fn test_membership_with_nodes() -> anyhow::Result<()> {
 
     let res = m(btreemap! {1=>None,2=>node()});
     assert_eq!(
-        Err(LackNodeInfo {
+        Err(MissingNodeInfo {
             node_id: 1,
             reason: "is None".to_string(),
         }),
@@ -394,7 +394,7 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
 
         let res = without_nodes.next_safe(btreemap! {1=>node("1"), 3=>node("3")}, false);
         assert_eq!(
-            Err(LackNodeInfo {
+            Err(MissingNodeInfo {
                 node_id: 1,
                 reason: "is None".to_string(),
             }),
@@ -421,7 +421,7 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
 
         let res = with_node_infos.next_safe(btreeset! {1,3}, false);
         assert_eq!(
-            Err(LackNodeInfo {
+            Err(MissingNodeInfo {
                 node_id: 3,
                 reason: "is None".to_string(),
             }),

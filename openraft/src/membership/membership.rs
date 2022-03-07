@@ -8,7 +8,7 @@ use maplit::btreeset;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::error::LackNodeInfo;
+use crate::error::MissingNodeInfo;
 use crate::membership::quorum;
 use crate::MessageSummary;
 use crate::Node;
@@ -132,7 +132,7 @@ impl<C: RaftTypeConfig> Membership<C> {
     /// - `BTreeMap<NodeId, Node>` or `BTreeMap<NodeId, Option<Node>>` to specify learner nodes with node infos. Node
     ///   ids not in `configs` are learner node ids. In this case, every node id in `configs` has to present in `nodes`
     ///   or an error will be returned.
-    pub(crate) fn with_nodes<T>(configs: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Result<Self, LackNodeInfo<C>>
+    pub(crate) fn with_nodes<T>(configs: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Result<Self, MissingNodeInfo<C>>
     where T: IntoOptionNodes<C::NodeId> {
         let all_members = Self::build_all_members(&configs);
 
@@ -140,7 +140,7 @@ impl<C: RaftTypeConfig> Membership<C> {
 
         for node_id in all_members.iter() {
             if !nodes.contains_key(node_id) {
-                return Err(LackNodeInfo {
+                return Err(MissingNodeInfo {
                     node_id: *node_id,
                     reason: format!("is not in cluster: {:?}", nodes.keys().cloned().collect::<Vec<_>>()),
                 });
@@ -151,7 +151,7 @@ impl<C: RaftTypeConfig> Membership<C> {
         if has_some {
             let first_none = nodes.iter().find(|(_node_id, v)| v.is_none());
             if let Some(first_none) = first_none {
-                return Err(LackNodeInfo {
+                return Err(MissingNodeInfo {
                     node_id: *first_none.0,
                     reason: "is None".to_string(),
                 });
@@ -199,7 +199,7 @@ impl<C: RaftTypeConfig> Membership<C> {
         self.configs.len() > 1
     }
 
-    pub(crate) fn add_learner(&self, node_id: C::NodeId, node: Option<Node>) -> Result<Self, LackNodeInfo<C>> {
+    pub(crate) fn add_learner(&self, node_id: C::NodeId, node: Option<Node>) -> Result<Self, MissingNodeInfo<C>> {
         let configs = self.configs.clone();
 
         let nodes = Self::extend_nodes(self.nodes.clone(), &btreemap! {node_id=>node});
@@ -325,7 +325,7 @@ impl<C: RaftTypeConfig> Membership<C> {
     ///     curr = next;
     /// }
     /// ```
-    pub(crate) fn next_safe<T>(&self, goal: T, turn_to_learner: bool) -> Result<Self, LackNodeInfo<C>>
+    pub(crate) fn next_safe<T>(&self, goal: T, turn_to_learner: bool) -> Result<Self, MissingNodeInfo<C>>
     where T: IntoOptionNodes<C::NodeId> {
         let goal = goal.into_option_nodes();
 

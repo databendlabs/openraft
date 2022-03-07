@@ -15,9 +15,9 @@ use crate::error::ClientWriteError;
 use crate::error::EmptyMembership;
 use crate::error::InProgress;
 use crate::error::InitializeError;
-use crate::error::LackNodeInfo;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
+use crate::error::MissingNodeInfo;
 use crate::leader_metrics::RemoveTarget;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
@@ -52,11 +52,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
         let node_ids = members.keys().cloned().collect::<BTreeSet<C::NodeId>>();
 
         if !node_ids.contains(&self.core.id) {
-            let e = LackNodeInfo {
+            let e = MissingNodeInfo {
                 node_id: self.core.id,
                 reason: "can not be initialized: it is not a member".to_string(),
             };
-            return Err(InitializeError::LackNodeInfo(e));
+            return Err(InitializeError::MissingNodeInfo(e));
         }
 
         let membership = Membership::with_nodes(vec![node_ids], members)?;
@@ -77,7 +77,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         target: C::NodeId,
         node: Option<Node>,
-    ) -> Result<bool, LackNodeInfo<C>> {
+    ) -> Result<bool, MissingNodeInfo<C>> {
         tracing::debug!(
             "add_learner_into_membership target node {:?} into learner {:?}",
             target,
@@ -195,7 +195,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             match res {
                 Ok(x) => x,
                 Err(e) => {
-                    let change_err = ChangeMembershipError::LackNodeInfo(e);
+                    let change_err = ChangeMembershipError::MissingNodeInfo(e);
                     let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(change_err)));
                     return Ok(());
                 }

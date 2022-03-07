@@ -116,7 +116,7 @@ pub enum ChangeMembershipError<C: RaftTypeConfig> {
     LearnerIsLagging(#[from] LearnerIsLagging<C>),
 
     #[error(transparent)]
-    LackNodeInfo(#[from] LackNodeInfo<C>),
+    MissingNodeInfo(#[from] MissingNodeInfo<C>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -128,7 +128,7 @@ pub enum AddLearnerError<C: RaftTypeConfig> {
     Exists(C::NodeId),
 
     #[error(transparent)]
-    LackNodeInfo(#[from] LackNodeInfo<C>),
+    MissingNodeInfo(#[from] MissingNodeInfo<C>),
 
     #[error(transparent)]
     Fatal(#[from] Fatal<C>),
@@ -153,7 +153,7 @@ pub enum InitializeError<C: RaftTypeConfig> {
     NotAllowed,
 
     #[error(transparent)]
-    LackNodeInfo(#[from] LackNodeInfo<C>),
+    MissingNodeInfo(#[from] MissingNodeInfo<C>),
 
     #[error(transparent)]
     Fatal(#[from] Fatal<C>),
@@ -358,7 +358,7 @@ pub struct LearnerIsLagging<C: RaftTypeConfig> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("node {node_id} {reason}")]
-pub struct LackNodeInfo<C: RaftTypeConfig> {
+pub struct MissingNodeInfo<C: RaftTypeConfig> {
     pub node_id: C::NodeId,
     pub reason: String,
 }
