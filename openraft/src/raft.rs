@@ -1,5 +1,6 @@
 //! Public Raft interface and data types.
 
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -25,7 +26,7 @@ use crate::error::Fatal;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::error::VoteError;
-use crate::membership::EitherNodesOrIds;
+use crate::membership::IntoOptionNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::AppData;
@@ -272,27 +273,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// which will allow time for the initial members of the cluster to be discovered (by the
     /// parent application) for this call.
     ///
-    /// If successful, this routine will set the given config as the active config, only in memory,
-    /// and will start an election.
+    /// Once a node successfully initialized it will commit a new membership config
+    /// log entry to store.
+    /// Then it starts to work, i.e., entering Candidate state and try electing itself as the leader.
     ///
-    /// It is recommended that applications call this function based on an initial call to
-    /// `RaftStorage.get_initial_state`. If the initial state indicates that the hard state's
-    /// current term is `0` and the `last_log_index` is `0`, then this routine should be called
-    /// in order to initialize the cluster.
-    ///
-    /// Once a node becomes leader and detects that its index is 0, it will commit a new config
-    /// entry (instead of the normal blank entry created by new leaders).
-    ///
-    /// Every member of the cluster should perform these actions. This routine is race-condition
-    /// free, and Raft guarantees that the first node to become the cluster leader will propagate
-    /// only its own config.
+    /// More than one node performing `initialize()` with the same config is safe,
+    /// with different config will result in split brain condition.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize<T>(&self, members: T) -> Result<(), InitializeError<C>>
-    where T: Into<EitherNodesOrIds<C>> + Debug {
+    where T: IntoOptionNodes<C::NodeId> + Debug {
         let (tx, rx) = oneshot::channel();
         self.call_core(
             RaftMsg::Initialize {
-                members: members.into(),
+                members: members.into_option_nodes(),
                 tx,
             },
             rx,
@@ -554,7 +547,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         tx: RaftRespTx<(), CheckIsLeaderError<C>>,
     },
     Initialize {
-        members: EitherNodesOrIds<C>,
+        members: BTreeMap<C::NodeId, Option<Node>>,
         tx: RaftRespTx<(), InitializeError<C>>,
     },
     // TODO(xp): make tx a field of a struct

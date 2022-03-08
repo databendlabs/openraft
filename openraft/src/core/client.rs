@@ -110,7 +110,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
             let my_id = self.core.id;
             let target = *target;
-            let target_node = self.core.effective_membership.get_node(target).cloned();
+            let target_node = self.core.effective_membership.get_node(&target).cloned();
             let mut network = self.core.network.connect(target, target_node.as_ref()).await;
 
             let ttl = Duration::from_millis(self.core.config.heartbeat_interval);

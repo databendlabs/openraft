@@ -116,7 +116,7 @@ pub enum ChangeMembershipError<C: RaftTypeConfig> {
     LearnerIsLagging(#[from] LearnerIsLagging<C>),
 
     #[error(transparent)]
-    NodeNotInCluster(#[from] NodeIdNotInNodes<C>),
+    MissingNodeInfo(#[from] MissingNodeInfo<C>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -128,7 +128,7 @@ pub enum AddLearnerError<C: RaftTypeConfig> {
     Exists(C::NodeId),
 
     #[error(transparent)]
-    NodeNotInCluster(#[from] NodeIdNotInNodes<C>),
+    MissingNodeInfo(#[from] MissingNodeInfo<C>),
 
     #[error(transparent)]
     Fatal(#[from] Fatal<C>),
@@ -153,7 +153,7 @@ pub enum InitializeError<C: RaftTypeConfig> {
     NotAllowed,
 
     #[error(transparent)]
-    NodeNotInCluster(#[from] NodeIdNotInNodes<C>),
+    MissingNodeInfo(#[from] MissingNodeInfo<C>),
 
     #[error(transparent)]
     Fatal(#[from] Fatal<C>),
@@ -357,10 +357,10 @@ pub struct LearnerIsLagging<C: RaftTypeConfig> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error("node {node_id} not found in cluster: {node_ids:?}")]
-pub struct NodeIdNotInNodes<C: RaftTypeConfig> {
+#[error("node {node_id} {reason}")]
+pub struct MissingNodeInfo<C: RaftTypeConfig> {
     pub node_id: C::NodeId,
-    pub node_ids: BTreeSet<C::NodeId>,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
