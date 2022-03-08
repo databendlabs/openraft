@@ -161,11 +161,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     pub fn update_metrics_option(&mut self, option: UpdateMetricsOption) {
-        if self.update_metrics == Some(UpdateMetricsOption::Update) {
+        // cannot overwrite `update_metrics` if already in the `Update` option
+        if self.update_metrics == UpdateMetricsOption::Update {
             return;
         }
 
-        self.update_metrics = Some(option);
+        self.update_metrics = option;
     }
 
     /// Append logs only when the first entry(prev_log_id) matches local store

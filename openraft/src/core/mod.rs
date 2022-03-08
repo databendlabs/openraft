@@ -150,17 +150,16 @@ impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
 }
 
 #[allow(clippy::complexity)]
-pub trait MetricsReporter<C: RaftTypeConfig> {
+pub trait MetricsOptionUpdater<C: RaftTypeConfig> {
+    // the default impl of `get_update_metrics_option`, for the non-leader state
     fn get_update_metrics_option(
         &self,
-        option: Option<UpdateMetricsOption>,
+        option: UpdateMetricsOption,
     ) -> Option<Update<Option<Versioned<LeaderMetrics<C::NodeId>>>>> {
         match option {
-            Some(op) => match op {
-                UpdateMetricsOption::AsIs => Some(Update::AsIs),
-                UpdateMetricsOption::Update => Some(Update::Update(None)),
-            },
-            None => None,
+            UpdateMetricsOption::AsIs => Some(Update::AsIs),
+            UpdateMetricsOption::Update => Some(Update::Update(None)),
+            UpdateMetricsOption::NoUpdate => None,
         }
     }
 }
@@ -213,7 +212,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     last_heartbeat: Option<Instant>,
 
     /// Options of update the metrics
-    update_metrics: Option<UpdateMetricsOption>,
+    update_metrics: UpdateMetricsOption,
 
     /// The duration until the next election timeout.
     next_election_timeout: Option<Instant>,
@@ -258,7 +257,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             snapshot_state: None,
             snapshot_last_log_id: None,
             last_heartbeat: None,
-            update_metrics: None,
+            update_metrics: UpdateMetricsOption::NoUpdate,
             next_election_timeout: None,
 
             tx_compaction,
@@ -392,11 +391,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Hook function that executes before every state loop
     pub fn pre_state_loop(&mut self) {
         // reset update_metrics
-        self.update_metrics = None;
+        self.update_metrics = UpdateMetricsOption::NoUpdate;
     }
 
     /// Hook function that executes after every state loop
-    pub fn post_state_loop(&self, metrics_reporter: &dyn MetricsReporter<C>) {
+    pub fn post_state_loop(&self, metrics_reporter: &impl MetricsOptionUpdater<C>) {
         if let Some(op) = metrics_reporter.get_update_metrics_option(self.update_metrics.clone()) {
             self.report_metrics(op)
         }
@@ -804,20 +803,17 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     pub(super) awaiting_committed: Vec<ClientRequestEntry<C>>,
 }
 
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsReporter<C>
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsOptionUpdater<C>
     for LeaderState<'a, C, N, S>
 {
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="leader"))]
     fn get_update_metrics_option(
         &self,
-        option: Option<UpdateMetricsOption>,
+        option: UpdateMetricsOption,
     ) -> Option<Update<Option<Versioned<LeaderMetrics<C::NodeId>>>>> {
         match option {
-            Some(op) => match op {
-                UpdateMetricsOption::AsIs => Some(Update::AsIs),
-                UpdateMetricsOption::Update => Some(Update::Update(Some(self.leader_metrics.clone()))),
-            },
-            None => None,
+            UpdateMetricsOption::AsIs => Some(Update::AsIs),
+            UpdateMetricsOption::Update => Some(Update::Update(Some(self.leader_metrics.clone()))),
+            UpdateMetricsOption::NoUpdate => None,
         }
     }
 }
@@ -1008,9 +1004,10 @@ struct CandidateState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftSt
     granted: BTreeSet<C::NodeId>,
 }
 
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsReporter<C>
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsOptionUpdater<C>
     for CandidateState<'a, C, N, S>
 {
+    // the non-leader state use the default impl of `get_update_metrics_option`
 }
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> CandidateState<'a, C, N, S> {
@@ -1139,9 +1136,10 @@ pub struct FollowerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: Raf
     core: &'a mut RaftCore<C, N, S>,
 }
 
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsReporter<C>
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsOptionUpdater<C>
     for FollowerState<'a, C, N, S>
 {
+    // the non-leader state use the default impl of `get_update_metrics_option`
 }
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> FollowerState<'a, C, N, S> {
@@ -1234,9 +1232,10 @@ pub struct LearnerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: Raft
     core: &'a mut RaftCore<C, N, S>,
 }
 
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsReporter<C>
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsOptionUpdater<C>
     for LearnerState<'a, C, N, S>
 {
+    // the non-leader state use the default impl of `get_update_metrics_option`
 }
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {

@@ -146,6 +146,7 @@ pub enum Update<T> {
 
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UpdateMetricsOption {
+    NoUpdate,
     Update,
     AsIs,
 }
