@@ -48,8 +48,12 @@ async fn single_node() -> Result<()> {
 
     // Write some data to the single node cluster.
     router.client_request_many(0, "0", 1000).await;
-    router.assert_stable_cluster(Some(1), Some(1001)).await;
-    router.assert_storage_state(1, 1001, Some(0), LogId::new(LeaderId::new(1, 0), 1001), None).await?;
+    n_logs += 1000;
+    router.wait_for_log(&btreeset![0], Some(n_logs), timeout(), "client_request_many").await?;
+    router.assert_stable_cluster(Some(1), Some(n_logs)).await;
+    router
+        .assert_storage_state(1, n_logs, Some(0), LogId::new(LeaderId::new(1, 0), n_logs), None)
+        .await?;
 
     // Read some data from the single node cluster.
     router.is_leader(0).await?;

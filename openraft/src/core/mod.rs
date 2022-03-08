@@ -807,6 +807,7 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsReporter<C>
     for LeaderState<'a, C, N, S>
 {
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="leader"))]
     fn get_update_metrics_option(
         &self,
         option: Option<UpdateMetricsOption>,
@@ -857,8 +858,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.nodes.insert(target, state);
         }
 
-        self.leader_report_metrics();
-
         self.commit_initial_leader_entry().await?;
 
         self.leader_loop().await?;
@@ -868,6 +867,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id)))]
     pub(self) async fn leader_loop(mut self) -> Result<(), Fatal<C>> {
+        // report the leader metrics every time there came to a new leader
+        // if not `report_metrics` before the leader loop, the leader metrics may not be updated cause no coming event.
+        self.core.report_metrics(Update::Update(Some(self.leader_metrics.clone())));
+
         loop {
             if !self.core.target_state.is_leader() {
                 tracing::info!("id={} state becomes: {:?}", self.core.id, self.core.target_state);
@@ -1027,6 +1030,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
     }
 
     async fn candidate_loop(mut self) -> Result<(), Fatal<C>> {
+        // report the new state before enter the loop
+        self.core.report_metrics(Update::Update(None));
+
         loop {
             if !self.core.target_state.is_candidate() {
                 return Ok(());
@@ -1040,7 +1046,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
             self.core.vote = Vote::new(self.core.vote.term + 1, self.core.id);
 
             self.core.save_vote().await?;
-            self.core.update_metrics_option(UpdateMetricsOption::Update);
 
             // vote for itself.
             self.handle_vote_response(
@@ -1153,6 +1158,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
 
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="follower"))]
     pub(self) async fn follower_loop(mut self) -> Result<(), Fatal<C>> {
+        // report the new state before enter the loop
         self.core.report_metrics(Update::Update(None));
 
         loop {
@@ -1246,6 +1252,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
     }
 
     pub(self) async fn learner_loop(mut self) -> Result<(), Fatal<C>> {
+        // report the new state before enter the loop
         self.core.report_metrics(Update::Update(None));
 
         loop {
