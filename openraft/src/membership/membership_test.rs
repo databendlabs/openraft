@@ -4,7 +4,7 @@ use std::option::Option::None;
 use maplit::btreemap;
 use maplit::btreeset;
 
-use crate::error::NodeIdNotInNodes;
+use crate::error::MissingNodeInfo;
 use crate::testing::DummyConfig as Config;
 use crate::Membership;
 use crate::MessageSummary;
@@ -13,9 +13,11 @@ use crate::RaftTypeConfig;
 
 #[test]
 fn test_membership_summary() -> anyhow::Result<()> {
-    let node = |addr: &str, k: &str| Node {
-        addr: addr.to_string(),
-        data: btreemap! {k.to_string() => k.to_string()},
+    let node = |addr: &str, k: &str| {
+        Some(Node {
+            addr: addr.to_string(),
+            data: btreemap! {k.to_string() => k.to_string()},
+        })
     };
 
     let m = Membership::<Config>::new(vec![btreeset! {1,2}, btreeset! {3}], None);
@@ -24,13 +26,13 @@ fn test_membership_summary() -> anyhow::Result<()> {
     let m = Membership::<Config>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
     assert_eq!("members:[{1,2},{3}],learners:[4]", m.summary());
 
-    let m = m.set_nodes(Some(btreemap! {
+    let m = Membership::<Config>::with_nodes(vec![btreeset! {1,2}, btreeset! {3}], btreemap! {
         1=>node("127.0.0.1", "k1"),
         2=>node("127.0.0.2", "k2"),
         3=>node("127.0.0.3", "k3"),
         4=>node("127.0.0.4", "k4"),
 
-    }))?;
+    })?;
     assert_eq!(
         "members:[{1:{127.0.0.1; k1:k1},2:{127.0.0.2; k2:k2}},{3:{127.0.0.3; k3:k3}}],learners:[4:{127.0.0.4; k4:k4}]",
         m.summary()
@@ -45,17 +47,17 @@ fn test_membership() -> anyhow::Result<()> {
     let m123 = Membership::<Config>::new(vec![btreeset! {1,2,3}], None);
     let m123_345 = Membership::<Config>::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None);
 
-    assert_eq!(Some(btreeset! {1}), m1.get_ith_config(0).cloned());
-    assert_eq!(Some(btreeset! {1,2,3}), m123.get_ith_config(0).cloned());
-    assert_eq!(Some(btreeset! {1,2,3}), m123_345.get_ith_config(0).cloned());
+    assert_eq!(Some(btreeset! {1}), m1.get_configs().get(0).cloned());
+    assert_eq!(Some(btreeset! {1,2,3}), m123.get_configs().get(0).cloned());
+    assert_eq!(Some(btreeset! {1,2,3}), m123_345.get_configs().get(0).cloned());
 
-    assert_eq!(None, m1.get_ith_config(1).cloned());
-    assert_eq!(None, m123.get_ith_config(1).cloned());
-    assert_eq!(Some(btreeset! {3,4,5}), m123_345.get_ith_config(1).cloned());
+    assert_eq!(None, m1.get_configs().get(1).cloned());
+    assert_eq!(None, m123.get_configs().get(1).cloned());
+    assert_eq!(Some(btreeset! {3,4,5}), m123_345.get_configs().get(1).cloned());
 
-    assert_eq!(btreeset! {1}, m1.all_members());
-    assert_eq!(btreeset! {1,2,3}, m123.all_members());
-    assert_eq!(btreeset! {1,2,3,4,5}, m123_345.all_members());
+    assert_eq!(btreeset! {1}, m1.build_member_ids());
+    assert_eq!(btreeset! {1,2,3}, m123.build_member_ids());
+    assert_eq!(btreeset! {1,2,3,4,5}, m123_345.build_member_ids());
 
     assert!(!m1.is_member(&0));
     assert!(m1.is_member(&1));
@@ -76,32 +78,32 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
         let m1_23 = m1_2.add_learner(3, None)?;
 
         // test learner and membership
-        assert_eq!(btreeset! {1}, m1_2.all_members());
-        assert_eq!(&btreeset! {2}, m1_2.all_learners());
+        assert_eq!(btreeset! {1}, m1_2.build_member_ids());
+        assert_eq!(btreeset! {2}, m1_2.learner_ids().cloned().collect());
         assert!(m1_2.is_learner(&2));
 
-        assert_eq!(btreeset! {1}, m1_23.all_members());
-        assert_eq!(&btreeset! {2,3}, m1_23.all_learners());
+        assert_eq!(btreeset! {1}, m1_23.build_member_ids());
+        assert_eq!(btreeset! {2,3}, m1_23.learner_ids().cloned().collect());
         assert!(m1_23.is_learner(&2));
         assert!(m1_23.is_learner(&3));
 
         // Adding a member as learner has no effect:
 
         let m = m1_23.add_learner(1, None)?;
-        assert_eq!(btreeset! {1}, m.all_members());
+        assert_eq!(btreeset! {1}, m.build_member_ids());
 
         // Adding a existent learner has no effect:
 
         let m = m1_23.add_learner(3, None)?;
-        assert_eq!(btreeset! {1}, m.all_members());
-        assert_eq!(&btreeset! {2,3}, m.all_learners());
+        assert_eq!(btreeset! {1}, m.build_member_ids());
+        assert_eq!(btreeset! {2,3}, m.learner_ids().cloned().collect());
     }
 
     // overlapping members and learners
     {
         let s1_2 = Membership::<Config>::new(vec![btreeset! {1,2,3}, btreeset! {5,6,7}], Some(btreeset! {3,4,5}));
-        let x = s1_2.all_learners();
-        assert_eq!(&btreeset! {4}, x);
+        let x = s1_2.learner_ids().cloned().collect();
+        assert_eq!(btreeset! {4}, x);
     }
 
     Ok(())
@@ -114,8 +116,10 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
         data: Default::default(),
     };
 
-    let m_1_2 = Membership::<Config>::new(vec![btreeset! {1}, btreeset! {2}], None)
-        .set_nodes(Some(btreemap! {1=>node("1"), 2=>node("2")}))?;
+    let m_1_2 = Membership::<Config>::with_nodes(
+        vec![btreeset! {1}, btreeset! {2}],
+        btreemap! {1=>Some(node("1")), 2=>Some(node("2"))},
+    )?;
 
     // Add learner that presents in old cluster has no effect.
 
@@ -126,8 +130,10 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
     let m_1_2_3 = m_1_2.add_learner(3, Some(node("3")))?;
     assert_eq!(
-        Membership::<Config>::new(vec![btreeset! {1}, btreeset! {2}], Some(btreeset! {3}))
-            .set_nodes(Some(btreemap! {1=>node("1"), 2=>node("2"), 3=>node("3")}))?,
+        Membership::<Config>::with_nodes(
+            vec![btreeset! {1}, btreeset! {2}],
+            btreemap! {1=>Some(node("1")), 2=>Some(node("2")), 3=>Some(node("3"))}
+        )?,
         m_1_2_3
     );
 
@@ -135,9 +141,9 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
     {
         let res = m_1_2.add_learner(3, None);
         assert_eq!(
-            Err(NodeIdNotInNodes {
+            Err(MissingNodeInfo {
                 node_id: 3,
-                node_ids: btreeset! {1,2},
+                reason: "is None".to_string(),
             }),
             res
         );
@@ -149,50 +155,13 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
         let res = m_1_2.add_learner(3, Some(node("3")));
         assert_eq!(
-            Err(NodeIdNotInNodes {
+            Err(MissingNodeInfo {
                 node_id: 1,
-                node_ids: btreeset! {3},
+                reason: "is None".to_string(),
             }),
             res
         );
     }
-
-    Ok(())
-}
-
-#[test]
-fn test_membership_check_ndoe_ids_in_nodes() -> anyhow::Result<()> {
-    let node = Node::default;
-
-    let mem = |c1, c2, l| Membership::<Config>::new(vec![btreeset! {c1}, btreeset! {c2}], Some(btreeset! {l}));
-    let nodes = Some(btreemap! {1 => node(), 2=>node(), 3=>node()});
-    let all = || btreeset! {1,2,3};
-
-    assert_eq!(
-        Err(NodeIdNotInNodes {
-            node_id: 5,
-            node_ids: all()
-        }),
-        mem(5, 2, 3).check_node_ids_in_nodes(&nodes)
-    );
-
-    assert_eq!(
-        Err(NodeIdNotInNodes {
-            node_id: 6,
-            node_ids: all()
-        }),
-        mem(1, 6, 3).check_node_ids_in_nodes(&nodes)
-    );
-
-    assert_eq!(
-        Err(NodeIdNotInNodes {
-            node_id: 7,
-            node_ids: all()
-        }),
-        mem(1, 2, 7).check_node_ids_in_nodes(&nodes)
-    );
-
-    assert_eq!(Ok(()), mem(1, 2, 3).check_node_ids_in_nodes(&nodes));
 
     Ok(())
 }
@@ -206,79 +175,73 @@ fn test_membership_extend_nodes() -> anyhow::Result<()> {
 
     let ext = |a, b| Membership::<Config>::extend_nodes(a, &b);
 
-    assert_eq!(None, ext(None, None));
     assert_eq!(
-        Some(btreemap! {1=>node("1")}),
-        ext(None, Some(btreemap! {1=>node("1")}))
+        btreemap! {1=>None},
+        ext(btreemap! {1=>None}, btreemap! {1=>Some(node("1"))}),
+        "existent node will not change"
     );
-
     assert_eq!(
-        Some(btreemap! {1=>node("1")}),
-        ext(Some(btreemap! {1=>node("1")}), None)
+        btreemap! {1=>Some(node("1"))},
+        ext(btreemap! {1=>Some(node("1"))}, btreemap! {1=>None}),
+        "existent node will not change"
     );
-
     assert_eq!(
-        Some(btreemap! {1=>node("1")}),
-        ext(Some(btreemap! {1=>node("1")}), Some(btreemap! {1=>node("2")})),
+        btreemap! {1=>Some(node("1"))},
+        ext(btreemap! {1=>Some(node("1"))}, btreemap! {1=>Some(node("2"))}),
         "existent node will not change"
     );
 
     assert_eq!(
-        Some(btreemap! {1=>node("1"), 2=>node("2")}),
+        btreemap! {1=>Some(node("1")), 2=>Some(node("2"))},
         ext(
-            Some(btreemap! {1=>node("1")}),
-            Some(btreemap! {1=>node("2"), 2=>node("2")})
+            btreemap! {1=>Some(node("1"))},
+            btreemap! {1=>Some(node("2")), 2=>Some(node("2"))}
         ),
     );
 
     Ok(())
 }
 
+// TODO: rename
 #[test]
-fn test_membership_remove_unused_nodes() -> anyhow::Result<()> {
-    let node = Node::default;
+fn test_membership_with_nodes() -> anyhow::Result<()> {
+    let node = || Some(Node::default());
+    let m = |nodes| Membership::<Config>::with_nodes(vec![btreeset! {1}, btreeset! {2}], nodes);
 
-    let m = Membership::<Config>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
+    let ns_12 = || btreemap! {1=>node(), 2=>node()};
+    let ns_123 = || btreemap! {1=>node(), 2=>node(), 3=>node()};
 
-    assert_eq!(None, m.remove_unused_nodes(&None));
+    let res = m(btreemap! {1=>None, 2=>None})?;
+    assert_eq!(&btreemap! {1=>None, 2=>None}, res.get_nodes());
 
-    assert_eq!(
-        Some(btreemap! {1=>node(), 2=>node(), 3=>node(), 4=>node(),}),
-        m.remove_unused_nodes(&Some(btreemap! {1=>node(), 2=>node(), 3=>node(),4=>node()}))
-    );
-    assert_eq!(
-        Some(btreemap! {1=>node(), 2=>node(), 3=>node(), 4=>node(),}),
-        m.remove_unused_nodes(&Some(btreemap! {1=>node(), 2=>node(), 3=>node(), 4=>node(),5=>node()}))
-    );
+    let res = m(btreemap! {1=>None, 2=>None,3=>None})?;
+    assert_eq!(&btreemap! {1=>None, 2=>None, 3=>None}, res.get_nodes());
 
-    Ok(())
-}
+    let res = m(ns_12())?;
+    assert_eq!(&ns_12(), res.get_nodes());
 
-#[test]
-fn test_membership_set_nodes() -> anyhow::Result<()> {
-    let node = Node::default;
-    let m = || Membership::<Config>::new(vec![btreeset! {1}, btreeset! {2}], Some(btreeset! {3}));
-    let ns_12 = || Some(btreemap! {1=>node(), 2=>node()});
-    let ns_123 = || Some(btreemap! {1=>node(), 2=>node(), 3=>node()});
-    let ns_1234 = || Some(btreemap! {1=>node(), 2=>node(), 3=>node(), 4=>node()});
-
-    let res = m().set_nodes(None)?;
-    assert_eq!(&None, res.get_nodes());
-
-    let res = m().set_nodes(ns_123())?;
+    let res = m(ns_123())?;
     assert_eq!(&ns_123(), res.get_nodes());
 
-    let res = m().set_nodes(ns_1234())?;
-    assert_eq!(&ns_123(), res.get_nodes());
-
-    let res = m().set_nodes(ns_12());
+    // errors:
+    let res = m(btreemap! {1=>None});
     assert_eq!(
-        Err(NodeIdNotInNodes {
-            node_id: 3,
-            node_ids: btreeset! {1,2},
+        Err(MissingNodeInfo {
+            node_id: 2,
+            reason: "is not in cluster: [1]".to_string(),
         }),
         res
     );
+
+    let res = m(btreemap! {1=>None,2=>node()});
+    assert_eq!(
+        Err(MissingNodeInfo {
+            node_id: 1,
+            reason: "is None".to_string(),
+        }),
+        res
+    );
+
     Ok(())
 }
 
@@ -422,18 +385,18 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
     {
         let without_nodes = Membership::<Config>::new(vec![c1(), c2()], None);
 
-        // [{2}, {1,2}] has all nodes info provided.
+        // next_safe() can not change node info type from None to Some
 
         let res = without_nodes.next_safe(btreemap! {1=>node("1"), 2=>node("2")}, false)?;
-        assert_eq!(&Some(btreemap! {1=>node("1"), 2=>node("2")}), res.get_nodes());
+        assert_eq!(&btreemap! {1=>None, 2=>None}, res.get_nodes());
 
         // joint [{2}, {1,3}] requires node info for 2
 
         let res = without_nodes.next_safe(btreemap! {1=>node("1"), 3=>node("3")}, false);
         assert_eq!(
-            Err(NodeIdNotInNodes {
-                node_id: 2,
-                node_ids: btreeset! {1,3},
+            Err(MissingNodeInfo {
+                node_id: 1,
+                reason: "is None".to_string(),
             }),
             res
         );
@@ -446,29 +409,29 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
 
     // change from a Membership with nodes
     {
-        let with_nodes = Membership::<Config>::new(vec![c1(), c2()], None)
-            .set_nodes(Some(btreemap! {1=>node("1"), 2=>node("2")}))?;
+        let with_node_infos =
+            Membership::<Config>::with_nodes(vec![c1(), c2()], btreemap! {1=>Some(node("1")), 2=>Some(node("2"))})?;
 
         // joint [{2}, {1,2}]
 
-        let res = with_nodes.next_safe(btreeset! {1,2}, false)?;
-        assert_eq!(&Some(btreemap! {1=>node("1"), 2=>node("2")}), res.get_nodes());
+        let res = with_node_infos.next_safe(btreeset! {1,2}, false)?;
+        assert_eq!(&btreemap! {1=>Some(node("1")), 2=>Some(node("2"))}, res.get_nodes());
 
         // joint [{2}, {1,3}]
 
-        let res = with_nodes.next_safe(btreeset! {1,3}, false);
+        let res = with_node_infos.next_safe(btreeset! {1,3}, false);
         assert_eq!(
-            Err(NodeIdNotInNodes {
+            Err(MissingNodeInfo {
                 node_id: 3,
-                node_ids: btreeset! {1,2},
+                reason: "is None".to_string(),
             }),
             res
         );
 
         // Removed to learner
 
-        let res = with_nodes.next_safe(btreeset! {1}, true)?;
-        assert_eq!(&Some(btreemap! {1=>node("1"), 2=>node("2")}), res.get_nodes());
+        let res = with_node_infos.next_safe(btreeset! {1}, true)?;
+        assert_eq!(&btreemap! {1=>Some(node("1")), 2=>Some(node("2"))}, res.get_nodes());
         assert_eq!(&vec![btreeset! {1}], res.get_configs());
     }
 

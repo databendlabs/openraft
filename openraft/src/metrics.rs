@@ -233,7 +233,7 @@ impl<C: RaftTypeConfig> Wait<C> {
         msg: impl ToString,
     ) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
-            |x| x.membership_config.membership.get_ith_config(0).cloned().unwrap() == want_members,
+            |x| x.membership_config.membership.get_configs().get(0).cloned().unwrap() == want_members,
             &format!("{} .membership_config.members -> {:?}", msg.to_string(), want_members),
         )
         .await
@@ -248,7 +248,7 @@ impl<C: RaftTypeConfig> Wait<C> {
         msg: impl ToString,
     ) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
-            |x| x.membership_config.membership.get_ith_config(1) == want_members.as_ref(),
+            |x| x.membership_config.membership.get_configs().get(1) == want_members.as_ref(),
             &format!("{} .membership_config.next -> {:?}", msg.to_string(), want_members),
         )
         .await

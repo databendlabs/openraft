@@ -6,5 +6,5 @@ mod membership_test;
 
 pub mod quorum;
 
-pub use membership::EitherNodesOrIds;
+pub use membership::IntoOptionNodes;
 pub use membership::Membership;

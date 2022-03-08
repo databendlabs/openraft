@@ -101,7 +101,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
         assert_eq!(
             btreeset![1, 2],
-            got.membership_config.membership.get_ith_config(0).unwrap().clone()
+            got.membership_config.membership.get_configs().get(0).unwrap().clone()
         );
     }
 
@@ -124,7 +124,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
         assert_eq!(
             Some(btreeset![1, 2]),
-            got.membership_config.membership.get_ith_config(1).cloned()
+            got.membership_config.membership.get_configs().get(1).cloned()
         );
     }
 
