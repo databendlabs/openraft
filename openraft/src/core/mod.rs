@@ -152,10 +152,7 @@ impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
 
 pub trait MetricsOptionUpdater<NID: NodeId> {
     // the default impl of `get_leader_metrics_option`, for the non-leader state
-    fn get_leader_metrics_option(
-        &self,
-        _option: Option<Update<()>>,
-    ) -> Option<Update<Option<Versioned<LeaderMetrics<NID>>>>> {
+    fn get_leader_metrics_option(&self, _option: Update<()>) -> Option<Update<Option<Versioned<LeaderMetrics<NID>>>>> {
         None
     }
 }
@@ -308,7 +305,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
             self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
-            self.update_other_metrics_option(Update::AsIs);
+            self.update_other_metrics_option();
         }
 
         let has_log = if self.last_log_id.is_some() {
@@ -384,6 +381,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
+    pub fn update_leader_metrics_option(&mut self) {
+        self.update_metrics.leader_metrics = Update::Update(());
+    }
+
+    pub fn update_other_metrics_option(&mut self) {
+        self.update_metrics.other_metrics = Update::Update(());
+    }
+
     /// Hook function that executes before every state loop
     pub fn pre_state_loop(&mut self) {
         // reset update_metrics
@@ -391,12 +396,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Hook function that executes after every state loop
+    #[tracing::instrument(level = "trace", skip(self, metrics_reporter))]
     pub fn post_state_loop(&self, metrics_reporter: &impl MetricsOptionUpdater<C::NodeId>) {
         let update_metrics = self.update_metrics.clone();
         let leader_metrics = metrics_reporter.get_leader_metrics_option(update_metrics.leader_metrics);
         let other_metrics = update_metrics.other_metrics;
 
-        if other_metrics.is_some() || leader_metrics.is_some() {
+        if other_metrics == Update::Update(()) || leader_metrics.is_some() {
             if let Some(op) = leader_metrics {
                 self.report_metrics(op)
             } else {
@@ -519,7 +525,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     fn update_snapshot_state(&mut self, update: SnapshotUpdate<C>) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
             self.snapshot_last_log_id = Some(log_id);
-            self.update_other_metrics_option(Update::AsIs);
+            self.update_other_metrics_option();
         }
         // If snapshot state is anything other than streaming, then drop it.
         if let Some(state @ SnapshotState::Streaming { .. }) = self.snapshot_state.take() {
@@ -812,14 +818,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Metrics
 {
     fn get_leader_metrics_option(
         &self,
-        option: Option<Update<()>>,
+        option: Update<()>,
     ) -> Option<Update<Option<Versioned<LeaderMetrics<C::NodeId>>>>> {
         match option {
-            Some(update) => match update {
-                Update::AsIs => Some(Update::AsIs),
-                Update::Update(_) => Some(Update::Update(Some(self.leader_metrics.clone()))),
-            },
-            None => None,
+            Update::AsIs => None,
+            Update::Update(_) => Some(Update::Update(Some(self.leader_metrics.clone()))),
         }
     }
 }
@@ -958,9 +961,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     /// Report metrics with leader specific states.
-    #[tracing::instrument(level = "trace", skip(self))]
     pub fn leader_report_metrics(&mut self) {
-        self.core.update_leader_metrics_option(Update::AsIs);
+        self.core.update_leader_metrics_option();
     }
 }
 

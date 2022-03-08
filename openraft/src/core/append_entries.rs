@@ -14,7 +14,6 @@ use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::Update;
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -47,7 +46,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.set_target_state(State::Follower); // State update will emit metrics.
             }
 
-            self.update_other_metrics_option(Update::AsIs);
+            self.update_other_metrics_option();
         }
 
         // Caveat: [commit-index must not advance the last known consistent log](https://datafuselabs.github.io/openraft/replication.html#caveat-commit-index-must-not-advance-the-last-known-consistent-log)
@@ -158,24 +157,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.delete_conflict_logs_since(msg_entries[0].log_id).await?;
 
         Ok(())
-    }
-
-    pub fn update_leader_metrics_option(&mut self, option: Update<()>) {
-        // cannot overwrite `update_metrics` if already in the `Update` option
-        if self.update_metrics.leader_metrics == Some(Update::Update(())) {
-            return;
-        }
-
-        self.update_metrics.leader_metrics = Some(option);
-    }
-
-    pub fn update_other_metrics_option(&mut self, option: Update<()>) {
-        // cannot overwrite `update_metrics` if already in the `Update` option
-        if self.update_metrics.other_metrics == Some(Update::Update(())) {
-            return;
-        }
-
-        self.update_metrics.other_metrics = Some(option);
     }
 
     /// Append logs only when the first entry(prev_log_id) matches local store
@@ -359,6 +340,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.committed,
                 self.last_applied
             );
+            self.update_other_metrics_option();
             return Ok(());
         }
 
@@ -378,8 +360,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.last_applied = Some(last_log_id);
 
         self.trigger_log_compaction_if_needed(false).await;
-
-        self.update_other_metrics_option(Update::AsIs);
+        self.update_other_metrics_option();
         Ok(())
     }
 }
