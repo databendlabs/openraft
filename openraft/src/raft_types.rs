@@ -144,11 +144,10 @@ pub enum Update<T> {
     AsIs,
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
-pub enum UpdateMetricsOption {
-    NoUpdate,
-    Update,
-    AsIs,
+#[derive(Debug, Clone, Default, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateMetricsOption {
+    pub leader_metrics: Option<Update<()>>,
+    pub other_metrics: Option<Update<()>>,
 }
 
 /// The changes of a state machine.

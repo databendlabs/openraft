@@ -182,5 +182,5 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_micros(500))
+    Some(Duration::from_micros(1000))
 }

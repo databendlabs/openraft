@@ -14,7 +14,7 @@ use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
-use crate::UpdateMetricsOption;
+use crate::Update;
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     /// An RPC invoked by the leader to replicate log entries (§5.3); also used as heartbeat (§5.2).
@@ -47,7 +47,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.set_target_state(State::Follower); // State update will emit metrics.
             }
 
-            self.update_metrics_option(UpdateMetricsOption::AsIs);
+            self.update_other_metrics_option(Update::AsIs);
         }
 
         // Caveat: [commit-index must not advance the last known consistent log](https://datafuselabs.github.io/openraft/replication.html#caveat-commit-index-must-not-advance-the-last-known-consistent-log)
@@ -160,13 +160,22 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
-    pub fn update_metrics_option(&mut self, option: UpdateMetricsOption) {
+    pub fn update_leader_metrics_option(&mut self, option: Update<()>) {
         // cannot overwrite `update_metrics` if already in the `Update` option
-        if self.update_metrics == UpdateMetricsOption::Update {
+        if self.update_metrics.leader_metrics == Some(Update::Update(())) {
             return;
         }
 
-        self.update_metrics = option;
+        self.update_metrics.leader_metrics = Some(option);
+    }
+
+    pub fn update_other_metrics_option(&mut self, option: Update<()>) {
+        // cannot overwrite `update_metrics` if already in the `Update` option
+        if self.update_metrics.other_metrics == Some(Update::Update(())) {
+            return;
+        }
+
+        self.update_metrics.other_metrics = Some(option);
     }
 
     /// Append logs only when the first entry(prev_log_id) matches local store
@@ -220,11 +229,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // This is guaranteed by caller.
         self.committed = committed;
 
-        let need_to_report_metrics = !self.replicate_to_state_machine_if_needed().await?;
-
-        if need_to_report_metrics {
-            self.update_metrics_option(UpdateMetricsOption::AsIs);
-        }
+        self.replicate_to_state_machine_if_needed().await?;
 
         Ok(AppendEntriesResponse::Success)
     }
@@ -343,9 +348,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ///
     /// Very importantly, this routine must not block the main control loop main task, else it
     /// may cause the Raft leader to timeout the requests to this node.
-    /// return if or not has `report_metrics`， than caller donot need to call it again.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<bool, StorageError<C>> {
+    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), StorageError<C>> {
         tracing::debug!(?self.last_applied, ?self.committed, "replicate_to_sm_if_needed");
 
         // If we don't have any new entries to replicate, then do nothing.
@@ -355,7 +359,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.committed,
                 self.last_applied
             );
-            return Ok(false);
+            return Ok(());
         }
 
         // Drain entries from the beginning of the cache up to commit index.
@@ -373,9 +377,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.last_applied = Some(last_log_id);
 
-        self.update_metrics_option(UpdateMetricsOption::AsIs);
         self.trigger_log_compaction_if_needed(false).await;
 
-        Ok(true)
+        self.update_other_metrics_option(Update::AsIs);
+        Ok(())
     }
 }
