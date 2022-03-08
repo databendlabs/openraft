@@ -55,9 +55,9 @@ fn test_membership() -> anyhow::Result<()> {
     assert_eq!(None, m123.get_configs().get(1).cloned());
     assert_eq!(Some(btreeset! {3,4,5}), m123_345.get_configs().get(1).cloned());
 
-    assert_eq!(btreeset! {1}, m1.all_members());
-    assert_eq!(btreeset! {1,2,3}, m123.all_members());
-    assert_eq!(btreeset! {1,2,3,4,5}, m123_345.all_members());
+    assert_eq!(btreeset! {1}, m1.build_member_ids());
+    assert_eq!(btreeset! {1,2,3}, m123.build_member_ids());
+    assert_eq!(btreeset! {1,2,3,4,5}, m123_345.build_member_ids());
 
     assert!(!m1.is_member(&0));
     assert!(m1.is_member(&1));
@@ -78,31 +78,31 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
         let m1_23 = m1_2.add_learner(3, None)?;
 
         // test learner and membership
-        assert_eq!(btreeset! {1}, m1_2.all_members());
-        assert_eq!(btreeset! {2}, m1_2.all_learners());
+        assert_eq!(btreeset! {1}, m1_2.build_member_ids());
+        assert_eq!(btreeset! {2}, m1_2.learner_ids().cloned().collect());
         assert!(m1_2.is_learner(&2));
 
-        assert_eq!(btreeset! {1}, m1_23.all_members());
-        assert_eq!(btreeset! {2,3}, m1_23.all_learners());
+        assert_eq!(btreeset! {1}, m1_23.build_member_ids());
+        assert_eq!(btreeset! {2,3}, m1_23.learner_ids().cloned().collect());
         assert!(m1_23.is_learner(&2));
         assert!(m1_23.is_learner(&3));
 
         // Adding a member as learner has no effect:
 
         let m = m1_23.add_learner(1, None)?;
-        assert_eq!(btreeset! {1}, m.all_members());
+        assert_eq!(btreeset! {1}, m.build_member_ids());
 
         // Adding a existent learner has no effect:
 
         let m = m1_23.add_learner(3, None)?;
-        assert_eq!(btreeset! {1}, m.all_members());
-        assert_eq!(btreeset! {2,3}, m.all_learners());
+        assert_eq!(btreeset! {1}, m.build_member_ids());
+        assert_eq!(btreeset! {2,3}, m.learner_ids().cloned().collect());
     }
 
     // overlapping members and learners
     {
         let s1_2 = Membership::<Config>::new(vec![btreeset! {1,2,3}, btreeset! {5,6,7}], Some(btreeset! {3,4,5}));
-        let x = s1_2.all_learners();
+        let x = s1_2.learner_ids().cloned().collect();
         assert_eq!(btreeset! {4}, x);
     }
 

@@ -106,7 +106,7 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
     }
 
     pub fn new(log_id: LogId<C::NodeId>, membership: Membership<C>) -> Self {
-        let all_members = membership.all_members();
+        let all_members = membership.build_member_ids();
         Self {
             log_id,
             membership,
@@ -118,20 +118,25 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
         &self.all_members
     }
 
-    // TODO(xp): make it an iter
-    pub(crate) fn all_learners(&self) -> BTreeSet<C::NodeId> {
-        self.membership.all_learners()
+    pub(crate) fn node_ids(&self) -> impl Iterator<Item = &C::NodeId> {
+        self.membership.node_ids()
     }
 
-    // TODO(xp): unused
+    /// Returns reference to all configs.
+    ///
+    /// Membership is defined by a joint of multiple configs.
+    /// Each config is a set of node-id.
+    /// This method returns a immutable reference to the vec of node-id sets, without node infos.
     pub fn get_configs(&self) -> &Vec<BTreeSet<C::NodeId>> {
         self.membership.get_configs()
     }
 
+    /// Get a the node info by node id.
     pub fn get_node(&self, node_id: &C::NodeId) -> Option<&Node> {
         self.membership.get_node(node_id)
     }
 
+    /// Get all node infos.
     pub fn get_nodes(&self) -> &BTreeMap<C::NodeId, Option<Node>> {
         self.membership.get_nodes()
     }
@@ -296,7 +301,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             "no_log"
         };
 
-        let single = if self.effective_membership.membership.all_members().len() == 1 {
+        let single = if self.effective_membership.all_members().len() == 1 {
             "single"
         } else {
             "multi"
@@ -791,10 +796,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let targets = self
             .core
             .effective_membership
-            .all_members()
-            .iter()
+            .node_ids()
             .filter(|elem| *elem != &self.core.id)
-            .chain(self.core.effective_membership.all_learners().iter())
             .cloned()
             .collect::<Vec<_>>();
 

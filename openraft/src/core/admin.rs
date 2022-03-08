@@ -86,12 +86,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         let curr = &self.core.effective_membership.membership;
 
-        let new_membership = curr.add_learner(target, node)?;
-
-        if new_membership.all_learners() == curr.all_learners() {
+        if curr.contains(&target) {
             tracing::debug!("target {:?} already member or learner, can't add", target);
             return Ok(true);
         }
+
+        let new_membership = curr.add_learner(target, node)?;
 
         tracing::debug!(?new_membership, "new_config");
 

@@ -86,7 +86,7 @@ impl<C: RaftTypeConfig> MessageSummary for Membership<C> {
         res.push("]".to_string());
 
         let all_node_ids = self.nodes.keys().cloned().collect::<BTreeSet<_>>();
-        let members = self.all_members();
+        let members = self.build_member_ids();
 
         res.push(",learners:[".to_string());
         for (learner_cnt, learner_id) in all_node_ids.difference(&members).enumerate() {
@@ -110,7 +110,7 @@ impl<C: RaftTypeConfig> Membership<C> {
     ///
     /// A node id that is in `node_ids` but is not in `configs` is a **learner**.
     pub fn new(configs: Vec<BTreeSet<C::NodeId>>, node_ids: Option<BTreeSet<C::NodeId>>) -> Self {
-        let all_members = Self::build_all_members(&configs);
+        let all_members = Self::build_all_member_ids(&configs);
 
         let nodes = match node_ids {
             None => {
@@ -134,7 +134,7 @@ impl<C: RaftTypeConfig> Membership<C> {
     ///   or an error will be returned.
     pub(crate) fn with_nodes<T>(configs: Vec<BTreeSet<C::NodeId>>, nodes: T) -> Result<Self, MissingNodeInfo<C>>
     where T: IntoOptionNodes<C::NodeId> {
-        let all_members = Self::build_all_members(&configs);
+        let all_members = Self::build_all_member_ids(&configs);
 
         let nodes = nodes.into_option_nodes();
 
@@ -170,7 +170,7 @@ impl<C: RaftTypeConfig> Membership<C> {
         x.as_ref()
     }
 
-    /// Extends nodes with another.
+    /// Extends nodes btreemap with another.
     ///
     /// Node that present in `old` will **NOT** be replaced because changing the address of a node potentially breaks
     /// consensus guarantee.
@@ -209,23 +209,27 @@ impl<C: RaftTypeConfig> Membership<C> {
         Ok(m)
     }
 
-    pub(crate) fn all_learners(&self) -> BTreeSet<C::NodeId> {
-        let all = self.nodes.keys().filter(|x| !self.is_member(x));
-        all.cloned().collect()
+    #[allow(dead_code)]
+    pub(crate) fn learner_ids(&self) -> impl Iterator<Item = &C::NodeId> {
+        self.nodes.keys().filter(|x| !self.is_member(x))
     }
 
-    pub(crate) fn all_members(&self) -> BTreeSet<C::NodeId> {
-        Self::build_all_members(&self.configs)
+    pub(crate) fn node_ids(&self) -> impl Iterator<Item = &C::NodeId> {
+        self.nodes.keys()
     }
 
-    pub(crate) fn contains(&self, target: &C::NodeId) -> bool {
-        self.nodes.contains_key(target)
+    pub(crate) fn build_member_ids(&self) -> BTreeSet<C::NodeId> {
+        Self::build_all_member_ids(&self.configs)
+    }
+
+    pub(crate) fn contains(&self, node_id: &C::NodeId) -> bool {
+        self.nodes.contains_key(node_id)
     }
 
     /// Check if the given `NodeId` exists in this membership config.
-    pub(crate) fn is_member(&self, x: &C::NodeId) -> bool {
+    pub(crate) fn is_member(&self, node_id: &C::NodeId) -> bool {
         for c in self.configs.iter() {
-            if c.contains(x) {
+            if c.contains(node_id) {
                 return true;
             }
         }
@@ -233,14 +237,14 @@ impl<C: RaftTypeConfig> Membership<C> {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn is_learner(&self, x: &C::NodeId) -> bool {
-        self.contains(x) && !self.is_member(x)
+    pub(crate) fn is_learner(&self, node_id: &C::NodeId) -> bool {
+        self.contains(node_id) && !self.is_member(node_id)
     }
 
     // TODO(xp): rename this
     /// Create a new initial config containing only the given node ID.
-    pub(crate) fn new_initial(id: C::NodeId) -> Self {
-        Membership::new(vec![btreeset! {id}], None)
+    pub(crate) fn new_initial(node_id: C::NodeId) -> Self {
+        Membership::new(vec![btreeset! {node_id}], None)
     }
 
     /// Return true if the given set of ids constitutes a majority.
@@ -340,8 +344,8 @@ impl<C: RaftTypeConfig> Membership<C> {
         let mut new_nodes = Self::extend_nodes(self.nodes.clone(), &goal);
 
         if !turn_to_learner {
-            let old_members = Self::build_all_members(&self.configs);
-            let new_members = Self::build_all_members(&new_configs);
+            let old_members = Self::build_all_member_ids(&self.configs);
+            let new_members = Self::build_all_member_ids(&new_configs);
             let not_in_new = old_members.difference(&new_members);
 
             for node_id in not_in_new {
@@ -361,7 +365,7 @@ impl<C: RaftTypeConfig> Membership<C> {
         n_granted >= majority
     }
 
-    fn build_all_members(configs: &[BTreeSet<C::NodeId>]) -> BTreeSet<C::NodeId> {
+    fn build_all_member_ids(configs: &[BTreeSet<C::NodeId>]) -> BTreeSet<C::NodeId> {
         let mut members = BTreeSet::new();
         for config in configs.iter() {
             members.extend(config)
