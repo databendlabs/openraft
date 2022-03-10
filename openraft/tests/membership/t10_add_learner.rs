@@ -256,5 +256,5 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_micros(1000))
+    Some(Duration::from_millis(1000))
 }
