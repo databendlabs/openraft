@@ -888,6 +888,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             let span = tracing::debug_span!("CHrx:LeaderState");
             let _ent = span.enter();
 
+            self.core.post_state_loop(&self);
             self.core.pre_state_loop();
 
             tokio::select! {
@@ -910,8 +911,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                     self.core.set_target_state(State::Shutdown);
                 }
             }
-
-            self.core.post_state_loop(&self);
         }
     }
 
@@ -1043,6 +1042,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
                 return Ok(());
             }
 
+            self.core.post_state_loop(&self);
             self.core.pre_state_loop();
 
             // Setup new term.
@@ -1096,8 +1096,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
                     Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
                 }
             }
-
-            self.core.post_state_loop(&self);
         }
     }
 
@@ -1172,6 +1170,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
                 return Ok(());
             }
 
+            self.core.post_state_loop(&self);
             self.core.pre_state_loop();
 
             let election_timeout = sleep_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
@@ -1191,8 +1190,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
 
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
-
-            self.core.post_state_loop(&self);
         }
     }
 
@@ -1267,7 +1264,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
                 return Ok(());
             }
 
+            self.core.post_state_loop(&self);
             self.core.pre_state_loop();
+
             let span = tracing::debug_span!("CHrx:LearnerState");
             let _ent = span.enter();
 
@@ -1282,8 +1281,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
 
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(State::Shutdown),
             }
-
-            self.core.post_state_loop(&self);
         }
     }
 
