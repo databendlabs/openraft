@@ -16,17 +16,17 @@ repository = "https://github.com/datafuselabs/openraft"
 readme = "README.md"
 
 [dependencies]
-anyerror = { version = "0.1.4"}
+anyerror = { version = "0.1"}
 openraft = { version="0.6", path= "../openraft" }
-async-trait = "0.1.36"
-serde = { version="1.0.114", features=["derive"] }
-serde_json = "1.0.57"
-tokio = { version="1.0", default-features=false, features=["sync"] }
-tracing = "0.1.29"
-tracing-futures = "0.2.4"
+async-trait = "0.1"
+serde = { version="1", features=["derive"] }
+serde_json = "1"
+tokio = { version="1.8", default-features=false, features=["sync"] }
+tracing = "0.1"
+tracing-futures = "0.2"
 
 [dev-dependencies]
-maplit = "1.0.2"
+maplit = "1"
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.

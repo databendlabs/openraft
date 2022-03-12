@@ -16,30 +16,28 @@ repository = "https://github.com/datafuselabs/openraft"
 readme = "../README.md"
 
 [dependencies]
-anyerror = { version = "0.1.4", features = ["anyhow"]}
-async-trait = "0.1.36"
-byte-unit = "4.0.12"
-bytes = "1.0"
-derive_more = { version="0.99.9" }
+anyerror = { version = "0.1", features = ["anyhow"]}
+async-trait = "0.1"
+byte-unit = "4"
+bytes = "1"
+derive_more = { version="0.99" }
 futures = "0.3"
-maplit = "1.0.2"
+maplit = "1"
 rand = "0.8"
 serde = { version="1", features=["derive", "rc"] }
-clap = { version = "3.0.7", features = ["derive", "env"] }
-thiserror = "1.0.29"
+clap = { version = "3", features = ["derive", "env"] }
+thiserror = "1"
 tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
-tracing = "0.1.29"
-tracing-futures = "0.2.4"
+tracing = "0.1"
+tracing-futures = "0.2"
 
 [dev-dependencies]
-anyhow = "1.0.32"
-lazy_static = "1.4.0"
-memstore = { version="0.2.0", path="../memstore" }
-pretty_assertions = "1.0.0"
-tracing-appender = "0.2.0"
-tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
-
-
+anyhow = "1"
+lazy_static = "1"
+memstore = { version="0.2", path="../memstore" }
+pretty_assertions = "1"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3",  features=["env-filter"] }
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
