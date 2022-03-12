@@ -42,14 +42,17 @@ async fn append_entries_with_bigger_term() -> Result<()> {
     assert!(resp.is_success());
 
     // after append entries, check hard state in term 2 and vote for node 1
+    let mut store = router.get_storage_handle(&0)?;
+
     router
-        .assert_storage_state_in_node(
-            0,
+        .assert_storage_state_with_sto(
+            &mut store,
+            &0,
             2,
             log_index,
             Some(1),
             LogId::new(LeaderId::new(1, 0), log_index),
-            None,
+            &None,
         )
         .await?;
 

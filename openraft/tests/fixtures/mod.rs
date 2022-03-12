@@ -839,39 +839,6 @@ where
         Ok(())
     }
 
-    /// Assert against the state of the storage system one node in the cluster.
-    pub async fn assert_storage_state_in_node(
-        &self,
-        node_id: C::NodeId,
-        expect_term: u64,
-        expect_last_log: u64,
-        expect_voted_for: Option<C::NodeId>,
-        expect_sm_last_applied_log: LogId<C::NodeId>,
-        expect_snapshot: Option<(ValueTest<u64>, u64)>,
-    ) -> anyhow::Result<()> {
-        let mut rt = self.routing_table.lock().unwrap();
-
-        for (id, (_node, storage)) in rt.iter_mut() {
-            if *id != node_id {
-                continue;
-            }
-            self.assert_storage_state_with_sto(
-                storage,
-                id,
-                expect_term,
-                expect_last_log,
-                expect_voted_for,
-                expect_sm_last_applied_log,
-                &expect_snapshot,
-            )
-            .await?;
-
-            break;
-        }
-
-        Ok(())
-    }
-
     /// Assert against the state of the storage system per node in the cluster.
     pub async fn assert_storage_state(
         &self,
@@ -881,12 +848,18 @@ where
         expect_sm_last_applied_log: LogId<C::NodeId>,
         expect_snapshot: Option<(ValueTest<u64>, u64)>,
     ) -> anyhow::Result<()> {
-        let mut rt = self.routing_table.lock().unwrap();
+        let node_ids = {
+            let rt = self.routing_table.lock().unwrap();
+            let node_ids = rt.keys().cloned().collect::<Vec<_>>();
+            node_ids
+        };
 
-        for (id, (_node, storage)) in rt.iter_mut() {
+        for id in node_ids {
+            let mut storage = self.get_storage_handle(&id)?;
+
             self.assert_storage_state_with_sto(
-                storage,
-                id,
+                &mut storage,
+                &id,
                 expect_term,
                 expect_last_log,
                 expect_voted_for,
