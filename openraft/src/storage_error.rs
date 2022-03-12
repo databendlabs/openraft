@@ -1,4 +1,3 @@
-use std::backtrace::Backtrace;
 use std::fmt::Formatter;
 use std::ops::Bound;
 
@@ -45,7 +44,7 @@ pub struct DefensiveError<C: RaftTypeConfig> {
     /// The description of the violation.
     pub violation: Violation<C>,
 
-    pub backtrace: String,
+    pub backtrace: Option<String>,
 }
 
 impl<C: RaftTypeConfig> DefensiveError<C> {
@@ -53,7 +52,7 @@ impl<C: RaftTypeConfig> DefensiveError<C> {
         Self {
             subject,
             violation,
-            backtrace: format!("{:?}", Backtrace::capture()),
+            backtrace: anyerror::backtrace_str(),
         }
     }
 }
@@ -168,7 +167,7 @@ pub enum StorageError<C: RaftTypeConfig> {
     #[error(transparent)]
     Defensive {
         #[from]
-        #[backtrace]
+        #[cfg_attr(feature = "bt", backtrace)]
         source: DefensiveError<C>,
     },
 
@@ -176,7 +175,7 @@ pub enum StorageError<C: RaftTypeConfig> {
     #[error(transparent)]
     IO {
         #[from]
-        #[backtrace]
+        #[cfg_attr(feature = "bt", backtrace)]
         source: StorageIOError<C>,
     },
 }
@@ -209,7 +208,7 @@ pub struct StorageIOError<C: RaftTypeConfig> {
     subject: ErrorSubject<C>,
     verb: ErrorVerb,
     source: AnyError,
-    backtrace: String,
+    backtrace: Option<String>,
 }
 
 impl<C: RaftTypeConfig> std::fmt::Display for StorageIOError<C> {
@@ -224,8 +223,7 @@ impl<C: RaftTypeConfig> StorageIOError<C> {
             subject,
             verb,
             source,
-            // TODO: use crate backtrace instead of std::backtrace.
-            backtrace: format!("{:?}", Backtrace::capture()),
+            backtrace: anyerror::backtrace_str(),
         }
     }
 }

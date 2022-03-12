@@ -16,7 +16,9 @@ repository = "https://github.com/datafuselabs/openraft"
 readme = "../README.md"
 
 [dependencies]
-anyerror = { version = "0.1.4", features = ["anyhow"]}
+anyerror = { version = "0.1.6" }
+# Leave it for debug
+# anyerror = { git = "https://github.com/drmingdrmer/anyerror", branch = "ci",  features = ["anyhow"]}
 async-trait = "0.1.36"
 byte-unit = "4.0.12"
 bytes = "1.0"
@@ -43,6 +45,10 @@ tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
+
+# Enable backtrace when generating an error.
+# Stable rust does not support backtrace.
+bt  = ["anyerror/backtrace", "anyhow/backtrace"]
 
 [package.metadata.docs.rs]
 features = ["docinclude"] # Activate `docinclude` during docs.rs build.

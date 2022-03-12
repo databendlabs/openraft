@@ -20,7 +20,6 @@ path = "src/bin/main.rs"
 
 [dependencies]
 actix-web = "4.0.0-rc.2"
-anyerror = { version = "0.1.4"}
 async-trait = "0.1.36"
 clap = { version = "3.0.13", features = ["derive", "env"] }
 env_logger = "0.9.0"
