@@ -21,7 +21,6 @@ use crate::RaftTypeConfig;
 use crate::SnapshotSegmentId;
 use crate::StorageError;
 use crate::StorageIOError;
-use crate::Update;
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     /// Invoked by leader to send chunks of a snapshot to a follower (§7).
@@ -52,7 +51,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.set_target_state(State::Follower); // State update will emit metrics.
             }
 
-            self.report_metrics(Update::AsIs);
+            self.update_other_metrics_option();
         }
 
         // Compare current snapshot state with received RPC and handle as needed.
@@ -240,7 +239,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.update_membership(membership);
 
         self.snapshot_last_log_id = self.last_applied;
-        self.report_metrics(Update::AsIs);
+        self.update_other_metrics_option();
 
         Ok(())
     }

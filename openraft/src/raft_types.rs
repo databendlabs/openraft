@@ -144,6 +144,21 @@ pub enum Update<T> {
     AsIs,
 }
 
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateMetricsOption {
+    pub leader: Update<()>,
+    pub other_metrics: Update<()>,
+}
+
+impl Default for UpdateMetricsOption {
+    fn default() -> Self {
+        UpdateMetricsOption {
+            leader: Update::AsIs,
+            other_metrics: Update::AsIs,
+        }
+    }
+}
+
 /// The changes of a state machine.
 /// E.g. when applying a log to state machine, or installing a state machine from snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]

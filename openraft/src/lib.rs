@@ -54,6 +54,7 @@ pub use crate::raft_types::SnapshotId;
 pub use crate::raft_types::SnapshotSegmentId;
 pub use crate::raft_types::StateMachineChanges;
 pub use crate::raft_types::Update;
+pub use crate::raft_types::UpdateMetricsOption;
 pub use crate::replication::ReplicationMetrics;
 pub use crate::storage::RaftLogReader;
 pub use crate::storage::RaftSnapshotBuilder;
