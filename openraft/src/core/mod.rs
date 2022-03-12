@@ -152,8 +152,8 @@ impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
 
 pub trait MetricsOptionUpdater<NID: NodeId> {
     // the default impl of `get_leader_metrics_option`, for the non-leader state
-    fn get_leader_metrics_option(&self, _option: Update<()>) -> Option<Update<Option<Versioned<LeaderMetrics<NID>>>>> {
-        None
+    fn get_leader_metrics_option(&self, _option: Update<()>) -> Update<Option<Versioned<LeaderMetrics<NID>>>> {
+        Update::Update(None)
     }
 }
 
@@ -382,32 +382,31 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     pub fn update_leader_metrics_option(&mut self) {
-        self.update_metrics.leader_metrics = Update::Update(());
+        self.update_metrics.leader = Update::Update(());
     }
 
     pub fn update_other_metrics_option(&mut self) {
         self.update_metrics.other_metrics = Update::Update(());
     }
 
-    /// Hook function that executes before every state loop
-    pub fn pre_state_loop(&mut self) {
+    pub fn reset_update_metrics(&mut self) {
         // reset update_metrics
         self.update_metrics = UpdateMetricsOption::default();
     }
 
-    /// Hook function that executes after every state loop
     #[tracing::instrument(level = "trace", skip(self, metrics_reporter))]
-    pub fn post_state_loop(&self, metrics_reporter: &impl MetricsOptionUpdater<C::NodeId>) {
+    pub fn check_report_metrics(&self, metrics_reporter: &impl MetricsOptionUpdater<C::NodeId>) {
         let update_metrics = self.update_metrics.clone();
-        let leader_metrics = metrics_reporter.get_leader_metrics_option(update_metrics.leader_metrics);
+        let leader_metrics = metrics_reporter.get_leader_metrics_option(update_metrics.leader);
         let other_metrics = update_metrics.other_metrics;
 
-        if other_metrics == Update::Update(()) || leader_metrics.is_some() {
-            if let Some(op) = leader_metrics {
-                self.report_metrics(op)
-            } else {
-                self.report_metrics(Update::Update(None));
+        match leader_metrics {
+            Update::AsIs => {
+                if other_metrics == Update::Update(()) {
+                    self.report_metrics(Update::Update(None));
+                }
             }
+            Update::Update(u) => self.report_metrics(Update::Update(u)),
         }
     }
 
@@ -816,13 +815,10 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsOptionUpdater<C::NodeId>
     for LeaderState<'a, C, N, S>
 {
-    fn get_leader_metrics_option(
-        &self,
-        option: Update<()>,
-    ) -> Option<Update<Option<Versioned<LeaderMetrics<C::NodeId>>>>> {
+    fn get_leader_metrics_option(&self, option: Update<()>) -> Update<Option<Versioned<LeaderMetrics<C::NodeId>>>> {
         match option {
-            Update::AsIs => None,
-            Update::Update(_) => Some(Update::Update(Some(self.leader_metrics.clone()))),
+            Update::AsIs => Update::AsIs,
+            Update::Update(_) => Update::Update(Some(self.leader_metrics.clone())),
         }
     }
 }
@@ -888,8 +884,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             let span = tracing::debug_span!("CHrx:LeaderState");
             let _ent = span.enter();
 
-            self.core.post_state_loop(&self);
-            self.core.pre_state_loop();
+            self.core.check_report_metrics(&self);
+            self.core.reset_update_metrics();
 
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {
@@ -1042,8 +1038,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
                 return Ok(());
             }
 
-            self.core.post_state_loop(&self);
-            self.core.pre_state_loop();
+            self.core.check_report_metrics(&self);
+            self.core.reset_update_metrics();
 
             // Setup new term.
             self.core.update_next_election_timeout(false); // Generates a new rand value within range.
@@ -1170,8 +1166,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
                 return Ok(());
             }
 
-            self.core.post_state_loop(&self);
-            self.core.pre_state_loop();
+            self.core.check_report_metrics(&self);
+            self.core.reset_update_metrics();
 
             let election_timeout = sleep_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
 
@@ -1264,8 +1260,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
                 return Ok(());
             }
 
-            self.core.post_state_loop(&self);
-            self.core.pre_state_loop();
+            self.core.check_report_metrics(&self);
+            self.core.reset_update_metrics();
 
             let span = tracing::debug_span!("CHrx:LearnerState");
             let _ent = span.enter();

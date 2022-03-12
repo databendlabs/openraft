@@ -146,14 +146,14 @@ pub enum Update<T> {
 
 #[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UpdateMetricsOption {
-    pub leader_metrics: Update<()>,
+    pub leader: Update<()>,
     pub other_metrics: Update<()>,
 }
 
 impl Default for UpdateMetricsOption {
     fn default() -> Self {
         UpdateMetricsOption {
-            leader_metrics: Update::AsIs,
+            leader: Update::AsIs,
             other_metrics: Update::AsIs,
         }
     }
