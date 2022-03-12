@@ -1,7 +1,6 @@
 use std::thread;
 use std::time::Duration;
 
-use anyerror::AnyError;
 use example_raft_key_value::client::ExampleClient;
 use example_raft_key_value::start_example_raft_node;
 use example_raft_key_value::store::ExampleRequest;
@@ -9,6 +8,7 @@ use example_raft_key_value::ExampleTypeConfig;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::error::NodeNotFound;
+use openraft::AnyError;
 use openraft::Node;
 use tokio::runtime::Runtime;
 

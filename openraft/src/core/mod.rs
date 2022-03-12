@@ -578,7 +578,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     Ok(res) => match res {
                         Ok(snapshot) => {
                             let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.meta.last_log_id));
-                            let _ = chan_tx.send(snapshot.meta.last_log_id.index); // This will always succeed.
+                            // This will always succeed.
+                            let _ = chan_tx.send(snapshot.meta.last_log_id.index);
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");

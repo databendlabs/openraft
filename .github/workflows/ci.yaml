@@ -68,3 +68,60 @@ jobs:
         with:
           path: |
             openraft/_log/
+
+  ut-on-stable-rust:
+    name: unittest on stable rust
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "stable"
+          override: true
+          components: rustfmt, clippy
+
+      - name: Unit Tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+        env:
+          # Parallel tests block each other and result in timeout.
+          RUST_TEST_THREADS: 2
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+
+      - name: Test example-raft-kv
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --manifest-path example-raft-kv/Cargo.toml
+
+
+      - name: Build | Release Mode | No features
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+
+
+      - name: Build | Release Mode | No features
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+        env:
+          # Enable unstable feature on stalbe rust.
+          RUSTC_BOOTSTRAP: 1
+
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        if: failure()
+        with:
+          path: |
+            openraft/_log/
