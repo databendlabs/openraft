@@ -1,4 +1,3 @@
-use std::backtrace::Backtrace;
 use std::fmt::Formatter;
 
 use anyerror::AnyError;
@@ -15,7 +14,7 @@ impl DefensiveError {
         DefensiveError {
             subject,
             violation,
-            backtrace: format!("{:?}", Backtrace::capture()),
+            backtrace: anyerror::backtrace_str(),
         }
     }
 }
@@ -54,7 +53,7 @@ impl StorageIOError {
             subject,
             verb,
             source,
-            backtrace: format!("{:?}", Backtrace::capture()),
+            backtrace: anyerror::backtrace_str(),
         }
     }
 }

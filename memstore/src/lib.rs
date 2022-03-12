@@ -1,5 +1,3 @@
-#![feature(backtrace)]
-
 #[cfg(test)]
 mod test;
 
@@ -12,7 +10,6 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use anyerror::AnyError;
 use openraft::async_trait::async_trait;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
@@ -20,6 +17,7 @@ use openraft::raft::Membership;
 use openraft::storage::HardState;
 use openraft::storage::InitialState;
 use openraft::storage::Snapshot;
+use openraft::AnyError;
 use openraft::AppData;
 use openraft::AppDataResponse;
 use openraft::EffectiveMembership;
