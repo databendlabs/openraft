@@ -1,5 +1,11 @@
 #![doc = include_str!("../README.md")]
-#![feature(backtrace)]
+#![cfg_attr(feature = "bt", feature(backtrace))]
+
+//! # Feature flags
+//!
+//! - `bt`: Enable backtrace: generate backtrace for errors. This requires a unstable feature `backtrace` thus it can
+//!   not be used with stable rust, unless explicity allowing using unstable features in stable rust with
+//!   `RUSTC_BOOTSTRAP=1`.
 
 mod config;
 mod core;
@@ -24,6 +30,8 @@ pub mod types;
 mod metrics_wait_test;
 mod storage_helper;
 
+pub use anyerror;
+pub use anyerror::AnyError;
 pub use async_trait;
 
 pub use crate::config::Config;

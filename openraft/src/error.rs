@@ -198,7 +198,7 @@ pub enum ReplicationError {
 
     #[error(transparent)]
     IO {
-        #[backtrace]
+        #[cfg_attr(feature = "bt", backtrace)]
         #[from]
         source: std::io::Error,
     },
@@ -212,7 +212,7 @@ pub enum ReplicationError {
 
     #[error(transparent)]
     Network {
-        #[backtrace]
+        #[cfg_attr(feature = "bt", backtrace)]
         source: anyhow::Error,
     },
 }

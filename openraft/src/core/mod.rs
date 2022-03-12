@@ -491,7 +491,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                     Ok(res) => match res {
                         Ok(snapshot) => {
                             let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.meta.last_log_id));
-                            let _ = chan_tx.send(snapshot.meta.last_log_id); // This will always succeed.
+                            // This will always succeed.
+                            let _ = chan_tx.send(snapshot.meta.last_log_id);
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");
