@@ -159,6 +159,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         );
     }
 
+    fn has_pending_config(&self) -> bool {
+        // The last membership config is not committed yet.
+        // Can not process the next one.
+        return self.core.committed < Some(self.core.effective_membership.log_id);
+    }
+
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(
         &mut self,
@@ -175,9 +181,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             return Ok(());
         }
 
-        // The last membership config is not committed yet.
-        // Can not process the next one.
-        if self.core.committed < Some(self.core.effective_membership.log_id) {
+        if self.has_pending_config() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::InProgress(InProgress {
                     membership_log_id: self.core.effective_membership.log_id,
@@ -204,6 +208,120 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         tracing::debug!(?new_config, "new_config");
 
+        match self.is_all_new_members_line_rate(new_members.cloned().collect::<BTreeSet<_>>(), blocking) {
+            Ok(_) => {}
+            Err(e) => {
+                let _ = tx.send(Err(e));
+                return Ok(());
+            }
+        }
+
+        self.append_membership_log(new_config, Some(tx)).await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, tx))]
+    pub(super) async fn remove_nodes(
+        &mut self,
+        remove_members: BTreeSet<C::NodeId>,
+        blocking: bool,
+        turn_to_learner: bool,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
+    ) -> Result<(), StorageError<C>> {
+        // Ensure cluster will have at least one node.
+        if remove_members.is_empty() {
+            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                ChangeMembershipError::EmptyMembership(EmptyMembership {}),
+            )));
+            return Ok(());
+        }
+
+        if self.has_pending_config() {
+            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                ChangeMembershipError::InProgress(InProgress {
+                    membership_log_id: self.core.effective_membership.log_id,
+                }),
+            )));
+            return Ok(());
+        }
+
+        let curr = self.core.effective_membership.membership.clone();
+
+        let new_config = {
+            let res = curr.remove_nodes(remove_members, turn_to_learner);
+            match res {
+                Ok(x) => x,
+                Err(e) => {
+                    let change_err = ChangeMembershipError::MissingNodeInfo(e);
+                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(change_err)));
+                    return Ok(());
+                }
+            }
+        };
+
+        tracing::debug!(?new_config, "new_config");
+
+        self.append_membership_log(new_config, Some(tx)).await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, tx))]
+    pub(super) async fn add_nodes(
+        &mut self,
+        add_members: BTreeSet<C::NodeId>,
+        blocking: bool,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
+    ) -> Result<(), StorageError<C>> {
+        // Ensure cluster will have at least one node.
+        if add_members.is_empty() {
+            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                ChangeMembershipError::EmptyMembership(EmptyMembership {}),
+            )));
+            return Ok(());
+        }
+
+        if self.has_pending_config() {
+            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                ChangeMembershipError::InProgress(InProgress {
+                    membership_log_id: self.core.effective_membership.log_id,
+                }),
+            )));
+            return Ok(());
+        }
+
+        let curr = self.core.effective_membership.membership.clone();
+
+        let new_config = {
+            let res = curr.add_nodes(add_members.clone());
+            match res {
+                Ok(x) => x,
+                Err(e) => {
+                    let change_err = ChangeMembershipError::MissingNodeInfo(e);
+                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(change_err)));
+                    return Ok(());
+                }
+            }
+        };
+
+        tracing::debug!(?new_config, "new_config");
+
+        match self.is_all_new_members_line_rate(add_members, blocking) {
+            Ok(_) => {}
+            Err(e) => {
+                let _ = tx.send(Err(e));
+                return Ok(());
+            }
+        }
+
+        self.append_membership_log(new_config, Some(tx)).await?;
+        Ok(())
+    }
+
+    fn is_all_new_members_line_rate(
+        &self,
+        new_members: BTreeSet<C::NodeId>,
+        blocking: bool,
+    ) -> Result<(), ClientWriteError<C>> {
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
         // streams AND are ready to join, then we can immediately proceed with entering joint
         // consensus. Else, new nodes need to first be brought up-to-speed.
@@ -215,7 +333,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         // TODO(xp): 111 test adding a node that is not learner.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in new_members {
+        for new_node in new_members.iter() {
             match self.nodes.get(new_node) {
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id, &self.core.config) {
@@ -225,29 +343,26 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
                     if !blocking {
                         // Node has repl stream, but is not yet ready to join.
-                        let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                        return Err(ClientWriteError::ChangeMembershipError(
                             ChangeMembershipError::LearnerIsLagging(LearnerIsLagging {
                                 node_id: *new_node,
                                 matched: node.matched,
                                 distance: self.core.last_log_id.next_index().saturating_sub(node.matched.next_index()),
                             }),
-                        )));
-                        return Ok(());
+                        ));
                     }
                 }
 
                 // Node does not yet have a repl stream, spawn one.
                 None => {
-                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                    return Err(ClientWriteError::ChangeMembershipError(
                         ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: *new_node }),
-                    )));
-                    return Ok(());
+                    ));
                 }
             }
         }
 
-        self.append_membership_log(new_config, Some(tx)).await?;
-        Ok(())
+        return Ok(());
     }
 
     #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=display(self.core.id)))]

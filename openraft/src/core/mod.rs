@@ -948,6 +948,17 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             } => {
                 self.change_membership(members, blocking, turn_to_learner, tx).await?;
             }
+            RaftMsg::RemoveNodes {
+                members,
+                blocking,
+                turn_to_learner,
+                tx,
+            } => {
+                self.remove_nodes(members, blocking, turn_to_learner, tx).await?;
+            }
+            RaftMsg::AddNodes { members, blocking, tx } => {
+                self.add_nodes(members, blocking, tx).await?;
+            }
             RaftMsg::ExternalRequest { req } => {
                 req(State::Leader, &mut self.core.storage, &mut self.core.network);
             }
@@ -1124,6 +1135,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
+            RaftMsg::RemoveNodes { tx, .. } => {
+                self.core.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::AddNodes { tx, .. } => {
+                self.core.reject_with_forward_to_leader(tx);
+            }
             RaftMsg::ExternalRequest { req } => {
                 req(State::Candidate, &mut self.core.storage, &mut self.core.network);
             }
@@ -1219,6 +1236,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
+            RaftMsg::RemoveNodes { tx, .. } => {
+                self.core.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::AddNodes { tx, .. } => {
+                self.core.reject_with_forward_to_leader(tx);
+            }
             RaftMsg::ExternalRequest { req } => {
                 req(State::Follower, &mut self.core.storage, &mut self.core.network);
             }
@@ -1309,6 +1332,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
                 self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
+                self.core.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::RemoveNodes { tx, .. } => {
+                self.core.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::AddNodes { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ExternalRequest { req } => {

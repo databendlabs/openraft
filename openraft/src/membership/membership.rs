@@ -357,6 +357,54 @@ impl<C: RaftTypeConfig> Membership<C> {
         Ok(m)
     }
 
+    pub(crate) fn remove_nodes(
+        &self,
+        members: BTreeSet<C::NodeId>,
+        turn_to_learner: bool,
+    ) -> Result<Self, MissingNodeInfo<C>> {
+        let mut new_nodes = {
+            let mut new = self.nodes.clone();
+
+            for node_id in members.iter() {
+                new.remove(node_id);
+            }
+            new
+        };
+
+        let new_configs = vec![
+            self.configs.last().cloned().unwrap(),
+            new_nodes.keys().cloned().collect::<BTreeSet<_>>(),
+        ];
+
+        if !turn_to_learner {
+            let old_members = Self::build_all_member_ids(&self.configs);
+            let new_members = Self::build_all_member_ids(&new_configs);
+            let not_in_new = old_members.difference(&new_members);
+
+            for node_id in not_in_new {
+                new_nodes.remove(node_id);
+            }
+        };
+
+        let m = Membership::with_nodes(new_configs, new_nodes)?;
+        Ok(m)
+    }
+
+    pub(crate) fn add_nodes<T>(&self, add_members: T) -> Result<Self, MissingNodeInfo<C>>
+    where T: IntoOptionNodes<C::NodeId> {
+        let members = add_members.into_option_nodes();
+
+        let new_nodes = Self::extend_nodes(self.nodes.clone(), &members);
+
+        let new_configs = vec![
+            self.configs.last().cloned().unwrap(),
+            new_nodes.keys().cloned().collect::<BTreeSet<_>>(),
+        ];
+
+        let m = Membership::with_nodes(new_configs, new_nodes)?;
+        Ok(m)
+    }
+
     fn is_majority_of_single_config(granted: &BTreeSet<C::NodeId>, single_config: &BTreeSet<C::NodeId>) -> bool {
         let d = granted.intersection(single_config);
         let n_granted = d.fold(0, |a, _x| a + 1);
