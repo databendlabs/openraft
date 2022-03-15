@@ -34,24 +34,53 @@ async fn change_membership_cases() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn add_remove_nodes_cases() -> anyhow::Result<()> {
+    let (_log_guard, ut_span) = init_ut!();
+
+    async {
+        change_from_to_with_add_remove_nodes(btreeset! {0}, btreeset! {1}).await?;
+        change_from_to_with_add_remove_nodes(btreeset! {0}, btreeset! {1,2}).await?;
+        change_from_to_with_add_remove_nodes(btreeset! {0}, btreeset! {1,2, 3}).await?;
+        change_from_to_with_add_remove_nodes(btreeset! {0, 1}, btreeset! {1, 2}).await?;
+        change_from_to_with_add_remove_nodes(btreeset! {0, 1}, btreeset! {1}).await?;
+        change_from_to_with_add_remove_nodes(btreeset! {0, 1}, btreeset! {2}).await?;
+        change_from_to_with_add_remove_nodes(btreeset! {0, 1}, btreeset! {3}).await?;
+        change_from_to_with_add_remove_nodes(btreeset! {0, 1, 2}, btreeset! {4}).await?;
+        change_from_to_with_add_remove_nodes(btreeset! {0, 1, 2}, btreeset! {4,5,6}).await?;
+        change_from_to_with_add_remove_nodes(btreeset! {0, 1, 2, 3, 4}, btreeset! {0, 1, 2, 3}).await?;
+
+        Ok::<(), anyhow::Error>(())
+    }
+    .instrument(ut_span)
+    .await?;
+
+    Ok(())
+}
+
+#[tracing::instrument(level = "debug")]
+async fn change_from_to_with_add_remove_nodes(
+    old: BTreeSet<MemNodeId>,
+    new: BTreeSet<MemNodeId>,
+) -> anyhow::Result<()> {
+    let only_in_old = old.difference(&new);
+    let only_in_new = new.difference(&old);
+
+    change_from_to_with_remove_add_nodes_api(
+        old.clone(),
+        only_in_new.cloned().collect::<BTreeSet<_>>(),
+        only_in_old.cloned().collect::<BTreeSet<_>>(),
+    )
+    .await?;
+
+    Ok(())
+}
+
 #[tracing::instrument(level = "debug")]
 async fn change_from_to(old: BTreeSet<MemNodeId>, new: BTreeSet<MemNodeId>) -> anyhow::Result<()> {
     let mes = format!("from {:?} to {:?}", old, new);
 
     let only_in_new = new.difference(&old);
-
-    // first test the case with {remove|add}_nodes api
-    {
-        let only_in_old = old.difference(&new);
-        let only_in_new = new.difference(&old);
-
-        change_from_to_with_remove_add_nodes_api(
-            old.clone(),
-            only_in_new.cloned().collect::<BTreeSet<_>>(),
-            only_in_old.cloned().collect::<BTreeSet<_>>(),
-        )
-        .await?;
-    }
 
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
