@@ -437,3 +437,32 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_membership_add_remove_nodes() -> anyhow::Result<()> {
+    // remove_nodes
+    {
+        let c1 = || btreeset! {1,2,3};
+        let m1 = Membership::<Config>::new(vec![c1()], Some(c1()));
+
+        let remove_nodes = || btreeset! {1,2};
+        let after_remove_nodes = || btreeset! {3};
+        let after_remove = Membership::<Config>::new(vec![c1(), after_remove_nodes()], Some(c1()));
+
+        assert_eq!(after_remove, m1.remove_nodes(remove_nodes(), false)?);
+    }
+
+    // add_nodes
+    {
+        let c1 = || btreeset! {1};
+        let m1 = Membership::<Config>::new(vec![c1()], Some(c1()));
+
+        let add_nodes = || btreeset! {2,3};
+        let after_add_nodes = || btreeset! {1,2,3};
+        let after_add = Membership::<Config>::new(vec![c1(), after_add_nodes()], Some(after_add_nodes()));
+
+        assert_eq!(after_add, m1.add_nodes(add_nodes())?);
+    }
+
+    Ok(())
+}

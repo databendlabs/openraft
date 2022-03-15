@@ -162,7 +162,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     fn has_pending_config(&self) -> bool {
         // The last membership config is not committed yet.
         // Can not process the next one.
-        return self.core.committed < Some(self.core.effective_membership.log_id);
+        self.core.committed < Some(self.core.effective_membership.log_id)
     }
 
     #[tracing::instrument(level = "debug", skip(self, tx))]
@@ -362,7 +362,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             }
         }
 
-        return Ok(());
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=display(self.core.id)))]

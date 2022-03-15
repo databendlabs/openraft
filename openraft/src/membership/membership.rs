@@ -316,7 +316,7 @@ impl<C: RaftTypeConfig> Membership<C> {
     ///
     /// E.g.(`cicj` is a joint membership of `ci` and `cj`):
     /// - `c1.next_step(c1)` returns `c1`
-    /// - `c1.next_step(c2)` returns `c1*c2`
+    /// - `c1.next_step(c2)` returns `c1c2`
     /// - `c1c2.next_step(c2)` returns `c2`
     /// - `c1c2.next_step(c1)` returns `c1`
     /// - `c1c2.next_step(c3)` returns `c2c3`
@@ -359,50 +359,32 @@ impl<C: RaftTypeConfig> Membership<C> {
 
     pub(crate) fn remove_nodes(
         &self,
-        members: BTreeSet<C::NodeId>,
+        remove_members: BTreeSet<C::NodeId>,
         turn_to_learner: bool,
     ) -> Result<Self, MissingNodeInfo<C>> {
-        let mut new_nodes = {
-            let mut new = self.nodes.clone();
+        let new_config = {
+            let mut last_config = self.configs.last().cloned().unwrap();
 
-            for node_id in members.iter() {
-                new.remove(node_id);
+            for node_id in remove_members.iter() {
+                last_config.remove(node_id);
             }
-            new
+            last_config
         };
 
-        let new_configs = vec![
-            self.configs.last().cloned().unwrap(),
-            new_nodes.keys().cloned().collect::<BTreeSet<_>>(),
-        ];
-
-        if !turn_to_learner {
-            let old_members = Self::build_all_member_ids(&self.configs);
-            let new_members = Self::build_all_member_ids(&new_configs);
-            let not_in_new = old_members.difference(&new_members);
-
-            for node_id in not_in_new {
-                new_nodes.remove(node_id);
-            }
-        };
-
-        let m = Membership::with_nodes(new_configs, new_nodes)?;
-        Ok(m)
+        self.next_safe(new_config, turn_to_learner)
     }
 
-    pub(crate) fn add_nodes<T>(&self, add_members: T) -> Result<Self, MissingNodeInfo<C>>
-    where T: IntoOptionNodes<C::NodeId> {
-        let members = add_members.into_option_nodes();
+    pub(crate) fn add_nodes(&self, add_members: BTreeSet<C::NodeId>) -> Result<Self, MissingNodeInfo<C>> {
+        let new_config = {
+            let mut last_config = self.configs.last().cloned().unwrap();
 
-        let new_nodes = Self::extend_nodes(self.nodes.clone(), &members);
+            for node_id in add_members.iter() {
+                last_config.insert(*node_id);
+            }
+            last_config
+        };
 
-        let new_configs = vec![
-            self.configs.last().cloned().unwrap(),
-            new_nodes.keys().cloned().collect::<BTreeSet<_>>(),
-        ];
-
-        let m = Membership::with_nodes(new_configs, new_nodes)?;
-        Ok(m)
+        self.next_safe(new_config, false)
     }
 
     fn is_majority_of_single_config(granted: &BTreeSet<C::NodeId>, single_config: &BTreeSet<C::NodeId>) -> bool {
