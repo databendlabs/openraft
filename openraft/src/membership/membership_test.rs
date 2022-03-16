@@ -446,10 +446,9 @@ fn test_membership_add_remove_nodes() -> anyhow::Result<()> {
         let m1 = Membership::<Config>::new(vec![c1()], Some(c1()));
 
         let remove_members = || btreeset! {1,2};
-        let after_remove_nodes = || btreeset! {3};
-        let after_remove = Membership::<Config>::new(vec![c1(), after_remove_nodes()], Some(c1()));
+        let after_remove_members = || btreeset! {3};
 
-        assert_eq!(after_remove, m1.remove_members(remove_members(), false)?);
+        assert_eq!(after_remove_members(), m1.remove_members(remove_members()));
     }
 
     // add_members
@@ -458,10 +457,9 @@ fn test_membership_add_remove_nodes() -> anyhow::Result<()> {
         let m1 = Membership::<Config>::new(vec![c1()], Some(c1()));
 
         let add_members = || btreeset! {2,3};
-        let after_add_nodes = || btreeset! {1,2,3};
-        let after_add = Membership::<Config>::new(vec![c1(), after_add_nodes()], Some(after_add_nodes()));
+        let after_add_members = || btreeset! {1,2,3};
 
-        assert_eq!(after_add, m1.add_members(add_members())?);
+        assert_eq!(after_add_members(), m1.add_members(add_members()));
     }
 
     Ok(())

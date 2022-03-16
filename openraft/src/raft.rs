@@ -20,10 +20,8 @@ use crate::config::Config;
 use crate::core::RaftCore;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
-use crate::error::ChangeMembershipError;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
-use crate::error::EmptyMembership;
 use crate::error::Fatal;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
@@ -322,6 +320,59 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         self.call_core(RaftMsg::AddLearner { id, node, blocking, tx }, rx).await
     }
 
+    async fn do_change_membership(
+        &self,
+        change_members: ChangeMembers<C>,
+        blocking: bool,
+        turn_to_learner: bool,
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+        tracing::info!("do_change_membership: start to commit joint config");
+
+        let (tx, rx) = oneshot::channel();
+        // res is error if membership can not be changed.
+        // If it is not error, it will go into a joint state
+        let res = self
+            .call_core(
+                RaftMsg::ChangeMembership {
+                    members: change_members.clone(),
+                    blocking,
+                    turn_to_learner,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
+
+        tracing::info!("res of first do_change_membership: {:?}", res.summary());
+
+        let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
+
+        // There is a previously in progress joint state and it becomes the membership config we want.
+        if !joint.is_in_joint_consensus() {
+            return Ok(res);
+        }
+
+        tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
+        tracing::debug!("the second step is to change to uniform config: {:?}", change_members);
+
+        let (tx, rx) = oneshot::channel();
+        let res = self
+            .call_core(
+                RaftMsg::ChangeMembership {
+                    members: change_members.clone(),
+                    blocking,
+                    turn_to_learner,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
+
+        tracing::info!("res of second do_change_membership: {}", res.summary());
+
+        Ok(res)
+    }
+
     /// Propose a cluster configuration change.
     ///
     /// If a node in the proposed config but is not yet a voter or learner, it first calls `add_learner` to setup
@@ -355,56 +406,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
         tracing::info!("change_membership: start to commit joint config");
-        if members.is_empty() {
-            return Err(ClientWriteError::ChangeMembershipError(
-                ChangeMembershipError::EmptyMembership(EmptyMembership {}),
-            ));
-        }
-        let change_members = ChangeMembers::Replace(members);
-
-        let (tx, rx) = oneshot::channel();
-        // res is error if membership can not be changed.
-        // If it is not error, it will go into a joint state
-        let res = self
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    members: change_members.clone(),
-                    blocking,
-                    turn_to_learner,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
-
-        tracing::info!("res of first change_membership: {:?}", res.summary());
-
-        let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
-
-        // There is a previously in progress joint state and it becomes the membership config we want.
-        if !joint.is_in_joint_consensus() {
-            return Ok(res);
-        }
-
-        tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
-        tracing::debug!("the second step is to change to uniform config: {:?}", change_members);
-
-        let (tx, rx) = oneshot::channel();
-        let res = self
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    members: change_members.clone(),
-                    blocking,
-                    turn_to_learner,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
-
-        tracing::info!("res of second change_membership: {}", res.summary());
-
-        Ok(res)
+        return self.do_change_membership(ChangeMembers::Replace(members), blocking, turn_to_learner).await;
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -415,59 +417,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
         tracing::debug!("remove_members: start to commit joint config");
-        if remove_members.is_empty() {
-            return Err(ClientWriteError::ChangeMembershipError(
-                ChangeMembershipError::EmptyMembership(EmptyMembership {}),
-            ));
-        }
-        let change_members = ChangeMembers::Remove(remove_members);
-
-        let (tx, rx) = oneshot::channel();
-        // res is error if membership can not be changed.
-        // If it is not error, it will go into a joint state
-        let res = self
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    members: change_members.clone(),
-                    blocking,
-                    turn_to_learner,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
-
-        tracing::debug!("res of first remove_members: {:?}", res.summary());
-
-        let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
-
-        // There is a previously in progress joint state and it becomes the membership config we want.
-        if !joint.is_in_joint_consensus() {
-            return Ok(res);
-        }
-
-        tracing::trace!("committed a joint config: {} {:?}", log_id, joint);
-        tracing::trace!(
-            "the second step is to remove_members to uniform config: {:?}",
-            change_members
-        );
-
-        let (tx, rx) = oneshot::channel();
-        let res = self
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    members: change_members.clone(),
-                    blocking,
-                    turn_to_learner,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
-
-        tracing::debug!("res of second remove_members: {}", res.summary());
-
-        Ok(res)
+        return self.do_change_membership(ChangeMembers::Remove(remove_members), blocking, turn_to_learner).await;
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -477,59 +427,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         blocking: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
         tracing::debug!("add_members: start to commit joint config");
-        if add_members.is_empty() {
-            return Err(ClientWriteError::ChangeMembershipError(
-                ChangeMembershipError::EmptyMembership(EmptyMembership {}),
-            ));
-        }
-        let change_members = ChangeMembers::Add(add_members);
-
-        let (tx, rx) = oneshot::channel();
-        // res is error if membership can not be changed.
-        // If it is not error, it will go into a joint state
-        let res = self
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    members: change_members.clone(),
-                    blocking,
-                    turn_to_learner: false,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
-
-        tracing::debug!("res of first add_members: {:?}", res.summary());
-
-        let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
-
-        // There is a previously in progress joint state and it becomes the membership config we want.
-        if !joint.is_in_joint_consensus() {
-            return Ok(res);
-        }
-
-        tracing::trace!("committed a joint config: {} {:?}", log_id, joint);
-        tracing::trace!(
-            "the second step is to add_members to uniform config: {:?}",
-            change_members
-        );
-
-        let (tx, rx) = oneshot::channel();
-        let res = self
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    members: change_members.clone(),
-                    blocking,
-                    turn_to_learner: false,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
-
-        tracing::debug!("res of second add_members: {}", res.summary());
-
-        Ok(res)
+        return self.do_change_membership(ChangeMembers::Add(add_members), blocking, false).await;
     }
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.

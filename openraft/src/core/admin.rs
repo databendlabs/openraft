@@ -226,20 +226,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
     ) -> Result<(), StorageError<C>> {
-        let new_members = {
-            let curr = self.core.effective_membership.membership.clone();
-            let res = curr.remove_members(remove_members, turn_to_learner);
-            let curr = match res {
-                Ok(c) => c,
-                Err(e) => {
-                    let change_err = ChangeMembershipError::MissingNodeInfo(e);
-                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(change_err)));
-                    return Ok(());
-                }
-            };
-            curr.get_configs().last().cloned().unwrap()
-        };
-
+        let new_members = self.core.effective_membership.membership.remove_members(remove_members);
         self.change_membership(new_members, blocking, false, tx).await?;
 
         Ok(())
@@ -252,20 +239,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         blocking: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
     ) -> Result<(), StorageError<C>> {
-        let new_members = {
-            let curr = self.core.effective_membership.membership.clone();
-            let res = curr.add_members(add_members);
-            let curr = match res {
-                Ok(c) => c,
-                Err(e) => {
-                    let change_err = ChangeMembershipError::MissingNodeInfo(e);
-                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(change_err)));
-                    return Ok(());
-                }
-            };
-            curr.get_configs().last().cloned().unwrap()
-        };
-
+        let new_members = self.core.effective_membership.membership.add_members(add_members);
         self.change_membership(new_members, blocking, false, tx).await?;
 
         Ok(())
