@@ -167,34 +167,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         self.core.committed < Some(self.core.effective_membership.log_id)
     }
 
-    fn get_new_membership(&self, change_members: ChangeMembers<C>) -> BTreeSet<C::NodeId> {
-        match change_members {
-            ChangeMembers::Replace(c) => c,
-            ChangeMembers::Add(add_members) => self
-                .core
-                .effective_membership
-                .membership
-                .get_configs()
-                .last()
-                .cloned()
-                .unwrap()
-                .union(&add_members)
-                .cloned()
-                .collect::<BTreeSet<_>>(),
-            ChangeMembers::Remove(remove_members) => self
-                .core
-                .effective_membership
-                .membership
-                .get_configs()
-                .last()
-                .cloned()
-                .unwrap()
-                .difference(&remove_members)
-                .cloned()
-                .collect::<BTreeSet<_>>(),
-        }
-    }
-
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(
         &mut self,
@@ -203,7 +175,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
     ) -> Result<(), StorageError<C>> {
-        let members = self.get_new_membership(change_members);
+        let members = change_members
+            .get_new_membership(self.core.effective_membership.membership.get_configs().last().cloned().unwrap());
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(

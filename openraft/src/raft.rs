@@ -563,6 +563,16 @@ pub enum ChangeMembers<C: RaftTypeConfig> {
     Replace(BTreeSet<C::NodeId>),
 }
 
+impl<C: RaftTypeConfig> ChangeMembers<C> {
+    pub fn get_new_membership(self, old: BTreeSet<C::NodeId>) -> BTreeSet<C::NodeId> {
+        match self {
+            ChangeMembers::Replace(c) => c,
+            ChangeMembers::Add(add_members) => old.union(&add_members).cloned().collect::<BTreeSet<_>>(),
+            ChangeMembers::Remove(remove_members) => old.difference(&remove_members).cloned().collect::<BTreeSet<_>>(),
+        }
+    }
+}
+
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     AppendEntries {
