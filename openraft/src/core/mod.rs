@@ -44,7 +44,6 @@ use crate::error::InitializeError;
 use crate::leader_metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
 use crate::raft::AddLearnerResponse;
-use crate::raft::ChangeMembers;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
 use crate::raft::RaftMsg;
@@ -946,11 +945,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 blocking,
                 turn_to_learner,
                 tx,
-            } => match members {
-                ChangeMembers::Replace(c) => self.change_membership(c, blocking, turn_to_learner, tx).await?,
-                ChangeMembers::Add(c) => self.add_members(c, blocking, tx).await?,
-                ChangeMembers::Remove(c) => self.remove_members(c, blocking, turn_to_learner, tx).await?,
-            },
+            } => self.change_membership(members, blocking, turn_to_learner, tx).await?,
             RaftMsg::ExternalRequest { req } => {
                 req(State::Leader, &mut self.core.storage, &mut self.core.network);
             }
