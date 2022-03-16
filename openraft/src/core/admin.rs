@@ -226,7 +226,17 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
     ) -> Result<(), StorageError<C>> {
-        let new_members = self.core.effective_membership.membership.remove_members(remove_members);
+        let new_members = self
+            .core
+            .effective_membership
+            .membership
+            .get_configs()
+            .last()
+            .cloned()
+            .unwrap()
+            .difference(&remove_members)
+            .cloned()
+            .collect::<BTreeSet<_>>();
         self.change_membership(new_members, blocking, false, tx).await?;
 
         Ok(())
@@ -239,7 +249,17 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         blocking: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
     ) -> Result<(), StorageError<C>> {
-        let new_members = self.core.effective_membership.membership.add_members(add_members);
+        let new_members = self
+            .core
+            .effective_membership
+            .membership
+            .get_configs()
+            .last()
+            .cloned()
+            .unwrap()
+            .union(&add_members)
+            .cloned()
+            .collect::<BTreeSet<_>>();
         self.change_membership(new_members, blocking, false, tx).await?;
 
         Ok(())

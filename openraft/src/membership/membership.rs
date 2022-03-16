@@ -357,14 +357,6 @@ impl<C: RaftTypeConfig> Membership<C> {
         Ok(m)
     }
 
-    pub(crate) fn remove_members(&self, members: BTreeSet<C::NodeId>) -> BTreeSet<C::NodeId> {
-        self.get_configs().last().cloned().unwrap().difference(&members).cloned().collect::<BTreeSet<_>>()
-    }
-
-    pub(crate) fn add_members(&self, members: BTreeSet<C::NodeId>) -> BTreeSet<C::NodeId> {
-        self.get_configs().last().cloned().unwrap().union(&members).cloned().collect::<BTreeSet<_>>()
-    }
-
     fn is_majority_of_single_config(granted: &BTreeSet<C::NodeId>, single_config: &BTreeSet<C::NodeId>) -> bool {
         let d = granted.intersection(single_config);
         let n_granted = d.fold(0, |a, _x| a + 1);
