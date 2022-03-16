@@ -28,7 +28,7 @@ jobs:
           command: test
         env:
           # Parallel tests block each other and result in timeout.
-          RUST_TEST_THREADS: 2
+          RUST_TEST_THREADS: 1
           RUST_LOG: debug
           RUST_BACKTRACE: full
           RAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
@@ -90,7 +90,7 @@ jobs:
           command: test
         env:
           # Parallel tests block each other and result in timeout.
-          RUST_TEST_THREADS: 2
+          RUST_TEST_THREADS: 1
           RUST_LOG: debug
           RUST_BACKTRACE: full
 
