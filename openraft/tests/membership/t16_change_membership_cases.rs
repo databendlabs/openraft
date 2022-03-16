@@ -118,11 +118,11 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, new: BTreeSet<MemNodeId>) -> a
 #[tracing::instrument(level = "debug")]
 async fn change_from_to_with_remove_add_nodes_api(
     old: BTreeSet<MemNodeId>,
-    add_nodes: BTreeSet<MemNodeId>,
-    remove_nodes: BTreeSet<MemNodeId>,
+    add_members: BTreeSet<MemNodeId>,
+    remove_members: BTreeSet<MemNodeId>,
 ) -> anyhow::Result<()> {
-    let only_in_old = remove_nodes.clone();
-    let only_in_new = add_nodes.clone();
+    let only_in_old = remove_members.clone();
+    let only_in_new = add_members.clone();
 
     // construct the new config
     let mut new: BTreeSet<MemNodeId> = btreeset! {};
@@ -165,14 +165,14 @@ async fn change_from_to_with_remove_add_nodes_api(
     let node = router.get_raft_handle(&0)?;
 
     // add nodes
-    if !add_nodes.is_empty() {
-        node.add_nodes(add_nodes.clone(), true).await?;
+    if !add_members.is_empty() {
+        node.add_members(add_members.clone(), true).await?;
         log_index += 2; // two member-change logs
     }
 
     // remove nodes
-    if !remove_nodes.is_empty() {
-        node.remove_nodes(remove_nodes.clone(), true, false).await?;
+    if !remove_members.is_empty() {
+        node.remove_members(remove_members.clone(), true, false).await?;
         log_index += 2; // two member-change logs
     }
 
