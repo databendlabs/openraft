@@ -604,14 +604,14 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     ChangeMembership {
         members: ChangeMembers<C>,
 
-        /// If `blocking` is `false`, respond to client a ChangeMembershipError::LearnerIsLagging error at once if a
-        /// non-member is lagging.
+        /// If `blocking` is `false`, respond to the client with a `ChangeMembershipError::LearnerIsLagging` error at
+        /// once if a non-member is lagging.
         ///
-        /// Otherwise, wait for commit of the member change log.
+        /// Otherwise, wait for the commit of the member change log.
         blocking: bool,
 
-        /// If `turn_to_learner` is `true`, then all the members which not exists in the new membership,
-        /// will be turned into learners, otherwise will be removed.
+        /// If `turn_to_learner` is `true`, then all the members which do not exist in the new membership
+        /// will be turned into learners, otherwise they will be removed.
         turn_to_learner: bool,
 
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
