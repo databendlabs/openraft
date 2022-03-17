@@ -175,8 +175,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
     ) -> Result<(), StorageError<C>> {
-        let members = change_members
-            .get_new_membership(self.core.effective_membership.membership.get_configs().last().cloned().unwrap());
+        let members = change_members.apply_to(self.core.effective_membership.membership.get_configs().last().unwrap());
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
@@ -212,7 +211,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         tracing::debug!(?new_config, "new_config");
 
-        if let Err(e) = self.is_all_new_members_line_rate(new_members.cloned().collect::<BTreeSet<_>>(), blocking) {
+        if let Err(e) = self.are_nodes_at_line_rate(&new_members.cloned().collect::<BTreeSet<_>>(), blocking) {
             let _ = tx.send(Err(e));
             return Ok(());
         }
@@ -221,11 +220,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         Ok(())
     }
 
-    fn is_all_new_members_line_rate(
-        &self,
-        new_members: BTreeSet<C::NodeId>,
-        blocking: bool,
-    ) -> Result<(), ClientWriteError<C>> {
+    /// return Ok if all the nodes is `is_line_rate`
+    fn are_nodes_at_line_rate(&self, nodes: &BTreeSet<C::NodeId>, blocking: bool) -> Result<(), ClientWriteError<C>> {
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
         // streams AND are ready to join, then we can immediately proceed with entering joint
         // consensus. Else, new nodes need to first be brought up-to-speed.
@@ -237,8 +233,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         // TODO(xp): 111 test adding a node that is not learner.
         // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in new_members.iter() {
-            match self.nodes.get(new_node) {
+        for node_id in nodes.iter() {
+            match self.nodes.get(node_id) {
                 Some(node) => {
                     if node.is_line_rate(&self.core.last_log_id, &self.core.config) {
                         // Node is ready to join.
@@ -249,7 +245,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                         // Node has repl stream, but is not yet ready to join.
                         return Err(ClientWriteError::ChangeMembershipError(
                             ChangeMembershipError::LearnerIsLagging(LearnerIsLagging {
-                                node_id: *new_node,
+                                node_id: *node_id,
                                 matched: node.matched,
                                 distance: self.core.last_log_id.next_index().saturating_sub(node.matched.next_index()),
                             }),
@@ -260,7 +256,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 // Node does not yet have a repl stream, spawn one.
                 None => {
                     return Err(ClientWriteError::ChangeMembershipError(
-                        ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: *new_node }),
+                        ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: *node_id }),
                     ));
                 }
             }

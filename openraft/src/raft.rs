@@ -564,7 +564,8 @@ pub enum ChangeMembers<C: RaftTypeConfig> {
 }
 
 impl<C: RaftTypeConfig> ChangeMembers<C> {
-    pub fn get_new_membership(self, old: BTreeSet<C::NodeId>) -> BTreeSet<C::NodeId> {
+    /// apply the `ChangeMembers` to `old` node set, return new node set
+    pub fn apply_to(self, old: &BTreeSet<C::NodeId>) -> BTreeSet<C::NodeId> {
         match self {
             ChangeMembers::Replace(c) => c,
             ChangeMembers::Add(add_members) => old.union(&add_members).cloned().collect::<BTreeSet<_>>(),

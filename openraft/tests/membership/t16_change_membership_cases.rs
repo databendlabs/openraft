@@ -42,7 +42,8 @@ async fn add_members_cases() -> anyhow::Result<()> {
 
     async {
         change_from_to(btreeset! {0}, ChangeMembers::Add(btreeset! {0,1})).await?;
-
+        change_from_to(btreeset! {0}, ChangeMembers::Add(btreeset! {1,2})).await?;
+        change_from_to(btreeset! {0,1}, ChangeMembers::Add(btreeset! {})).await?;
         Ok::<(), anyhow::Error>(())
     }
     .instrument(ut_span)
@@ -57,6 +58,9 @@ async fn remove_members_cases() -> anyhow::Result<()> {
 
     async {
         change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {0,1})).await?;
+        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {3})).await?;
+        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {})).await?;
+        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {1,3})).await?;
 
         Ok::<(), anyhow::Error>(())
     }
@@ -68,7 +72,7 @@ async fn remove_members_cases() -> anyhow::Result<()> {
 
 #[tracing::instrument(level = "debug")]
 async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<MemConfig>) -> anyhow::Result<()> {
-    let new = change_members.get_new_membership(old.clone());
+    let new = change_members.apply_to(&old);
 
     let mes = format!("from {:?} to {:?}", old, new);
 
@@ -101,7 +105,10 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
 
         let node = router.get_raft_handle(&0)?;
         node.change_membership(new.clone(), true, false).await?;
-        log_index += 2; // two member-change logs
+        log_index += 1;
+        if new != old {
+            log_index += 1; // two member-change logs
+        }
 
         tracing::info!("--- wait for old leader or new leader");
         {
