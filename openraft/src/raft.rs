@@ -320,6 +320,59 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         self.call_core(RaftMsg::AddLearner { id, node, blocking, tx }, rx).await
     }
 
+    async fn do_change_membership(
+        &self,
+        change_members: ChangeMembers<C>,
+        blocking: bool,
+        turn_to_learner: bool,
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+        tracing::info!("do_change_membership: start to commit joint config");
+
+        let (tx, rx) = oneshot::channel();
+        // res is error if membership can not be changed.
+        // If it is not error, it will go into a joint state
+        let res = self
+            .call_core(
+                RaftMsg::ChangeMembership {
+                    members: change_members.clone(),
+                    blocking,
+                    turn_to_learner,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
+
+        tracing::info!("res of first do_change_membership: {:?}", res.summary());
+
+        let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
+
+        // There is a previously in progress joint state and it becomes the membership config we want.
+        if !joint.is_in_joint_consensus() {
+            return Ok(res);
+        }
+
+        tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
+        tracing::debug!("the second step is to change to uniform config: {:?}", change_members);
+
+        let (tx, rx) = oneshot::channel();
+        let res = self
+            .call_core(
+                RaftMsg::ChangeMembership {
+                    members: change_members.clone(),
+                    blocking,
+                    turn_to_learner,
+                    tx,
+                },
+                rx,
+            )
+            .await?;
+
+        tracing::info!("res of second do_change_membership: {}", res.summary());
+
+        Ok(res)
+    }
+
     /// Propose a cluster configuration change.
     ///
     /// If a node in the proposed config but is not yet a voter or learner, it first calls `add_learner` to setup
@@ -353,50 +406,27 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
         tracing::info!("change_membership: start to commit joint config");
+        return self.do_change_membership(ChangeMembers::Replace(members), blocking, turn_to_learner).await;
+    }
 
-        let (tx, rx) = oneshot::channel();
-        // res is error if membership can not be changed.
-        // If it is not error, it will go into a joint state
-        let res = self
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    members: members.clone(),
-                    blocking,
-                    turn_to_learner,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn remove_members(
+        &self,
+        remove_members: BTreeSet<C::NodeId>,
+        turn_to_learner: bool,
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+        tracing::debug!("remove_members: start to commit joint config");
+        return self.do_change_membership(ChangeMembers::Remove(remove_members), false, turn_to_learner).await;
+    }
 
-        tracing::info!("res of first change_membership: {:?}", res.summary());
-
-        let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
-
-        // There is a previously in progress joint state and it becomes the membership config we want.
-        if !joint.is_in_joint_consensus() {
-            return Ok(res);
-        }
-
-        tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
-        tracing::debug!("the second step is to change to uniform config: {:?}", members);
-
-        let (tx, rx) = oneshot::channel();
-        let res = self
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    members,
-                    blocking,
-                    turn_to_learner,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
-
-        tracing::info!("res of second change_membership: {}", res.summary());
-
-        Ok(res)
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn add_members(
+        &self,
+        add_members: BTreeSet<C::NodeId>,
+        blocking: bool,
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+        tracing::debug!("add_members: start to commit joint config");
+        return self.do_change_membership(ChangeMembers::Add(add_members), blocking, false).await;
     }
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
@@ -525,6 +555,24 @@ pub struct AddLearnerResponse<C: RaftTypeConfig> {
     pub matched: Option<LogId<C::NodeId>>,
 }
 
+#[derive(PartialEq, Serialize, Deserialize, Debug, Clone)]
+pub enum ChangeMembers<C: RaftTypeConfig> {
+    Add(BTreeSet<C::NodeId>),
+    Remove(BTreeSet<C::NodeId>),
+    Replace(BTreeSet<C::NodeId>),
+}
+
+impl<C: RaftTypeConfig> ChangeMembers<C> {
+    /// apply the `ChangeMembers` to `old` node set, return new node set
+    pub fn apply_to(self, old: &BTreeSet<C::NodeId>) -> BTreeSet<C::NodeId> {
+        match self {
+            ChangeMembers::Replace(c) => c,
+            ChangeMembers::Add(add_members) => old.union(&add_members).cloned().collect::<BTreeSet<_>>(),
+            ChangeMembers::Remove(remove_members) => old.difference(&remove_members).cloned().collect::<BTreeSet<_>>(),
+        }
+    }
+}
+
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     AppendEntries {
@@ -564,19 +612,21 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         tx: RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C>>,
     },
     ChangeMembership {
-        members: BTreeSet<C::NodeId>,
-        /// with blocking==false, respond to client a ChangeMembershipError::LearnerIsLagging error at once if a
-        /// non-member is lagging.
+        members: ChangeMembers<C>,
+
+        /// If `blocking` is `false`, respond to the client with a `ChangeMembershipError::LearnerIsLagging` error at
+        /// once if a non-member is lagging.
         ///
-        /// Otherwise, wait for commit of the member change log.
+        /// Otherwise, wait for the commit of the member change log.
         blocking: bool,
 
-        /// If turn_to_learner is true, then all the members which not exists in the new membership,
-        /// will be turned into learners, otherwise will be removed.
+        /// If `turn_to_learner` is `true`, then all the members which do not exist in the new membership
+        /// will be turned into learners, otherwise they will be removed.
         turn_to_learner: bool,
 
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
     },
+
     ExternalRequest {
         req: Box<dyn FnOnce(State, &mut S, &mut N) + Send + 'static>,
     },

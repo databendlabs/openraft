@@ -945,9 +945,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 blocking,
                 turn_to_learner,
                 tx,
-            } => {
-                self.change_membership(members, blocking, turn_to_learner, tx).await?;
-            }
+            } => self.change_membership(members, blocking, turn_to_learner, tx).await?,
             RaftMsg::ExternalRequest { req } => {
                 req(State::Leader, &mut self.core.storage, &mut self.core.network);
             }

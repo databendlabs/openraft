@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
+use memstore::Config as MemConfig;
 use memstore::MemNodeId;
+use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::State;
 use tracing_futures::Instrument;
@@ -15,16 +17,50 @@ async fn change_membership_cases() -> anyhow::Result<()> {
     let (_log_guard, ut_span) = init_ut!();
 
     async {
-        change_from_to(btreeset! {0}, btreeset! {1}).await?;
-        change_from_to(btreeset! {0}, btreeset! {1,2}).await?;
-        change_from_to(btreeset! {0}, btreeset! {1,2, 3}).await?;
-        change_from_to(btreeset! {0, 1}, btreeset! {1, 2}).await?;
-        change_from_to(btreeset! {0, 1}, btreeset! {1}).await?;
-        change_from_to(btreeset! {0, 1}, btreeset! {2}).await?;
-        change_from_to(btreeset! {0, 1}, btreeset! {3}).await?;
-        change_from_to(btreeset! {0, 1, 2}, btreeset! {4}).await?;
-        change_from_to(btreeset! {0, 1, 2}, btreeset! {4,5,6}).await?;
-        change_from_to(btreeset! {0, 1, 2, 3, 4}, btreeset! {0, 1, 2, 3}).await?;
+        change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1})).await?;
+        change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1,2})).await?;
+        change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1,2,3})).await?;
+        change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {1,2})).await?;
+        change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {1})).await?;
+        change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {2})).await?;
+        change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {3})).await?;
+        change_from_to(btreeset! {0, 1, 2}, ChangeMembers::Replace(btreeset! {4})).await?;
+        change_from_to(btreeset! {0, 1, 2}, ChangeMembers::Replace(btreeset! {4,5,6})).await?;
+        change_from_to(btreeset! {0, 1, 2, 3, 4}, ChangeMembers::Replace(btreeset! {0,1,2,3})).await?;
+
+        Ok::<(), anyhow::Error>(())
+    }
+    .instrument(ut_span)
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn add_members_cases() -> anyhow::Result<()> {
+    let (_log_guard, ut_span) = init_ut!();
+
+    async {
+        change_from_to(btreeset! {0}, ChangeMembers::Add(btreeset! {0,1})).await?;
+        change_from_to(btreeset! {0}, ChangeMembers::Add(btreeset! {1,2})).await?;
+        change_from_to(btreeset! {0,1}, ChangeMembers::Add(btreeset! {})).await?;
+        Ok::<(), anyhow::Error>(())
+    }
+    .instrument(ut_span)
+    .await?;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+async fn remove_members_cases() -> anyhow::Result<()> {
+    let (_log_guard, ut_span) = init_ut!();
+
+    async {
+        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {0,1})).await?;
+        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {3})).await?;
+        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {})).await?;
+        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {1,3})).await?;
 
         Ok::<(), anyhow::Error>(())
     }
@@ -35,7 +71,9 @@ async fn change_membership_cases() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(level = "debug")]
-async fn change_from_to(old: BTreeSet<MemNodeId>, new: BTreeSet<MemNodeId>) -> anyhow::Result<()> {
+async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<MemConfig>) -> anyhow::Result<()> {
+    let new = change_members.apply_to(&old);
+
     let mes = format!("from {:?} to {:?}", old, new);
 
     let only_in_old = old.difference(&new);
@@ -67,7 +105,10 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, new: BTreeSet<MemNodeId>) -> a
 
         let node = router.get_raft_handle(&0)?;
         node.change_membership(new.clone(), true, false).await?;
-        log_index += 2; // two member-change logs
+        log_index += 1;
+        if new != old {
+            log_index += 1; // two member-change logs
+        }
 
         tracing::info!("--- wait for old leader or new leader");
         {

@@ -316,7 +316,7 @@ impl<C: RaftTypeConfig> Membership<C> {
     ///
     /// E.g.(`cicj` is a joint membership of `ci` and `cj`):
     /// - `c1.next_step(c1)` returns `c1`
-    /// - `c1.next_step(c2)` returns `c1*c2`
+    /// - `c1.next_step(c2)` returns `c1c2`
     /// - `c1c2.next_step(c2)` returns `c2`
     /// - `c1c2.next_step(c1)` returns `c1`
     /// - `c1c2.next_step(c3)` returns `c2c3`
