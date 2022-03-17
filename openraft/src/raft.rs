@@ -413,11 +413,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn remove_members(
         &self,
         remove_members: BTreeSet<C::NodeId>,
-        blocking: bool,
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
         tracing::debug!("remove_members: start to commit joint config");
-        return self.do_change_membership(ChangeMembers::Remove(remove_members), blocking, turn_to_learner).await;
+        return self.do_change_membership(ChangeMembers::Remove(remove_members), false, turn_to_learner).await;
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
