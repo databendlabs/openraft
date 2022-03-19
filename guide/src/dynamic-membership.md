@@ -3,7 +3,7 @@
 Unlike the original raft, openraft treats all membership as a **joint** membership.
 A uniform config is just a special case of joint: the joint of only one config.
 
-Openraft offers two mechanisms for controlling member node lifecycle:
+Openraft offers these mechanisms for controlling member node lifecycle:
 
 ## `Raft::add_learner()`
 
@@ -11,9 +11,6 @@ This method will add a learner to the cluster,
 and immediately begin syncing logs from the leader.
 
 - A **Learner** won't vote for leadership.
-
-- A **Learner** is not persistently stored by `Raft`, i.e., if a new leader is
-    elected, a Learner will no longer receive logs from the new leader.
 
 
 ## `Raft::change_membership(node_list, turn_to_learner)`
@@ -39,6 +36,12 @@ with `node_list` {3,4,5}, then:
     - If `turn_to_learner` is true, after commit the new membership is {"members":{3,4,5}, "learners":{1,2}}.
     - Otherwise if `turn_to_learner` is false, then the new membership is {"members":{3,4,5}, "learners":{}}, 
       in which the members not exists in the new membership just be removed from the cluster.
+
+## `Raft::remove_members(members, turn_to_learner)`
+Remove members directly, `turn_to_learner` has the same meaning in `change_membership`.
+
+## `Raft::add_members(members)`
+Add members directly.
 
 ## Extended membership change algo
 
