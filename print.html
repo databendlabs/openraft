@@ -601,18 +601,12 @@ state, AKA the <strong>split-brain</strong> state.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="dynamic-membership"><a class="header" href="#dynamic-membership">Dynamic Membership</a></h1>
 <p>Unlike the original raft, openraft treats all membership as a <strong>joint</strong> membership.
 A uniform config is just a special case of joint: the joint of only one config.</p>
-<p>Openraft offers two mechanisms for controlling member node lifecycle:</p>
+<p>Openraft offers these mechanisms for controlling member node lifecycle:</p>
 <h2 id="raftadd_learner"><a class="header" href="#raftadd_learner"><code>Raft::add_learner()</code></a></h2>
 <p>This method will add a learner to the cluster,
 and immediately begin syncing logs from the leader.</p>
 <ul>
-<li>
-<p>A <strong>Learner</strong> won't vote for leadership.</p>
-</li>
-<li>
-<p>A <strong>Learner</strong> is not persistently stored by <code>Raft</code>, i.e., if a new leader is
-elected, a Learner will no longer receive logs from the new leader.</p>
-</li>
+<li>A <strong>Learner</strong> won't vote for leadership.</li>
 </ul>
 <h2 id="raftchange_membershipnode_list-turn_to_learner"><a class="header" href="#raftchange_membershipnode_list-turn_to_learner"><code>Raft::change_membership(node_list, turn_to_learner)</code></a></h2>
 <p>This method will initiate a membership change and returns when the effective
@@ -632,6 +626,10 @@ with <code>node_list</code> {3,4,5}, then:
 - If <code>turn_to_learner</code> is true, after commit the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}.
 - Otherwise if <code>turn_to_learner</code> is false, then the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}, 
 in which the members not exists in the new membership just be removed from the cluster.</p>
+<h2 id="raftremove_membersmembers-turn_to_learner"><a class="header" href="#raftremove_membersmembers-turn_to_learner"><code>Raft::remove_members(members, turn_to_learner)</code></a></h2>
+<p>Remove members directly, <code>turn_to_learner</code> has the same meaning in <code>change_membership</code>.</p>
+<h2 id="raftadd_membersmembers"><a class="header" href="#raftadd_membersmembers"><code>Raft::add_members(members)</code></a></h2>
+<p>Add members directly.</p>
 <h2 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h2>
 <p>Openraft tries to commit one or more membership logs to finally change the
 membership to <code>node_list</code>.
