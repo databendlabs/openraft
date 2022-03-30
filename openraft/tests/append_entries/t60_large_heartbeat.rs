@@ -5,15 +5,13 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Large heartbeat should not block replication.
 /// I.e., replication should not be driven by heartbeat.
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn large_heartbeat() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(
         Config {

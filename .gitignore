@@ -1,3 +1,4 @@
+
 # Directory Ignores ##########################################################
 guide/book
 target
@@ -11,3 +12,4 @@ Cargo.lock
 perf.data*
 nohup*
 *svg
+.DS_Store

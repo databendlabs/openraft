@@ -4,6 +4,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Current leader tests.
@@ -12,11 +13,8 @@ use crate::fixtures::RaftRouter;
 ///
 /// - create a stable 3-node cluster.
 /// - call the current_leader interface on the all nodes, and assert success.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn current_leader() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

@@ -5,6 +5,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Client read tests.
@@ -14,11 +15,8 @@ use crate::fixtures::RaftRouter;
 /// - create a stable 3-node cluster.
 /// - call the is_leader interface on the leader, and assert success.
 /// - call the is_leader interface on the followers, and assert failure.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn client_reads() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

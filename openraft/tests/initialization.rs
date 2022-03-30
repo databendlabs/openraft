@@ -16,6 +16,8 @@ use openraft::RaftStorage;
 use openraft::State;
 use tokio::sync::oneshot;
 
+use crate::fixtures::init_default_ut_tracing;
+
 #[macro_use]
 mod fixtures;
 
@@ -29,11 +31,8 @@ mod fixtures;
 /// - asserts that the cluster was able to come online, elect a leader and maintain a stable state.
 /// - asserts that the leader was able to successfully commit its initial payload and that all followers have
 ///   successfully replicated the payload.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn initialization() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

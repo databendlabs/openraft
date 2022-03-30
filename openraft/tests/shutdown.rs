@@ -8,6 +8,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
+
 #[macro_use]
 mod fixtures;
 
@@ -18,11 +20,8 @@ mod fixtures;
 /// - this test builds upon the `initialization` test.
 /// - after the cluster has been initialize, it performs a shutdown routine on each node, asserting that the shutdown
 ///   routine succeeded.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn initialization() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

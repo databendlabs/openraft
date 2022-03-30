@@ -14,6 +14,7 @@ use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// All log should be applied to state machine.
@@ -23,11 +24,8 @@ use crate::fixtures::RaftRouter;
 /// - bring a cluster with 3 voter and 2 learner.
 /// - check last_membership in state machine.
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn state_machine_apply_membership() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

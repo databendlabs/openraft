@@ -9,6 +9,7 @@ use openraft::LogId;
 use openraft::SnapshotPolicy;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Test transfer snapshot in small chnuks
@@ -18,11 +19,8 @@ use crate::fixtures::RaftRouter;
 /// - build a stable single node cluster.
 /// - send enough requests to the node that log compaction will be triggered.
 /// - add learner and assert that they receive the snapshot and logs.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn snapshot_chunk_size() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     let snapshot_threshold: u64 = 10;
 
     let config = Arc::new(

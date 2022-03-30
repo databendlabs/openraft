@@ -9,6 +9,7 @@ use openraft::LogId;
 use openraft::SnapshotPolicy;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Client write tests.
@@ -18,11 +19,8 @@ use crate::fixtures::RaftRouter;
 /// - create a stable 3-node cluster.
 /// - write a lot of data to it.
 /// - assert that the cluster stayed stable and has all of the expected data.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn client_writes() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(
         Config {

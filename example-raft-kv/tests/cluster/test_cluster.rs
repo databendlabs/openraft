@@ -14,7 +14,7 @@ use tokio::runtime::Runtime;
 
 /// Setup a cluster of 3 nodes.
 /// Write to it and read from it.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn test_cluster() -> anyhow::Result<()> {
     // --- The client itself does not store addresses for all nodes, but just node id.
     //     Thus we need a supporting component to provide mapping from node id to node address.

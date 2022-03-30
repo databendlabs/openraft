@@ -11,6 +11,7 @@ use openraft::Membership;
 use openraft::Raft;
 use openraft::RaftStorage;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Cluster members_leader_fix_partial test.
@@ -21,11 +22,8 @@ use crate::fixtures::RaftRouter;
 /// - manually append a joint config log.
 /// - shutdown and restart, it should NOT add another final config log to complete the partial
 /// membership changing
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn new_leader_auto_commit_uniform_config() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

@@ -9,6 +9,8 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
+
 #[macro_use]
 mod fixtures;
 
@@ -21,11 +23,8 @@ mod fixtures;
 /// - initializes the cluster with membership config including just the one node.
 /// - asserts that the cluster was able to come online, and that the one node became leader.
 /// - asserts that the leader was able to successfully commit its initial payload.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn single_node() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

@@ -7,6 +7,7 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// A leader should create and send snapshot when snapshot is old and is not that old to trigger a snapshot, i.e.:
@@ -19,11 +20,8 @@ use crate::fixtures::RaftRouter;
 /// - send some other log after snapshot created, to make the `leader.last_log_index - snapshot.applied_index` big
 ///   enough.
 /// - add learner and assert that they receive the snapshot and logs.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn snapshot_ge_half_threshold() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     let snapshot_threshold: u64 = 10;
     let log_cnt = snapshot_threshold + 6;
 

@@ -6,6 +6,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Lagging network test.
@@ -16,11 +17,8 @@ use crate::fixtures::RaftRouter;
 /// - bring a single-node cluster online.
 /// - add two Learner and then try to commit one log.
 /// - change config to a 3 members cluster and commit another log.
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn lagging_network_write() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     let config = Arc::new(
         Config {
             heartbeat_interval: 100,

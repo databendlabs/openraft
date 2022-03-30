@@ -8,64 +8,41 @@ use memstore::MemNodeId;
 use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::State;
-use tracing_futures::Instrument;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn change_membership_cases() -> anyhow::Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-
-    async {
-        change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1})).await?;
-        change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1,2})).await?;
-        change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1,2,3})).await?;
-        change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {1,2})).await?;
-        change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {1})).await?;
-        change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {2})).await?;
-        change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {3})).await?;
-        change_from_to(btreeset! {0, 1, 2}, ChangeMembers::Replace(btreeset! {4})).await?;
-        change_from_to(btreeset! {0, 1, 2}, ChangeMembers::Replace(btreeset! {4,5,6})).await?;
-        change_from_to(btreeset! {0, 1, 2, 3, 4}, ChangeMembers::Replace(btreeset! {0,1,2,3})).await?;
-
-        Ok::<(), anyhow::Error>(())
-    }
-    .instrument(ut_span)
-    .await?;
+    change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1})).await?;
+    change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1,2})).await?;
+    change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1,2,3})).await?;
+    change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {1,2})).await?;
+    change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {1})).await?;
+    change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {2})).await?;
+    change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {3})).await?;
+    change_from_to(btreeset! {0, 1, 2}, ChangeMembers::Replace(btreeset! {4})).await?;
+    change_from_to(btreeset! {0, 1, 2}, ChangeMembers::Replace(btreeset! {4,5,6})).await?;
+    change_from_to(btreeset! {0, 1, 2, 3, 4}, ChangeMembers::Replace(btreeset! {0,1,2,3})).await?;
 
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn add_members_cases() -> anyhow::Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-
-    async {
-        change_from_to(btreeset! {0}, ChangeMembers::Add(btreeset! {0,1})).await?;
-        change_from_to(btreeset! {0}, ChangeMembers::Add(btreeset! {1,2})).await?;
-        change_from_to(btreeset! {0,1}, ChangeMembers::Add(btreeset! {})).await?;
-        Ok::<(), anyhow::Error>(())
-    }
-    .instrument(ut_span)
-    .await?;
+    change_from_to(btreeset! {0}, ChangeMembers::Add(btreeset! {0,1})).await?;
+    change_from_to(btreeset! {0}, ChangeMembers::Add(btreeset! {1,2})).await?;
+    change_from_to(btreeset! {0,1}, ChangeMembers::Add(btreeset! {})).await?;
 
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn remove_members_cases() -> anyhow::Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-
-    async {
-        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {0,1})).await?;
-        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {3})).await?;
-        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {})).await?;
-        change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {1,3})).await?;
-
-        Ok::<(), anyhow::Error>(())
-    }
-    .instrument(ut_span)
-    .await?;
+    change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {0,1})).await?;
+    change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {3})).await?;
+    change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {})).await?;
+    change_from_to(btreeset! {0,1,2}, ChangeMembers::Remove(btreeset! {1,3})).await?;
 
     Ok(())
 }

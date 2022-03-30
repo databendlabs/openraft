@@ -19,7 +19,7 @@ use crate::RaftTypeConfig;
 use crate::State;
 
 /// Test wait for different state changes
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn test_wait() -> anyhow::Result<()> {
     {
         // wait for leader

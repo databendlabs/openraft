@@ -6,6 +6,8 @@ use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 
+use crate::fixtures::init_default_ut_tracing;
+
 #[macro_use]
 mod fixtures;
 
@@ -16,11 +18,8 @@ mod fixtures;
 /// - bring on a cluster of 1 voter and 1 learner.
 /// - isolate replication to node 1.
 /// - client write should not be blocked.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn replication_1_voter_to_isolated_learner() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
 
