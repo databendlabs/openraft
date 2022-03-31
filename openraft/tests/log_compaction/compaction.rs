@@ -20,6 +20,7 @@ use openraft::State;
 use openraft::Vote;
 
 use crate::fixtures::blank;
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Compaction test.
@@ -29,11 +30,8 @@ use crate::fixtures::RaftRouter;
 /// - build a stable single node cluster.
 /// - send enough requests to the node that log compaction will be triggered.
 /// - add new nodes and assert that they receive the snapshot.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn compaction() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     let snapshot_threshold: u64 = 50;
 
     // Setup test dependencies.

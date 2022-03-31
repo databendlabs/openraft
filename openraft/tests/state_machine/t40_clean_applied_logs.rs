@@ -7,17 +7,15 @@ use openraft::Config;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Logs should be deleted by raft after applying them, on leader and learner.
 ///
 /// - assert logs are deleted on leader after applying them.
 /// - assert logs are deleted on replication target after installing a snapshot.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn clean_applied_logs() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(
         Config {

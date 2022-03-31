@@ -6,14 +6,12 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Replication should stop after a follower is removed from membership.
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn stop_replication_to_removed_follower() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

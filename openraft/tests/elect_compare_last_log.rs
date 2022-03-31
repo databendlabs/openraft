@@ -16,6 +16,7 @@ use openraft::State;
 use openraft::Vote;
 
 use crate::fixtures::blank;
+use crate::fixtures::init_default_ut_tracing;
 
 #[macro_use]
 mod fixtures;
@@ -24,11 +25,8 @@ mod fixtures;
 ///
 /// - Fake a cluster with two node: with last log {2,1} and {1,2}.
 /// - Bring up the cluster and only node 0 can become leader.
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn elect_compare_last_log() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

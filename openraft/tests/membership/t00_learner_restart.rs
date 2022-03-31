@@ -13,6 +13,7 @@ use openraft::RaftTypeConfig;
 use openraft::State;
 use tokio::time::sleep;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::MemRaft;
 use crate::fixtures::RaftRouter;
 
@@ -26,11 +27,8 @@ use crate::fixtures::RaftRouter;
 ///   replicated the payload.
 /// - shutdown all and restart the learner node.
 /// - asserts the learner stays in non-vtoer state.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn learner_restart() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

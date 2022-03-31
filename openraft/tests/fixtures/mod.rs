@@ -70,33 +70,6 @@ use crate::fixtures::logging::init_file_logging;
 
 pub mod logging;
 
-#[allow(unused)]
-macro_rules! func_name {
-    () => {{
-        fn f() {}
-        fn type_name_of<T>(_: T) -> &'static str {
-            std::any::type_name::<T>()
-        }
-        let name = type_name_of(f);
-        let n = &name[..name.len() - 3];
-        let nn = n.replace("::{{closure}}", "");
-        nn
-    }};
-}
-
-#[allow(unused)]
-macro_rules! init_ut {
-    () => {{
-        let name = func_name!();
-        let last = name.split("::").last().unwrap();
-
-        let g = crate::fixtures::init_default_ut_tracing();
-
-        let span = tracing::debug_span!("ut", "{}", last);
-        (g, span)
-    }};
-}
-
 pub type StoreWithDefensive<C = MemConfig, S = Arc<MemStore>> = StoreExt<C, S>;
 
 /// A concrete Raft type used during testing.

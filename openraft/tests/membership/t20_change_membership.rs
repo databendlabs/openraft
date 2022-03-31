@@ -8,14 +8,12 @@ use openraft::Config;
 use openraft::RaftLogReader;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
     // Add a member without adding it as learner, in blocking mode it should finish successfully.
-
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
 
     let lag_threshold = 1;
 
@@ -62,12 +60,9 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
     // Add a learner into membership config, expect error NonVoterIsLagging.
-
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
 
     let lag_threshold = 1;
 
@@ -122,12 +117,9 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
     // Add a member without adding it as learner, in blocking mode it should finish successfully.
-
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
 
     let config = Arc::new(Config { ..Default::default() }.validate()?);
     let mut router = RaftRouter::new(config.clone());

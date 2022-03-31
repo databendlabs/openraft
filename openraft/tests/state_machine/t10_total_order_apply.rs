@@ -9,14 +9,12 @@ use openraft::RaftStorage;
 use openraft::State;
 use tokio::sync::watch;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// The logs have to be applied in log index order.
-#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn total_order_apply() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
     let mut router = RaftRouter::new(config.clone());

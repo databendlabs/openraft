@@ -8,17 +8,15 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Change membership from {0,1} to {1,2,3}.
 ///
 /// - Then the leader should step down after joint log is committed.
 /// - Check logs on other node.
-#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn step_down() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(
         Config {

@@ -9,6 +9,7 @@ use openraft::LogIdOptionExt;
 use openraft::State;
 use tokio::time::sleep;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Dynamic membership test.
@@ -20,11 +21,8 @@ use crate::fixtures::RaftRouter;
 /// - propose a new config change where the old master is not present, and assert that it steps down.
 /// - temporarily isolate the new master, and assert that a new master takes over.
 /// - restore the isolated node and assert that it becomes a follower.
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn leader_election_after_changing_0_to_01234() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     let span = tracing::debug_span!("ut-dynamic_membership");
     let _ent = span.enter();
 

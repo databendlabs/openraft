@@ -13,17 +13,15 @@ use openraft::RaftLogReader;
 use openraft::RaftStorage;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn add_learner_basic() -> Result<()> {
     //
     // - Add leader, expect NoChange
     // - Add a learner, expect raft to block until catching up.
     // - Re-add should fail.
-
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
 
     let config = Arc::new(
         Config {
@@ -90,15 +88,12 @@ async fn add_learner_basic() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn add_learner_non_blocking() -> Result<()> {
     //
     // - Add leader, expect NoChange
     // - Add a learner, expect raft to block until catching up.
     // - Re-add should fail.
-
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
 
     let config = Arc::new(
         Config {
@@ -132,11 +127,8 @@ async fn add_learner_non_blocking() -> Result<()> {
 
 /// add a learner, then shutdown the leader to make leader transferred,
 /// check after new leader come, the learner can receive new log.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn check_learner_after_leader_transfered() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(
         Config {

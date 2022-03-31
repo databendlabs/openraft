@@ -8,7 +8,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::State;
-use tracing_futures::Instrument;
+
+use crate::fixtures::init_default_ut_tracing;
 
 #[macro_use]
 mod fixtures;
@@ -36,11 +37,8 @@ mod fixtures;
 /// - brings a 3 candidates cluster online.
 /// - add another learner and at the same time write a log.
 /// - asserts that all of the leader, followers and the learner receives all logs.
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn concurrent_write_and_add_learner() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     let timeout = Duration::from_millis(500);
     let candidates = btreeset![0, 1, 2];
 

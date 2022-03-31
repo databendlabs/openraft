@@ -13,6 +13,7 @@ use openraft::RaftNetworkFactory;
 use openraft::Vote;
 
 use crate::fixtures::blank;
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Cluster conflict_with_empty_entries test.
@@ -33,11 +34,8 @@ use crate::fixtures::RaftRouter;
 ///
 /// - send `append_logs` message with conflicting prev_log_index and empty `entries`.
 /// - asserts that a response with ConflictOpt set.
-#[tokio::test(flavor = "multi_thread", worker_threads = 6)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn conflict_with_empty_entries() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

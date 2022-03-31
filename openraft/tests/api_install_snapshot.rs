@@ -12,6 +12,8 @@ use openraft::SnapshotMeta;
 use openraft::State;
 use openraft::Vote;
 
+use crate::fixtures::init_default_ut_tracing;
+
 #[macro_use]
 mod fixtures;
 
@@ -21,11 +23,8 @@ mod fixtures;
 ///
 /// - build a stable single node cluster.
 /// - send install_snapshot request with matched/mismatched id and offset
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn snapshot_ge_half_threshold() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
 

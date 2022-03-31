@@ -7,6 +7,7 @@ use openraft::metrics::WaitError;
 use openraft::Config;
 use openraft::State;
 
+use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
 /// Test wait() utils
@@ -16,11 +17,8 @@ use crate::fixtures::RaftRouter;
 /// - brings 1 nodes online:
 /// - wait for expected state.
 /// - wait for invalid state and expect a timeout error.
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn metrics_wait() -> Result<()> {
-    let (_log_guard, ut_span) = init_ut!();
-    let _ent = ut_span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
