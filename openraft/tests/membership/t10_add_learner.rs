@@ -130,7 +130,7 @@ async fn add_learner_non_blocking() -> Result<()> {
     Ok(())
 }
 
-/// add a learner, then shutdown the leader to make leader transfered,
+/// add a learner, then shutdown the leader to make leader transferred,
 /// check after new leader come, the learner can receive new log.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn check_learner_after_leader_transfered() -> Result<()> {
@@ -242,14 +242,10 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
         let new_leader = router.leader().expect("expected the cluster to have a new leader");
         router.client_request_many(new_leader, "0", 1).await;
         n_logs += 1;
-        router
-            .wait_for_log(
-                &btreeset![1, 2, 3, 4],
-                Some(n_logs),
-                timeout,
-                "test learner has new log",
-            )
-            .await?;
+
+        for i in [1, 2, 3, 4] {
+            router.wait(&i, timeout).await?.log_at_least(Some(n_logs), "learner recv new log").await?;
+        }
     }
 
     Ok(())
