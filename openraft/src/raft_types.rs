@@ -144,18 +144,29 @@ pub enum Update<T> {
     AsIs,
 }
 
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UpdateMetricsOption {
-    pub leader: Update<()>,
-    pub other_metrics: Update<()>,
+/// Describes the need to update some aspect of the metrics.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct MetricsChangeFlags {
+    pub leader: bool,
+    pub other_metrics: bool,
 }
 
-impl Default for UpdateMetricsOption {
-    fn default() -> Self {
-        UpdateMetricsOption {
-            leader: Update::AsIs,
-            other_metrics: Update::AsIs,
-        }
+impl MetricsChangeFlags {
+    pub(crate) fn changed(&self) -> bool {
+        self.leader || self.other_metrics
+    }
+
+    pub(crate) fn reset(&mut self) {
+        self.leader = false;
+        self.other_metrics = false;
+    }
+
+    pub(crate) fn set_changed_leader(&mut self) {
+        self.leader = true
+    }
+
+    pub(crate) fn set_changed_other(&mut self) {
+        self.other_metrics = true
     }
 }
 

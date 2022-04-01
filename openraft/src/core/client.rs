@@ -56,7 +56,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub(super) async fn commit_initial_leader_entry(&mut self) -> Result<(), StorageError<C>> {
         let entry = self.core.append_payload_to_log(EntryPayload::Blank).await?;
 
-        self.leader_report_metrics();
+        self.set_leader_metrics_changed();
 
         let cr_entry = ClientRequestEntry {
             entry: Arc::new(entry),
@@ -199,7 +199,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             tx: Some(tx),
         };
 
-        self.leader_report_metrics();
+        self.set_leader_metrics_changed();
 
         self.replicate_client_request(entry).await?;
         Ok(())
@@ -224,7 +224,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.core.committed = Some(log_id);
             tracing::debug!(?self.core.committed, "update committed, no need to replicate");
 
-            self.leader_report_metrics();
+            self.set_leader_metrics_changed();
             self.client_request_post_commit(req).await?;
         } else {
             self.awaiting_committed.push(req);
@@ -352,7 +352,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         // TODO(xp): deal with partial apply.
         self.core.last_applied = Some(*log_id);
-        self.leader_report_metrics();
+        self.set_leader_metrics_changed();
 
         // TODO(xp) merge this function to replication_to_state_machine?
 

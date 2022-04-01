@@ -130,7 +130,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         }
 
         if Some(matched) <= self.core.committed {
-            self.leader_report_metrics();
+            self.set_leader_metrics_changed();
             return Ok(());
         }
 
@@ -171,7 +171,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         }
 
         // TODO(xp): does this update too frequently?
-        self.leader_report_metrics();
+        self.set_leader_metrics_changed();
 
         Ok(())
     }

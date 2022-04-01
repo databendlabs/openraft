@@ -274,7 +274,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let payload = EntryPayload::Membership(mem.clone());
         let entry = self.core.append_payload_to_log(payload).await?;
 
-        self.leader_report_metrics();
+        self.set_leader_metrics_changed();
 
         let cr_entry = ClientRequestEntry {
             entry: Arc::new(entry),
@@ -325,7 +325,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.try_remove_replication(target);
         }
 
-        self.leader_report_metrics();
+        self.set_leader_metrics_changed();
     }
 
     /// Remove a replication if the membership that does not include it has committed.
