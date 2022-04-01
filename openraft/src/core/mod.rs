@@ -59,6 +59,7 @@ use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
+use crate::MetricsChangeFlags;
 use crate::Node;
 use crate::NodeId;
 use crate::RaftNetworkFactory;
@@ -66,7 +67,6 @@ use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Update;
-use crate::UpdateMetricsOption;
 
 /// The currently active membership config.
 ///
@@ -150,10 +150,10 @@ impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
     }
 }
 
-pub trait MetricsOptionUpdater<NID: NodeId> {
-    // the default impl of `get_leader_metrics_option`, for the non-leader state
-    fn get_leader_metrics_option(&self, _option: Update<()>) -> Update<Option<Versioned<LeaderMetrics<NID>>>> {
-        Update::Update(None)
+pub trait MetricsProvider<NID: NodeId> {
+    /// The default impl for the non-leader state
+    fn get_leader_metrics(&self) -> Option<&Versioned<LeaderMetrics<NID>>> {
+        None
     }
 }
 
@@ -205,7 +205,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     last_heartbeat: Option<Instant>,
 
     /// Options of update the metrics
-    update_metrics: UpdateMetricsOption,
+    metrics_flags: MetricsChangeFlags,
 
     /// The duration until the next election timeout.
     next_election_timeout: Option<Instant>,
@@ -250,7 +250,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             snapshot_state: None,
             snapshot_last_log_id: None,
             last_heartbeat: None,
-            update_metrics: UpdateMetricsOption::default(),
+            metrics_flags: MetricsChangeFlags::default(),
             next_election_timeout: None,
 
             tx_compaction,
@@ -305,7 +305,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
             self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
-            self.update_other_metrics_option();
+            self.metrics_flags.set_changed_other();
         }
 
         let has_log = if self.last_log_id.is_some() {
@@ -381,33 +381,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
-    pub fn update_leader_metrics_option(&mut self) {
-        self.update_metrics.leader = Update::Update(());
-    }
-
-    pub fn update_other_metrics_option(&mut self) {
-        self.update_metrics.other_metrics = Update::Update(());
-    }
-
-    pub fn reset_update_metrics(&mut self) {
-        // reset update_metrics
-        self.update_metrics = UpdateMetricsOption::default();
-    }
-
     #[tracing::instrument(level = "trace", skip(self, metrics_reporter))]
-    pub fn check_report_metrics(&self, metrics_reporter: &impl MetricsOptionUpdater<C::NodeId>) {
-        let update_metrics = self.update_metrics.clone();
-        let leader_metrics = metrics_reporter.get_leader_metrics_option(update_metrics.leader);
-        let other_metrics = update_metrics.other_metrics;
-
-        match leader_metrics {
-            Update::AsIs => {
-                if other_metrics == Update::Update(()) {
-                    self.report_metrics(Update::Update(None));
-                }
-            }
-            Update::Update(u) => self.report_metrics(Update::Update(u)),
+    pub fn report_metrics_if_needed(&self, metrics_reporter: &impl MetricsProvider<C::NodeId>) {
+        if !self.metrics_flags.changed() {
+            return;
         }
+
+        let leader_metrics = if self.metrics_flags.leader {
+            Update::Update(metrics_reporter.get_leader_metrics().cloned())
+        } else {
+            Update::AsIs
+        };
+
+        self.report_metrics(leader_metrics);
     }
 
     /// Report a metrics payload on the current state of the Raft node.
@@ -524,7 +510,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     fn update_snapshot_state(&mut self, update: SnapshotUpdate<C>) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
             self.snapshot_last_log_id = Some(log_id);
-            self.update_other_metrics_option();
+            self.metrics_flags.set_changed_other();
         }
         // If snapshot state is anything other than streaming, then drop it.
         if let Some(state @ SnapshotState::Streaming { .. }) = self.snapshot_state.take() {
@@ -813,14 +799,11 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     pub(super) awaiting_committed: Vec<ClientRequestEntry<C>>,
 }
 
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsOptionUpdater<C::NodeId>
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
     for LeaderState<'a, C, N, S>
 {
-    fn get_leader_metrics_option(&self, option: Update<()>) -> Update<Option<Versioned<LeaderMetrics<C::NodeId>>>> {
-        match option {
-            Update::AsIs => Update::AsIs,
-            Update::Update(_) => Update::Update(Some(self.leader_metrics.clone())),
-        }
+    fn get_leader_metrics(&self) -> Option<&Versioned<LeaderMetrics<C::NodeId>>> {
+        Some(&self.leader_metrics)
     }
 }
 
@@ -885,8 +868,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             let span = tracing::debug_span!("CHrx:LeaderState");
             let _ent = span.enter();
 
-            self.core.check_report_metrics(&self);
-            self.core.reset_update_metrics();
+            self.core.report_metrics_if_needed(&self);
+            self.core.metrics_flags.reset();
 
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {
@@ -955,8 +938,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     /// Report metrics with leader specific states.
-    pub fn leader_report_metrics(&mut self) {
-        self.core.update_leader_metrics_option();
+    pub fn set_leader_metrics_changed(&mut self) {
+        self.core.metrics_flags.set_changed_leader();
     }
 }
 
@@ -1006,7 +989,7 @@ struct CandidateState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftSt
     granted: BTreeSet<C::NodeId>,
 }
 
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsOptionUpdater<C::NodeId>
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
     for CandidateState<'a, C, N, S>
 {
     // the non-leader state use the default impl of `get_leader_metrics_option`
@@ -1037,8 +1020,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
                 return Ok(());
             }
 
-            self.core.check_report_metrics(&self);
-            self.core.reset_update_metrics();
+            self.core.report_metrics_if_needed(&self);
+            self.core.metrics_flags.reset();
 
             // Setup new term.
             self.core.update_next_election_timeout(false); // Generates a new rand value within range.
@@ -1137,7 +1120,7 @@ pub struct FollowerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: Raf
     core: &'a mut RaftCore<C, N, S>,
 }
 
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsOptionUpdater<C::NodeId>
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
     for FollowerState<'a, C, N, S>
 {
     // the non-leader state use the default impl of `get_leader_metrics_option`
@@ -1165,8 +1148,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
                 return Ok(());
             }
 
-            self.core.check_report_metrics(&self);
-            self.core.reset_update_metrics();
+            self.core.report_metrics_if_needed(&self);
+            self.core.metrics_flags.reset();
 
             let election_timeout = sleep_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
 
@@ -1232,7 +1215,7 @@ pub struct LearnerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: Raft
     core: &'a mut RaftCore<C, N, S>,
 }
 
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsOptionUpdater<C::NodeId>
+impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
     for LearnerState<'a, C, N, S>
 {
     // the non-leader state use the default impl of `get_leader_metrics_option`
@@ -1259,8 +1242,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
                 return Ok(());
             }
 
-            self.core.check_report_metrics(&self);
-            self.core.reset_update_metrics();
+            self.core.report_metrics_if_needed(&self);
+            self.core.metrics_flags.reset();
 
             let span = tracing::debug_span!("CHrx:LearnerState");
             let _ent = span.enter();

@@ -51,7 +51,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.set_target_state(State::Follower); // State update will emit metrics.
             }
 
-            self.update_other_metrics_option();
+            self.metrics_flags.set_changed_other();
         }
 
         // Compare current snapshot state with received RPC and handle as needed.
@@ -239,7 +239,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.update_membership(membership);
 
         self.snapshot_last_log_id = self.last_applied;
-        self.update_other_metrics_option();
+        self.metrics_flags.set_changed_other();
 
         Ok(())
     }
