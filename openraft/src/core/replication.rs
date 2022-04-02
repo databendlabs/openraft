@@ -35,14 +35,14 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         target: C::NodeId,
         caller_tx: Option<RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>>,
     ) -> ReplicationState<C> {
-        let target_node = self.core.effective_membership.get_node(&target);
+        let target_node = self.core.engine.state.effective_membership.get_node(&target);
         let repl_stream = ReplicationStream::new::<N, S>(
             target,
             target_node.cloned(),
-            self.core.vote,
+            self.core.engine.state.vote,
             self.core.config.clone(),
-            self.core.last_log_id,
-            self.core.committed,
+            self.core.engine.state.last_log_id,
+            self.core.engine.state.committed,
             self.core.network.connect(target, target_node).await,
             self.core.storage.get_log_reader().await,
             self.replication_tx.clone(),
@@ -90,8 +90,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         _: C::NodeId,
         vote: Vote<C::NodeId>,
     ) -> Result<(), StorageError<C::NodeId>> {
-        if vote > self.core.vote {
-            self.core.vote = vote;
+        if vote > self.core.engine.state.vote {
+            self.core.engine.state.vote = vote;
             self.core.save_vote().await?;
             self.core.set_target_state(State::Follower);
         }
@@ -114,7 +114,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             state.matched = Some(matched);
 
             // Issue a response on the learners response channel if needed.
-            if state.is_line_rate(&self.core.last_log_id, &self.core.config) {
+            if state.is_line_rate(&self.core.engine.state.last_log_id, &self.core.config) {
                 // This replication became line rate.
 
                 // When adding a learner, it blocks until the replication becomes line-rate.
@@ -135,7 +135,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.update_replication_metrics(target, matched);
         }
 
-        if Some(matched) <= self.core.committed {
+        if Some(matched) <= self.core.engine.state.committed {
             return Ok(());
         }
 
@@ -144,25 +144,25 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         // Determine if we have a new commit index, accounting for joint consensus.
         // If a new commit index has been established, then update a few needed elements.
 
-        if commit_log_id > self.core.committed {
-            self.core.committed = commit_log_id;
+        if commit_log_id > self.core.engine.state.committed {
+            self.core.engine.state.committed = commit_log_id;
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
                 let _ = node.repl_stream.repl_tx.send((
                     RaftEvent::UpdateCommittedLogId {
-                        committed: self.core.committed,
+                        committed: self.core.engine.state.committed,
                     },
                     tracing::debug_span!("CH"),
                 ));
             }
 
             // Apply committed entries, and send applying result to client if there is a channel awaiting it
-            for i in self.core.last_applied.next_index()..self.core.committed.next_index() {
+            for i in self.core.engine.state.last_applied.next_index()..self.core.engine.state.committed.next_index() {
                 self.client_request_post_commit(i).await?;
             }
 
-            self.core.metrics_flags.set_data_changed();
+            self.core.engine.metrics_flags.set_data_changed();
         }
 
         Ok(())
@@ -173,30 +173,30 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         tracing::debug!(%target, ?matched, "update_leader_metrics");
 
         self.replication_metrics.update(UpdateMatchedLogId { target, matched });
-        self.core.metrics_flags.set_replication_changed()
+        self.core.engine.metrics_flags.set_replication_changed()
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     fn calc_commit_log_id(&self) -> Option<LogId<C::NodeId>> {
         let repl_indexes = self.get_match_log_ids();
 
-        let committed = self.core.effective_membership.membership.greatest_majority_value(&repl_indexes);
+        let committed = self.core.engine.state.effective_membership.membership.greatest_majority_value(&repl_indexes);
 
         // TODO(xp): remove this line
-        std::cmp::max(committed.cloned(), self.core.committed)
+        std::cmp::max(committed.cloned(), self.core.engine.state.committed)
 
-        // *committed.unwrap_or(&self.core.committed)
+        // *committed.unwrap_or(&self.core.log_store.st.committed)
     }
 
     /// Collect indexes of the greatest matching log on every replica(include the leader itself)
     fn get_match_log_ids(&self) -> BTreeMap<C::NodeId, LogId<C::NodeId>> {
-        let node_ids = self.core.effective_membership.all_members();
+        let node_ids = self.core.engine.state.effective_membership.all_members();
 
         let mut res = BTreeMap::new();
 
         for id in node_ids.iter() {
             let matched = if *id == self.core.id {
-                self.core.last_log_id
+                self.core.engine.state.last_log_id
             } else {
                 let repl_state = self.nodes.get(id);
                 repl_state.map(|x| x.matched).unwrap_or_default()
@@ -206,7 +206,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             // and that new leader may overrides any lower term logs.
             // Thus it is not considered as committed.
             if let Some(log_id) = matched {
-                if log_id.leader_id == self.core.vote.leader_id() {
+                if log_id.leader_id == self.core.engine.state.vote.leader_id() {
                     res.insert(*id, log_id);
                 }
             }
@@ -243,7 +243,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 // of the configured snapshot threshold, else create a new snapshot.
                 if snapshot_is_within_half_of_threshold(
                     &snapshot.meta.last_log_id.index,
-                    &self.core.last_log_id.unwrap_or_default().index,
+                    &self.core.engine.state.last_log_id.unwrap_or_default().index,
                     &threshold,
                 ) {
                     let _ = tx.send(snapshot);

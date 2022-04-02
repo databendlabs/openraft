@@ -24,29 +24,29 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         req: AppendEntriesRequest<C>,
     ) -> Result<AppendEntriesResponse<C::NodeId>, AppendEntriesError<C::NodeId>> {
-        tracing::debug!(last_log_id=?self.last_log_id, ?self.last_applied, msg=%req.summary(), "handle_append_entries_request");
+        tracing::debug!(last_log_id=?self.engine.state.last_log_id, ?self.engine.state.last_applied, msg=%req.summary(), "handle_append_entries_request");
 
         let msg_entries = req.entries.as_slice();
 
         // Partial order compare: smaller than or incomparable
-        if req.vote < self.vote {
-            tracing::debug!(?self.vote, %req.vote, "AppendEntries RPC term is less than current term");
-            return Ok(AppendEntriesResponse::HigherVote(self.vote));
+        if req.vote < self.engine.state.vote {
+            tracing::debug!(?self.engine.state.vote, %req.vote, "AppendEntries RPC term is less than current term");
+            return Ok(AppendEntriesResponse::HigherVote(self.engine.state.vote));
         }
 
         self.update_next_election_timeout(true);
 
         tracing::debug!("start to check and update to latest term/leader");
-        if req.vote > self.vote {
-            self.vote = req.vote;
+        if req.vote > self.engine.state.vote {
+            self.engine.state.vote = req.vote;
             self.save_vote().await?;
 
             // If not follower, become follower.
-            if !self.target_state.is_follower() && !self.target_state.is_learner() {
+            if !self.engine.state.target_state.is_follower() && !self.engine.state.target_state.is_learner() {
                 self.set_target_state(State::Follower); // State update will emit metrics.
             }
 
-            self.metrics_flags.set_cluster_changed();
+            self.engine.metrics_flags.set_cluster_changed();
         }
 
         // Caveat: [commit-index must not advance the last known consistent log](https://datafuselabs.github.io/openraft/replication.html#caveat-commit-index-must-not-advance-the-last-known-consistent-log)
@@ -71,7 +71,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     async fn delete_conflict_logs_since(&mut self, start: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
         self.storage.delete_conflict_logs_since(start).await?;
 
-        self.last_log_id = self.storage.get_log_state().await?.last_log_id;
+        self.engine.state.last_log_id = self.storage.get_log_state().await?.last_log_id;
 
         // TODO(xp): get_membership() should have a defensive check to ensure it always returns Some() if node is
         //           initialized. Because a node always commit a membership log as the first log entry.
@@ -134,7 +134,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
-        if let Some(last_log_id) = self.last_log_id {
+        if let Some(last_log_id) = self.engine.state.last_log_id {
             if msg_entries[0].log_id.index > last_log_id.index {
                 return Ok(());
             }
@@ -144,7 +144,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             "delete inconsistent log entries [{}, {}), last_log_id: {:?}, entries: {}",
             msg_entries[0].log_id,
             msg_entries[l - 1].log_id,
-            self.last_log_id,
+            self.engine.state.last_log_id,
             msg_entries.summary()
         );
 
@@ -167,13 +167,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(
             "check prev_log_id {:?} match: committed: {:?}, mismatched: {:?}",
             prev_log_id,
-            self.committed,
+            self.engine.state.committed,
             mismatched,
         );
 
         if let Some(mismatched_log_id) = mismatched {
             // prev_log_id mismatches, the logs [prev_log_id.index, +oo) are all inconsistent and should be removed
-            if let Some(last_log_id) = self.last_log_id {
+            if let Some(last_log_id) = self.engine.state.last_log_id {
                 if mismatched_log_id.index <= last_log_id.index {
                     tracing::debug!(%mismatched_log_id, "delete inconsistent log since prev_log_id");
                     self.delete_conflict_logs_since(mismatched_log_id).await?;
@@ -187,7 +187,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let (n_matching, entries) = self.skip_matching_entries(entries).await?;
 
         tracing::debug!(
-            ?self.committed,
+            ?self.engine.state.committed,
             n_matching,
             entries = %entries.summary(),
             "skip matching entries",
@@ -202,7 +202,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // commit index must not > last_log_id.index
         // This is guaranteed by caller.
-        self.committed = committed;
+        self.engine.state.committed = committed;
 
         self.replicate_to_state_machine_if_needed().await?;
 
@@ -223,7 +223,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         for i in 0..l {
             let log_id = entries[i].log_id;
 
-            if Some(log_id) <= self.committed {
+            if Some(log_id) <= self.engine.state.committed {
                 continue;
             }
 
@@ -260,7 +260,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         };
 
         // Committed entries are always safe and are consistent to a valid leader.
-        if remote_log_id <= self.committed {
+        if remote_log_id <= self.engine.state.committed {
             return Ok(None);
         }
 
@@ -314,7 +314,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let entry_refs = entries.iter().collect::<Vec<_>>();
         self.storage.append_to_log(&entry_refs).await?;
         if let Some(entry) = entries.last() {
-            self.last_log_id = Some(entry.log_id);
+            self.engine.state.last_log_id = Some(entry.log_id);
         }
         Ok(())
     }
@@ -325,23 +325,26 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// may cause the Raft leader to timeout the requests to this node.
     #[tracing::instrument(level = "debug", skip(self))]
     async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), StorageError<C::NodeId>> {
-        tracing::debug!(?self.last_applied, ?self.committed, "replicate_to_sm_if_needed");
+        tracing::debug!(?self.engine.state.last_applied, ?self.engine.state.committed, "replicate_to_sm_if_needed");
 
         // If we don't have any new entries to replicate, then do nothing.
-        if self.committed <= self.last_applied {
+        if self.engine.state.committed <= self.engine.state.last_applied {
             tracing::debug!(
                 "committed({:?}) <= last_applied({:?}), return",
-                self.committed,
-                self.last_applied
+                self.engine.state.committed,
+                self.engine.state.last_applied
             );
             // TODO(xp): this should be moved to upper level.
-            self.metrics_flags.set_data_changed();
+            self.engine.metrics_flags.set_data_changed();
             return Ok(());
         }
 
         // Drain entries from the beginning of the cache up to commit index.
 
-        let entries = self.storage.get_log_entries(self.last_applied.next_index()..self.committed.next_index()).await?;
+        let entries = self
+            .storage
+            .get_log_entries(self.engine.state.last_applied.next_index()..self.engine.state.committed.next_index())
+            .await?;
 
         let last_log_id = entries.last().map(|x| x.log_id).unwrap();
 
@@ -352,10 +355,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         apply_to_state_machine(&mut self.storage, &entries_refs, self.config.max_applied_log_to_keep).await?;
 
-        self.last_applied = Some(last_log_id);
+        self.engine.state.last_applied = Some(last_log_id);
 
         self.trigger_log_compaction_if_needed(false).await;
-        self.metrics_flags.set_data_changed();
+        self.engine.metrics_flags.set_data_changed();
         Ok(())
     }
 }

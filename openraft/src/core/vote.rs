@@ -26,19 +26,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
         tracing::debug!(
             %req.vote,
-            ?self.vote,
+            ?self.engine.state.vote,
             "start handle_vote_request"
         );
-        let last_log_id = self.last_log_id;
+        let last_log_id = self.engine.state.last_log_id;
 
-        if req.vote < self.vote {
+        if req.vote < self.engine.state.vote {
             tracing::debug!(
                 %req.vote,
-                ?self.vote,
+                ?self.engine.state.vote,
                 "RequestVote RPC term is less than current term"
             );
             return Ok(VoteResponse {
-                vote: self.vote,
+                vote: self.engine.state.vote,
                 vote_granted: false,
                 last_log_id,
             });
@@ -55,7 +55,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     "rejecting vote request received within election timeout minimum"
                 );
                 return Ok(VoteResponse {
-                    vote: self.vote,
+                    vote: self.engine.state.vote,
                     vote_granted: false,
                     last_log_id,
                 });
@@ -70,14 +70,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 "rejecting vote request as candidate's log is not up-to-date"
             );
             return Ok(VoteResponse {
-                vote: self.vote,
+                vote: self.engine.state.vote,
                 vote_granted: false,
                 last_log_id,
             });
         }
 
         self.update_next_election_timeout(false);
-        self.vote = req.vote;
+        self.engine.state.vote = req.vote;
         self.save_vote().await?;
 
         self.set_target_state(State::Follower);
@@ -85,7 +85,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(%req.vote, "voted for candidate");
 
         Ok(VoteResponse {
-            vote: self.vote,
+            vote: self.engine.state.vote,
             vote_granted: true,
             last_log_id,
         })
@@ -104,7 +104,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
 
         // If peer's vote is greater than current vote, revert to follower state.
 
-        if res.vote > self.core.vote {
+        if res.vote > self.core.engine.state.vote {
             // If the core.vote is changed(to some greater value), then no further vote response would be valid.
             // Because they just granted an old `vote`.
             // A quorum does not mean the core is legal to use the new greater `vote`.
@@ -118,12 +118,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
             tracing::debug!(
                 id = %self.core.id,
                 %res.vote,
-                %self.core.vote,
-                self_last_log_id=?self.core.last_log_id,
+                %self.core.engine.state.vote,
+                self_last_log_id=?self.core.engine.state.last_log_id,
                 res_last_log_id=?res.last_log_id,
                 "reverting to follower state due to greater vote observed in RequestVote RPC response");
 
-            self.core.vote = res.vote;
+            self.core.engine.state.vote = res.vote;
             self.core.save_vote().await?;
 
             return Ok(());
@@ -132,7 +132,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
         if res.vote_granted {
             self.granted.insert(target);
 
-            if self.core.effective_membership.membership.is_majority(&self.granted) {
+            if self.core.engine.state.effective_membership.membership.is_majority(&self.granted) {
                 tracing::debug!("transitioning to leader state as minimum number of votes have been received");
                 self.core.set_target_state(State::Leader);
                 return Ok(());
@@ -148,13 +148,13 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
     pub(super) async fn spawn_parallel_vote_requests(
         &mut self,
     ) -> mpsc::Receiver<(VoteResponse<C::NodeId>, C::NodeId)> {
-        let all_nodes = self.core.effective_membership.all_members().clone();
+        let all_nodes = self.core.engine.state.effective_membership.all_members().clone();
         let (tx, rx) = mpsc::channel(all_nodes.len());
 
         for member in all_nodes.into_iter().filter(|member| member != &self.core.id) {
-            let rpc = VoteRequest::new(self.core.vote, self.core.last_log_id);
+            let rpc = VoteRequest::new(self.core.engine.state.vote, self.core.engine.state.last_log_id);
 
-            let target_node = self.core.effective_membership.get_node(&member).cloned();
+            let target_node = self.core.engine.state.effective_membership.get_node(&member).cloned();
 
             let (mut network, tx_inner) = (
                 self.core.network.connect(member, target_node.as_ref()).await,

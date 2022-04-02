@@ -21,6 +21,7 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
 use crate::RaftTypeConfig;
+use crate::State;
 use crate::StorageError;
 use crate::Vote;
 
@@ -65,11 +66,23 @@ pub struct InitialState<NID: NodeId> {
     /// The id of the last log entry.
     pub last_log_id: Option<LogId<NID>>,
 
+    /// The log id of the last known committed entry.
+    ///
+    /// - Committed means: a log that is replicated to a quorum of the cluster and it is of the term of the leader.
+    ///
+    /// - A quorum could be a uniform quorum or joint quorum.
+    ///
+    /// - `committed` in raft is volatile and will not be persisted.
+    pub committed: Option<LogId<NID>>,
+
     /// The LogId of the last log applied to the state machine.
     pub last_applied: Option<LogId<NID>>,
 
     /// The latest cluster membership configuration found, in log or in state machine.
     pub effective_membership: Arc<EffectiveMembership<NID>>,
+
+    /// The target state of the system.
+    pub target_state: State,
 }
 
 /// The state about logs.
@@ -272,6 +285,10 @@ where C: RaftTypeConfig
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
             vote: vote.unwrap_or_default(),
             effective_membership: Arc::new(membership),
+
+            // committed log id does not need to be persisted.
+            committed: None,
+            target_state: Default::default(),
         })
     }
 

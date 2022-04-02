@@ -33,25 +33,27 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         req: InstallSnapshotRequest<C>,
     ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
-        if req.vote < self.vote {
-            tracing::debug!(?self.vote, %req.vote, "InstallSnapshot RPC term is less than current term");
+        if req.vote < self.engine.state.vote {
+            tracing::debug!(?self.engine.state.vote, %req.vote, "InstallSnapshot RPC term is less than current term");
 
-            return Ok(InstallSnapshotResponse { vote: self.vote });
+            return Ok(InstallSnapshotResponse {
+                vote: self.engine.state.vote,
+            });
         }
 
         // Update election timeout.
         self.update_next_election_timeout(true);
 
-        if req.vote > self.vote {
-            self.vote = req.vote;
+        if req.vote > self.engine.state.vote {
+            self.engine.state.vote = req.vote;
             self.save_vote().await?;
 
             // If not follower, become follower.
-            if !self.target_state.is_follower() && !self.target_state.is_learner() {
+            if !self.engine.state.target_state.is_follower() && !self.engine.state.target_state.is_learner() {
                 self.set_target_state(State::Follower); // State update will emit metrics.
             }
 
-            self.metrics_flags.set_data_changed();
+            self.engine.metrics_flags.set_data_changed();
         }
 
         // Compare current snapshot state with received RPC and handle as needed.
@@ -119,7 +121,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // If this was a small snapshot, and it is already done, then finish up.
         if req.done {
             self.finalize_snapshot_installation(req, snapshot).await?;
-            return Ok(InstallSnapshotResponse { vote: self.vote });
+            return Ok(InstallSnapshotResponse {
+                vote: self.engine.state.vote,
+            });
         }
 
         // Else, retain snapshot components for later segments & respond.
@@ -128,7 +132,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             id,
             snapshot,
         });
-        Ok(InstallSnapshotResponse { vote: self.vote })
+        Ok(InstallSnapshotResponse {
+            vote: self.engine.state.vote,
+        })
     }
 
     #[tracing::instrument(level = "debug", skip(self, req, snapshot), fields(req=%req.summary()))]
@@ -169,7 +175,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         } else {
             self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
         }
-        Ok(InstallSnapshotResponse { vote: self.vote })
+        Ok(InstallSnapshotResponse {
+            vote: self.engine.state.vote,
+        })
     }
 
     /// Finalize the installation of a new snapshot.
@@ -203,7 +211,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // --------------------------------------------------------------------> time
         // ```
 
-        // TODO(xp): do not install if self.last_applied >= snapshot.meta.last_applied
+        // TODO(xp): do not install if self.engine.st.last_applied >= snapshot.meta.last_applied
 
         let changes = self.storage.install_snapshot(&req.meta, snapshot).await?;
 
@@ -219,13 +227,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         purge_applied_logs(&mut self.storage, &last_applied, self.config.max_applied_log_to_keep).await?;
 
         // snapshot is installed
-        self.last_applied = Some(last_applied);
+        self.engine.state.last_applied = Some(last_applied);
 
-        if self.committed < self.last_applied {
-            self.committed = self.last_applied;
+        if self.engine.state.committed < self.engine.state.last_applied {
+            self.engine.state.committed = self.engine.state.last_applied;
         }
-        if self.last_log_id < self.last_applied {
-            self.last_log_id = self.last_applied;
+        if self.engine.state.last_log_id < self.engine.state.last_applied {
+            self.engine.state.last_log_id = self.engine.state.last_applied;
         }
 
         // There could be unknown membership in the snapshot.
@@ -234,8 +242,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.update_membership(membership);
 
-        self.snapshot_last_log_id = self.last_applied;
-        self.metrics_flags.set_data_changed();
+        self.snapshot_last_log_id = self.engine.state.last_applied;
+        self.engine.metrics_flags.set_data_changed();
 
         Ok(())
     }

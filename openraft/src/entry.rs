@@ -140,6 +140,23 @@ impl<'p, C: RaftTypeConfig> MessageSummary for EntryRef<'p, C> {
     }
 }
 
+impl<'p, C: RaftTypeConfig> From<&EntryRef<'p, C>> for Entry<C> {
+    fn from(er: &EntryRef<'p, C>) -> Self {
+        Entry {
+            log_id: er.log_id,
+            payload: er.payload.clone(),
+        }
+    }
+}
+impl<'p, C: RaftTypeConfig> EntryRef<'p, C> {
+    pub fn new(payload: &'p EntryPayload<C>) -> Self {
+        Self {
+            log_id: Default::default(),
+            payload,
+        }
+    }
+}
+
 // impl traits for EntryPayload
 
 impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for EntryPayload<C> {
