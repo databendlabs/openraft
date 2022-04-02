@@ -96,7 +96,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
         &mut self,
         res: VoteResponse<C>,
         target: C::NodeId,
-    ) -> Result<(), StorageError<C>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(res=?res, target=display(target), "recv vote response");
 
         // If peer's vote is greater than current vote, revert to follower state.

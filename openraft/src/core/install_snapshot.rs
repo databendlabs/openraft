@@ -180,7 +180,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         req: InstallSnapshotRequest<C>,
         mut snapshot: Box<S::SnapshotData>,
-    ) -> Result<(), StorageError<C>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         snapshot.as_mut().shutdown().await.map_err(|e| StorageError::IO {
             source: StorageIOError::new(
                 ErrorSubject::Snapshot(req.meta.clone()),

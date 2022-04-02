@@ -58,7 +58,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub(super) async fn handle_replica_event(
         &mut self,
         event: ReplicaEvent<C, S::SnapshotData>,
-    ) -> Result<(), StorageError<C>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         match event {
             ReplicaEvent::RevertToFollower { target, vote } => {
                 self.handle_revert_to_follower(target, vote).await?;
@@ -83,7 +83,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
     /// Handle events from replication streams for when this node needs to revert to follower state.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn handle_revert_to_follower(&mut self, _: C::NodeId, vote: Vote<C>) -> Result<(), StorageError<C>> {
+    async fn handle_revert_to_follower(
+        &mut self,
+        _: C::NodeId,
+        vote: Vote<C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>> {
         if vote > self.core.vote {
             self.core.vote = vote;
             self.core.save_vote().await?;
@@ -97,7 +101,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         target: C::NodeId,
         matched: LogId<C::NodeId>,
-    ) -> Result<(), StorageError<C>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         // Update target's match index & check if it is awaiting removal.
 
         if let Some(state) = self.nodes.get_mut(&target) {
@@ -230,7 +234,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         must_include: Option<LogId<C::NodeId>>,
         tx: oneshot::Sender<Snapshot<C, S::SnapshotData>>,
-    ) -> Result<(), StorageError<C>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => *threshold,

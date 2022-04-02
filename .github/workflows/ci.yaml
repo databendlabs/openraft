@@ -54,12 +54,29 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1.0.6
+        with:
+          components: rustfmt, clippy
+
 
       - name: Test example-raft-kv
         uses: actions-rs/cargo@v1
         with:
           command: test
           args: --manifest-path example-raft-kv/Cargo.toml
+
+
+      - name: Format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+
+      - name: Clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-targets -- -D warnings -A clippy::bool-assert-comparison
 
 
   ut-on-stable-rust:
