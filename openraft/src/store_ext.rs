@@ -66,7 +66,7 @@ where
     }
 }
 
-impl<C: RaftTypeConfig, T: RaftStorage<C>> DefensiveCheckBase<C::NodeId> for StoreExt<C, T>
+impl<C: RaftTypeConfig, T: RaftStorage<C>> DefensiveCheckBase<C> for StoreExt<C, T>
 where
     C: RaftTypeConfig,
     T: RaftStorage<C>,
@@ -253,7 +253,7 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftLogReader<C> for LogReaderExt<C, 
     }
 }
 
-impl<C: RaftTypeConfig, T: RaftStorage<C>> DefensiveCheckBase<C::NodeId> for LogReaderExt<C, T>
+impl<C: RaftTypeConfig, T: RaftStorage<C>> DefensiveCheckBase<C> for LogReaderExt<C, T>
 where
     C: RaftTypeConfig,
     T: RaftStorage<C>,

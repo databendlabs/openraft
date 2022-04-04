@@ -18,7 +18,6 @@ use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
-use openraft::RaftTypeConfig;
 use openraft::SnapshotMeta;
 use openraft::StateMachineChanges;
 use openraft::StorageError;

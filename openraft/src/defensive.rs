@@ -9,7 +9,6 @@ use crate::raft_types::LogIdOptionExt;
 use crate::DefensiveError;
 use crate::ErrorSubject;
 use crate::LogId;
-use crate::NodeId;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -19,7 +18,7 @@ use crate::Wrapper;
 
 /// Defines methods of defensive checks for RaftStorage independent of the storage type.
 // TODO This can be extended by other methods, as needed. Currently only moved the one for LogReader
-pub trait DefensiveCheckBase<NID: NodeId> {
+pub trait DefensiveCheckBase<C: RaftTypeConfig> {
     /// Enable or disable defensive check when calling storage APIs.
     fn set_defensive(&self, v: bool);
 
@@ -29,7 +28,7 @@ pub trait DefensiveCheckBase<NID: NodeId> {
     fn defensive_nonempty_range<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &self,
         range: RB,
-    ) -> Result<(), StorageError<NID>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
         }
@@ -59,7 +58,7 @@ pub trait DefensiveCheckBase<NID: NodeId> {
 
 /// Defines methods of defensive checks for RaftStorage.
 #[async_trait]
-pub trait DefensiveCheck<C, T>: DefensiveCheckBase<C::NodeId>
+pub trait DefensiveCheck<C, T>: DefensiveCheckBase<C>
 where
     C: RaftTypeConfig,
     T: RaftStorage<C>,
