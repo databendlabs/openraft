@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use maplit::btreemap;
-use maplit::btreeset;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -47,7 +46,7 @@ impl<NID: NodeId> IntoOptionNodes<NID> for BTreeMap<NID, Option<Node>> {
 ///
 /// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset of a majority of
 /// every config.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct Membership<NID: NodeId> {
     /// Multi configs of members.
@@ -239,12 +238,6 @@ impl<NID: NodeId> Membership<NID> {
     #[allow(dead_code)]
     pub(crate) fn is_learner(&self, node_id: &NID) -> bool {
         self.contains(node_id) && !self.is_member(node_id)
-    }
-
-    // TODO(xp): rename this
-    /// Create a new initial config containing only the given node ID.
-    pub(crate) fn new_initial(node_id: NID) -> Self {
-        Membership::new(vec![btreeset! {node_id}], None)
     }
 
     /// Return true if the given set of ids constitutes a majority.

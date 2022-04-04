@@ -24,7 +24,6 @@ use crate::leader_metrics::LeaderMetrics;
 use crate::raft_types::LogIdOptionExt;
 use crate::versioned::Versioned;
 use crate::LogId;
-use crate::Membership;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
@@ -74,7 +73,6 @@ impl<C: RaftTypeConfig> MessageSummary for RaftMetrics<C> {
 
 impl<C: RaftTypeConfig> RaftMetrics<C> {
     pub(crate) fn new_initial(id: C::NodeId) -> Self {
-        let membership_config = Membership::new_initial(id);
         Self {
             running_state: Ok(()),
             id,
@@ -83,7 +81,7 @@ impl<C: RaftTypeConfig> RaftMetrics<C> {
             last_log_index: None,
             last_applied: None,
             current_leader: None,
-            membership_config: Arc::new(EffectiveMembership::new(LogId::default(), membership_config)),
+            membership_config: Arc::new(EffectiveMembership::default()),
             snapshot: None,
             leader_metrics: None,
         }

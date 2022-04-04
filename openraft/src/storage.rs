@@ -190,6 +190,9 @@ where C: RaftTypeConfig
     type SnapshotBuilder: RaftSnapshotBuilder<C, Self::SnapshotData>;
 
     /// Returns the last membership config found in log or state machine.
+    /// TODO(xp): if there is no membership log, return `{log_id:None, membership: vec![]}`.
+    ///           The raft core should always have an effective_membership.
+    ///           Initially, it is empty.
     async fn get_membership(&mut self) -> Result<Option<EffectiveMembership<C>>, StorageError<C::NodeId>> {
         let (_, sm_mem) = self.last_applied_state().await?;
 
