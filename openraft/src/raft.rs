@@ -688,7 +688,7 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     ///
     /// This may be empty when the leader is sending heartbeats. Entries
     /// are batched for efficiency.
-    #[serde(bound = "C::D: AppData")]
+    #[serde(bound = "")]
     pub entries: Vec<Entry<C>>,
 
     /// The leader's committed log id.
@@ -760,23 +760,13 @@ impl<C: RaftTypeConfig> MessageSummary for AppendEntriesResponse<C> {
 }
 
 /// A Raft log entry.
-#[derive(Serialize, Deserialize)]
-// #[serde(bound = "")]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Entry<C: RaftTypeConfig> {
     pub log_id: LogId<C::NodeId>,
 
     /// This entry's payload.
-    #[serde(bound = "C::D: AppData")]
+    #[serde(bound = "")]
     pub payload: EntryPayload<C>,
-}
-
-impl<C: RaftTypeConfig> Clone for Entry<C> {
-    fn clone(&self) -> Self {
-        Self {
-            log_id: self.log_id,
-            payload: self.payload.clone(),
-        }
-    }
 }
 
 impl<C: RaftTypeConfig> Debug for Entry<C>
@@ -841,39 +831,15 @@ impl<C: RaftTypeConfig> MessageSummary for &[&Entry<C>] {
 }
 
 /// Log entry payload variants.
-#[derive(PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EntryPayload<C: RaftTypeConfig> {
     /// An empty payload committed by a new cluster leader.
     Blank,
 
-    #[serde(bound = "C::D: AppData")]
     Normal(C::D),
 
     /// A change-membership log entry.
-    #[serde(bound = "")]
     Membership(Membership<C::NodeId>),
-}
-
-impl<C: RaftTypeConfig> Clone for EntryPayload<C> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Blank => Self::Blank,
-            Self::Normal(e) => Self::Normal(e.clone()),
-            Self::Membership(m) => Self::Membership(m.clone()),
-        }
-    }
-}
-
-impl<C: RaftTypeConfig> Debug for EntryPayload<C>
-where C::D: Debug
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Blank => write!(f, "Blank"),
-            Self::Normal(e) => f.debug_tuple("Normal").field(e).finish(),
-            Self::Membership(m) => f.debug_tuple("Membership").field(m).finish(),
-        }
-    }
 }
 
 impl<C: RaftTypeConfig> MessageSummary for EntryPayload<C> {
