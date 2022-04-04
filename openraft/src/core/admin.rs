@@ -78,7 +78,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         target: C::NodeId,
         node: Option<Node>,
-    ) -> Result<bool, MissingNodeInfo<C>> {
+    ) -> Result<bool, MissingNodeInfo<C::NodeId>> {
         tracing::debug!(
             "add_learner_into_membership target node {:?} into learner {:?}",
             target,
@@ -174,7 +174,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         blocking: bool,
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
-    ) -> Result<(), StorageError<C>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         let members = change_members.apply_to(self.core.effective_membership.membership.get_configs().last().unwrap());
         // Ensure cluster will have at least one node.
         if members.is_empty() {
@@ -268,9 +268,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(id=display(self.core.id)))]
     pub async fn append_membership_log(
         &mut self,
-        mem: Membership<C>,
+        mem: Membership<C::NodeId>,
         resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>>,
-    ) -> Result<(), StorageError<C>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         let payload = EntryPayload::Membership(mem.clone());
         let entry = self.core.append_payload_to_log(payload).await?;
 

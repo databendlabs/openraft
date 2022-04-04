@@ -113,7 +113,7 @@ impl<C: RaftTypeConfig> ReplicationStream<C> {
     pub(crate) fn new<N: RaftNetworkFactory<C>, S: RaftStorage<C>>(
         target: C::NodeId,
         target_node: Option<Node>,
-        vote: Vote<C>,
+        vote: Vote<C::NodeId>,
         config: Arc<Config>,
         last_log: Option<LogId<C::NodeId>>,
         committed: Option<LogId<C::NodeId>>,
@@ -145,7 +145,7 @@ struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     target: C::NodeId,
 
     /// The vote of the leader.
-    vote: Vote<C>,
+    vote: Vote<C::NodeId>,
 
     /// A channel for sending events to the Raft node.
     raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<C, S::SnapshotData>, Span)>,
@@ -198,7 +198,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     pub(self) fn spawn(
         target: C::NodeId,
         target_node: Option<Node>,
-        vote: Vote<C>,
+        vote: Vote<C::NodeId>,
         config: Arc<Config>,
         last_log: Option<LogId<C::NodeId>>,
         committed: Option<LogId<C::NodeId>>,
@@ -655,7 +655,7 @@ where
         target: C::NodeId,
 
         /// The new vote observed.
-        vote: Vote<C>,
+        vote: Vote<C::NodeId>,
     },
     /// An event from a replication stream requesting snapshot info.
     NeedsSnapshot {

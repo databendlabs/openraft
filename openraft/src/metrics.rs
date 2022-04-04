@@ -31,7 +31,7 @@ use crate::RaftTypeConfig;
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RaftMetrics<C: RaftTypeConfig> {
-    pub running_state: Result<(), Fatal<C>>,
+    pub running_state: Result<(), Fatal<C::NodeId>>,
 
     /// The ID of the Raft node.
     pub id: C::NodeId,

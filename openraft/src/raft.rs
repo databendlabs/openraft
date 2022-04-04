@@ -109,7 +109,7 @@ struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>>
     tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
     rx_metrics: watch::Receiver<RaftMetrics<C>>,
     #[allow(clippy::type_complexity)]
-    raft_handle: Mutex<Option<JoinHandle<Result<(), Fatal<C>>>>>,
+    raft_handle: Mutex<Option<JoinHandle<Result<(), Fatal<C::NodeId>>>>>,
     tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
     marker_n: std::marker::PhantomData<N>,
     marker_s: std::marker::PhantomData<S>,
@@ -432,7 +432,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<C, N, S>, rx: RaftRespRx<T, E>) -> Result<T, E>
-    where E: From<Fatal<C>> {
+    where E: From<Fatal<C::NodeId>> {
         let span = tracing::Span::current();
 
         let sum = if span.is_disabled() { None } else { Some(mes.summary()) };
@@ -680,7 +680,7 @@ where
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
 #[derive(Serialize, Deserialize)]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
-    pub vote: Vote<C>,
+    pub vote: Vote<C::NodeId>,
 
     pub prev_log_id: Option<LogId<C::NodeId>>,
 
@@ -736,7 +736,7 @@ impl<C: RaftTypeConfig> MessageSummary for AppendEntriesRequest<C> {
 pub enum AppendEntriesResponse<C: RaftTypeConfig> {
     Success,
     Conflict,
-    HigherVote(Vote<C>),
+    HigherVote(Vote<C::NodeId>),
 }
 
 impl<C: RaftTypeConfig> AppendEntriesResponse<C> {
@@ -851,7 +851,7 @@ pub enum EntryPayload<C: RaftTypeConfig> {
 
     /// A change-membership log entry.
     #[serde(bound = "")]
-    Membership(Membership<C>),
+    Membership(Membership<C::NodeId>),
 }
 
 impl<C: RaftTypeConfig> Clone for EntryPayload<C> {
@@ -891,7 +891,7 @@ impl<C: RaftTypeConfig> MessageSummary for EntryPayload<C> {
 /// An RPC sent by candidates to gather votes (§5.2).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VoteRequest<C: RaftTypeConfig> {
-    pub vote: Vote<C>,
+    pub vote: Vote<C::NodeId>,
     pub last_log_id: Option<LogId<C::NodeId>>,
 }
 
@@ -902,7 +902,7 @@ impl<C: RaftTypeConfig> MessageSummary for VoteRequest<C> {
 }
 
 impl<C: RaftTypeConfig> VoteRequest<C> {
-    pub fn new(vote: Vote<C>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
+    pub fn new(vote: Vote<C::NodeId>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
         Self { vote, last_log_id }
     }
 }
@@ -910,7 +910,7 @@ impl<C: RaftTypeConfig> VoteRequest<C> {
 /// The response to a `VoteRequest`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VoteResponse<C: RaftTypeConfig> {
-    pub vote: Vote<C>,
+    pub vote: Vote<C::NodeId>,
 
     /// Will be true if the candidate received a vote from the responder.
     pub vote_granted: bool,
@@ -924,10 +924,10 @@ pub struct VoteResponse<C: RaftTypeConfig> {
 /// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
-    pub vote: Vote<C>,
+    pub vote: Vote<C::NodeId>,
 
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
-    pub meta: SnapshotMeta<C>,
+    pub meta: SnapshotMeta<C::NodeId>,
 
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,
@@ -954,7 +954,7 @@ impl<C: RaftTypeConfig> MessageSummary for InstallSnapshotRequest<C> {
 /// The response to an `InstallSnapshotRequest`.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
-    pub vote: Vote<C>,
+    pub vote: Vote<C::NodeId>,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -999,7 +999,7 @@ pub struct ClientWriteResponse<C: RaftTypeConfig> {
     pub data: C::R,
 
     /// If the log entry is a change-membership entry.
-    pub membership: Option<Membership<C>>,
+    pub membership: Option<Membership<C::NodeId>>,
 }
 
 impl<C: RaftTypeConfig> Debug for ClientWriteResponse<C>

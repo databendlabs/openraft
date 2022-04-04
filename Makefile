@@ -12,7 +12,9 @@ fmt:
 
 lint:
 	cargo fmt
+	cargo fmt --manifest-path example-raft-kv/Cargo.toml
 	cargo clippy --all-targets -- -D warnings -A clippy::bool-assert-comparison
+	cargo clippy --manifest-path example-raft-kv/Cargo.toml --all-targets -- -D warnings -A clippy::bool-assert-comparison
 
 clean:
 	cargo clean
