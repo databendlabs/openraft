@@ -299,7 +299,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let last_conf_change = entries
             .iter()
             .filter_map(|ent| match &ent.payload {
-                EntryPayload::Membership(conf) => Some(EffectiveMembership::new(ent.log_id, conf.clone())),
+                EntryPayload::Membership(conf) => Some(EffectiveMembership::new(Some(ent.log_id), conf.clone())),
                 _ => None,
             })
             .last();

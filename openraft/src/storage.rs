@@ -196,12 +196,12 @@ where C: RaftTypeConfig
     async fn get_membership(&mut self) -> Result<Option<EffectiveMembership<C>>, StorageError<C::NodeId>> {
         let (_, sm_mem) = self.last_applied_state().await?;
 
-        let sm_mem_index = match &sm_mem {
+        let sm_mem_next_index = match &sm_mem {
             None => 0,
-            Some(mem) => mem.log_id.index,
+            Some(mem) => mem.log_id.next_index(),
         };
 
-        let log_mem = self.last_membership_in_log(sm_mem_index + 1).await?;
+        let log_mem = self.last_membership_in_log(sm_mem_next_index).await?;
 
         if log_mem.is_some() {
             return Ok(log_mem);
@@ -230,7 +230,7 @@ where C: RaftTypeConfig
 
             for ent in entries.iter().rev() {
                 if let EntryPayload::Membership(ref mem) = ent.payload {
-                    return Ok(Some(EffectiveMembership::new(ent.log_id, mem.clone())));
+                    return Ok(Some(EffectiveMembership::new(Some(ent.log_id), mem.clone())));
                 }
             }
 

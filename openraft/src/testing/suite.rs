@@ -638,7 +638,7 @@ where
             assert_eq!(Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 3)), applied);
             assert_eq!(
                 Some(EffectiveMembership::new(
-                    LogId::new(LeaderId::new(1, NODE_ID.into()), 3),
+                    Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 3)),
                     Membership::new(vec![btreeset! {1,2}], None)
                 )),
                 membership
@@ -658,7 +658,7 @@ where
             assert_eq!(Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 5)), applied);
             assert_eq!(
                 Some(EffectiveMembership::new(
-                    LogId::new(LeaderId::new(1, NODE_ID.into()), 3),
+                    Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 3)),
                     Membership::new(vec![btreeset! {1,2}], None)
                 )),
                 membership

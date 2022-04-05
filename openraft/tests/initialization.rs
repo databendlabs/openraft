@@ -88,7 +88,7 @@ async fn initialization() -> Result<()> {
         let sm_mem = sto.last_applied_state().await?.1;
         assert_eq!(
             Some(EffectiveMembership::new(
-                LogId::new(LeaderId::new(0, 0), 0),
+                Some(LogId::new(LeaderId::new(0, 0), 0)),
                 Membership::new(vec![btreeset! {0,1,2}], None)
             )),
             sm_mem

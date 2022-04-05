@@ -343,7 +343,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
                     res.push(ClientResponse(previous));
                 }
                 EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = Some(EffectiveMembership::new(entry.log_id, mem.clone()));
+                    sm.last_membership = Some(EffectiveMembership::new(Some(entry.log_id), mem.clone()));
                     res.push(ClientResponse(None))
                 }
             };

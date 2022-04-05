@@ -72,6 +72,7 @@ pub struct ExampleSnapshot {
 pub struct ExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
+    // TODO: it should not be Option.
     pub last_membership: Option<EffectiveMembership<ExampleTypeConfig>>,
 
     /// Application data.
@@ -287,7 +288,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = Some(EffectiveMembership::new(entry.log_id, mem.clone()));
+                    sm.last_membership = Some(EffectiveMembership::new(Some(entry.log_id), mem.clone()));
                     res.push(ExampleResponse { value: None })
                 }
             };
