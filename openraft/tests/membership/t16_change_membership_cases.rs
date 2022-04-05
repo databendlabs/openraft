@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use memstore::Config as MemConfig;
 use memstore::MemNodeId;
 use openraft::ChangeMembers;
 use openraft::Config;
@@ -48,7 +47,7 @@ async fn remove_members_cases() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(level = "debug")]
-async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<MemConfig>) -> anyhow::Result<()> {
+async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<MemNodeId>) -> anyhow::Result<()> {
     let new = change_members.apply_to(&old);
 
     let mes = format!("from {:?} to {:?}", old, new);

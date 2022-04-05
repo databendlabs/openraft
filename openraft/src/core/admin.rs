@@ -108,7 +108,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         target: C::NodeId,
         node: Option<Node>,
-        tx: RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C::NodeId>>,
+        tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
         blocking: bool,
     ) {
         tracing::debug!("add target node {} as learner {:?}", target, self.nodes.keys());
@@ -117,7 +117,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         // config, in the set of new nodes already being synced, or in the nodes being removed.
         if target == self.core.id {
             tracing::debug!("target node is this node");
-            let _ = tx.send(Ok(AddLearnerResponse::<C> {
+            let _ = tx.send(Ok(AddLearnerResponse {
                 matched: self.core.last_log_id,
             }));
             return;
@@ -170,7 +170,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(
         &mut self,
-        change_members: ChangeMembers<C>,
+        change_members: ChangeMembers<C::NodeId>,
         blocking: bool,
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,

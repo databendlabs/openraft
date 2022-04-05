@@ -28,10 +28,11 @@ use crate::StorageError;
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self, caller_tx))]
+    #[allow(clippy::type_complexity)]
     pub(super) async fn spawn_replication_stream(
         &mut self,
         target: C::NodeId,
-        caller_tx: Option<RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C::NodeId>>>,
+        caller_tx: Option<RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>>,
     ) -> ReplicationState<C> {
         let target_node = self.core.effective_membership.get_node(&target);
         let repl_stream = ReplicationStream::new::<N, S>(
