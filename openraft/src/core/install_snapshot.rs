@@ -232,10 +232,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let membership = self.storage.get_membership().await?;
         tracing::debug!("storage membership: {:?}", membership);
 
-        assert!(membership.is_some());
-
-        let membership = membership.unwrap();
-
         self.update_membership(membership);
 
         self.snapshot_last_log_id = self.last_applied;

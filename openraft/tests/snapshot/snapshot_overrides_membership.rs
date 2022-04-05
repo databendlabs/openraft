@@ -101,8 +101,6 @@ async fn snapshot_overrides_membership() -> Result<()> {
             {
                 let m = sto.get_membership().await?;
 
-                let m = m.unwrap();
-
                 assert_eq!(Membership::new(vec![btreeset! {2,3}], None), m.membership);
             }
         }
@@ -132,8 +130,6 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 .await?;
 
             let m = sto.get_membership().await?;
-
-            let m = m.unwrap();
 
             assert_eq!(
                 Membership::new(vec![btreeset! {0}], Some(btreeset! {1})),

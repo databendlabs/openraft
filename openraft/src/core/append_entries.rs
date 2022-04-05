@@ -77,9 +77,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         //           initialized. Because a node always commit a membership log as the first log entry.
         let membership = self.storage.get_membership().await?;
 
-        // NOTE: the first log, i.e. log at index 0 can also conflict with the leader and is removed.
-        let membership = membership.unwrap_or_default();
-
         self.update_membership(membership);
 
         tracing::debug!("Done update membership");

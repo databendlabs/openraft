@@ -194,7 +194,7 @@ where
 
         let membership = store.get_membership().await?;
 
-        assert!(membership.is_none());
+        assert_eq!(EffectiveMembership::default(), membership);
 
         Ok(())
     }
@@ -218,7 +218,6 @@ where
                 .await?;
 
             let mem = store.get_membership().await?;
-            let mem = mem.unwrap();
 
             assert_eq!(Membership::new(vec![btreeset! {3,4,5}], None), mem.membership,);
         }
@@ -234,8 +233,6 @@ where
 
             let mem = store.get_membership().await?;
 
-            let mem = mem.unwrap();
-
             assert_eq!(Membership::new(vec![btreeset! {3, 4, 5}], None), mem.membership,);
         }
 
@@ -249,8 +246,6 @@ where
                 .await?;
 
             let mem = store.get_membership().await?;
-
-            let mem = mem.unwrap();
 
             assert_eq!(Membership::new(vec![btreeset! {7,8,9}], None), mem.membership,);
         }
@@ -335,7 +330,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.last_membership.unwrap().membership,
+                initial.last_membership.membership,
             );
         }
 
@@ -352,7 +347,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.last_membership.unwrap().membership,
+                initial.last_membership.membership,
             );
         }
 
@@ -369,7 +364,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {1,2,3}], None),
-                initial.last_membership.unwrap().membership,
+                initial.last_membership.membership,
             );
         }
 
@@ -623,7 +618,7 @@ where
 
         let (applied, membership) = store.last_applied_state().await?;
         assert_eq!(None, applied);
-        assert_eq!(None, membership);
+        assert_eq!(EffectiveMembership::default(), membership);
 
         tracing::info!("--- with last_applied and last_membership");
         {
@@ -637,10 +632,10 @@ where
             let (applied, membership) = store.last_applied_state().await?;
             assert_eq!(Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 3)), applied);
             assert_eq!(
-                Some(EffectiveMembership::new(
+                EffectiveMembership::new(
                     Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 3)),
                     Membership::new(vec![btreeset! {1,2}], None)
-                )),
+                ),
                 membership
             );
         }
@@ -657,10 +652,10 @@ where
             let (applied, membership) = store.last_applied_state().await?;
             assert_eq!(Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 5)), applied);
             assert_eq!(
-                Some(EffectiveMembership::new(
+                EffectiveMembership::new(
                     Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 3)),
                     Membership::new(vec![btreeset! {1,2}], None)
-                )),
+                ),
                 membership
             );
         }

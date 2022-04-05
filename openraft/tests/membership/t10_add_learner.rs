@@ -220,7 +220,6 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     {
         let mut sto = router.get_storage_handle(&1)?;
         let m = sto.get_membership().await?;
-        let m = m.unwrap();
 
         assert_eq!(
             Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),

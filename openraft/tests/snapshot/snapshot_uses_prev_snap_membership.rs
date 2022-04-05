@@ -75,8 +75,6 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         }
         let m = sto0.get_membership().await?;
 
-        let m = m.unwrap();
-
         assert_eq!(
             Membership::new(vec![btreeset! {0,1}], None),
             m.membership,
@@ -124,8 +122,6 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             assert_eq!(3, logs.len(), "only one applied log");
         }
         let m = sto0.get_membership().await?;
-
-        let m = m.unwrap();
 
         assert_eq!(
             Membership::new(vec![btreeset! {0,1}], None),
