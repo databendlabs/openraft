@@ -77,11 +77,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         //           initialized. Because a node always commit a membership log as the first log entry.
         let membership = self.storage.get_membership().await?;
 
-        // TODO(xp): This is a dirty patch:
-        //           When a node starts in a single-node mode, it does not append an initial log
-        //           but instead depends on storage.get_membership() to return a default one.
-        //           It would be better a node always append an initial log entry.
-        let membership = membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id));
+        // NOTE: the first log, i.e. log at index 0 can also conflict with the leader and is removed.
+        let membership = membership.unwrap_or_default();
 
         self.update_membership(membership);
 

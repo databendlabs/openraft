@@ -24,7 +24,6 @@ use crate::leader_metrics::LeaderMetrics;
 use crate::raft_types::LogIdOptionExt;
 use crate::versioned::Versioned;
 use crate::LogId;
-use crate::Membership;
 use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
@@ -74,7 +73,6 @@ impl<C: RaftTypeConfig> MessageSummary for RaftMetrics<C> {
 
 impl<C: RaftTypeConfig> RaftMetrics<C> {
     pub(crate) fn new_initial(id: C::NodeId) -> Self {
-        let membership_config = Membership::new_initial(id);
         Self {
             running_state: Ok(()),
             id,
@@ -83,7 +81,7 @@ impl<C: RaftTypeConfig> RaftMetrics<C> {
             last_log_index: None,
             last_applied: None,
             current_leader: None,
-            membership_config: Arc::new(EffectiveMembership::new(LogId::default(), membership_config)),
+            membership_config: Arc::new(EffectiveMembership::default()),
             snapshot: None,
             leader_metrics: None,
         }
@@ -226,6 +224,7 @@ impl<C: RaftTypeConfig> Wait<C> {
     }
 
     /// Wait for `membership_config.members` to become expected node set or timeout.
+    /// TODO(xp): this method wait for a uniform config. There should be method waiting for a generalized config.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn members(
         &self,
@@ -233,7 +232,11 @@ impl<C: RaftTypeConfig> Wait<C> {
         msg: impl ToString,
     ) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
-            |x| x.membership_config.membership.get_configs().get(0).cloned().unwrap() == want_members,
+            |x| {
+                let configs = x.membership_config.get_configs();
+                let first = configs.get(0);
+                first == Some(&want_members)
+            },
             &format!("{} .membership_config.members -> {:?}", msg.to_string(), want_members),
         )
         .await

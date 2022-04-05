@@ -626,14 +626,10 @@ where
                 "node {} has last_log_index {:?}, expected None",
                 node.id, node.last_log_index
             );
-            let members = node.membership_config.get_configs()[0].clone();
-            assert_eq!(
-                members.iter().cloned().collect::<Vec<_>>(),
-                vec![node.id],
-                "node {0} has membership {1:?}, expected [{0}]",
-                node.id,
-                members
-            );
+
+            let configs = node.membership_config.get_configs();
+            assert_eq!(0, configs.len(), "expected empty configs, got: {:?}", configs);
+
             assert!(
                 !node.membership_config.membership.is_in_joint_consensus(),
                 "node {} is in joint consensus, expected uniform consensus",

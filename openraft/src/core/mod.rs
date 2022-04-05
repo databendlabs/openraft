@@ -55,7 +55,6 @@ use crate::replication::ReplicationStream;
 use crate::storage::RaftSnapshotBuilder;
 use crate::versioned::Versioned;
 use crate::vote::Vote;
-use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -75,9 +74,10 @@ use crate::Update;
 /// - and the config.
 ///
 /// An active config is just the last seen config in raft spec.
-#[derive(Clone, Eq, Serialize, Deserialize)]
+#[derive(Clone, Default, Eq, Serialize, Deserialize)]
 pub struct EffectiveMembership<C: RaftTypeConfig> {
     /// The id of the log that applies this membership config
+    /// TODO: this `log_id` should be an `Option<LogId>`.
     pub log_id: LogId<C::NodeId>,
 
     pub membership: Membership<C::NodeId>,
@@ -103,10 +103,6 @@ impl<C: RaftTypeConfig> PartialEq for EffectiveMembership<C> {
 }
 
 impl<C: RaftTypeConfig> EffectiveMembership<C> {
-    pub fn new_initial(node_id: C::NodeId) -> Self {
-        Self::new(LogId::new(LeaderId::default(), 0), Membership::new_initial(node_id))
-    }
-
     pub fn new(log_id: LogId<C::NodeId>, membership: Membership<C::NodeId>) -> Self {
         let all_members = membership.build_member_ids();
         Self {
@@ -114,6 +110,11 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
             membership,
             all_members,
         }
+    }
+
+    pub(crate) fn is_single(&self) -> bool {
+        // an empty membership contains no nodes.
+        self.all_members().len() <= 1
     }
 
     pub(crate) fn all_members(&self) -> &BTreeSet<C::NodeId> {
@@ -232,14 +233,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> JoinHandle<Result<(), Fatal<C::NodeId>>> {
         //
 
-        // TODO(xp): remove this.
-        let membership = Membership::new_initial(id); // This is updated from storage in the main loop.
         let (tx_compaction, rx_compaction) = mpsc::channel(1);
 
         let this = Self {
             id,
             config,
-            effective_membership: Arc::new(EffectiveMembership::new(LogId::default(), membership)),
+            effective_membership: Arc::new(EffectiveMembership::default()),
             network,
             storage,
             target_state: State::Follower,
@@ -294,8 +293,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.last_log_id = state.last_log_id;
         self.vote = state.vote;
-        self.effective_membership =
-            Arc::new(state.last_membership.unwrap_or_else(|| EffectiveMembership::new_initial(self.id)));
+        self.effective_membership = Arc::new(state.last_membership.unwrap_or_default());
         self.last_applied = state.last_applied;
 
         // NOTE: The commit index must be determined by a leader after
@@ -314,7 +312,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             "no_log"
         };
 
-        let single = if self.effective_membership.all_members().len() == 1 {
+        let single = if self.effective_membership.is_single() {
             "single"
         } else {
             "multi"
