@@ -77,8 +77,7 @@ use crate::Update;
 #[derive(Clone, Default, Eq, Serialize, Deserialize)]
 pub struct EffectiveMembership<C: RaftTypeConfig> {
     /// The id of the log that applies this membership config
-    /// TODO: this `log_id` should be an `Option<LogId>`.
-    pub log_id: LogId<C::NodeId>,
+    pub log_id: Option<LogId<C::NodeId>>,
 
     pub membership: Membership<C::NodeId>,
 
@@ -103,7 +102,7 @@ impl<C: RaftTypeConfig> PartialEq for EffectiveMembership<C> {
 }
 
 impl<C: RaftTypeConfig> EffectiveMembership<C> {
-    pub fn new(log_id: LogId<C::NodeId>, membership: Membership<C::NodeId>) -> Self {
+    pub fn new(log_id: Option<LogId<C::NodeId>>, membership: Membership<C::NodeId>) -> Self {
         let all_members = membership.build_member_ids();
         Self {
             log_id,
@@ -147,7 +146,7 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
 
 impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
     fn summary(&self) -> String {
-        format!("{{log_id:{} membership:{}}}", self.log_id, self.membership.summary())
+        format!("{{log_id:{:?} membership:{}}}", self.log_id, self.membership.summary())
     }
 }
 
@@ -293,7 +292,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.last_log_id = state.last_log_id;
         self.vote = state.vote;
-        self.effective_membership = Arc::new(state.last_membership.unwrap_or_default());
+        self.effective_membership = Arc::new(state.last_membership);
         self.last_applied = state.last_applied;
 
         // NOTE: The commit index must be determined by a leader after
@@ -612,7 +611,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.last_log_id = Some(log_id);
 
         if let EntryPayload::Membership(mem) = &entry.payload {
-            self.effective_membership = Arc::new(EffectiveMembership::new(entry.log_id, mem.clone()));
+            self.effective_membership = Arc::new(EffectiveMembership::new(Some(entry.log_id), mem.clone()));
         }
 
         Ok(entry)

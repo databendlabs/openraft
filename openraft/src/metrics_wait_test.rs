@@ -90,7 +90,7 @@ async fn test_wait() -> anyhow::Result<()> {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.membership_config = Arc::new(EffectiveMembership::new(
-                LogId::default(),
+                None,
                 Membership::new(vec![btreeset! {1,2}], None),
             ));
             let rst = tx.send(update);
@@ -113,7 +113,7 @@ async fn test_wait() -> anyhow::Result<()> {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.membership_config = Arc::new(EffectiveMembership::new(
-                LogId::default(),
+                None,
                 Membership::new(vec![btreeset! {}, btreeset! {1,2}], None),
             ));
             let rst = tx.send(update);
@@ -205,7 +205,7 @@ fn init_wait_test<C: RaftTypeConfig>() -> (RaftMetrics<C>, Wait<C>, watch::Sende
         last_applied: None,
         current_leader: None,
         membership_config: Arc::new(EffectiveMembership::new(
-            LogId::default(),
+            None,
             Membership::new(vec![btreeset! {}], None),
         )),
 

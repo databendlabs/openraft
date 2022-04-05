@@ -164,7 +164,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     fn has_pending_config(&self) -> bool {
         // The last membership config is not committed yet.
         // Can not process the next one.
-        self.core.committed < Some(self.core.effective_membership.log_id)
+        self.core.committed < self.core.effective_membership.log_id
     }
 
     #[tracing::instrument(level = "debug", skip(self, tx))]
@@ -187,7 +187,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         if self.has_pending_config() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::InProgress(InProgress {
-                    membership_log_id: self.core.effective_membership.log_id,
+                    // has_pending_config() implies an existing membership log.
+                    membership_log_id: self.core.effective_membership.log_id.unwrap(),
                 }),
             )));
             return Ok(());
