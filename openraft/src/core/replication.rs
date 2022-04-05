@@ -9,12 +9,12 @@ use crate::core::ReplicationState;
 use crate::core::SnapshotState;
 use crate::core::State;
 use crate::error::AddLearnerError;
-use crate::leader_metrics::UpdateMatchedLogId;
 use crate::raft::AddLearnerResponse;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
+use crate::replication_metrics::UpdateMatchedLogId;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
 use crate::versioned::Updatable;
@@ -130,11 +130,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         if self.try_remove_replication(target) {
             // nothing to do
         } else {
-            self.update_leader_metrics(target, matched);
+            self.update_replication_metrics(target, matched);
         }
 
         if Some(matched) <= self.core.committed {
-            self.set_leader_metrics_changed();
             return Ok(());
         }
 
@@ -172,19 +171,19 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                     self.client_request_post_commit(request).await?;
                 }
             }
-        }
 
-        // TODO(xp): does this update too frequently?
-        self.set_leader_metrics_changed();
+            self.core.metrics_flags.set_data_changed();
+        }
 
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_leader_metrics(&mut self, target: C::NodeId, matched: LogId<C::NodeId>) {
+    fn update_replication_metrics(&mut self, target: C::NodeId, matched: LogId<C::NodeId>) {
         tracing::debug!(%target, ?matched, "update_leader_metrics");
 
-        self.leader_metrics.update(UpdateMatchedLogId { target, matched });
+        self.replication_metrics.update(UpdateMatchedLogId { target, matched });
+        self.set_replication_metrics_changed();
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

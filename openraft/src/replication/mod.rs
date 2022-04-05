@@ -52,14 +52,14 @@ use crate::RaftTypeConfig;
 use crate::ToStorageResult;
 use crate::Vote;
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ReplicationMetrics<NID: NodeId> {
+pub struct ReplicationTargetMetrics<NID: NodeId> {
     pub(crate) matched_leader_id: LeaderId<NID>,
     pub(crate) matched_index: AtomicU64,
 }
 
-impl<NID: NodeId> Clone for ReplicationMetrics<NID> {
+impl<NID: NodeId> Clone for ReplicationTargetMetrics<NID> {
     fn clone(&self) -> Self {
         Self {
             matched_leader_id: self.matched_leader_id,
@@ -68,16 +68,16 @@ impl<NID: NodeId> Clone for ReplicationMetrics<NID> {
     }
 }
 
-impl<NID: NodeId> PartialEq for ReplicationMetrics<NID> {
+impl<NID: NodeId> PartialEq for ReplicationTargetMetrics<NID> {
     fn eq(&self, other: &Self) -> bool {
         self.matched_leader_id == other.matched_leader_id
             && self.matched_index.load(Ordering::Relaxed) == other.matched_index.load(Ordering::Relaxed)
     }
 }
 
-impl<NID: NodeId> Eq for ReplicationMetrics<NID> {}
+impl<NID: NodeId> Eq for ReplicationTargetMetrics<NID> {}
 
-impl<NID: NodeId> ReplicationMetrics<NID> {
+impl<NID: NodeId> ReplicationTargetMetrics<NID> {
     pub fn new(log_id: LogId<NID>) -> Self {
         Self {
             matched_leader_id: log_id.leader_id,
@@ -94,7 +94,7 @@ impl<NID: NodeId> ReplicationMetrics<NID> {
     }
 }
 
-impl<NID: NodeId> MessageSummary for ReplicationMetrics<NID> {
+impl<NID: NodeId> MessageSummary for ReplicationTargetMetrics<NID> {
     fn summary(&self) -> String {
         format!("{}", self.matched())
     }
