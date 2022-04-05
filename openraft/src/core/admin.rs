@@ -108,7 +108,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         target: C::NodeId,
         node: Option<Node>,
-        tx: RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C>>,
+        tx: RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C::NodeId>>,
         blocking: bool,
     ) {
         tracing::debug!("add target node {} as learner {:?}", target, self.nodes.keys());
@@ -133,7 +133,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let exist = match exist {
             Ok(x) => x,
             Err(e) => {
-                let _ = tx.send(Err(AddLearnerError::<C>::from(e)));
+                let _ = tx.send(Err(AddLearnerError::<C::NodeId>::from(e)));
                 return;
             }
         };

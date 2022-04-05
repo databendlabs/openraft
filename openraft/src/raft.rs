@@ -315,7 +315,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         id: C::NodeId,
         node: Option<Node>,
         blocking: bool,
-    ) -> Result<AddLearnerResponse<C>, AddLearnerError<C>> {
+    ) -> Result<AddLearnerResponse<C>, AddLearnerError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AddLearner { id, node, blocking, tx }, rx).await
     }
@@ -609,7 +609,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         blocking: bool,
 
         /// Send the log id when the replication becomes line-rate.
-        tx: RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C>>,
+        tx: RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C::NodeId>>,
     },
     ChangeMembership {
         members: ChangeMembers<C>,

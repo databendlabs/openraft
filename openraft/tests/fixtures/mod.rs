@@ -373,7 +373,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn get_raft_handle(&self, node_id: &C::NodeId) -> std::result::Result<MemRaft<C, S>, NodeNotFound<C>> {
+    pub fn get_raft_handle(&self, node_id: &C::NodeId) -> std::result::Result<MemRaft<C, S>, NodeNotFound<C::NodeId>> {
         let rt = self.routing_table.lock().unwrap();
         let raft_and_sto = rt.get(node_id).ok_or_else(|| NodeNotFound {
             node_id: *node_id,
@@ -514,7 +514,7 @@ where
         &self,
         leader: C::NodeId,
         target: C::NodeId,
-    ) -> Result<AddLearnerResponse<C>, AddLearnerError<C>> {
+    ) -> Result<AddLearnerResponse<C>, AddLearnerError<C::NodeId>> {
         let node = self.get_raft_handle(&leader).unwrap();
         node.add_learner(target, None, true).await
     }
@@ -524,7 +524,7 @@ where
         leader: C::NodeId,
         target: C::NodeId,
         blocking: bool,
-    ) -> Result<AddLearnerResponse<C>, AddLearnerError<C>> {
+    ) -> Result<AddLearnerResponse<C>, AddLearnerError<C::NodeId>> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
             rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()

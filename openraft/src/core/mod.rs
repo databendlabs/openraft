@@ -587,7 +587,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     fn reject_with_forward_to_leader<T, E>(&self, tx: RaftRespTx<T, E>)
-    where E: From<ForwardToLeader<C>> {
+    where E: From<ForwardToLeader<C::NodeId>> {
         let l = self.current_leader();
         let err = ForwardToLeader {
             leader_id: l,
@@ -947,7 +947,7 @@ struct ReplicationState<C: RaftTypeConfig> {
     pub repl_stream: ReplicationStream<C>,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
-    pub tx: Option<RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C>>>,
+    pub tx: Option<RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C::NodeId>>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for ReplicationState<C> {

@@ -95,7 +95,7 @@ impl ExampleClient {
     pub async fn add_learner(
         &self,
         req: (ExampleNodeId, String),
-    ) -> Result<AddLearnerResponse<ExampleTypeConfig>, RPCError<ExampleTypeConfig, AddLearnerError<ExampleTypeConfig>>>
+    ) -> Result<AddLearnerResponse<ExampleTypeConfig>, RPCError<ExampleTypeConfig, AddLearnerError<ExampleNodeId>>>
     {
         self.send_rpc_to_leader("add-learner", Some(&req)).await
     }
@@ -181,7 +181,7 @@ impl ExampleClient {
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
-        Err: std::error::Error + Serialize + DeserializeOwned + TryInto<ForwardToLeader<ExampleTypeConfig>> + Clone,
+        Err: std::error::Error + Serialize + DeserializeOwned + TryInto<ForwardToLeader<ExampleNodeId>> + Clone,
     {
         // Retry at most 3 times to find a valid leader.
         let mut n_retry = 3;
@@ -196,7 +196,7 @@ impl ExampleClient {
 
             if let RPCError::RemoteError(remote_err) = &rpc_err {
                 let forward_err_res =
-                    <Err as TryInto<ForwardToLeader<ExampleTypeConfig>>>::try_into(remote_err.source.clone());
+                    <Err as TryInto<ForwardToLeader<ExampleNodeId>>>::try_into(remote_err.source.clone());
 
                 if let Ok(ForwardToLeader {
                     leader_id: Some(leader_id),
