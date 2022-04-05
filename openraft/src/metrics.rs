@@ -20,8 +20,8 @@ use tokio::time::Instant;
 use crate::core::EffectiveMembership;
 use crate::core::State;
 use crate::error::Fatal;
-use crate::leader_metrics::LeaderMetrics;
 use crate::raft_types::LogIdOptionExt;
+use crate::replication_metrics::ReplicationMetrics;
 use crate::versioned::Versioned;
 use crate::LogId;
 use crate::MessageSummary;
@@ -34,25 +34,40 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
 
     /// The ID of the Raft node.
     pub id: C::NodeId,
-    /// The state of the Raft node.
-    pub state: State,
+
+    // ---
+    // --- data ---
+    // ---
     /// The current term of the Raft node.
     pub current_term: u64,
+
     /// The last log index has been appended to this Raft node's log.
     pub last_log_index: Option<u64>,
+
     /// The last log index has been applied to this Raft node's state machine.
     pub last_applied: Option<LogId<C::NodeId>>,
-    /// The current cluster leader.
-    pub current_leader: Option<C::NodeId>,
-    /// The current membership config of the cluster.
-    pub membership_config: Arc<EffectiveMembership<C>>,
 
     /// The id of the last log included in snapshot.
     /// If there is no snapshot, it is (0,0).
     pub snapshot: Option<LogId<C::NodeId>>,
 
+    // ---
+    // --- cluster ---
+    // ---
+    /// The state of the Raft node.
+    pub state: State,
+
+    /// The current cluster leader.
+    pub current_leader: Option<C::NodeId>,
+
+    /// The current membership config of the cluster.
+    pub membership_config: Arc<EffectiveMembership<C>>,
+
+    // ---
+    // --- replication ---
+    // ---
     /// The metrics about the leader. It is Some() only when this node is leader.
-    pub leader_metrics: Option<Versioned<LeaderMetrics<C::NodeId>>>,
+    pub leader_metrics: Option<Versioned<ReplicationMetrics<C::NodeId>>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for RaftMetrics<C> {

@@ -46,7 +46,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.set_target_state(State::Follower); // State update will emit metrics.
             }
 
-            self.metrics_flags.set_changed_other();
+            self.metrics_flags.set_cluster_changed();
         }
 
         // Caveat: [commit-index must not advance the last known consistent log](https://datafuselabs.github.io/openraft/replication.html#caveat-commit-index-must-not-advance-the-last-known-consistent-log)
@@ -334,7 +334,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.committed,
                 self.last_applied
             );
-            self.metrics_flags.set_changed_other();
+            // TODO(xp): this should be moved to upper level.
+            self.metrics_flags.set_data_changed();
             return Ok(());
         }
 
@@ -354,7 +355,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.last_applied = Some(last_log_id);
 
         self.trigger_log_compaction_if_needed(false).await;
-        self.metrics_flags.set_changed_other();
+        self.metrics_flags.set_data_changed();
         Ok(())
     }
 }

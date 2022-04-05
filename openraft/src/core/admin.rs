@@ -18,13 +18,13 @@ use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
 use crate::error::MissingNodeInfo;
-use crate::leader_metrics::RemoveTarget;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ChangeMembers;
 use crate::raft::ClientWriteResponse;
 use crate::raft::EntryPayload;
 use crate::raft::RaftRespTx;
 use crate::raft_types::LogIdOptionExt;
+use crate::replication_metrics::RemoveTarget;
 use crate::versioned::Updatable;
 use crate::LogId;
 use crate::Membership;
@@ -275,7 +275,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let payload = EntryPayload::Membership(mem.clone());
         let entry = self.core.append_payload_to_log(payload).await?;
 
-        self.set_leader_metrics_changed();
+        self.core.metrics_flags.set_data_changed();
 
         let cr_entry = ClientRequestEntry {
             entry: Arc::new(entry),
@@ -326,7 +326,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.try_remove_replication(target);
         }
 
-        self.set_leader_metrics_changed();
+        self.set_replication_metrics_changed();
     }
 
     /// Remove a replication if the membership that does not include it has committed.
@@ -356,7 +356,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         tracing::info!("removed replication to: {}", target);
         self.nodes.remove(&target);
 
-        self.leader_metrics.update(RemoveTarget { target });
+        self.replication_metrics.update(RemoveTarget { target });
+        // TODO(xp): set_replication_metrics_changed() can be removed.
+        //           Use self.replication_metrics.version to detect changes.
+        self.set_replication_metrics_changed();
 
         true
     }

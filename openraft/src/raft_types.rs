@@ -148,6 +148,7 @@ pub enum Update<T> {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MetricsChangeFlags {
     pub leader: bool,
+    // TODO: split other_metrics into data metrics and cluster metrics
     pub other_metrics: bool,
 }
 
@@ -161,11 +162,18 @@ impl MetricsChangeFlags {
         self.other_metrics = false;
     }
 
-    pub(crate) fn set_changed_leader(&mut self) {
+    /// Includes state of replication to other nodes.
+    pub(crate) fn set_replication_changed(&mut self) {
         self.leader = true
     }
 
-    pub(crate) fn set_changed_other(&mut self) {
+    /// Includes raft log, snapshot, state machine etc.
+    pub(crate) fn set_data_changed(&mut self) {
+        self.other_metrics = true
+    }
+
+    /// Includes node role, membership config, leader node etc.
+    pub(crate) fn set_cluster_changed(&mut self) {
         self.other_metrics = true
     }
 }

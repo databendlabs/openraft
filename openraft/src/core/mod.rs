@@ -41,7 +41,6 @@ use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
-use crate::leader_metrics::LeaderMetrics;
 use crate::metrics::RaftMetrics;
 use crate::raft::AddLearnerResponse;
 use crate::raft::Entry;
@@ -52,6 +51,7 @@ use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
+use crate::replication_metrics::ReplicationMetrics;
 use crate::storage::RaftSnapshotBuilder;
 use crate::versioned::Versioned;
 use crate::vote::Vote;
@@ -152,7 +152,7 @@ impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
 
 pub trait MetricsProvider<NID: NodeId> {
     /// The default impl for the non-leader state
-    fn get_leader_metrics(&self) -> Option<&Versioned<LeaderMetrics<NID>>> {
+    fn get_leader_metrics(&self) -> Option<&Versioned<ReplicationMetrics<NID>>> {
         None
     }
 }
@@ -302,7 +302,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
             self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
-            self.metrics_flags.set_changed_other();
+            self.metrics_flags.set_data_changed();
         }
 
         let has_log = if self.last_log_id.is_some() {
@@ -395,7 +395,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn report_metrics(&self, leader_metrics: Update<Option<Versioned<LeaderMetrics<C::NodeId>>>>) {
+    fn report_metrics(&self, leader_metrics: Update<Option<Versioned<ReplicationMetrics<C::NodeId>>>>) {
         let leader_metrics = match leader_metrics {
             Update::Update(v) => v,
             Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
@@ -507,7 +507,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     fn update_snapshot_state(&mut self, update: SnapshotUpdate<C>) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
             self.snapshot_last_log_id = Some(log_id);
-            self.metrics_flags.set_changed_other();
+            self.metrics_flags.set_data_changed();
         }
         // If snapshot state is anything other than streaming, then drop it.
         if let Some(state @ SnapshotState::Streaming { .. }) = self.snapshot_state.take() {
@@ -784,7 +784,7 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     pub(super) nodes: BTreeMap<C::NodeId, ReplicationState<C>>,
 
     /// The metrics about a leader
-    pub leader_metrics: Versioned<LeaderMetrics<C::NodeId>>,
+    pub replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
 
     /// The stream of events coming from replication streams.
     pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<C, S::SnapshotData>, Span)>,
@@ -799,8 +799,8 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
     for LeaderState<'a, C, N, S>
 {
-    fn get_leader_metrics(&self) -> Option<&Versioned<LeaderMetrics<C::NodeId>>> {
-        Some(&self.leader_metrics)
+    fn get_leader_metrics(&self) -> Option<&Versioned<ReplicationMetrics<C::NodeId>>> {
+        Some(&self.replication_metrics)
     }
 }
 
@@ -811,7 +811,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         Self {
             core,
             nodes: BTreeMap::new(),
-            leader_metrics: Versioned::new(LeaderMetrics::default()),
+            replication_metrics: Versioned::new(ReplicationMetrics::default()),
             replication_tx,
             replication_rx,
             awaiting_committed: Vec::new(),
@@ -851,7 +851,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub(self) async fn leader_loop(mut self) -> Result<(), Fatal<C::NodeId>> {
         // report the leader metrics every time there came to a new leader
         // if not `report_metrics` before the leader loop, the leader metrics may not be updated cause no coming event.
-        self.core.report_metrics(Update::Update(Some(self.leader_metrics.clone())));
+        self.core.report_metrics(Update::Update(Some(self.replication_metrics.clone())));
 
         loop {
             if !self.core.target_state.is_leader() {
@@ -935,8 +935,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     /// Report metrics with leader specific states.
-    pub fn set_leader_metrics_changed(&mut self) {
-        self.core.metrics_flags.set_changed_leader();
+    pub fn set_replication_metrics_changed(&mut self) {
+        self.core.metrics_flags.set_replication_changed();
     }
 }
 
