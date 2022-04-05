@@ -78,7 +78,7 @@ pub enum InstallSnapshotError<C: RaftTypeConfig> {
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum CheckIsLeaderError<C: RaftTypeConfig> {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C>),
+    ForwardToLeader(#[from] ForwardToLeader<C::NodeId>),
 
     #[error(transparent)]
     QuorumNotEnough(#[from] QuorumNotEnough<C>),
@@ -91,11 +91,11 @@ pub enum CheckIsLeaderError<C: RaftTypeConfig> {
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
 pub enum ClientWriteError<C: RaftTypeConfig> {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C>),
+    ForwardToLeader(#[from] ForwardToLeader<C::NodeId>),
 
     /// When writing a change-membership entry.
     #[error(transparent)]
-    ChangeMembershipError(#[from] ChangeMembershipError<C>),
+    ChangeMembershipError(#[from] ChangeMembershipError<C::NodeId>),
 
     #[error(transparent)]
     Fatal(#[from] Fatal<C::NodeId>),
@@ -103,43 +103,45 @@ pub enum ClientWriteError<C: RaftTypeConfig> {
 
 /// The set of errors which may take place when requesting to propose a config change.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-pub enum ChangeMembershipError<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub enum ChangeMembershipError<NID: NodeId> {
     #[error(transparent)]
-    InProgress(#[from] InProgress<C>),
+    InProgress(#[from] InProgress<NID>),
 
     #[error(transparent)]
     EmptyMembership(#[from] EmptyMembership),
 
     // TODO(xp): 111 test it
     #[error(transparent)]
-    LearnerNotFound(#[from] LearnerNotFound<C>),
+    LearnerNotFound(#[from] LearnerNotFound<NID>),
 
     #[error(transparent)]
-    LearnerIsLagging(#[from] LearnerIsLagging<C>),
+    LearnerIsLagging(#[from] LearnerIsLagging<NID>),
 
     #[error(transparent)]
-    MissingNodeInfo(#[from] MissingNodeInfo<C::NodeId>),
+    MissingNodeInfo(#[from] MissingNodeInfo<NID>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-pub enum AddLearnerError<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub enum AddLearnerError<NID: NodeId> {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C>),
+    ForwardToLeader(#[from] ForwardToLeader<NID>),
 
     #[error("node {0} is already a learner")]
-    Exists(C::NodeId),
+    Exists(NID),
 
     #[error(transparent)]
-    MissingNodeInfo(#[from] MissingNodeInfo<C::NodeId>),
+    MissingNodeInfo(#[from] MissingNodeInfo<NID>),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C::NodeId>),
+    Fatal(#[from] Fatal<NID>),
 }
 
-impl<C: RaftTypeConfig> TryFrom<AddLearnerError<C>> for ForwardToLeader<C> {
-    type Error = AddLearnerError<C>;
+impl<NID: NodeId> TryFrom<AddLearnerError<NID>> for ForwardToLeader<NID> {
+    type Error = AddLearnerError<NID>;
 
-    fn try_from(value: AddLearnerError<C>) -> Result<Self, Self::Error> {
+    fn try_from(value: AddLearnerError<NID>) -> Result<Self, Self::Error> {
         if let AddLearnerError::ForwardToLeader(e) = value {
             return Ok(e);
         }
@@ -191,9 +193,9 @@ impl<C: RaftTypeConfig> From<StorageError<C::NodeId>> for InitializeError<C> {
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C::NodeId>> for AddLearnerError<C> {
-    fn from(s: StorageError<C::NodeId>) -> Self {
-        let f: Fatal<C::NodeId> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for AddLearnerError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
@@ -220,7 +222,7 @@ pub enum ReplicationError<C: RaftTypeConfig> {
     StorageError(#[from] StorageError<C::NodeId>),
 
     #[error(transparent)]
-    NodeNotFound(#[from] NodeNotFound<C>),
+    NodeNotFound(#[from] NodeNotFound<C::NodeId>),
 
     #[error(transparent)]
     Timeout(#[from] Timeout<C>),
@@ -235,7 +237,7 @@ pub enum ReplicationError<C: RaftTypeConfig> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum RPCError<C: RaftTypeConfig, T: Error> {
     #[error(transparent)]
-    NodeNotFound(#[from] NodeNotFound<C>),
+    NodeNotFound(#[from] NodeNotFound<C::NodeId>),
 
     #[error(transparent)]
     Timeout(#[from] Timeout<C>),
@@ -318,9 +320,10 @@ pub struct LackEntry<C: RaftTypeConfig> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
 #[error("has to forward request to: {leader_id:?}, {leader_node:?}")]
-pub struct ForwardToLeader<C: RaftTypeConfig> {
-    pub leader_id: Option<C::NodeId>,
+pub struct ForwardToLeader<NID: NodeId> {
+    pub leader_id: Option<NID>,
     pub leader_node: Option<Node>,
 }
 
@@ -339,22 +342,25 @@ pub struct QuorumNotEnough<C: RaftTypeConfig> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
 #[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
-pub struct InProgress<C: RaftTypeConfig> {
-    pub membership_log_id: LogId<C::NodeId>,
+pub struct InProgress<NID: NodeId> {
+    pub membership_log_id: LogId<NID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
 #[error("to add a member {node_id} first need to add it as learner")]
-pub struct LearnerNotFound<C: RaftTypeConfig> {
-    pub node_id: C::NodeId,
+pub struct LearnerNotFound<NID: NodeId> {
+    pub node_id: NID,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
 #[error("replication to learner {node_id} is lagging {distance}, matched: {matched:?}, can not add as member")]
-pub struct LearnerIsLagging<C: RaftTypeConfig> {
-    pub node_id: C::NodeId,
-    pub matched: Option<LogId<C::NodeId>>,
+pub struct LearnerIsLagging<NID: NodeId> {
+    pub node_id: NID,
+    pub matched: Option<LogId<NID>>,
     pub distance: u64,
 }
 
@@ -371,9 +377,10 @@ pub struct MissingNodeInfo<NID: NodeId> {
 pub struct EmptyMembership {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
 #[error("node not found: {node_id}, source: {source}")]
-pub struct NodeNotFound<C: RaftTypeConfig> {
-    pub node_id: C::NodeId,
+pub struct NodeNotFound<NID: NodeId> {
+    pub node_id: NID,
     pub source: AnyError,
 }
 
