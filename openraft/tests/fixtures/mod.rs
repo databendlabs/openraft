@@ -514,7 +514,7 @@ where
         &self,
         leader: C::NodeId,
         target: C::NodeId,
-    ) -> Result<AddLearnerResponse<C>, AddLearnerError<C::NodeId>> {
+    ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>> {
         let node = self.get_raft_handle(&leader).unwrap();
         node.add_learner(target, None, true).await
     }
@@ -524,7 +524,7 @@ where
         leader: C::NodeId,
         target: C::NodeId,
         blocking: bool,
-    ) -> Result<AddLearnerResponse<C>, AddLearnerError<C::NodeId>> {
+    ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
             rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()

@@ -315,14 +315,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         id: C::NodeId,
         node: Option<Node>,
         blocking: bool,
-    ) -> Result<AddLearnerResponse<C>, AddLearnerError<C::NodeId>> {
+    ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AddLearner { id, node, blocking, tx }, rx).await
     }
 
     async fn do_change_membership(
         &self,
-        change_members: ChangeMembers<C>,
+        change_members: ChangeMembers<C::NodeId>,
         blocking: bool,
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
@@ -551,20 +551,22 @@ pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AddLearnerResponse<C: RaftTypeConfig> {
-    pub matched: Option<LogId<C::NodeId>>,
+#[serde(bound = "")]
+pub struct AddLearnerResponse<NID: NodeId> {
+    pub matched: Option<LogId<NID>>,
 }
 
 #[derive(PartialEq, Serialize, Deserialize, Debug, Clone)]
-pub enum ChangeMembers<C: RaftTypeConfig> {
-    Add(BTreeSet<C::NodeId>),
-    Remove(BTreeSet<C::NodeId>),
-    Replace(BTreeSet<C::NodeId>),
+#[serde(bound = "")]
+pub enum ChangeMembers<NID: NodeId> {
+    Add(BTreeSet<NID>),
+    Remove(BTreeSet<NID>),
+    Replace(BTreeSet<NID>),
 }
 
-impl<C: RaftTypeConfig> ChangeMembers<C> {
+impl<NID: NodeId> ChangeMembers<NID> {
     /// apply the `ChangeMembers` to `old` node set, return new node set
-    pub fn apply_to(self, old: &BTreeSet<C::NodeId>) -> BTreeSet<C::NodeId> {
+    pub fn apply_to(self, old: &BTreeSet<NID>) -> BTreeSet<NID> {
         match self {
             ChangeMembers::Replace(c) => c,
             ChangeMembers::Add(add_members) => old.union(&add_members).cloned().collect::<BTreeSet<_>>(),
@@ -609,10 +611,10 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         blocking: bool,
 
         /// Send the log id when the replication becomes line-rate.
-        tx: RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C::NodeId>>,
+        tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
     },
     ChangeMembership {
-        members: ChangeMembers<C>,
+        members: ChangeMembers<C::NodeId>,
 
         /// If `blocking` is `false`, respond to the client with a `ChangeMembershipError::LearnerIsLagging` error at
         /// once if a non-member is lagging.

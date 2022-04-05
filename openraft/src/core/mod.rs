@@ -947,7 +947,8 @@ struct ReplicationState<C: RaftTypeConfig> {
     pub repl_stream: ReplicationStream<C>,
 
     /// The response channel to use for when this node has successfully synced with the cluster.
-    pub tx: Option<RaftRespTx<AddLearnerResponse<C>, AddLearnerError<C::NodeId>>>,
+    #[allow(clippy::type_complexity)]
+    pub tx: Option<RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for ReplicationState<C> {
