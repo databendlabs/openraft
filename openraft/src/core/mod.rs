@@ -398,24 +398,29 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Report a metrics payload on the current state of the Raft node.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn report_metrics(&self, leader_metrics: Update<Option<Versioned<ReplicationMetrics<C::NodeId>>>>) {
-        let leader_metrics = match leader_metrics {
+    fn report_metrics(&self, replication: Update<Option<Versioned<ReplicationMetrics<C::NodeId>>>>) {
+        let replication = match replication {
             Update::Update(v) => v,
-            Update::AsIs => self.tx_metrics.borrow().leader_metrics.clone(),
+            Update::AsIs => self.tx_metrics.borrow().replication.clone(),
         };
 
         let m = RaftMetrics {
             running_state: Ok(()),
-
             id: self.id,
-            state: self.target_state,
+
+            // --- data ---
             current_term: self.vote.term,
             last_log_index: self.last_log_id.map(|id| id.index),
             last_applied: self.last_applied,
+            snapshot: self.snapshot_last_log_id,
+
+            // --- cluster ---
+            state: self.target_state,
             current_leader: self.current_leader(),
             membership_config: self.effective_membership.clone(),
-            snapshot: self.snapshot_last_log_id,
-            leader_metrics,
+
+            // --- replication ---
+            replication,
         };
 
         {

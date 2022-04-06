@@ -65,7 +65,7 @@ async fn leader_metrics() -> Result<()> {
         .wait_for_metrics(
             &0,
             |x| {
-                if let Some(ref q) = x.leader_metrics {
+                if let Some(ref q) = x.replication {
                     q.data().replication.is_empty()
                 } else {
                     false
@@ -113,7 +113,7 @@ async fn leader_metrics() -> Result<()> {
         .wait_for_metrics(
             &0,
             |x| {
-                if let Some(ref q) = x.leader_metrics {
+                if let Some(ref q) = x.replication {
                     q.data().replication == want_repl
                 } else {
                     false
@@ -162,7 +162,7 @@ async fn leader_metrics() -> Result<()> {
             .wait_for_metrics(
                 &0,
                 |x| {
-                    if let Some(ref q) = x.leader_metrics {
+                    if let Some(ref q) = x.replication {
                         q.data().replication == want_repl
                     } else {
                         false
@@ -190,7 +190,7 @@ async fn leader_metrics() -> Result<()> {
         router
             .wait_for_metrics(
                 &leader,
-                |x| x.leader_metrics.is_none(),
+                |x| x.replication.is_none(),
                 timeout(),
                 "node 0 should close all replication",
             )
@@ -220,7 +220,7 @@ async fn leader_metrics() -> Result<()> {
     router
         .wait_for_metrics(
             &leader,
-            |x| x.leader_metrics.is_some(),
+            |x| x.replication.is_some(),
             timeout(),
             "new leader spawns replication",
         )
