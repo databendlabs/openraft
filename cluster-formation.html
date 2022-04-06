@@ -142,38 +142,56 @@
 <p>This method will:</p>
 <ul>
 <li>
-<p>Update the in-memory membership.</p>
+<p>Append one membership log at index 0, the log id has to be <code>(leader_id=(0,0), index=0)</code>. 
+The membership will take effect at once.</p>
 </li>
 <li>
-<p>If there are more than one voters in the config, enter Candidate state and start vote to become leader.</p>
+<p>Enter Candidate state and start vote to become leader.</p>
 </li>
 <li>
-<p>If there is only one voters(itself) in the config, become leader at once and
-will enter leader state.</p>
-</li>
-<li>
-<p>The leader will commit a log contains the given membership config.</p>
+<p>The leader will commit a blank log to commit all preceding logs.</p>
 </li>
 </ul>
-<p>TODO(xp): this procedure will be changed:  https://github.com/datafuselabs/openraft/issues/45</p>
+<h3 id="errors-and-failures"><a class="header" href="#errors-and-failures">Errors and failures</a></h3>
 <ul>
 <li>
-<p>Calling this method on an already initialized node just returns an error and is safe.</p>
+<p>Calling this method on an already initialized node just returns an error and is safe,
+i.e. <code>last_log_id</code> on this node is not None, or <code>vote</code> on this node is not <code>(0,0)</code>.</p>
 </li>
 <li>
 <p>Calling this method on more than one node at the same time:</p>
 <ul>
 <li>
-<p>with the same <code>membership</code> is safe.
+<p>with the same <code>membership</code>, it is safe.
 Because voting protocol guarantees consistency.</p>
 </li>
 <li>
-<p>with different <code>membership</code> is <strong>ILLEGAL</strong> and will result in a undefined
+<p>with different <code>membership</code> it is <strong>ILLEGAL</strong> and will result in an undefined
 state, AKA the <strong>split-brain</strong> state.</p>
 </li>
 </ul>
 </li>
 </ul>
+<h3 id="conditions-for-initialization"><a class="header" href="#conditions-for-initialization">Conditions for initialization</a></h3>
+<p>The conditions for a legal initialization is as the above because:</p>
+<p>The first membership log with log id <code>(vote, index=0)</code> will be appended to initialize a node, without consensus.
+This has not to break the commit condition:</p>
+<ol>
+<li>
+<p>Log id <code>(vote, index=0)</code> must not be greater than any committed log id.
+if <code>vote</code> is not the smallest value, i.e. <code>(term=0, node_id=0)</code>, it has chance to be greater than some
+committed log id. This is why the first log has to be the smallest: <code>((term=0, node_id=0), 0)</code>.</p>
+</li>
+<li>
+<p>And a node should not append a log that is smaller than its <code>vote</code>.
+Otherwise, it is actually changing the <strong>history</strong> other nodes has seen.
+This has chance to (but not certainly will) break the consensus, depending on the protocol.
+E.g. if the cluster has been running a fast-paxos like protocol, appending a smaller log than <code>vote</code> is illegal.
+By not allowing to append a smaller log than <code>vote</code>, it will always be safe.</p>
+</li>
+</ol>
+<p>From these two reason, it is only allowed to append the first log if:
+<code>vote==(0,0)</code>. And this is why the initial value of <code>vote</code> has to be <code>(0,0)</code>.</p>
 
                     </main>
 
