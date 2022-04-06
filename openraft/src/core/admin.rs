@@ -18,6 +18,7 @@ use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
 use crate::error::MissingNodeInfo;
+use crate::error::NotAllowed;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ChangeMembers;
 use crate::raft::ClientWriteResponse;
@@ -33,21 +34,26 @@ use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::Vote;
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
     /// Handle the admin `init_with_config` command.
+    ///
+    /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(0,0)`.
+    /// See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_init_with_config(
         &mut self,
         members: BTreeMap<C::NodeId, Option<Node>>,
     ) -> Result<(), InitializeError<C>> {
-        // TODO(xp): simplify this condition
-
-        if self.core.last_log_id.is_some() || self.core.vote.term != 0 {
+        if self.core.last_log_id.is_some() || self.core.vote != Vote::default() {
             tracing::error!(
                 last_log_id=?self.core.last_log_id, ?self.core.vote,
                 "rejecting init_with_config request as last_log_index is not None or current_term is not 0");
-            return Err(InitializeError::NotAllowed);
+            return Err(InitializeError::NotAllowed(NotAllowed {
+                last_log_id: self.core.last_log_id,
+                vote: self.core.vote,
+            }));
         }
 
         let node_ids = members.keys().cloned().collect::<BTreeSet<C::NodeId>>();

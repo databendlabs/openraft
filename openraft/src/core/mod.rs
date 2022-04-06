@@ -41,6 +41,7 @@ use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
+use crate::error::NotAllowed;
 use crate::metrics::RaftMetrics;
 use crate::raft::AddLearnerResponse;
 use crate::raft::Entry;
@@ -581,7 +582,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Reject an init config request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     fn reject_init_with_config(&self, tx: oneshot::Sender<Result<(), InitializeError<C>>>) {
-        let _ = tx.send(Err(InitializeError::NotAllowed));
+        let _ = tx.send(Err(InitializeError::NotAllowed(NotAllowed {
+            last_log_id: self.last_log_id,
+            vote: self.vote,
+        })));
     }
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.

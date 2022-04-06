@@ -152,9 +152,8 @@ impl<NID: NodeId> TryFrom<AddLearnerError<NID>> for ForwardToLeader<NID> {
 /// The set of errors which may take place when initializing a pristine Raft node.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum InitializeError<C: RaftTypeConfig> {
-    /// The requested action is not allowed due to the Raft node's current state.
-    #[error("the requested action is not allowed due to the Raft node's current state")]
-    NotAllowed,
+    #[error(transparent)]
+    NotAllowed(#[from] NotAllowed<C::NodeId>),
 
     #[error(transparent)]
     MissingNodeInfo(#[from] MissingNodeInfo<C::NodeId>),
@@ -362,6 +361,14 @@ pub struct LearnerIsLagging<NID: NodeId> {
     pub node_id: NID,
     pub matched: Option<LogId<NID>>,
     pub distance: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
+#[error("not allowed to initialize due to current raft state: last_log_id: {last_log_id:?} vote: {vote}")]
+pub struct NotAllowed<NID: NodeId> {
+    pub last_log_id: Option<LogId<NID>>,
+    pub vote: Vote<NID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
