@@ -1,8 +1,5 @@
 use std::fmt::Formatter;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use crate::NodeId;
 
 /// LeaderId is identifier of a `leader`.
@@ -13,9 +10,10 @@ use crate::NodeId;
 ///
 /// But under this(dirty and stupid) simplification, a `Leader` is actually identified by `(term, node_id)`.
 /// By introducing `LeaderId {term, node_id}`, things become easier to understand.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde_impl", derive(serde::Deserialize, serde::Serialize))]
 // Clear the bound so that serde will generate required bounds.
-#[serde(bound = "")]
+#[cfg_attr(feature = "serde_impl", serde(bound = ""))]
 pub struct LeaderId<NID>
 where NID: NodeId
 {

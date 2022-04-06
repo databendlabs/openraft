@@ -37,8 +37,6 @@ mod metrics_wait_test;
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
@@ -95,9 +93,15 @@ pub use crate::vote::Vote;
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppData: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
+#[cfg(feature = "serde_impl")]
+pub trait AppData: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+#[cfg(not(feature = "serde_impl"))]
+pub trait AppData: Clone + Send + Sync + 'static {}
 
-impl<T> AppData for T where T: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
+#[cfg(feature = "serde_impl")]
+impl<T> AppData for T where T: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+#[cfg(not(feature = "serde_impl"))]
+impl<T> AppData for T where T: Clone + Send + Sync + 'static {}
 
 /// A trait defining application specific response data.
 ///
@@ -116,6 +120,13 @@ impl<T> AppData for T where T: Clone + Send + Sync + Serialize + DeserializeOwne
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-pub trait AppDataResponse: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
+#[cfg(feature = "serde_impl")]
+pub trait AppDataResponse: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+#[cfg(not(feature = "serde_impl"))]
+pub trait AppDataResponse: Clone + Send + Sync + 'static {}
 
-impl<T> AppDataResponse for T where T: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
+#[cfg(feature = "serde_impl")]
+impl<T> AppDataResponse for T where T: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+
+#[cfg(not(feature = "serde_impl"))]
+impl<T> AppDataResponse for T where T: Clone + Send + Sync + 'static {}

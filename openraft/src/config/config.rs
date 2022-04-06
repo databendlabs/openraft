@@ -3,8 +3,6 @@
 use clap::Parser;
 use rand::thread_rng;
 use rand::Rng;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::config::error::ConfigError;
 
@@ -14,7 +12,8 @@ use crate::config::error::ConfigError;
 /// would cause a leader to send an `InstallSnapshot` RPC to a follower based on replication lag.
 ///
 /// Additional policies may become available in the future.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde_impl", derive(serde::Deserialize, serde::Serialize))]
 pub enum SnapshotPolicy {
     /// A snapshot will be generated once the log has grown the specified number of logs since
     /// the last snapshot.
@@ -78,7 +77,8 @@ fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
 /// What does all of this mean? Simply keep your election timeout settings high enough that the
 /// performance of your network will not cause election timeouts, but don't keep it so high that
 /// a real leader crash would cause prolonged downtime. See the Raft spec §5.6 for more details.
-#[derive(Clone, Debug, Serialize, Deserialize, Parser)]
+#[derive(Clone, Debug, Parser)]
+#[cfg_attr(feature = "serde_impl", derive(serde::Deserialize, serde::Serialize))]
 pub struct Config {
     /// The application specific name of this Raft cluster
     #[clap(long, env = "RAFT_CLUSTER_NAME", default_value = "foo")]

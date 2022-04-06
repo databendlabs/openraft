@@ -4,8 +4,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use maplit::btreemap;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::error::MissingNodeInfo;
 use crate::membership::quorum;
@@ -46,8 +44,9 @@ impl<NID: NodeId> IntoOptionNodes<NID> for BTreeMap<NID, Option<Node>> {
 ///
 /// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset of a majority of
 /// every config.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde_impl", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde_impl", serde(bound = ""))]
 pub struct Membership<NID: NodeId> {
     /// Multi configs of members.
     ///

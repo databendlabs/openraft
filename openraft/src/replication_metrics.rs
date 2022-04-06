@@ -3,9 +3,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use crate::versioned::Update;
 use crate::versioned::UpdateError;
 use crate::LogId;
@@ -14,8 +11,9 @@ use crate::NodeId;
 use crate::ReplicationTargetMetrics;
 
 /// The metrics about the leader. It is Some() only when this node is leader.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde_impl", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde_impl", serde(bound = ""))]
 pub struct ReplicationMetrics<NID: NodeId> {
     /// Replication metrics of all known replication target: voters and learners
     pub replication: BTreeMap<NID, ReplicationTargetMetrics<NID>>,

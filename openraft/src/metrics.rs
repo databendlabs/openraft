@@ -10,8 +10,6 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use serde::Deserialize;
-use serde::Serialize;
 use thiserror::Error;
 use tokio::sync::watch;
 use tokio::time::Duration;
@@ -28,7 +26,8 @@ use crate::MessageSummary;
 use crate::RaftTypeConfig;
 
 /// A set of metrics describing the current state of a Raft node.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde_impl", derive(serde::Deserialize, serde::Serialize))]
 pub struct RaftMetrics<C: RaftTypeConfig> {
     pub running_state: Result<(), Fatal<C::NodeId>>,
 

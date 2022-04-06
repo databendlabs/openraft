@@ -1,14 +1,12 @@
 use std::fmt::Formatter;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use crate::LeaderId;
 use crate::NodeId;
 
 /// `Vote` represent the privilege of a node.
-#[derive(Debug, Clone, Copy, Default, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Debug, Clone, Copy, Default, PartialOrd, Ord, PartialEq, Eq)]
+#[cfg_attr(feature = "serde_impl", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde_impl", serde(bound = ""))]
 pub struct Vote<NID: NodeId> {
     pub term: u64,
     pub node_id: NID,
