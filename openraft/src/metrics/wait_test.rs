@@ -209,7 +209,7 @@ fn init_wait_test<C: RaftTypeConfig>() -> (RaftMetrics<C>, Wait<C>, watch::Sende
         )),
 
         snapshot: None,
-        leader_metrics: None,
+        replication: None,
     };
     let (tx, rx) = watch::channel(init.clone());
     let w = Wait {
