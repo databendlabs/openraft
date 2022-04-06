@@ -1,5 +1,5 @@
-use crate::replication_metrics::ReplicationMetrics;
-use crate::replication_metrics::UpdateMatchedLogId;
+use crate::metrics::ReplicationMetrics;
+use crate::metrics::UpdateMatchedLogId;
 use crate::versioned::Updatable;
 use crate::versioned::Versioned;
 use crate::LeaderId;

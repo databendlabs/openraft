@@ -14,7 +14,6 @@ mod membership;
 mod node;
 mod raft_types;
 mod replication;
-mod replication_metrics;
 mod storage_error;
 mod store_ext;
 mod store_wrapper;
@@ -29,14 +28,10 @@ pub mod storage;
 pub mod testing;
 pub mod versioned;
 
-#[cfg(test)]
-mod leader_metrics_test;
-#[cfg(test)]
-mod metrics_wait_test;
-
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
+pub use metrics::ReplicationTargetMetrics;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -64,7 +59,6 @@ pub use crate::raft_types::SnapshotId;
 pub use crate::raft_types::SnapshotSegmentId;
 pub use crate::raft_types::StateMachineChanges;
 pub use crate::raft_types::Update;
-pub use crate::replication::ReplicationTargetMetrics;
 pub use crate::storage::RaftLogReader;
 pub use crate::storage::RaftSnapshotBuilder;
 pub use crate::storage::RaftStorage;
