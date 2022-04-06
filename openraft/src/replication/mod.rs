@@ -1,13 +1,9 @@
 //! Replication stream.
 
 use std::io::SeekFrom;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
-use serde::Deserialize;
-use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeek;
@@ -39,11 +35,9 @@ use crate::storage::RaftLogReader;
 use crate::storage::Snapshot;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
-use crate::LeaderId;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::Node;
-use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
@@ -51,54 +45,6 @@ use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::ToStorageResult;
 use crate::Vote;
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct ReplicationTargetMetrics<NID: NodeId> {
-    pub(crate) matched_leader_id: LeaderId<NID>,
-    pub(crate) matched_index: AtomicU64,
-}
-
-impl<NID: NodeId> Clone for ReplicationTargetMetrics<NID> {
-    fn clone(&self) -> Self {
-        Self {
-            matched_leader_id: self.matched_leader_id,
-            matched_index: AtomicU64::new(self.matched_index.load(Ordering::Relaxed)),
-        }
-    }
-}
-
-impl<NID: NodeId> PartialEq for ReplicationTargetMetrics<NID> {
-    fn eq(&self, other: &Self) -> bool {
-        self.matched_leader_id == other.matched_leader_id
-            && self.matched_index.load(Ordering::Relaxed) == other.matched_index.load(Ordering::Relaxed)
-    }
-}
-
-impl<NID: NodeId> Eq for ReplicationTargetMetrics<NID> {}
-
-impl<NID: NodeId> ReplicationTargetMetrics<NID> {
-    pub fn new(log_id: LogId<NID>) -> Self {
-        Self {
-            matched_leader_id: log_id.leader_id,
-            matched_index: AtomicU64::new(log_id.index),
-        }
-    }
-
-    pub fn matched(&self) -> LogId<NID> {
-        let index = self.matched_index.load(Ordering::Relaxed);
-        LogId {
-            leader_id: self.matched_leader_id,
-            index,
-        }
-    }
-}
-
-impl<NID: NodeId> MessageSummary for ReplicationTargetMetrics<NID> {
-    fn summary(&self) -> String {
-        format!("{}", self.matched())
-    }
-}
 
 /// The public handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<C: RaftTypeConfig> {

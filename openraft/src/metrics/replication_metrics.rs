@@ -3,18 +3,15 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use crate::versioned::Update;
 use crate::versioned::UpdateError;
+use crate::LeaderId;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
-use crate::ReplicationTargetMetrics;
 
 /// The metrics about the leader. It is Some() only when this node is leader.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(bound = "")]
 pub struct ReplicationMetrics<NID: NodeId> {
     /// Replication metrics of all known replication target: voters and learners
@@ -37,7 +34,7 @@ impl<NID: NodeId> MessageSummary for ReplicationMetrics<NID> {
 }
 
 /// Update one replication metrics in `LeaderMetrics.replication`.
-pub struct UpdateMatchedLogId<NID: NodeId> {
+pub(crate) struct UpdateMatchedLogId<NID: NodeId> {
     pub target: NID,
     pub matched: LogId<NID>,
 }
@@ -65,7 +62,7 @@ impl<NID: NodeId> Update<ReplicationMetrics<NID>> for UpdateMatchedLogId<NID> {
 }
 
 /// Remove one replication metrics in `LeaderMetrics.replication`.
-pub struct RemoveTarget<NID: NodeId> {
+pub(crate) struct RemoveTarget<NID: NodeId> {
     pub target: NID,
 }
 
@@ -77,5 +74,53 @@ impl<NID: NodeId> Update<ReplicationMetrics<NID>> for RemoveTarget<NID> {
 
     fn apply_mut(&self, to: &mut ReplicationMetrics<NID>) {
         to.replication.remove(&self.target);
+    }
+}
+
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(bound = "")]
+pub struct ReplicationTargetMetrics<NID: NodeId> {
+    pub(crate) matched_leader_id: LeaderId<NID>,
+    pub(crate) matched_index: AtomicU64,
+}
+
+impl<NID: NodeId> Clone for ReplicationTargetMetrics<NID> {
+    fn clone(&self) -> Self {
+        Self {
+            matched_leader_id: self.matched_leader_id,
+            matched_index: AtomicU64::new(self.matched_index.load(Ordering::Relaxed)),
+        }
+    }
+}
+
+impl<NID: NodeId> PartialEq for ReplicationTargetMetrics<NID> {
+    fn eq(&self, other: &Self) -> bool {
+        self.matched_leader_id == other.matched_leader_id
+            && self.matched_index.load(Ordering::Relaxed) == other.matched_index.load(Ordering::Relaxed)
+    }
+}
+
+impl<NID: NodeId> Eq for ReplicationTargetMetrics<NID> {}
+
+impl<NID: NodeId> ReplicationTargetMetrics<NID> {
+    pub fn new(log_id: LogId<NID>) -> Self {
+        Self {
+            matched_leader_id: log_id.leader_id,
+            matched_index: AtomicU64::new(log_id.index),
+        }
+    }
+
+    pub fn matched(&self) -> LogId<NID> {
+        let index = self.matched_index.load(Ordering::Relaxed);
+        LogId {
+            leader_id: self.matched_leader_id,
+            index,
+        }
+    }
+}
+
+impl<NID: NodeId> MessageSummary for ReplicationTargetMetrics<NID> {
+    fn summary(&self) -> String {
+        format!("{}", self.matched())
     }
 }

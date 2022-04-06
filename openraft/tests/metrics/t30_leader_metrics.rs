@@ -5,13 +5,13 @@ use anyhow::Result;
 use futures::stream::StreamExt;
 use maplit::btreemap;
 use maplit::btreeset;
+use openraft::metrics::ReplicationTargetMetrics;
 use openraft::raft::VoteRequest;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
-use openraft::ReplicationTargetMetrics;
 use openraft::State;
 use openraft::Vote;
 #[allow(unused_imports)]
