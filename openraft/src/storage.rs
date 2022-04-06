@@ -257,6 +257,7 @@ where C: RaftTypeConfig
         Ok(InitialState {
             last_log_id,
             last_applied,
+            // TODO(xp): vote should be None if this node is not initialized.
             vote: vote.unwrap_or_default(),
             last_membership: membership,
         })

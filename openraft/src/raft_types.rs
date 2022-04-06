@@ -138,7 +138,7 @@ impl Display for SnapshotSegmentId {
 }
 
 // An update action with option to update with some value or just leave it as is.
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
 pub enum Update<T> {
     Update(T),
     AsIs,
