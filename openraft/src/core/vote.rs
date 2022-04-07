@@ -23,7 +23,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn handle_vote_request(
         &mut self,
         req: VoteRequest<C>,
-    ) -> Result<VoteResponse<C>, VoteError<C::NodeId>> {
+    ) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
         tracing::debug!(
             %req.vote,
             ?self.vote,
@@ -97,7 +97,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
     #[tracing::instrument(level = "debug", skip(self, res))]
     pub(super) async fn handle_vote_response(
         &mut self,
-        res: VoteResponse<C>,
+        res: VoteResponse<C::NodeId>,
         target: C::NodeId,
     ) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(res=?res, target=display(target), "recv vote response");
@@ -145,7 +145,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
 
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(super) async fn spawn_parallel_vote_requests(&mut self) -> mpsc::Receiver<(VoteResponse<C>, C::NodeId)> {
+    pub(super) async fn spawn_parallel_vote_requests(
+        &mut self,
+    ) -> mpsc::Receiver<(VoteResponse<C::NodeId>, C::NodeId)> {
         let all_nodes = self.core.effective_membership.all_members().clone();
         let (tx, rx) = mpsc::channel(all_nodes.len());
 
