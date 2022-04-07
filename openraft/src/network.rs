@@ -50,16 +50,16 @@ where C: RaftTypeConfig
     async fn send_append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse<C>, RPCError<C, AppendEntriesError<C>>>;
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C, AppendEntriesError<C::NodeId>>>;
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
     async fn send_install_snapshot(
         &mut self,
         rpc: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C>, RPCError<C, InstallSnapshotError<C>>>;
+    ) -> Result<InstallSnapshotResponse<C>, RPCError<C, InstallSnapshotError<C::NodeId>>>;
 
     /// Send a RequestVote RPC to the target Raft node (§5).
-    async fn send_vote(&mut self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, RPCError<C, VoteError<C>>>;
+    async fn send_vote(&mut self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, RPCError<C, VoteError<C::NodeId>>>;
 }
 
 /// A trait defining the interface for a Raft network factory to create connections between cluster members.

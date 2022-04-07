@@ -55,7 +55,7 @@ impl ExampleClient {
     pub async fn write(
         &self,
         req: &ExampleRequest,
-    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ExampleTypeConfig, ClientWriteError<ExampleTypeConfig>>>
+    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ExampleTypeConfig, ClientWriteError<ExampleNodeId>>>
     {
         self.send_rpc_to_leader("write", Some(req)).await
     }
@@ -73,7 +73,7 @@ impl ExampleClient {
     pub async fn consistent_read(
         &self,
         req: &String,
-    ) -> Result<String, RPCError<ExampleTypeConfig, CheckIsLeaderError<ExampleTypeConfig>>> {
+    ) -> Result<String, RPCError<ExampleTypeConfig, CheckIsLeaderError<ExampleNodeId>>> {
         self.do_send_rpc_to_leader("consistent_read", Some(req)).await
     }
 
@@ -85,7 +85,7 @@ impl ExampleClient {
     /// With a initialized cluster, new node can be added with [`write`].
     /// Then setup replication with [`add_learner`].
     /// Then make the new node a member with [`change_membership`].
-    pub async fn init(&self) -> Result<(), RPCError<ExampleTypeConfig, InitializeError<ExampleTypeConfig>>> {
+    pub async fn init(&self) -> Result<(), RPCError<ExampleTypeConfig, InitializeError<ExampleNodeId>>> {
         self.do_send_rpc_to_leader("init", Some(&Empty {})).await
     }
 
@@ -106,7 +106,7 @@ impl ExampleClient {
     pub async fn change_membership(
         &self,
         req: &BTreeSet<ExampleNodeId>,
-    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ExampleTypeConfig, ClientWriteError<ExampleTypeConfig>>>
+    ) -> Result<ClientWriteResponse<ExampleTypeConfig>, RPCError<ExampleTypeConfig, ClientWriteError<ExampleNodeId>>>
     {
         self.send_rpc_to_leader("change-membership", Some(req)).await
     }

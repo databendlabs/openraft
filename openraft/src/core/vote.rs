@@ -20,7 +20,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
     #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
-    pub(super) async fn handle_vote_request(&mut self, req: VoteRequest<C>) -> Result<VoteResponse<C>, VoteError<C>> {
+    pub(super) async fn handle_vote_request(
+        &mut self,
+        req: VoteRequest<C>,
+    ) -> Result<VoteResponse<C>, VoteError<C::NodeId>> {
         tracing::debug!(
             %req.vote,
             ?self.vote,

@@ -533,7 +533,7 @@ where
     }
 
     /// Send a is_leader request to the target node.
-    pub async fn is_leader(&self, target: C::NodeId) -> Result<(), CheckIsLeaderError<C>> {
+    pub async fn is_leader(&self, target: C::NodeId) -> Result<(), CheckIsLeaderError<C::NodeId>> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
             rt.get(&target).unwrap_or_else(|| panic!("node with ID {} does not exist", target)).clone()
@@ -580,7 +580,7 @@ where
         &self,
         target: C::NodeId,
         req: C::D,
-    ) -> std::result::Result<C::R, ClientWriteError<C>> {
+    ) -> std::result::Result<C::R, ClientWriteError<C::NodeId>> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
             rt.get(&target)
@@ -892,7 +892,7 @@ where
     async fn send_append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
-    ) -> std::result::Result<AppendEntriesResponse<C>, RPCError<C, AppendEntriesError<C>>> {
+    ) -> std::result::Result<AppendEntriesResponse<C>, RPCError<C, AppendEntriesError<C::NodeId>>> {
         tracing::debug!("append_entries to id={} {:?}", self.target, rpc);
         self.owner.rand_send_delay().await;
 
@@ -911,7 +911,7 @@ where
     async fn send_install_snapshot(
         &mut self,
         rpc: InstallSnapshotRequest<C>,
-    ) -> std::result::Result<InstallSnapshotResponse<C>, RPCError<C, InstallSnapshotError<C>>> {
+    ) -> std::result::Result<InstallSnapshotResponse<C>, RPCError<C, InstallSnapshotError<C::NodeId>>> {
         self.owner.rand_send_delay().await;
 
         self.owner.check_reachable(rpc.vote.node_id, self.target)?;
@@ -927,7 +927,7 @@ where
     async fn send_vote(
         &mut self,
         rpc: VoteRequest<C>,
-    ) -> std::result::Result<VoteResponse<C>, RPCError<C, VoteError<C>>> {
+    ) -> std::result::Result<VoteResponse<C>, RPCError<C, VoteError<C::NodeId>>> {
         self.owner.rand_send_delay().await;
 
         self.owner.check_reachable(rpc.vote.node_id, self.target)?;

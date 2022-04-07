@@ -582,7 +582,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Reject an init config request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    fn reject_init_with_config(&self, tx: oneshot::Sender<Result<(), InitializeError<C>>>) {
+    fn reject_init_with_config(&self, tx: oneshot::Sender<Result<(), InitializeError<C::NodeId>>>) {
         let _ = tx.send(Err(InitializeError::NotAllowed(NotAllowed {
             last_log_id: self.last_log_id,
             vote: self.vote,

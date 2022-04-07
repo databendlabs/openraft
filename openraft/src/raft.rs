@@ -186,7 +186,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn append_entries(
         &self,
         rpc: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse<C>, AppendEntriesError<C>> {
+    ) -> Result<AppendEntriesResponse<C>, AppendEntriesError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
     }
@@ -195,7 +195,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
-    pub async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, VoteError<C>> {
+    pub async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, VoteError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
@@ -208,7 +208,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn install_snapshot(
         &self,
         rpc: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C>, InstallSnapshotError<C>> {
+    ) -> Result<InstallSnapshotResponse<C>, InstallSnapshotError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::InstallSnapshot { rpc, tx }, rx).await
     }
@@ -228,7 +228,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// The actual read operation itself is up to the application, this method just ensures that
     /// the read will not be stale.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn is_leader(&self) -> Result<(), CheckIsLeaderError<C>> {
+    pub async fn is_leader(&self) -> Result<(), CheckIsLeaderError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await
     }
@@ -254,7 +254,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn client_write(
         &self,
         rpc: ClientWriteRequest<C>,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::ClientWriteRequest { rpc, tx }, rx).await
     }
@@ -280,7 +280,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// More than one node performing `initialize()` with the same config is safe,
     /// with different config will result in split brain condition.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn initialize<T>(&self, members: T) -> Result<(), InitializeError<C>>
+    pub async fn initialize<T>(&self, members: T) -> Result<(), InitializeError<C::NodeId>>
     where T: IntoOptionNodes<C::NodeId> + Debug {
         let (tx, rx) = oneshot::channel();
         self.call_core(
@@ -325,7 +325,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         change_members: ChangeMembers<C::NodeId>,
         blocking: bool,
         turn_to_learner: bool,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         tracing::info!("do_change_membership: start to commit joint config");
 
         let (tx, rx) = oneshot::channel();
@@ -404,7 +404,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         members: BTreeSet<C::NodeId>,
         blocking: bool,
         turn_to_learner: bool,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         tracing::info!("change_membership: start to commit joint config");
         return self.do_change_membership(ChangeMembers::Replace(members), blocking, turn_to_learner).await;
     }
@@ -414,7 +414,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         &self,
         remove_members: BTreeSet<C::NodeId>,
         turn_to_learner: bool,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         tracing::debug!("remove_members: start to commit joint config");
         return self.do_change_membership(ChangeMembers::Remove(remove_members), false, turn_to_learner).await;
     }
@@ -424,7 +424,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         &self,
         add_members: BTreeSet<C::NodeId>,
         blocking: bool,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         tracing::debug!("add_members: start to commit joint config");
         return self.do_change_membership(ChangeMembers::Add(add_members), blocking, false).await;
     }
@@ -579,26 +579,26 @@ impl<NID: NodeId> ChangeMembers<NID> {
 pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
-        tx: RaftRespTx<AppendEntriesResponse<C>, AppendEntriesError<C>>,
+        tx: RaftRespTx<AppendEntriesResponse<C>, AppendEntriesError<C::NodeId>>,
     },
     RequestVote {
         rpc: VoteRequest<C>,
-        tx: RaftRespTx<VoteResponse<C>, VoteError<C>>,
+        tx: RaftRespTx<VoteResponse<C>, VoteError<C::NodeId>>,
     },
     InstallSnapshot {
         rpc: InstallSnapshotRequest<C>,
-        tx: RaftRespTx<InstallSnapshotResponse<C>, InstallSnapshotError<C>>,
+        tx: RaftRespTx<InstallSnapshotResponse<C>, InstallSnapshotError<C::NodeId>>,
     },
     ClientWriteRequest {
         rpc: ClientWriteRequest<C>,
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     },
     CheckIsLeaderRequest {
-        tx: RaftRespTx<(), CheckIsLeaderError<C>>,
+        tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId>>,
     },
     Initialize {
         members: BTreeMap<C::NodeId, Option<Node>>,
-        tx: RaftRespTx<(), InitializeError<C>>,
+        tx: RaftRespTx<(), InitializeError<C::NodeId>>,
     },
     // TODO(xp): make tx a field of a struct
     /// Request raft core to setup a new replication to a learner.
@@ -626,7 +626,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         /// will be turned into learners, otherwise they will be removed.
         turn_to_learner: bool,
 
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     },
 
     ExternalRequest {
