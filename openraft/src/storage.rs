@@ -51,25 +51,25 @@ where
 
 /// A struct used to represent the initial state which a Raft node needs when first starting.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct InitialState<C: RaftTypeConfig> {
+pub struct InitialState<NID: NodeId> {
     /// The vote state of this node.
-    pub vote: Vote<C::NodeId>,
+    pub vote: Vote<NID>,
 
     /// The greatest log id that has been purged after being applied to state machine.
     /// The range of log entries that exist in storage is `(last_purged_log_id, last_log_id]`,
     /// left open and right close.
     ///
     /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
-    pub last_purged_log_id: Option<LogId<C::NodeId>>,
+    pub last_purged_log_id: Option<LogId<NID>>,
 
     /// The id of the last log entry.
-    pub last_log_id: Option<LogId<C::NodeId>>,
+    pub last_log_id: Option<LogId<NID>>,
 
     /// The LogId of the last log applied to the state machine.
-    pub last_applied: Option<LogId<C::NodeId>>,
+    pub last_applied: Option<LogId<NID>>,
 
     /// The latest cluster membership configuration found, in log or in state machine.
-    pub effective_membership: Arc<EffectiveMembership<C::NodeId>>,
+    pub effective_membership: Arc<EffectiveMembership<NID>>,
 }
 
 /// The state about logs.
@@ -249,7 +249,7 @@ where C: RaftTypeConfig
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
     /// storage.
-    async fn get_initial_state(&mut self) -> Result<InitialState<C>, StorageError<C::NodeId>> {
+    async fn get_initial_state(&mut self) -> Result<InitialState<C::NodeId>, StorageError<C::NodeId>> {
         let vote = self.read_vote().await?;
         let st = self.get_log_state().await?;
         let mut last_purged_log_id = st.last_purged_log_id;

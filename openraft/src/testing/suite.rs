@@ -257,7 +257,7 @@ where
         let mut store = builder.build().await;
 
         let initial = store.get_initial_state().await?;
-        assert_eq!(InitialState::<C>::default(), initial, "uninitialized state");
+        assert_eq!(InitialState::default(), initial, "uninitialized state");
         Ok(())
     }
 
