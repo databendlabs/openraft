@@ -52,16 +52,23 @@ where
 /// A struct used to represent the initial state which a Raft node needs when first starting.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct InitialState<C: RaftTypeConfig> {
-    /// The last entry.
+    /// The vote state of this node.
+    pub vote: Vote<C::NodeId>,
+
+    /// The greatest log id that has been purged after being applied to state machine.
+    /// The range of log entries that exist in storage is `(last_purged_log_id, last_log_id]`,
+    /// left open and right close.
+    ///
+    /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
+    pub last_purged_log_id: Option<LogId<C::NodeId>>,
+
+    /// The id of the last log entry.
     pub last_log_id: Option<LogId<C::NodeId>>,
 
     /// The LogId of the last log applied to the state machine.
     pub last_applied: Option<LogId<C::NodeId>>,
 
-    pub vote: Vote<C::NodeId>,
-
-    /// The latest cluster membership configuration found, in log or in state machine, else a new initial
-    /// membership config consisting only of this node's ID.
+    /// The latest cluster membership configuration found, in log or in state machine.
     pub effective_membership: Arc<EffectiveMembership<C::NodeId>>,
 }
 
@@ -245,6 +252,7 @@ where C: RaftTypeConfig
     async fn get_initial_state(&mut self) -> Result<InitialState<C>, StorageError<C::NodeId>> {
         let vote = self.read_vote().await?;
         let st = self.get_log_state().await?;
+        let mut last_purged_log_id = st.last_purged_log_id;
         let mut last_log_id = st.last_log_id;
         let (last_applied, _) = self.last_applied_state().await?;
         let membership = self.get_membership().await?;
@@ -253,12 +261,15 @@ where C: RaftTypeConfig
         if last_log_id < last_applied {
             self.purge_logs_upto(last_applied.unwrap()).await?;
             last_log_id = last_applied;
+            last_purged_log_id = last_applied;
         }
 
         Ok(InitialState {
             last_log_id,
+            last_purged_log_id,
             last_applied,
-            // TODO(xp): vote should be None if this node is not initialized.
+            // The initial value for `vote` is the minimal possible value.
+            // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
             vote: vote.unwrap_or_default(),
             effective_membership: Arc::new(membership),
         })

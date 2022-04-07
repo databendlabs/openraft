@@ -420,6 +420,11 @@ where
             Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
             "state machine has higher log"
         );
+        assert_eq!(
+            initial.last_purged_log_id,
+            Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
+            "state machine has higher log"
+        );
         Ok(())
     }
 
