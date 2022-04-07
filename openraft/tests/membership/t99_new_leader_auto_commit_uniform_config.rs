@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::raft::Entry;
-use openraft::raft::EntryPayload;
 use openraft::Config;
+use openraft::Entry;
+use openraft::EntryPayload;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;

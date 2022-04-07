@@ -5,8 +5,6 @@ use std::option::Option::None;
 
 use maplit::btreeset;
 
-use crate::raft::Entry;
-use crate::raft::EntryPayload;
 use crate::storage::InitialState;
 use crate::storage::LogState;
 use crate::testing::DefensiveStoreBuilder;
@@ -15,6 +13,8 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::DefensiveError;
 use crate::EffectiveMembership;
+use crate::Entry;
+use crate::EntryPayload;
 use crate::ErrorSubject;
 use crate::LeaderId;
 use crate::LogId;

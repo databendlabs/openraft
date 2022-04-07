@@ -31,6 +31,8 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::AppData;
 use crate::AppDataResponse;
+use crate::Entry;
+use crate::EntryPayload;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -758,101 +760,6 @@ impl<NID: NodeId> MessageSummary for AppendEntriesResponse<NID> {
             AppendEntriesResponse::Success => "Success".to_string(),
             AppendEntriesResponse::HigherVote(vote) => format!("Higher vote, {}", vote),
             AppendEntriesResponse::Conflict => "Conflict".to_string(),
-        }
-    }
-}
-
-/// A Raft log entry.
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Entry<C: RaftTypeConfig> {
-    pub log_id: LogId<C::NodeId>,
-
-    /// This entry's payload.
-    #[serde(bound = "")]
-    pub payload: EntryPayload<C>,
-}
-
-impl<C: RaftTypeConfig> Debug for Entry<C>
-where C::D: Debug
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
-    }
-}
-
-impl<C: RaftTypeConfig> Default for Entry<C> {
-    fn default() -> Self {
-        Self {
-            log_id: LogId::default(),
-            payload: EntryPayload::Blank,
-        }
-    }
-}
-
-impl<C: RaftTypeConfig> MessageSummary for Entry<C> {
-    fn summary(&self) -> String {
-        format!("{}:{}", self.log_id, self.payload.summary())
-    }
-}
-
-impl<C: RaftTypeConfig> MessageSummary for Option<Entry<C>> {
-    fn summary(&self) -> String {
-        match self {
-            None => "None".to_string(),
-            Some(x) => format!("Some({})", x.summary()),
-        }
-    }
-}
-
-impl<C: RaftTypeConfig> MessageSummary for &[Entry<C>] {
-    fn summary(&self) -> String {
-        let entry_refs: Vec<_> = self.iter().collect();
-        entry_refs.as_slice().summary()
-    }
-}
-
-impl<C: RaftTypeConfig> MessageSummary for &[&Entry<C>] {
-    fn summary(&self) -> String {
-        if self.is_empty() {
-            return "{}".to_string();
-        }
-        let mut res = Vec::with_capacity(self.len());
-        if self.len() <= 5 {
-            for x in self.iter() {
-                let e = format!("{}:{}", x.log_id, x.payload.summary());
-                res.push(e);
-            }
-
-            res.join(",")
-        } else {
-            let first = *self.first().unwrap();
-            let last = *self.last().unwrap();
-
-            format!("{} ... {}", first.summary(), last.summary())
-        }
-    }
-}
-
-/// Log entry payload variants.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum EntryPayload<C: RaftTypeConfig> {
-    /// An empty payload committed by a new cluster leader.
-    Blank,
-
-    Normal(C::D),
-
-    /// A change-membership log entry.
-    Membership(Membership<C::NodeId>),
-}
-
-impl<C: RaftTypeConfig> MessageSummary for EntryPayload<C> {
-    fn summary(&self) -> String {
-        match self {
-            EntryPayload::Blank => "blank".to_string(),
-            EntryPayload::Normal(_n) => "normal".to_string(),
-            EntryPayload::Membership(c) => {
-                format!("membership: {}", c.summary())
-            }
         }
     }
 }

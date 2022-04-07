@@ -10,6 +10,7 @@
 mod config;
 mod core;
 mod defensive;
+mod entry;
 mod membership;
 mod node;
 mod raft_types;
@@ -42,6 +43,9 @@ pub use crate::core::EffectiveMembership;
 pub use crate::core::State;
 pub use crate::defensive::DefensiveCheck;
 pub use crate::defensive::DefensiveCheckBase;
+pub use crate::entry::Entry;
+pub use crate::entry::EntryPayload;
+pub use crate::entry::RaftPayload;
 pub use crate::membership::Membership;
 pub use crate::metrics::RaftMetrics;
 pub use crate::network::RPCTypes;
