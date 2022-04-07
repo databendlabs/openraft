@@ -62,7 +62,7 @@ pub struct InitialState<C: RaftTypeConfig> {
 
     /// The latest cluster membership configuration found, in log or in state machine, else a new initial
     /// membership config consisting only of this node's ID.
-    pub effective_membership: Arc<EffectiveMembership<C>>,
+    pub effective_membership: Arc<EffectiveMembership<C::NodeId>>,
 }
 
 /// The state about logs.
@@ -194,7 +194,7 @@ where C: RaftTypeConfig
     /// TODO(xp): if there is no membership log, return `{log_id:None, membership: vec![]}`.
     ///           The raft core should always have an effective_membership.
     ///           Initially, it is empty.
-    async fn get_membership(&mut self) -> Result<EffectiveMembership<C>, StorageError<C::NodeId>> {
+    async fn get_membership(&mut self) -> Result<EffectiveMembership<C::NodeId>, StorageError<C::NodeId>> {
         let (_, sm_mem) = self.last_applied_state().await?;
 
         let sm_mem_next_index = sm_mem.log_id.next_index();
@@ -216,7 +216,7 @@ where C: RaftTypeConfig
     async fn last_membership_in_log(
         &mut self,
         since_index: u64,
-    ) -> Result<Option<EffectiveMembership<C>>, StorageError<C::NodeId>> {
+    ) -> Result<Option<EffectiveMembership<C::NodeId>>, StorageError<C::NodeId>> {
         let st = self.get_log_state().await?;
 
         let mut end = st.last_log_id.next_index();
@@ -310,7 +310,7 @@ where C: RaftTypeConfig
     // NOTE: This can be made into sync, provided all state machines will use atomic read or the like.
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<C::NodeId>>, EffectiveMembership<C>), StorageError<C::NodeId>>;
+    ) -> Result<(Option<LogId<C::NodeId>>, EffectiveMembership<C::NodeId>), StorageError<C::NodeId>>;
 
     /// Apply the given payload of entries to the state machine.
     ///

@@ -73,7 +73,7 @@ pub struct ExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
     // TODO: it should not be Option.
-    pub last_membership: EffectiveMembership<ExampleTypeConfig>,
+    pub last_membership: EffectiveMembership<ExampleNodeId>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -252,8 +252,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<ExampleNodeId>>, EffectiveMembership<ExampleTypeConfig>), StorageError<ExampleNodeId>>
-    {
+    ) -> Result<(Option<LogId<ExampleNodeId>>, EffectiveMembership<ExampleNodeId>), StorageError<ExampleNodeId>> {
         let state_machine = self.state_machine.read().await;
         Ok((state_machine.last_applied_log, state_machine.last_membership.clone()))
     }
