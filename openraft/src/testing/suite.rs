@@ -330,7 +330,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.last_membership.membership,
+                initial.effective_membership.membership,
             );
         }
 
@@ -347,7 +347,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.last_membership.membership,
+                initial.effective_membership.membership,
             );
         }
 
@@ -364,7 +364,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {1,2,3}], None),
-                initial.last_membership.membership,
+                initial.effective_membership.membership,
             );
         }
 

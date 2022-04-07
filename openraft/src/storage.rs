@@ -2,6 +2,7 @@
 
 use std::fmt::Debug;
 use std::ops::RangeBounds;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -61,7 +62,7 @@ pub struct InitialState<C: RaftTypeConfig> {
 
     /// The latest cluster membership configuration found, in log or in state machine, else a new initial
     /// membership config consisting only of this node's ID.
-    pub last_membership: EffectiveMembership<C>,
+    pub effective_membership: Arc<EffectiveMembership<C>>,
 }
 
 /// The state about logs.
@@ -259,7 +260,7 @@ where C: RaftTypeConfig
             last_applied,
             // TODO(xp): vote should be None if this node is not initialized.
             vote: vote.unwrap_or_default(),
-            last_membership: membership,
+            effective_membership: Arc::new(membership),
         })
     }
 

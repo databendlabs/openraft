@@ -293,7 +293,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.last_log_id = state.last_log_id;
         self.vote = state.vote;
-        self.effective_membership = Arc::new(state.last_membership);
+        self.effective_membership = state.effective_membership.clone();
         self.last_applied = state.last_applied;
 
         // NOTE: The commit index must be determined by a leader after
