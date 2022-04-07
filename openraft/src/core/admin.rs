@@ -332,7 +332,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.try_remove_replication(target);
         }
 
-        self.set_replication_metrics_changed();
+        self.core.metrics_flags.set_replication_changed();
     }
 
     /// Remove a replication if the membership that does not include it has committed.
@@ -365,7 +365,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         self.replication_metrics.update(RemoveTarget { target });
         // TODO(xp): set_replication_metrics_changed() can be removed.
         //           Use self.replication_metrics.version to detect changes.
-        self.set_replication_metrics_changed();
+        self.core.metrics_flags.set_replication_changed();
 
         true
     }

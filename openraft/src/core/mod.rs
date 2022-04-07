@@ -937,11 +937,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         Ok(())
     }
-
-    /// Report metrics with leader specific states.
-    pub fn set_replication_metrics_changed(&mut self) {
-        self.core.metrics_flags.set_replication_changed();
-    }
 }
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
