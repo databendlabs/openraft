@@ -43,7 +43,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub current_leader: Option<C::NodeId>,
 
     /// The current membership config of the cluster.
-    pub membership_config: Arc<EffectiveMembership<C>>,
+    pub membership_config: Arc<EffectiveMembership<C::NodeId>>,
 
     // ---
     // --- replication ---

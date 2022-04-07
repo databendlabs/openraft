@@ -124,7 +124,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<C::NodeId>>, EffectiveMembership<C>), StorageError<C::NodeId>> {
+    ) -> Result<(Option<LogId<C::NodeId>>, EffectiveMembership<C::NodeId>), StorageError<C::NodeId>> {
         self.inner().last_applied_state().await
     }
 

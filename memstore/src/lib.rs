@@ -90,7 +90,7 @@ pub struct MemStoreSnapshot {
 pub struct MemStoreStateMachine {
     pub last_applied_log: Option<LogId<MemNodeId>>,
 
-    pub last_membership: EffectiveMembership<Config>,
+    pub last_membership: EffectiveMembership<MemNodeId>,
 
     /// A mapping of client IDs to their state info.
     pub client_serial_responses: HashMap<String, (u64, Option<String>)>,
@@ -263,7 +263,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<MemNodeId>>, EffectiveMembership<Config>), StorageError<MemNodeId>> {
+    ) -> Result<(Option<LogId<MemNodeId>>, EffectiveMembership<MemNodeId>), StorageError<MemNodeId>> {
         let sm = self.sm.read().await;
         Ok((sm.last_applied_log, sm.last_membership.clone()))
     }

@@ -76,17 +76,18 @@ use crate::Update;
 ///
 /// An active config is just the last seen config in raft spec.
 #[derive(Clone, Default, Eq, Serialize, Deserialize)]
-pub struct EffectiveMembership<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub struct EffectiveMembership<NID: NodeId> {
     /// The id of the log that applies this membership config
-    pub log_id: Option<LogId<C::NodeId>>,
+    pub log_id: Option<LogId<NID>>,
 
-    pub membership: Membership<C::NodeId>,
+    pub membership: Membership<NID>,
 
     /// Cache of union of all members
-    all_members: BTreeSet<C::NodeId>,
+    all_members: BTreeSet<NID>,
 }
 
-impl<C: RaftTypeConfig> Debug for EffectiveMembership<C> {
+impl<NID: NodeId> Debug for EffectiveMembership<NID> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EffectiveMembership")
             .field("log_id", &self.log_id)
@@ -96,14 +97,14 @@ impl<C: RaftTypeConfig> Debug for EffectiveMembership<C> {
     }
 }
 
-impl<C: RaftTypeConfig> PartialEq for EffectiveMembership<C> {
+impl<NID: NodeId> PartialEq for EffectiveMembership<NID> {
     fn eq(&self, other: &Self) -> bool {
         self.log_id == other.log_id && self.membership == other.membership && self.all_members == other.all_members
     }
 }
 
-impl<C: RaftTypeConfig> EffectiveMembership<C> {
-    pub fn new(log_id: Option<LogId<C::NodeId>>, membership: Membership<C::NodeId>) -> Self {
+impl<NID: NodeId> EffectiveMembership<NID> {
+    pub fn new(log_id: Option<LogId<NID>>, membership: Membership<NID>) -> Self {
         let all_members = membership.build_member_ids();
         Self {
             log_id,
@@ -117,11 +118,11 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
         self.all_members().len() <= 1
     }
 
-    pub(crate) fn all_members(&self) -> &BTreeSet<C::NodeId> {
+    pub(crate) fn all_members(&self) -> &BTreeSet<NID> {
         &self.all_members
     }
 
-    pub(crate) fn node_ids(&self) -> impl Iterator<Item = &C::NodeId> {
+    pub(crate) fn node_ids(&self) -> impl Iterator<Item = &NID> {
         self.membership.node_ids()
     }
 
@@ -130,22 +131,22 @@ impl<C: RaftTypeConfig> EffectiveMembership<C> {
     /// Membership is defined by a joint of multiple configs.
     /// Each config is a set of node-id.
     /// This method returns a immutable reference to the vec of node-id sets, without node infos.
-    pub fn get_configs(&self) -> &Vec<BTreeSet<C::NodeId>> {
+    pub fn get_configs(&self) -> &Vec<BTreeSet<NID>> {
         self.membership.get_configs()
     }
 
     /// Get a the node info by node id.
-    pub fn get_node(&self, node_id: &C::NodeId) -> Option<&Node> {
+    pub fn get_node(&self, node_id: &NID) -> Option<&Node> {
         self.membership.get_node(node_id)
     }
 
     /// Get all node infos.
-    pub fn get_nodes(&self) -> &BTreeMap<C::NodeId, Option<Node>> {
+    pub fn get_nodes(&self) -> &BTreeMap<NID, Option<Node>> {
         self.membership.get_nodes()
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for EffectiveMembership<C> {
+impl<NID: NodeId> MessageSummary for EffectiveMembership<NID> {
     fn summary(&self) -> String {
         format!("{{log_id:{:?} membership:{}}}", self.log_id, self.membership.summary())
     }
@@ -167,7 +168,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     config: Arc<Config>,
 
     /// The cluster's current membership configuration.
-    effective_membership: Arc<EffectiveMembership<C>>,
+    effective_membership: Arc<EffectiveMembership<C::NodeId>>,
 
     /// The `RaftNetworkFactory` implementation.
     network: N,
@@ -483,7 +484,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Update the node's current membership config & save hard state.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_membership(&mut self, cfg: EffectiveMembership<C>) {
+    fn update_membership(&mut self, cfg: EffectiveMembership<C::NodeId>) {
         // If the given config does not contain this node's ID, it means one of the following:
         //
         // - the node is currently a learner and is replicating an old config to which it has
