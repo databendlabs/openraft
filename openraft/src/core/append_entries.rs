@@ -23,7 +23,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn handle_append_entries_request(
         &mut self,
         req: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse<C>, AppendEntriesError<C>> {
+    ) -> Result<AppendEntriesResponse<C>, AppendEntriesError<C::NodeId>> {
         tracing::debug!(last_log_id=?self.last_log_id, ?self.last_applied, msg=%req.summary(), "handle_append_entries_request");
 
         let msg_entries = req.entries.as_slice();

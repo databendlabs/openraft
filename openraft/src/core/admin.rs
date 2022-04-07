@@ -45,7 +45,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
     pub(super) async fn handle_init_with_config(
         &mut self,
         members: BTreeMap<C::NodeId, Option<Node>>,
-    ) -> Result<(), InitializeError<C>> {
+    ) -> Result<(), InitializeError<C::NodeId>> {
         if self.core.last_log_id.is_some() || self.core.vote != Vote::default() {
             tracing::error!(
                 last_log_id=?self.core.last_log_id, ?self.core.vote,
@@ -179,7 +179,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         change_members: ChangeMembers<C::NodeId>,
         blocking: bool,
         turn_to_learner: bool,
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         let members = change_members.apply_to(self.core.effective_membership.membership.get_configs().last().unwrap());
         // Ensure cluster will have at least one node.
@@ -228,7 +228,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     /// return Ok if all the nodes is `is_line_rate`
-    fn are_nodes_at_line_rate(&self, nodes: &BTreeSet<C::NodeId>, blocking: bool) -> Result<(), ClientWriteError<C>> {
+    fn are_nodes_at_line_rate(
+        &self,
+        nodes: &BTreeSet<C::NodeId>,
+        blocking: bool,
+    ) -> Result<(), ClientWriteError<C::NodeId>> {
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
         // streams AND are ready to join, then we can immediately proceed with entering joint
         // consensus. Else, new nodes need to first be brought up-to-speed.
@@ -276,7 +280,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub async fn append_membership_log(
         &mut self,
         mem: Membership<C::NodeId>,
-        resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>>,
+        resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         let payload = EntryPayload::Membership(mem.clone());
         let entry = self.core.append_payload_to_log(payload).await?;

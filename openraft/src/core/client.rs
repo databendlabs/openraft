@@ -41,7 +41,7 @@ pub(super) struct ClientRequestEntry<C: RaftTypeConfig> {
     pub entry: Arc<Entry<C>>,
 
     /// The response channel for the request.
-    pub tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>>,
+    pub tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary for ClientRequestEntry<C> {
@@ -81,7 +81,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     /// handles this by having the leader exchange heartbeat messages with a majority of the
     /// cluster before responding to read-only requests.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_check_is_leader_request(&mut self, tx: RaftRespTx<(), CheckIsLeaderError<C>>) {
+    pub(super) async fn handle_check_is_leader_request(&mut self, tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId>>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let mem = &self.core.effective_membership.membership;
@@ -191,7 +191,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub(super) async fn handle_client_write_request(
         &mut self,
         rpc: ClientWriteRequest<C>,
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         let entry = self.core.append_payload_to_log(rpc.payload).await?;
         let entry = ClientRequestEntry {
@@ -268,7 +268,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         entry: &Entry<C>,
         resp: C::R,
-        tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C>>>,
+        tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
     ) {
         let tx = match tx {
             None => return,

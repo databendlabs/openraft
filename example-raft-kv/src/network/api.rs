@@ -10,7 +10,7 @@ use web::Json;
 
 use crate::app::ExampleApp;
 use crate::store::ExampleRequest;
-use crate::ExampleTypeConfig;
+use crate::ExampleNodeId;
 
 /**
  * Application API
@@ -48,7 +48,7 @@ pub async fn consistent_read(app: Data<ExampleApp>, req: Json<String>) -> actix_
             let key = req.0;
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, CheckIsLeaderError<ExampleTypeConfig>> = Ok(value.unwrap_or_default());
+            let res: Result<String, CheckIsLeaderError<ExampleNodeId>> = Ok(value.unwrap_or_default());
             Ok(Json(res))
         }
         Err(e) => Ok(Json(Err(e))),

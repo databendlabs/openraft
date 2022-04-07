@@ -54,51 +54,56 @@ where E: TryInto<Fatal<NID>> + Clone
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum AppendEntriesError<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub enum AppendEntriesError<NID: NodeId> {
     #[error(transparent)]
-    Fatal(#[from] Fatal<C::NodeId>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum VoteError<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub enum VoteError<NID: NodeId> {
     #[error(transparent)]
-    Fatal(#[from] Fatal<C::NodeId>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum InstallSnapshotError<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub enum InstallSnapshotError<NID: NodeId> {
     #[error(transparent)]
     SnapshotMismatch(#[from] SnapshotMismatch),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C::NodeId>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 /// An error related to a is_leader request.
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum CheckIsLeaderError<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub enum CheckIsLeaderError<NID: NodeId> {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C::NodeId>),
+    ForwardToLeader(#[from] ForwardToLeader<NID>),
 
     #[error(transparent)]
-    QuorumNotEnough(#[from] QuorumNotEnough<C>),
+    QuorumNotEnough(#[from] QuorumNotEnough<NID>),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C::NodeId>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 /// An error related to a client write request.
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error, derive_more::TryInto)]
-pub enum ClientWriteError<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub enum ClientWriteError<NID: NodeId> {
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<C::NodeId>),
+    ForwardToLeader(#[from] ForwardToLeader<NID>),
 
     /// When writing a change-membership entry.
     #[error(transparent)]
-    ChangeMembershipError(#[from] ChangeMembershipError<C::NodeId>),
+    ChangeMembershipError(#[from] ChangeMembershipError<NID>),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C::NodeId>),
+    Fatal(#[from] Fatal<NID>),
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
@@ -151,44 +156,45 @@ impl<NID: NodeId> TryFrom<AddLearnerError<NID>> for ForwardToLeader<NID> {
 
 /// The set of errors which may take place when initializing a pristine Raft node.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-pub enum InitializeError<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub enum InitializeError<NID: NodeId> {
     #[error(transparent)]
-    NotAllowed(#[from] NotAllowed<C::NodeId>),
+    NotAllowed(#[from] NotAllowed<NID>),
 
     #[error(transparent)]
-    MissingNodeInfo(#[from] MissingNodeInfo<C::NodeId>),
+    MissingNodeInfo(#[from] MissingNodeInfo<NID>),
 
     #[error(transparent)]
-    Fatal(#[from] Fatal<C::NodeId>),
+    Fatal(#[from] Fatal<NID>),
 }
 
-impl<C: RaftTypeConfig> From<StorageError<C::NodeId>> for AppendEntriesError<C> {
-    fn from(s: StorageError<C::NodeId>) -> Self {
-        let f: Fatal<C::NodeId> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for AppendEntriesError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C::NodeId>> for VoteError<C> {
-    fn from(s: StorageError<C::NodeId>) -> Self {
-        let f: Fatal<C::NodeId> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for VoteError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C::NodeId>> for InstallSnapshotError<C> {
-    fn from(s: StorageError<C::NodeId>) -> Self {
-        let f: Fatal<C::NodeId> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for InstallSnapshotError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C::NodeId>> for CheckIsLeaderError<C> {
-    fn from(s: StorageError<C::NodeId>) -> Self {
-        let f: Fatal<C::NodeId> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for CheckIsLeaderError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<C: RaftTypeConfig> From<StorageError<C::NodeId>> for InitializeError<C> {
-    fn from(s: StorageError<C::NodeId>) -> Self {
-        let f: Fatal<C::NodeId> = s.into();
+impl<NID: NodeId> From<StorageError<NID>> for InitializeError<NID> {
+    fn from(s: StorageError<NID>) -> Self {
+        let f: Fatal<NID> = s.into();
         f.into()
     }
 }
@@ -230,7 +236,7 @@ pub enum ReplicationError<C: RaftTypeConfig> {
     Network(#[from] NetworkError),
 
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<C, AppendEntriesError<C>>),
+    RemoteError(#[from] RemoteError<C, AppendEntriesError<C::NodeId>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -334,10 +340,11 @@ pub struct SnapshotMismatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
 #[error("not enough for a quorum, cluster: {cluster}, got: {got:?}")]
-pub struct QuorumNotEnough<C: RaftTypeConfig> {
+pub struct QuorumNotEnough<NID: NodeId> {
     pub cluster: String,
-    pub got: BTreeSet<C::NodeId>,
+    pub got: BTreeSet<NID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
