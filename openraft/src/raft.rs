@@ -186,7 +186,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn append_entries(
         &self,
         rpc: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse<C>, AppendEntriesError<C::NodeId>> {
+    ) -> Result<AppendEntriesResponse<C::NodeId>, AppendEntriesError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
     }
@@ -195,7 +195,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
-    pub async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C>, VoteError<C::NodeId>> {
+    pub async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
@@ -208,7 +208,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn install_snapshot(
         &self,
         rpc: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C>, InstallSnapshotError<C::NodeId>> {
+    ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::InstallSnapshot { rpc, tx }, rx).await
     }
@@ -579,15 +579,15 @@ impl<NID: NodeId> ChangeMembers<NID> {
 pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
-        tx: RaftRespTx<AppendEntriesResponse<C>, AppendEntriesError<C::NodeId>>,
+        tx: RaftRespTx<AppendEntriesResponse<C::NodeId>, AppendEntriesError<C::NodeId>>,
     },
     RequestVote {
         rpc: VoteRequest<C>,
-        tx: RaftRespTx<VoteResponse<C>, VoteError<C::NodeId>>,
+        tx: RaftRespTx<VoteResponse<C::NodeId>, VoteError<C::NodeId>>,
     },
     InstallSnapshot {
         rpc: InstallSnapshotRequest<C>,
-        tx: RaftRespTx<InstallSnapshotResponse<C>, InstallSnapshotError<C::NodeId>>,
+        tx: RaftRespTx<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>>,
     },
     ClientWriteRequest {
         rpc: ClientWriteRequest<C>,
@@ -735,13 +735,14 @@ impl<C: RaftTypeConfig> MessageSummary for AppendEntriesRequest<C> {
 
 /// The response to an `AppendEntriesRequest`.
 #[derive(Debug, Serialize, Deserialize)]
-pub enum AppendEntriesResponse<C: RaftTypeConfig> {
+#[serde(bound = "")]
+pub enum AppendEntriesResponse<NID: NodeId> {
     Success,
     Conflict,
-    HigherVote(Vote<C::NodeId>),
+    HigherVote(Vote<NID>),
 }
 
-impl<C: RaftTypeConfig> AppendEntriesResponse<C> {
+impl<NID: NodeId> AppendEntriesResponse<NID> {
     pub fn is_success(&self) -> bool {
         matches!(*self, AppendEntriesResponse::Success)
     }
@@ -751,7 +752,7 @@ impl<C: RaftTypeConfig> AppendEntriesResponse<C> {
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for AppendEntriesResponse<C> {
+impl<NID: NodeId> MessageSummary for AppendEntriesResponse<NID> {
     fn summary(&self) -> String {
         match self {
             AppendEntriesResponse::Success => "Success".to_string(),
@@ -877,14 +878,15 @@ impl<C: RaftTypeConfig> VoteRequest<C> {
 
 /// The response to a `VoteRequest`.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VoteResponse<C: RaftTypeConfig> {
-    pub vote: Vote<C::NodeId>,
+#[serde(bound = "")]
+pub struct VoteResponse<NID: NodeId> {
+    pub vote: Vote<NID>,
 
     /// Will be true if the candidate received a vote from the responder.
     pub vote_granted: bool,
 
     /// The last log id stored on the remote voter.
-    pub last_log_id: Option<LogId<C::NodeId>>,
+    pub last_log_id: Option<LogId<NID>>,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
@@ -921,8 +923,9 @@ impl<C: RaftTypeConfig> MessageSummary for InstallSnapshotRequest<C> {
 
 /// The response to an `InstallSnapshotRequest`.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct InstallSnapshotResponse<C: RaftTypeConfig> {
-    pub vote: Vote<C::NodeId>,
+#[serde(bound = "")]
+pub struct InstallSnapshotResponse<NID: NodeId> {
+    pub vote: Vote<NID>,
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////

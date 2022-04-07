@@ -32,7 +32,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn handle_install_snapshot_request(
         &mut self,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C>, InstallSnapshotError<C::NodeId>> {
+    ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
         if req.vote < self.vote {
             tracing::debug!(?self.vote, %req.vote, "InstallSnapshot RPC term is less than current term");
 
@@ -92,7 +92,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     async fn begin_installing_snapshot(
         &mut self,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C>, InstallSnapshotError<C::NodeId>> {
+    ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
         let id = req.meta.snapshot_id.clone();
 
         if req.offset > 0 {
@@ -137,7 +137,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         req: InstallSnapshotRequest<C>,
         mut offset: u64,
         mut snapshot: Box<S::SnapshotData>,
-    ) -> Result<InstallSnapshotResponse<C>, InstallSnapshotError<C::NodeId>> {
+    ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
         let id = req.meta.snapshot_id.clone();
 
         // Always seek to the target offset if not an exact match.

@@ -892,7 +892,7 @@ where
     async fn send_append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
-    ) -> std::result::Result<AppendEntriesResponse<C>, RPCError<C, AppendEntriesError<C::NodeId>>> {
+    ) -> std::result::Result<AppendEntriesResponse<C::NodeId>, RPCError<C, AppendEntriesError<C::NodeId>>> {
         tracing::debug!("append_entries to id={} {:?}", self.target, rpc);
         self.owner.rand_send_delay().await;
 
@@ -911,7 +911,7 @@ where
     async fn send_install_snapshot(
         &mut self,
         rpc: InstallSnapshotRequest<C>,
-    ) -> std::result::Result<InstallSnapshotResponse<C>, RPCError<C, InstallSnapshotError<C::NodeId>>> {
+    ) -> std::result::Result<InstallSnapshotResponse<C::NodeId>, RPCError<C, InstallSnapshotError<C::NodeId>>> {
         self.owner.rand_send_delay().await;
 
         self.owner.check_reachable(rpc.vote.node_id, self.target)?;
@@ -927,7 +927,7 @@ where
     async fn send_vote(
         &mut self,
         rpc: VoteRequest<C>,
-    ) -> std::result::Result<VoteResponse<C>, RPCError<C, VoteError<C::NodeId>>> {
+    ) -> std::result::Result<VoteResponse<C::NodeId>, RPCError<C, VoteError<C::NodeId>>> {
         self.owner.rand_send_delay().await;
 
         self.owner.check_reachable(rpc.vote.node_id, self.target)?;
