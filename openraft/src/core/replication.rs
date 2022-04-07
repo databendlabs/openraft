@@ -184,7 +184,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         tracing::debug!(%target, ?matched, "update_leader_metrics");
 
         self.replication_metrics.update(UpdateMatchedLogId { target, matched });
-        self.set_replication_metrics_changed();
+        self.core.metrics_flags.set_replication_changed()
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
