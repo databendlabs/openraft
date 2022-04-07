@@ -13,10 +13,10 @@ use tokio::io::AsyncWrite;
 
 use crate::core::EffectiveMembership;
 use crate::defensive::check_range_matches_entries;
-use crate::raft::Entry;
-use crate::raft::EntryPayload;
 use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
+use crate::Entry;
+use crate::EntryPayload;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;

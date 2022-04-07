@@ -10,14 +10,14 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use openraft::async_trait::async_trait;
-use openraft::raft::Entry;
-use openraft::raft::EntryPayload;
 use openraft::storage::LogState;
 use openraft::storage::RaftLogReader;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
 use openraft::EffectiveMembership;
+use openraft::Entry;
+use openraft::EntryPayload;
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::LogId;

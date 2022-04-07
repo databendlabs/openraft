@@ -4,9 +4,9 @@ use std::ops::RangeBounds;
 
 use async_trait::async_trait;
 
-use crate::raft::Entry;
 use crate::raft_types::LogIdOptionExt;
 use crate::DefensiveError;
+use crate::Entry;
 use crate::ErrorSubject;
 use crate::LogId;
 use crate::RaftStorage;

@@ -5,7 +5,7 @@ use actix_web::Responder;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
 use openraft::raft::ClientWriteRequest;
-use openraft::raft::EntryPayload;
+use openraft::EntryPayload;
 use web::Json;
 
 use crate::app::ExampleApp;

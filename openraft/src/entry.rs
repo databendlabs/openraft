@@ -1,0 +1,152 @@
+use std::fmt::Debug;
+
+use crate::LogId;
+use crate::Membership;
+use crate::MessageSummary;
+use crate::NodeId;
+use crate::RaftTypeConfig;
+
+/// Defines operations on an entry payload.
+pub trait RaftPayload<NID: NodeId> {
+    /// Return `Some(())` if the entry payload is blank.
+    fn is_blank(&self) -> bool;
+
+    /// Return `Some(&Membership)` if the entry payload is a membership payload.
+    fn get_membership(&self) -> Option<&Membership<NID>>;
+}
+
+/// Defines operations on an entry.
+pub trait RaftEntry<NID: NodeId>: RaftPayload<NID> {
+    fn get_log_id(&self) -> &LogId<NID>;
+
+    fn set_log_id(&mut self, log_id: &LogId<NID>);
+}
+
+/// Log entry payload variants.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum EntryPayload<C: RaftTypeConfig> {
+    /// An empty payload committed by a new cluster leader.
+    Blank,
+
+    Normal(C::D),
+
+    /// A change-membership log entry.
+    Membership(Membership<C::NodeId>),
+}
+
+impl<C: RaftTypeConfig> MessageSummary for EntryPayload<C> {
+    fn summary(&self) -> String {
+        match self {
+            EntryPayload::Blank => "blank".to_string(),
+            EntryPayload::Normal(_n) => "normal".to_string(),
+            EntryPayload::Membership(c) => {
+                format!("membership: {}", c.summary())
+            }
+        }
+    }
+}
+
+/// A Raft log entry.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct Entry<C: RaftTypeConfig> {
+    pub log_id: LogId<C::NodeId>,
+
+    /// This entry's payload.
+    #[serde(bound = "")]
+    pub payload: EntryPayload<C>,
+}
+
+impl<C: RaftTypeConfig> Debug for Entry<C>
+where C::D: Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
+    }
+}
+
+impl<C: RaftTypeConfig> Default for Entry<C> {
+    fn default() -> Self {
+        Self {
+            log_id: LogId::default(),
+            payload: EntryPayload::Blank,
+        }
+    }
+}
+
+impl<C: RaftTypeConfig> MessageSummary for Entry<C> {
+    fn summary(&self) -> String {
+        format!("{}:{}", self.log_id, self.payload.summary())
+    }
+}
+
+impl<C: RaftTypeConfig> MessageSummary for Option<Entry<C>> {
+    fn summary(&self) -> String {
+        match self {
+            None => "None".to_string(),
+            Some(x) => format!("Some({})", x.summary()),
+        }
+    }
+}
+
+impl<C: RaftTypeConfig> MessageSummary for &[Entry<C>] {
+    fn summary(&self) -> String {
+        let entry_refs: Vec<_> = self.iter().collect();
+        entry_refs.as_slice().summary()
+    }
+}
+
+impl<C: RaftTypeConfig> MessageSummary for &[&Entry<C>] {
+    fn summary(&self) -> String {
+        if self.is_empty() {
+            return "{}".to_string();
+        }
+        let mut res = Vec::with_capacity(self.len());
+        if self.len() <= 5 {
+            for x in self.iter() {
+                let e = format!("{}:{}", x.log_id, x.payload.summary());
+                res.push(e);
+            }
+
+            res.join(",")
+        } else {
+            let first = *self.first().unwrap();
+            let last = *self.last().unwrap();
+
+            format!("{} ... {}", first.summary(), last.summary())
+        }
+    }
+}
+
+impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for EntryPayload<C> {
+    fn is_blank(&self) -> bool {
+        matches!(self, EntryPayload::Blank)
+    }
+
+    fn get_membership(&self) -> Option<&Membership<C::NodeId>> {
+        if let EntryPayload::Membership(m) = self {
+            Some(m)
+        } else {
+            None
+        }
+    }
+}
+
+impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for Entry<C> {
+    fn is_blank(&self) -> bool {
+        self.payload.is_blank()
+    }
+
+    fn get_membership(&self) -> Option<&Membership<C::NodeId>> {
+        self.payload.get_membership()
+    }
+}
+
+impl<C: RaftTypeConfig> RaftEntry<C::NodeId> for Entry<C> {
+    fn get_log_id(&self) -> &LogId<C::NodeId> {
+        &self.log_id
+    }
+
+    fn set_log_id(&mut self, log_id: &LogId<C::NodeId>) {
+        self.log_id = *log_id;
+    }
+}
