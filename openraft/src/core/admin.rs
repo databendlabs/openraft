@@ -1,11 +1,9 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::option::Option::None;
-use std::sync::Arc;
 
 use tracing::warn;
 
-use crate::core::client::ClientRequestEntry;
 use crate::core::LeaderState;
 use crate::core::LearnerState;
 use crate::core::State;
@@ -287,12 +285,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.core.metrics_flags.set_data_changed();
 
-        let cr_entry = ClientRequestEntry {
-            entry: Arc::new(entry),
-            tx: resp_tx,
-        };
-
-        self.replicate_client_request(cr_entry).await?;
+        self.replicate_client_request(entry, resp_tx).await?;
 
         Ok(())
     }

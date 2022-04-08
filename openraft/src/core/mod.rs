@@ -35,8 +35,8 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
-use crate::core::client::ClientRequestEntry;
 use crate::error::AddLearnerError;
+use crate::error::ClientWriteError;
 use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
@@ -45,6 +45,7 @@ use crate::error::NotAllowed;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::raft::AddLearnerResponse;
+use crate::raft::ClientWriteResponse;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteResponse;
@@ -797,8 +798,8 @@ struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     /// The cloneable sender channel for replication stream events.
     pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<C, S::SnapshotData>, Span)>,
 
-    /// A buffer of client requests which have been appended locally and are awaiting to be committed to the cluster.
-    pub(super) awaiting_committed: Vec<ClientRequestEntry<C>>,
+    /// Channels to send result back to client when logs are committed.
+    pub(super) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
 }
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
@@ -819,7 +820,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             replication_metrics: Versioned::new(ReplicationMetrics::default()),
             replication_tx,
             replication_rx,
-            awaiting_committed: Vec::new(),
+            client_resp_channels: Default::default(),
         }
     }
 

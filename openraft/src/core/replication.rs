@@ -20,6 +20,7 @@ use crate::summary::MessageSummary;
 use crate::versioned::Updatable;
 use crate::vote::Vote;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -156,21 +157,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 ));
             }
 
-            // Check if there are any pending requests which need to be processed.
-            let filter = self
-                .awaiting_committed
-                .iter()
-                .enumerate()
-                .take_while(|(_idx, elem)| Some(elem.entry.log_id) <= self.core.committed)
-                .last()
-                .map(|(idx, _)| idx);
-
-            if let Some(offset) = filter {
-                // Build a new ApplyLogsTask from each of the given client requests.
-
-                for request in self.awaiting_committed.drain(..=offset).collect::<Vec<_>>() {
-                    self.client_request_post_commit(request).await?;
-                }
+            // Apply committed entries, and send applying result to client if there is a channel awaiting it
+            for i in self.core.last_applied.next_index()..self.core.committed.next_index() {
+                self.client_request_post_commit(i).await?;
             }
 
             self.core.metrics_flags.set_data_changed();

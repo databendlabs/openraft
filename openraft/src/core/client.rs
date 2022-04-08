@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use futures::future::TryFutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -32,24 +30,6 @@ use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
-/// A wrapper around a ClientRequest which has been transformed into an Entry, along with its response channel.
-pub(super) struct ClientRequestEntry<C: RaftTypeConfig> {
-    /// The Arc'd entry of the ClientRequest.
-    ///
-    /// This value is Arc'd so that it may be sent across thread boundaries for replication
-    /// without having to clone the data payload itself.
-    pub entry: Arc<Entry<C>>,
-
-    /// The response channel for the request.
-    pub tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
-}
-
-impl<C: RaftTypeConfig> MessageSummary for ClientRequestEntry<C> {
-    fn summary(&self) -> String {
-        format!("entry:{}", self.entry.summary())
-    }
-}
-
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Commit the initial entry which new leaders are obligated to create when first coming to power, per §8.
     #[tracing::instrument(level = "trace", skip(self))]
@@ -58,12 +38,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.core.metrics_flags.set_data_changed();
 
-        let cr_entry = ClientRequestEntry {
-            entry: Arc::new(entry),
-            tx: None,
-        };
-
-        self.replicate_client_request(cr_entry).await?;
+        self.replicate_client_request(entry, None).await?;
 
         Ok(())
     }
@@ -194,14 +169,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         let entry = self.core.append_payload_to_log(rpc.payload).await?;
-        let entry = ClientRequestEntry {
-            entry: Arc::new(entry),
-            tx: Some(tx),
-        };
 
         self.core.metrics_flags.set_data_changed();
 
-        self.replicate_client_request(entry).await?;
+        self.replicate_client_request(entry, Some(tx)).await?;
         Ok(())
     }
 
@@ -210,15 +181,20 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     /// NOTE WELL: this routine does not wait for the request to actually finish replication, it
     /// merely beings the process. Once the request is committed to the cluster, its response will
     /// be generated asynchronously.
-    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
+    #[tracing::instrument(level = "debug", skip(self, entry, resp_tx), fields(req=%entry.summary()))]
     pub(super) async fn replicate_client_request(
         &mut self,
-        req: ClientRequestEntry<C>,
+        entry: Entry<C>,
+        resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         // Replicate the request if there are other cluster members. The client response will be
         // returned elsewhere after the entry has been committed to the cluster.
 
-        let log_id = req.entry.log_id;
+        let log_id = entry.log_id;
+        if let Some(tx) = resp_tx {
+            self.client_resp_channels.insert(log_id.index, tx);
+        }
+
         let quorum_granted = self.core.effective_membership.membership.is_majority(&btreeset! {self.core.id});
 
         if quorum_granted {
@@ -228,9 +204,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             tracing::debug!(?self.core.committed, "update committed, no need to replicate");
 
             self.core.metrics_flags.set_data_changed();
-            self.client_request_post_commit(req).await?;
-        } else {
-            self.awaiting_committed.push(req);
+            self.client_request_post_commit(log_id.index).await?;
         }
 
         for node in self.nodes.values() {
@@ -247,16 +221,16 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     /// Handle the post-commit logic for a client request.
-    #[tracing::instrument(level = "debug", skip(self, req))]
-    pub(super) async fn client_request_post_commit(
-        &mut self,
-        req: ClientRequestEntry<C>,
-    ) -> Result<(), StorageError<C::NodeId>> {
-        let entry = &req.entry;
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(super) async fn client_request_post_commit(&mut self, log_index: u64) -> Result<(), StorageError<C::NodeId>> {
+        let entries = self.core.storage.get_log_entries(log_index..=log_index).await?;
+        let entry = &entries[0];
+
+        let tx = self.client_resp_channels.remove(&log_index);
 
         let apply_res = self.apply_entry_to_state_machine(entry).await?;
 
-        self.send_response(entry, apply_res, req.tx).await;
+        self.send_response(entry, apply_res, tx).await;
 
         // Trigger log compaction if needed.
         self.core.trigger_log_compaction_if_needed(false).await;
