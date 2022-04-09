@@ -285,7 +285,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.core.metrics_flags.set_data_changed();
 
-        self.replicate_client_request(entry, resp_tx).await?;
+        self.replicate_client_request(entry.log_id, resp_tx).await?;
 
         Ok(())
     }

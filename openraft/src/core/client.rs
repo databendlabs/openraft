@@ -22,6 +22,7 @@ use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
 use crate::Entry;
 use crate::EntryPayload;
+use crate::LogId;
 use crate::MessageSummary;
 use crate::RPCTypes;
 use crate::RaftNetwork;
@@ -38,7 +39,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.core.metrics_flags.set_data_changed();
 
-        self.replicate_client_request(entry, None).await?;
+        self.replicate_client_request(entry.log_id, None).await?;
 
         Ok(())
     }
@@ -172,7 +173,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.core.metrics_flags.set_data_changed();
 
-        self.replicate_client_request(entry, Some(tx)).await?;
+        self.replicate_client_request(entry.log_id, Some(tx)).await?;
         Ok(())
     }
 
@@ -181,16 +182,13 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     /// NOTE WELL: this routine does not wait for the request to actually finish replication, it
     /// merely beings the process. Once the request is committed to the cluster, its response will
     /// be generated asynchronously.
-    #[tracing::instrument(level = "debug", skip(self, entry, resp_tx), fields(req=%entry.summary()))]
+    #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(log_id=%log_id))]
     pub(super) async fn replicate_client_request(
         &mut self,
-        entry: Entry<C>,
+        log_id: LogId<C::NodeId>,
         resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
     ) -> Result<(), StorageError<C::NodeId>> {
-        // Replicate the request if there are other cluster members. The client response will be
-        // returned elsewhere after the entry has been committed to the cluster.
-
-        let log_id = entry.log_id;
+        // Install callback in which the entry will be applied to state machine.
         if let Some(tx) = resp_tx {
             self.client_resp_channels.insert(log_id.index, tx);
         }
