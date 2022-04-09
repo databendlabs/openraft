@@ -117,6 +117,31 @@ impl<C: RaftTypeConfig> MessageSummary for &[&Entry<C>] {
     }
 }
 
+/// A Raft log entry that does not own its payload.
+///
+/// This is only used internally, to avoid memory copy for the payload.
+#[derive(Clone)]
+pub(crate) struct EntryRef<'p, C: RaftTypeConfig> {
+    pub log_id: LogId<C::NodeId>,
+    pub payload: &'p EntryPayload<C>,
+}
+
+impl<'p, C: RaftTypeConfig> Debug for EntryRef<'p, C>
+where C::D: Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", self.payload).finish()
+    }
+}
+
+impl<'p, C: RaftTypeConfig> MessageSummary for EntryRef<'p, C> {
+    fn summary(&self) -> String {
+        format!("{}:{}", self.log_id, self.payload.summary())
+    }
+}
+
+// impl traits for EntryPayload
+
 impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for EntryPayload<C> {
     fn is_blank(&self) -> bool {
         matches!(self, EntryPayload::Blank)
@@ -131,6 +156,8 @@ impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for EntryPayload<C> {
     }
 }
 
+// impl traits for Entry
+
 impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for Entry<C> {
     fn is_blank(&self) -> bool {
         self.payload.is_blank()
@@ -142,6 +169,28 @@ impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for Entry<C> {
 }
 
 impl<C: RaftTypeConfig> RaftEntry<C::NodeId> for Entry<C> {
+    fn get_log_id(&self) -> &LogId<C::NodeId> {
+        &self.log_id
+    }
+
+    fn set_log_id(&mut self, log_id: &LogId<C::NodeId>) {
+        self.log_id = *log_id;
+    }
+}
+
+// impl traits for RefEntry
+
+impl<'p, C: RaftTypeConfig> RaftPayload<C::NodeId> for EntryRef<'p, C> {
+    fn is_blank(&self) -> bool {
+        self.payload.is_blank()
+    }
+
+    fn get_membership(&self) -> Option<&Membership<C::NodeId>> {
+        self.payload.get_membership()
+    }
+}
+
+impl<'p, C: RaftTypeConfig> RaftEntry<C::NodeId> for EntryRef<'p, C> {
     fn get_log_id(&self) -> &LogId<C::NodeId> {
         &self.log_id
     }
