@@ -285,7 +285,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.core.metrics_flags.set_data_changed();
 
-        self.replicate_client_request(entry.log_id, resp_tx).await?;
+        // Install callback in which the entry will be applied to state machine.
+        if let Some(tx) = resp_tx {
+            self.client_resp_channels.insert(entry.log_id.index, tx);
+        }
+
+        self.replicate_client_request(entry.log_id).await?;
 
         Ok(())
     }
