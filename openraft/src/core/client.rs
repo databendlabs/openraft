@@ -39,7 +39,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.core.metrics_flags.set_data_changed();
 
-        self.replicate_client_request(entry.log_id, None).await?;
+        self.replicate_client_request(entry.log_id).await?;
 
         Ok(())
     }
@@ -173,7 +173,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.core.metrics_flags.set_data_changed();
 
-        self.replicate_client_request(entry.log_id, Some(tx)).await?;
+        // Install callback in which the entry will be applied to state machine.
+        self.client_resp_channels.insert(entry.log_id.index, tx);
+
+        self.replicate_client_request(entry.log_id).await?;
         Ok(())
     }
 
@@ -182,17 +185,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     /// NOTE WELL: this routine does not wait for the request to actually finish replication, it
     /// merely beings the process. Once the request is committed to the cluster, its response will
     /// be generated asynchronously.
-    #[tracing::instrument(level = "debug", skip(self, resp_tx), fields(log_id=%log_id))]
+    #[tracing::instrument(level = "debug", skip(self), fields(log_id=%log_id))]
     pub(super) async fn replicate_client_request(
         &mut self,
         log_id: LogId<C::NodeId>,
-        resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
     ) -> Result<(), StorageError<C::NodeId>> {
-        // Install callback in which the entry will be applied to state machine.
-        if let Some(tx) = resp_tx {
-            self.client_resp_channels.insert(log_id.index, tx);
-        }
-
         let quorum_granted = self.core.effective_membership.membership.is_majority(&btreeset! {self.core.id});
 
         if quorum_granted {
