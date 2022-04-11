@@ -164,11 +164,11 @@ where
             store
                 .append_to_log(&[
                     &Entry {
-                        log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 3),
+                        log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 2),
                         payload: EntryPayload::Membership(Membership::new(vec![btreeset! {7,8,9}], None)),
                     },
                     &Entry {
-                        log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 4),
+                        log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 3),
                         payload: EntryPayload::Blank,
                     },
                 ])
