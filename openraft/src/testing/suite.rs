@@ -164,6 +164,10 @@ where
             store
                 .append_to_log(&[
                     &Entry {
+                        log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 2),
+                        payload: EntryPayload::Blank,
+                    },
+                    &Entry {
                         log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 3),
                         payload: EntryPayload::Membership(Membership::new(vec![btreeset! {7,8,9}], None)),
                     },
@@ -239,10 +243,16 @@ where
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log");
         {
             store
-                .append_to_log(&[&Entry {
-                    log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 3),
-                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {7,8,9}], None)),
-                }])
+                .append_to_log(&[
+                    &Entry {
+                        log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 2),
+                        payload: EntryPayload::Blank,
+                    },
+                    &Entry {
+                        log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 3),
+                        payload: EntryPayload::Membership(Membership::new(vec![btreeset! {7,8,9}], None)),
+                    },
+                ])
                 .await?;
 
             let mem = store.get_membership().await?;
