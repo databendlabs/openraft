@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::mem::swap;
 use std::option::Option::None;
 
 use tracing::warn;
@@ -57,7 +58,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
         let membership = Membership::with_nodes(vec![node_ids], members)?;
         let payload = EntryPayload::<C>::Membership(membership);
 
-        let mut entry_refs = vec![EntryRef::new(&payload)];
+        let mut entry_refs = [EntryRef::new(&payload)];
         self.core.engine.initialize(&mut entry_refs)?;
         self.run_engine_commands(&entry_refs).await?;
 
@@ -290,7 +291,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         payload: EntryPayload<C>,
         resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
     ) -> Result<(), StorageError<C::NodeId>> {
-        let mut entry_refs = vec![EntryRef::new(&payload)];
+        let mut entry_refs = [EntryRef::new(&payload)];
         // TODO: it should returns membership config error etc. currently this is done by the caller.
         self.core.engine.leader_append_entries(&mut entry_refs);
 
@@ -309,9 +310,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         input_entries: &[EntryRef<'p, C>],
     ) -> Result<(), StorageError<C::NodeId>> {
         let mut curr = 0;
-        let cmds = self.core.engine.commands.drain(..).collect::<Vec<_>>();
-        for cmd in cmds {
-            self.run_command(input_entries, &mut curr, &cmd).await?;
+        let mut commands = vec![];
+        swap(&mut self.core.engine.commands, &mut commands);
+        for cmd in commands.iter() {
+            self.run_command(input_entries, &mut curr, cmd).await?;
         }
 
         Ok(())

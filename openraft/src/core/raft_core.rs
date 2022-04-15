@@ -1,3 +1,5 @@
+use std::mem::swap;
+
 use crate::core::RaftCore;
 use crate::engine::Command;
 use crate::entry::EntryRef;
@@ -15,8 +17,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         input_entries: &[EntryRef<'p, C>],
     ) -> Result<(), StorageError<C::NodeId>> {
         let mut curr = 0;
-        let it = self.engine.commands.drain(..).collect::<Vec<_>>();
-        for cmd in it {
+        let mut commands = vec![];
+        swap(&mut self.engine.commands, &mut commands);
+        for cmd in commands {
             self.run_command(input_entries, &mut curr, &cmd).await?;
         }
 
