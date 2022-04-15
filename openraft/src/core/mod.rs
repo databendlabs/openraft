@@ -308,48 +308,39 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.metrics_flags.set_data_changed();
         }
 
-        let has_log = if self.last_log_id.is_some() {
-            "has_log"
-        } else {
-            "no_log"
-        };
+        let has_log = self.last_log_id.is_some();
+        let single = self.effective_membership.is_single();
+        let is_voter = self.effective_membership.membership.is_member(&self.id);
 
-        let single = if self.effective_membership.is_single() {
-            "single"
-        } else {
-            "multi"
-        };
+        const HAS_LOG: bool = true;
+        const NO_LOG: bool = false;
 
-        let is_voter = if self.effective_membership.membership.is_member(&self.id) {
-            "voter"
-        } else {
-            "learner"
-        };
+        const SINGLE: bool = true;
+        const MULTI: bool = false;
+
+        const IS_VOTER: bool = true;
+        const IS_LEARNER: bool = false;
 
         self.target_state = match (has_log, single, is_voter) {
             // A restarted raft that already received some logs but was not yet added to a cluster.
             // It should remain in Learner state, not Follower.
-            ("has_log", "single", "learner") => State::Learner,
-            ("has_log", "multi", "learner") => State::Learner,
+            (HAS_LOG, SINGLE, IS_LEARNER) => State::Learner,
+            (HAS_LOG, MULTI, IS_LEARNER) => State::Learner,
 
-            ("no_log", "single", "learner") => State::Learner, // impossible: no logs but there are other members.
-            ("no_log", "multi", "learner") => State::Learner,  // impossible: no logs but there are other members.
+            (NO_LOG, SINGLE, IS_LEARNER) => State::Learner, // impossible: no logs but there are other members.
+            (NO_LOG, MULTI, IS_LEARNER) => State::Learner,  // impossible: no logs but there are other members.
 
             // If this is the only configured member and there is live state, then this is
             // a single-node cluster. Become leader.
-            ("has_log", "single", "voter") => State::Leader,
+            (HAS_LOG, SINGLE, IS_VOTER) => State::Leader,
 
             // The initial state when a raft is created from empty store.
-            ("no_log", "single", "voter") => State::Learner,
+            (NO_LOG, SINGLE, IS_VOTER) => State::Learner,
 
             // Otherwise it is Follower.
-            ("has_log", "multi", "voter") => State::Follower,
+            (HAS_LOG, MULTI, IS_VOTER) => State::Follower,
 
-            ("no_log", "multi", "voter") => State::Follower, // impossible: no logs but there are other members.
-
-            _ => {
-                panic!("invalid state: {}, {}, {}", has_log, single, is_voter);
-            }
+            (NO_LOG, MULTI, IS_VOTER) => State::Follower, // impossible: no logs but there are other members.
         };
 
         if self.target_state == State::Follower {
