@@ -1,10 +1,10 @@
-use std::option::Option::None;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
+use openraft::error::InitializeError;
+use openraft::error::MissingNodeInfo;
+use openraft::error::NotAllowed;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::EntryPayload;
@@ -14,12 +14,11 @@ use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft::Vote;
 use tokio::sync::oneshot;
 
 use crate::fixtures::init_default_ut_tracing;
-
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Cluster initialization test.
 ///
@@ -32,7 +31,7 @@ mod fixtures;
 /// - asserts that the leader was able to successfully commit its initial payload and that all followers have
 ///   successfully replicated the payload.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn initialization() -> Result<()> {
+async fn initialization() -> anyhow::Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
@@ -61,15 +60,21 @@ async fn initialization() -> Result<()> {
     // before other requests in the Raft core API queue, which definitely are executed
     // (since they are awaited).
     for node in [0, 1, 2] {
-        router.external_request(node, |s, _sm, _net| assert_eq!(s, State::Learner));
+        router.external_request(node, |s, _sto, _net| {
+            assert_eq!(s, State::Learner);
+        });
     }
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
-    router.initialize_from_single_node(0).await?;
-    log_index += 1;
+    {
+        let n0 = router.get_raft_handle(&0)?;
+        n0.initialize(btreeset! {0,1,2}).await?;
+        log_index += 1;
 
-    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "init").await?;
+        router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "init").await?;
+    }
+
     router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     for i in 0..3 {
@@ -119,6 +124,84 @@ async fn initialization() -> Result<()> {
     }
     assert!(found_leader);
     assert_eq!(2, follower_count);
+
+    Ok(())
+}
+
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
+    // Initialize a node with membership config that does not include the target node that accepts the `initialize`
+    // request.
+
+    let config = Arc::new(Config::default().validate()?);
+    let mut router = RaftRouter::new(config.clone());
+    router.new_raft_node(0).await;
+    router.new_raft_node(1).await;
+
+    for node in [0, 1] {
+        router.external_request(node, |s, _sto, _net| {
+            assert_eq!(s, State::Learner);
+        });
+    }
+
+    for node_id in 0..2 {
+        let n = router.get_raft_handle(&node_id)?;
+        let res = n.initialize(btreeset! {9}).await;
+
+        assert!(res.is_err(), "expect error but: {:?}", res);
+        let err = res.unwrap_err();
+
+        assert_eq!(
+            InitializeError::MissingNodeInfo(MissingNodeInfo {
+                node_id,
+                reason: "target should be a member".to_string()
+            }),
+            err
+        );
+    }
+
+    Ok(())
+}
+
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn initialize_err_not_allowed() -> anyhow::Result<()> {
+    // Initialize a node with membership config that does not include the target node that accepts the `initialize`
+    // request.
+
+    let config = Arc::new(Config::default().validate()?);
+    let mut router = RaftRouter::new(config.clone());
+    router.new_raft_node(0).await;
+
+    for node in [0] {
+        router.external_request(node, |s, _sto, _net| {
+            assert_eq!(s, State::Learner);
+        });
+    }
+
+    tracing::info!("--- Initialize node 0");
+    {
+        let n0 = router.get_raft_handle(&0)?;
+        n0.initialize(btreeset! {0}).await?;
+    }
+
+    tracing::info!("--- Initialize node 0 again, not allowed");
+    {
+        let n0 = router.get_raft_handle(&0)?;
+        let res = n0.initialize(btreeset! {0}).await;
+        assert!(res.is_err(), "expect error but: {:?}", res);
+        let err = res.unwrap_err();
+
+        assert_eq!(
+            InitializeError::NotAllowed(NotAllowed {
+                last_log_id: Some(LogId {
+                    leader_id: LeaderId::new(1, 0),
+                    index: 1
+                }),
+                vote: Vote::new_committed(1, 0)
+            }),
+            err
+        );
+    }
 
     Ok(())
 }

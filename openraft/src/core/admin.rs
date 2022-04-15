@@ -50,7 +50,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
         if !node_ids.contains(&self.core.id) {
             let e = MissingNodeInfo {
                 node_id: self.core.id,
-                reason: "can not be initialized: it is not a member".to_string(),
+                reason: "target should be a member".to_string(),
             };
             return Err(InitializeError::MissingNodeInfo(e));
         }
