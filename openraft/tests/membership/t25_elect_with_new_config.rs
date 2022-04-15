@@ -31,7 +31,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
-    let mut n_logs = 0;
+    let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, None, "empty").await?;
@@ -41,10 +41,10 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    n_logs += 1;
+    log_index += 1;
 
-    router.wait_for_log(&btreeset![0], Some(n_logs), None, "init").await?;
-    router.assert_stable_cluster(Some(1), Some(n_logs)).await;
+    router.wait_for_log(&btreeset![0], Some(log_index), None, "init").await?;
+    router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     // Sync some new nodes.
     router.new_raft_node(1).await;
@@ -62,18 +62,23 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
         inner?;
     }
 
-    n_logs += 4;
-    router.wait_for_log(&btreeset![0], Some(n_logs), None, "cluster of 4 learners").await?;
+    log_index += 4;
+    router.wait_for_log(&btreeset![0], Some(log_index), None, "cluster of 4 learners").await?;
 
     tracing::info!("--- changing cluster config");
     let node = router.get_raft_handle(&0)?;
     node.change_membership(btreeset![0, 1, 2, 3, 4], true, false).await?;
-    n_logs += 2;
+    log_index += 2;
 
     router
-        .wait_for_log(&btreeset![0, 1, 2, 3, 4], Some(n_logs), None, "cluster of 5 candidates")
+        .wait_for_log(
+            &btreeset![0, 1, 2, 3, 4],
+            Some(log_index),
+            None,
+            "cluster of 5 candidates",
+        )
         .await?;
-    router.assert_stable_cluster(Some(1), Some(n_logs)).await; // Still in term 1, so leader is still node 0.
+    router.assert_stable_cluster(Some(1), Some(log_index)).await; // Still in term 1, so leader is still node 0.
 
     // Isolate old leader and assert that a new leader takes over.
     tracing::info!("--- isolating master node 0");

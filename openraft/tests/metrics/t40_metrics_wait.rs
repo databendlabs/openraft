@@ -25,14 +25,19 @@ async fn metrics_wait() -> Result<()> {
 
     let cluster = btreeset![0];
     router.new_raft_node(0).await;
-    router.initialize_with(0, cluster.clone()).await?;
-    router.wait_for_state(&cluster, State::Leader, timeout(), "init").await?;
-    router.wait(&0, None).await?.current_leader(0, "become leader").await?;
+    {
+        let n0 = router.get_raft_handle(&0)?;
+        n0.initialize(cluster.clone()).await?;
+
+        router.wait(&0, timeout())?.state(State::Leader, "n0 -> leader").await?;
+    }
+
+    router.wait(&0, None)?.current_leader(0, "become leader").await?;
     router.wait_for_log(&cluster, Some(1), None, "initial log").await?;
 
     tracing::info!("--- wait and timeout");
 
-    let rst = router.wait(&0, timeout()).await?.log(Some(2), "timeout waiting for log 2").await;
+    let rst = router.wait(&0, timeout())?.log(Some(2), "timeout waiting for log 2").await;
 
     match rst {
         Ok(_) => {

@@ -113,7 +113,7 @@ async fn add_learner_non_blocking() -> Result<()> {
         router.client_request_many(0, "learner_add", 100 - log_index as usize).await;
         log_index = 100;
 
-        router.wait(&0, timeout()).await?.log(Some(log_index), "received 100 logs").await?;
+        router.wait(&0, timeout())?.log(Some(log_index), "received 100 logs").await?;
 
         router.new_raft_node(1).await;
         let raft = router.get_raft_handle(&0)?;
@@ -143,7 +143,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     router.new_raft_node(0).await;
     router.new_raft_node(1).await;
 
-    let mut n_logs = 0;
+    let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1], None, timeout, "empty").await?;
@@ -153,9 +153,9 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    n_logs += 1;
+    log_index += 1;
 
-    router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "init").await?;
+    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Submit a config change which adds two new nodes and removes the current leader.
@@ -165,28 +165,27 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     // add a learner
     router.new_raft_node(2).await;
     router.add_learner(orig_leader, 2).await?;
-    n_logs += 1;
-    router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "add learner").await?;
+    log_index += 1;
+    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "add learner").await?;
 
     router.new_raft_node(3).await;
     router.new_raft_node(4).await;
     router.add_learner(orig_leader, 3).await?;
     router.add_learner(orig_leader, 4).await?;
-    n_logs += 2;
-    router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "add learner").await?;
+    log_index += 2;
+    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "add learner").await?;
 
     let node = router.get_raft_handle(&orig_leader)?;
     node.change_membership(btreeset![1, 3, 4], true, false).await?;
 
     // 2 for change_membership
-    n_logs += 2;
+    log_index += 2;
 
     tracing::info!("--- old leader commits 2 membership log");
     {
         router
-            .wait(&orig_leader, timeout)
-            .await?
-            .log(Some(n_logs), "old leader commits 2 membership log")
+            .wait(&orig_leader, timeout)?
+            .log(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
 
@@ -194,22 +193,20 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     // Because to commit the 2nd log it only need a quorum of the new cluster.
 
     router
-        .wait(&1, timeout)
-        .await?
-        .log_at_least(Some(n_logs), "node in old cluster commits at least 1 membership log")
+        .wait(&1, timeout)?
+        .log_at_least(Some(log_index), "node in old cluster commits at least 1 membership log")
         .await?;
 
     tracing::info!("--- new cluster commits 2 membership logs");
     {
         // leader commit a new log.
-        n_logs += 1;
+        log_index += 1;
 
         for id in [3, 4] {
             router
-                .wait(&id, timeout)
-                .await?
+                .wait(&id, timeout)?
                 .log_at_least(
-                    Some(n_logs),
+                    Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
                 )
                 .await?;
@@ -232,10 +229,10 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     {
         let new_leader = router.leader().expect("expected the cluster to have a new leader");
         router.client_request_many(new_leader, "0", 1).await;
-        n_logs += 1;
+        log_index += 1;
 
         for i in [1, 2, 3, 4] {
-            router.wait(&i, timeout).await?.log_at_least(Some(n_logs), "learner recv new log").await?;
+            router.wait(&i, timeout)?.log_at_least(Some(log_index), "learner recv new log").await?;
         }
     }
 

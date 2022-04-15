@@ -48,14 +48,14 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
     router.new_raft_node(0).await;
 
-    let mut n_logs;
+    let mut log_index;
 
     tracing::info!("--- initializing cluster of 1 node");
     {
         router.initialize_from_single_node(0).await?;
-        n_logs = 1;
+        log_index = 1;
 
-        wait_log(&router, &btreeset![0], n_logs).await?;
+        wait_log(&router, &btreeset![0], log_index).await?;
     }
 
     tracing::info!("--- adding two candidate nodes");
@@ -65,16 +65,16 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         router.new_raft_node(2).await;
         router.add_learner(0, 1).await?;
         router.add_learner(0, 2).await?;
-        n_logs += 2; // two add_learner logs
+        log_index += 2; // two add_learner logs
 
         tracing::info!("--- changing cluster config");
 
         let node = router.get_raft_handle(&0)?;
         node.change_membership(candidates.clone(), true, false).await?;
-        n_logs += 2; // Tow member change logs
+        log_index += 2; // Tow member change logs
 
-        wait_log(&router, &candidates, n_logs).await?;
-        router.assert_stable_cluster(Some(1), Some(n_logs)).await; // Still in term 1, so leader is still node 0.
+        wait_log(&router, &candidates, log_index).await?;
+        router.assert_stable_cluster(Some(1), Some(log_index)).await; // Still in term 1, so leader is still node 0.
     }
 
     let leader = router.leader().unwrap();
@@ -82,9 +82,9 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     tracing::info!("--- write one log");
     {
         router.client_request_many(leader, "client", 1).await;
-        n_logs += 1;
+        log_index += 1;
 
-        wait_log(&router, &candidates, n_logs).await?;
+        wait_log(&router, &candidates, log_index).await?;
     }
 
     // Concurrently add Learner and write another log.
@@ -102,14 +102,14 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
                 .instrument(tracing::debug_span!("spawn-add-learner")),
             )
         };
-        n_logs += 1; // one add_learner log
+        log_index += 1; // one add_learner log
         router.client_request_many(leader, "client", 1).await;
-        n_logs += 1;
+        log_index += 1;
 
         let _ = handle.await?;
     };
 
-    wait_log(&router, &candidates, n_logs).await?;
+    wait_log(&router, &candidates, log_index).await?;
     router
         .wait_for_metrics(
             &3u64,
@@ -123,9 +123,9 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     router
         .wait_for_metrics(
             &3u64,
-            |x| x.last_log_index == Some(n_logs),
+            |x| x.last_log_index == Some(log_index),
             Some(timeout),
-            &format!("n{}.last_log_index -> {}", 3, n_logs),
+            &format!("n{}.last_log_index -> {}", 3, log_index),
         )
         .await?;
 

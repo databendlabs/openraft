@@ -17,7 +17,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!("--- add node 3,4");
 
@@ -26,48 +26,48 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
     router.add_learner(0, 3).await?;
     router.add_learner(0, 4).await?;
-    n_logs += 2;
-    router.wait_for_log(&btreeset![0, 1, 2], Some(n_logs), None, "cluster of 2 learners").await?;
+    log_index += 2;
+    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "cluster of 2 learners").await?;
 
     tracing::info!("--- changing config to 2,3,4");
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(btreeset![0, 3, 4], true, false).await?;
-        n_logs += 2;
+        log_index += 2;
 
         for i in 0..5 {
             router
-                .wait(&i, timeout())
-                .await?
+                .wait(&i, timeout())?
                 .metrics(
-                    |x| x.last_log_index >= Some(n_logs),
+                    |x| x.last_log_index >= Some(log_index),
                     "all nodes recv change-membership logs",
                 )
                 .await?;
         }
     }
 
-    tracing::info!("--- write to new cluster, cuurent log={}", n_logs);
+    tracing::info!("--- write to new cluster, cuurent log={}", log_index);
     {
         let n = 10;
         router.client_request_many(0, "after_change", n).await;
-        n_logs += n as u64;
+        log_index += n as u64;
 
         for i in &[0, 3, 4] {
             router
-                .wait(i, timeout())
-                .await?
-                .metrics(|x| x.last_applied.index() >= Some(n_logs), "new cluster recv new logs")
+                .wait(i, timeout())?
+                .metrics(
+                    |x| x.last_applied.index() >= Some(log_index),
+                    "new cluster recv new logs",
+                )
                 .await?;
         }
     }
 
     for i in &[1, 2] {
         router
-            .wait(i, timeout())
-            .await?
+            .wait(i, timeout())?
             .metrics(
-                |x| x.last_applied.index() < Some(n_logs),
+                |x| x.last_applied.index() < Some(log_index),
                 "old cluster does not recv new logs",
             )
             .await?;

@@ -23,11 +23,12 @@ async fn total_order_apply() -> Result<()> {
     router.new_raft_node(1).await;
 
     tracing::info!("--- initializing single node cluster");
+    {
+        let n0 = router.get_raft_handle(&0)?;
+        n0.initialize(btreeset! {0}).await?;
 
-    router.initialize_with(0, btreeset![0]).await?;
-    router
-        .wait_for_metrics(&0u64, |x| x.state == State::Leader, timeout(), "n0.state -> Leader")
-        .await?;
+        router.wait(&0, timeout())?.state(State::Leader, "n0 -> leader").await?;
+    }
 
     tracing::info!("--- add one learner");
     router.add_learner(0, 1).await?;

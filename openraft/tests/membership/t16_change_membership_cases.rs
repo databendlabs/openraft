@@ -90,8 +90,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
         {
             for id in new.iter() {
                 router
-                    .wait(id, Some(Duration::from_millis(5_000)))
-                    .await?
+                    .wait(id, Some(Duration::from_millis(5_000)))?
                     .metrics(
                         |x| x.current_leader.is_some() && new.contains(&x.current_leader.unwrap()),
                         format!("node {} in new cluster has leader in new cluster, {}", id, mes),
@@ -103,16 +102,11 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
         let new_leader = router.leader().expect("expected the cluster to have a leader");
         for id in new.iter() {
             // new leader may already elected and committed a blank log.
-            router
-                .wait(id, timeout())
-                .await?
-                .log_at_least(Some(log_index), format!("new cluster, {}", mes))
-                .await?;
+            router.wait(id, timeout())?.log_at_least(Some(log_index), format!("new cluster, {}", mes)).await?;
 
             if new_leader != orig_leader {
                 router
-                    .wait(id, timeout())
-                    .await?
+                    .wait(id, timeout())?
                     .metrics(
                         |x| x.current_term >= 2,
                         "new cluster has term >= 2 because of new election",
@@ -133,8 +127,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
             //           snapshot:None, replication:
 
             router
-                .wait(id, timeout())
-                .await?
+                .wait(id, timeout())?
                 .metrics(
                     |x| x.state == State::Learner || x.state == State::Candidate,
                     format!("node {} only in old, {}", id, mes),
@@ -148,8 +141,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
         // get new leader
 
         let m = router
-            .wait(new.iter().next().unwrap(), timeout())
-            .await?
+            .wait(new.iter().next().unwrap(), timeout())?
             .metrics(|x| x.current_leader.is_some(), format!("wait for new leader, {}", mes))
             .await?;
 
@@ -161,8 +153,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
 
     for id in new.iter() {
         router
-            .wait(id, timeout())
-            .await?
+            .wait(id, timeout())?
             // new leader may commit a blonk log
             .log_at_least(Some(log_index), format!("new cluster recv logs 100~200, {}", mes))
             .await?;
@@ -172,8 +163,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
     {
         for id in only_in_old {
             let res = router
-                .wait(id, timeout())
-                .await?
+                .wait(id, timeout())?
                 .log(
                     Some(log_index),
                     format!("node {} in old cluster wont recv new logs, {}", id, mes),

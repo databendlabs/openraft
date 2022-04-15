@@ -39,7 +39,7 @@ async fn append_inconsistent_log() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!("--- remove all nodes and fake the logs");
 
@@ -51,7 +51,7 @@ async fn append_inconsistent_log() -> Result<()> {
     r1.shutdown().await?;
     r2.shutdown().await?;
 
-    for i in n_logs + 1..=100 {
+    for i in log_index + 1..=100 {
         sto0.append_to_log(&[&Entry {
             log_id: LogId::new(LeaderId::new(2, 0), i),
             payload: EntryPayload::Blank,
@@ -78,7 +78,7 @@ async fn append_inconsistent_log() -> Result<()> {
     })
     .await?;
 
-    n_logs = 100;
+    log_index = 100;
 
     tracing::info!("--- restart node 1 and isolate. To let node-2 to become leader, node-1 should not vote for node-0");
     {
@@ -93,7 +93,7 @@ async fn append_inconsistent_log() -> Result<()> {
     }
 
     // leader appends a blank log.
-    n_logs += 1;
+    log_index += 1;
 
     tracing::info!("--- wait for node states");
     {
@@ -117,9 +117,8 @@ async fn append_inconsistent_log() -> Result<()> {
     }
 
     router
-        .wait(&0, Some(Duration::from_millis(2000)))
-        .await?
-        .metrics(|x| x.last_log_index == Some(n_logs), "sync log to node 0")
+        .wait(&0, Some(Duration::from_millis(2000)))?
+        .metrics(|x| x.last_log_index == Some(log_index), "sync log to node 0")
         .await?;
 
     let logs = sto0.get_log_entries(60..=60).await?;

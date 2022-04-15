@@ -27,34 +27,34 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
     tracing::info!("--- write up to 100 logs");
     {
-        router.client_request_many(0, "non_voter_add", 100 - n_logs as usize).await;
-        n_logs = 100;
+        router.client_request_many(0, "non_voter_add", 100 - log_index as usize).await;
+        log_index = 100;
 
-        router.wait(&0, timeout()).await?.log(Some(n_logs), "received 100 logs").await?;
+        router.wait(&0, timeout())?.log(Some(log_index), "received 100 logs").await?;
     }
 
     tracing::info!("--- change membership without adding-learner");
     {
         router.new_raft_node(1).await;
         router.add_learner(0, 1).await?;
-        n_logs += 1;
-        router.wait_for_log(&btreeset![0], Some(n_logs), timeout(), "add learner").await?;
+        log_index += 1;
+        router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "add learner").await?;
 
         let node = router.get_raft_handle(&0)?;
         let res = node.change_membership(btreeset! {0,1}, true, false).await?;
-        n_logs += 2;
+        log_index += 2;
         tracing::info!("--- change_membership blocks until success: {:?}", res);
 
         for node_id in 0..2 {
             let mut sto = router.get_storage_handle(&node_id)?;
             let logs = sto.get_log_entries(..).await?;
-            assert_eq!(n_logs, logs[logs.len() - 1].log_id.index, "node: {}", node_id);
+            assert_eq!(log_index, logs[logs.len() - 1].log_id.index, "node: {}", node_id);
             // 0-th log
-            assert_eq!(n_logs + 1, logs.len() as u64, "node: {}", node_id);
+            assert_eq!(log_index + 1, logs.len() as u64, "node: {}", node_id);
         }
     }
 
@@ -88,7 +88,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         router.client_request_many(0, "non_voter_add", 500 - log_index as usize).await;
         log_index = 500;
 
-        router.wait(&0, timeout()).await?.log(Some(log_index), "received 500 logs").await?;
+        router.wait(&0, timeout())?.log(Some(log_index), "received 500 logs").await?;
     }
 
     tracing::info!("--- restore replication and change membership at once, expect NonVoterIsLagging");
@@ -125,34 +125,34 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
     let config = Arc::new(Config { ..Default::default() }.validate()?);
     let mut router = RaftRouter::new(config.clone());
     let timeout = Some(Duration::from_millis(1000));
-    let mut n_logs = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!("--- write up to 1 logs");
     {
         router.client_request_many(0, "non_voter_add", 1).await;
-        n_logs += 1;
+        log_index += 1;
 
         // all the nodes MUST recv the log
-        router.wait_for_log(&btreeset![0, 1, 2], Some(n_logs), timeout, "append a log").await?;
+        router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout, "append a log").await?;
     }
 
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(btreeset![0, 1], true, true).await?;
         // 2 for change_membership
-        n_logs += 2;
+        log_index += 2;
 
         // all the nodes MUST recv the change_membership log
-        router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "append a log").await?;
+        router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "append a log").await?;
     }
 
     tracing::info!("--- write up to 1 logs");
     {
         router.client_request_many(0, "non_voter_add", 1).await;
-        n_logs += 1;
+        log_index += 1;
 
         // node [0,1] MUST recv the log
-        router.wait_for_log(&btreeset![0, 1], Some(n_logs), timeout, "append a log").await?;
+        router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "append a log").await?;
 
         // node 2 MUST stay in learner state and is able to receive new logs
         router
@@ -165,7 +165,7 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
             .await?;
 
         // node [2] MUST recv the log
-        router.wait_for_log(&btreeset![2], Some(n_logs), timeout, "append a log").await?;
+        router.wait_for_log(&btreeset![2], Some(log_index), timeout, "append a log").await?;
 
         // check membership
         router.wait_for_members(&btreeset![0, 1, 2], btreeset![0, 1], timeout, "members: [0,1]").await?;

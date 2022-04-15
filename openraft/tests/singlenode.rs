@@ -30,7 +30,7 @@ async fn single_node() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
-    let mut n_logs = 0;
+    let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
@@ -40,18 +40,18 @@ async fn single_node() -> Result<()> {
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
     router.initialize_from_single_node(0).await?;
-    n_logs += 1;
+    log_index += 1;
 
-    router.wait_for_log(&btreeset![0], Some(n_logs), timeout(), "init").await?;
+    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init").await?;
     router.assert_stable_cluster(Some(1), Some(1)).await;
 
     // Write some data to the single node cluster.
     router.client_request_many(0, "0", 1000).await;
-    n_logs += 1000;
-    router.wait_for_log(&btreeset![0], Some(n_logs), timeout(), "client_request_many").await?;
-    router.assert_stable_cluster(Some(1), Some(n_logs)).await;
+    log_index += 1000;
+    router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "client_request_many").await?;
+    router.assert_stable_cluster(Some(1), Some(log_index)).await;
     router
-        .assert_storage_state(1, n_logs, Some(0), LogId::new(LeaderId::new(1, 0), n_logs), None)
+        .assert_storage_state(1, log_index, Some(0), LogId::new(LeaderId::new(1, 0), log_index), None)
         .await?;
 
     // Read some data from the single node cluster.

@@ -152,10 +152,9 @@ impl<NID: NodeId> Engine<NID> {
         let l = entries.len();
         assert_eq!(1, l);
 
-        let entry = &mut entries[0];
-
         self.check_initialize()?;
 
+        let entry = &mut entries[0];
         let log_id = self.next_log_id();
         entry.set_log_id(&log_id);
 

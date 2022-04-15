@@ -342,14 +342,6 @@ where
         Ok(())
     }
 
-    /// Initialize cluster with specified node ids.
-    pub async fn initialize_with(&self, node_id: C::NodeId, members: BTreeSet<C::NodeId>) -> Result<()> {
-        tracing::info!({ node_id = display(node_id) }, "initializing cluster from single node");
-        let n = self.get_raft_handle(&node_id)?;
-        n.initialize(members.clone()).await?;
-        Ok(())
-    }
-
     /// Isolate the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn isolate_node(&self, id: C::NodeId) {
@@ -402,12 +394,12 @@ where
     where
         T: Fn(&RaftMetrics<C>) -> bool + Send,
     {
-        let wait = self.wait(node_id, timeout).await?;
+        let wait = self.wait(node_id, timeout)?;
         let rst = wait.metrics(func, format!("node-{} {}", node_id, msg)).await?;
         Ok(rst)
     }
 
-    pub async fn wait(&self, node_id: &C::NodeId, timeout: Option<Duration>) -> Result<Wait<C>> {
+    pub fn wait(&self, node_id: &C::NodeId, timeout: Option<Duration>) -> Result<Wait<C>> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0
@@ -426,7 +418,7 @@ where
         msg: &str,
     ) -> Result<()> {
         for i in node_ids.iter() {
-            self.wait(i, timeout).await?.log(want_log, msg).await?;
+            self.wait(i, timeout)?.log(want_log, msg).await?;
         }
         Ok(())
     }
@@ -440,7 +432,7 @@ where
         msg: &str,
     ) -> Result<()> {
         for i in node_ids.iter() {
-            let wait = self.wait(i, timeout).await?;
+            let wait = self.wait(i, timeout)?;
             wait.metrics(
                 |x| {
                     x.membership_config.get_configs().len() == 1
@@ -463,7 +455,7 @@ where
         msg: &str,
     ) -> Result<()> {
         for i in node_ids.iter() {
-            self.wait(i, timeout).await?.state(want_state, msg).await?;
+            self.wait(i, timeout)?.state(want_state, msg).await?;
         }
         Ok(())
     }
@@ -478,7 +470,7 @@ where
         msg: &str,
     ) -> Result<()> {
         for i in node_ids.iter() {
-            self.wait(i, timeout).await?.snapshot(want, msg).await?;
+            self.wait(i, timeout)?.snapshot(want, msg).await?;
         }
         Ok(())
     }
