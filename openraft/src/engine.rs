@@ -164,15 +164,11 @@ impl<NID: NodeId> Engine<NID> {
         self.commands.push(Command::AppendInputEntries { range: 0..l });
         self.metrics_flags.set_data_changed();
 
-        if let Some(m) = entry.get_membership() {
-            let em = EffectiveMembership::new(Some(*entry.get_log_id()), m.clone());
-            self.state.effective_membership = Arc::new(em);
-
-            self.commands.push(Command::UpdateMembership { membership: m.clone() });
-            self.metrics_flags.set_cluster_changed();
-        } else {
-            panic!("Initialization log has to be a membership config entry",);
-        }
+        assert!(
+            entry.get_membership().is_some(),
+            "Initialization log has to be a membership config entry"
+        );
+        self.try_update_membership(entry);
 
         // TODO: set target state. This should be done by Engine but currently it is not.
 
@@ -207,13 +203,7 @@ impl<NID: NodeId> Engine<NID> {
         for entry in entries.iter_mut() {
             // TODO: if previous membership is not committed, reject a new change-membership propose.
             //       unless the new config does not change any members but only learners.
-            if let Some(m) = entry.get_membership() {
-                let em = EffectiveMembership::new(Some(*entry.get_log_id()), m.clone());
-                self.state.effective_membership = Arc::new(em);
-
-                self.commands.push(Command::UpdateMembership { membership: m.clone() });
-                self.metrics_flags.set_cluster_changed();
-            }
+            self.try_update_membership(entry);
         }
 
         if self.state.effective_membership.membership.is_majority(&self.single_node_cluster) {
@@ -256,4 +246,15 @@ impl<NID: NodeId> Engine<NID> {
     // pub(crate) fn handle_vote_resp() {}
     // pub(crate) fn handle_append_entries_resp() {}
     // pub(crate) fn handle_install_snapshot_resp() {}
+
+    /// Update effective membership config if encountering a membership config log entry.
+    fn try_update_membership<Ent: RaftEntry<NID>>(&mut self, entry: &Ent) {
+        if let Some(m) = entry.get_membership() {
+            let em = EffectiveMembership::new(Some(*entry.get_log_id()), m.clone());
+            self.state.effective_membership = Arc::new(em);
+
+            self.commands.push(Command::UpdateMembership { membership: m.clone() });
+            self.metrics_flags.set_cluster_changed();
+        }
+    }
 }
