@@ -154,7 +154,7 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
         assert_eq!(
             InitializeError::NotInMembers(NotInMembers {
                 node_id,
-                membership: Membership::new(vec![btreeset! {9   }], None)
+                membership: Membership::new(vec![btreeset! {9}], None)
             }),
             err
         );
