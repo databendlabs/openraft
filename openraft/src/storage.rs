@@ -13,6 +13,7 @@ use tokio::io::AsyncWrite;
 
 use crate::core::EffectiveMembership;
 use crate::defensive::check_range_matches_entries;
+use crate::raft_state::RaftState;
 use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
 use crate::Entry;
@@ -21,7 +22,6 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
 use crate::RaftTypeConfig;
-use crate::ServerState;
 use crate::StorageError;
 use crate::Vote;
 
@@ -48,40 +48,6 @@ where
 
     /// A read handle to the associated snapshot.
     pub snapshot: Box<S>,
-}
-
-/// A struct used to represent the initial state which a Raft node needs when first starting.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct InitialState<NID: NodeId> {
-    /// The vote state of this node.
-    pub vote: Vote<NID>,
-
-    /// The greatest log id that has been purged after being applied to state machine.
-    /// The range of log entries that exist in storage is `(last_purged_log_id, last_log_id]`,
-    /// left open and right close.
-    ///
-    /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
-    pub last_purged_log_id: Option<LogId<NID>>,
-
-    /// The id of the last log entry.
-    pub last_log_id: Option<LogId<NID>>,
-
-    /// The log id of the last known committed entry.
-    ///
-    /// - Committed means: a log that is replicated to a quorum of the cluster and it is of the term of the leader.
-    ///
-    /// - A quorum could be a uniform quorum or joint quorum.
-    ///
-    /// - `committed` in raft is volatile and will not be persisted.
-    pub committed: Option<LogId<NID>>,
-
-    /// The LogId of the last log applied to the state machine.
-    pub last_applied: Option<LogId<NID>>,
-
-    /// The latest cluster membership configuration found, in log or in state machine.
-    pub effective_membership: Arc<EffectiveMembership<NID>>,
-
-    pub server_state: ServerState,
 }
 
 /// The state about logs.
@@ -261,7 +227,7 @@ where C: RaftTypeConfig
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
     /// storage.
-    async fn get_initial_state(&mut self) -> Result<InitialState<C::NodeId>, StorageError<C::NodeId>> {
+    async fn get_initial_state(&mut self) -> Result<RaftState<C::NodeId>, StorageError<C::NodeId>> {
         let vote = self.read_vote().await?;
         let st = self.get_log_state().await?;
         let mut last_purged_log_id = st.last_purged_log_id;
@@ -276,7 +242,7 @@ where C: RaftTypeConfig
             last_purged_log_id = last_applied;
         }
 
-        Ok(InitialState {
+        Ok(RaftState {
             last_log_id,
             last_purged_log_id,
             last_applied,
