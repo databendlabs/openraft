@@ -6,8 +6,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
+use openraft::ServerState;
 use openraft::SnapshotPolicy;
-use openraft::State;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -41,7 +41,7 @@ async fn client_writes() -> Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], None, None, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1, 2], State::Learner, None, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -50,8 +50,8 @@ async fn client_writes() -> Result<()> {
     log_index += 1;
 
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "leader init log").await?;
-    router.wait_for_state(&btreeset![0], State::Leader, None, "cluster leader").await?;
-    router.wait_for_state(&btreeset![1, 2], State::Follower, None, "cluster follower").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Leader, None, "cluster leader").await?;
+    router.wait_for_state(&btreeset![1, 2], ServerState::Follower, None, "cluster follower").await?;
 
     router.assert_stable_cluster(Some(1), Some(log_index)).await;
 

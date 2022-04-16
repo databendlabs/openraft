@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -35,7 +35,7 @@ async fn lagging_network_write() -> Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
-    router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
@@ -44,7 +44,7 @@ async fn lagging_network_write() -> Result<()> {
     log_index += 1; // log 0: initial membership log; log 1: leader commits a blank log
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init").await?;
-    router.wait_for_state(&btreeset![0], State::Leader, None, "init").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Leader, None, "init").await?;
     router.assert_stable_cluster(Some(1), Some(log_index)).await;
 
     // Sync some new nodes.
@@ -65,8 +65,8 @@ async fn lagging_network_write() -> Result<()> {
     let node = router.get_raft_handle(&0)?;
     node.change_membership(btreeset![0, 1, 2], true, false).await?;
     log_index += 2;
-    router.wait_for_state(&btreeset![0], State::Leader, None, "changed").await?;
-    router.wait_for_state(&btreeset![1, 2], State::Follower, None, "changed").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Leader, None, "changed").await?;
+    router.wait_for_state(&btreeset![1, 2], ServerState::Follower, None, "changed").await?;
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "3 candidates").await?;
 
     router.client_request_many(0, "client", 1).await;

@@ -5,7 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftStorageDebug;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -34,7 +34,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
         n0.initialize(btreeset! {0}).await?;
         log_index += 1;
 
-        router.wait(&0, timeout())?.state(State::Leader, "n0 -> leader").await?;
+        router.wait(&0, timeout())?.state(ServerState::Leader, "n0 -> leader").await?;
     }
 
     tracing::info!("--- add one learner");

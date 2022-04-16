@@ -11,7 +11,7 @@ use openraft::EntryPayload;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
-use openraft::State;
+use openraft::ServerState;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -32,7 +32,7 @@ async fn append_updates_membership() -> Result<()> {
     tracing::info!("--- wait for init node to ready");
 
     router.wait_for_log(&btreeset![0], None, None, "empty").await?;
-    router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Learner, None, "empty").await?;
 
     let (r0, _sto0) = router.remove_node(0).await.unwrap();
 

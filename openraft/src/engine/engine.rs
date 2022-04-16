@@ -16,7 +16,7 @@ use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::MetricsChangeFlags;
 use crate::NodeId;
-use crate::State;
+use crate::ServerState;
 use crate::Vote;
 
 /// Raft protocol algorithm.
@@ -149,7 +149,7 @@ impl<NID: NodeId> Engine<NID> {
         self.commands.push(Command::MoveInputCursorBy { n: l });
 
         // With the new config, start to elect to become leader
-        self.set_server_state(State::Candidate);
+        self.set_server_state(ServerState::Candidate);
 
         Ok(())
     }
@@ -230,7 +230,7 @@ impl<NID: NodeId> Engine<NID> {
         }
     }
 
-    fn set_server_state(&mut self, server_state: State) {
+    fn set_server_state(&mut self, server_state: ServerState) {
         tracing::debug!(id = display(self.id), ?server_state, "set_server_state");
 
         // TODO: the caller should be very sure about what server-state to set.
@@ -242,11 +242,11 @@ impl<NID: NodeId> Engine<NID> {
         // } else {
         //     self.state.target_state = server_state;
         // }
-        if server_state == State::Follower && !self.state.effective_membership.membership.is_member(&self.id) {
+        if server_state == ServerState::Follower && !self.state.effective_membership.membership.is_member(&self.id) {
             unreachable!("caller does not know what to do?")
         }
 
-        self.state.target_state = server_state;
+        self.state.server_state = server_state;
     }
 
     /// Check if a raft node is in a state that allows to initialize.

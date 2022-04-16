@@ -6,7 +6,7 @@ use futures::stream::StreamExt;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
-use openraft::State;
+use openraft::ServerState;
 use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -35,7 +35,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, None, "empty").await?;
-    router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.

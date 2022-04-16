@@ -21,7 +21,7 @@ use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
 use crate::RaftTypeConfig;
-use crate::State;
+use crate::ServerState;
 use crate::StorageError;
 use crate::Vote;
 
@@ -81,7 +81,7 @@ pub struct InitialState<NID: NodeId> {
     /// The latest cluster membership configuration found, in log or in state machine.
     pub effective_membership: Arc<EffectiveMembership<NID>>,
 
-    pub target_state: State,
+    pub server_state: ServerState,
 }
 
 /// The state about logs.
@@ -285,9 +285,11 @@ where C: RaftTypeConfig
             vote: vote.unwrap_or_default(),
             effective_membership: Arc::new(membership),
 
+            // -- volatile fields: they are not persisted.
+
             // committed log id does not need to be persisted.
             committed: None,
-            target_state: Default::default(),
+            server_state: Default::default(),
         })
     }
 

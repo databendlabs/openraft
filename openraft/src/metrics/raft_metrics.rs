@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::EffectiveMembership;
-use crate::core::State;
+use crate::core::ServerState;
 use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
 use crate::raft::RaftTypeConfig;
@@ -37,7 +37,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     // --- cluster ---
     // ---
     /// The state of the Raft node.
-    pub state: State,
+    pub state: ServerState,
 
     /// The current cluster leader.
     pub current_leader: Option<C::NodeId>,
@@ -73,7 +73,7 @@ impl<C: RaftTypeConfig> RaftMetrics<C> {
         Self {
             running_state: Ok(()),
             id,
-            state: State::Follower,
+            state: ServerState::Follower,
             current_term: 0,
             last_log_index: None,
             last_applied: None,

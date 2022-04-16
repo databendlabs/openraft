@@ -12,7 +12,7 @@ use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::Membership;
 use openraft::RaftStorage;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -35,7 +35,7 @@ async fn state_machine_apply_membership() -> Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, None, "empty").await?;
-    router.wait_for_state(&btreeset![0], State::Learner, None, "empty").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.

@@ -7,7 +7,7 @@ use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 
@@ -113,9 +113,9 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     router
         .wait_for_metrics(
             &3u64,
-            |x| x.state == State::Learner,
+            |x| x.state == ServerState::Learner,
             Some(timeout),
-            &format!("n{}.state -> {:?}", 3, State::Learner),
+            &format!("n{}.state -> {:?}", 3, ServerState::Learner),
         )
         .await?;
 

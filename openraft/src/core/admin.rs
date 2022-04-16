@@ -7,7 +7,7 @@ use tracing::warn;
 
 use crate::core::LeaderState;
 use crate::core::LearnerState;
-use crate::core::State;
+use crate::core::ServerState;
 use crate::entry::EntryRef;
 use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
@@ -317,7 +317,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             tracing::debug!("raft node is stepping down");
 
             // TODO(xp): transfer leadership
-            self.core.set_target_state(State::Learner);
+            self.core.set_target_state(ServerState::Learner);
             return;
         }
 

@@ -58,7 +58,7 @@ use openraft::RaftMetrics;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use openraft::RaftTypeConfig;
-use openraft::State;
+use openraft::ServerState;
 use openraft::StoreExt;
 #[allow(unused_imports)]
 use pretty_assertions::assert_eq;
@@ -212,7 +212,13 @@ where
         tracing::info!("--- wait for init node to ready");
 
         self.wait_for_log(&btreeset![C::NodeId::default()], None, timeout(), "empty").await?;
-        self.wait_for_state(&btreeset![C::NodeId::default()], State::Learner, timeout(), "empty").await?;
+        self.wait_for_state(
+            &btreeset![C::NodeId::default()],
+            ServerState::Learner,
+            timeout(),
+            "empty",
+        )
+        .await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
@@ -450,7 +456,7 @@ where
     pub async fn wait_for_state(
         &self,
         node_ids: &BTreeSet<C::NodeId>,
-        want_state: State,
+        want_state: ServerState,
         timeout: Option<Duration>,
         msg: &str,
     ) -> Result<()> {
@@ -543,7 +549,9 @@ where
     }
 
     /// Send external request to the particular node.
-    pub fn external_request<F: FnOnce(State, &mut StoreExt<C, S>, &mut TypedRaftRouter<C, S>) + Send + 'static>(
+    pub fn external_request<
+        F: FnOnce(ServerState, &mut StoreExt<C, S>, &mut TypedRaftRouter<C, S>) + Send + 'static,
+    >(
         &self,
         target: C::NodeId,
         req: F,
@@ -597,7 +605,7 @@ where
             );
             assert_eq!(
                 node.state,
-                State::Learner,
+                ServerState::Learner,
                 "node is in state {:?}, expected Learner",
                 node.state
             );
@@ -649,12 +657,12 @@ where
         let leader = nodes
             .iter()
             .filter(|node| !isolated.contains(&node.id))
-            .find(|node| node.state == State::Leader)
+            .find(|node| node.state == ServerState::Leader)
             .expect("expected to find a cluster leader");
         let followers: Vec<_> = nodes
             .iter()
             .filter(|node| !isolated.contains(&node.id))
-            .filter(|node| node.state == State::Follower)
+            .filter(|node| node.state == ServerState::Follower)
             .collect();
 
         assert_eq!(

@@ -12,7 +12,7 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftStorage;
-use openraft::State;
+use openraft::ServerState;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -76,7 +76,12 @@ async fn elect_compare_last_log() -> Result<()> {
     router.new_raft_node_with_sto(1, sto1.clone()).await;
 
     router
-        .wait_for_state(&btreeset! {0}, State::Leader, timeout(), "only node 0 becomes leader")
+        .wait_for_state(
+            &btreeset! {0},
+            ServerState::Leader,
+            timeout(),
+            "only node 0 becomes leader",
+        )
         .await?;
 
     Ok(())

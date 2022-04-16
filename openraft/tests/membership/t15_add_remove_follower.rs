@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -41,7 +41,7 @@ async fn add_remove_voter() -> Result<()> {
         log_index += 2; // two member-change logs
 
         router.wait_for_log(&cluster_of_4, Some(log_index), timeout(), "removed node-4").await?;
-        router.wait(&4, timeout())?.state(State::Learner, "").await?;
+        router.wait(&4, timeout())?.state(ServerState::Learner, "").await?;
     }
 
     tracing::info!("--- write another 100 logs");

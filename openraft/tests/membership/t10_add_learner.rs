@@ -11,7 +11,7 @@ use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::RaftStorage;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -147,7 +147,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1], None, timeout, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1], State::Learner, timeout, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1], ServerState::Learner, timeout, "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.

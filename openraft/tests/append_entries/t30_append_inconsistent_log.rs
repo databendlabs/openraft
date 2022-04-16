@@ -10,7 +10,7 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftStorage;
-use openraft::State;
+use openraft::ServerState;
 use openraft::Vote;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -100,7 +100,7 @@ async fn append_inconsistent_log() -> Result<()> {
         router
             .wait_for_state(
                 &btreeset! {0},
-                State::Follower,
+                ServerState::Follower,
                 Some(Duration::from_millis(2000)),
                 "node 0 become follower",
             )
@@ -109,7 +109,7 @@ async fn append_inconsistent_log() -> Result<()> {
         router
             .wait_for_state(
                 &btreeset! {2},
-                State::Leader,
+                ServerState::Leader,
                 Some(Duration::from_millis(5000)),
                 "node 2 become leader",
             )

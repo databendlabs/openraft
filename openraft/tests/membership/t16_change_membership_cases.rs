@@ -6,7 +6,7 @@ use maplit::btreeset;
 use memstore::MemNodeId;
 use openraft::ChangeMembers;
 use openraft::Config;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -129,7 +129,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
             router
                 .wait(id, timeout())?
                 .metrics(
-                    |x| x.state == State::Learner || x.state == State::Candidate,
+                    |x| x.state == ServerState::Learner || x.state == ServerState::Candidate,
                     format!("node {} only in old, {}", id, mes),
                 )
                 .await?;

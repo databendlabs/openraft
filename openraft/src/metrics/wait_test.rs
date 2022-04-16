@@ -15,7 +15,7 @@ use crate::LogId;
 use crate::Membership;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
-use crate::State;
+use crate::ServerState;
 
 /// Test wait for different state changes
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -71,14 +71,14 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.state = State::Leader;
+            update.state = ServerState::Leader;
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
-        let got = w.state(State::Leader, "state").await?;
+        let got = w.state(ServerState::Leader, "state").await?;
         h.await?;
 
-        assert_eq!(State::Leader, got.state);
+        assert_eq!(ServerState::Leader, got.state);
     }
 
     {
@@ -176,7 +176,7 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(200)).await;
         });
-        let got = w.state(State::Follower, "timeout").await;
+        let got = w.state(ServerState::Follower, "timeout").await;
         h.await?;
 
         match got.unwrap_err() {
@@ -198,7 +198,7 @@ fn init_wait_test<C: RaftTypeConfig>() -> (RaftMetrics<C>, Wait<C>, watch::Sende
     let init = RaftMetrics {
         running_state: Ok(()),
         id: C::NodeId::default(),
-        state: State::Learner,
+        state: ServerState::Learner,
         current_term: 0,
         last_log_index: None,
         last_applied: None,

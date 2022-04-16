@@ -6,8 +6,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
+use openraft::ServerState;
 use openraft::SnapshotPolicy;
-use openraft::State;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -40,7 +40,7 @@ async fn snapshot_chunk_size() -> Result<()> {
         router.new_raft_node(0).await;
 
         router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
-        router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
+        router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
 
         router.initialize_from_single_node(0).await?;
         log_index += 1;
