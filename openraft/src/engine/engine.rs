@@ -16,6 +16,7 @@ use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::MetricsChangeFlags;
 use crate::NodeId;
+use crate::State;
 use crate::Vote;
 
 /// Raft protocol algorithm.
@@ -145,9 +146,10 @@ impl<NID: NodeId> Engine<NID> {
         }
         self.try_update_membership(entry);
 
-        // TODO: set target state. This should be done by Engine but currently it is not.
-
         self.commands.push(Command::MoveInputCursorBy { n: l });
+
+        // With the new config, start to elect to become leader
+        self.set_server_state(State::Candidate);
 
         Ok(())
     }
@@ -226,6 +228,25 @@ impl<NID: NodeId> Engine<NID> {
             self.commands.push(Command::UpdateMembership { membership: m.clone() });
             self.metrics_flags.set_cluster_changed();
         }
+    }
+
+    fn set_server_state(&mut self, server_state: State) {
+        tracing::debug!(id = display(self.id), ?server_state, "set_server_state");
+
+        // TODO: the caller should be very sure about what server-state to set.
+        //       The following condition check is copied from old code,
+        //       and should be removed.
+        //       And currently just use a panic to indicate the new code in Engine should not reach this point.
+        // if server_state == State::Follower && !self.state.effective_membership.membership.is_member(&self.id) {
+        //     self.state.target_state = State::Learner;
+        // } else {
+        //     self.state.target_state = server_state;
+        // }
+        if server_state == State::Follower && !self.state.effective_membership.membership.is_member(&self.id) {
+            unreachable!("caller does not know what to do?")
+        }
+
+        self.state.target_state = server_state;
     }
 
     /// Check if a raft node is in a state that allows to initialize.

@@ -61,6 +61,17 @@ pub struct Membership<NID: NodeId> {
     nodes: BTreeMap<NID, Option<Node>>,
 }
 
+impl<NID: NodeId> TryFrom<BTreeMap<NID, Option<Node>>> for Membership<NID> {
+    type Error = MissingNodeInfo<NID>;
+
+    fn try_from(b: BTreeMap<NID, Option<Node>>) -> Result<Self, Self::Error> {
+        let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
+
+        let membership = Membership::with_nodes(vec![member_ids], b)?;
+        Ok(membership)
+    }
+}
+
 impl<NID: NodeId> MessageSummary for Membership<NID> {
     fn summary(&self) -> String {
         let mut res = vec!["members:[".to_string()];
