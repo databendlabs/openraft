@@ -44,17 +44,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
         &mut self,
         member_nodes: BTreeMap<C::NodeId, Option<Node>>,
     ) -> Result<(), InitializeError<C::NodeId>> {
-        let member_ids = member_nodes.keys().cloned().collect::<BTreeSet<C::NodeId>>();
-
-        let membership = Membership::with_nodes(vec![member_ids], member_nodes)?;
+        let membership = Membership::try_from(member_nodes)?;
         let payload = EntryPayload::<C>::Membership(membership);
 
         let mut entry_refs = [EntryRef::new(&payload)];
         self.core.engine.initialize(&mut entry_refs)?;
         self.run_engine_commands(&entry_refs).await?;
-
-        // TODO: This should be done by Engine.
-        self.core.set_target_state(State::Candidate);
 
         Ok(())
     }

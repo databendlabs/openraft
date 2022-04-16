@@ -81,7 +81,6 @@ pub struct InitialState<NID: NodeId> {
     /// The latest cluster membership configuration found, in log or in state machine.
     pub effective_membership: Arc<EffectiveMembership<NID>>,
 
-    /// The target state of the system.
     pub target_state: State,
 }
 
