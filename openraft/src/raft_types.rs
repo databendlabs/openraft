@@ -145,7 +145,7 @@ pub enum Update<T> {
 }
 
 /// Describes the need to update some aspect of the metrics.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct MetricsChangeFlags {
     pub leader: bool,
     // TODO: split other_metrics into data metrics and cluster metrics
