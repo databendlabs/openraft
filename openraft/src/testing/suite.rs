@@ -5,7 +5,7 @@ use std::option::Option::None;
 
 use maplit::btreeset;
 
-use crate::storage::InitialState;
+use crate::raft_state::RaftState;
 use crate::storage::LogState;
 use crate::testing::DefensiveStoreBuilder;
 use crate::testing::StoreBuilder;
@@ -267,7 +267,7 @@ where
         let mut store = builder.build().await;
 
         let initial = store.get_initial_state().await?;
-        assert_eq!(InitialState::default(), initial, "uninitialized state");
+        assert_eq!(RaftState::default(), initial, "uninitialized state");
         Ok(())
     }
 

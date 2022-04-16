@@ -9,7 +9,7 @@ use crate::error::InitializeError;
 use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
-use crate::storage::InitialState;
+use crate::raft_state::RaftState;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -40,7 +40,7 @@ pub(crate) struct Engine<NID: NodeId> {
     pub(crate) single_node_cluster: BTreeSet<NID>,
 
     /// The state of this raft node.
-    pub(crate) state: InitialState<NID>,
+    pub(crate) state: RaftState<NID>,
 
     /// Tracks what kind of metrics changed
     pub(crate) metrics_flags: MetricsChangeFlags,
@@ -109,7 +109,7 @@ pub(crate) enum Command<NID: NodeId> {
 }
 
 impl<NID: NodeId> Engine<NID> {
-    pub(crate) fn new(id: NID, init_state: &InitialState<NID>) -> Self {
+    pub(crate) fn new(id: NID, init_state: &RaftState<NID>) -> Self {
         Self {
             id,
             single_node_cluster: btreeset! {id},
