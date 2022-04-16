@@ -17,7 +17,6 @@ use crate::error::InProgress;
 use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
-use crate::error::MissingNodeInfo;
 use crate::metrics::RemoveTarget;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ChangeMembers;
@@ -43,19 +42,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_init_with_config(
         &mut self,
-        members: BTreeMap<C::NodeId, Option<Node>>,
+        member_nodes: BTreeMap<C::NodeId, Option<Node>>,
     ) -> Result<(), InitializeError<C::NodeId>> {
-        let node_ids = members.keys().cloned().collect::<BTreeSet<C::NodeId>>();
+        let member_ids = member_nodes.keys().cloned().collect::<BTreeSet<C::NodeId>>();
 
-        if !node_ids.contains(&self.core.id) {
-            let e = MissingNodeInfo {
-                node_id: self.core.id,
-                reason: "target should be a member".to_string(),
-            };
-            return Err(InitializeError::MissingNodeInfo(e));
-        }
-
-        let membership = Membership::with_nodes(vec![node_ids], members)?;
+        let membership = Membership::with_nodes(vec![member_ids], member_nodes)?;
         let payload = EntryPayload::<C>::Membership(membership);
 
         let mut entry_refs = [EntryRef::new(&payload)];
