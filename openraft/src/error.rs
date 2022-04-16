@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
+use crate::Membership;
 use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
@@ -160,6 +161,12 @@ impl<NID: NodeId> TryFrom<AddLearnerError<NID>> for ForwardToLeader<NID> {
 pub enum InitializeError<NID: NodeId> {
     #[error(transparent)]
     NotAllowed(#[from] NotAllowed<NID>),
+
+    #[error(transparent)]
+    NotInMembers(#[from] NotInMembers<NID>),
+
+    #[error(transparent)]
+    NotAMembershipEntry(#[from] NotAMembershipEntry),
 
     #[error(transparent)]
     MissingNodeInfo(#[from] MissingNodeInfo<NID>),
@@ -385,6 +392,19 @@ pub struct MissingNodeInfo<NID: NodeId> {
     pub node_id: NID,
     pub reason: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
+#[error("node {node_id} has to be a member. membership:{membership:?}")]
+pub struct NotInMembers<NID: NodeId> {
+    pub node_id: NID,
+    pub membership: Membership<NID>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
+#[error("initializing log entry has to be a membership config entry")]
+pub struct NotAMembershipEntry {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("new membership can not be empty")]

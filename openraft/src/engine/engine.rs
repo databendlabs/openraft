@@ -6,8 +6,9 @@ use maplit::btreeset;
 
 use crate::entry::RaftEntry;
 use crate::error::InitializeError;
-use crate::error::MissingNodeInfo;
+use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
+use crate::error::NotInMembers;
 use crate::storage::InitialState;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -140,7 +141,7 @@ impl<NID: NodeId> Engine<NID> {
         if let Some(m) = entry.get_membership() {
             self.check_members_contain_me(m)?;
         } else {
-            panic!("Initialization log has to be a membership config entry");
+            Err(NotAMembershipEntry {})?;
         }
         self.try_update_membership(entry);
 
@@ -245,11 +246,11 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     /// When initialize, the node that accept initialize request has to be a member of the initial config.
-    fn check_members_contain_me(&self, m: &Membership<NID>) -> Result<(), MissingNodeInfo<NID>> {
+    fn check_members_contain_me(&self, m: &Membership<NID>) -> Result<(), NotInMembers<NID>> {
         if !m.is_member(&self.id) {
-            let e = MissingNodeInfo {
+            let e = NotInMembers {
                 node_id: self.id,
-                reason: "target should be a member".to_string(),
+                membership: m.clone(),
             };
             Err(e)
         } else {

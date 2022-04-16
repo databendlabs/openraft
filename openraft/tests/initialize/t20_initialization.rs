@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::error::InitializeError;
-use openraft::error::MissingNodeInfo;
 use openraft::error::NotAllowed;
+use openraft::error::NotInMembers;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::EntryPayload;
@@ -152,9 +152,9 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
         let err = res.unwrap_err();
 
         assert_eq!(
-            InitializeError::MissingNodeInfo(MissingNodeInfo {
+            InitializeError::NotInMembers(NotInMembers {
                 node_id,
-                reason: "target should be a member".to_string()
+                membership: Membership::new(vec![btreeset! {9   }], None)
             }),
             err
         );
