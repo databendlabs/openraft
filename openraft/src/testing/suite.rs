@@ -87,6 +87,7 @@ where
         run_fut(Suite::get_initial_state_with_state(builder))?;
         run_fut(Suite::get_initial_state_last_log_gt_sm(builder))?;
         run_fut(Suite::get_initial_state_last_log_lt_sm(builder))?;
+        run_fut(Suite::get_initial_state_log_ids(builder))?;
         run_fut(Suite::save_vote(builder))?;
         run_fut(Suite::get_log_entries(builder))?;
         run_fut(Suite::try_get_log_entry(builder))?;
@@ -276,7 +277,7 @@ where
         Self::default_vote(&mut store).await?;
 
         store
-            .append_to_log(&[&Entry {
+            .append_to_log(&[&blank(0, 0), &blank(1, 1), &Entry {
                 log_id: LogId::new(LeaderId::new(3, NODE_ID.into()), 2),
                 payload: EntryPayload::Blank,
             }])
@@ -386,7 +387,7 @@ where
         Self::default_vote(&mut store).await?;
 
         store
-            .append_to_log(&[&Entry {
+            .append_to_log(&[&blank(0, 0), &Entry {
                 log_id: LogId::new(LeaderId::new(2, NODE_ID.into()), 1),
                 payload: EntryPayload::Blank,
             }])
@@ -435,6 +436,124 @@ where
             Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
             "state machine has higher log"
         );
+        Ok(())
+    }
+
+    pub async fn get_initial_state_log_ids(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+        let mut store = builder.build().await;
+
+        let log_id = |t, n: u64, i| LogId::<C::NodeId> {
+            leader_id: LeaderId {
+                term: t,
+                node_id: n.into(),
+            },
+            index: i,
+        };
+
+        tracing::info!("--- empty store, expect []");
+        {
+            let initial = store.get_initial_state().await?;
+            assert_eq!(Vec::<LogId<C::NodeId>>::new(), initial.log_ids.key_log_ids());
+        }
+
+        tracing::info!("--- log terms: [0], last_purged_log_id is None, expect [(0,0)]");
+        {
+            store.append_to_log(&[&blank(0, 0)]).await?;
+
+            let initial = store.get_initial_state().await?;
+            assert_eq!(vec![log_id(0, 0, 0)], initial.log_ids.key_log_ids());
+        }
+
+        tracing::info!("--- log terms: [0,1,1,2], last_purged_log_id is None, expect [(0,0),(1,1),(2,3)]");
+        {
+            store.append_to_log(&[&blank(1, 1), &blank(1, 2), &blank(2, 3)]).await?;
+
+            let initial = store.get_initial_state().await?;
+            assert_eq!(
+                vec![log_id(0, 0, 0), log_id(1, 0, 1), log_id(2, 0, 3)],
+                initial.log_ids.key_log_ids()
+            );
+        }
+
+        tracing::info!(
+            "--- log terms: [0,1,1,2,2,3,3], last_purged_log_id is None, expect [(0,0),(1,1),(2,3),(3,5),(3,6)]"
+        );
+        {
+            store.append_to_log(&[&blank(2, 4), &blank(3, 5), &blank(3, 6)]).await?;
+
+            let initial = store.get_initial_state().await?;
+            assert_eq!(
+                vec![
+                    log_id(0, 0, 0),
+                    log_id(1, 0, 1),
+                    log_id(2, 0, 3),
+                    log_id(3, 0, 5),
+                    log_id(3, 0, 6)
+                ],
+                initial.log_ids.key_log_ids()
+            );
+        }
+
+        tracing::info!(
+            "--- log terms: [x,1,1,2,2,3,3], last_purged_log_id: (0,0), expect [(0,0),(1,1),(2,3),(3,5),(3,6)]"
+        );
+        {
+            store.purge_logs_upto(log_id(0, 0, 0)).await?;
+
+            let initial = store.get_initial_state().await?;
+            assert_eq!(
+                vec![
+                    log_id(0, 0, 0),
+                    log_id(1, 0, 1),
+                    log_id(2, 0, 3),
+                    log_id(3, 0, 5),
+                    log_id(3, 0, 6)
+                ],
+                initial.log_ids.key_log_ids()
+            );
+        }
+
+        tracing::info!("--- log terms: [x,x,1,2,2,3,3], last_purged_log_id: (1,1), expect [(1,1),(2,3),(3,5),(3,6)]");
+        {
+            store.purge_logs_upto(log_id(1, 0, 1)).await?;
+
+            let initial = store.get_initial_state().await?;
+            assert_eq!(
+                vec![log_id(1, 0, 1), log_id(2, 0, 3), log_id(3, 0, 5), log_id(3, 0, 6)],
+                initial.log_ids.key_log_ids()
+            );
+        }
+
+        tracing::info!("--- log terms: [x,x,x,2,2,3,3], last_purged_log_id: (1,2), expect [(1,2),(2,3),(3,5),(3,6)]");
+        {
+            store.purge_logs_upto(log_id(1, 0, 2)).await?;
+
+            let initial = store.get_initial_state().await?;
+            assert_eq!(
+                vec![log_id(1, 0, 2), log_id(2, 0, 3), log_id(3, 0, 5), log_id(3, 0, 6)],
+                initial.log_ids.key_log_ids()
+            );
+        }
+
+        tracing::info!("--- log terms: [x,x,x,x,2,3,3], last_purged_log_id: (2,3), expect [(2,3),(3,5),(3,6)]");
+        {
+            store.purge_logs_upto(log_id(2, 0, 3)).await?;
+
+            let initial = store.get_initial_state().await?;
+            assert_eq!(
+                vec![log_id(2, 0, 3), log_id(3, 0, 5), log_id(3, 0, 6)],
+                initial.log_ids.key_log_ids()
+            );
+        }
+
+        tracing::info!("--- log terms: [x,x,x,x,x,x,x], last_purged_log_id: (3,6), e.g., all purged expect [(3,6)]");
+        {
+            store.purge_logs_upto(log_id(3, 0, 6)).await?;
+
+            let initial = store.get_initial_state().await?;
+            assert_eq!(vec![log_id(3, 0, 6)], initial.log_ids.key_log_ids());
+        }
+
         Ok(())
     }
 

@@ -242,6 +242,8 @@ where C: RaftTypeConfig
             last_purged_log_id = last_applied;
         }
 
+        let log_ids = RaftState::load_log_ids(last_purged_log_id, last_log_id, self).await?;
+
         Ok(RaftState {
             last_log_id,
             last_purged_log_id,
@@ -249,6 +251,7 @@ where C: RaftTypeConfig
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
             vote: vote.unwrap_or_default(),
+            log_ids,
             effective_membership: Arc::new(membership),
 
             // -- volatile fields: they are not persisted.

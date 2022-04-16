@@ -18,6 +18,22 @@ pub struct LogId<NID: NodeId> {
     pub index: u64,
 }
 
+pub trait RaftLogId<NID: NodeId> {
+    fn get_log_id(&self) -> &LogId<NID>;
+
+    fn set_log_id(&mut self, log_id: &LogId<NID>);
+}
+
+impl<NID: NodeId> RaftLogId<NID> for LogId<NID> {
+    fn get_log_id(&self) -> &LogId<NID> {
+        self
+    }
+
+    fn set_log_id(&mut self, log_id: &LogId<NID>) {
+        *self = *log_id
+    }
+}
+
 impl<NID: NodeId> Display for LogId<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}-{}", self.leader_id, self.index)
