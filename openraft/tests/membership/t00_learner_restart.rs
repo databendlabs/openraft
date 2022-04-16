@@ -10,7 +10,7 @@ use openraft::LogIdOptionExt;
 use openraft::Raft;
 use openraft::RaftStorage;
 use openraft::RaftTypeConfig;
-use openraft::State;
+use openraft::ServerState;
 use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -40,7 +40,7 @@ async fn learner_restart() -> Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1], None, None, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1], State::Learner, None, "empty").await?;
+    router.wait_for_state(&btreeset![0, 1], ServerState::Learner, None, "empty").await?;
     router.assert_pristine_cluster().await;
 
     tracing::info!("--- initializing single node cluster");
@@ -49,7 +49,7 @@ async fn learner_restart() -> Result<()> {
         n0.initialize(btreeset! {0}).await?;
         log_index += 1;
 
-        router.wait(&0, timeout())?.state(State::Leader, "n0 -> leader").await?;
+        router.wait(&0, timeout())?.state(ServerState::Leader, "n0 -> leader").await?;
     }
 
     router.add_learner(0, 1).await?;
@@ -59,17 +59,17 @@ async fn learner_restart() -> Result<()> {
     router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "write one log").await?;
 
     let (node0, _sto0) = router.remove_node(0).await.unwrap();
-    assert_node_state(0, &node0, 1, log_index, State::Leader);
+    assert_node_state(0, &node0, 1, log_index, ServerState::Leader);
     node0.shutdown().await?;
 
     let (node1, sto1) = router.remove_node(1).await.unwrap();
-    assert_node_state(0, &node1, 1, log_index, State::Learner);
+    assert_node_state(0, &node1, 1, log_index, ServerState::Learner);
     node1.shutdown().await?;
 
     // restart node-1, assert the state as expected.
     let restarted = Raft::new(1, config.clone(), router.clone(), sto1);
     sleep(Duration::from_secs(2)).await;
-    assert_node_state(1, &restarted, 1, log_index, State::Learner);
+    assert_node_state(1, &restarted, 1, log_index, ServerState::Learner);
 
     Ok(())
 }
@@ -79,7 +79,7 @@ fn assert_node_state<C: RaftTypeConfig, S: RaftStorage<C>>(
     node: &MemRaft<C, S>,
     expected_term: u64,
     expected_log: u64,
-    state: State,
+    state: ServerState,
 ) where
     C::D: Debug + IntoMemClientRequest<C::D>,
     C::R: Debug,

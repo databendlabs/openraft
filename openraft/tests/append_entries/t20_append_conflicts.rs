@@ -11,7 +11,7 @@ use openraft::LogId;
 use openraft::MessageSummary;
 use openraft::RaftStorage;
 use openraft::RaftTypeConfig;
-use openraft::State;
+use openraft::ServerState;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -31,7 +31,7 @@ async fn append_conflicts() -> Result<()> {
     tracing::info!("--- wait for init node to ready");
 
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
-    router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
 
     let (r0, mut sto0) = router.remove_node(0).await.unwrap();
     check_logs(&mut sto0, vec![]).await?;

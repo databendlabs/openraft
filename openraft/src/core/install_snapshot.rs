@@ -6,8 +6,8 @@ use tokio::io::AsyncWriteExt;
 
 use crate::core::purge_applied_logs;
 use crate::core::RaftCore;
+use crate::core::ServerState;
 use crate::core::SnapshotState;
-use crate::core::State;
 use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
@@ -49,8 +49,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.save_vote().await?;
 
             // If not follower, become follower.
-            if !self.engine.state.target_state.is_follower() && !self.engine.state.target_state.is_learner() {
-                self.set_target_state(State::Follower); // State update will emit metrics.
+            if !self.engine.state.server_state.is_follower() && !self.engine.state.server_state.is_learner() {
+                self.set_target_state(ServerState::Follower); // State update will emit metrics.
             }
 
             self.engine.metrics_flags.set_data_changed();

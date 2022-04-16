@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use tokio::sync::watch;
 use tokio::time::Instant;
 
-use crate::core::State;
+use crate::core::ServerState;
 use crate::metrics::RaftMetrics;
 use crate::raft::RaftTypeConfig;
 use crate::LogId;
@@ -138,7 +138,7 @@ impl<C: RaftTypeConfig> Wait<C> {
 
     /// Wait for `state` to become `want_state` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn state(&self, want_state: State, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn state(&self, want_state: ServerState, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
             |x| x.state == want_state,
             &format!("{} .state -> {:?}", msg.to_string(), want_state),

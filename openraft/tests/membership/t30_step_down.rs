@@ -6,7 +6,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -95,7 +95,7 @@ async fn step_down() -> Result<()> {
         let metrics = router.get_metrics(&0)?;
         let cfg = &metrics.membership_config.membership;
 
-        assert!(metrics.state != State::Leader);
+        assert!(metrics.state != ServerState::Leader);
         assert_eq!(metrics.current_term, 1);
         assert_eq!(metrics.last_log_index, Some(8));
         assert_eq!(metrics.last_applied, Some(LogId::new(LeaderId::new(1, 0), 8)));

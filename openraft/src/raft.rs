@@ -40,8 +40,8 @@ use crate::Node;
 use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
+use crate::ServerState;
 use crate::SnapshotMeta;
-use crate::State;
 use crate::Vote;
 
 /// Configuration of types used by the [`Raft`] core engine.
@@ -489,7 +489,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
-    pub fn external_request<F: FnOnce(State, &mut S, &mut N) + Send + 'static>(&self, req: F) {
+    pub fn external_request<F: FnOnce(ServerState, &mut S, &mut N) + Send + 'static>(&self, req: F) {
         let _ignore_error = self.inner.tx_api.send((
             RaftMsg::ExternalRequest { req: Box::new(req) },
             tracing::span::Span::none(), // fire-and-forget, so no span
@@ -632,7 +632,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     ExternalRequest {
-        req: Box<dyn FnOnce(State, &mut S, &mut N) + Send + 'static>,
+        req: Box<dyn FnOnce(ServerState, &mut S, &mut N) + Send + 'static>,
     },
 }
 

@@ -8,8 +8,8 @@ use openraft::raft::InstallSnapshotRequest;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
+use openraft::ServerState;
 use openraft::SnapshotMeta;
-use openraft::State;
 use openraft::Vote;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -35,7 +35,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         router.new_raft_node(0).await;
 
         router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
-        router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
+        router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
 
         router.initialize_from_single_node(0).await?;
         log_index += 1;

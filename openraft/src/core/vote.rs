@@ -4,7 +4,7 @@ use tracing_futures::Instrument;
 
 use crate::core::CandidateState;
 use crate::core::RaftCore;
-use crate::core::State;
+use crate::core::ServerState;
 use crate::error::VoteError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -80,7 +80,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.engine.state.vote = req.vote;
         self.save_vote().await?;
 
-        self.set_target_state(State::Follower);
+        self.set_target_state(ServerState::Follower);
 
         tracing::debug!(%req.vote, "voted for candidate");
 
@@ -113,7 +113,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
             // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `last_log_id`.
             //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
             //           election.
-            self.core.set_target_state(State::Follower);
+            self.core.set_target_state(ServerState::Follower);
 
             tracing::debug!(
                 id = %self.core.id,
@@ -134,7 +134,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Candida
 
             if self.core.engine.state.effective_membership.membership.is_majority(&self.granted) {
                 tracing::debug!("transitioning to leader state as minimum number of votes have been received");
-                self.core.set_target_state(State::Leader);
+                self.core.set_target_state(ServerState::Leader);
                 return Ok(());
             }
         }

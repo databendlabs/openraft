@@ -12,7 +12,7 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
-use openraft::State;
+use openraft::ServerState;
 use openraft::Vote;
 #[allow(unused_imports)]
 use pretty_assertions::assert_eq;
@@ -49,7 +49,7 @@ async fn leader_metrics() -> Result<()> {
     let mut log_index = 0;
 
     router.wait_for_log(&btreeset![0], None, timeout(), "init").await?;
-    router.wait_for_state(&btreeset![0], State::Learner, timeout(), "init").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "init").await?;
 
     router.assert_pristine_cluster().await;
 
@@ -138,9 +138,9 @@ async fn leader_metrics() -> Result<()> {
         router
             .wait_for_metrics(
                 &4,
-                |x| x.state == State::Learner,
+                |x| x.state == ServerState::Learner,
                 timeout(),
-                &format!("n{}.state -> {:?}", 4, State::Learner),
+                &format!("n{}.state -> {:?}", 4, ServerState::Learner),
             )
             .await?;
 
@@ -200,7 +200,7 @@ async fn leader_metrics() -> Result<()> {
         router
             .wait_for_metrics(
                 &leader,
-                |x| x.state != State::Leader || (x.state == State::Leader && x.current_term > 100),
+                |x| x.state != ServerState::Leader || (x.state == ServerState::Leader && x.current_term > 100),
                 timeout(),
                 &format!("node {} becomes candidate or becomes a new leader", leader,),
             )

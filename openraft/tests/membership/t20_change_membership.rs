@@ -7,7 +7,7 @@ use memstore::MemNodeId;
 use openraft::error::ChangeMembershipError;
 use openraft::Config;
 use openraft::RaftLogReader;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -158,9 +158,9 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
         router
             .wait_for_metrics(
                 &2,
-                |x| x.state == State::Learner,
+                |x| x.state == ServerState::Learner,
                 timeout,
-                &format!("n{}.state -> {:?}", 2, State::Learner),
+                &format!("n{}.state -> {:?}", 2, ServerState::Learner),
             )
             .await?;
 

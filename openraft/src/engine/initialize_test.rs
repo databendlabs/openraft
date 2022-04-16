@@ -12,7 +12,7 @@ use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
-use crate::State;
+use crate::ServerState;
 use crate::Vote;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -46,7 +46,7 @@ fn test_initialize() -> anyhow::Result<()> {
 
         eng.initialize(&mut entries)?;
         assert_eq!(Some(log_id0), eng.state.last_log_id);
-        assert_eq!(State::Candidate, eng.state.target_state);
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
                 leader: false,

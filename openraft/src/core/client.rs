@@ -8,7 +8,7 @@ use tracing::Instrument;
 
 use crate::core::apply_to_state_machine;
 use crate::core::LeaderState;
-use crate::core::State;
+use crate::core::ServerState;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::QuorumNotEnough;
@@ -127,7 +127,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 // TODO(xp): deal with storage error
                 self.core.save_vote().await.unwrap();
                 // TODO(xp): if receives error about a higher term, it should stop at once?
-                self.core.set_target_state(State::Follower);
+                self.core.set_target_state(ServerState::Follower);
             }
 
             granted.insert(target);

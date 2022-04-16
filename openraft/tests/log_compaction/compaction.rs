@@ -15,8 +15,8 @@ use openraft::RaftLogReader;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use openraft::RaftStorage;
+use openraft::ServerState;
 use openraft::SnapshotPolicy;
-use openraft::State;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -50,7 +50,7 @@ async fn compaction() -> Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
-    router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
 
     router.assert_pristine_cluster().await;
 

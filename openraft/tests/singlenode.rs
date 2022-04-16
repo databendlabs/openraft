@@ -7,7 +7,7 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 
@@ -34,7 +34,7 @@ async fn single_node() -> Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
-    router.wait_for_state(&btreeset![0], State::Learner, timeout(), "empty").await?;
+    router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.

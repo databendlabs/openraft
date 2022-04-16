@@ -1,6 +1,6 @@
 use crate::core::apply_to_state_machine;
 use crate::core::RaftCore;
-use crate::core::State;
+use crate::core::ServerState;
 use crate::error::AppendEntriesError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
@@ -42,8 +42,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.save_vote().await?;
 
             // If not follower, become follower.
-            if !self.engine.state.target_state.is_follower() && !self.engine.state.target_state.is_learner() {
-                self.set_target_state(State::Follower); // State update will emit metrics.
+            if !self.engine.state.server_state.is_follower() && !self.engine.state.server_state.is_learner() {
+                self.set_target_state(ServerState::Follower); // State update will emit metrics.
             }
 
             self.engine.metrics_flags.set_cluster_changed();

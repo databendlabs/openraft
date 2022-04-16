@@ -6,8 +6,8 @@ use tracing_futures::Instrument;
 use crate::config::SnapshotPolicy;
 use crate::core::LeaderState;
 use crate::core::ReplicationState;
+use crate::core::ServerState;
 use crate::core::SnapshotState;
-use crate::core::State;
 use crate::error::AddLearnerError;
 use crate::metrics::UpdateMatchedLogId;
 use crate::raft::AddLearnerResponse;
@@ -76,7 +76,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 self.handle_needs_snapshot(must_include, tx).await?;
             }
             ReplicaEvent::Shutdown => {
-                self.core.set_target_state(State::Shutdown);
+                self.core.set_target_state(ServerState::Shutdown);
             }
         };
 
@@ -93,7 +93,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         if vote > self.core.engine.state.vote {
             self.core.engine.state.vote = vote;
             self.core.save_vote().await?;
-            self.core.set_target_state(State::Follower);
+            self.core.set_target_state(ServerState::Follower);
         }
         Ok(())
     }

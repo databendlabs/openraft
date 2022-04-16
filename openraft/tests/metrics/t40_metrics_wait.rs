@@ -5,7 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::metrics::WaitError;
 use openraft::Config;
-use openraft::State;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -29,7 +29,7 @@ async fn metrics_wait() -> Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.initialize(cluster.clone()).await?;
 
-        router.wait(&0, timeout())?.state(State::Leader, "n0 -> leader").await?;
+        router.wait(&0, timeout())?.state(ServerState::Leader, "n0 -> leader").await?;
     }
 
     router.wait(&0, None)?.current_leader(0, "become leader").await?;

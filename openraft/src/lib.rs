@@ -42,7 +42,7 @@ pub use crate::config::Config;
 pub use crate::config::ConfigError;
 pub use crate::config::SnapshotPolicy;
 pub use crate::core::EffectiveMembership;
-pub use crate::core::State;
+pub use crate::core::ServerState;
 pub use crate::defensive::DefensiveCheck;
 pub use crate::defensive::DefensiveCheckBase;
 pub use crate::entry::Entry;

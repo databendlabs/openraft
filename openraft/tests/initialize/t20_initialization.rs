@@ -13,7 +13,7 @@ use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::RaftStorage;
-use openraft::State;
+use openraft::ServerState;
 use openraft::Vote;
 use tokio::sync::oneshot;
 
@@ -43,7 +43,7 @@ async fn initialization() -> anyhow::Result<()> {
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], None, timeout(), "empty").await?;
-    router.wait_for_state(&btreeset![0, 1, 2], State::Learner, timeout(), "empty").await?;
+    router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, timeout(), "empty").await?;
     router.assert_pristine_cluster().await;
 
     // Sending an external requests will also find all nodes in Learner state.
@@ -61,7 +61,7 @@ async fn initialization() -> anyhow::Result<()> {
     // (since they are awaited).
     for node in [0, 1, 2] {
         router.external_request(node, |s, _sto, _net| {
-            assert_eq!(s, State::Learner);
+            assert_eq!(s, ServerState::Learner);
         });
     }
 
@@ -112,11 +112,11 @@ async fn initialization() -> anyhow::Result<()> {
         let (tx, rx) = oneshot::channel();
         router.external_request(node, |s, _sm, _net| tx.send(s).unwrap());
         match rx.await.unwrap() {
-            State::Leader => {
+            ServerState::Leader => {
                 assert!(!found_leader);
                 found_leader = true;
             }
-            State::Follower => {
+            ServerState::Follower => {
                 follower_count += 1;
             }
             s => panic!("Unexpected node {} state: {:?}", node, s),
@@ -140,7 +140,7 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
 
     for node in [0, 1] {
         router.external_request(node, |s, _sto, _net| {
-            assert_eq!(s, State::Learner);
+            assert_eq!(s, ServerState::Learner);
         });
     }
 
@@ -174,7 +174,7 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 
     for node in [0] {
         router.external_request(node, |s, _sto, _net| {
-            assert_eq!(s, State::Learner);
+            assert_eq!(s, ServerState::Learner);
         });
     }
 
