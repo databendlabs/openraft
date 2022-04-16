@@ -37,7 +37,8 @@ fn test_initialize() -> anyhow::Result<()> {
     let payload = EntryPayload::<Config>::Membership(m12());
     let mut entries = [EntryRef::new(&payload)];
 
-    tracing::info!("--- ok");
+    tracing::info!("--- ok: init empty node 1 with membership(1,2)");
+    tracing::info!("--- expect OK result, check output commands and state changes");
     {
         let mut eng = eng();
         eng.id = 1;
