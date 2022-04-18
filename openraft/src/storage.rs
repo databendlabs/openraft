@@ -11,8 +11,8 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
-use crate::core::EffectiveMembership;
 use crate::defensive::check_range_matches_entries;
+use crate::membership::EffectiveMembership;
 use crate::raft_state::RaftState;
 use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
