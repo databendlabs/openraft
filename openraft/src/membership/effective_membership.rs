@@ -18,7 +18,6 @@ use crate::NodeId;
 /// - and the config.
 ///
 /// An active config is just the last seen config in raft spec.
-/// TODO(xp): move to dir "membership"
 #[derive(Clone, Default, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct EffectiveMembership<NID: NodeId> {

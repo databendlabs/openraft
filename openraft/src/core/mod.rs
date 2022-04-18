@@ -3,7 +3,6 @@
 mod admin;
 mod append_entries;
 mod client;
-mod effective_membership;
 mod install_snapshot;
 mod leader_state;
 mod learner_state;
@@ -18,7 +17,6 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-pub use effective_membership::EffectiveMembership;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
 use leader_state::LeaderState;
@@ -48,6 +46,7 @@ use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
+use crate::membership::EffectiveMembership;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::raft::AddLearnerResponse;

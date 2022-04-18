@@ -6,8 +6,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::async_trait::async_trait;
-use crate::core::EffectiveMembership;
 use crate::defensive::DefensiveCheckBase;
+use crate::membership::EffectiveMembership;
 use crate::storage::LogState;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftSnapshotBuilder;

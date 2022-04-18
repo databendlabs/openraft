@@ -5,7 +5,7 @@ use maplit::btreeset;
 use tokio::sync::watch;
 use tokio::time::sleep;
 
-use crate::core::EffectiveMembership;
+use crate::membership::EffectiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::raft_types::LogIdOptionExt;
