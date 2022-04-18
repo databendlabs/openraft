@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
+use crate::core::EffectiveMembership;
 use crate::entry::RaftEntry;
 use crate::error::InitializeError;
 use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::raft_state::RaftState;
-use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;

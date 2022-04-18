@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use crate::async_trait::async_trait;
+use crate::core::EffectiveMembership;
 use crate::defensive::DefensiveCheckBase;
 use crate::storage::LogState;
 use crate::storage::RaftLogReader;
@@ -13,7 +14,6 @@ use crate::storage::RaftSnapshotBuilder;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
 use crate::DefensiveCheck;
-use crate::EffectiveMembership;
 use crate::Entry;
 use crate::LogId;
 use crate::RaftStorage;

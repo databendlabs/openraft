@@ -1,11 +1,11 @@
 use crate::core::apply_to_state_machine;
+use crate::core::EffectiveMembership;
 use crate::core::RaftCore;
 use crate::core::ServerState;
 use crate::error::AppendEntriesError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_types::LogIdOptionExt;
-use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
 use crate::LogId;
