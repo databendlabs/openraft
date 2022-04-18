@@ -583,7 +583,7 @@ impl<C: RaftTypeConfig> MessageSummary for RaftEvent<C> {
 }
 
 /// An event coming from a replication stream.
-pub(crate) enum ReplicaEvent<C, S>
+pub enum ReplicaEvent<C, S>
 where
     C: RaftTypeConfig,
     S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
