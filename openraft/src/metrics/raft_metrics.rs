@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::core::EffectiveMembership;
 use crate::core::ServerState;
 use crate::error::Fatal;
+use crate::membership::EffectiveMembership;
 use crate::metrics::ReplicationMetrics;
 use crate::raft::RaftTypeConfig;
 use crate::summary::MessageSummary;

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::core::EffectiveMembership;
+use crate::membership::EffectiveMembership;
 use crate::LogId;
 use crate::NodeId;
 use crate::ServerState;

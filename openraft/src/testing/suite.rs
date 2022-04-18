@@ -5,7 +5,7 @@ use std::option::Option::None;
 
 use maplit::btreeset;
 
-use crate::core::EffectiveMembership;
+use crate::membership::EffectiveMembership;
 use crate::raft_state::RaftState;
 use crate::storage::LogState;
 use crate::testing::DefensiveStoreBuilder;
