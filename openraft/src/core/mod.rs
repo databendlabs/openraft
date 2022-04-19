@@ -10,11 +10,11 @@ mod leader_state;
 mod learner_state;
 mod raft_core;
 pub(crate) mod replication;
+mod replication_state;
 #[cfg(test)]
 mod replication_state_test;
 mod server_state;
 mod vote;
-
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -26,6 +26,8 @@ use leader_state::LeaderState;
 use learner_state::LearnerState;
 use rand::thread_rng;
 use rand::Rng;
+pub use replication_state::is_matched_upto_date;
+use replication_state::ReplicationState;
 pub use server_state::ServerState;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -41,7 +43,6 @@ use tracing::Span;
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::engine::Engine;
-use crate::error::AddLearnerError;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
@@ -49,11 +50,9 @@ use crate::error::NotAllowed;
 use crate::membership::EffectiveMembership;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
-use crate::raft::AddLearnerResponse;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft_types::LogIdOptionExt;
-use crate::replication::ReplicationStream;
 use crate::storage::RaftSnapshotBuilder;
 use crate::versioned::Versioned;
 use crate::Entry;
@@ -603,47 +602,4 @@ pub(self) enum SnapshotUpdate<C: RaftTypeConfig> {
     SnapshotComplete(LogId<C::NodeId>),
     /// Snapshot creation failed.
     SnapshotFailed,
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Volatile state specific to the Raft leader.
-
-/// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-struct ReplicationState<C: RaftTypeConfig> {
-    pub matched: Option<LogId<C::NodeId>>,
-    pub remove_since: Option<u64>,
-    pub repl_stream: ReplicationStream<C>,
-
-    /// The response channel to use for when this node has successfully synced with the cluster.
-    #[allow(clippy::type_complexity)]
-    pub tx: Option<RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>>,
-}
-
-impl<C: RaftTypeConfig> MessageSummary for ReplicationState<C> {
-    fn summary(&self) -> String {
-        format!(
-            "matched: {:?}, remove_after_commit: {:?}",
-            self.matched, self.remove_since
-        )
-    }
-}
-
-impl<C: RaftTypeConfig> ReplicationState<C> {
-    // TODO(xp): make this a method of Config?
-
-    /// Return true if the distance behind last_log_id is smaller than the threshold to join.
-    pub fn is_line_rate(&self, last_log_id: &Option<LogId<C::NodeId>>, config: &Config) -> bool {
-        is_matched_upto_date::<C>(&self.matched, last_log_id, config)
-    }
-}
-
-pub fn is_matched_upto_date<C: RaftTypeConfig>(
-    matched: &Option<LogId<C::NodeId>>,
-    last_log_id: &Option<LogId<C::NodeId>>,
-    config: &Config,
-) -> bool {
-    let my_index = matched.next_index();
-    let distance = last_log_id.next_index().saturating_sub(my_index);
-    distance <= config.replication_lag_threshold
 }
