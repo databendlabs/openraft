@@ -5,7 +5,7 @@ use crate::LogId;
 use crate::RaftTypeConfig;
 
 /// The current snapshot state of the Raft node.
-pub enum SnapshotState<S> {
+pub(crate) enum SnapshotState<S> {
     /// The Raft node is compacting itself.
     Snapshotting {
         /// A handle to abort the compaction process early if needed.
@@ -26,7 +26,7 @@ pub enum SnapshotState<S> {
 
 /// An update on a snapshot creation process.
 #[derive(Debug)]
-pub enum SnapshotUpdate<C: RaftTypeConfig> {
+pub(crate) enum SnapshotUpdate<C: RaftTypeConfig> {
     /// Snapshot creation has finished successfully and covers the given index.
     SnapshotComplete(LogId<C::NodeId>),
     /// Snapshot creation failed.

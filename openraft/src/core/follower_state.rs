@@ -14,7 +14,7 @@ use crate::RaftTypeConfig;
 use crate::Update;
 
 /// Volatile state specific to a Raft node in follower state.
-pub struct FollowerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+pub(crate) struct FollowerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     core: &'a mut RaftCore<C, N, S>,
 }
 
