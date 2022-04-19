@@ -2,7 +2,9 @@
 
 mod admin;
 mod append_entries;
+mod candidate_state;
 mod client;
+mod follower_state;
 mod install_snapshot;
 mod leader_state;
 mod learner_state;
@@ -12,14 +14,15 @@ pub(crate) mod replication;
 mod replication_state_test;
 mod vote;
 
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use candidate_state::CandidateState;
+use follower_state::FollowerState;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
-use maplit::btreeset;
+use leader_state::LeaderState;
+use learner_state::LearnerState;
 use rand::thread_rng;
 use rand::Rng;
 use serde::Deserialize;
@@ -29,7 +32,6 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-use tokio::time::sleep_until;
 use tokio::time::Duration;
 use tokio::time::Instant;
 use tracing::trace_span;
@@ -40,8 +42,6 @@ use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::engine::Engine;
 use crate::error::AddLearnerError;
-use crate::error::ClientWriteError;
-use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
@@ -50,18 +50,13 @@ use crate::membership::EffectiveMembership;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::raft::AddLearnerResponse;
-use crate::raft::ClientWriteResponse;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
-use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
-use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::storage::RaftSnapshotBuilder;
 use crate::versioned::Versioned;
-use crate::vote::Vote;
 use crate::Entry;
-use crate::EntryPayload;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::Node;
@@ -658,167 +653,6 @@ impl ServerState {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// Volatile state specific to the Raft leader.
-struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
-    pub(super) core: &'a mut RaftCore<C, N, S>,
-
-    /// A mapping of node IDs the replication state of the target node.
-    pub(super) nodes: BTreeMap<C::NodeId, ReplicationState<C>>,
-
-    /// The metrics about a leader
-    pub replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
-
-    /// The stream of events coming from replication streams.
-    pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<C, S::SnapshotData>, Span)>,
-
-    /// The cloneable sender channel for replication stream events.
-    pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<C, S::SnapshotData>, Span)>,
-
-    /// Channels to send result back to client when logs are committed.
-    pub(super) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
-}
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
-    for LeaderState<'a, C, N, S>
-{
-    fn get_leader_metrics(&self) -> Option<&Versioned<ReplicationMetrics<C::NodeId>>> {
-        Some(&self.replication_metrics)
-    }
-}
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
-    /// Create a new instance.
-    pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
-        let (replication_tx, replication_rx) = mpsc::unbounded_channel();
-        Self {
-            core,
-            nodes: BTreeMap::new(),
-            replication_metrics: Versioned::new(ReplicationMetrics::default()),
-            replication_tx,
-            replication_rx,
-            client_resp_channels: Default::default(),
-        }
-    }
-
-    /// Transition to the Raft leader state.
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="leader"))]
-    pub(self) async fn run(mut self) -> Result<(), Fatal<C::NodeId>> {
-        // Setup state as leader.
-        self.core.last_heartbeat = None;
-        self.core.next_election_timeout = None;
-        self.core.engine.state.vote.commit();
-
-        // Spawn replication streams for followers and learners.
-        let targets = self
-            .core
-            .engine
-            .state
-            .effective_membership
-            .node_ids()
-            .filter(|elem| *elem != &self.core.id)
-            .cloned()
-            .collect::<Vec<_>>();
-
-        for target in targets {
-            let state = self.spawn_replication_stream(target, None).await;
-            self.nodes.insert(target, state);
-        }
-
-        // Commit the initial entry when new leader established.
-        self.write_entry(EntryPayload::Blank, None).await?;
-
-        self.leader_loop().await?;
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id)))]
-    pub(self) async fn leader_loop(mut self) -> Result<(), Fatal<C::NodeId>> {
-        // report the leader metrics every time there came to a new leader
-        // if not `report_metrics` before the leader loop, the leader metrics may not be updated cause no coming event.
-        self.core.report_metrics(Update::Update(Some(self.replication_metrics.clone())));
-
-        loop {
-            if !self.core.engine.state.server_state.is_leader() {
-                tracing::info!(
-                    "id={} state becomes: {:?}",
-                    self.core.id,
-                    self.core.engine.state.server_state
-                );
-
-                // implicit drop replication_rx
-                // notify to all nodes DO NOT send replication event any more.
-                return Ok(());
-            }
-
-            self.core.report_metrics_if_needed(&self);
-            self.core.engine.metrics_flags.reset();
-
-            tokio::select! {
-                Some((msg,span)) = self.core.rx_api.recv() => {
-                    self.handle_msg(msg).instrument(span).await?;
-                },
-
-                Some(update) = self.core.rx_compaction.recv() => {
-                    tracing::info!("leader recv from rx_compaction: {:?}", update);
-                    self.core.update_snapshot_state(update);
-                }
-
-                Some((event, span)) = self.replication_rx.recv() => {
-                    tracing::info!("leader recv from replication_rx: {:?}", event.summary());
-                    self.handle_replica_event(event).instrument(span).await?;
-                }
-
-                Ok(_) = &mut self.core.rx_shutdown => {
-                    tracing::info!("leader recv from rx_shudown");
-                    self.core.set_target_state(ServerState::Shutdown);
-                }
-            }
-        }
-    }
-
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "leader", id=display(self.core.id)))]
-    pub async fn handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
-        tracing::debug!("recv from rx_api: {}", msg.summary());
-
-        match msg {
-            RaftMsg::AppendEntries { rpc, tx } => {
-                let res = self.core.handle_append_entries_request(rpc).await.extract_fatal()?;
-                let _ = tx.send(res);
-            }
-            RaftMsg::RequestVote { rpc, tx } => {
-                let res = self.core.handle_vote_request(rpc).await.extract_fatal()?;
-                let _ = tx.send(res);
-            }
-            RaftMsg::InstallSnapshot { rpc, tx } => {
-                let res = self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?;
-                let _ = tx.send(res);
-            }
-            RaftMsg::CheckIsLeaderRequest { tx } => {
-                self.handle_check_is_leader_request(tx).await;
-            }
-            RaftMsg::ClientWriteRequest { rpc, tx } => {
-                self.write_entry(rpc.payload, Some(tx)).await?;
-            }
-            RaftMsg::Initialize { tx, .. } => {
-                self.core.reject_init_with_config(tx);
-            }
-            RaftMsg::AddLearner { id, node, tx, blocking } => {
-                self.add_learner(id, node, tx, blocking).await;
-            }
-            RaftMsg::ChangeMembership {
-                members,
-                blocking,
-                turn_to_learner,
-                tx,
-            } => self.change_membership(members, blocking, turn_to_learner, tx).await?,
-            RaftMsg::ExternalRequest { req } => {
-                req(ServerState::Leader, &mut self.core.storage, &mut self.core.network);
-            }
-        };
-
-        Ok(())
-    }
-}
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 struct ReplicationState<C: RaftTypeConfig> {
@@ -857,323 +691,4 @@ pub fn is_matched_upto_date<C: RaftTypeConfig>(
     let my_index = matched.next_index();
     let distance = last_log_id.next_index().saturating_sub(my_index);
     distance <= config.replication_lag_threshold
-}
-
-/// Volatile state specific to a Raft node in candidate state.
-struct CandidateState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
-    core: &'a mut RaftCore<C, N, S>,
-
-    /// Ids of the nodes that has granted our vote request.
-    granted: BTreeSet<C::NodeId>,
-}
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
-    for CandidateState<'a, C, N, S>
-{
-    // the non-leader state use the default impl of `get_leader_metrics_option`
-}
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> CandidateState<'a, C, N, S> {
-    pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
-        Self {
-            core,
-            granted: btreeset! {},
-        }
-    }
-
-    /// Run the candidate loop.
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="candidate"))]
-    pub(self) async fn run(self) -> Result<(), Fatal<C::NodeId>> {
-        // Each iteration of the outer loop represents a new term.
-        self.candidate_loop().await?;
-        Ok(())
-    }
-
-    async fn candidate_loop(mut self) -> Result<(), Fatal<C::NodeId>> {
-        // report the new state before enter the loop
-        self.core.report_metrics(Update::Update(None));
-
-        loop {
-            if !self.core.engine.state.server_state.is_candidate() {
-                return Ok(());
-            }
-
-            self.core.report_metrics_if_needed(&self);
-            self.core.engine.metrics_flags.reset();
-
-            // Setup new term.
-            self.core.update_next_election_timeout(false); // Generates a new rand value within range.
-
-            self.core.engine.state.vote = Vote::new(self.core.engine.state.vote.term + 1, self.core.id);
-
-            self.core.save_vote().await?;
-
-            // vote for itself.
-            self.handle_vote_response(
-                VoteResponse {
-                    vote: self.core.engine.state.vote,
-                    vote_granted: true,
-                    last_log_id: self.core.engine.state.last_log_id,
-                },
-                self.core.id,
-            )
-            .await?;
-            if !self.core.engine.state.server_state.is_candidate() {
-                return Ok(());
-            }
-
-            // Send RPCs to all members in parallel.
-            let mut pending_votes = self.spawn_parallel_vote_requests().await;
-
-            // Inner processing loop for this Raft state.
-            loop {
-                if !self.core.engine.state.server_state.is_candidate() {
-                    return Ok(());
-                }
-
-                let timeout_fut = sleep_until(self.core.get_next_election_timeout());
-
-                let span = tracing::debug_span!("CHrx:CandidateState");
-                let _ent = span.enter();
-
-                tokio::select! {
-                    _ = timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
-
-                    Some((res, peer)) = pending_votes.recv() => {
-                        self.handle_vote_response(res, peer).await?;
-                    },
-
-                    Some((msg,span)) = self.core.rx_api.recv() => {
-                        self.handle_msg(msg).instrument(span).await?;
-                    },
-
-                    Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
-
-                    Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(ServerState::Shutdown),
-                }
-            }
-        }
-    }
-
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "candidate", id=display(self.core.id)))]
-    pub async fn handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
-        tracing::debug!("recv from rx_api: {}", msg.summary());
-        match msg {
-            RaftMsg::AppendEntries { rpc, tx } => {
-                let _ = tx.send(self.core.handle_append_entries_request(rpc).await.extract_fatal()?);
-            }
-            RaftMsg::RequestVote { rpc, tx } => {
-                let _ = tx.send(self.core.handle_vote_request(rpc).await.extract_fatal()?);
-            }
-            RaftMsg::InstallSnapshot { rpc, tx } => {
-                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
-            }
-            RaftMsg::CheckIsLeaderRequest { tx } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::Initialize { tx, .. } => {
-                self.core.reject_init_with_config(tx);
-            }
-            RaftMsg::AddLearner { tx, .. } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::ChangeMembership { tx, .. } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::ExternalRequest { req } => {
-                req(ServerState::Candidate, &mut self.core.storage, &mut self.core.network);
-            }
-        };
-        Ok(())
-    }
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Volatile state specific to a Raft node in follower state.
-pub struct FollowerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
-    core: &'a mut RaftCore<C, N, S>,
-}
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
-    for FollowerState<'a, C, N, S>
-{
-    // the non-leader state use the default impl of `get_leader_metrics_option`
-}
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> FollowerState<'a, C, N, S> {
-    pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
-        Self { core }
-    }
-
-    /// Run the follower loop.
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="follower"))]
-    pub(self) async fn run(self) -> Result<(), Fatal<C::NodeId>> {
-        self.follower_loop().await?;
-        Ok(())
-    }
-
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="follower"))]
-    pub(self) async fn follower_loop(mut self) -> Result<(), Fatal<C::NodeId>> {
-        // report the new state before enter the loop
-        self.core.report_metrics(Update::Update(None));
-
-        loop {
-            if !self.core.engine.state.server_state.is_follower() {
-                return Ok(());
-            }
-
-            self.core.report_metrics_if_needed(&self);
-            self.core.engine.metrics_flags.reset();
-
-            let election_timeout = sleep_until(self.core.get_next_election_timeout()); // Value is updated as heartbeats are received.
-
-            tokio::select! {
-                // If an election timeout is hit, then we need to transition to candidate.
-                _ = election_timeout => {
-                    tracing::debug!("timeout to recv a event, change to CandidateState");
-                    self.core.set_target_state(ServerState::Candidate)
-                },
-
-                Some((msg,span)) = self.core.rx_api.recv() => {
-                    self.handle_msg(msg).instrument(span).await?;
-                },
-
-                Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
-
-                Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(ServerState::Shutdown),
-            }
-        }
-    }
-
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "follower", id=display(self.core.id)))]
-    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
-        tracing::debug!("recv from rx_api: {}", msg.summary());
-
-        match msg {
-            RaftMsg::AppendEntries { rpc, tx } => {
-                let _ = tx.send(self.core.handle_append_entries_request(rpc).await.extract_fatal()?);
-            }
-            RaftMsg::RequestVote { rpc, tx } => {
-                let _ = tx.send(self.core.handle_vote_request(rpc).await.extract_fatal()?);
-            }
-            RaftMsg::InstallSnapshot { rpc, tx } => {
-                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
-            }
-            RaftMsg::CheckIsLeaderRequest { tx } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::Initialize { tx, .. } => {
-                self.core.reject_init_with_config(tx);
-            }
-            RaftMsg::AddLearner { tx, .. } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::ChangeMembership { tx, .. } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::ExternalRequest { req } => {
-                req(ServerState::Follower, &mut self.core.storage, &mut self.core.network);
-            }
-        };
-        Ok(())
-    }
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// Volatile state specific to a Raft node in learner state.
-pub struct LearnerState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
-    core: &'a mut RaftCore<C, N, S>,
-}
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
-    for LearnerState<'a, C, N, S>
-{
-    // the non-leader state use the default impl of `get_leader_metrics_option`
-}
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
-    pub(self) fn new(core: &'a mut RaftCore<C, N, S>) -> Self {
-        Self { core }
-    }
-
-    /// Run the learner loop.
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.core.id), raft_state="learner"))]
-    pub(self) async fn run(self) -> Result<(), Fatal<C::NodeId>> {
-        self.learner_loop().await?;
-        Ok(())
-    }
-
-    pub(self) async fn learner_loop(mut self) -> Result<(), Fatal<C::NodeId>> {
-        // report the new state before enter the loop
-        self.core.report_metrics(Update::Update(None));
-
-        loop {
-            if !self.core.engine.state.server_state.is_learner() {
-                return Ok(());
-            }
-
-            self.core.report_metrics_if_needed(&self);
-            self.core.engine.metrics_flags.reset();
-
-            let span = tracing::debug_span!("CHrx:LearnerState");
-            let _ent = span.enter();
-
-            tokio::select! {
-                Some((msg,span)) = self.core.rx_api.recv() => {
-                    self.handle_msg(msg).instrument(span).await?;
-                },
-
-                Some(update) = self.core.rx_compaction.recv() => {
-                    self.core.update_snapshot_state(update);
-                },
-
-                Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(ServerState::Shutdown),
-            }
-        }
-    }
-
-    // TODO(xp): define a handle_msg method in RaftCore that decides what to do by current State.
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "learner", id=display(self.core.id)))]
-    pub(crate) async fn handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
-        tracing::debug!("recv from rx_api: {}", msg.summary());
-
-        match msg {
-            RaftMsg::AppendEntries { rpc, tx } => {
-                let _ = tx.send(self.core.handle_append_entries_request(rpc).await.extract_fatal()?);
-            }
-            RaftMsg::RequestVote { rpc, tx } => {
-                let _ = tx.send(self.core.handle_vote_request(rpc).await.extract_fatal()?);
-            }
-            RaftMsg::InstallSnapshot { rpc, tx } => {
-                let _ = tx.send(self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?);
-            }
-            RaftMsg::CheckIsLeaderRequest { tx } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::Initialize { members, tx } => {
-                let _ = tx.send(self.handle_init_with_config(members).await);
-            }
-            RaftMsg::AddLearner { tx, .. } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::ChangeMembership { tx, .. } => {
-                self.core.reject_with_forward_to_leader(tx);
-            }
-            RaftMsg::ExternalRequest { req } => {
-                req(ServerState::Learner, &mut self.core.storage, &mut self.core.network);
-            }
-        };
-        Ok(())
-    }
 }

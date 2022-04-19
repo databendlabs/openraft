@@ -40,7 +40,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
     /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(0,0)`.
     /// See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) async fn handle_init_with_config(
+    pub(crate) async fn handle_init_with_config(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, Option<Node>>,
     ) -> Result<(), InitializeError<C::NodeId>> {
