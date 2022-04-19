@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use crate::core::ServerState;
 use crate::membership::EffectiveMembership;
 use crate::LogId;
 use crate::NodeId;
-use crate::ServerState;
 use crate::Vote;
 
 /// A struct used to represent the raft state which a Raft node needs.
