@@ -14,8 +14,9 @@ mod replication_state;
 #[cfg(test)]
 mod replication_state_test;
 mod server_state;
+mod snapshot_state;
 mod vote;
-use std::fmt::Debug;
+
 use std::sync::Arc;
 
 use candidate_state::CandidateState;
@@ -29,6 +30,8 @@ use rand::Rng;
 pub use replication_state::is_matched_upto_date;
 use replication_state::ReplicationState;
 pub use server_state::ServerState;
+pub use snapshot_state::SnapshotState;
+pub use snapshot_state::SnapshotUpdate;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -573,33 +576,4 @@ where
 
     let log_id = sto.get_log_id(end - 1).await?;
     sto.purge_logs_upto(log_id).await
-}
-
-/// The current snapshot state of the Raft node.
-pub(self) enum SnapshotState<S> {
-    /// The Raft node is compacting itself.
-    Snapshotting {
-        /// A handle to abort the compaction process early if needed.
-        handle: AbortHandle,
-        /// A sender for notifiying any other tasks of the completion of this compaction.
-        sender: broadcast::Sender<u64>,
-    },
-    /// The Raft node is streaming in a snapshot from the leader.
-    Streaming {
-        /// The offset of the last byte written to the snapshot.
-        offset: u64,
-        /// The ID of the snapshot being written.
-        id: String,
-        /// A handle to the snapshot writer.
-        snapshot: Box<S>,
-    },
-}
-
-/// An update on a snapshot creation process.
-#[derive(Debug)]
-pub(self) enum SnapshotUpdate<C: RaftTypeConfig> {
-    /// Snapshot creation has finished successfully and covers the given index.
-    SnapshotComplete(LogId<C::NodeId>),
-    /// Snapshot creation failed.
-    SnapshotFailed,
 }
