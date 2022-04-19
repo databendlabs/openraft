@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
+use crate::core::ServerState;
 use crate::entry::RaftEntry;
 use crate::error::InitializeError;
 use crate::error::NotAMembershipEntry;
@@ -16,7 +17,6 @@ use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::MetricsChangeFlags;
 use crate::NodeId;
-use crate::ServerState;
 use crate::Vote;
 
 /// Raft protocol algorithm.

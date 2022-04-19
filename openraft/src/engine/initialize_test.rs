@@ -1,5 +1,6 @@
 use maplit::btreeset;
 
+use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::entry::EntryRef;
@@ -12,7 +13,6 @@ use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
-use crate::ServerState;
 use crate::Vote;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]

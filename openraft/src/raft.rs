@@ -18,6 +18,7 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::core::RaftCore;
+use crate::core::ServerState;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
 use crate::error::CheckIsLeaderError;
@@ -40,7 +41,6 @@ use crate::Node;
 use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
-use crate::ServerState;
 use crate::SnapshotMeta;
 use crate::Vote;
 

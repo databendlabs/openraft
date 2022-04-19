@@ -5,6 +5,7 @@ use maplit::btreeset;
 use tokio::sync::watch;
 use tokio::time::sleep;
 
+use crate::core::ServerState;
 use crate::membership::EffectiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
@@ -15,7 +16,6 @@ use crate::LogId;
 use crate::Membership;
 use crate::RaftMetrics;
 use crate::RaftTypeConfig;
-use crate::ServerState;
 
 /// Test wait for different state changes
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
