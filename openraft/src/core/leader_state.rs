@@ -29,6 +29,7 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Update;
 
+/// Volatile state specific to a Raft node in leader state.
 pub(crate) struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     pub(super) core: &'a mut RaftCore<C, N, S>,
 
