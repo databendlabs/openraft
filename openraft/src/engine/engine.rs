@@ -134,6 +134,7 @@ impl<NID: NodeId> Engine<NID> {
         self.check_initialize()?;
 
         self.assign_log_ids(entries.iter_mut());
+        self.state.extend_log_ids_from_same_leader(entries);
 
         self.commands.push(Command::AppendInputEntries { range: 0..l });
         self.metrics_flags.set_data_changed();
@@ -168,6 +169,7 @@ impl<NID: NodeId> Engine<NID> {
         }
 
         self.assign_log_ids(entries.iter_mut());
+        self.state.extend_log_ids_from_same_leader(entries);
 
         self.commands.push(Command::AppendInputEntries { range: 0..l });
         self.metrics_flags.set_data_changed();

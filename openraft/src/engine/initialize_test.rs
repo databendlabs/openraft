@@ -45,7 +45,11 @@ fn test_initialize() -> anyhow::Result<()> {
         eng.id = 1;
 
         eng.initialize(&mut entries)?;
+
+        assert_eq!(Some(log_id0), eng.state.get_log_id(0));
+        assert_eq!(None, eng.state.get_log_id(1));
         assert_eq!(Some(log_id0), eng.state.last_log_id);
+
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
@@ -55,6 +59,7 @@ fn test_initialize() -> anyhow::Result<()> {
             eng.metrics_flags
         );
         assert_eq!(m12(), eng.state.effective_membership.membership);
+
         assert_eq!(
             vec![
                 Command::AppendInputEntries { range: 0..1 },

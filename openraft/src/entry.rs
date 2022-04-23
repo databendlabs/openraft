@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use crate::raft_types::RaftLogId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -16,11 +17,7 @@ pub trait RaftPayload<NID: NodeId> {
 }
 
 /// Defines operations on an entry.
-pub trait RaftEntry<NID: NodeId>: RaftPayload<NID> {
-    fn get_log_id(&self) -> &LogId<NID>;
-
-    fn set_log_id(&mut self, log_id: &LogId<NID>);
-}
+pub trait RaftEntry<NID: NodeId>: RaftPayload<NID> + RaftLogId<NID> {}
 
 /// Log entry payload variants.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -185,7 +182,7 @@ impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for Entry<C> {
     }
 }
 
-impl<C: RaftTypeConfig> RaftEntry<C::NodeId> for Entry<C> {
+impl<C: RaftTypeConfig> RaftLogId<C::NodeId> for Entry<C> {
     fn get_log_id(&self) -> &LogId<C::NodeId> {
         &self.log_id
     }
@@ -194,6 +191,8 @@ impl<C: RaftTypeConfig> RaftEntry<C::NodeId> for Entry<C> {
         self.log_id = *log_id;
     }
 }
+
+impl<C: RaftTypeConfig> RaftEntry<C::NodeId> for Entry<C> {}
 
 // impl traits for RefEntry
 
@@ -207,7 +206,7 @@ impl<'p, C: RaftTypeConfig> RaftPayload<C::NodeId> for EntryRef<'p, C> {
     }
 }
 
-impl<'p, C: RaftTypeConfig> RaftEntry<C::NodeId> for EntryRef<'p, C> {
+impl<'p, C: RaftTypeConfig> RaftLogId<C::NodeId> for EntryRef<'p, C> {
     fn get_log_id(&self) -> &LogId<C::NodeId> {
         &self.log_id
     }
@@ -216,3 +215,5 @@ impl<'p, C: RaftTypeConfig> RaftEntry<C::NodeId> for EntryRef<'p, C> {
         self.log_id = *log_id;
     }
 }
+
+impl<'p, C: RaftTypeConfig> RaftEntry<C::NodeId> for EntryRef<'p, C> {}

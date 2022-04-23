@@ -35,6 +35,8 @@ wrap_comments           = true
 comment_width           = 120
 max_width               = 120
 
+merge_derives           = false
+
 # pre-unstable
 
 chain_width             = 100
