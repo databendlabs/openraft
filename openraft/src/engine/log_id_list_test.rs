@@ -11,8 +11,13 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
 
     let mut ids = LogIdList::<u64>::default();
 
+    // Extend one log id to an empty LogIdList: Just store it directly
+
     ids.extend_from_same_leader(&[log_id(1, 2)]);
     assert_eq!(vec![log_id(1, 2)], ids.key_log_ids());
+
+    // Extend two log ids that are adjacent to the last stored one.
+    // It should append only one log id as the new ending log id.
 
     ids.extend_from_same_leader(&[
         log_id(1, 3), //
@@ -26,6 +31,9 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
         ids.key_log_ids(),
         "same leader as the last"
     );
+
+    // Extend 3 log id with new leader id.
+    // It should just store every log id for each leader, plus one last-log-id.
 
     ids.extend_from_same_leader(&[
         log_id(2, 5), //
@@ -54,6 +62,8 @@ fn test_log_id_list_append() -> anyhow::Result<()> {
 
     let mut ids = LogIdList::<u64>::default();
 
+    // Append log id one by one, check the internally constructed `key_log_id` as expected.
+
     let cases = vec![
         (log_id(1, 2), vec![log_id(1, 2)]), //
         (log_id(1, 3), vec![log_id(1, 2), log_id(1, 3)]),
@@ -78,11 +88,15 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
         index: i,
     };
 
+    // Get log id from empty list always returns `None`.
+
     let ids = LogIdList::<u64>::default();
 
     assert!(ids.get(0).is_none());
     assert!(ids.get(1).is_none());
     assert!(ids.get(2).is_none());
+
+    // Get log id that is a key log id or not.
 
     let ids = LogIdList::<u64>::new(vec![
         log_id(1, 1),
