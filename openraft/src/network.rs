@@ -61,7 +61,7 @@ where C: RaftTypeConfig
     /// Send a RequestVote RPC to the target Raft node (§5).
     async fn send_vote(
         &mut self,
-        rpc: VoteRequest<C>,
+        rpc: VoteRequest<C::NodeId>,
     ) -> Result<VoteResponse<C::NodeId>, RPCError<C, VoteError<C::NodeId>>>;
 }
 

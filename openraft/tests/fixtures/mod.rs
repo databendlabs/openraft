@@ -926,7 +926,7 @@ where
     /// Send a RequestVote RPC to the target Raft node (§5).
     async fn send_vote(
         &mut self,
-        rpc: VoteRequest<C>,
+        rpc: VoteRequest<C::NodeId>,
     ) -> std::result::Result<VoteResponse<C::NodeId>, RPCError<C, VoteError<C::NodeId>>> {
         self.owner.rand_send_delay().await;
 

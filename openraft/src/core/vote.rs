@@ -22,7 +22,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
     pub(super) async fn handle_vote_request(
         &mut self,
-        req: VoteRequest<C>,
+        req: VoteRequest<C::NodeId>,
     ) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
         tracing::debug!(
             %req.vote,

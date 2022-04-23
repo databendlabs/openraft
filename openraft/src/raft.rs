@@ -197,7 +197,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
-    pub async fn vote(&self, rpc: VoteRequest<C>) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
+    pub async fn vote(&self, rpc: VoteRequest<C::NodeId>) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
@@ -584,7 +584,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         tx: RaftRespTx<AppendEntriesResponse<C::NodeId>, AppendEntriesError<C::NodeId>>,
     },
     RequestVote {
-        rpc: VoteRequest<C>,
+        rpc: VoteRequest<C::NodeId>,
         tx: RaftRespTx<VoteResponse<C::NodeId>, VoteError<C::NodeId>>,
     },
     InstallSnapshot {
@@ -766,19 +766,20 @@ impl<NID: NodeId> MessageSummary for AppendEntriesResponse<NID> {
 
 /// An RPC sent by candidates to gather votes (§5.2).
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VoteRequest<C: RaftTypeConfig> {
-    pub vote: Vote<C::NodeId>,
-    pub last_log_id: Option<LogId<C::NodeId>>,
+#[serde(bound = "")]
+pub struct VoteRequest<NID: NodeId> {
+    pub vote: Vote<NID>,
+    pub last_log_id: Option<LogId<NID>>,
 }
 
-impl<C: RaftTypeConfig> MessageSummary for VoteRequest<C> {
+impl<NID: NodeId> MessageSummary for VoteRequest<NID> {
     fn summary(&self) -> String {
         format!("{}, last_log:{:?}", self.vote, self.last_log_id)
     }
 }
 
-impl<C: RaftTypeConfig> VoteRequest<C> {
-    pub fn new(vote: Vote<C::NodeId>, last_log_id: Option<LogId<C::NodeId>>) -> Self {
+impl<NID: NodeId> VoteRequest<NID> {
+    pub fn new(vote: Vote<NID>, last_log_id: Option<LogId<NID>>) -> Self {
         Self { vote, last_log_id }
     }
 }
