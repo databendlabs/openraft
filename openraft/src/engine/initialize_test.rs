@@ -1,6 +1,7 @@
 use maplit::btreeset;
 
 use crate::core::ServerState;
+use crate::engine::testing::Config;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::entry::EntryRef;
@@ -14,15 +15,6 @@ use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
 use crate::Vote;
-
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub(crate) struct Req {}
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub(crate) struct Resp {}
-
-crate::declare_raft_types!(
-   pub(crate) Config: D = Req, R = Resp, NodeId = u64
-);
 
 #[test]
 fn test_initialize() -> anyhow::Result<()> {
