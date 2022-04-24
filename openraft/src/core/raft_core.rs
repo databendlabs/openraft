@@ -568,6 +568,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         input_entries: &[EntryRef<'p, C>],
     ) -> Result<(), StorageError<C::NodeId>> {
+        self.engine.update_metrics_flags();
+
         let mut curr = 0;
         let mut commands = vec![];
         swap(&mut self.engine.commands, &mut commands);
@@ -589,6 +591,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
     ) -> Result<(), StorageError<C::NodeId>> {
         // Run non-role-specific command.
         match cmd {
+            Command::UpdateServerState { .. } => {
+                // This is not used. server state is already set by the engine.
+                // This only used for notifying that metrics changed and probably will be removed when Engine is
+                // finished.
+            }
             Command::AppendInputEntries { range } => {
                 let entry_refs = &input_ref_entries[range.clone()];
 

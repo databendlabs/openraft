@@ -124,6 +124,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
         &mut self,
         input_entries: &[EntryRef<'p, C>],
     ) -> Result<(), StorageError<C::NodeId>> {
+        self.core.engine.update_metrics_flags();
+
         let mut curr = 0;
         let it = self.core.engine.commands.drain(..).collect::<Vec<_>>();
         for cmd in it {
