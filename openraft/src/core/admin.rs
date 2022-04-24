@@ -295,6 +295,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         input_entries: &[EntryRef<'p, C>],
     ) -> Result<(), StorageError<C::NodeId>> {
+        self.core.engine.update_metrics_flags();
+
         let mut curr = 0;
         let mut commands = vec![];
         swap(&mut self.core.engine.commands, &mut commands);

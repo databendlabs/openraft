@@ -52,6 +52,13 @@ pub(crate) struct Engine<NID: NodeId> {
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Command<NID: NodeId> {
+    // Update server state, e.g., Leader, Follower etc.
+    // TODO: consider remove this variant. A runtime does not need to know about this. It is only meant for metrics
+    //       report.
+    UpdateServerState {
+        server_state: ServerState,
+    },
+
     // Append a `range` of entries in the input buffer.
     AppendInputEntries {
         range: Range<usize>,
@@ -119,6 +126,27 @@ impl<NID: NodeId> Engine<NID> {
         }
     }
 
+    /// Update flags for metrics that need to update, according to the queued commands.
+    pub(crate) fn update_metrics_flags(&mut self) {
+        let f = &mut self.metrics_flags;
+
+        for cmd in self.commands.iter() {
+            match cmd {
+                Command::UpdateServerState { .. } => f.set_cluster_changed(),
+                Command::AppendInputEntries { .. } => f.set_data_changed(),
+                Command::Commit { .. } => f.set_data_changed(),
+                Command::ReplicateInputEntries { .. } => {}
+                Command::UpdateMembership { .. } => f.set_cluster_changed(),
+                Command::MoveInputCursorBy { .. } => {}
+                Command::SaveVote { .. } => f.set_data_changed(),
+                Command::SendVote { .. } => {}
+                Command::PurgeAppliedLog { .. } => f.set_data_changed(),
+                Command::DeleteConflictLog { .. } => f.set_data_changed(),
+                Command::BuildSnapshot { .. } => f.set_data_changed(),
+            }
+        }
+    }
+
     /// Initialize a node by appending the first log.
     ///
     /// - The first log has to be membership config log.
@@ -137,7 +165,6 @@ impl<NID: NodeId> Engine<NID> {
         self.state.extend_log_ids_from_same_leader(entries);
 
         self.commands.push(Command::AppendInputEntries { range: 0..l });
-        self.metrics_flags.set_data_changed();
 
         let entry = &mut entries[0];
         if let Some(m) = entry.get_membership() {
@@ -172,7 +199,6 @@ impl<NID: NodeId> Engine<NID> {
         self.state.extend_log_ids_from_same_leader(entries);
 
         self.commands.push(Command::AppendInputEntries { range: 0..l });
-        self.metrics_flags.set_data_changed();
 
         for entry in entries.iter_mut() {
             // TODO: if previous membership is not committed, reject a new change-membership propose.
@@ -228,7 +254,6 @@ impl<NID: NodeId> Engine<NID> {
             self.state.effective_membership = Arc::new(em);
 
             self.commands.push(Command::UpdateMembership { membership: m.clone() });
-            self.metrics_flags.set_cluster_changed();
         }
     }
 
@@ -249,6 +274,7 @@ impl<NID: NodeId> Engine<NID> {
         }
 
         self.state.server_state = server_state;
+        self.commands.push(Command::UpdateServerState { server_state });
     }
 
     /// Check if a raft node is in a state that allows to initialize.
