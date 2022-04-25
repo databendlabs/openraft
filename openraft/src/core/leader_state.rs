@@ -26,6 +26,7 @@ use crate::EntryPayload;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::Update;
 
 /// Volatile state specific to a Raft node in leader state.
@@ -129,9 +130,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                     self.handle_msg(msg).instrument(span).await?;
                 },
 
-                Some(update) = self.core.rx_compaction.recv() => {
-                    tracing::info!("leader recv from rx_compaction: {:?}", update);
-                    self.core.update_snapshot_state(update);
+                Some(internal_msg) = self.core.rx_internal.recv() => {
+                    tracing::info!("leader recv from rx_internal: {:?}", internal_msg);
+                    self.core.handle_internal_msg(internal_msg).await?;
                 }
 
                 Some((event, span)) = self.replication_rx.recv() => {
@@ -199,7 +200,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
         input_entries: &[EntryRef<'p, C>],
         curr: &mut usize,
         cmd: &Command<C::NodeId>,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         // Run leader specific commands or pass non leader specific commands to self.core.
         match cmd {
             Command::Commit { ref upto } => {

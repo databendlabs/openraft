@@ -5,6 +5,7 @@ mod append_entries;
 mod client;
 mod follower_state;
 mod install_snapshot;
+mod internal_msg;
 mod leader_state;
 mod learner_state;
 mod raft_core;
@@ -17,6 +18,7 @@ mod snapshot_state;
 mod vote;
 
 use follower_state::FollowerState;
+pub(crate) use internal_msg::InternalMessage;
 use leader_state::LeaderState;
 use learner_state::LearnerState;
 use raft_core::apply_to_state_machine;
