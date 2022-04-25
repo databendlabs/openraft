@@ -10,7 +10,10 @@ use crate::error::InitializeError;
 use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
+use crate::leader::Leader;
 use crate::membership::EffectiveMembership;
+use crate::raft::VoteRequest;
+use crate::raft::VoteResponse;
 use crate::raft_state::RaftState;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -85,19 +88,18 @@ pub(crate) enum Command<NID: NodeId> {
         n: usize,
     },
 
-    //
-    // --- Draft unimplemented commands:
-    //
-    // TODO:
-    #[allow(dead_code)]
+    // Save vote to storage
     SaveVote {
         vote: Vote<NID>,
     },
-    // TODO:
-    #[allow(dead_code)]
+
+    // Send vote to all other members
     SendVote {
-        vote: Vote<NID>,
+        vote_req: VoteRequest<NID>,
     },
+    //
+    // --- Draft unimplemented commands:
+    //
 
     // TODO:
     #[allow(dead_code)]
@@ -182,6 +184,91 @@ impl<NID: NodeId> Engine<NID> {
         Ok(())
     }
 
+    /// Start to elect this node as leader
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn elect(&mut self) {
+        // init election
+        self.state.vote = Vote::new(self.state.vote.term + 1, self.id);
+        self.state.leader = Some(Leader::new());
+
+        // Safe unwrap()
+        let leader = self.state.leader.as_mut().unwrap();
+        leader.grant_vote_by(self.id);
+        let quorum_granted = leader.is_granted_by(&self.state.effective_membership.membership);
+
+        // Fast-path: if there is only one node in the cluster.
+
+        if quorum_granted {
+            self.state.vote.commit();
+            self.commands.push(Command::SaveVote { vote: self.state.vote });
+
+            // TODO: For compatibility. remove it. The runtime does not need to know about server state.
+            self.set_server_state(ServerState::Leader);
+            return;
+        }
+
+        // Slow-path: send vote request, let a quorum grant it.
+
+        self.commands.push(Command::SaveVote { vote: self.state.vote });
+        self.commands.push(Command::SendVote {
+            vote_req: VoteRequest::new(self.state.vote, self.state.last_log_id),
+        });
+
+        // TODO: For compatibility. remove it. The runtime does not need to know about server state.
+        self.set_server_state(ServerState::Candidate);
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn handle_vote_resp(&mut self, target: NID, resp: VoteResponse<NID>) {
+        // If this node is no longer a leader, just ignore the delayed vote_resp.
+        let leader = match &mut self.state.leader {
+            None => return,
+            Some(l) => l,
+        };
+
+        // A response of an old vote request. ignore.
+        if resp.vote < self.state.vote {
+            return;
+        }
+
+        // If peer's vote is greater than current vote, revert to follower state.
+        if resp.vote > self.state.vote {
+            // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `vote`.
+            //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
+            //           election.
+            if self.state.effective_membership.all_members().contains(&self.id) {
+                self.set_server_state(ServerState::Follower);
+            } else {
+                self.set_server_state(ServerState::Learner);
+            }
+
+            self.state.vote = resp.vote;
+            self.state.leader = None;
+            self.commands.push(Command::SaveVote { vote: self.state.vote });
+            return;
+        }
+
+        if resp.vote_granted {
+            leader.grant_vote_by(target);
+
+            let quorum_granted = leader.is_granted_by(&self.state.effective_membership.membership);
+            if quorum_granted {
+                tracing::debug!("quorum granted vote");
+
+                self.state.vote.commit();
+                // Saving the vote that is granted by a quorum, AKA committed vote, is not necessary by original raft.
+                // Openraft insists doing this because:
+                // - Voting is not in the hot path, thus no performance penalty.
+                // - Leadership won't be lost if a leader restarted quick enough.
+                self.commands.push(Command::SaveVote { vote: self.state.vote });
+
+                self.set_server_state(ServerState::Leader);
+            }
+        }
+
+        // Seen a higher log. Keep waiting.
+    }
+
     /// Update the state for a new log entry to append. Update effective membership if the payload contains
     /// membership config.
     ///
@@ -231,11 +318,6 @@ impl<NID: NodeId> Engine<NID> {
     //     todo!()
     // }
     //
-    // /// Trigger elect
-    // pub(crate) fn elect(&mut self) -> Result<Vec<AlgoCmd<NID>>, Infallible> {
-    //     todo!()
-    // }
-    //
     // // --- raft protocol API ---
     //
     // //
@@ -243,7 +325,6 @@ impl<NID: NodeId> Engine<NID> {
     // pub(crate) fn handle_append_entries() {}
     // pub(crate) fn handle_install_snapshot() {}
     //
-    // pub(crate) fn handle_vote_resp() {}
     // pub(crate) fn handle_append_entries_resp() {}
     // pub(crate) fn handle_install_snapshot_resp() {}
 

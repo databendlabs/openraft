@@ -13,7 +13,6 @@ use crate::summary::MessageSummary;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
-use crate::StorageError;
 use crate::Update;
 
 /// Volatile state specific to a Raft node in learner state.
@@ -113,7 +112,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
         input_entries: &[EntryRef<'p, C>],
         curr: &mut usize,
         cmd: &Command<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), Fatal<C::NodeId>> {
         // A learner has no special cmd impl, pass all to core.
         self.core.run_command(input_entries, curr, cmd).await
     }
@@ -123,7 +122,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Learner
     pub(crate) async fn run_engine_commands<'p>(
         &mut self,
         input_entries: &[EntryRef<'p, C>],
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), Fatal<C::NodeId>> {
         self.core.engine.update_metrics_flags();
 
         let mut curr = 0;
