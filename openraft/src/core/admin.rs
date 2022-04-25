@@ -13,6 +13,7 @@ use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
 use crate::error::ClientWriteError;
 use crate::error::EmptyMembership;
+use crate::error::Fatal;
 use crate::error::InProgress;
 use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
@@ -32,7 +33,6 @@ use crate::Node;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
-use crate::StorageError;
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
     /// Handle the admin `init_with_config` command.
@@ -161,7 +161,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         blocking: bool,
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), Fatal<C::NodeId>> {
         let members = change_members
             .apply_to(self.core.engine.state.effective_membership.membership.get_configs().last().unwrap());
         // Ensure cluster will have at least one node.
@@ -276,7 +276,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         payload: EntryPayload<C>,
         resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), Fatal<C::NodeId>> {
         let mut entry_refs = [EntryRef::new(&payload)];
         // TODO: it should returns membership config error etc. currently this is done by the caller.
         self.core.engine.leader_append_entries(&mut entry_refs);
@@ -291,10 +291,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         Ok(())
     }
 
-    async fn run_engine_commands<'p>(
-        &mut self,
-        input_entries: &[EntryRef<'p, C>],
-    ) -> Result<(), StorageError<C::NodeId>> {
+    async fn run_engine_commands<'p>(&mut self, input_entries: &[EntryRef<'p, C>]) -> Result<(), Fatal<C::NodeId>> {
         self.core.engine.update_metrics_flags();
 
         let mut curr = 0;

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::engine::LogIdList;
+use crate::leader::Leader;
 use crate::membership::EffectiveMembership;
 use crate::raft_types::RaftLogId;
 use crate::LogId;
@@ -39,6 +40,20 @@ pub struct RaftState<NID: NodeId> {
     // --
     // -- volatile fields: they are not persisted.
     // --
+    /// The state a leader would have.
+    ///
+    /// In openraft there are only two state for a server:
+    /// Leader and follower:
+    ///
+    /// - A leader is able to vote(candidate in original raft) and is able to propose new log if its vote is granted by
+    ///   quorum(leader in original raft).
+    ///
+    ///   In this way the leadership won't be lost when it sees a higher `vote` and needs upgrade its `vote`.
+    ///
+    /// - A follower will just receive replication from a leader. A follower that is one of the member will be able to
+    ///   become leader. A follower that is not a member is just a learner.
+    pub leader: Option<Leader<NID>>,
+
     /// The log id of the last known committed entry.
     ///
     /// - Committed means: a log that is replicated to a quorum of the cluster and it is of the term of the leader.

@@ -765,7 +765,9 @@ impl<NID: NodeId> MessageSummary for AppendEntriesResponse<NID> {
 }
 
 /// An RPC sent by candidates to gather votes (§5.2).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[derive(PartialEq, Eq)]
+#[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VoteRequest<NID: NodeId> {
     pub vote: Vote<NID>,
@@ -785,9 +787,11 @@ impl<NID: NodeId> VoteRequest<NID> {
 }
 
 /// The response to a `VoteRequest`.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VoteResponse<NID: NodeId> {
+    /// vote after a node handling vote-reqest.
+    /// Thus `resp.vote >= req.vote` always holds.
     pub vote: Vote<NID>,
 
     /// Will be true if the candidate received a vote from the responder.

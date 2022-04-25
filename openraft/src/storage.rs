@@ -255,8 +255,7 @@ where C: RaftTypeConfig
             effective_membership: Arc::new(membership),
 
             // -- volatile fields: they are not persisted.
-
-            // committed log id does not need to be persisted.
+            leader: None,
             committed: None,
             server_state: Default::default(),
         })

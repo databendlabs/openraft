@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tokio::time::sleep_until;
 use tokio::time::Duration;
 use tokio::time::Instant;
 use tracing::trace_span;
@@ -18,7 +19,6 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
-use crate::core::CandidateState;
 use crate::core::FollowerState;
 use crate::core::LeaderState;
 use crate::core::LearnerState;
@@ -28,6 +28,7 @@ use crate::core::SnapshotUpdate;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::entry::EntryRef;
+use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
@@ -37,6 +38,8 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
+use crate::raft::VoteRequest;
+use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
@@ -46,6 +49,7 @@ use crate::LogId;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
+use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -58,6 +62,11 @@ pub trait MetricsProvider<NID: NodeId> {
         None
     }
 }
+
+/// A dummy metrics provider that always report None as the leader metrics
+pub(crate) struct NonLeaderMetrics {}
+
+impl<NID: NodeId> MetricsProvider<NID> for NonLeaderMetrics {}
 
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
@@ -232,7 +241,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         loop {
             match &self.engine.state.server_state {
                 ServerState::Leader => LeaderState::new(self).run().await?,
-                ServerState::Candidate => CandidateState::new(self).run().await?,
+                ServerState::Candidate => self.candidate_loop().await?,
                 ServerState::Follower => FollowerState::new(self).run().await?,
                 ServerState::Learner => LearnerState::new(self).run().await?,
                 ServerState::Shutdown => {
@@ -562,12 +571,10 @@ where
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
-    // TODO:
-    #[allow(dead_code)]
-    async fn run_engine_commands<'p>(
+    pub(crate) async fn run_engine_commands<'p>(
         &mut self,
         input_entries: &[EntryRef<'p, C>],
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), Fatal<C::NodeId>> {
         self.engine.update_metrics_flags();
 
         let mut curr = 0;
@@ -579,6 +586,153 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         Ok(())
     }
+
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id), raft_state="candidate"))]
+    async fn candidate_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
+        // report the new state before enter the loop
+        self.report_metrics(Update::Update(None));
+
+        loop {
+            if !self.engine.state.server_state.is_candidate() {
+                return Ok(());
+            }
+
+            self.report_metrics_if_needed(&NonLeaderMetrics {});
+            self.engine.metrics_flags.reset();
+
+            // Generates a new rand value within range.
+            self.update_next_election_timeout(false);
+
+            self.engine.elect();
+            self.run_engine_commands(&[]).await?;
+        }
+    }
+
+    /// Send vote request to other members, collect responses.
+    async fn send_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) -> Result<(), Fatal<C::NodeId>> {
+        // Send RPCs to all members in parallel.
+        let mut resp_rx = self.spawn_parallel_vote_requests(vote_req).await;
+
+        // Blocking wait for vote responses.
+        loop {
+            if !self.engine.state.server_state.is_candidate() {
+                return Ok(());
+            }
+
+            let timeout_fut = sleep_until(self.get_next_election_timeout());
+
+            tokio::select! {
+                _ = timeout_fut => return Ok(()), // This election has timed-out. Leave to the caller to decide what to do.
+
+                Some((resp, target)) = resp_rx.recv() => {
+                    self.handle_vote_resp(resp, target).await?;
+                },
+
+                Some((msg, span)) = self.rx_api.recv() => {
+                    self.candidate_handle_msg(msg).instrument(span).await?;
+                },
+
+                Some(update) = self.rx_compaction.recv() => self.update_snapshot_state(update),
+
+                Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
+            }
+        }
+    }
+
+    /// Spawn parallel vote requests to all cluster members.
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn spawn_parallel_vote_requests(
+        &mut self,
+        vote_req: &VoteRequest<C::NodeId>,
+    ) -> mpsc::Receiver<(VoteResponse<C::NodeId>, C::NodeId)> {
+        let members = self.engine.state.effective_membership.all_members();
+        let (tx, rx) = mpsc::channel(members.len());
+
+        for member in members.iter() {
+            let target = *member;
+
+            if target == self.id {
+                continue;
+            }
+
+            let req = vote_req.clone();
+            let target_node = self.engine.state.effective_membership.get_node(&target).cloned();
+            let mut network = self.network.connect(target, target_node.as_ref()).await;
+            let tx_inner = tx.clone();
+
+            let _ = tokio::spawn(
+                async move {
+                    let res = network.send_vote(req).await;
+
+                    match res {
+                        Ok(vote_resp) => {
+                            let _ = tx_inner.send((vote_resp, target)).await;
+                        }
+                        Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
+                    }
+                }
+                .instrument(tracing::debug_span!("send_vote_req", target = display(target))),
+            );
+        }
+        rx
+    }
+
+    /// Handle response from a vote request sent to a peer.
+    #[tracing::instrument(level = "debug", skip(self, resp))]
+    async fn handle_vote_resp(
+        &mut self,
+        resp: VoteResponse<C::NodeId>,
+        target: C::NodeId,
+    ) -> Result<(), Fatal<C::NodeId>> {
+        tracing::debug!(
+            ?resp,
+            target=display(target),
+            %self.engine.state.vote,
+            ?self.engine.state.last_log_id,
+            "recv vote response");
+
+        self.engine.handle_vote_resp(target, resp);
+        self.run_engine_commands(&[]).await?;
+
+        Ok(())
+    }
+
+    // TODO: when Engine is finished, only one xxx_handle_msg() will be needed:
+    //       E.g. remove handle_msg() from LeaderState, FollowerState etc. But only keep this one.
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "candidate", id=display(self.id)))]
+    async fn candidate_handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
+        tracing::debug!("recv from rx_api: {}", msg.summary());
+        match msg {
+            RaftMsg::AppendEntries { rpc, tx } => {
+                let _ = tx.send(self.handle_append_entries_request(rpc).await.extract_fatal()?);
+            }
+            RaftMsg::RequestVote { rpc, tx } => {
+                let _ = tx.send(self.handle_vote_request(rpc).await.extract_fatal()?);
+            }
+            RaftMsg::InstallSnapshot { rpc, tx } => {
+                let _ = tx.send(self.handle_install_snapshot_request(rpc).await.extract_fatal()?);
+            }
+            RaftMsg::CheckIsLeaderRequest { tx } => {
+                self.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+                self.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::Initialize { tx, .. } => {
+                self.reject_init_with_config(tx);
+            }
+            RaftMsg::AddLearner { tx, .. } => {
+                self.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::ChangeMembership { tx, .. } => {
+                self.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::ExternalRequest { req } => {
+                req(ServerState::Candidate, &mut self.storage, &mut self.network);
+            }
+        };
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -588,11 +742,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
         input_ref_entries: &[EntryRef<'p, C>],
         cur: &mut usize,
         cmd: &Command<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), Fatal<C::NodeId>> {
         // Run non-role-specific command.
         match cmd {
             Command::UpdateServerState { .. } => {
-                // This is not used. server state is already set by the engine.
+                // TODO: This is not used. server state is already set by the engine.
                 // This only used for notifying that metrics changed and probably will be removed when Engine is
                 // finished.
             }
@@ -610,11 +764,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 self.storage.append_to_log(&entry_refs).await?
             }
             Command::MoveInputCursorBy { n } => *cur += n,
-            Command::SaveVote { .. } => {}
+            Command::SaveVote { vote } => {
+                self.storage.save_vote(vote).await?;
+            }
             Command::PurgeAppliedLog { .. } => {}
             Command::DeleteConflictLog { .. } => {}
             Command::BuildSnapshot { .. } => {}
-            Command::SendVote { .. } => {}
+            Command::SendVote { vote_req } => {
+                self.send_vote_requests(vote_req).await?;
+            }
             Command::Commit { .. } => {}
             Command::ReplicateInputEntries { .. } => {
                 unreachable!("leader specific command")

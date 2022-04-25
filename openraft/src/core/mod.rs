@@ -2,7 +2,6 @@
 
 mod admin;
 mod append_entries;
-mod candidate_state;
 mod client;
 mod follower_state;
 mod install_snapshot;
@@ -17,7 +16,6 @@ mod server_state;
 mod snapshot_state;
 mod vote;
 
-use candidate_state::CandidateState;
 use follower_state::FollowerState;
 use leader_state::LeaderState;
 use learner_state::LearnerState;
