@@ -11,7 +11,6 @@ use crate::core::ServerState;
 use crate::engine::Command;
 use crate::entry::EntryRef;
 use crate::error::ClientWriteError;
-use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
 use crate::raft::ClientWriteResponse;
@@ -153,26 +152,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
-            RaftMsg::AppendEntries { rpc, tx } => {
-                let res = self.core.handle_append_entries_request(rpc).await.extract_fatal()?;
-                let _ = tx.send(res);
-            }
-            RaftMsg::RequestVote { rpc, tx } => {
-                let res = self.core.handle_vote_request(rpc).await.extract_fatal()?;
-                let _ = tx.send(res);
-            }
-            RaftMsg::InstallSnapshot { rpc, tx } => {
-                let res = self.core.handle_install_snapshot_request(rpc).await.extract_fatal()?;
-                let _ = tx.send(res);
-            }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 self.handle_check_is_leader_request(tx).await;
             }
             RaftMsg::ClientWriteRequest { rpc, tx } => {
                 self.write_entry(rpc.payload, Some(tx)).await?;
-            }
-            RaftMsg::Initialize { tx, .. } => {
-                self.core.reject_init_with_config(tx);
             }
             RaftMsg::AddLearner { id, node, tx, blocking } => {
                 self.add_learner(id, node, tx, blocking).await;
@@ -182,9 +166,13 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 blocking,
                 turn_to_learner,
                 tx,
-            } => self.change_membership(members, blocking, turn_to_learner, tx).await?,
-            RaftMsg::ExternalRequest { req } => {
-                req(ServerState::Leader, &mut self.core.storage, &mut self.core.network);
+            } => {
+                self.change_membership(members, blocking, turn_to_learner, tx).await?;
+            }
+
+            _ => {
+                // Call the default handler for non-leader-specific msg
+                self.core.handle_api_msg(msg).await?;
             }
         };
 

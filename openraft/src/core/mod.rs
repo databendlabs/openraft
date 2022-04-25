@@ -3,11 +3,9 @@
 mod admin;
 mod append_entries;
 mod client;
-mod follower_state;
 mod install_snapshot;
 mod internal_msg;
 mod leader_state;
-mod learner_state;
 mod raft_core;
 pub(crate) mod replication;
 mod replication_state;
@@ -17,10 +15,8 @@ mod server_state;
 mod snapshot_state;
 mod vote;
 
-use follower_state::FollowerState;
 pub(crate) use internal_msg::InternalMessage;
 use leader_state::LeaderState;
-use learner_state::LearnerState;
 use raft_core::apply_to_state_machine;
 use raft_core::purge_applied_logs;
 use raft_core::MetricsProvider;

@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::mem::swap;
 use std::option::Option::None;
@@ -6,7 +5,6 @@ use std::option::Option::None;
 use tracing::warn;
 
 use crate::core::LeaderState;
-use crate::core::LearnerState;
 use crate::core::ServerState;
 use crate::entry::EntryRef;
 use crate::error::AddLearnerError;
@@ -15,7 +13,6 @@ use crate::error::ClientWriteError;
 use crate::error::EmptyMembership;
 use crate::error::Fatal;
 use crate::error::InProgress;
-use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
 use crate::metrics::RemoveTarget;
@@ -28,32 +25,10 @@ use crate::runtime::RaftRuntime;
 use crate::versioned::Updatable;
 use crate::EntryPayload;
 use crate::LogId;
-use crate::Membership;
 use crate::Node;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LearnerState<'a, C, N, S> {
-    /// Handle the admin `init_with_config` command.
-    ///
-    /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(0,0)`.
-    /// See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub(crate) async fn handle_init_with_config(
-        &mut self,
-        member_nodes: BTreeMap<C::NodeId, Option<Node>>,
-    ) -> Result<(), InitializeError<C::NodeId>> {
-        let membership = Membership::try_from(member_nodes)?;
-        let payload = EntryPayload::<C>::Membership(membership);
-
-        let mut entry_refs = [EntryRef::new(&payload)];
-        self.core.engine.initialize(&mut entry_refs)?;
-        self.run_engine_commands(&entry_refs).await?;
-
-        Ok(())
-    }
-}
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     // add node into learner,return true if the node is already a member or learner

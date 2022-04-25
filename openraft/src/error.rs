@@ -156,7 +156,9 @@ impl<NID: NodeId> TryFrom<AddLearnerError<NID>> for ForwardToLeader<NID> {
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(thiserror::Error)]
+#[derive(derive_more::TryInto)]
 #[serde(bound = "")]
 pub enum InitializeError<NID: NodeId> {
     #[error(transparent)]
