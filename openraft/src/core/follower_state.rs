@@ -62,7 +62,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Followe
                     self.handle_msg(msg).instrument(span).await?;
                 },
 
-                Some(update) = self.core.rx_compaction.recv() => self.core.update_snapshot_state(update),
+                Some(internal_msg) = self.core.rx_internal.recv() => self.core.handle_internal_msg(internal_msg).await?,
 
                 Ok(_) = &mut self.core.rx_shutdown => self.core.set_target_state(ServerState::Shutdown),
             }

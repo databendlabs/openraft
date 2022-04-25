@@ -20,6 +20,7 @@ use tracing::Span;
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::core::FollowerState;
+use crate::core::InternalMessage;
 use crate::core::LeaderState;
 use crate::core::LearnerState;
 use crate::core::ServerState;
@@ -98,8 +99,9 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The duration until the next election timeout.
     pub(crate) next_election_timeout: Option<Instant>,
 
-    tx_compaction: mpsc::Sender<SnapshotUpdate<C>>,
-    pub(crate) rx_compaction: mpsc::Receiver<SnapshotUpdate<C>>,
+    tx_internal: mpsc::Sender<InternalMessage<C::NodeId>>,
+
+    pub(crate) rx_internal: mpsc::Receiver<InternalMessage<C::NodeId>>,
 
     pub(crate) rx_api: mpsc::UnboundedReceiver<(RaftMsg<C, N, S>, Span)>,
 
@@ -135,8 +137,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             last_heartbeat: None,
             next_election_timeout: None,
 
-            tx_compaction,
-            rx_compaction,
+            tx_internal: tx_compaction,
+            rx_internal: rx_compaction,
 
             rx_api,
 
@@ -383,9 +385,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub(crate) async fn handle_internal_msg(
+        &mut self,
+        msg: InternalMessage<C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        match msg {
+            InternalMessage::SnapshotUpdate(update) => {
+                self.update_snapshot_state(update);
+            }
+            InternalMessage::VoteResponse { target, vote_resp } => {
+                self.handle_vote_resp(vote_resp, target).await?;
+            }
+        }
+        Ok(())
+    }
+
     /// Update the system's snapshot state based on the given data.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn update_snapshot_state(&mut self, update: SnapshotUpdate<C>) {
+    pub(crate) fn update_snapshot_state(&mut self, update: SnapshotUpdate<C::NodeId>) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
             self.snapshot_last_log_id = Some(log_id);
             self.engine.metrics_flags.set_data_changed();
@@ -428,7 +446,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let mut builder = self.storage.get_snapshot_builder().await;
         let (handle, reg) = AbortHandle::new_pair();
         let (chan_tx, _) = broadcast::channel(1);
-        let tx_compaction = self.tx_compaction.clone();
+        let tx_internal = self.tx_internal.clone();
         self.snapshot_state = Some(SnapshotState::Snapshotting {
             handle,
             sender: chan_tx.clone(),
@@ -441,17 +459,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 match res {
                     Ok(res) => match res {
                         Ok(snapshot) => {
-                            let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.meta.last_log_id));
+                            let _ = tx_internal.try_send(InternalMessage::SnapshotUpdate(
+                                SnapshotUpdate::SnapshotComplete(snapshot.meta.last_log_id),
+                            ));
                             // This will always succeed.
                             let _ = chan_tx.send(snapshot.meta.last_log_id.index);
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");
-                            let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotFailed);
+                            let _ =
+                                tx_internal.try_send(InternalMessage::SnapshotUpdate(SnapshotUpdate::SnapshotFailed));
                         }
                     },
                     Err(_aborted) => {
-                        let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotFailed);
+                        let _ = tx_internal.try_send(InternalMessage::SnapshotUpdate(SnapshotUpdate::SnapshotFailed));
                     }
                 }
             }
@@ -574,7 +595,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) async fn run_engine_commands<'p>(
         &mut self,
         input_entries: &[EntryRef<'p, C>],
-    ) -> Result<(), Fatal<C::NodeId>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         self.engine.update_metrics_flags();
 
         let mut curr = 0;
@@ -605,48 +626,38 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             self.engine.elect();
             self.run_engine_commands(&[]).await?;
-        }
-    }
 
-    /// Send vote request to other members, collect responses.
-    async fn send_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) -> Result<(), Fatal<C::NodeId>> {
-        // Send RPCs to all members in parallel.
-        let mut resp_rx = self.spawn_parallel_vote_requests(vote_req).await;
+            loop {
+                if !self.engine.state.server_state.is_candidate() {
+                    return Ok(());
+                }
 
-        // Blocking wait for vote responses.
-        loop {
-            if !self.engine.state.server_state.is_candidate() {
-                return Ok(());
-            }
+                let timeout_fut = sleep_until(self.get_next_election_timeout());
 
-            let timeout_fut = sleep_until(self.get_next_election_timeout());
+                tokio::select! {
+                    _ = timeout_fut => {
+                        // This election has timed-out. Leave to the caller to decide what to do.
+                        break;
+                    },
 
-            tokio::select! {
-                _ = timeout_fut => return Ok(()), // This election has timed-out. Leave to the caller to decide what to do.
+                    Some((msg, span)) = self.rx_api.recv() => {
+                        self.candidate_handle_msg(msg).instrument(span).await?;
+                    },
 
-                Some((resp, target)) = resp_rx.recv() => {
-                    self.handle_vote_resp(resp, target).await?;
-                },
+                    Some(internal_msg) = self.rx_internal.recv() => {
+                        self.handle_internal_msg(internal_msg).await?;
+                    },
 
-                Some((msg, span)) = self.rx_api.recv() => {
-                    self.candidate_handle_msg(msg).instrument(span).await?;
-                },
-
-                Some(update) = self.rx_compaction.recv() => self.update_snapshot_state(update),
-
-                Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
+                    Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
+                }
             }
         }
     }
 
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn spawn_parallel_vote_requests(
-        &mut self,
-        vote_req: &VoteRequest<C::NodeId>,
-    ) -> mpsc::Receiver<(VoteResponse<C::NodeId>, C::NodeId)> {
+    async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) {
         let members = self.engine.state.effective_membership.all_members();
-        let (tx, rx) = mpsc::channel(members.len());
 
         for member in members.iter() {
             let target = *member;
@@ -658,7 +669,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             let req = vote_req.clone();
             let target_node = self.engine.state.effective_membership.get_node(&target).cloned();
             let mut network = self.network.connect(target, target_node.as_ref()).await;
-            let tx_inner = tx.clone();
+            let tx_inner = self.tx_internal.clone();
 
             let _ = tokio::spawn(
                 async move {
@@ -666,7 +677,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
                     match res {
                         Ok(vote_resp) => {
-                            let _ = tx_inner.send((vote_resp, target)).await;
+                            let _ = tx_inner.send(InternalMessage::VoteResponse { target, vote_resp }).await;
                         }
                         Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
                     }
@@ -674,7 +685,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 .instrument(tracing::debug_span!("send_vote_req", target = display(target))),
             );
         }
-        rx
     }
 
     /// Handle response from a vote request sent to a peer.
@@ -683,7 +693,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         resp: VoteResponse<C::NodeId>,
         target: C::NodeId,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(
             ?resp,
             target=display(target),
@@ -742,7 +752,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
         input_ref_entries: &[EntryRef<'p, C>],
         cur: &mut usize,
         cmd: &Command<C::NodeId>,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
+        // TODO: run_command does not need to return Fatal.
         // Run non-role-specific command.
         match cmd {
             Command::UpdateServerState { .. } => {
@@ -771,7 +782,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::DeleteConflictLog { .. } => {}
             Command::BuildSnapshot { .. } => {}
             Command::SendVote { vote_req } => {
-                self.send_vote_requests(vote_req).await?;
+                self.spawn_parallel_vote_requests(vote_req).await;
             }
             Command::Commit { .. } => {}
             Command::ReplicateInputEntries { .. } => {
