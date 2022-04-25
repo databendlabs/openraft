@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::mem::swap;
 use std::sync::Arc;
 
@@ -19,10 +20,8 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
-use crate::core::FollowerState;
 use crate::core::InternalMessage;
 use crate::core::LeaderState;
-use crate::core::LearnerState;
 use crate::core::ServerState;
 use crate::core::SnapshotState;
 use crate::core::SnapshotUpdate;
@@ -33,7 +32,6 @@ use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
-use crate::error::NotAllowed;
 use crate::membership::EffectiveMembership;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
@@ -46,7 +44,9 @@ use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
 use crate::versioned::Versioned;
 use crate::Entry;
+use crate::EntryPayload;
 use crate::LogId;
+use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
@@ -122,7 +122,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> JoinHandle<Result<(), Fatal<C::NodeId>>> {
         //
 
-        let (tx_compaction, rx_compaction) = mpsc::channel(1);
+        let (tx_internal, rx_internal) = mpsc::channel(1024);
 
         let this = Self {
             id,
@@ -137,8 +137,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             last_heartbeat: None,
             next_election_timeout: None,
 
-            tx_internal: tx_compaction,
-            rx_internal: rx_compaction,
+            tx_internal,
+            rx_internal,
 
             rx_api,
 
@@ -146,6 +146,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             rx_shutdown,
         };
+
         tokio::spawn(this.main().instrument(trace_span!("spawn").or_current()))
     }
 
@@ -244,8 +245,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             match &self.engine.state.server_state {
                 ServerState::Leader => LeaderState::new(self).run().await?,
                 ServerState::Candidate => self.candidate_loop().await?,
-                ServerState::Follower => FollowerState::new(self).run().await?,
-                ServerState::Learner => LearnerState::new(self).run().await?,
+                ServerState::Follower => self.follower_loop().await?,
+                ServerState::Learner => self.learner_loop().await?,
                 ServerState::Shutdown => {
                     tracing::info!("node has shutdown");
                     return Ok(());
@@ -310,6 +311,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         if let Err(err) = res {
             tracing::error!(error=%err, id=display(self.id), "error reporting metrics");
         }
+    }
+
+    /// Handle the admin `init_with_config` command.
+    ///
+    /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(0,0)`.
+    /// See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) async fn handle_initialize(
+        &mut self,
+        member_nodes: BTreeMap<C::NodeId, Option<Node>>,
+    ) -> Result<(), InitializeError<C::NodeId>> {
+        let membership = Membership::try_from(member_nodes)?;
+        let payload = EntryPayload::<C>::Membership(membership);
+
+        let mut entry_refs = [EntryRef::new(&payload)];
+        self.engine.initialize(&mut entry_refs)?;
+        self.run_engine_commands(&entry_refs).await?;
+
+        Ok(())
     }
 
     /// Save the Raft node's current hard state to disk.
@@ -480,15 +500,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         );
     }
 
-    /// Reject an init config request due to the Raft node being in a state which prohibits the request.
-    #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(crate) fn reject_init_with_config(&self, tx: oneshot::Sender<Result<(), InitializeError<C::NodeId>>>) {
-        let _ = tx.send(Err(InitializeError::NotAllowed(NotAllowed {
-            last_log_id: self.engine.state.last_log_id,
-            vote: self.engine.state.vote,
-        })));
-    }
-
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(crate) fn reject_with_forward_to_leader<T, E>(&self, tx: RaftRespTx<T, E>)
@@ -641,7 +652,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     },
 
                     Some((msg, span)) = self.rx_api.recv() => {
-                        self.candidate_handle_msg(msg).instrument(span).await?;
+                        self.handle_api_msg(msg).instrument(span).await?;
                     },
 
                     Some(internal_msg) = self.rx_internal.recv() => {
@@ -650,6 +661,66 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
                     Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
                 }
+            }
+        }
+    }
+
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id), raft_state="follower"))]
+    async fn follower_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
+        // report the new state before enter the loop
+        self.report_metrics(Update::Update(None));
+
+        loop {
+            if !self.engine.state.server_state.is_follower() {
+                return Ok(());
+            }
+
+            self.report_metrics_if_needed(&NonLeaderMetrics {});
+            self.engine.metrics_flags.reset();
+
+            let election_timeout = sleep_until(self.get_next_election_timeout()); // Value is updated as heartbeats are received.
+
+            tokio::select! {
+                // If an election timeout is hit, then we need to transition to candidate.
+                _ = election_timeout => {
+                    tracing::debug!("timeout to recv a event, change to CandidateState");
+                    self.set_target_state(ServerState::Candidate)
+                },
+
+                Some((msg, span)) = self.rx_api.recv() => {
+                    self.handle_api_msg(msg).instrument(span).await?;
+                },
+
+                Some(internal_msg) = self.rx_internal.recv() => self.handle_internal_msg(internal_msg).await?,
+
+                Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
+            }
+        }
+    }
+
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id), raft_state="learner"))]
+    async fn learner_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
+        // report the new state before enter the loop
+        self.report_metrics(Update::Update(None));
+
+        loop {
+            if !self.engine.state.server_state.is_learner() {
+                return Ok(());
+            }
+
+            self.report_metrics_if_needed(&NonLeaderMetrics {});
+            self.engine.metrics_flags.reset();
+
+            tokio::select! {
+                Some((msg, span)) = self.rx_api.recv() => {
+                    self.handle_api_msg(msg).instrument(span).await?;
+                },
+
+                Some(internal_msg) = self.rx_internal.recv() => {
+                    self.handle_internal_msg(internal_msg).await?;
+                },
+
+                Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
             }
         }
     }
@@ -707,11 +778,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
-    // TODO: when Engine is finished, only one xxx_handle_msg() will be needed:
-    //       E.g. remove handle_msg() from LeaderState, FollowerState etc. But only keep this one.
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = "candidate", id=display(self.id)))]
-    async fn candidate_handle_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
+    // TODO: make it private
+    #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
+    pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
+
+        let is_leader = || self.engine.state.server_state == ServerState::Leader;
+
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
                 let _ = tx.send(self.handle_append_entries_request(rpc).await.extract_fatal()?);
@@ -723,22 +796,38 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 let _ = tx.send(self.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
-                self.reject_with_forward_to_leader(tx);
+                if is_leader() {
+                    unimplemented!("can not handle CheckIsLeaderRequest");
+                } else {
+                    self.reject_with_forward_to_leader(tx);
+                }
             }
             RaftMsg::ClientWriteRequest { rpc: _, tx } => {
-                self.reject_with_forward_to_leader(tx);
+                if is_leader() {
+                    unimplemented!("can not handle ClientWriteRequest");
+                } else {
+                    self.reject_with_forward_to_leader(tx);
+                }
             }
-            RaftMsg::Initialize { tx, .. } => {
-                self.reject_init_with_config(tx);
+            RaftMsg::Initialize { members, tx } => {
+                let _ = tx.send(self.handle_initialize(members).await.extract_fatal()?);
             }
             RaftMsg::AddLearner { tx, .. } => {
-                self.reject_with_forward_to_leader(tx);
+                if is_leader() {
+                    unimplemented!("can not handle this AddLearner");
+                } else {
+                    self.reject_with_forward_to_leader(tx);
+                }
             }
             RaftMsg::ChangeMembership { tx, .. } => {
-                self.reject_with_forward_to_leader(tx);
+                if is_leader() {
+                    unimplemented!("can not handle ChangeMembership");
+                } else {
+                    self.reject_with_forward_to_leader(tx);
+                }
             }
             RaftMsg::ExternalRequest { req } => {
-                req(ServerState::Candidate, &mut self.storage, &mut self.network);
+                req(self.engine.state.server_state, &mut self.storage, &mut self.network);
             }
         };
         Ok(())
