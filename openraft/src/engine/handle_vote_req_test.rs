@@ -45,7 +45,6 @@ fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
         vote: Vote::new(1, 2),
         last_log_id: None,
     });
-    eng.update_metrics_flags();
 
     assert_eq!(
         VoteResponse {
@@ -82,7 +81,6 @@ fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
         vote: Vote::new(3, 2),
         last_log_id: Some(log_id(1, 3)),
     });
-    eng.update_metrics_flags();
 
     assert_eq!(
         VoteResponse {
@@ -120,7 +118,6 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
         vote: Vote::new(2, 1),
         last_log_id: Some(log_id(2, 3)),
     });
-    eng.update_metrics_flags();
 
     assert_eq!(
         VoteResponse {
@@ -167,7 +164,6 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
         vote: Vote::new(3, 1),
         last_log_id: Some(log_id(2, 3)),
     });
-    eng.update_metrics_flags();
 
     assert_eq!(
         VoteResponse {
@@ -216,7 +212,6 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
             vote: Vote::new(3, 1),
             last_log_id: Some(log_id(2, 3)),
         });
-        eng.update_metrics_flags();
 
         assert_eq!(st, eng.state.server_state);
         assert_eq!(

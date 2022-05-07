@@ -609,8 +609,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         input_entries: &[EntryRef<'p, C>],
     ) -> Result<(), StorageError<C::NodeId>> {
-        self.engine.update_metrics_flags();
-
         let mut curr = 0;
         let mut commands = vec![];
         swap(&mut self.engine.commands, &mut commands);
