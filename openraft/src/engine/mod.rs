@@ -4,6 +4,8 @@ mod engine;
 #[cfg(test)]
 mod elect_test;
 #[cfg(test)]
+mod handle_vote_req_test;
+#[cfg(test)]
 mod handle_vote_resp_test;
 #[cfg(test)]
 mod initialize_test;

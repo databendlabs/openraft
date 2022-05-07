@@ -13,7 +13,6 @@ mod replication_state;
 mod replication_state_test;
 mod server_state;
 mod snapshot_state;
-mod vote;
 
 pub(crate) use internal_msg::InternalMessage;
 use leader_state::LeaderState;

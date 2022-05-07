@@ -787,7 +787,7 @@ impl<NID: NodeId> VoteRequest<NID> {
 }
 
 /// The response to a `VoteRequest`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VoteResponse<NID: NodeId> {
     /// vote after a node handling vote-reqest.

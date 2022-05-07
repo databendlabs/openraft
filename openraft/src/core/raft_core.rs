@@ -32,6 +32,7 @@ use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
+use crate::error::VoteError;
 use crate::membership::EffectiveMembership;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
@@ -368,19 +369,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Set a value for the next election timeout.
-    ///
-    /// If `heartbeat=true`, then also update the value of `last_heartbeat`.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn update_next_election_timeout(&mut self, heartbeat: bool) {
+    pub(crate) fn update_election_timeout(&mut self) {
         let now = Instant::now();
 
         let t = Duration::from_millis(self.config.new_rand_election_timeout());
         tracing::debug!("update election timeout after: {:?}", t);
 
         self.next_election_timeout = Some(now + t);
-        if heartbeat {
-            self.last_heartbeat = Some(now);
-        }
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub(crate) fn update_last_heartbeat(&mut self) {
+        let now = Instant::now();
+        self.last_heartbeat = Some(now);
     }
 
     /// Update the node's current membership config & save hard state.
@@ -633,7 +635,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.engine.metrics_flags.reset();
 
             // Generates a new rand value within range.
-            self.update_next_election_timeout(false);
+            self.update_election_timeout();
 
             self.engine.elect();
             self.run_engine_commands(&[]).await?;
@@ -758,6 +760,38 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
+    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
+    pub(super) async fn handle_vote_request(
+        &mut self,
+        req: VoteRequest<C::NodeId>,
+    ) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
+        // TODO(xp): Checking last_heartbeat can be removed,
+        //           if we have finished using blank log for heartbeat:
+        //           https://github.com/datafuselabs/openraft/issues/151
+        // Do not respond to the request if we've received a heartbeat within the election timeout minimum.
+        if let Some(inst) = &self.last_heartbeat {
+            let now = Instant::now();
+            let delta = now.duration_since(*inst);
+            if self.config.election_timeout_min >= (delta.as_millis() as u64) {
+                tracing::debug!(
+                    %req.vote,
+                    ?delta,
+                    "rejecting vote request received within election timeout minimum"
+                );
+                return Ok(VoteResponse {
+                    vote: self.engine.state.vote,
+                    vote_granted: false,
+                    last_log_id: self.engine.state.last_log_id,
+                });
+            }
+        }
+
+        let resp = self.engine.handle_vote_req(req);
+        self.run_engine_commands(&[]).await?;
+
+        Ok(resp)
+    }
+
     /// Handle response from a vote request sent to a peer.
     #[tracing::instrument(level = "debug", skip(self, resp))]
     async fn handle_vote_resp(
@@ -866,6 +900,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::MoveInputCursorBy { n } => *cur += n,
             Command::SaveVote { vote } => {
                 self.storage.save_vote(vote).await?;
+            }
+            Command::InstallElectionTimer { .. } => {
+                self.update_election_timeout();
             }
             Command::PurgeAppliedLog { .. } => {}
             Command::DeleteConflictLog { .. } => {}
