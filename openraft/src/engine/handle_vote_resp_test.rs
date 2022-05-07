@@ -46,7 +46,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             vote_granted: true,
             last_log_id: Some(log_id(2, 2)),
         });
-        eng.update_metrics_flags();
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(None, eng.state.leader);
@@ -79,7 +78,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             vote_granted: true,
             last_log_id: Some(log_id(2, 2)),
         });
-        eng.update_metrics_flags();
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(
@@ -117,7 +115,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             vote_granted: true,
             last_log_id: Some(log_id(2, 2)),
         });
-        eng.update_metrics_flags();
 
         assert_eq!(Vote::new(2, 2), eng.state.vote);
         assert_eq!(None, eng.state.leader);
@@ -158,7 +155,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             vote_granted: false,
             last_log_id: Some(log_id(2, 2)),
         });
-        eng.update_metrics_flags();
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(
@@ -196,7 +192,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             vote_granted: true,
             last_log_id: Some(log_id(2, 2)),
         });
-        eng.update_metrics_flags();
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(
@@ -234,7 +229,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             vote_granted: true,
             last_log_id: Some(log_id(2, 2)),
         });
-        eng.update_metrics_flags();
 
         assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
         assert_eq!(

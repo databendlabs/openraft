@@ -37,7 +37,6 @@ fn test_initialize() -> anyhow::Result<()> {
         eng.id = 1;
 
         eng.initialize(&mut entries)?;
-        eng.update_metrics_flags();
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
         assert_eq!(None, eng.state.get_log_id(1));

@@ -42,7 +42,6 @@ fn test_elect() -> anyhow::Result<()> {
         eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m1()));
 
         eng.elect();
-        eng.update_metrics_flags();
 
         assert_eq!(Vote::new_committed(1, 1), eng.state.vote);
         assert_eq!(
@@ -87,7 +86,6 @@ fn test_elect() -> anyhow::Result<()> {
         });
 
         eng.elect();
-        eng.update_metrics_flags();
 
         assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
         assert_eq!(
@@ -127,7 +125,6 @@ fn test_elect() -> anyhow::Result<()> {
         eng.state.last_log_id = Some(log_id(1, 1));
 
         eng.elect();
-        eng.update_metrics_flags();
 
         assert_eq!(Vote::new(1, 1), eng.state.vote);
         assert_eq!(

@@ -133,28 +133,6 @@ impl<NID: NodeId> Engine<NID> {
         }
     }
 
-    /// Update flags for metrics that need to update, according to the queued commands.
-    pub(crate) fn update_metrics_flags(&mut self) {
-        let f = &mut self.metrics_flags;
-
-        for cmd in self.commands.iter() {
-            match cmd {
-                Command::UpdateServerState { .. } => f.set_cluster_changed(),
-                Command::AppendInputEntries { .. } => f.set_data_changed(),
-                Command::Commit { .. } => f.set_data_changed(),
-                Command::ReplicateInputEntries { .. } => {}
-                Command::UpdateMembership { .. } => f.set_cluster_changed(),
-                Command::MoveInputCursorBy { .. } => {}
-                Command::SaveVote { .. } => f.set_data_changed(),
-                Command::SendVote { .. } => {}
-                Command::InstallElectionTimer { .. } => {}
-                Command::PurgeAppliedLog { .. } => f.set_data_changed(),
-                Command::DeleteConflictLog { .. } => f.set_data_changed(),
-                Command::BuildSnapshot { .. } => f.set_data_changed(),
-            }
-        }
-    }
-
     /// Initialize a node by appending the first log.
     ///
     /// - The first log has to be membership config log.
@@ -172,7 +150,7 @@ impl<NID: NodeId> Engine<NID> {
         self.assign_log_ids(entries.iter_mut());
         self.state.extend_log_ids_from_same_leader(entries);
 
-        self.commands.push(Command::AppendInputEntries { range: 0..l });
+        self.push_command(Command::AppendInputEntries { range: 0..l });
 
         let entry = &mut entries[0];
         if let Some(m) = entry.get_membership() {
@@ -182,7 +160,7 @@ impl<NID: NodeId> Engine<NID> {
         }
         self.try_update_membership(entry);
 
-        self.commands.push(Command::MoveInputCursorBy { n: l });
+        self.push_command(Command::MoveInputCursorBy { n: l });
 
         // With the new config, start to elect to become leader
         self.set_server_state(ServerState::Candidate);
@@ -206,7 +184,7 @@ impl<NID: NodeId> Engine<NID> {
 
         if quorum_granted {
             self.state.vote.commit();
-            self.commands.push(Command::SaveVote { vote: self.state.vote });
+            self.push_command(Command::SaveVote { vote: self.state.vote });
 
             // TODO: For compatibility. remove it. The runtime does not need to know about server state.
             self.set_server_state(ServerState::Leader);
@@ -215,8 +193,8 @@ impl<NID: NodeId> Engine<NID> {
 
         // Slow-path: send vote request, let a quorum grant it.
 
-        self.commands.push(Command::SaveVote { vote: self.state.vote });
-        self.commands.push(Command::SendVote {
+        self.push_command(Command::SaveVote { vote: self.state.vote });
+        self.push_command(Command::SendVote {
             vote_req: VoteRequest::new(self.state.vote, self.state.last_log_id),
         });
 
@@ -292,7 +270,7 @@ impl<NID: NodeId> Engine<NID> {
 
             self.state.vote = resp.vote;
             self.state.leader = None;
-            self.commands.push(Command::SaveVote { vote: self.state.vote });
+            self.push_command(Command::SaveVote { vote: self.state.vote });
             return;
         }
 
@@ -308,7 +286,7 @@ impl<NID: NodeId> Engine<NID> {
                 // Openraft insists doing this because:
                 // - Voting is not in the hot path, thus no performance penalty.
                 // - Leadership won't be lost if a leader restarted quick enough.
-                self.commands.push(Command::SaveVote { vote: self.state.vote });
+                self.push_command(Command::SaveVote { vote: self.state.vote });
 
                 self.set_server_state(ServerState::Leader);
             }
@@ -333,7 +311,7 @@ impl<NID: NodeId> Engine<NID> {
         self.assign_log_ids(entries.iter_mut());
         self.state.extend_log_ids_from_same_leader(entries);
 
-        self.commands.push(Command::AppendInputEntries { range: 0..l });
+        self.push_command(Command::AppendInputEntries { range: 0..l });
 
         for entry in entries.iter_mut() {
             // TODO: if previous membership is not committed, reject a new change-membership propose.
@@ -347,14 +325,14 @@ impl<NID: NodeId> Engine<NID> {
             let last_log_id = last.get_log_id();
             self.state.committed = Some(*last_log_id);
             // TODO: only leader need to do this. currently only leader call this method.
-            self.commands.push(Command::Commit { upto: *last_log_id });
+            self.push_command(Command::Commit { upto: *last_log_id });
         }
 
         // TODO: only leader need to do this. currently only leader call this method.
         // still need to replicate to learners
-        self.commands.push(Command::ReplicateInputEntries { range: 0..l });
+        self.push_command(Command::ReplicateInputEntries { range: 0..l });
 
-        self.commands.push(Command::MoveInputCursorBy { n: l });
+        self.push_command(Command::MoveInputCursorBy { n: l });
     }
 
     // --- Draft API ---
@@ -382,7 +360,7 @@ impl<NID: NodeId> Engine<NID> {
             let em = EffectiveMembership::new(Some(*entry.get_log_id()), m.clone());
             self.state.effective_membership = Arc::new(em);
 
-            self.commands.push(Command::UpdateMembership { membership: m.clone() });
+            self.push_command(Command::UpdateMembership { membership: m.clone() });
         }
     }
 
@@ -403,7 +381,7 @@ impl<NID: NodeId> Engine<NID> {
         }
 
         self.state.server_state = server_state;
-        self.commands.push(Command::UpdateServerState { server_state });
+        self.push_command(Command::UpdateServerState { server_state });
     }
 
     /// Check if a raft node is in a state that allows to initialize.
@@ -452,6 +430,23 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     fn push_command(&mut self, cmd: Command<NID>) {
+        // Update flags for metrics that need to update, according to the queued commands.
+        let f = &mut self.metrics_flags;
+        match &cmd {
+            Command::UpdateServerState { .. } => f.set_cluster_changed(),
+            Command::AppendInputEntries { .. } => f.set_data_changed(),
+            Command::Commit { .. } => f.set_data_changed(),
+            Command::ReplicateInputEntries { .. } => {}
+            Command::UpdateMembership { .. } => f.set_cluster_changed(),
+            Command::MoveInputCursorBy { .. } => {}
+            Command::SaveVote { .. } => f.set_data_changed(),
+            Command::SendVote { .. } => {}
+            Command::InstallElectionTimer { .. } => {}
+            Command::PurgeAppliedLog { .. } => f.set_data_changed(),
+            Command::DeleteConflictLog { .. } => f.set_data_changed(),
+            Command::BuildSnapshot { .. } => f.set_data_changed(),
+        }
+
         self.commands.push(cmd)
     }
 }
