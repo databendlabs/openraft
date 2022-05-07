@@ -97,6 +97,11 @@ pub(crate) enum Command<NID: NodeId> {
     SendVote {
         vote_req: VoteRequest<NID>,
     },
+
+    // Install a timer to trigger an election after some `timeout` which is decided by the runtime.
+    // An already installed timer should be cleared.
+    InstallElectionTimer {},
+
     //
     // --- Draft unimplemented commands:
     //
@@ -142,6 +147,7 @@ impl<NID: NodeId> Engine<NID> {
                 Command::MoveInputCursorBy { .. } => {}
                 Command::SaveVote { .. } => f.set_data_changed(),
                 Command::SendVote { .. } => {}
+                Command::InstallElectionTimer { .. } => {}
                 Command::PurgeAppliedLog { .. } => f.set_data_changed(),
                 Command::DeleteConflictLog { .. } => f.set_data_changed(),
                 Command::BuildSnapshot { .. } => f.set_data_changed(),
@@ -216,6 +222,48 @@ impl<NID: NodeId> Engine<NID> {
 
         // TODO: For compatibility. remove it. The runtime does not need to know about server state.
         self.set_server_state(ServerState::Candidate);
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<NID>) -> VoteResponse<NID> {
+        let last_log_id = self.state.last_log_id;
+        let vote = self.state.vote;
+
+        // Grant vote if [req.vote, req.last_log_id] >= mine by vector comparison.
+        // Note: A higher req.vote still won't be stored if req.last_log_id is smaller.
+        // We do not need to upgrade `vote` for some node that can not become leader.
+        let vote_granted = req.vote >= vote && req.last_log_id >= last_log_id;
+
+        if vote_granted {
+            self.push_command(Command::InstallElectionTimer {});
+
+            self.state.vote = req.vote;
+            if req.vote > vote {
+                self.push_command(Command::SaveVote { vote: req.vote });
+            }
+
+            self.state.leader = None;
+            #[allow(clippy::collapsible_else_if)]
+            if self.state.server_state == ServerState::Follower || self.state.server_state == ServerState::Learner {
+                // nothing to do
+            } else {
+                if self.state.effective_membership.all_members().contains(&self.id) {
+                    self.set_server_state(ServerState::Follower);
+                } else {
+                    self.set_server_state(ServerState::Learner);
+                }
+            }
+        }
+
+        tracing::debug!(?req, %vote, ?last_log_id, %vote_granted, "handle vote request" );
+
+        VoteResponse {
+            // Return the updated vote, this way the candidate knows which vote is granted, in case the candidate's vote
+            // is changed after sending the vote request.
+            vote: self.state.vote,
+            vote_granted,
+            last_log_id,
+        }
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -401,5 +449,9 @@ impl<NID: NodeId> Engine<NID> {
         self.state.last_log_id = Some(log_id);
 
         log_id
+    }
+
+    fn push_command(&mut self, cmd: Command<NID>) {
+        self.commands.push(cmd)
     }
 }

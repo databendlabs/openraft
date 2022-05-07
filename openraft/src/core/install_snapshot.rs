@@ -41,8 +41,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             });
         }
 
-        // Update election timeout.
-        self.update_next_election_timeout(true);
+        self.update_election_timeout();
+        self.update_last_heartbeat();
 
         if req.vote > self.engine.state.vote {
             self.engine.state.vote = req.vote;
