@@ -4,7 +4,6 @@ use anyerror::AnyError;
 use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 
-use crate::core::purge_applied_logs;
 use crate::core::RaftCore;
 use crate::core::ServerState;
 use crate::core::SnapshotState;
@@ -214,29 +213,32 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // TODO(xp): do not install if self.engine.st.last_applied >= snapshot.meta.last_applied
 
         let changes = self.storage.install_snapshot(&req.meta, snapshot).await?;
-
         tracing::debug!("update after apply or install-snapshot: {:?}", changes);
-
-        // After installing snapshot, no inconsistent log is removed.
-        // This does not affect raft consistency.
-        // If you have any question about this, let me know: drdr.xp at gmail.com
 
         let last_applied = changes.last_applied;
 
-        // Applied logs are not needed.
-        purge_applied_logs(&mut self.storage, &last_applied, self.config.max_applied_log_to_keep).await?;
+        let st = &mut self.engine.state;
 
-        // snapshot is installed
-        self.engine.state.last_applied = Some(last_applied);
-
-        if self.engine.state.committed < self.engine.state.last_applied {
-            self.engine.state.committed = self.engine.state.last_applied;
+        if st.last_log_id < Some(last_applied) {
+            st.last_log_id = Some(last_applied);
         }
-        if self.engine.state.last_log_id < self.engine.state.last_applied {
-            self.engine.state.last_log_id = self.engine.state.last_applied;
+        if st.committed < Some(last_applied) {
+            st.committed = Some(last_applied);
+        }
+        if st.last_applied < Some(last_applied) {
+            st.last_applied = Some(last_applied);
         }
 
-        // There could be unknown membership in the snapshot.
+        assert!(st.last_purged_log_id <= Some(last_applied));
+
+        // A local log that is <= last_applied may be inconsistent with the leader.
+        // It has to purge all of them to prevent these log form being replicated, when this node becomes leader.
+        st.last_purged_log_id = Some(last_applied);
+        self.storage.purge_logs_upto(last_applied).await?;
+
+        // TODO(xp): just compare the membership config in the snapshot and the current effective membership config and
+        //           decide whether to replace the effective confg.
+        //           No need to bother the storage.
         let membership = self.storage.get_membership().await?;
         tracing::debug!("storage membership: {:?}", membership);
 

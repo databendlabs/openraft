@@ -582,21 +582,12 @@ where
 
     tracing::debug!(%last_applied, max_keep, delete_lt = end, "delete_applied_logs");
 
-    if end == 0 {
-        return Ok(());
-    }
-
     let st = sto.get_log_state().await?;
-
-    if st.last_log_id < Some(*last_applied) {
-        sto.purge_logs_upto(*last_applied).await?;
-        return Ok(());
-    }
 
     // non applied logs are deleted. it is a bug.
     assert!(st.last_purged_log_id <= Some(*last_applied));
 
-    if st.last_purged_log_id.index() >= Some(end - 1) {
+    if st.last_purged_log_id.next_index() >= end {
         return Ok(());
     }
 
