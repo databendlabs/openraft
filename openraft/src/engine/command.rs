@@ -58,15 +58,15 @@ pub(crate) enum Command<NID: NodeId> {
     // An already installed timer should be cleared.
     InstallElectionTimer {},
 
+    #[allow(dead_code)]
+    PurgeLog {
+        upto: LogId<NID>,
+    },
+
     //
     // --- Draft unimplemented commands:
     //
 
-    // TODO:
-    #[allow(dead_code)]
-    PurgeAppliedLog {
-        upto: LogId<NID>,
-    },
     // TODO:
     #[allow(dead_code)]
     DeleteConflictLog {
@@ -91,7 +91,7 @@ impl<NID: NodeId> Command<NID> {
             Command::SaveVote { .. } => flags.set_data_changed(),
             Command::SendVote { .. } => {}
             Command::InstallElectionTimer { .. } => {}
-            Command::PurgeAppliedLog { .. } => flags.set_data_changed(),
+            Command::PurgeLog { .. } => flags.set_data_changed(),
             Command::DeleteConflictLog { .. } => flags.set_data_changed(),
             Command::BuildSnapshot { .. } => flags.set_data_changed(),
         }
