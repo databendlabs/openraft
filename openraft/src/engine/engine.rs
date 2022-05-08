@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
-use std::ops::Range;
 use std::sync::Arc;
 
 use maplit::btreeset;
 
 use crate::core::ServerState;
+use crate::engine::Command;
 use crate::entry::RaftEntry;
 use crate::error::InitializeError;
 use crate::error::NotAMembershipEntry;
@@ -50,76 +50,6 @@ pub(crate) struct Engine<NID: NodeId> {
 
     /// Command queue that need to be executed by `RaftRuntime`.
     pub(crate) commands: Vec<Command<NID>>,
-}
-
-/// Commands to send to `RaftRuntime` to execute, to update the application state.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Command<NID: NodeId> {
-    // Update server state, e.g., Leader, Follower etc.
-    // TODO: consider remove this variant. A runtime does not need to know about this. It is only meant for metrics
-    //       report.
-    UpdateServerState {
-        server_state: ServerState,
-    },
-
-    // Append a `range` of entries in the input buffer.
-    AppendInputEntries {
-        range: Range<usize>,
-    },
-
-    // Commit entries that are already in the store, upto `upto`, inclusive.
-    // And send applied result to the client that proposed the entry.
-    Commit {
-        upto: LogId<NID>,
-    },
-
-    // Replicate a `range` of entries in the input buffer.
-    ReplicateInputEntries {
-        range: Range<usize>,
-    },
-
-    // Membership config changed, need to update replication stream etc.
-    UpdateMembership {
-        membership: Membership<NID>,
-    },
-
-    // Move the cursor pointing to an entry in the input buffer.
-    MoveInputCursorBy {
-        n: usize,
-    },
-
-    // Save vote to storage
-    SaveVote {
-        vote: Vote<NID>,
-    },
-
-    // Send vote to all other members
-    SendVote {
-        vote_req: VoteRequest<NID>,
-    },
-
-    // Install a timer to trigger an election after some `timeout` which is decided by the runtime.
-    // An already installed timer should be cleared.
-    InstallElectionTimer {},
-
-    //
-    // --- Draft unimplemented commands:
-    //
-
-    // TODO:
-    #[allow(dead_code)]
-    PurgeAppliedLog {
-        upto: LogId<NID>,
-    },
-    // TODO:
-    #[allow(dead_code)]
-    DeleteConflictLog {
-        since: LogId<NID>,
-    },
-
-    // TODO:
-    #[allow(dead_code)]
-    BuildSnapshot {},
 }
 
 impl<NID: NodeId> Engine<NID> {
@@ -347,7 +277,6 @@ impl<NID: NodeId> Engine<NID> {
     // // --- raft protocol API ---
     //
     // //
-    // pub(crate) fn handle_vote() {}
     // pub(crate) fn handle_append_entries() {}
     // pub(crate) fn handle_install_snapshot() {}
     //
@@ -430,23 +359,7 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     fn push_command(&mut self, cmd: Command<NID>) {
-        // Update flags for metrics that need to update, according to the queued commands.
-        let f = &mut self.metrics_flags;
-        match &cmd {
-            Command::UpdateServerState { .. } => f.set_cluster_changed(),
-            Command::AppendInputEntries { .. } => f.set_data_changed(),
-            Command::Commit { .. } => f.set_data_changed(),
-            Command::ReplicateInputEntries { .. } => {}
-            Command::UpdateMembership { .. } => f.set_cluster_changed(),
-            Command::MoveInputCursorBy { .. } => {}
-            Command::SaveVote { .. } => f.set_data_changed(),
-            Command::SendVote { .. } => {}
-            Command::InstallElectionTimer { .. } => {}
-            Command::PurgeAppliedLog { .. } => f.set_data_changed(),
-            Command::DeleteConflictLog { .. } => f.set_data_changed(),
-            Command::BuildSnapshot { .. } => f.set_data_changed(),
-        }
-
+        cmd.update_metrics_flags(&mut self.metrics_flags);
         self.commands.push(cmd)
     }
 }
