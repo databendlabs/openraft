@@ -893,7 +893,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::InstallElectionTimer { .. } => {
                 self.update_election_timeout();
             }
-            Command::PurgeAppliedLog { .. } => {}
+            Command::PurgeLog { .. } => {}
             Command::DeleteConflictLog { .. } => {}
             Command::BuildSnapshot { .. } => {}
             Command::SendVote { vote_req } => {

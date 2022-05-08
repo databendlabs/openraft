@@ -265,6 +265,27 @@ impl<NID: NodeId> Engine<NID> {
         self.push_command(Command::MoveInputCursorBy { n: l });
     }
 
+    /// Purge log entries upto `upto`, inclusive.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn purge_log(&mut self, upto: LogId<NID>) {
+        let st = &mut self.state;
+        let log_id = Some(upto);
+
+        if log_id <= st.last_purged_log_id {
+            return;
+        }
+
+        st.log_ids.purge(&upto);
+
+        st.last_purged_log_id = log_id;
+
+        if st.last_log_id < log_id {
+            st.last_log_id = log_id;
+        }
+
+        self.push_command(Command::PurgeLog { upto });
+    }
+
     // --- Draft API ---
 
     // // --- app API ---
@@ -282,7 +303,10 @@ impl<NID: NodeId> Engine<NID> {
     //
     // pub(crate) fn handle_append_entries_resp() {}
     // pub(crate) fn handle_install_snapshot_resp() {}
+}
 
+/// Supporting util
+impl<NID: NodeId> Engine<NID> {
     /// Update effective membership config if encountering a membership config log entry.
     fn try_update_membership<Ent: RaftEntry<NID>>(&mut self, entry: &Ent) {
         if let Some(m) = entry.get_membership() {

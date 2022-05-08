@@ -14,6 +14,8 @@ mod log_id_list;
 #[cfg(test)]
 mod log_id_list_test;
 #[cfg(test)]
+mod purge_log_test;
+#[cfg(test)]
 mod testing;
 
 pub(crate) use command::Command;
