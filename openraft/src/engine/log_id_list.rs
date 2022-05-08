@@ -80,6 +80,34 @@ impl<NID: NodeId> LogIdList<NID> {
         self.key_log_ids.push(new_log_id);
     }
 
+    /// Purge log ids upto the log with index `upto_index`, inclusive.
+    #[allow(dead_code)]
+    pub(crate) fn purge(&mut self, upto: &LogId<NID>) {
+        // When installing  snapshot it may need to purge across the `last_log_id`.
+        if upto.index > self.key_log_ids[self.key_log_ids.len() - 1].index {
+            assert!(upto > &self.key_log_ids[self.key_log_ids.len() - 1]);
+            self.key_log_ids = vec![*upto];
+        }
+
+        if upto.index < self.key_log_ids[0].index {
+            return;
+        }
+
+        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&upto.index));
+
+        match res {
+            Ok(i) => {
+                if i > 0 {
+                    self.key_log_ids = self.key_log_ids.split_off(i)
+                }
+            }
+            Err(i) => {
+                self.key_log_ids = self.key_log_ids.split_off(i - 1);
+                self.key_log_ids[0].index = upto.index;
+            }
+        }
+    }
+
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.

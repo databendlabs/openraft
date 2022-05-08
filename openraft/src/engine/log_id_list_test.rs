@@ -4,11 +4,6 @@ use crate::LogId;
 
 #[test]
 fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
-    let log_id = |t, i| LogId::<u64> {
-        leader_id: LeaderId { term: t, node_id: 1 },
-        index: i,
-    };
-
     let mut ids = LogIdList::<u64>::default();
 
     // Extend one log id to an empty LogIdList: Just store it directly
@@ -55,11 +50,6 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
 
 #[test]
 fn test_log_id_list_append() -> anyhow::Result<()> {
-    let log_id = |t, i| LogId::<u64> {
-        leader_id: LeaderId { term: t, node_id: 1 },
-        index: i,
-    };
-
     let mut ids = LogIdList::<u64>::default();
 
     // Append log id one by one, check the internally constructed `key_log_id` as expected.
@@ -82,12 +72,71 @@ fn test_log_id_list_append() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
-    let log_id = |t, i| LogId::<u64> {
-        leader_id: LeaderId { term: t, node_id: 1 },
-        index: i,
-    };
+fn test_log_id_list_purge() -> anyhow::Result<()> {
+    // Append log id one by one, check the internally constructed `key_log_id` as expected.
 
+    let cases = vec![
+        //
+        (log_id(2, 1), vec![
+            log_id(2, 2),
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ]),
+        (log_id(2, 2), vec![
+            log_id(2, 2),
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ]),
+        (log_id(3, 3), vec![
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ]),
+        (log_id(3, 4), vec![
+            log_id(3, 4),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ]),
+        (log_id(3, 5), vec![
+            log_id(3, 5),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ]),
+        (log_id(6, 6), vec![log_id(6, 6), log_id(9, 9), log_id(9, 11)]),
+        (log_id(6, 7), vec![log_id(6, 7), log_id(9, 9), log_id(9, 11)]),
+        (log_id(6, 8), vec![log_id(6, 8), log_id(9, 9), log_id(9, 11)]),
+        (log_id(9, 9), vec![log_id(9, 9), log_id(9, 11)]),
+        (log_id(9, 10), vec![log_id(9, 10), log_id(9, 11)]),
+        (log_id(9, 11), vec![log_id(9, 11)]),
+        (log_id(9, 12), vec![log_id(9, 12)]),
+        (log_id(10, 12), vec![log_id(10, 12)]),
+    ];
+
+    for (upto, want) in cases {
+        let mut ids = LogIdList::<u64>::new(vec![
+            log_id(2, 2), // force multi line
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ]);
+
+        ids.purge(&upto);
+        assert_eq!(want, ids.key_log_ids(), "purge upto: {}", upto);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
     // Get log id from empty list always returns `None`.
 
     let ids = LogIdList::<u64>::default();
@@ -121,4 +170,10 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
     assert_eq!(None, ids.get(11));
 
     Ok(())
+}
+fn log_id(term: u64, index: u64) -> LogId<u64> {
+    LogId::<u64> {
+        leader_id: LeaderId { term, node_id: 1 },
+        index,
+    }
 }
