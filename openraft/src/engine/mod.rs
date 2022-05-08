@@ -1,6 +1,7 @@
 #[allow(clippy::module_inception)]
 mod engine;
 
+mod command;
 #[cfg(test)]
 mod elect_test;
 #[cfg(test)]
@@ -15,6 +16,6 @@ mod log_id_list_test;
 #[cfg(test)]
 mod testing;
 
-pub(crate) use engine::Command;
+pub(crate) use command::Command;
 pub(crate) use engine::Engine;
 pub use log_id_list::LogIdList;
