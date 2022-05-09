@@ -354,9 +354,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let entries_refs: Vec<_> = entries.iter().collect();
 
-        apply_to_state_machine(&mut self.storage, &entries_refs, self.config.max_applied_log_to_keep).await?;
-
-        self.engine.state.last_applied = Some(last_log_id);
+        apply_to_state_machine(self, &entries_refs, self.config.max_applied_log_to_keep).await?;
 
         self.trigger_log_compaction_if_needed(false).await;
         self.engine.metrics_flags.set_data_changed();
