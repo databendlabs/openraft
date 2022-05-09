@@ -9,10 +9,10 @@ mod leader_state;
 mod raft_core;
 pub(crate) mod replication;
 mod replication_state;
-#[cfg(test)]
-mod replication_state_test;
 mod server_state;
 mod snapshot_state;
+
+#[cfg(test)] mod replication_state_test;
 
 pub(crate) use internal_msg::InternalMessage;
 use leader_state::LeaderState;

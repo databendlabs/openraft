@@ -60,10 +60,8 @@ use openraft::RaftNetworkFactory;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft::StoreExt;
-#[allow(unused_imports)]
-use pretty_assertions::assert_eq;
-#[allow(unused_imports)]
-use pretty_assertions::assert_ne;
+#[allow(unused_imports)] use pretty_assertions::assert_eq;
+#[allow(unused_imports)] use pretty_assertions::assert_ne;
 use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::fixtures::logging::init_file_logging;
