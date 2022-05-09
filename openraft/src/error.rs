@@ -26,6 +26,9 @@ pub enum Fatal<NID: NodeId> {
     #[error(transparent)]
     StorageError(#[from] StorageError<NID>),
 
+    #[error("panicked")]
+    Panicked,
+
     #[error("raft stopped")]
     Stopped,
 }

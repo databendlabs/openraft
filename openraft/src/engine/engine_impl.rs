@@ -291,9 +291,7 @@ impl<NID: NodeId> Engine<NID> {
     // // --- app API ---
     //
     // /// Write a new log entry.
-    // pub(crate) fn write(&mut self) -> Result<Vec<AlgoCmd<NID>>, ForwardToLeader<NID>> {
-    //     todo!()
-    // }
+    // pub(crate) fn write(&mut self) -> Result<Vec<AlgoCmd<NID>>, ForwardToLeader<NID>> {}
     //
     // // --- raft protocol API ---
     //
