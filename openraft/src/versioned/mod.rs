@@ -1,5 +1,4 @@
-#[allow(clippy::module_inception)]
-mod versioned;
+#[allow(clippy::module_inception)] mod versioned;
 
 pub use versioned::Updatable;
 pub use versioned::Update;

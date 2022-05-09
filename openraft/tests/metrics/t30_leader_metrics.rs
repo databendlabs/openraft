@@ -14,10 +14,8 @@ use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use openraft::ServerState;
 use openraft::Vote;
-#[allow(unused_imports)]
-use pretty_assertions::assert_eq;
-#[allow(unused_imports)]
-use pretty_assertions::assert_ne;
+#[allow(unused_imports)] use pretty_assertions::assert_eq;
+#[allow(unused_imports)] use pretty_assertions::assert_ne;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;

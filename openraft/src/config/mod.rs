@@ -1,9 +1,7 @@
-#[allow(clippy::module_inception)]
-mod config;
+#[allow(clippy::module_inception)] mod config;
 mod error;
 
-#[cfg(test)]
-mod config_test;
+#[cfg(test)] mod config_test;
 
 pub use config::Config;
 pub use config::SnapshotPolicy;
