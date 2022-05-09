@@ -542,14 +542,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 }
 
-#[tracing::instrument(level = "trace", skip(sto), fields(entries=%entries.summary()))]
-pub(crate) async fn apply_to_state_machine<C, S>(
-    sto: &mut S,
+#[tracing::instrument(level = "trace", skip(core), fields(entries=%entries.summary()))]
+pub(crate) async fn apply_to_state_machine<C, N, S>(
+    core: &mut RaftCore<C, N, S>,
     entries: &[&Entry<C>],
     max_keep: u64,
 ) -> Result<Vec<C::R>, StorageError<C::NodeId>>
 where
     C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
     S: RaftStorage<C>,
 {
     tracing::debug!(entries=%entries.summary(), max_keep, "apply_to_state_machine");
@@ -558,22 +559,25 @@ where
 
     if let Some(last_applied) = last {
         // TODO(xp): apply_to_state_machine should return the last applied
-        let res = sto.apply_to_state_machine(entries).await?;
-        purge_applied_logs(sto, &last_applied, max_keep).await?;
+        let res = core.storage.apply_to_state_machine(entries).await?;
+        core.engine.state.last_applied = Some(last_applied);
+
+        purge_applied_logs(core, &last_applied, max_keep).await?;
         Ok(res)
     } else {
         Ok(vec![])
     }
 }
 
-#[tracing::instrument(level = "trace", skip(sto))]
-pub(crate) async fn purge_applied_logs<C, S>(
-    sto: &mut S,
+#[tracing::instrument(level = "trace", skip(core))]
+pub(crate) async fn purge_applied_logs<C, N, S>(
+    core: &mut RaftCore<C, N, S>,
     last_applied: &LogId<C::NodeId>,
     max_keep: u64,
 ) -> Result<(), StorageError<C::NodeId>>
 where
     C: RaftTypeConfig,
+    N: RaftNetworkFactory<C>,
     S: RaftStorage<C>,
 {
     // TODO(xp): periodically batch delete
@@ -582,7 +586,7 @@ where
 
     tracing::debug!(%last_applied, max_keep, delete_lt = end, "delete_applied_logs");
 
-    let st = sto.get_log_state().await?;
+    let st = core.storage.get_log_state().await?;
 
     // non applied logs are deleted. it is a bug.
     assert!(st.last_purged_log_id <= Some(*last_applied));
@@ -591,8 +595,8 @@ where
         return Ok(());
     }
 
-    let log_id = sto.get_log_id(end - 1).await?;
-    sto.purge_logs_upto(log_id).await
+    let log_id = core.storage.get_log_id(end - 1).await?;
+    core.storage.purge_logs_upto(log_id).await
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {

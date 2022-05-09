@@ -244,6 +244,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         let log_id = &entry.log_id;
         let index = log_id.index;
+        let max_keep = self.core.config.max_applied_log_to_keep;
 
         let expected_next_index = match self.core.engine.state.last_applied {
             None => 0,
@@ -253,31 +254,16 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         if index != expected_next_index {
             let entries = self.core.storage.get_log_entries(expected_next_index..index).await?;
 
-            if let Some(entry) = entries.last() {
-                self.core.engine.state.last_applied = Some(entry.log_id);
-            }
-
             let data_entries: Vec<_> = entries.iter().collect();
             if !data_entries.is_empty() {
-                apply_to_state_machine(
-                    &mut self.core.storage,
-                    &data_entries,
-                    self.core.config.max_applied_log_to_keep,
-                )
-                .await?;
+                apply_to_state_machine(self.core, &data_entries, max_keep).await?;
             }
         }
 
         // Apply this entry to the state machine and return its data response.
-        let apply_res = apply_to_state_machine(
-            &mut self.core.storage,
-            &[entry],
-            self.core.config.max_applied_log_to_keep,
-        )
-        .await?;
+        let apply_res = apply_to_state_machine(self.core, &[entry], max_keep).await?;
 
         // TODO(xp): deal with partial apply.
-        self.core.engine.state.last_applied = Some(*log_id);
         self.core.engine.metrics_flags.set_data_changed();
 
         // TODO(xp) merge this function to replication_to_state_machine?
