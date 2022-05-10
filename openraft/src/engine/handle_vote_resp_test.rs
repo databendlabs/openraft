@@ -39,7 +39,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.state.vote = Vote::new(2, 1);
-        eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
 
         eng.handle_vote_resp(2, VoteResponse {
             vote: Vote::new(2, 2),
@@ -70,7 +70,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.leader = Some(Leader {
             vote_granted_by: btreeset! {1},
         });
-        eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -107,7 +107,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.leader = Some(Leader {
             vote_granted_by: btreeset! {1},
         });
-        eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -147,7 +147,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.leader = Some(Leader {
             vote_granted_by: btreeset! {1},
         });
-        eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -184,7 +184,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.leader = Some(Leader {
             vote_granted_by: btreeset! {1},
         });
-        eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()));
+        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -221,7 +221,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.leader = Some(Leader {
             vote_granted_by: btreeset! {1},
         });
-        eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {

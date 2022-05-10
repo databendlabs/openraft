@@ -39,7 +39,7 @@ fn test_elect() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.id = 1;
-        eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m1()));
+        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m1()));
 
         eng.elect();
 
@@ -77,7 +77,7 @@ fn test_elect() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.id = 1;
-        eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m1()));
+        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m1()));
 
         // Build in-progress election state
         eng.state.vote = Vote::new_committed(1, 2);
@@ -121,7 +121,7 @@ fn test_elect() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.id = 1;
-        eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m12()));
+        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m12()));
         eng.state.last_log_id = Some(log_id(1, 1));
 
         eng.elect();

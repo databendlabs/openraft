@@ -83,7 +83,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             .core
             .engine
             .state
-            .effective_membership
+            .membership_state
+            .effective
             .node_ids()
             .filter(|elem| *elem != &self.core.id)
             .cloned()

@@ -218,9 +218,16 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
         let mut sto = router.get_storage_handle(&1)?;
         let m = sto.get_membership().await?;
 
+        // new membership is applied, thus get_membership() only returns one entry.
+
         assert_eq!(
             Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),
-            m.membership,
+            m.committed.membership,
+            "membership should be overridden by the snapshot"
+        );
+        assert_eq!(
+            Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),
+            m.effective.membership,
             "membership should be overridden by the snapshot"
         );
     }
