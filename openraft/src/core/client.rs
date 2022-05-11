@@ -47,7 +47,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub(super) async fn handle_check_is_leader_request(&mut self, tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId>>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
-        let mem = &self.core.engine.state.effective_membership.membership;
+        let mem = &self.core.engine.state.membership_state.effective.membership;
         let mut granted = btreeset! {self.core.id};
 
         if mem.is_majority(&granted) {
@@ -57,7 +57,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         // Spawn parallel requests, all with the standard timeout for heartbeats.
         let mut pending = FuturesUnordered::new();
-        let membership = &self.core.engine.state.effective_membership.membership;
+        let membership = &self.core.engine.state.membership_state.effective.membership;
 
         for (target, node) in self.nodes.iter() {
             if !membership.is_member(target) {
@@ -73,7 +73,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
             let my_id = self.core.id;
             let target = *target;
-            let target_node = self.core.engine.state.effective_membership.get_node(&target).cloned();
+            let target_node = self.core.engine.state.membership_state.effective.get_node(&target).cloned();
             let mut network = self.core.network.connect(target, target_node.as_ref()).await;
 
             let ttl = Duration::from_millis(self.core.config.heartbeat_interval);
@@ -132,7 +132,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
             granted.insert(target);
 
-            let mem = &self.core.engine.state.effective_membership.membership;
+            let mem = &self.core.engine.state.membership_state.effective.membership;
             if mem.is_majority(&granted) {
                 let _ = tx.send(Ok(()));
                 return;
@@ -143,7 +143,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         // request failures.
 
         let _ = tx.send(Err(QuorumNotEnough {
-            cluster: self.core.engine.state.effective_membership.membership.summary(),
+            cluster: self.core.engine.state.membership_state.effective.membership.summary(),
             got: granted,
         }
         .into()));

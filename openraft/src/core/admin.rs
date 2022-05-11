@@ -38,7 +38,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         target: C::NodeId,
         node: Option<Node>,
     ) -> Result<(), AddLearnerError<C::NodeId>> {
-        let curr = &self.core.engine.state.effective_membership.membership;
+        let curr = &self.core.engine.state.membership_state.effective.membership;
         let new_membership = curr.add_learner(target, node)?;
 
         tracing::debug!(?new_membership, "new_config");
@@ -77,7 +77,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             return;
         }
 
-        let curr = &self.core.engine.state.effective_membership;
+        let curr = &self.core.engine.state.membership_state.effective;
         let exists = curr.get_nodes().contains_key(&target);
         if exists {
             tracing::debug!("target {:?} already member or learner, can't add", target);
@@ -126,7 +126,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     fn has_pending_config(&self) -> bool {
         // The last membership config is not committed yet.
         // Can not process the next one.
-        self.core.engine.state.committed < self.core.engine.state.effective_membership.log_id
+        self.core.engine.state.committed < self.core.engine.state.membership_state.effective.log_id
     }
 
     #[tracing::instrument(level = "debug", skip(self, tx))]
@@ -138,7 +138,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     ) -> Result<(), Fatal<C::NodeId>> {
         let members = change_members
-            .apply_to(self.core.engine.state.effective_membership.membership.get_configs().last().unwrap());
+            .apply_to(self.core.engine.state.membership_state.effective.membership.get_configs().last().unwrap());
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
@@ -151,14 +151,14 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
                 ChangeMembershipError::InProgress(InProgress {
                     // has_pending_config() implies an existing membership log.
-                    membership_log_id: self.core.engine.state.effective_membership.log_id.unwrap(),
+                    membership_log_id: self.core.engine.state.membership_state.effective.log_id.unwrap(),
                 }),
             )));
             return Ok(());
         }
 
-        let curr = self.core.engine.state.effective_membership.membership.clone();
-        let all_members = self.core.engine.state.effective_membership.all_members();
+        let curr = self.core.engine.state.membership_state.effective.membership.clone();
+        let all_members = self.core.engine.state.membership_state.effective.all_members();
         let new_members = members.difference(all_members);
 
         let new_config = {
@@ -285,7 +285,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let index = log_id.index;
 
         // Step down if needed.
-        if !self.core.engine.state.effective_membership.membership.is_member(&self.core.id) {
+        if !self.core.engine.state.membership_state.effective.membership.is_member(&self.core.id) {
             tracing::debug!("raft node is stepping down");
 
             // TODO(xp): transfer leadership
@@ -293,7 +293,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             return;
         }
 
-        let membership = &self.core.engine.state.effective_membership.membership;
+        let membership = &self.core.engine.state.membership_state.effective.membership;
 
         // remove nodes which not included in nodes and learners
         for (id, state) in self.nodes.iter_mut() {
@@ -305,7 +305,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 "set remove_after_commit for {} = {}, membership: {:?}",
                 id,
                 index,
-                self.core.engine.state.effective_membership
+                self.core.engine.state.membership_state.effective
             );
 
             state.remove_since = Some(index)

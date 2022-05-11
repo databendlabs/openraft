@@ -50,7 +50,7 @@ fn test_initialize() -> anyhow::Result<()> {
             },
             eng.metrics_flags
         );
-        assert_eq!(m12(), eng.state.effective_membership.membership);
+        assert_eq!(m12(), eng.state.membership_state.effective.membership);
 
         assert_eq!(
             vec![

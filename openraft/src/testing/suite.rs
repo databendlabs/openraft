@@ -81,6 +81,7 @@ where
         run_fut(Suite::last_membership_in_log_initial(builder))?;
         run_fut(Suite::last_membership_in_log(builder))?;
         run_fut(Suite::get_membership_initial(builder))?;
+        run_fut(Suite::get_membership_from_log_and_empty_sm(builder))?;
         run_fut(Suite::get_membership_from_log_and_sm(builder))?;
         run_fut(Suite::get_initial_state_without_init(builder))?;
         run_fut(Suite::get_initial_state_membership_from_log_and_sm(builder))?;
@@ -111,7 +112,7 @@ where
 
         let membership = store.last_membership_in_log(0).await?;
 
-        assert!(membership.is_none());
+        assert!(membership.is_empty());
 
         Ok(())
     }
@@ -136,7 +137,7 @@ where
 
             let mem = store.last_membership_in_log(0).await?;
 
-            assert!(mem.is_none());
+            assert!(mem.is_empty());
         }
 
         tracing::info!("--- membership presents in log, smaller than last_applied, read from log");
@@ -149,18 +150,20 @@ where
                 .await?;
 
             let mem = store.last_membership_in_log(0).await?;
-            let mem = mem.unwrap();
+            assert_eq!(1, mem.len());
+            let mem = mem[0].clone();
             assert_eq!(Membership::new(vec![btreeset! {1, 2, 3}], None), mem.membership,);
 
             let mem = store.last_membership_in_log(1).await?;
-            let mem = mem.unwrap();
+            assert_eq!(1, mem.len());
+            let mem = mem[0].clone();
             assert_eq!(Membership::new(vec![btreeset! {1, 2, 3}], None), mem.membership,);
 
             let mem = store.last_membership_in_log(2).await?;
-            assert!(mem.is_none());
+            assert!(mem.is_empty());
         }
 
-        tracing::info!("--- membership presents in log and > sm.last_applied, read from log");
+        tracing::info!("--- membership presents in log and > sm.last_applied, read 2 membership entries from log");
         {
             store
                 .append_to_log(&[
@@ -179,16 +182,39 @@ where
                 ])
                 .await?;
 
-            let mem = store.last_membership_in_log(0).await?;
-            let mem = mem.unwrap();
+            let mems = store.last_membership_in_log(0).await?;
+            assert_eq!(2, mems.len());
 
+            let mem = mems[0].clone();
+            assert_eq!(Membership::new(vec![btreeset! {1,2,3}], None), mem.membership,);
+
+            let mem = mems[1].clone();
             assert_eq!(Membership::new(vec![btreeset! {7,8,9}], None), mem.membership,);
         }
 
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log but since_index is greater than the last");
         {
             let mem = store.last_membership_in_log(4).await?;
-            assert!(mem.is_none());
+            assert!(mem.is_empty());
+        }
+
+        tracing::info!("--- 3 memberships in log, only return the last 2 of them");
+        {
+            store
+                .append_to_log(&[&Entry {
+                    log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 5),
+                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {10,11}], None)),
+                }])
+                .await?;
+
+            let mems = store.last_membership_in_log(0).await?;
+            assert_eq!(2, mems.len());
+
+            let mem = mems[0].clone();
+            assert_eq!(Membership::new(vec![btreeset! {7,8,9}], None), mem.membership,);
+
+            let mem = mems[1].clone();
+            assert_eq!(Membership::new(vec![btreeset! {10,11}], None), mem.membership,);
         }
 
         Ok(())
@@ -197,9 +223,36 @@ where
     pub async fn get_membership_initial(builder: &B) -> Result<(), StorageError<C::NodeId>> {
         let mut store = builder.build().await;
 
-        let membership = store.get_membership().await?;
+        let mem_state = store.get_membership().await?;
 
-        assert_eq!(EffectiveMembership::default(), membership);
+        assert_eq!(&EffectiveMembership::default(), mem_state.committed.as_ref());
+        assert_eq!(&EffectiveMembership::default(), mem_state.effective.as_ref());
+
+        Ok(())
+    }
+
+    pub async fn get_membership_from_log_and_empty_sm(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+        let mut store = builder.build().await;
+
+        tracing::info!("--- no log, read membership from state machine");
+        {
+            // There is an empty membership config in an empty state machine.
+
+            store
+                .append_to_log(&[&Entry {
+                    log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 1),
+                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {1,2,3}], None)),
+                }])
+                .await?;
+
+            let mem_state = store.get_membership().await?;
+
+            assert_eq!(&EffectiveMembership::default(), mem_state.committed.as_ref());
+            assert_eq!(
+                Membership::new(vec![btreeset! {1,2,3}], None),
+                mem_state.effective.membership,
+            );
+        }
 
         Ok(())
     }
@@ -222,9 +275,16 @@ where
                 ])
                 .await?;
 
-            let mem = store.get_membership().await?;
+            let mem_state = store.get_membership().await?;
 
-            assert_eq!(Membership::new(vec![btreeset! {3,4,5}], None), mem.membership,);
+            assert_eq!(
+                Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.committed.membership,
+            );
+            assert_eq!(
+                Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.effective.membership,
+            );
         }
 
         tracing::info!("--- membership presents in log, but smaller than last_applied, read from state machine");
@@ -236,9 +296,16 @@ where
                 }])
                 .await?;
 
-            let mem = store.get_membership().await?;
+            let mem_state = store.get_membership().await?;
 
-            assert_eq!(Membership::new(vec![btreeset! {3, 4, 5}], None), mem.membership,);
+            assert_eq!(
+                Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.committed.membership,
+            );
+            assert_eq!(
+                Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.effective.membership,
+            );
         }
 
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log");
@@ -256,9 +323,43 @@ where
                 ])
                 .await?;
 
-            let mem = store.get_membership().await?;
+            let mem_state = store.get_membership().await?;
 
-            assert_eq!(Membership::new(vec![btreeset! {7,8,9}], None), mem.membership,);
+            assert_eq!(
+                Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.committed.membership,
+            );
+            assert_eq!(
+                Membership::new(vec![btreeset! {7,8,9}], None),
+                mem_state.effective.membership,
+            );
+        }
+
+        tracing::info!("--- two membership present in log and > sm.last_applied, read 2 from log");
+        {
+            store
+                .append_to_log(&[
+                    &Entry {
+                        log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 4),
+                        payload: EntryPayload::Blank,
+                    },
+                    &Entry {
+                        log_id: LogId::new(LeaderId::new(1, NODE_ID.into()), 5),
+                        payload: EntryPayload::Membership(Membership::new(vec![btreeset! {10,11}], None)),
+                    },
+                ])
+                .await?;
+
+            let mem_state = store.get_membership().await?;
+
+            assert_eq!(
+                Membership::new(vec![btreeset! {7,8,9}], None),
+                mem_state.committed.membership,
+            );
+            assert_eq!(
+                Membership::new(vec![btreeset! {10,11}], None),
+                mem_state.effective.membership,
+            );
         }
 
         Ok(())
@@ -341,7 +442,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.effective_membership.membership,
+                initial.membership_state.effective.membership,
             );
         }
 
@@ -358,7 +459,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.effective_membership.membership,
+                initial.membership_state.effective.membership,
             );
         }
 
@@ -375,7 +476,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {1,2,3}], None),
-                initial.effective_membership.membership,
+                initial.membership_state.effective.membership,
             );
         }
 

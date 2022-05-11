@@ -35,7 +35,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         target: C::NodeId,
         caller_tx: Option<RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>>,
     ) -> ReplicationState<C> {
-        let target_node = self.core.engine.state.effective_membership.get_node(&target);
+        let target_node = self.core.engine.state.membership_state.effective.get_node(&target);
         let repl_stream = ReplicationStream::new::<N, S>(
             target,
             target_node.cloned(),
@@ -180,7 +180,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     fn calc_commit_log_id(&self) -> Option<LogId<C::NodeId>> {
         let repl_indexes = self.get_match_log_ids();
 
-        let committed = self.core.engine.state.effective_membership.membership.greatest_majority_value(&repl_indexes);
+        let committed =
+            self.core.engine.state.membership_state.effective.membership.greatest_majority_value(&repl_indexes);
 
         // TODO(xp): remove this line
         std::cmp::max(committed.cloned(), self.core.engine.state.committed)
@@ -190,7 +191,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
     /// Collect indexes of the greatest matching log on every replica(include the leader itself)
     fn get_match_log_ids(&self) -> BTreeMap<C::NodeId, LogId<C::NodeId>> {
-        let node_ids = self.core.engine.state.effective_membership.all_members();
+        let node_ids = self.core.engine.state.membership_state.effective.all_members();
 
         let mut res = BTreeMap::new();
 

@@ -33,7 +33,6 @@ use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
 use crate::error::VoteError;
-use crate::membership::EffectiveMembership;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::raft::RaftMsg;
@@ -48,6 +47,7 @@ use crate::Entry;
 use crate::EntryPayload;
 use crate::LogId;
 use crate::Membership;
+use crate::MembershipState;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
@@ -193,8 +193,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         let has_log = self.engine.state.last_log_id.is_some();
-        let single = self.engine.state.effective_membership.is_single();
-        let is_voter = self.engine.state.effective_membership.membership.is_member(&self.id);
+        let single = self.engine.state.membership_state.effective.is_single();
+        let is_voter = self.engine.state.membership_state.effective.membership.is_member(&self.id);
 
         const HAS_LOG: bool = true;
         const NO_LOG: bool = false;
@@ -292,7 +292,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             // --- cluster ---
             state: self.engine.state.server_state,
             current_leader: self.current_leader(),
-            membership_config: self.engine.state.effective_membership.clone(),
+            membership_config: self.engine.state.membership_state.effective.clone(),
 
             // --- replication ---
             replication,
@@ -345,7 +345,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(id = display(self.id), ?target_state, "set_target_state");
 
         if target_state == ServerState::Follower
-            && !self.engine.state.effective_membership.membership.is_member(&self.id)
+            && !self.engine.state.membership_state.effective.membership.is_member(&self.id)
         {
             self.engine.state.server_state = ServerState::Learner;
         } else {
@@ -386,8 +386,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Update the node's current membership config & save hard state.
+    /// TODO(xp): this method is only called by a follower or learner.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn update_membership(&mut self, cfg: EffectiveMembership<C::NodeId>) {
+    pub(crate) fn update_membership(&mut self, membership_state: MembershipState<C::NodeId>) {
+        let st = &mut self.engine.state;
+
+        st.membership_state = membership_state;
+
         // If the given config does not contain this node's ID, it means one of the following:
         //
         // - the node is currently a learner and is replicating an old config to which it has
@@ -395,9 +400,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // - the node has been removed from the cluster. The parent application can observe the
         // transition to the learner state as a signal for when it is safe to shutdown a node
         // being removed.
-        self.engine.state.effective_membership = Arc::new(cfg);
-        if self.engine.state.effective_membership.membership.is_member(&self.id) {
-            if self.engine.state.server_state == ServerState::Learner {
+        if st.membership_state.effective.membership.is_member(&self.id) {
+            if st.server_state == ServerState::Learner {
                 // The node is a Learner and the new config has it configured as a normal member.
                 // Transition to follower.
                 self.set_target_state(ServerState::Follower);
@@ -537,7 +541,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<Node> {
         match leader_id {
             None => None,
-            Some(id) => self.engine.state.effective_membership.get_node(&id).cloned(),
+            Some(id) => self.engine.state.membership_state.effective.get_node(&id).cloned(),
         }
     }
 }
@@ -723,7 +727,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) {
-        let members = self.engine.state.effective_membership.all_members();
+        let members = self.engine.state.membership_state.effective.all_members();
 
         for member in members.iter() {
             let target = *member;
@@ -733,7 +737,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
 
             let req = vote_req.clone();
-            let target_node = self.engine.state.effective_membership.get_node(&target).cloned();
+            let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
             let mut network = self.network.connect(target, target_node.as_ref()).await;
             let tx_inner = self.tx_internal.clone();
 

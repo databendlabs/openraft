@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
 use crate::engine::LogIdList;
 use crate::leader::Leader;
-use crate::membership::EffectiveMembership;
 use crate::raft_types::RaftLogId;
 use crate::LogId;
+use crate::MembershipState;
 use crate::NodeId;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -35,7 +33,7 @@ pub struct RaftState<NID: NodeId> {
     pub log_ids: LogIdList<NID>,
 
     /// The latest cluster membership configuration found, in log or in state machine.
-    pub effective_membership: Arc<EffectiveMembership<NID>>,
+    pub membership_state: MembershipState<NID>,
 
     // --
     // -- volatile fields: they are not persisted.

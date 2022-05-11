@@ -108,7 +108,7 @@ impl<NID: NodeId> Engine<NID> {
         // Safe unwrap()
         let leader = self.state.leader.as_mut().unwrap();
         leader.grant_vote_by(self.id);
-        let quorum_granted = leader.is_granted_by(&self.state.effective_membership.membership);
+        let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective.membership);
 
         // Fast-path: if there is only one node in the cluster.
 
@@ -155,7 +155,7 @@ impl<NID: NodeId> Engine<NID> {
             if self.state.server_state == ServerState::Follower || self.state.server_state == ServerState::Learner {
                 // nothing to do
             } else {
-                if self.state.effective_membership.all_members().contains(&self.id) {
+                if self.state.membership_state.effective.all_members().contains(&self.id) {
                     self.set_server_state(ServerState::Follower);
                 } else {
                     self.set_server_state(ServerState::Learner);
@@ -192,7 +192,7 @@ impl<NID: NodeId> Engine<NID> {
             // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `vote`.
             //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
             //           election.
-            if self.state.effective_membership.all_members().contains(&self.id) {
+            if self.state.membership_state.effective.all_members().contains(&self.id) {
                 self.set_server_state(ServerState::Follower);
             } else {
                 self.set_server_state(ServerState::Learner);
@@ -207,7 +207,7 @@ impl<NID: NodeId> Engine<NID> {
         if resp.vote_granted {
             leader.grant_vote_by(target);
 
-            let quorum_granted = leader.is_granted_by(&self.state.effective_membership.membership);
+            let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective.membership);
             if quorum_granted {
                 tracing::debug!("quorum granted vote");
 
@@ -249,7 +249,7 @@ impl<NID: NodeId> Engine<NID> {
             self.try_update_membership(entry);
         }
 
-        if self.state.effective_membership.membership.is_majority(&self.single_node_cluster) {
+        if self.state.membership_state.effective.membership.is_majority(&self.single_node_cluster) {
             // already committed
             let last = entries.last().unwrap();
             let last_log_id = last.get_log_id();
@@ -309,7 +309,7 @@ impl<NID: NodeId> Engine<NID> {
     fn try_update_membership<Ent: RaftEntry<NID>>(&mut self, entry: &Ent) {
         if let Some(m) = entry.get_membership() {
             let em = EffectiveMembership::new(Some(*entry.get_log_id()), m.clone());
-            self.state.effective_membership = Arc::new(em);
+            self.state.membership_state.effective = Arc::new(em);
 
             self.push_command(Command::UpdateMembership { membership: m.clone() });
         }
@@ -322,12 +322,14 @@ impl<NID: NodeId> Engine<NID> {
         //       The following condition check is copied from old code,
         //       and should be removed.
         //       And currently just use a panic to indicate the new code in Engine should not reach this point.
-        // if server_state == State::Follower && !self.state.effective_membership.membership.is_member(&self.id) {
+        // if server_state == State::Follower && !self.state.membership_state.effective.membership.is_member(&self.id) {
         //     self.state.target_state = State::Learner;
         // } else {
         //     self.state.target_state = server_state;
         // }
-        if server_state == ServerState::Follower && !self.state.effective_membership.membership.is_member(&self.id) {
+        if server_state == ServerState::Follower
+            && !self.state.membership_state.effective.membership.is_member(&self.id)
+        {
             unreachable!("caller does not know what to do?")
         }
 

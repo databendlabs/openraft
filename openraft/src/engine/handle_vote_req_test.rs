@@ -30,7 +30,7 @@ fn eng() -> Engine<u64> {
     let mut eng = Engine::<u64>::default();
     eng.state.vote = Vote::new(2, 1);
     eng.state.server_state = ServerState::Candidate;
-    eng.state.effective_membership = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
+    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
     eng.state.leader = Some(Leader {
         vote_granted_by: Default::default(),
     });

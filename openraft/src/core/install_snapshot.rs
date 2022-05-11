@@ -239,10 +239,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // TODO(xp): just compare the membership config in the snapshot and the current effective membership config and
         //           decide whether to replace the effective confg.
         //           No need to bother the storage.
-        let membership = self.storage.get_membership().await?;
-        tracing::debug!("storage membership: {:?}", membership);
+        let memberships = self.storage.get_membership().await?;
+        tracing::debug!("storage membership: {:?}", memberships);
 
-        self.update_membership(membership);
+        self.update_membership(memberships);
 
         self.snapshot_last_log_id = self.engine.state.last_applied;
         self.engine.metrics_flags.set_data_changed();
