@@ -36,6 +36,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         caller_tx: Option<RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>>,
     ) -> ReplicationState<C::NodeId> {
         let target_node = self.core.engine.state.membership_state.effective.get_node(&target);
+
         let repl_stream = ReplicationStream::new::<C, N, S>(
             target,
             target_node.cloned(),
@@ -47,11 +48,13 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.core.storage.get_log_reader().await,
             self.replication_tx.clone(),
         );
+
         ReplicationState {
             matched: None,
             repl_stream,
             remove_since: None,
             tx: caller_tx,
+            failures: 0,
         }
     }
 
@@ -65,8 +68,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             ReplicaEvent::RevertToFollower { target, vote } => {
                 self.handle_revert_to_follower(target, vote).await?;
             }
-            ReplicaEvent::UpdateMatched { target, matched } => {
-                self.handle_update_matched(target, matched).await?;
+            ReplicaEvent::UpdateMatched { target, result } => {
+                self.handle_update_matched(target, result).await?;
             }
             ReplicaEvent::NeedsSnapshot {
                 target: _,
@@ -102,30 +105,46 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     async fn handle_update_matched(
         &mut self,
         target: C::NodeId,
-        matched: LogId<C::NodeId>,
+        result: Result<LogId<C::NodeId>, String>,
     ) -> Result<(), StorageError<C::NodeId>> {
         // Update target's match index & check if it is awaiting removal.
 
-        if let Some(state) = self.nodes.get_mut(&target) {
-            tracing::debug!("state.matched: {:?}, update to matched: {:?}", state.matched, matched);
-
-            assert!(Some(matched) >= state.matched, "the matched increments monotonically");
-
-            state.matched = Some(matched);
-
-            // Issue a response on the learners response channel if needed.
-            if state.is_line_rate(&self.core.engine.state.last_log_id, &self.core.config) {
-                // This replication became line rate.
-
-                // When adding a learner, it blocks until the replication becomes line-rate.
-                if let Some(tx) = state.tx.take() {
-                    // TODO(xp): define a specific response type for learner matched event.
-                    let x = AddLearnerResponse { matched: state.matched };
-                    let _ = tx.send(Ok(x));
-                }
-            }
+        let state = if let Some(state) = self.nodes.get_mut(&target) {
+            state
         } else {
             return Ok(());
+        };
+
+        tracing::debug!("state.matched: {:?}, update to matched: {:?}", state.matched, result);
+
+        let matched = match result {
+            Ok(matched) => {
+                //
+                state.failures = 0;
+                matched
+            }
+            Err(_err_str) => {
+                state.failures += 1;
+
+                self.try_remove_replication(target);
+                return Ok(());
+            }
+        };
+
+        assert!(Some(matched) >= state.matched, "the matched increments monotonically");
+
+        state.matched = Some(matched);
+
+        // Issue a response on the learners response channel if needed.
+        if state.is_line_rate(&self.core.engine.state.last_log_id, &self.core.config) {
+            // This replication became line rate.
+
+            // When adding a learner, it blocks until the replication becomes line-rate.
+            if let Some(tx) = state.tx.take() {
+                // TODO(xp): define a specific response type for learner matched event.
+                let x = AddLearnerResponse { matched: state.matched };
+                let _ = tx.send(Ok(x));
+            }
         }
 
         // Drop replication stream if needed.

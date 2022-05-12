@@ -1,3 +1,6 @@
+use std::fmt::Debug;
+use std::fmt::Formatter;
+
 use crate::config::Config;
 use crate::error::AddLearnerError;
 use crate::raft::AddLearnerResponse;
@@ -16,6 +19,11 @@ pub(crate) struct ReplicationState<NID: NodeId> {
 
     pub repl_stream: ReplicationStream<NID>,
 
+    /// Count of replication failures.
+    ///
+    /// It will be reset once a successful replication is done.
+    pub failures: u64,
+
     /// The response channel to use for when this node has successfully synced with the cluster.
     #[allow(clippy::type_complexity)]
     pub tx: Option<RaftRespTx<AddLearnerResponse<NID>, AddLearnerError<NID>>>,
@@ -24,9 +32,19 @@ pub(crate) struct ReplicationState<NID: NodeId> {
 impl<NID: NodeId> MessageSummary for ReplicationState<NID> {
     fn summary(&self) -> String {
         format!(
-            "matched: {:?}, remove_after_commit: {:?}",
-            self.matched, self.remove_since
+            "matched: {:?}, remove_after_commit: {:?}, failures: {}",
+            self.matched, self.remove_since, self.failures
         )
+    }
+}
+
+impl<NID: NodeId> Debug for ReplicationState<NID> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReplicationState")
+            .field("matched", &self.matched)
+            .field("remove_since", &self.remove_since)
+            .field("failures", &self.failures)
+            .finish()
     }
 }
 
