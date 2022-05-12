@@ -20,6 +20,7 @@ use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
+use crate::RaftSnapshotBuilder;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -99,6 +100,8 @@ where
         run_fut(Suite::last_applied_state(builder))?;
         run_fut(Suite::delete_logs(builder))?;
         run_fut(Suite::append_to_log(builder))?;
+        run_fut(Suite::snapshot_meta(builder))?;
+
         // run_fut(Suite::apply_single(builder))?;
         // run_fut(Suite::apply_multi(builder))?;
 
@@ -1019,6 +1022,59 @@ where
         Ok(())
     }
 
+    pub async fn snapshot_meta(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+        let mut store = builder.build().await;
+
+        tracing::info!("--- just initialized");
+        {
+            store
+                .apply_to_state_machine(&[
+                    //
+                    &Entry {
+                        log_id: log_id(0, 0),
+                        payload: EntryPayload::Membership(Membership::new(vec![btreeset! {1,2}], None)),
+                    },
+                ])
+                .await?;
+
+            let mut b = store.get_snapshot_builder().await;
+            let snap = b.build_snapshot().await?;
+            let meta = snap.meta;
+            assert_eq!(log_id(0, 0), meta.last_log_id);
+            assert_eq!(Some(log_id(0, 0)), meta.last_membership.log_id);
+            assert_eq!(
+                Membership::new(vec![btreeset! {1,2}], None),
+                meta.last_membership.membership
+            );
+        }
+
+        tracing::info!("--- one app log, one membership log");
+        {
+            store
+                .apply_to_state_machine(&[
+                    //
+                    &blank(1, 1),
+                    &Entry {
+                        log_id: log_id(2, 2),
+                        payload: EntryPayload::Membership(Membership::new(vec![btreeset! {3,4}], None)),
+                    },
+                ])
+                .await?;
+
+            let mut b = store.get_snapshot_builder().await;
+            let snap = b.build_snapshot().await?;
+            let meta = snap.meta;
+            assert_eq!(log_id(2, 2), meta.last_log_id);
+            assert_eq!(Some(log_id(2, 2)), meta.last_membership.log_id);
+            assert_eq!(
+                Membership::new(vec![btreeset! {3,4}], None),
+                meta.last_membership.membership
+            );
+        }
+
+        Ok(())
+    }
+
     // pub async fn apply_single(builder: &B) -> Result<(), StorageError<C::NodeId>> {
     //     let mut store = builder.build().await;
     //
@@ -1741,6 +1797,17 @@ where
         }
 
         Ok(())
+    }
+}
+
+fn log_id<NID: NodeId>(term: u64, index: u64) -> LogId<NID>
+where NID: From<u64> {
+    LogId {
+        leader_id: LeaderId {
+            term,
+            node_id: NODE_ID.into(),
+        },
+        index,
     }
 }
 

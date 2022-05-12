@@ -188,7 +188,9 @@ impl RaftLogReader<Config> for Arc<MemStore> {
 impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<MemStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(&mut self) -> Result<Snapshot<Config, Cursor<Vec<u8>>>, StorageError<MemNodeId>> {
-        let (data, last_applied_log);
+        let data;
+        let last_applied_log;
+        let last_membership;
 
         {
             // Serialize the data of the state machine.
@@ -197,6 +199,7 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<MemStore> {
                 .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
 
             last_applied_log = sm.last_applied_log;
+            last_membership = sm.last_membership.clone();
         }
 
         let last_applied_log = match last_applied_log {
@@ -221,6 +224,7 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<MemStore> {
 
         let meta = SnapshotMeta {
             last_log_id: last_applied_log,
+            last_membership,
             snapshot_id,
         };
 
