@@ -53,6 +53,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
                 leader_id: LeaderId::new(1, 0),
                 index: 0,
             },
+            last_membership: Default::default(),
         },
         offset: 0,
         data: vec![1, 2, 3],

@@ -132,7 +132,9 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
     async fn build_snapshot(
         &mut self,
     ) -> Result<Snapshot<ExampleTypeConfig, Cursor<Vec<u8>>>, StorageError<ExampleNodeId>> {
-        let (data, last_applied_log);
+        let data;
+        let last_applied_log;
+        let last_membership;
 
         {
             // Serialize the data of the state machine.
@@ -141,6 +143,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
                 .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
 
             last_applied_log = state_machine.last_applied_log;
+            last_membership = state_machine.last_membership.clone();
         }
 
         let last_applied_log = match last_applied_log {
@@ -163,6 +166,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
 
         let meta = SnapshotMeta {
             last_log_id: last_applied_log,
+            last_membership,
             snapshot_id,
         };
 
