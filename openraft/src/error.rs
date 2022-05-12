@@ -308,7 +308,7 @@ pub struct CommittedAdvanceTooMany {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error(transparent)]
+#[error("NetworkError: {source}")]
 pub struct NetworkError {
     #[from]
     source: AnyError,

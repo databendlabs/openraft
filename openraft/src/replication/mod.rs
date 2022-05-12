@@ -369,8 +369,26 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     tracing::warn!(error=%err, "error sending AppendEntries RPC to target");
                     let repl_err = match err {
                         RPCError::NodeNotFound(e) => ReplicationError::NodeNotFound(e),
-                        RPCError::Timeout(e) => ReplicationError::Timeout(e),
-                        RPCError::Network(e) => ReplicationError::Network(e),
+                        RPCError::Timeout(e) => {
+                            let _ = self.raft_core_tx.send((
+                                ReplicaEvent::UpdateMatched {
+                                    target: self.target,
+                                    result: Err(e.to_string()),
+                                },
+                                tracing::debug_span!("CH"),
+                            ));
+                            ReplicationError::Timeout(e)
+                        }
+                        RPCError::Network(e) => {
+                            let _ = self.raft_core_tx.send((
+                                ReplicaEvent::UpdateMatched {
+                                    target: self.target,
+                                    result: Err(e.to_string()),
+                                },
+                                tracing::debug_span!("CH"),
+                            ));
+                            ReplicationError::Network(e)
+                        }
                         RPCError::RemoteError(e) => ReplicationError::RemoteError(e),
                     };
                     return Err(repl_err);
@@ -378,6 +396,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             },
             Err(timeout_err) => {
                 tracing::warn!(error=%timeout_err, "timeout while sending AppendEntries RPC to target");
+
+                let _ = self.raft_core_tx.send((
+                    ReplicaEvent::UpdateMatched {
+                        target: self.target,
+                        result: Err(timeout_err.to_string()),
+                    },
+                    tracing::debug_span!("CH"),
+                ));
+
                 return Err(ReplicationError::Timeout(Timeout {
                     action: RPCTypes::AppendEntries,
                     id: self.vote.node_id,
@@ -464,7 +491,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     target: self.target,
                     // `self.matched < new_matched` implies new_matched can not be None.
                     // Thus unwrap is safe.
-                    matched: self.matched.unwrap(),
+                    result: Ok(self.matched.unwrap()),
                 },
                 tracing::debug_span!("CH"),
             ));
@@ -601,9 +628,12 @@ where
     UpdateMatched {
         /// The ID of the target node for which the match index is to be updated.
         target: NID,
-        /// The log of the most recent log known to have been successfully replicated on the target.
-        matched: LogId<NID>,
+
+        /// Either the last log id that has been successfully replicated to the target,
+        /// or an error in string.
+        result: Result<LogId<NID>, String>,
     },
+
     /// An event indicating that the Raft node needs to revert to follower state.
     RevertToFollower {
         /// The ID of the target node from which the new term was observed.
@@ -612,6 +642,7 @@ where
         /// The new vote observed.
         vote: Vote<NID>,
     },
+
     /// An event from a replication stream requesting snapshot info.
     NeedsSnapshot {
         target: NID,
@@ -622,6 +653,7 @@ where
         /// The response channel for delivering the snapshot data.
         tx: oneshot::Sender<Snapshot<NID, S>>,
     },
+
     /// Some critical error has taken place, and Raft needs to shutdown.
     Shutdown,
 }
@@ -629,11 +661,8 @@ where
 impl<NID: NodeId, S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for ReplicaEvent<NID, S> {
     fn summary(&self) -> String {
         match self {
-            ReplicaEvent::UpdateMatched {
-                ref target,
-                ref matched,
-            } => {
-                format!("UpdateMatchIndex: target: {}, matched: {:?}", target, matched)
+            ReplicaEvent::UpdateMatched { ref target, ref result } => {
+                format!("UpdateMatchIndex: target: {}, result: {:?}", target, result)
             }
             ReplicaEvent::RevertToFollower { ref target, ref vote } => {
                 format!("RevertToFollower: target: {}, vote: {}", target, vote)

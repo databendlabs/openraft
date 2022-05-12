@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 use std::mem::swap;
 use std::option::Option::None;
 
-use tracing::warn;
-
+use crate::config::RemoveReplicationPolicy;
+use crate::core::replication_state::ReplicationState;
 use crate::core::LeaderState;
 use crate::core::ServerState;
 use crate::entry::EntryRef;
@@ -246,7 +246,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
-    #[tracing::instrument(level = "debug", skip(self, payload, resp_tx), fields(id=display(self.core.id)))]
+    #[tracing::instrument(level = "debug", skip(self, payload, resp_tx), fields(id = display(self.core.id)))]
     pub async fn write_entry(
         &mut self,
         payload: EntryPayload<C>,
@@ -330,11 +330,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             let n = self.nodes.get(&target);
 
             if let Some(n) = n {
-                if let Some(since) = n.remove_since {
-                    if n.matched.index() < Some(since) {
-                        return false;
-                    }
-                } else {
+                if !self.need_to_remove_replication(n) {
                     return false;
                 }
             } else {
@@ -352,5 +348,54 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         self.core.engine.metrics_flags.set_replication_changed();
 
         true
+    }
+
+    fn need_to_remove_replication(&self, node: &ReplicationState<C::NodeId>) -> bool {
+        tracing::debug!(node=?node, "check if to remove a replication");
+
+        let cfg = &self.core.config;
+        let policy = &cfg.remove_replication;
+
+        let st = &self.core.engine.state;
+        let committed = st.committed;
+
+        // `remove_since` is set only when the uniform membership log is committed.
+        // Do not remove replication if it is not committed.
+        let since = if let Some(since) = node.remove_since {
+            since
+        } else {
+            return false;
+        };
+
+        if node.matched.index() >= Some(since) {
+            tracing::debug!(
+                node = debug(node),
+                committed = debug(committed),
+                "remove replication: uniform membership log committed and replicated to target"
+            );
+            return true;
+        }
+
+        match policy {
+            RemoveReplicationPolicy::CommittedAdvance(n) => {
+                // TODO(xp): test this. but not for now. It is meaningless without blank-log heartbeat.
+                if committed.next_index() - since > *n {
+                    tracing::debug!(
+                        node = debug(node),
+                        committed = debug(committed),
+                        "remove replication: committed index is head of remove_since too much"
+                    );
+                    return true;
+                }
+            }
+            RemoveReplicationPolicy::MaxNetworkFailures(n) => {
+                if node.failures >= *n {
+                    tracing::debug!(node = debug(node), "remove replication: too many replication failure");
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 }

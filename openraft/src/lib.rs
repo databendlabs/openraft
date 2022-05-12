@@ -1,4 +1,4 @@
-#![doc = include_str!("../README.md")]
+#![doc = include_str!("../../README.md")]
 #![cfg_attr(feature = "bt", feature(backtrace))]
 
 //! # Feature flags
@@ -42,6 +42,7 @@ use serde::Serialize;
 
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
+pub use crate::config::RemoveReplicationPolicy;
 pub use crate::config::SnapshotPolicy;
 pub use crate::core::ServerState;
 pub use crate::defensive::DefensiveCheck;

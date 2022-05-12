@@ -1,6 +1,5 @@
 /// Error variants related to configuration.
 #[derive(Debug, thiserror::Error, PartialEq)]
-#[non_exhaustive]
 pub enum ConfigError {
     #[error("election timeout: min({min}) must be < max({max})")]
     ElectionTimeout { min: u64, max: u64 },
@@ -19,4 +18,7 @@ pub enum ConfigError {
 
     #[error("{reason} when parsing {invalid:?}")]
     InvalidNumber { invalid: String, reason: String },
+
+    #[error("remove replication policy string is invalid: '{invalid:?}' expect: '{syntax}'")]
+    InvalidRemoveReplicationPolicy { invalid: String, syntax: String },
 }

@@ -1,3 +1,4 @@
+use crate::config::config::RemoveReplicationPolicy;
 use crate::config::error::ConfigError;
 use crate::Config;
 use crate::SnapshotPolicy;
@@ -58,6 +59,7 @@ fn test_build() -> anyhow::Result<()> {
         "--snapshot-policy=since_last:203",
         "--snapshot-max-chunk-size=204",
         "--max-applied-log-to-keep=205",
+        "--remove-replication=max_network_failures:206",
     ])?;
 
     assert_eq!("bar", config.cluster_name);
@@ -70,6 +72,28 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(SnapshotPolicy::LogsSinceLast(203), config.snapshot_policy);
     assert_eq!(204, config.snapshot_max_chunk_size);
     assert_eq!(205, config.max_applied_log_to_keep);
+    assert_eq!(
+        RemoveReplicationPolicy::MaxNetworkFailures(206),
+        config.remove_replication
+    );
 
+    Ok(())
+}
+
+#[test]
+fn test_option_remove_replication() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--remove-replication=max_network_failures:206"])?;
+
+    assert_eq!(
+        RemoveReplicationPolicy::MaxNetworkFailures(206),
+        config.remove_replication
+    );
+
+    let config = Config::build(&["foo", "--remove-replication=committed_advance:206"])?;
+
+    assert_eq!(
+        RemoveReplicationPolicy::CommittedAdvance(206),
+        config.remove_replication
+    );
     Ok(())
 }
