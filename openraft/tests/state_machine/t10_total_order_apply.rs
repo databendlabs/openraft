@@ -27,7 +27,7 @@ async fn total_order_apply() -> Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.initialize(btreeset! {0}).await?;
 
-        router.wait(&0, timeout())?.state(ServerState::Leader, "n0 -> leader").await?;
+        router.wait(&0, timeout()).state(ServerState::Leader, "n0 -> leader").await?;
     }
 
     tracing::info!("--- add one learner");

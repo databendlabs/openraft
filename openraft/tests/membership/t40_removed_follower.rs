@@ -37,7 +37,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
         for i in 0..5 {
             router
-                .wait(&i, timeout())?
+                .wait(&i, timeout())
                 .metrics(
                     |x| x.last_log_index >= Some(log_index),
                     "all nodes recv change-membership logs",
@@ -54,7 +54,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
         for i in &[0, 3, 4] {
             router
-                .wait(i, timeout())?
+                .wait(i, timeout())
                 .metrics(
                     |x| x.last_applied.index() >= Some(log_index),
                     "new cluster recv new logs",
@@ -65,7 +65,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 
     for i in &[1, 2] {
         router
-            .wait(i, timeout())?
+            .wait(i, timeout())
             .metrics(
                 |x| x.last_applied.index() < Some(log_index),
                 "old cluster does not recv new logs",

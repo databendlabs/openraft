@@ -204,7 +204,7 @@ async fn leader_metrics() -> Result<()> {
             )
             .await?;
 
-        router.wait(&leader, timeout())?.metrics(|x| x.current_leader.is_some(), "elect new leader").await?;
+        router.wait(&leader, timeout()).metrics(|x| x.current_leader.is_some(), "elect new leader").await?;
     }
 
     tracing::info!("--- check leader metrics after leadership transferred.");

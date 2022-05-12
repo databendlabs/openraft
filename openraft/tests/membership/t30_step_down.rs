@@ -48,7 +48,7 @@ async fn step_down() -> Result<()> {
     tracing::info!("--- old leader commits 2 membership log");
     {
         router
-            .wait(&orig_leader, timeout())?
+            .wait(&orig_leader, timeout())
             .log(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
@@ -57,7 +57,7 @@ async fn step_down() -> Result<()> {
     // Because to commit the 2nd log it only need a quorum of the new cluster.
 
     router
-        .wait(&1, timeout())?
+        .wait(&1, timeout())
         .log_at_least(Some(log_index), "node in old cluster commits at least 1 membership log")
         .await?;
 
@@ -68,7 +68,7 @@ async fn step_down() -> Result<()> {
 
         for id in [2, 3] {
             router
-                .wait(&id, timeout())?
+                .wait(&id, timeout())
                 .log_at_least(
                     Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
@@ -81,7 +81,7 @@ async fn step_down() -> Result<()> {
     {
         for id in [1, 2, 3] {
             router
-                .wait(&id, timeout())?
+                .wait(&id, timeout())
                 .metrics(
                     |x| x.current_term >= 2,
                     "new cluster has term >= 2 because of new election",

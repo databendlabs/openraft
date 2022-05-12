@@ -398,18 +398,18 @@ where
     where
         T: Fn(&RaftMetrics<C>) -> bool + Send,
     {
-        let wait = self.wait(node_id, timeout)?;
+        let wait = self.wait(node_id, timeout);
         let rst = wait.metrics(func, format!("node-{} {}", node_id, msg)).await?;
         Ok(rst)
     }
 
-    pub fn wait(&self, node_id: &C::NodeId, timeout: Option<Duration>) -> Result<Wait<C>> {
+    pub fn wait(&self, node_id: &C::NodeId, timeout: Option<Duration>) -> Wait<C> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0
         };
 
-        Ok(node.wait(timeout))
+        node.wait(timeout)
     }
 
     /// Wait for specified nodes until they applied upto `want_log`(inclusive) logs.
@@ -422,7 +422,7 @@ where
         msg: &str,
     ) -> Result<()> {
         for i in node_ids.iter() {
-            self.wait(i, timeout)?.log(want_log, msg).await?;
+            self.wait(i, timeout).log(want_log, msg).await?;
         }
         Ok(())
     }
@@ -436,7 +436,7 @@ where
         msg: &str,
     ) -> Result<()> {
         for i in node_ids.iter() {
-            let wait = self.wait(i, timeout)?;
+            let wait = self.wait(i, timeout);
             wait.metrics(
                 |x| {
                     x.membership_config.get_configs().len() == 1
@@ -459,7 +459,7 @@ where
         msg: &str,
     ) -> Result<()> {
         for i in node_ids.iter() {
-            self.wait(i, timeout)?.state(want_state, msg).await?;
+            self.wait(i, timeout).state(want_state, msg).await?;
         }
         Ok(())
     }
@@ -474,7 +474,7 @@ where
         msg: &str,
     ) -> Result<()> {
         for i in node_ids.iter() {
-            self.wait(i, timeout)?.snapshot(want, msg).await?;
+            self.wait(i, timeout).snapshot(want, msg).await?;
         }
         Ok(())
     }
