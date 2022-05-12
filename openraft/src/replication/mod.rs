@@ -259,7 +259,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     /// This request will timeout if no response is received within the
     /// configured heartbeat interval.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn send_append_entries(&mut self) -> Result<(), ReplicationError<C>> {
+    async fn send_append_entries(&mut self) -> Result<(), ReplicationError<C::NodeId>> {
         // find the mid position aligning to 8
         let diff = self.max_possible_matched_index.next_index() - self.matched.next_index();
         let offset = diff / 16 * 8;
@@ -412,7 +412,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
     #[tracing::instrument(level = "trace", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
-    fn check_consecutive(&self, last_purged: Option<LogId<C::NodeId>>) -> Result<(), ReplicationError<C>> {
+    fn check_consecutive(&self, last_purged: Option<LogId<C::NodeId>>) -> Result<(), ReplicationError<C::NodeId>> {
         tracing::debug!(?last_purged, ?self.max_possible_matched_index, "check_consecutive");
 
         if last_purged.index() > self.max_possible_matched_index {
@@ -480,7 +480,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError<C>> {
+    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError<C::NodeId>> {
         tracing::debug!("try_drain_raft_rx");
 
         for _i in 0..self.config.max_payload_entries {
@@ -509,7 +509,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
-    pub fn process_raft_event(&mut self, event: RaftEvent<C>) -> Result<(), ReplicationError<C>> {
+    pub fn process_raft_event(&mut self, event: RaftEvent<C>) -> Result<(), ReplicationError<C::NodeId>> {
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
         match event {
@@ -643,7 +643,7 @@ impl<C: RaftTypeConfig, S: AsyncRead + AsyncSeek + Send + Unpin + 'static> Messa
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError<C>> {
+    pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError<C::NodeId>> {
         loop {
             loop {
                 tracing::debug!(
@@ -720,7 +720,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     pub async fn replicate_snapshot(
         &mut self,
         snapshot_must_include: Option<LogId<C::NodeId>>,
-    ) -> Result<(), ReplicationError<C>> {
+    ) -> Result<(), ReplicationError<C::NodeId>> {
         let snapshot = self.wait_for_snapshot(snapshot_must_include).await?;
         self.stream_snapshot(snapshot).await?;
 
@@ -735,7 +735,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     async fn wait_for_snapshot(
         &mut self,
         snapshot_must_include: Option<LogId<C::NodeId>>,
-    ) -> Result<Snapshot<C, S::SnapshotData>, ReplicationError<C>> {
+    ) -> Result<Snapshot<C, S::SnapshotData>, ReplicationError<C::NodeId>> {
         // Ask raft core for a snapshot.
         // - If raft core has a ready snapshot, it sends back through tx.
         // - Otherwise raft core starts a new task taking snapshot, and **close** `tx` when finished. Thus there has to
@@ -810,7 +810,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
-    async fn stream_snapshot(&mut self, mut snapshot: Snapshot<C, S::SnapshotData>) -> Result<(), ReplicationError<C>> {
+    async fn stream_snapshot(
+        &mut self,
+        mut snapshot: Snapshot<C, S::SnapshotData>,
+    ) -> Result<(), ReplicationError<C::NodeId>> {
         let err_x = || (ErrorSubject::Snapshot(snapshot.meta.clone()), ErrorVerb::Read);
 
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
