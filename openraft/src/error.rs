@@ -15,7 +15,6 @@ use crate::Membership;
 use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
-use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
 
@@ -220,15 +219,15 @@ impl<NID: NodeId> From<StorageError<NID>> for AddLearnerError<NID> {
 /// Error variants related to the Replication.
 #[derive(Debug, thiserror::Error)]
 #[allow(clippy::large_enum_variant)]
-pub enum ReplicationError<C: RaftTypeConfig> {
+pub enum ReplicationError<NID: NodeId> {
     #[error(transparent)]
-    HigherVote(#[from] HigherVote<C>),
+    HigherVote(#[from] HigherVote<NID>),
 
     #[error("Replication is closed")]
     Closed,
 
     #[error(transparent)]
-    LackEntry(#[from] LackEntry<C>),
+    LackEntry(#[from] LackEntry<NID>),
 
     #[error(transparent)]
     CommittedAdvanceTooMany(#[from] CommittedAdvanceTooMany),
@@ -236,53 +235,55 @@ pub enum ReplicationError<C: RaftTypeConfig> {
     // TODO(xp): two sub type: StorageError / TransportError
     // TODO(xp): a sub error for just send_append_entries()
     #[error(transparent)]
-    StorageError(#[from] StorageError<C::NodeId>),
+    StorageError(#[from] StorageError<NID>),
 
     #[error(transparent)]
-    NodeNotFound(#[from] NodeNotFound<C::NodeId>),
+    NodeNotFound(#[from] NodeNotFound<NID>),
 
     #[error(transparent)]
-    Timeout(#[from] Timeout<C>),
+    Timeout(#[from] Timeout<NID>),
 
     #[error(transparent)]
     Network(#[from] NetworkError),
 
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<C, AppendEntriesError<C::NodeId>>),
+    RemoteError(#[from] RemoteError<NID, AppendEntriesError<NID>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-pub enum RPCError<C: RaftTypeConfig, T: Error> {
+#[serde(bound = "T:Serialize + for <'d> Deserialize<'d>")]
+pub enum RPCError<NID: NodeId, T: Error> {
     #[error(transparent)]
-    NodeNotFound(#[from] NodeNotFound<C::NodeId>),
+    NodeNotFound(#[from] NodeNotFound<NID>),
 
     #[error(transparent)]
-    Timeout(#[from] Timeout<C>),
+    Timeout(#[from] Timeout<NID>),
 
     #[error(transparent)]
     Network(#[from] NetworkError),
 
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<C, T>),
+    RemoteError(#[from] RemoteError<NID, T>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[error("error occur on remote peer {target}: {source}")]
-pub struct RemoteError<C: RaftTypeConfig, T: std::error::Error> {
-    pub target: C::NodeId,
+pub struct RemoteError<NID: NodeId, T: std::error::Error> {
+    #[serde(bound = "")]
+    pub target: NID,
     pub target_node: Option<Node>,
     pub source: T,
 }
 
-impl<C: RaftTypeConfig, T: std::error::Error> RemoteError<C, T> {
-    pub fn new(target: C::NodeId, e: T) -> Self {
+impl<NID: NodeId, T: std::error::Error> RemoteError<NID, T> {
+    pub fn new(target: NID, e: T) -> Self {
         Self {
             target,
             target_node: None,
             source: e,
         }
     }
-    pub fn new_with_node(target: C::NodeId, node: Node, e: T) -> Self {
+    pub fn new_with_node(target: NID, node: Node, e: T) -> Self {
         Self {
             target,
             target_node: Some(node),
@@ -292,10 +293,11 @@ impl<C: RaftTypeConfig, T: std::error::Error> RemoteError<C, T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
 #[error("seen a higher vote: {higher} GT mine: {mine}")]
-pub struct HigherVote<C: RaftTypeConfig> {
-    pub higher: Vote<C::NodeId>,
-    pub mine: Vote<C::NodeId>,
+pub struct HigherVote<NID: NodeId> {
+    pub higher: Vote<NID>,
+    pub mine: Vote<NID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -321,19 +323,21 @@ impl NetworkError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
 #[error("timeout after {timeout:?} when {action} {id}->{target}")]
-pub struct Timeout<C: RaftTypeConfig> {
+pub struct Timeout<NID: NodeId> {
     pub action: RPCTypes,
-    pub id: C::NodeId,
-    pub target: C::NodeId,
+    pub id: NID,
+    pub target: NID,
     pub timeout: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+#[serde(bound = "")]
 #[error("store has no log at: {index:?}, last purged: {last_purged_log_id:?}")]
-pub struct LackEntry<C: RaftTypeConfig> {
+pub struct LackEntry<NID: NodeId> {
     pub index: Option<u64>,
-    pub last_purged_log_id: Option<LogId<C::NodeId>>,
+    pub last_purged_log_id: Option<LogId<NID>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
