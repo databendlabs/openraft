@@ -34,7 +34,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
         n0.initialize(btreeset! {0}).await?;
         log_index += 1;
 
-        router.wait(&0, timeout())?.state(ServerState::Leader, "n0 -> leader").await?;
+        router.wait(&0, timeout()).state(ServerState::Leader, "n0 -> leader").await?;
     }
 
     tracing::info!("--- add one learner");

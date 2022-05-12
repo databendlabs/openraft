@@ -34,7 +34,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         router.client_request_many(0, "non_voter_add", 100 - log_index as usize).await;
         log_index = 100;
 
-        router.wait(&0, timeout())?.log(Some(log_index), "received 100 logs").await?;
+        router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
     }
 
     tracing::info!("--- change membership without adding-learner");
@@ -88,7 +88,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         router.client_request_many(0, "non_voter_add", 500 - log_index as usize).await;
         log_index = 500;
 
-        router.wait(&0, timeout())?.log(Some(log_index), "received 500 logs").await?;
+        router.wait(&0, timeout()).log(Some(log_index), "received 500 logs").await?;
     }
 
     tracing::info!("--- restore replication and change membership at once, expect NonVoterIsLagging");

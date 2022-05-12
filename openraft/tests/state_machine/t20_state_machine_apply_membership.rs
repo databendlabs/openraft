@@ -84,7 +84,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     tracing::info!("--- every node receives joint log");
     for i in 0..5 {
         router
-            .wait(&i, None)?
+            .wait(&i, None)
             .metrics(|x| x.last_applied.index() >= Some(log_index - 1), "joint log applied")
             .await?;
     }
@@ -92,7 +92,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     tracing::info!("--- only 3 node applied membership config");
     for i in 0..3 {
         router
-            .wait(&i, None)?
+            .wait(&i, None)
             .metrics(|x| x.last_applied.index() == Some(log_index), "uniform log applied")
             .await?;
 

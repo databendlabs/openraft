@@ -29,15 +29,15 @@ async fn metrics_wait() -> Result<()> {
         let n0 = router.get_raft_handle(&0)?;
         n0.initialize(cluster.clone()).await?;
 
-        router.wait(&0, timeout())?.state(ServerState::Leader, "n0 -> leader").await?;
+        router.wait(&0, timeout()).state(ServerState::Leader, "n0 -> leader").await?;
     }
 
-    router.wait(&0, None)?.current_leader(0, "become leader").await?;
+    router.wait(&0, None).current_leader(0, "become leader").await?;
     router.wait_for_log(&cluster, Some(1), None, "initial log").await?;
 
     tracing::info!("--- wait and timeout");
 
-    let rst = router.wait(&0, timeout())?.log(Some(2), "timeout waiting for log 2").await;
+    let rst = router.wait(&0, timeout()).log(Some(2), "timeout waiting for log 2").await;
 
     match rst {
         Ok(_) => {

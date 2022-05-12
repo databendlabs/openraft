@@ -49,7 +49,7 @@ async fn learner_restart() -> Result<()> {
         n0.initialize(btreeset! {0}).await?;
         log_index += 1;
 
-        router.wait(&0, timeout())?.state(ServerState::Leader, "n0 -> leader").await?;
+        router.wait(&0, timeout()).state(ServerState::Leader, "n0 -> leader").await?;
     }
 
     router.add_learner(0, 1).await?;

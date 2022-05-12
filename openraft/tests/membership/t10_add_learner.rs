@@ -113,7 +113,7 @@ async fn add_learner_non_blocking() -> Result<()> {
         router.client_request_many(0, "learner_add", 100 - log_index as usize).await;
         log_index = 100;
 
-        router.wait(&0, timeout())?.log(Some(log_index), "received 100 logs").await?;
+        router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
 
         router.new_raft_node(1).await;
         let raft = router.get_raft_handle(&0)?;
@@ -184,7 +184,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     tracing::info!("--- old leader commits 2 membership log");
     {
         router
-            .wait(&orig_leader, timeout)?
+            .wait(&orig_leader, timeout)
             .log(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
@@ -193,7 +193,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     // Because to commit the 2nd log it only need a quorum of the new cluster.
 
     router
-        .wait(&1, timeout)?
+        .wait(&1, timeout)
         .log_at_least(Some(log_index), "node in old cluster commits at least 1 membership log")
         .await?;
 
@@ -204,7 +204,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 
         for id in [3, 4] {
             router
-                .wait(&id, timeout)?
+                .wait(&id, timeout)
                 .log_at_least(
                     Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
@@ -239,7 +239,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
         log_index += 1;
 
         for i in [1, 2, 3, 4] {
-            router.wait(&i, timeout)?.log_at_least(Some(log_index), "learner recv new log").await?;
+            router.wait(&i, timeout).log_at_least(Some(log_index), "learner recv new log").await?;
         }
     }
 
