@@ -34,9 +34,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         target: C::NodeId,
         caller_tx: Option<RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>>,
-    ) -> ReplicationState<C> {
+    ) -> ReplicationState<C::NodeId> {
         let target_node = self.core.engine.state.membership_state.effective.get_node(&target);
-        let repl_stream = ReplicationStream::new::<N, S>(
+        let repl_stream = ReplicationStream::new::<C, N, S>(
             target,
             target_node.cloned(),
             self.core.engine.state.vote,
@@ -59,7 +59,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     #[tracing::instrument(level = "trace", skip(self, event), fields(event=%event.summary()))]
     pub(super) async fn handle_replica_event(
         &mut self,
-        event: ReplicaEvent<C, S::SnapshotData>,
+        event: ReplicaEvent<C::NodeId, S::SnapshotData>,
     ) -> Result<(), StorageError<C::NodeId>> {
         match event {
             ReplicaEvent::RevertToFollower { target, vote } => {
@@ -223,7 +223,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     async fn handle_needs_snapshot(
         &mut self,
         must_include: Option<LogId<C::NodeId>>,
-        tx: oneshot::Sender<Snapshot<C, S::SnapshotData>>,
+        tx: oneshot::Sender<Snapshot<C::NodeId, S::SnapshotData>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {

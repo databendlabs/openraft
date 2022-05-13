@@ -42,13 +42,13 @@ pub struct SnapshotMeta<NID: NodeId> {
 
 /// The data associated with the current snapshot.
 #[derive(Debug)]
-pub struct Snapshot<C, S>
+pub struct Snapshot<NID, S>
 where
-    C: RaftTypeConfig,
+    NID: NodeId,
     S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     /// metadata of a snapshot
-    pub meta: SnapshotMeta<C::NodeId>,
+    pub meta: SnapshotMeta<NID>,
 
     /// A read handle to the associated snapshot.
     pub snapshot: Box<S>,
@@ -141,7 +141,7 @@ where
     /// Building snapshot can be done by:
     /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a LSM-tree does,
     /// - or by fetching a snapshot from the state machine.
-    async fn build_snapshot(&mut self) -> Result<Snapshot<C, SD>, StorageError<C::NodeId>>;
+    async fn build_snapshot(&mut self) -> Result<Snapshot<C::NodeId, SD>, StorageError<C::NodeId>>;
 
     // NOTES:
     // This interface is geared toward small file-based snapshots. However, not all snapshots can
@@ -417,7 +417,7 @@ where C: RaftTypeConfig
     /// of the snapshot, which should be decoded for creating this method's response data.
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<C, Self::SnapshotData>>, StorageError<C::NodeId>>;
+    ) -> Result<Option<Snapshot<C::NodeId, Self::SnapshotData>>, StorageError<C::NodeId>>;
 }
 
 /// APIs for debugging a store.

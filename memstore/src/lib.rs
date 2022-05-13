@@ -187,7 +187,7 @@ impl RaftLogReader<Config> for Arc<MemStore> {
 #[async_trait]
 impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<MemStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<Config, Cursor<Vec<u8>>>, StorageError<MemNodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<MemNodeId, Cursor<Vec<u8>>>, StorageError<MemNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -407,7 +407,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<Config, Self::SnapshotData>>, StorageError<MemNodeId>> {
+    ) -> Result<Option<Snapshot<MemNodeId, Self::SnapshotData>>, StorageError<MemNodeId>> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
