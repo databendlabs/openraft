@@ -33,16 +33,18 @@ pub(crate) struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     pub(super) core: &'a mut RaftCore<C, N, S>,
 
     /// A mapping of node IDs the replication state of the target node.
-    pub(super) nodes: BTreeMap<C::NodeId, ReplicationState<C>>,
+    pub(super) nodes: BTreeMap<C::NodeId, ReplicationState<C::NodeId>>,
 
     /// The metrics about a leader
     pub replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
 
     /// The stream of events coming from replication streams.
-    pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<C, S::SnapshotData>, Span)>,
+    #[allow(clippy::type_complexity)]
+    pub(super) replication_rx: mpsc::UnboundedReceiver<(ReplicaEvent<C::NodeId, S::SnapshotData>, Span)>,
 
     /// The cloneable sender channel for replication stream events.
-    pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<C, S::SnapshotData>, Span)>,
+    #[allow(clippy::type_complexity)]
+    pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<C::NodeId, S::SnapshotData>, Span)>,
 
     /// Channels to send result back to client when logs are committed.
     pub(super) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,

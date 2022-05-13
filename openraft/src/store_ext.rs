@@ -176,7 +176,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<C, Self::SnapshotData>>, StorageError<C::NodeId>> {
+    ) -> Result<Option<Snapshot<C::NodeId, Self::SnapshotData>>, StorageError<C::NodeId>> {
         self.inner().get_current_snapshot().await
     }
 
@@ -221,7 +221,7 @@ pub struct SnapshotBuilderExt<C: RaftTypeConfig, T: RaftStorage<C>> {
 #[async_trait]
 impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftSnapshotBuilder<C, T::SnapshotData> for SnapshotBuilderExt<C, T> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<C, T::SnapshotData>, StorageError<C::NodeId>> {
+    async fn build_snapshot(&mut self) -> Result<Snapshot<C::NodeId, T::SnapshotData>, StorageError<C::NodeId>> {
         self.inner.build_snapshot().await
     }
 }

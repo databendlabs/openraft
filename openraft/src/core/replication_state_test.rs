@@ -1,5 +1,4 @@
 use crate::core::is_matched_upto_date;
-use crate::testing::DummyConfig;
 use crate::Config;
 use crate::LeaderId;
 use crate::LogId;
@@ -14,11 +13,11 @@ fn test_is_line_rate() -> anyhow::Result<()> {
     };
 
     assert!(
-        is_matched_upto_date::<DummyConfig>(&None, &None, &cfg(0)),
+        is_matched_upto_date::<u64>(&None, &None, &cfg(0)),
         "matched, threshold=0"
     );
     assert!(
-        is_matched_upto_date::<DummyConfig>(
+        is_matched_upto_date::<u64>(
             &None,
             &Some(LogId {
                 leader_id: LeaderId::new(2, 0),
@@ -29,7 +28,7 @@ fn test_is_line_rate() -> anyhow::Result<()> {
         "matched, threshold=1"
     );
     assert!(
-        !is_matched_upto_date::<DummyConfig>(
+        !is_matched_upto_date::<u64>(
             &None,
             &Some(LogId {
                 leader_id: LeaderId::new(2, 0),
@@ -41,24 +40,24 @@ fn test_is_line_rate() -> anyhow::Result<()> {
     );
 
     assert!(
-        is_matched_upto_date::<DummyConfig>(&Some(LogId::new(LeaderId::new(0, 0), 0)), &None, &cfg(0)),
+        is_matched_upto_date::<u64>(&Some(LogId::new(LeaderId::new(0, 0), 0)), &None, &cfg(0)),
         "matched, threshold=0"
     );
 
     assert!(
-        is_matched_upto_date::<DummyConfig>(&m, &Some(LogId::new(LeaderId::new(2, 0), 10)), &cfg(0)),
+        is_matched_upto_date::<u64>(&m, &Some(LogId::new(LeaderId::new(2, 0), 10)), &cfg(0)),
         "matched, threshold=0"
     );
     assert!(
-        is_matched_upto_date::<DummyConfig>(&m, &Some(LogId::new(LeaderId::new(2, 0), 9)), &cfg(0)),
+        is_matched_upto_date::<u64>(&m, &Some(LogId::new(LeaderId::new(2, 0), 9)), &cfg(0)),
         "overflow, threshold=0"
     );
     assert!(
-        !is_matched_upto_date::<DummyConfig>(&m, &Some(LogId::new(LeaderId::new(2, 0), 11)), &cfg(0)),
+        !is_matched_upto_date::<u64>(&m, &Some(LogId::new(LeaderId::new(2, 0), 11)), &cfg(0)),
         "not caught up, threshold=0"
     );
     assert!(
-        is_matched_upto_date::<DummyConfig>(&m, &Some(LogId::new(LeaderId::new(2, 0), 11)), &cfg(1)),
+        is_matched_upto_date::<u64>(&m, &Some(LogId::new(LeaderId::new(2, 0), 11)), &cfg(1)),
         "caught up, threshold=1"
     );
     Ok(())
