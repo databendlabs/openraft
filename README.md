@@ -9,7 +9,7 @@
 [![CI](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml/badge.svg)](https://github.com/datafuselabs/openraft/actions/workflows/ci.yaml)
 [![Crates.io](https://img.shields.io/crates/v/openraft.svg)](https://crates.io/crates/openraft)
 [![docs.rs](https://docs.rs/openraft/badge.svg)](https://docs.rs/openraft)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE)
+![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)
 ![Crates.io](https://img.shields.io/crates/d/openraft.svg)
 ![Crates.io](https://img.shields.io/crates/dv/openraft.svg)
 
