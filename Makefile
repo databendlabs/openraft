@@ -1,4 +1,4 @@
-all: test lint fmt defensive_test
+all: test lint fmt defensive_test doc
 
 defensive_test:
 	RAFT_STORE_DEFENSIVE=on cargo test
@@ -10,6 +10,9 @@ test: lint fmt
 fmt:
 	cargo fmt
 
+doc:
+	cargo doc --all --no-deps
+
 lint:
 	cargo fmt
 	cargo fmt --manifest-path example-raft-kv/Cargo.toml
@@ -19,4 +22,4 @@ lint:
 clean:
 	cargo clean
 
-.PHONY: test fmt lint clean
+.PHONY: test fmt lint clean doc

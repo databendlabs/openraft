@@ -166,3 +166,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-targets -- -D warnings -A clippy::bool-assert-comparison
+
+      - name: Build-doc
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+        args: --all --no-deps
