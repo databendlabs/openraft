@@ -16,9 +16,9 @@ repository = "https://github.com/datafuselabs/openraft"
 readme = "README.md"
 
 [dependencies]
-openraft = { version="0.6", path= "../openraft" }
+openraft = { version="0.6", path= "../openraft", features=["serde"] }
 async-trait = "0.1.36"
-serde = { version="1.0.114", features=["derive"] }
+serde = { version="1.0.114", features=["derive"]}
 serde_json = "1.0.57"
 tokio = { version="1.0", default-features=false, features=["sync"] }
 tracing = "0.1.29"

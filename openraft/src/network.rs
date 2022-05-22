@@ -3,8 +3,6 @@
 use std::fmt::Formatter;
 
 use async_trait::async_trait;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::error::AppendEntriesError;
 use crate::error::InstallSnapshotError;
@@ -19,7 +17,8 @@ use crate::raft::VoteResponse;
 use crate::Node;
 use crate::RaftTypeConfig;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum RPCTypes {
     Vote,
     AppendEntries,

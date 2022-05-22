@@ -1,9 +1,6 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use crate::LeaderId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -11,8 +8,8 @@ use crate::RaftTypeConfig;
 
 /// The identity of a raft log.
 /// A term, node_id and an index identifies an log globally.
-#[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct LogId<NID: NodeId> {
     pub leader_id: LeaderId<NID>,
     pub index: u64,
@@ -132,7 +129,8 @@ impl LogIndexOptionExt for Option<u64> {
 pub type SnapshotId = String;
 
 /// The identity of a segment of a snapshot.
-#[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct SnapshotSegmentId {
     pub id: SnapshotId,
     pub offset: u64,

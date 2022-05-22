@@ -2,9 +2,6 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 use std::sync::Arc;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use crate::MessageSummary;
 
 /// Track data change by version.
@@ -17,7 +14,8 @@ use crate::MessageSummary;
 ///
 /// **Caveat**: an instance will see changes made on another clone, since they reference the same data, until an
 /// update-by-replace is made.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Versioned<Data>
 where Data: Clone
 {

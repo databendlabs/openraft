@@ -6,8 +6,6 @@ use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::Deserialize;
-use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -95,7 +93,8 @@ pub trait RaftTypeConfig:
 macro_rules! declare_raft_types {
     ( $(#[$outer:meta])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident = $type:ty),+ ) => {
         $(#[$outer])*
-        #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd, serde::Serialize, serde::Deserialize)]
+        #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
+        #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
         $visibility struct $id {}
 
         impl $crate::RaftTypeConfig for $id {
@@ -577,14 +576,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Clone for R
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct AddLearnerResponse<NID: NodeId> {
     pub matched: Option<LogId<NID>>,
 }
 
-#[derive(PartialEq, Serialize, Deserialize, Debug, Clone)]
-#[serde(bound = "")]
+#[derive(PartialEq, Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum ChangeMembers<NID: NodeId> {
     Add(BTreeSet<NID>),
     Remove(BTreeSet<NID>),
@@ -707,7 +706,7 @@ where
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
 
@@ -717,7 +716,6 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     ///
     /// This may be empty when the leader is sending heartbeats. Entries
     /// are batched for efficiency.
-    #[serde(bound = "")]
     pub entries: Vec<Entry<C>>,
 
     /// The leader's committed log id.
@@ -761,8 +759,8 @@ impl<C: RaftTypeConfig> MessageSummary for AppendEntriesRequest<C> {
 }
 
 /// The response to an `AppendEntriesRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum AppendEntriesResponse<NID: NodeId> {
     Success,
     Conflict,
@@ -790,10 +788,8 @@ impl<NID: NodeId> MessageSummary for AppendEntriesResponse<NID> {
 }
 
 /// An RPC sent by candidates to gather votes (§5.2).
-#[derive(Debug, Clone)]
-#[derive(PartialEq, Eq)]
-#[derive(Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteRequest<NID: NodeId> {
     pub vote: Vote<NID>,
     pub last_log_id: Option<LogId<NID>>,
@@ -812,8 +808,8 @@ impl<NID: NodeId> VoteRequest<NID> {
 }
 
 /// The response to a `VoteRequest`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteResponse<NID: NodeId> {
     /// vote after a node handling vote-reqest.
     /// Thus `resp.vote >= req.vote` always holds.
@@ -829,7 +825,8 @@ pub struct VoteResponse<NID: NodeId> {
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
 
@@ -859,8 +856,8 @@ impl<C: RaftTypeConfig> MessageSummary for InstallSnapshotRequest<C> {
 }
 
 /// The response to an `InstallSnapshotRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
 }
@@ -871,7 +868,7 @@ pub struct InstallSnapshotResponse<NID: NodeId> {
 ///
 /// The entry of this payload will be appended to the Raft log and then applied to the Raft state
 /// machine according to the Raft protocol.
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct ClientWriteRequest<C: RaftTypeConfig> {
     /// The application specific contents of this client request.
     pub(crate) payload: EntryPayload<C>,
@@ -898,12 +895,15 @@ impl<C: RaftTypeConfig> ClientWriteRequest<C> {
 }
 
 /// The response to a `ClientRequest`.
-#[derive(Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Deserialize, serde::Serialize),
+    serde(bound = "C::R: AppDataResponse")
+)]
 pub struct ClientWriteResponse<C: RaftTypeConfig> {
     pub log_id: LogId<C::NodeId>,
 
     /// Application specific response data.
-    #[serde(bound = "C::R: AppDataResponse")]
     pub data: C::R,
 
     /// If the log entry is a change-membership entry.

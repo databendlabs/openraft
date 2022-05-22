@@ -10,7 +10,8 @@ use crate::versioned::Versioned;
 use crate::LogId;
 
 /// A set of metrics describing the current state of a Raft node.
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct RaftMetrics<C: RaftTypeConfig> {
     pub running_state: Result<(), Fatal<C::NodeId>>,
 
