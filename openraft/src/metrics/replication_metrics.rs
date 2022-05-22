@@ -11,8 +11,8 @@ use crate::MessageSummary;
 use crate::NodeId;
 
 /// The metrics about the leader. It is Some() only when this node is leader.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(bound = "")]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct ReplicationMetrics<NID: NodeId> {
     /// Replication metrics of all known replication target: voters and learners
     pub replication: BTreeMap<NID, ReplicationTargetMetrics<NID>>,
@@ -77,8 +77,8 @@ impl<NID: NodeId> Update<ReplicationMetrics<NID>> for RemoveTarget<NID> {
     }
 }
 
-#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
-#[serde(bound = "")]
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct ReplicationTargetMetrics<NID: NodeId> {
     pub(crate) matched_leader_id: LeaderId<NID>,
     pub(crate) matched_index: AtomicU64,

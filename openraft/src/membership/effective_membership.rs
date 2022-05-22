@@ -2,9 +2,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -18,8 +15,8 @@ use crate::NodeId;
 /// - and the config.
 ///
 /// An active config is just the last seen config in raft spec.
-#[derive(Clone, Default, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
+#[derive(Clone, Default, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct EffectiveMembership<NID: NodeId> {
     /// The id of the log that applies this membership config
     pub log_id: Option<LogId<NID>>,

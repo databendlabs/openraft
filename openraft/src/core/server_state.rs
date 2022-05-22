@@ -1,8 +1,6 @@
-use serde::Deserialize;
-use serde::Serialize;
-
 /// All possible states of a Raft node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum ServerState {
     /// The node is completely passive; replicating entries, but neither voting nor timing out.
     Learner,

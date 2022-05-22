@@ -26,7 +26,7 @@ derive_more = { version="0.99.9" }
 futures = "0.3"
 maplit = "1.0.2"
 rand = "0.8"
-serde = { version="1", features=["derive", "rc"] }
+serde = { version="1", features=["derive", "rc"], optional = true}
 clap = { version = "3.0.7", features = ["derive", "env"] }
 thiserror = "1.0.29"
 tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
@@ -50,6 +50,8 @@ docinclude = [] # Used only for activating `doc(include="...")` on nightly.
 # Enable backtrace when generating an error.
 # Stable rust does not support backtrace.
 bt  = ["anyerror/backtrace", "anyhow/backtrace"]
+
+serde = ["dep:serde"]
 
 [package.metadata.docs.rs]
 features = ["docinclude"] # Activate `docinclude` during docs.rs build.

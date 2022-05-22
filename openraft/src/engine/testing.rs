@@ -1,11 +1,11 @@
 /// Req for test
 #[derive(Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub(crate) struct Req {}
 
 /// Resp for test
 #[derive(Clone)]
-#[derive(serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub(crate) struct Resp {}
 
 // Config for test

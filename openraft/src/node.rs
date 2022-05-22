@@ -4,9 +4,6 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::hash::Hash;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 /// A Raft node's ID.
 ///
 /// A `NodeId` uniquely identifies a node in the Raft cluster.
@@ -14,6 +11,7 @@ use serde::Serialize;
 /// ## Notes
 ///
 /// Currently, `serde` support is not optional, so the `NodeId` must be serializable via `serde` as well.
+#[cfg(feature = "serde")]
 pub trait NodeId:
     Sized
     + Send
@@ -34,6 +32,7 @@ pub trait NodeId:
 {
 }
 
+#[cfg(feature = "serde")]
 impl<T> NodeId for T where T: Sized
         + Send
         + Sync
@@ -53,13 +52,38 @@ impl<T> NodeId for T where T: Sized
 {
 }
 
+#[cfg(not(feature = "serde"))]
+pub trait NodeId:
+    Sized + Send + Sync + Eq + PartialEq + Ord + PartialOrd + Debug + Display + Hash + Copy + Clone + Default + 'static
+{
+}
+
+#[cfg(not(feature = "serde"))]
+impl<T> NodeId for T where T: Sized
+        + Send
+        + Sync
+        + Eq
+        + PartialEq
+        + Ord
+        + PartialOrd
+        + Debug
+        + Display
+        + Hash
+        + Copy
+        + Clone
+        + Default
+        + 'static
+{
+}
+
 /// Additional node information.
 ///
 /// The most usage is to store the connecting address of a node.
 /// So that an application does not need a 3rd party store to support its RaftNetwork implememntation.
 ///
 /// An application is also free not to use this storage and implements its own node-id to address mapping.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Node {
     pub addr: String,
     /// Other User defined data.
