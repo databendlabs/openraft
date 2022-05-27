@@ -109,7 +109,10 @@ A full list of changes/fixes can be found in [change-log](https://github.com/dat
   This can be used for [standard logging](https://docs.rs/tracing/latest/tracing/index.html#log-compatibility), or for [distributed tracing](https://docs.rs/tracing/latest/tracing/index.html#related-crates), and the verbosity can be [statically configured at compile time](https://docs.rs/tracing/latest/tracing/level_filters/index.html) to completely remove all instrumentation below the configured level.
 
 
+# Who use it
 
+- [yuyang0/rrqlite](https://github.com/yuyang0/rrqlite)
+- [raymondshe/matchengine-raft](https://github.com/raymondshe/matchengine-raft)
 
 # Contributing
 
