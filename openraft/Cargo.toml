@@ -35,7 +35,7 @@ tracing-futures = "0.2.4"
 
 [dev-dependencies]
 anyhow = "1.0.32"
-async-entry = "0.2.0"
+async-entry = "0.3.1"
 lazy_static = "1.4.0"
 memstore = { version="0.2.0", path="../memstore" }
 pretty_assertions = "1.0.0"
