@@ -82,15 +82,36 @@ R2 1,1  1,2  3,3
 
 - R0 to R1 append_entries: `entries=[{1,2}], prev_log_id = {1,1}, commit_index = 3`
 - R1 accepted this append-entries request but was not aware of that entry `{2,3}` is inconsistent to leader.
-  Then it will update commit_index to `3` and apply `{2,3}`
+  Then it will update `commit_index` to `3` and apply `{2,3}`
 
 
-## Replication by sending snapshot
+## Snapshot replication
 
-Replication by sending a snapshot of the state machine can be seen as a special form of **appending logs**.
-Thus, it shares the same constrains.
+Snapshot replication can be considered as a special form of log replication:
+It replicates all **committed** logs since the index-0 upto some index.
 
-A state machine will never be overridden by logs,
-thus committed log in it will never get lost.
-Thus, when installing a snapshot, it does not need to remove inconsistent logs,
-e.g., any log after the `last_applied`.
+Similar to append-entry:
+
+- (1) If the logs contained in the snapshot matches logs that are stored on a
+    Follower/Learner, nothing is done.
+
+- (2) If the logs conflicts with the local logs, local conflicting logs will be
+    deleted. And effective membership has to be reverted to some previous
+    non-conflicting one.
+
+
+### Necessity to delete conflicting logs
+
+**The `(2)` mentioned above is not necessary to do to achieve correctness.
+It is done only for clarity**.
+
+If the `last_applied`(`snapshot_meta.last_log_id`) conflict with the local log at `last_applied.index`,
+It does **NOT** need to delete the conflicting logs.
+
+Because the node that has conflicting logs won't become a leader:
+If this node can become a leader, according to raft spec, it has to contain all committed logs.
+But the log entry at `last_applied.index` is not committed, thus it can never become a leader.
+
+But deleting conflicting logs make the state cleaner. :)
+This way method such as `get_initial_state()` does not need to deal with
+conditions such as that `last_log_id` can be smaller than `last_applied`.

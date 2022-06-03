@@ -72,18 +72,35 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, start: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
+    pub(crate) async fn delete_conflict_logs_since(
+        &mut self,
+        start: LogId<C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>> {
         self.storage.delete_conflict_logs_since(start).await?;
 
-        self.engine.state.last_log_id = self.storage.get_log_state().await?.last_log_id;
+        let st = &mut self.engine.state;
+        st.last_log_id = self.storage.get_log_state().await?.last_log_id;
 
-        // TODO(xp): get_membership() should have a defensive check to ensure it always returns Some() if node is
-        //           initialized. Because a node always commit a membership log as the first log entry.
-        let memberships = self.storage.get_membership().await?;
+        // committed_membership, ... start, ... effective_membership // log
+        //                                      last membership      // before delete start..
+        // last membership                                           // after  delete start..
 
-        self.update_membership(memberships);
+        let effective = st.membership_state.effective.clone();
+        if Some(start.index) <= effective.log_id.index() {
+            let committed = st.membership_state.committed.clone();
 
-        tracing::debug!("Done update membership");
+            assert!(
+                committed.log_id < Some(start),
+                "committed membership can not conflict with the leader"
+            );
+
+            let mem_state = MembershipState {
+                committed: committed.clone(),
+                effective: committed,
+            };
+            self.update_membership(mem_state);
+            tracing::debug!("Done update membership");
+        }
 
         Ok(())
     }
@@ -297,13 +314,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
+        // Find at most the last two membership log entries.
+        // The older is committed, the newer is effective.
         let mut memberships = vec![];
-        for ent in entries.iter() {
+        for ent in entries.iter().rev() {
             if let EntryPayload::Membership(conf) = &ent.payload {
+                memberships.insert(0, EffectiveMembership::new(Some(ent.log_id), conf.clone()));
                 if memberships.len() == 2 {
-                    memberships.remove(0);
+                    break;
                 }
-                memberships.push(EffectiveMembership::new(Some(ent.log_id), conf.clone()));
             };
         }
 

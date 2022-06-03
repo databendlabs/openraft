@@ -1,4 +1,5 @@
 use std::io::SeekFrom;
+use std::sync::Arc;
 
 use anyerror::AnyError;
 use tokio::io::AsyncSeekExt;
@@ -13,6 +14,8 @@ use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
+use crate::LogIdOptionExt;
+use crate::MembershipState;
 use crate::MessageSummary;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
@@ -212,12 +215,32 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // TODO(xp): do not install if self.engine.st.last_applied >= snapshot.meta.last_applied
 
+        let snap_last_log_id = req.meta.last_log_id;
+
+        // Unlike normal append-entries RPC, if conflicting logs are found, it is not **necessary** to delete them.
+        // See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
+        {
+            let local = self.storage.try_get_log_entry(snap_last_log_id.index).await?;
+
+            if let Some(local_log) = local {
+                if local_log.log_id != snap_last_log_id {
+                    tracing::info!(
+                        local_log_id = display(&local_log.log_id),
+                        snap_last_log_id = display(&snap_last_log_id),
+                        "found conflict log id, when installing snapshot"
+                    );
+                }
+
+                self.delete_conflict_logs_since(snap_last_log_id).await?;
+            }
+        }
+
+        let st = &mut self.engine.state;
+
         let changes = self.storage.install_snapshot(&req.meta, snapshot).await?;
         tracing::debug!("update after apply or install-snapshot: {:?}", changes);
 
         let last_applied = changes.last_applied;
-
-        let st = &mut self.engine.state;
 
         if st.last_log_id < Some(last_applied) {
             st.last_log_id = Some(last_applied);
@@ -236,13 +259,27 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         st.last_purged_log_id = Some(last_applied);
         self.storage.purge_logs_upto(last_applied).await?;
 
-        // TODO(xp): just compare the membership config in the snapshot and the current effective membership config and
-        //           decide whether to replace the effective confg.
-        //           No need to bother the storage.
-        let memberships = self.storage.get_membership().await?;
-        tracing::debug!("storage membership: {:?}", memberships);
+        {
+            let snap_mem = req.meta.last_membership;
+            let mut committed = st.membership_state.committed.clone();
+            let mut effective = st.membership_state.effective.clone();
+            if committed.log_id < snap_mem.log_id {
+                committed = Arc::new(snap_mem.clone());
+            }
 
-        self.update_membership(memberships);
+            // The local effective membership may be inconsistent to the leader.
+            // Thus it has to compare by log-index, e.g.:
+            //   snap_mem.log_id        = (10, 5);
+            //   local_effective.log_id = (2, 10);
+            if effective.log_id.index() <= snap_mem.log_id.index() {
+                effective = Arc::new(snap_mem);
+            }
+
+            let mem_state = MembershipState { committed, effective };
+            tracing::debug!("update membership: {:?}", mem_state);
+
+            self.update_membership(mem_state);
+        }
 
         self.snapshot_last_log_id = self.engine.state.last_applied;
         self.engine.metrics_flags.set_data_changed();
