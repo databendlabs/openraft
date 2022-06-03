@@ -50,25 +50,12 @@ use crate::Membership;
 use crate::MembershipState;
 use crate::MessageSummary;
 use crate::Node;
-use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Update;
-
-pub trait MetricsProvider<NID: NodeId> {
-    /// The default impl for the non-leader state
-    fn get_leader_metrics(&self) -> Option<&Versioned<ReplicationMetrics<NID>>> {
-        None
-    }
-}
-
-/// A dummy metrics provider that always report None as the leader metrics
-pub(crate) struct NonLeaderMetrics {}
-
-impl<NID: NodeId> MetricsProvider<NID> for NonLeaderMetrics {}
 
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
@@ -256,19 +243,22 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, metrics_reporter))]
-    pub fn report_metrics_if_needed(&self, metrics_reporter: &impl MetricsProvider<C::NodeId>) {
+    /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
+    /// Then clear flags about the cached changes, to avoid unnecessary metrics report.
+    #[tracing::instrument(level = "trace", skip_all)]
+    pub fn flush_metrics(&mut self, repl_metrics: Option<&Versioned<ReplicationMetrics<C::NodeId>>>) {
         if !self.engine.metrics_flags.changed() {
             return;
         }
 
         let leader_metrics = if self.engine.metrics_flags.leader {
-            Update::Update(metrics_reporter.get_leader_metrics().cloned())
+            Update::Update(repl_metrics.cloned())
         } else {
             Update::AsIs
         };
 
         self.report_metrics(leader_metrics);
+        self.engine.metrics_flags.reset();
     }
 
     /// Report a metrics payload on the current state of the Raft node.
@@ -628,8 +618,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Ok(());
             }
 
-            self.report_metrics_if_needed(&NonLeaderMetrics {});
-            self.engine.metrics_flags.reset();
+            self.flush_metrics(None);
 
             // Generates a new rand value within range.
             self.update_election_timeout();
@@ -674,8 +663,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Ok(());
             }
 
-            self.report_metrics_if_needed(&NonLeaderMetrics {});
-            self.engine.metrics_flags.reset();
+            self.flush_metrics(None);
 
             let election_timeout = sleep_until(self.get_next_election_timeout()); // Value is updated as heartbeats are received.
 
@@ -707,8 +695,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Ok(());
             }
 
-            self.report_metrics_if_needed(&NonLeaderMetrics {});
-            self.engine.metrics_flags.reset();
+            self.flush_metrics(None);
 
             tokio::select! {
                 Some((msg, span)) = self.rx_api.recv() => {

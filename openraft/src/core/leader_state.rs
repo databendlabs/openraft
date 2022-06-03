@@ -4,7 +4,6 @@ use tokio::sync::mpsc;
 use tracing::Instrument;
 use tracing::Span;
 
-use crate::core::MetricsProvider;
 use crate::core::RaftCore;
 use crate::core::ReplicationState;
 use crate::core::ServerState;
@@ -48,14 +47,6 @@ pub(crate) struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
 
     /// Channels to send result back to client when logs are committed.
     pub(super) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
-}
-
-impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> MetricsProvider<C::NodeId>
-    for LeaderState<'a, C, N, S>
-{
-    fn get_leader_metrics(&self) -> Option<&Versioned<ReplicationMetrics<C::NodeId>>> {
-        Some(&self.replication_metrics)
-    }
 }
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
@@ -124,8 +115,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 return Ok(());
             }
 
-            self.core.report_metrics_if_needed(&self);
-            self.core.engine.metrics_flags.reset();
+            self.core.flush_metrics(Some(&self.replication_metrics));
 
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {
