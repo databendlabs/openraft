@@ -58,7 +58,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 "send log to trigger snapshot",
             )
             .await?;
-        router.assert_stable_cluster(Some(1), Some(log_index)).await;
+        router.assert_stable_cluster(Some(1), Some(log_index));
 
         router
             .wait_for_snapshot(
@@ -82,7 +82,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
     tracing::info!("--- create learner");
     {
         tracing::info!("--- create learner");
-        router.new_raft_node(1).await;
+        router.new_raft_node(1);
         let mut sto = router.get_storage_handle(&1)?;
 
         tracing::info!("--- add a membership config log to the learner");

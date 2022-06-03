@@ -57,7 +57,7 @@ async fn add_learner_basic() -> Result<()> {
 
         router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "write 1000 logs to leader").await?;
 
-        router.new_raft_node(1).await;
+        router.new_raft_node(1);
         router.add_learner(0, 1).await?;
         log_index += 1;
         router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "add learner").await?;
@@ -115,7 +115,7 @@ async fn add_learner_non_blocking() -> Result<()> {
 
         router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
 
-        router.new_raft_node(1).await;
+        router.new_raft_node(1);
         let raft = router.get_raft_handle(&0)?;
         let res = raft.add_learner(1, None, false).await?;
 
@@ -140,15 +140,15 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     );
     let timeout = Some(Duration::from_millis(2000));
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
+    router.new_raft_node(0);
+    router.new_raft_node(1);
 
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1], None, timeout, "empty").await?;
     router.wait_for_state(&btreeset![0, 1], ServerState::Learner, timeout, "empty").await?;
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
@@ -156,20 +156,20 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     log_index += 1;
 
     router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "init").await?;
-    router.assert_stable_cluster(Some(1), Some(1)).await;
+    router.assert_stable_cluster(Some(1), Some(1));
 
     // Submit a config change which adds two new nodes and removes the current leader.
     let orig_leader = router.leader().expect("expected the cluster to have a leader");
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
 
     // add a learner
-    router.new_raft_node(2).await;
+    router.new_raft_node(2);
     router.add_learner(orig_leader, 2).await?;
     log_index += 1;
     router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "add learner").await?;
 
-    router.new_raft_node(3).await;
-    router.new_raft_node(4).await;
+    router.new_raft_node(3);
+    router.new_raft_node(4);
     router.add_learner(orig_leader, 3).await?;
     router.add_learner(orig_leader, 4).await?;
     log_index += 2;

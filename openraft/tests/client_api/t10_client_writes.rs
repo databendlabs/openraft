@@ -33,16 +33,16 @@ async fn client_writes() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
+    router.new_raft_node(0);
+    router.new_raft_node(1);
+    router.new_raft_node(2);
 
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], None, None, "empty").await?;
     router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, None, "empty").await?;
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
@@ -53,7 +53,7 @@ async fn client_writes() -> Result<()> {
     router.wait_for_state(&btreeset![0], ServerState::Leader, None, "cluster leader").await?;
     router.wait_for_state(&btreeset![1, 2], ServerState::Follower, None, "cluster follower").await?;
 
-    router.assert_stable_cluster(Some(1), Some(log_index)).await;
+    router.assert_stable_cluster(Some(1), Some(log_index));
 
     // Write a bunch of data and assert that the cluster stayes stable.
     let leader = router.leader().expect("leader not found");
@@ -69,7 +69,7 @@ async fn client_writes() -> Result<()> {
     log_index += 500 * 6;
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "sync logs").await?;
 
-    router.assert_stable_cluster(Some(1), Some(log_index)).await; // The extra 1 is from the leader's initial commit entry.
+    router.assert_stable_cluster(Some(1), Some(log_index)); // The extra 1 is from the leader's initial commit entry.
 
     router
         .assert_storage_state(

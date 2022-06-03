@@ -205,7 +205,7 @@ where
     ) -> anyhow::Result<u64> {
         assert!(node_ids.contains(&C::NodeId::default()));
 
-        self.new_raft_node(C::NodeId::default()).await;
+        self.new_raft_node(C::NodeId::default());
 
         tracing::info!("--- wait for init node to ready");
 
@@ -226,7 +226,7 @@ where
         tracing::info!("--- wait for init node to become leader");
 
         self.wait_for_log(&btreeset![C::NodeId::default()], Some(log_index), timeout(), "init").await?;
-        self.assert_stable_cluster(Some(1), Some(log_index)).await;
+        self.assert_stable_cluster(Some(1), Some(log_index));
 
         for id in node_ids.iter() {
             if *id == C::NodeId::default() {
@@ -234,7 +234,7 @@ where
             }
             tracing::info!("--- add voter: {}", id);
 
-            self.new_raft_node(*id).await;
+            self.new_raft_node(*id);
             self.add_learner(C::NodeId::default(), *id).await?;
             log_index += 1;
         }
@@ -264,7 +264,7 @@ where
 
         for id in learners.clone() {
             tracing::info!("--- add learner: {}", id);
-            self.new_raft_node(id).await;
+            self.new_raft_node(id);
             self.add_learner(C::NodeId::default(), id).await?;
             log_index += 1;
         }
@@ -280,12 +280,12 @@ where
     }
 
     /// Create and register a new Raft node bearing the given ID.
-    pub async fn new_raft_node(&mut self, id: C::NodeId) {
-        let memstore = self.new_store().await;
-        self.new_raft_node_with_sto(id, memstore).await
+    pub fn new_raft_node(&mut self, id: C::NodeId) {
+        let memstore = self.new_store();
+        self.new_raft_node_with_sto(id, memstore)
     }
 
-    pub async fn new_store(&mut self) -> StoreWithDefensive<C, S> {
+    pub fn new_store(&mut self) -> StoreWithDefensive<C, S> {
         let defensive = env::var("RAFT_STORE_DEFENSIVE").ok();
 
         let sto = StoreExt::<C, S>::new(S::default());
@@ -311,16 +311,15 @@ where
         sto
     }
 
-    // TODO: do not need async
     #[tracing::instrument(level = "debug", skip(self, sto))]
-    pub async fn new_raft_node_with_sto(&mut self, id: C::NodeId, sto: StoreWithDefensive<C, S>) {
+    pub fn new_raft_node_with_sto(&mut self, id: C::NodeId, sto: StoreWithDefensive<C, S>) {
         let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone());
         let mut rt = self.routing_table.lock().unwrap();
         rt.insert(id, (node, sto));
     }
 
     /// Remove the target node from the routing table & isolation.
-    pub async fn remove_node(&mut self, id: C::NodeId) -> Option<(MemRaft<C, S>, StoreWithDefensive<C, S>)> {
+    pub fn remove_node(&mut self, id: C::NodeId) -> Option<(MemRaft<C, S>, StoreWithDefensive<C, S>)> {
         let opt_handles = {
             let mut rt = self.routing_table.lock().unwrap();
             rt.remove(&id)
@@ -349,7 +348,7 @@ where
 
     /// Isolate the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn isolate_node(&self, id: C::NodeId) {
+    pub fn isolate_node(&self, id: C::NodeId) {
         self.isolated_nodes.lock().unwrap().insert(id);
     }
 
@@ -502,7 +501,7 @@ where
 
     /// Restore the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn restore_node(&self, id: C::NodeId) {
+    pub fn restore_node(&self, id: C::NodeId) {
         let mut nodes = self.isolated_nodes.lock().unwrap();
         nodes.remove(&id);
     }
@@ -593,7 +592,7 @@ where
     }
 
     /// Assert that the cluster is in a pristine state, with all nodes as learners.
-    pub async fn assert_pristine_cluster(&self) {
+    pub fn assert_pristine_cluster(&self) {
         let nodes = self.latest_metrics();
         for node in nodes.iter() {
             assert!(
@@ -645,7 +644,7 @@ where
     /// If `expected_last_log` is `Some`, then all nodes will be tested to ensure that their last
     /// log index and last applied log match the given value. Else, the leader's last_log_index
     /// will be used for the assertion.
-    pub async fn assert_stable_cluster(&self, expected_term: Option<u64>, expected_last_log: Option<u64>) {
+    pub fn assert_stable_cluster(&self, expected_term: Option<u64>, expected_last_log: Option<u64>) {
         let isolated = {
             let x = self.isolated_nodes.lock().unwrap();
             x.clone()

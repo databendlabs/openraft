@@ -44,7 +44,7 @@ async fn compaction() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     let mut log_index = 0;
 
@@ -52,7 +52,7 @@ async fn compaction() -> Result<()> {
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
 
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     tracing::info!("--- initializing cluster");
 
@@ -60,7 +60,7 @@ async fn compaction() -> Result<()> {
     log_index += 1;
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init leader").await?;
-    router.assert_stable_cluster(Some(1), Some(1)).await;
+    router.assert_stable_cluster(Some(1), Some(1));
 
     // Send enough requests to the cluster that compaction on the node should be triggered.
     // Puts us exactly at the configured snapshot policy threshold.
@@ -70,7 +70,7 @@ async fn compaction() -> Result<()> {
     log_index = snapshot_threshold - 1;
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "write").await?;
-    router.assert_stable_cluster(Some(1), Some(log_index)).await;
+    router.assert_stable_cluster(Some(1), Some(log_index));
     router
         .wait_for_snapshot(
             &btreeset![0],
@@ -91,14 +91,14 @@ async fn compaction() -> Result<()> {
         .await?;
 
     // Add a new node and assert that it received the same snapshot.
-    let mut sto1 = router.new_store().await;
+    let mut sto1 = router.new_store();
     sto1.append_to_log(&[&blank(0, 0), &Entry {
         log_id: LogId::new(LeaderId::new(1, 0), 1),
         payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
     }])
     .await?;
 
-    router.new_raft_node_with_sto(1, sto1.clone()).await;
+    router.new_raft_node_with_sto(1, sto1.clone());
     router.add_learner(0, 1).await.expect("failed to add new node as learner");
     log_index += 1; // add_learner log
 

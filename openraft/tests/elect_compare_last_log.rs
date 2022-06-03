@@ -31,8 +31,8 @@ async fn elect_compare_last_log() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
 
-    let mut sto0 = router.new_store().await;
-    let mut sto1 = router.new_store().await;
+    let mut sto0 = router.new_store();
+    let mut sto1 = router.new_store();
 
     tracing::info!("--- fake store: sto0: last log: 2,1");
     {
@@ -72,8 +72,8 @@ async fn elect_compare_last_log() -> Result<()> {
 
     tracing::info!("--- bring up cluster and elect");
 
-    router.new_raft_node_with_sto(0, sto0.clone()).await;
-    router.new_raft_node_with_sto(1, sto1.clone()).await;
+    router.new_raft_node_with_sto(0, sto0.clone());
+    router.new_raft_node_with_sto(1, sto1.clone());
 
     router
         .wait_for_state(

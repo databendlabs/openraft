@@ -30,13 +30,13 @@ async fn lagging_network_write() -> Result<()> {
     );
     let mut router = RaftRouter::builder(config).send_delay(50).build();
 
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0], ServerState::Learner, None, "empty").await?;
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
@@ -45,14 +45,14 @@ async fn lagging_network_write() -> Result<()> {
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init").await?;
     router.wait_for_state(&btreeset![0], ServerState::Leader, None, "init").await?;
-    router.assert_stable_cluster(Some(1), Some(log_index)).await;
+    router.assert_stable_cluster(Some(1), Some(log_index));
 
     // Sync some new nodes.
-    router.new_raft_node(1).await;
+    router.new_raft_node(1);
     router.add_learner(0, 1).await?;
     log_index += 1;
 
-    router.new_raft_node(2).await;
+    router.new_raft_node(2);
     router.add_learner(0, 2).await?;
     log_index += 1;
 

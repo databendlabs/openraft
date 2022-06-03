@@ -20,16 +20,16 @@ async fn client_reads() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
+    router.new_raft_node(0);
+    router.new_raft_node(1);
+    router.new_raft_node(2);
 
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], None, None, "empty node").await?;
     router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, None, "empty node").await?;
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
@@ -37,7 +37,7 @@ async fn client_reads() -> Result<()> {
     log_index += 1;
 
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "init leader").await?;
-    router.assert_stable_cluster(Some(1), Some(1)).await;
+    router.assert_stable_cluster(Some(1), Some(1));
 
     // Get the ID of the leader, and assert that is_leader succeeds.
     let leader = router.leader().expect("leader not found");
@@ -52,12 +52,12 @@ async fn client_reads() -> Result<()> {
 
     tracing::info!("--- isolate node 1 then is_leader should work");
 
-    router.isolate_node(1).await;
+    router.isolate_node(1);
     router.is_leader(leader).await?;
 
     tracing::info!("--- isolate node 2 then is_leader should fail");
 
-    router.isolate_node(2).await;
+    router.isolate_node(2);
     let rst = router.is_leader(leader).await;
     tracing::debug!(?rst, "is_leader with majority down");
 

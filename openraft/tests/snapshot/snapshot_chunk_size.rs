@@ -37,7 +37,7 @@ async fn snapshot_chunk_size() -> Result<()> {
 
     tracing::info!("--- initializing cluster");
     {
-        router.new_raft_node(0).await;
+        router.new_raft_node(0);
 
         router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
         router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
@@ -84,7 +84,7 @@ async fn snapshot_chunk_size() -> Result<()> {
 
     tracing::info!("--- add learner to receive snapshot and logs");
     {
-        router.new_raft_node(1).await;
+        router.new_raft_node(1);
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
         log_index += 1;
 

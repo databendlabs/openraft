@@ -43,7 +43,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         log_index = snapshot_threshold - 1;
 
         router.wait_for_log(&btreeset![0], Some(log_index), None, "send log to trigger snapshot").await?;
-        router.assert_stable_cluster(Some(1), Some(log_index)).await;
+        router.assert_stable_cluster(Some(1), Some(log_index));
 
         router
             .wait_for_snapshot(
@@ -72,7 +72,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
 
     tracing::info!("--- add learner to receive snapshot and logs");
     {
-        router.new_raft_node(1).await;
+        router.new_raft_node(1);
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
         log_index += 1;
 

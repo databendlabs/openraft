@@ -47,7 +47,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
                 "send log to trigger snapshot",
             )
             .await?;
-        router.assert_stable_cluster(Some(1), Some(log_index)).await;
+        router.assert_stable_cluster(Some(1), Some(log_index));
 
         router
             .wait_for_snapshot(
@@ -74,7 +74,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
 
         tracing::info!("--- add learner to the cluster to receive snapshot, which overrides the learner storage");
         {
-            router.new_raft_node(1).await;
+            router.new_raft_node(1);
             router.add_learner(0, 1).await.expect("failed to add new node as learner");
             log_index += 1;
 

@@ -16,7 +16,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
     let config = Arc::new(Config::build(&["foo", "--remove-replication=max_network_failures:2"])?);
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
 
@@ -24,7 +24,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
 
     tracing::info!("--- isolate node 4");
     {
-        router.isolate_node(4).await;
+        router.isolate_node(4);
     }
 
     // logs on node 4 will stop here:
@@ -60,7 +60,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
 
     tracing::info!("--- restore network isolation, node 4 won't catch up log and will enter candidate state");
     {
-        router.restore_node(4).await;
+        router.restore_node(4);
 
         router
             .wait(&4, timeout())

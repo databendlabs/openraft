@@ -26,14 +26,14 @@ async fn append_conflicts() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     tracing::info!("--- wait for init node to ready");
 
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
 
-    let (r0, mut sto0) = router.remove_node(0).await.unwrap();
+    let (r0, mut sto0) = router.remove_node(0).unwrap();
     check_logs(&mut sto0, vec![]).await?;
 
     tracing::info!("--- case 0: prev_log_id == None, no logs");
