@@ -4,62 +4,14 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::hash::Hash;
 
-/// A Raft node's ID.
-///
-/// A `NodeId` uniquely identifies a node in the Raft cluster.
-///
-/// ## Notes
-///
-/// Currently, `serde` support is not optional, so the `NodeId` must be serializable via `serde` as well.
-#[cfg(feature = "serde")]
-pub trait NodeId:
-    Sized
-    + Send
-    + Sync
-    + Eq
-    + PartialEq
-    + Ord
-    + PartialOrd
-    + Debug
-    + Display
-    + Hash
-    + Copy
-    + Clone
-    + Default
-    + serde::Serialize
-    + for<'a> serde::Deserialize<'a>
-    + 'static
-{
-}
-
-#[cfg(feature = "serde")]
-impl<T> NodeId for T where T: Sized
-        + Send
-        + Sync
-        + Eq
-        + PartialEq
-        + Ord
-        + PartialOrd
-        + Debug
-        + Display
-        + Hash
-        + Copy
-        + Clone
-        + Default
-        + serde::Serialize
-        + for<'a> serde::Deserialize<'a>
-        + 'static
-{
-}
-
-#[cfg(not(feature = "serde"))]
-pub trait NodeId:
+/// Essential trait bound for node-id, except serde.
+#[doc(hidden)]
+pub trait NodeIdEssential:
     Sized + Send + Sync + Eq + PartialEq + Ord + PartialOrd + Debug + Display + Hash + Copy + Clone + Default + 'static
 {
 }
 
-#[cfg(not(feature = "serde"))]
-impl<T> NodeId for T where T: Sized
+impl<T> NodeIdEssential for T where T: Sized
         + Send
         + Sync
         + Eq
@@ -76,10 +28,25 @@ impl<T> NodeId for T where T: Sized
 {
 }
 
+/// A Raft node's ID.
+///
+/// A `NodeId` uniquely identifies a node in the Raft cluster.
+#[cfg(feature = "serde")]
+pub trait NodeId: NodeIdEssential + serde::Serialize + for<'a> serde::Deserialize<'a> {}
+
+#[cfg(feature = "serde")]
+impl<T> NodeId for T where T: NodeIdEssential + serde::Serialize + for<'a> serde::Deserialize<'a> {}
+
+#[cfg(not(feature = "serde"))]
+pub trait NodeId: NodeIdEssential {}
+
+#[cfg(not(feature = "serde"))]
+impl<T> NodeId for T where T: NodeIdEssential {}
+
 /// Additional node information.
 ///
-/// The most usage is to store the connecting address of a node.
-/// So that an application does not need a 3rd party store to support its RaftNetwork implememntation.
+/// The most common usage is to store the connecting address of a node.
+/// So that an application does not need an additional store to support its RaftNetwork implementation.
 ///
 /// An application is also free not to use this storage and implements its own node-id to address mapping.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
