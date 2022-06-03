@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html" class="active"><strong aria-hidden="true">4.3.</strong> Replication</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html" class="active"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -202,15 +202,34 @@ R2 1,1  1,2  3,3
 <ul>
 <li>R0 to R1 append_entries: <code>entries=[{1,2}], prev_log_id = {1,1}, commit_index = 3</code></li>
 <li>R1 accepted this append-entries request but was not aware of that entry <code>{2,3}</code> is inconsistent to leader.
-Then it will update commit_index to <code>3</code> and apply <code>{2,3}</code></li>
+Then it will update <code>commit_index</code> to <code>3</code> and apply <code>{2,3}</code></li>
 </ul>
-<h2 id="replication-by-sending-snapshot"><a class="header" href="#replication-by-sending-snapshot">Replication by sending snapshot</a></h2>
-<p>Replication by sending a snapshot of the state machine can be seen as a special form of <strong>appending logs</strong>.
-Thus, it shares the same constrains.</p>
-<p>A state machine will never be overridden by logs,
-thus committed log in it will never get lost.
-Thus, when installing a snapshot, it does not need to remove inconsistent logs,
-e.g., any log after the <code>last_applied</code>.</p>
+<h2 id="snapshot-replication"><a class="header" href="#snapshot-replication">Snapshot replication</a></h2>
+<p>Snapshot replication can be considered as a special form of log replication:
+It replicates all <strong>committed</strong> logs since the index-0 upto some index.</p>
+<p>Similar to append-entry:</p>
+<ul>
+<li>
+<p>(1) If the logs contained in the snapshot matches logs that are stored on a
+Follower/Learner, nothing is done.</p>
+</li>
+<li>
+<p>(2) If the logs conflicts with the local logs, local conflicting logs will be
+deleted. And effective membership has to be reverted to some previous
+non-conflicting one.</p>
+</li>
+</ul>
+<h3 id="necessity-to-delete-conflicting-logs"><a class="header" href="#necessity-to-delete-conflicting-logs">Necessity to delete conflicting logs</a></h3>
+<p><strong>The <code>(2)</code> mentioned above is not necessary to do to achieve correctness.
+It is done only for clarity</strong>.</p>
+<p>If the <code>last_applied</code>(<code>snapshot_meta.last_log_id</code>) conflict with the local log at <code>last_applied.index</code>,
+It does <strong>NOT</strong> need to delete the conflicting logs.</p>
+<p>Because the node that has conflicting logs won't become a leader:
+If this node can become a leader, according to raft spec, it has to contain all committed logs.
+But the log entry at <code>last_applied.index</code> is not committed, thus it can never become a leader.</p>
+<p>But deleting conflicting logs make the state cleaner. :)
+This way method such as <code>get_initial_state()</code> does not need to deal with
+conditions such as that <code>last_log_id</code> can be smaller than <code>last_applied</code>.</p>
 
                     </main>
 
@@ -218,6 +237,9 @@ e.g., any log after the <code>last_applied</code>.</p>
                         <!-- Mobile navigation buttons -->
                             <a rel="prev" href="threading.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
+                            </a>
+                            <a rel="next" href="effective-membership.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
                     </nav>
@@ -227,6 +249,9 @@ e.g., any log after the <code>last_applied</code>.</p>
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
                     <a rel="prev" href="threading.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
+                    </a>
+                    <a rel="next" href="effective-membership.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
 
