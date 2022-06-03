@@ -27,14 +27,14 @@ async fn append_updates_membership() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     tracing::info!("--- wait for init node to ready");
 
     router.wait_for_log(&btreeset![0], None, None, "empty").await?;
     router.wait_for_state(&btreeset![0], ServerState::Learner, None, "empty").await?;
 
-    let (r0, _sto0) = router.remove_node(0).await.unwrap();
+    let (r0, _sto0) = router.remove_node(0).unwrap();
 
     tracing::info!("--- append-entries update membership");
     {

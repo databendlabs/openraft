@@ -39,7 +39,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
 
     tracing::info!("--- change membership without adding-learner");
     {
-        router.new_raft_node(1).await;
+        router.new_raft_node(1);
         router.add_learner(0, 1).await?;
         log_index += 1;
         router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "add learner").await?;
@@ -80,7 +80,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
 
     tracing::info!("--- stop replication by isolating node 1");
     {
-        router.isolate_node(1).await;
+        router.isolate_node(1);
     }
 
     tracing::info!("--- write up to 100 logs");
@@ -93,7 +93,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
 
     tracing::info!("--- restore replication and change membership at once, expect NonVoterIsLagging");
     {
-        router.restore_node(1).await;
+        router.restore_node(1);
         let node = router.get_raft_handle(&0)?;
         let res = node.change_membership(btreeset! {0,1}, false, false).await;
 

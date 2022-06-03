@@ -32,7 +32,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
 
     tracing::info!("--- initializing cluster");
     {
-        router.new_raft_node(0).await;
+        router.new_raft_node(0);
 
         router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
         router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
@@ -41,10 +41,10 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         log_index += 1;
 
         router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init leader").await?;
-        router.assert_stable_cluster(Some(1), Some(log_index)).await;
+        router.assert_stable_cluster(Some(1), Some(log_index));
     }
 
-    let n = router.remove_node(0).await.ok_or_else(|| anyhow::anyhow!("node not found"))?;
+    let n = router.remove_node(0).ok_or_else(|| anyhow::anyhow!("node not found"))?;
     let req0 = InstallSnapshotRequest {
         vote: Vote::new_committed(1, 0),
         meta: SnapshotMeta {

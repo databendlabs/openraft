@@ -28,14 +28,14 @@ async fn single_node() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
@@ -43,13 +43,13 @@ async fn single_node() -> Result<()> {
     log_index += 1;
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "init").await?;
-    router.assert_stable_cluster(Some(1), Some(1)).await;
+    router.assert_stable_cluster(Some(1), Some(1));
 
     // Write some data to the single node cluster.
     router.client_request_many(0, "0", 1000).await;
     log_index += 1000;
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "client_request_many").await?;
-    router.assert_stable_cluster(Some(1), Some(log_index)).await;
+    router.assert_stable_cluster(Some(1), Some(log_index));
     router
         .assert_storage_state(1, log_index, Some(0), LogId::new(LeaderId::new(1, 0), log_index), None)
         .await?;

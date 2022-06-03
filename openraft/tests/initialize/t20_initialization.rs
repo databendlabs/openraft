@@ -35,16 +35,16 @@ async fn initialization() -> anyhow::Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
+    router.new_raft_node(0);
+    router.new_raft_node(1);
+    router.new_raft_node(2);
 
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, timeout(), "empty").await?;
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     // Sending an external requests will also find all nodes in Learner state.
     //
@@ -75,7 +75,7 @@ async fn initialization() -> anyhow::Result<()> {
         router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "init").await?;
     }
 
-    router.assert_stable_cluster(Some(1), Some(log_index)).await;
+    router.assert_stable_cluster(Some(1), Some(log_index));
 
     for i in 0..3 {
         let mut sto = router.get_storage_handle(&1)?;
@@ -135,8 +135,8 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
 
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
+    router.new_raft_node(0);
+    router.new_raft_node(1);
 
     for node in [0, 1] {
         router.external_request(node, |s, _sto, _net| {
@@ -170,7 +170,7 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     for node in [0] {
         router.external_request(node, |s, _sto, _net| {

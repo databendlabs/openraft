@@ -21,7 +21,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     // router.assert_pristine_cluster().await;
 
@@ -34,8 +34,8 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     router.wait_for_log(&btreeset![0], Some(log_index), None, "init node 0").await?;
 
     // Sync some new nodes.
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
+    router.new_raft_node(1);
+    router.new_raft_node(2);
 
     tracing::info!("--- adding new nodes to cluster");
     let mut new_nodes = futures::stream::FuturesUnordered::new();
@@ -50,8 +50,8 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 
     tracing::info!("--- isolate node 1,2, so that membership [0,1,2] wont commit");
 
-    router.isolate_node(1).await;
-    router.isolate_node(2).await;
+    router.isolate_node(1);
+    router.isolate_node(2);
 
     tracing::info!("--- changing cluster config, should timeout");
 
@@ -89,14 +89,14 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
 
     tracing::info!("--- isolate 3,4");
 
-    router.isolate_node(3).await;
-    router.isolate_node(4).await;
+    router.isolate_node(3);
+    router.isolate_node(4);
 
     tracing::info!("--- changing config to 0,1,2");
     let node = router.get_raft_handle(&0)?;

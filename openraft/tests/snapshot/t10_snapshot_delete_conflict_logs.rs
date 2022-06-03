@@ -49,7 +49,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
     tracing::info!("--- manually init node-0 with a higher vote, in order to override conflict log on learner later");
     {
-        let mut sto0 = router.new_store().await;
+        let mut sto0 = router.new_store();
 
         sto0.save_vote(&Vote::new(5, 0)).await?;
         sto0.append_to_log(&[
@@ -62,7 +62,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         .await?;
         log_index = 1;
 
-        router.new_raft_node_with_sto(0, sto0).await;
+        router.new_raft_node_with_sto(0, sto0);
 
         router.wait(&0, timeout()).state(ServerState::Leader, "init node-0 server-state").await?;
         router.wait(&0, timeout()).log(Some(log_index), "init node-0 log").await?;
@@ -82,7 +82,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
     tracing::info!("--- create node-1 and add conflicting logs");
     {
-        router.new_raft_node(1).await;
+        router.new_raft_node(1);
 
         let req = AppendEntriesRequest {
             vote: Vote::new(1, 0),

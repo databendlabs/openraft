@@ -46,7 +46,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
 
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     let mut log_index;
 
@@ -61,8 +61,8 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     tracing::info!("--- adding two candidate nodes");
     {
         // Sync some new nodes.
-        router.new_raft_node(1).await;
-        router.new_raft_node(2).await;
+        router.new_raft_node(1);
+        router.new_raft_node(2);
         router.add_learner(0, 1).await?;
         router.add_learner(0, 2).await?;
         log_index += 2; // two add_learner logs
@@ -74,7 +74,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         log_index += 2; // Tow member change logs
 
         wait_log(&router, &candidates, log_index).await?;
-        router.assert_stable_cluster(Some(1), Some(log_index)).await; // Still in term 1, so leader is still node 0.
+        router.assert_stable_cluster(Some(1), Some(log_index)); // Still in term 1, so leader is still node 0.
     }
 
     let leader = router.leader().unwrap();
@@ -90,7 +90,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     // Concurrently add Learner and write another log.
     tracing::info!("--- concurrently add learner and write another log");
     {
-        router.new_raft_node(3).await;
+        router.new_raft_node(3);
         let r = router.clone();
 
         let handle = {

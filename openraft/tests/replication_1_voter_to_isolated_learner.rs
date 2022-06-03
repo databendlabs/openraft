@@ -27,7 +27,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
 
     tracing::info!("--- stop replication to node 1");
     {
-        router.isolate_node(1).await;
+        router.isolate_node(1);
 
         router.client_request_many(0, "0", (10 - log_index) as usize).await;
         log_index = 10;
@@ -44,7 +44,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
 
     tracing::info!("--- restore replication to node 1");
     {
-        router.restore_node(1).await;
+        router.restore_node(1);
 
         router.client_request_many(0, "0", (10 - log_index) as usize).await;
         log_index = 10;

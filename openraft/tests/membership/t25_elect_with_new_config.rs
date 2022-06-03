@@ -29,14 +29,14 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0], None, None, "empty").await?;
     router.wait_for_state(&btreeset![0], ServerState::Learner, None, "empty").await?;
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
@@ -44,13 +44,13 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     log_index += 1;
 
     router.wait_for_log(&btreeset![0], Some(log_index), None, "init").await?;
-    router.assert_stable_cluster(Some(1), Some(log_index)).await;
+    router.assert_stable_cluster(Some(1), Some(log_index));
 
     // Sync some new nodes.
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
-    router.new_raft_node(3).await;
-    router.new_raft_node(4).await;
+    router.new_raft_node(1);
+    router.new_raft_node(2);
+    router.new_raft_node(3);
+    router.new_raft_node(4);
 
     tracing::info!("--- adding new nodes to cluster");
     let mut new_nodes = futures::stream::FuturesUnordered::new();
@@ -78,11 +78,11 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
             "cluster of 5 candidates",
         )
         .await?;
-    router.assert_stable_cluster(Some(1), Some(log_index)).await; // Still in term 1, so leader is still node 0.
+    router.assert_stable_cluster(Some(1), Some(log_index)); // Still in term 1, so leader is still node 0.
 
     // Isolate old leader and assert that a new leader takes over.
     tracing::info!("--- isolating master node 0");
-    router.isolate_node(0).await;
+    router.isolate_node(0);
     router
         .wait_for_metrics(
             &1,
@@ -102,12 +102,12 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     let applied = metrics.last_applied;
     let leader_id = metrics.current_leader;
 
-    router.assert_stable_cluster(Some(term), applied.index()).await;
+    router.assert_stable_cluster(Some(term), applied.index());
     let leader = router.leader().expect("expected new leader");
     assert!(leader != 0, "expected new leader to be different from the old leader");
 
     // Restore isolated node.
-    router.restore_node(0).await;
+    router.restore_node(0);
     router
         .wait_for_metrics(
             &0,
@@ -117,7 +117,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
         )
         .await?;
 
-    router.assert_stable_cluster(Some(term), applied.index()).await;
+    router.assert_stable_cluster(Some(term), applied.index());
 
     let current_leader = router.leader().expect("expected to find current leader");
     assert_eq!(leader, current_leader, "expected cluster leadership to stay the same");

@@ -33,15 +33,15 @@ async fn learner_restart() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
 
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
+    router.new_raft_node(0);
+    router.new_raft_node(1);
 
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1], None, None, "empty").await?;
     router.wait_for_state(&btreeset![0, 1], ServerState::Learner, None, "empty").await?;
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     tracing::info!("--- initializing single node cluster");
     {
@@ -58,11 +58,11 @@ async fn learner_restart() -> Result<()> {
 
     router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "write one log").await?;
 
-    let (node0, _sto0) = router.remove_node(0).await.unwrap();
+    let (node0, _sto0) = router.remove_node(0).unwrap();
     assert_node_state(0, &node0, 1, log_index, ServerState::Leader);
     node0.shutdown().await?;
 
-    let (node1, sto1) = router.remove_node(1).await.unwrap();
+    let (node1, sto1) = router.remove_node(1).unwrap();
     assert_node_state(0, &node1, 1, log_index, ServerState::Learner);
     node1.shutdown().await?;
 

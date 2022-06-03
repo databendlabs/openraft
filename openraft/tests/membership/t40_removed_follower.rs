@@ -15,14 +15,14 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
+    router.new_raft_node(0);
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!("--- add node 3,4");
 
-    router.new_raft_node(3).await;
-    router.new_raft_node(4).await;
+    router.new_raft_node(3);
+    router.new_raft_node(4);
 
     router.add_learner(0, 3).await?;
     router.add_learner(0, 4).await?;

@@ -19,8 +19,8 @@ async fn total_order_apply() -> Result<()> {
     let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
     let mut router = RaftRouter::new(config.clone());
 
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
+    router.new_raft_node(0);
+    router.new_raft_node(1);
 
     tracing::info!("--- initializing single node cluster");
     {

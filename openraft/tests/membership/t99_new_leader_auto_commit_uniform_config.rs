@@ -31,7 +31,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
     let mut sto = router.get_storage_handle(&0)?;
-    router.remove_node(0).await;
+    router.remove_node(0);
 
     {
         sto.append_to_log(&[&Entry {
@@ -50,8 +50,8 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     let _ = log_index;
 
     // To let tne router not panic
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
+    router.new_raft_node(1);
+    router.new_raft_node(2);
 
     let node = Raft::new(0, config.clone(), router.clone(), sto.clone());
 

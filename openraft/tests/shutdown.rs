@@ -25,16 +25,16 @@ async fn initialization() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0).await;
-    router.new_raft_node(1).await;
-    router.new_raft_node(2).await;
+    router.new_raft_node(0);
+    router.new_raft_node(1);
+    router.new_raft_node(2);
 
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
     router.wait_for_log(&btreeset![0, 1, 2], None, timeout(), "empty").await?;
     router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, timeout(), "empty").await?;
-    router.assert_pristine_cluster().await;
+    router.assert_pristine_cluster();
 
     // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
@@ -42,17 +42,17 @@ async fn initialization() -> Result<()> {
     log_index += 1;
 
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "init").await?;
-    router.assert_stable_cluster(Some(1), Some(1)).await;
+    router.assert_stable_cluster(Some(1), Some(1));
 
     tracing::info!("--- performing node shutdowns");
     {
-        let (node0, _) = router.remove_node(0).await.ok_or_else(|| anyhow!("failed to find node 0 in router"))?;
+        let (node0, _) = router.remove_node(0).ok_or_else(|| anyhow!("failed to find node 0 in router"))?;
         node0.shutdown().await?;
 
-        let (node1, _) = router.remove_node(1).await.ok_or_else(|| anyhow!("failed to find node 1 in router"))?;
+        let (node1, _) = router.remove_node(1).ok_or_else(|| anyhow!("failed to find node 1 in router"))?;
         node1.shutdown().await?;
 
-        let (node2, _) = router.remove_node(2).await.ok_or_else(|| anyhow!("failed to find node 2 in router"))?;
+        let (node2, _) = router.remove_node(2).ok_or_else(|| anyhow!("failed to find node 2 in router"))?;
         node2.shutdown().await?;
     }
 
