@@ -311,6 +311,7 @@ where
         sto
     }
 
+    // TODO: do not need async
     #[tracing::instrument(level = "debug", skip(self, sto))]
     pub async fn new_raft_node_with_sto(&mut self, id: C::NodeId, sto: StoreWithDefensive<C, S>) {
         let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone());

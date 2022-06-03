@@ -14,3 +14,4 @@
     - [Architecture](./architecture.md)
     - [Threads](./threading.md)
     - [Replication](./replication.md)
+    - [Effective Membership](./effective-membership.md)
