@@ -169,7 +169,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
 
-        let raft_handle = RaftCore::spawn(id, config, network, storage, rx_api, tx_metrics, rx_shutdown);
+        let raft_handle = RaftCore::spawn(
+            id,
+            config,
+            network,
+            storage,
+            tx_api.clone(),
+            rx_api,
+            tx_metrics,
+            rx_shutdown,
+        );
 
         let inner = RaftInner {
             tx_api,
@@ -658,6 +667,12 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     ExternalRequest {
         req: Box<dyn FnOnce(ServerState, &mut S, &mut N) + Send + 'static>,
     },
+
+    /// Trigger an election
+    Elect {
+        /// Which ServerState sent this message
+        server_state_count: Option<u64>,
+    },
 }
 
 impl<C, N, S> MessageSummary for RaftMsg<C, N, S>
@@ -699,6 +714,9 @@ where
                 )
             }
             RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
+            RaftMsg::Elect { server_state_count } => {
+                format!("Elect sent by {:?}", server_state_count)
+            }
         }
     }
 }

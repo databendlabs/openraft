@@ -31,6 +31,7 @@ mod raft_state;
 mod runtime;
 pub mod storage;
 pub mod testing;
+pub mod timer;
 pub mod versioned;
 
 pub use anyerror;
