@@ -126,7 +126,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             Err(_err_str) => {
                 state.failures += 1;
 
-                self.try_remove_replication(target);
+                self.try_remove_replication(target).await;
                 return Ok(());
             }
         };
@@ -148,7 +148,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         }
 
         // Drop replication stream if needed.
-        if self.try_remove_replication(target) {
+        if self.try_remove_replication(target).await {
             // nothing to do
         } else {
             self.update_replication_metrics(target, matched);

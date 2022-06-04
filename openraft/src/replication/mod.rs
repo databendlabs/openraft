@@ -10,6 +10,7 @@ use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio::time::timeout;
 use tokio::time::Duration;
@@ -50,7 +51,8 @@ use crate::Vote;
 /// The public handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<NID: NodeId> {
     /// The spawn handle the `ReplicationCore` task.
-    // pub handle: JoinHandle<()>,
+    pub handle: JoinHandle<()>,
+
     /// The channel used for communicating with the replication task.
     pub repl_tx: mpsc::UnboundedSender<(RaftEvent<NID>, Span)>,
 }
@@ -183,12 +185,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             need_to_replicate: true,
         };
 
-        let _handle = tokio::spawn(this.main().instrument(tracing::trace_span!("spawn").or_current()));
+        let handle = tokio::spawn(this.main().instrument(tracing::trace_span!("repl-stream").or_current()));
 
-        ReplicationStream {
-            // handle,
-            repl_tx,
-        }
+        ReplicationStream { handle, repl_tx }
     }
 
     #[tracing::instrument(level="trace", skip(self), fields(vote=%self.vote, target=display(self.target), cluster=%self.config.cluster_name))]
@@ -691,6 +690,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 );
 
                 let res = self.send_append_entries().await;
+                tracing::debug!(target = display(self.target), res = debug(&res), "replication res",);
 
                 if let Err(err) = res {
                     tracing::error!(error=%err, "error replication to target={}", self.target);

@@ -281,7 +281,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// This is ony called by leader.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) fn handle_uniform_consensus_committed(&mut self, log_id: &LogId<C::NodeId>) {
+    pub(super) async fn handle_uniform_consensus_committed(&mut self, log_id: &LogId<C::NodeId>) {
         let index = log_id.index;
 
         // Step down if needed.
@@ -313,7 +313,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         let targets = self.nodes.keys().cloned().collect::<Vec<_>>();
         for target in targets {
-            self.try_remove_replication(target);
+            self.try_remove_replication(target).await;
         }
 
         self.core.engine.metrics_flags.set_replication_changed();
@@ -323,7 +323,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// Return true if removed.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub fn try_remove_replication(&mut self, target: C::NodeId) -> bool {
+    pub async fn try_remove_replication(&mut self, target: C::NodeId) -> bool {
         tracing::debug!(target = display(target), "try_remove_replication");
 
         {
@@ -340,7 +340,17 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         }
 
         tracing::info!("removed replication to: {}", target);
-        self.nodes.remove(&target);
+        let repl_state = self.nodes.remove(&target);
+        if let Some(s) = repl_state {
+            let handle = s.repl_stream.handle;
+
+            // Drop sender to notify the task to shutdown
+            drop(s.repl_stream.repl_tx);
+
+            tracing::debug!("joining removed replication: {}", target);
+            let _x = handle.await;
+            tracing::info!("Done joining removed replication : {}", target);
+        }
 
         self.replication_metrics.update(RemoveTarget { target });
         // TODO(xp): set_replication_metrics_changed() can be removed.
