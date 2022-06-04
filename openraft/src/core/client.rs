@@ -214,13 +214,13 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         );
     }
 
-    pub fn handle_special_log(&mut self, entry: &Entry<C>) {
+    pub async fn handle_special_log(&mut self, entry: &Entry<C>) {
         match &entry.payload {
             EntryPayload::Membership(ref m) => {
                 if m.is_in_joint_consensus() {
                     // nothing to do
                 } else {
-                    self.handle_uniform_consensus_committed(&entry.log_id);
+                    self.handle_uniform_consensus_committed(&entry.log_id).await;
                 }
             }
             EntryPayload::Blank => {}
@@ -234,7 +234,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         entry: &Entry<C>,
     ) -> Result<C::R, StorageError<C::NodeId>> {
-        self.handle_special_log(entry);
+        self.handle_special_log(entry).await;
 
         // First, we just ensure that we apply any outstanding up to, but not including, the index
         // of the given entry. We need to be able to return the data response from applying this
