@@ -41,10 +41,34 @@ impl<NID: NodeId> LogIdList<NID> {
         }
     }
 
+    /// Extends a list of `log_id`.
+    #[allow(dead_code)]
+    pub(crate) fn extend<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_ids: &[LID]) {
+        let mut prev = self.last().map(|x| x.leader_id);
+
+        for x in new_ids.iter() {
+            let log_id = x.get_log_id();
+
+            if prev != Some(log_id.leader_id) {
+                self.append(*log_id);
+
+                prev = Some(log_id.leader_id);
+            }
+        }
+
+        if let Some(last) = new_ids.last() {
+            let log_id = last.get_log_id();
+
+            if self.last() != Some(log_id) {
+                self.append(*log_id);
+            }
+        }
+    }
+
     /// Append a new `log_id`.
     ///
     /// The log id to append does not have to be the next to the last one in `key_log_ids`.
-    /// In such case, it is meant to append a list of log ids.
+    /// In such case, it fills the gap at index `i` with `LogId{leader_id: prev_log_id.leader, index: i}`.
     ///
     /// NOTE: The last two in `key_log_ids` may be with the same `leader_id`, because `last_log_id` always present in
     /// `log_ids`.
@@ -125,6 +149,16 @@ impl<NID: NodeId> LogIdList<NID> {
                 }
             }
         }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn first(&self) -> Option<&LogId<NID>> {
+        self.key_log_ids.first()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn last(&self) -> Option<&LogId<NID>> {
+        self.key_log_ids.last()
     }
 
     pub(crate) fn key_log_ids(&self) -> &[LogId<NID>] {
