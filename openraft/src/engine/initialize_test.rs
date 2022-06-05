@@ -55,7 +55,9 @@ fn test_initialize() -> anyhow::Result<()> {
         assert_eq!(
             vec![
                 Command::AppendInputEntries { range: 0..1 },
-                Command::UpdateMembership { membership: m12() },
+                Command::UpdateMembership {
+                    membership: eng.state.membership_state.effective.clone()
+                },
                 Command::MoveInputCursorBy { n: 1 },
                 Command::UpdateServerState {
                     server_state: ServerState::Candidate

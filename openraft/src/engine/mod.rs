@@ -3,6 +3,7 @@ mod engine_impl;
 mod log_id_list;
 
 #[cfg(test)] mod elect_test;
+#[cfg(test)] mod follower_append_entries_test;
 #[cfg(test)] mod handle_vote_req_test;
 #[cfg(test)] mod handle_vote_resp_test;
 #[cfg(test)] mod initialize_test;
