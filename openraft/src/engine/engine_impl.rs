@@ -295,6 +295,68 @@ impl<NID: NodeId> Engine<NID> {
         self.push_command(Command::MoveInputCursorBy { n: l });
     }
 
+    /// Delete log entries since log index `since`, inclusive, when the log at `since` is found conflict with the
+    /// leader.
+    ///
+    /// And revert effective membership to the last committed if it is from the conflicting logs.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(crate) fn truncate_logs(&mut self, since: u64) {
+        debug_assert!(since >= self.state.last_purged_log_id.next_index());
+
+        let since_log_id = match self.state.get_log_id(since) {
+            None => {
+                tracing::debug!("trying to delete absent log at: {}", since);
+                return;
+            }
+            Some(x) => x,
+        };
+
+        self.state.log_ids.truncate(since);
+        self.state.last_log_id = self.state.get_log_id(since - 1);
+
+        self.push_command(Command::DeleteConflictLog { since: since_log_id });
+
+        // If the effective membership is from a conflicting log,
+        // the membership state has to revert to the last committed membership config.
+        // See: [Effective-membership](https://datafuselabs.github.io/openraft/effective-membership.html)
+        //
+        // ```text
+        // committed_membership, ... since, ... effective_membership // log
+        // ^                                    ^
+        // |                                    |
+        // |                                    last membership      // before deleting since..
+        // last membership                                           // after  deleting since..
+        // ```
+
+        let effective = self.state.membership_state.effective.clone();
+        if Some(since) <= effective.log_id.index() {
+            let committed = self.state.membership_state.committed.clone();
+
+            tracing::debug!(
+                effective = debug(&effective),
+                committed = debug(&committed),
+                "effective membership is in conflicting logs, revert it to last committed"
+            );
+
+            debug_assert!(
+                committed.log_id.index() < Some(since),
+                "committed membership can not conflict with the leader"
+            );
+
+            let mem_state = MembershipState {
+                committed: committed.clone(),
+                effective: committed,
+            };
+
+            self.state.membership_state = mem_state;
+            self.push_command(Command::UpdateMembership {
+                membership: self.state.membership_state.effective.clone(),
+            });
+
+            tracing::debug!(effective = debug(&effective), "Done reverting membership");
+        }
+    }
+
     /// Purge log entries upto `upto`, inclusive.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn purge_log(&mut self, upto: LogId<NID>) {
