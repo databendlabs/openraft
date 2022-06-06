@@ -42,6 +42,8 @@ use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
+use crate::timer::RaftTimer;
+use crate::timer::Timeout;
 use crate::versioned::Versioned;
 use crate::Entry;
 use crate::EntryPayload;
@@ -73,6 +75,13 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     pub(crate) engine: Engine<C::NodeId>,
 
+    /// Count the number of times ServerState switched.
+    ///
+    /// This count can be used to identify different ServerState.
+    /// One of the use case is to filter out messages send by other ServerState.
+    /// E.g., one timeout message sent by previous follower state should be discarded.
+    pub(crate) server_state_count: u64,
+
     /// The node's current snapshot state.
     pub(crate) snapshot_state: Option<SnapshotState<S::SnapshotData>>,
 
@@ -91,6 +100,9 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     pub(crate) rx_internal: mpsc::Receiver<InternalMessage<C::NodeId>>,
 
+    // TODO(xp): remove this
+    #[allow(dead_code)]
+    pub(crate) tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
     pub(crate) rx_api: mpsc::UnboundedReceiver<(RaftMsg<C, N, S>, Span)>,
 
     tx_metrics: watch::Sender<RaftMetrics<C>>,
@@ -104,6 +116,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         config: Arc<Config>,
         network: N,
         storage: S,
+        tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
         rx_api: mpsc::UnboundedReceiver<(RaftMsg<C, N, S>, Span)>,
         tx_metrics: watch::Sender<RaftMetrics<C>>,
         rx_shutdown: oneshot::Receiver<()>,
@@ -120,6 +133,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             engine: Engine::default(),
 
+            server_state_count: 0,
+
             snapshot_state: None,
             snapshot_last_log_id: None,
             last_heartbeat: None,
@@ -128,6 +143,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             tx_internal,
             rx_internal,
 
+            tx_api,
             rx_api,
 
             tx_metrics,
@@ -230,11 +246,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // controllers and simply awaits the delegated loop to return, which will only take place
         // if some error has been encountered, or if a state change is required.
         loop {
+            self.server_state_count += 1;
+
             match &self.engine.state.server_state {
                 ServerState::Leader => LeaderState::new(self).run().await?,
                 ServerState::Candidate => self.candidate_loop().await?,
-                ServerState::Follower => self.follower_loop().await?,
-                ServerState::Learner => self.learner_loop().await?,
+                ServerState::Follower => self.follower_learner_loop(ServerState::Follower).await?,
+                ServerState::Learner => self.follower_learner_loop(ServerState::Learner).await?,
                 ServerState::Shutdown => {
                     tracing::info!("node has shutdown");
                     return Ok(());
@@ -653,58 +671,51 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id), raft_state="follower"))]
-    async fn follower_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
+    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id)))]
+    async fn follower_learner_loop(&mut self, server_state: ServerState) -> Result<(), Fatal<C::NodeId>> {
         // report the new state before enter the loop
         self.report_metrics(Update::Update(None));
 
+        // TODO(xp): setting up a timer should be triggered by Engine and executed by Runtime,
+        let timeout = if server_state == ServerState::Follower {
+            let tx_api = self.tx_api.clone();
+            let state_count = self.server_state_count;
+
+            let t = Timeout::new(
+                move || {
+                    let _ = tx_api.send((
+                        RaftMsg::Elect {
+                            server_state_count: Some(state_count),
+                        },
+                        tracing::Span::current(),
+                    ));
+                },
+                self.get_next_election_timeout() - Instant::now(),
+            );
+
+            Some(t)
+        } else {
+            None
+        };
+
         loop {
-            if !self.engine.state.server_state.is_follower() {
+            if self.engine.state.server_state != server_state {
                 return Ok(());
             }
 
             self.flush_metrics(None);
 
-            let election_timeout = sleep_until(self.get_next_election_timeout()); // Value is updated as heartbeats are received.
+            if let Some(t) = &timeout {
+                // timeout is updated as heartbeats are received
+                t.update_timeout(self.get_next_election_timeout() - Instant::now());
+            }
 
             tokio::select! {
-                // If an election timeout is hit, then we need to transition to candidate.
-                _ = election_timeout => {
-                    tracing::debug!("timeout to recv a event, change to CandidateState");
-                    self.set_target_state(ServerState::Candidate)
-                },
-
                 Some((msg, span)) = self.rx_api.recv() => {
                     self.handle_api_msg(msg).instrument(span).await?;
                 },
 
                 Some(internal_msg) = self.rx_internal.recv() => self.handle_internal_msg(internal_msg).await?,
-
-                Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
-            }
-        }
-    }
-
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id), raft_state="learner"))]
-    async fn learner_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
-        // report the new state before enter the loop
-        self.report_metrics(Update::Update(None));
-
-        loop {
-            if !self.engine.state.server_state.is_learner() {
-                return Ok(());
-            }
-
-            self.flush_metrics(None);
-
-            tokio::select! {
-                Some((msg, span)) = self.rx_api.recv() => {
-                    self.handle_api_msg(msg).instrument(span).await?;
-                },
-
-                Some(internal_msg) = self.rx_internal.recv() => {
-                    self.handle_internal_msg(internal_msg).await?;
-                },
 
                 Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
             }
@@ -846,6 +857,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
             RaftMsg::ExternalRequest { req } => {
                 req(self.engine.state.server_state, &mut self.storage, &mut self.network);
+            }
+            RaftMsg::Elect { server_state_count } => {
+                if server_state_count != Some(self.server_state_count) {
+                    tracing::info!(
+                        "server state changed: msg sent by: {:?}; curr: {}; ignore",
+                        server_state_count,
+                        self.server_state_count
+                    );
+                } else {
+                    tracing::debug!("change to CandidateState");
+                    self.set_target_state(ServerState::Candidate)
+                }
             }
         };
         Ok(())
