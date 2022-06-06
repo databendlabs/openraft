@@ -49,6 +49,70 @@ fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_log_id_list_extend() -> anyhow::Result<()> {
+    let mut ids = LogIdList::<u64>::default();
+
+    // Extend one log id to an empty LogIdList: Just store it directly
+
+    ids.extend(&[log_id(1, 2)]);
+    assert_eq!(vec![log_id(1, 2)], ids.key_log_ids());
+
+    // Extend two log ids that are adjacent to the last stored one.
+    // It should append only one log id as the new ending log id.
+
+    ids.extend(&[
+        log_id(1, 3), //
+        log_id(1, 4),
+    ]);
+    assert_eq!(
+        vec![
+            log_id(1, 2), //
+            log_id(1, 4)
+        ],
+        ids.key_log_ids(),
+        "same leader as the last"
+    );
+
+    // Extend 3 log id with different leader id.
+    // Last two has the same leader id.
+
+    ids.extend(&[
+        log_id(1, 5), //
+        log_id(2, 6),
+        log_id(2, 7),
+    ]);
+    assert_eq!(
+        vec![
+            log_id(1, 2), //
+            log_id(2, 6),
+            log_id(2, 7)
+        ],
+        ids.key_log_ids(),
+        "last 2 have the same leaders"
+    );
+
+    // Extend 3 log id with different leader id.
+    // Last two have different leader id.
+
+    ids.extend(&[
+        log_id(2, 8), //
+        log_id(2, 9),
+        log_id(3, 10),
+    ]);
+    assert_eq!(
+        vec![
+            log_id(1, 2), //
+            log_id(2, 6),
+            log_id(3, 10),
+        ],
+        ids.key_log_ids(),
+        "last 2 have different leaders"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn test_log_id_list_append() -> anyhow::Result<()> {
     let mut ids = LogIdList::<u64>::default();
 
