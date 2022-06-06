@@ -1,54 +1,27 @@
-When appending logs or installing snapshot(another form of appending logs),
-Conflicting logs **should** be removed.
+# Delete conflicting logs
 
-To maintain log consistency, it does not need to delete.
-Because:
-If newer logs(with higher`(term, index)`) are sent from some leader,
-the incompatible logs must be uncommitted.
-Further election will never choose these logs,
-if the logs from the new leader are committed.
+- When appending logs to a follower/learner, conflicting logs **has** be removed.
+- When installing snapshot(another form of appending logs), conflicting logs **should** be removed.
 
-But membership changing requires it to remove the incompatible logs when appending.
-This is what raft did wrongly.
+## Why
 
-If membership logs are kept in a separate log column, there wont be such a problem.
-But membership a mixed into the business log.
-which makes it a non-WAL storage.
+### 1. Keep it clean
 
-The following is an exmaple of why logs must be removed:
-A membership change log will only be appended if the previous membership log is committed,
-which is the algo raft defined.
-A non-committed membership log is only allowed to present if any quorum is in its intersection with a quorum in the committed config.
+The first reason is to keep logs clean:
+to keep log ids all in ascending order.
 
-But when new logs are appended, there could be a membership log that is not compatible with a membership log in the incompatible logs.
-which results in a split-brain.
 
-E.g.:
+### 2. Committed has to be chosen
 
-R1 becomes leader in term 1
-R1 appends two log and one membership log m3
-R1 crash and recovered.
-R3 becomes leader in term 2
-R3 appends 2 membership log m'1,m'2 and committed. // Joint membership change algo
-R3 send log m'1 and m'2 to R1.
+The second reason is to **let the next leader always choose committed logs**.
 
-Then m'2 and m3 could be incompatible:
-m0 = {R1,R2,R3},
-m'1 = {R3,X,Y} x {R1,R2,R3} // joint
-m'2 = {R3,X,Y} // final
-m3 = {R1,U,V} x {R1,R2,R3} 
+If a leader commits logs that already are replicated to a quorum,
+the next leader has to have these log.
+The conflicting logs on a follower `A` may have smaller log id than the last log id on the leader.
+Thus, the next leader may choose another node `B` that has higher log than node `A` but has smaller log than the previous leader.
 
-m3 is compatible with the committed membership log when it is created.
-But not compatible with others'
+### 3. Snapshot replication does not have to delete conflicting logs
 
-```
-R1 L1 e1,e2,m3            m'1,m'2,m3
-R2 F1          F2 m'1, 
-R3             L2 m'1,m'2
-X                 m'1,m'2      
-Y                 
---------------------------> time
-```
+See: [Deleting-conflicting-logs-when-installing-snapshot](https://datafuselabs.github.io/openraft/replication.html#necessity-to-delete-conflicting-logs)
 
-Thus this is the reason logs must be removed.
-Or move all membership log to another column is also a clean option.
+Deleting conflicting logs when installing snapshot is only for clarity.

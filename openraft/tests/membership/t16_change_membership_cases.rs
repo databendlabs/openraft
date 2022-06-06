@@ -157,7 +157,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
     for id in new.iter() {
         router
             .wait(id, timeout())
-            // new leader may commit a blonk log
+            // new leader may commit a blank log
             .log_at_least(Some(log_index), format!("new cluster recv logs 100~200, {}", mes))
             .await?;
     }
