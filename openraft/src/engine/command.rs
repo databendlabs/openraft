@@ -1,8 +1,9 @@
 use std::ops::Range;
+use std::sync::Arc;
 
 use crate::raft::VoteRequest;
+use crate::EffectiveMembership;
 use crate::LogId;
-use crate::Membership;
 use crate::MetricsChangeFlags;
 use crate::NodeId;
 use crate::ServerState;
@@ -36,7 +37,7 @@ pub(crate) enum Command<NID: NodeId> {
 
     // Membership config changed, need to update replication stream etc.
     UpdateMembership {
-        membership: Membership<NID>,
+        membership: Arc<EffectiveMembership<NID>>,
     },
 
     // Move the cursor pointing to an entry in the input buffer.

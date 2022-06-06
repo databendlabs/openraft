@@ -15,9 +15,11 @@ use crate::membership::EffectiveMembership;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::RaftState;
+use crate::summary::MessageSummary;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
+use crate::MembershipState;
 use crate::MetricsChangeFlags;
 use crate::NodeId;
 use crate::Vote;
@@ -265,6 +267,34 @@ impl<NID: NodeId> Engine<NID> {
         self.push_command(Command::MoveInputCursorBy { n: l });
     }
 
+    /// Follower/Learner append entries.
+    ///
+    /// It assumes:
+    /// - Previous entries all match.
+    /// - conflicting entries are deleted.
+    #[tracing::instrument(level = "debug", skip(self, entries))]
+    pub(crate) fn follower_append_entries<'a, Ent: RaftEntry<NID> + 'a>(&mut self, entries: &[Ent]) {
+        let l = entries.len();
+        if l == 0 {
+            return;
+        }
+
+        debug_assert_eq!(
+            entries[0].get_log_id().index,
+            self.state.log_ids.last().cloned().next_index(),
+        );
+
+        debug_assert!(entries[0].get_log_id() > self.state.log_ids.last().unwrap());
+
+        self.state.extend_log_ids(entries);
+        self.state.last_log_id = entries.last().map(|x| *x.get_log_id());
+
+        self.push_command(Command::AppendInputEntries { range: 0..l });
+        self.follower_update_membership(entries.iter());
+
+        self.push_command(Command::MoveInputCursorBy { n: l });
+    }
+
     /// Purge log entries upto `upto`, inclusive.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn purge_log(&mut self, upto: LogId<NID>) {
@@ -311,8 +341,95 @@ impl<NID: NodeId> Engine<NID> {
             let em = EffectiveMembership::new(Some(*entry.get_log_id()), m.clone());
             self.state.membership_state.effective = Arc::new(em);
 
-            self.push_command(Command::UpdateMembership { membership: m.clone() });
+            self.push_command(Command::UpdateMembership {
+                membership: self.state.membership_state.effective.clone(),
+            });
         }
+    }
+
+    /// Update membership state if membership config entries are found.
+    #[allow(dead_code)]
+    fn follower_update_membership<'a, Ent: RaftEntry<NID> + 'a>(
+        &mut self,
+        entries: impl DoubleEndedIterator<Item = &'a Ent>,
+    ) {
+        let was_member = self.is_member();
+
+        let memberships = Self::last_two_memberships(entries);
+        if memberships.is_empty() {
+            return;
+        }
+
+        tracing::debug!(memberships=?memberships, "applying new membership configs received from leader");
+
+        self.update_membership_state(memberships);
+        self.push_command(Command::UpdateMembership {
+            membership: self.state.membership_state.effective.clone(),
+        });
+
+        let is_member = self.is_member();
+
+        tracing::debug!(
+            was_member,
+            is_member,
+            membership = display(self.state.membership_state.effective.membership.summary()),
+            "membership updated"
+        );
+
+        if was_member == is_member {
+            return;
+        }
+
+        if is_member {
+            self.set_server_state(ServerState::Follower);
+        } else {
+            self.set_server_state(ServerState::Learner);
+        }
+    }
+
+    /// Find the last 2 membership entries in a list of entries.
+    ///
+    /// A follower/learner reverts the effective membership to the previous one,
+    /// when conflicting logs are found.
+    ///
+    /// See: [Effective-membership](https://datafuselabs.github.io/openraft/effective-membership.html)
+    fn last_two_memberships<'a, Ent: RaftEntry<NID> + 'a>(
+        entries: impl DoubleEndedIterator<Item = &'a Ent>,
+    ) -> Vec<EffectiveMembership<NID>> {
+        let mut memberships = vec![];
+
+        // Find the last 2 membership config entries: the committed and the effective.
+        for ent in entries.rev() {
+            if let Some(m) = ent.get_membership() {
+                memberships.insert(0, EffectiveMembership::new(Some(*ent.get_log_id()), m.clone()));
+                if memberships.len() == 2 {
+                    break;
+                }
+            }
+        }
+
+        memberships
+    }
+
+    /// Update membership state with the last 2 membership configs found in new log entries
+    ///
+    /// Return if new membership config is found
+    fn update_membership_state(&mut self, memberships: Vec<EffectiveMembership<NID>>) {
+        debug_assert!(self.state.membership_state.effective.log_id < memberships[0].log_id);
+
+        let new_mem_state = if memberships.len() == 1 {
+            MembershipState {
+                committed: self.state.membership_state.effective.clone(),
+                effective: Arc::new(memberships[0].clone()),
+            }
+        } else {
+            // len() == 2
+            MembershipState {
+                committed: Arc::new(memberships[0].clone()),
+                effective: Arc::new(memberships[1].clone()),
+            }
+        };
+        self.state.membership_state = new_mem_state;
     }
 
     fn set_server_state(&mut self, server_state: ServerState) {
@@ -380,6 +497,10 @@ impl<NID: NodeId> Engine<NID> {
         self.state.last_log_id = Some(log_id);
 
         log_id
+    }
+
+    fn is_member(&self) -> bool {
+        self.state.membership_state.effective.membership.contains(&self.id)
     }
 
     fn push_command(&mut self, cmd: Command<NID>) {

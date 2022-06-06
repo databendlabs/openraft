@@ -167,6 +167,11 @@ impl<NID: NodeId> RaftState<NID> {
         self.log_ids.extend_from_same_leader(new_log_id)
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn extend_log_ids<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_log_id: &[LID]) {
+        self.log_ids.extend(new_log_id)
+    }
+
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
