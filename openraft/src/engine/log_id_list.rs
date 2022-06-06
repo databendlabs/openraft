@@ -81,7 +81,7 @@ impl<NID: NodeId> LogIdList<NID> {
 
         // l >= 1
 
-        assert!(new_log_id > self.key_log_ids[l - 1]);
+        debug_assert!(new_log_id > self.key_log_ids[l - 1]);
 
         if l == 1 {
             self.key_log_ids.push(new_log_id);
@@ -102,6 +102,33 @@ impl<NID: NodeId> LogIdList<NID> {
         // Add a **last log id** with the same leader id.
 
         self.key_log_ids.push(new_log_id);
+    }
+
+    /// Delete log ids from `at`, inclusive.
+    #[allow(dead_code)]
+    pub(crate) fn truncate(&mut self, at: u64) {
+        let res = self.key_log_ids.binary_search_by(|log_id| log_id.index.cmp(&at));
+
+        let i = match res {
+            Ok(i) => i,
+            Err(i) => {
+                if i == self.key_log_ids.len() {
+                    return;
+                }
+                i
+            }
+        };
+
+        self.key_log_ids.truncate(i);
+
+        // Add key log id if there is a gap between last.index and at - 1.
+        let last = self.key_log_ids.last();
+        if let Some(last) = last {
+            let (last_leader_id, last_index) = (last.leader_id, last.index);
+            if last_index < at - 1 {
+                self.append(LogId::new(last_leader_id, at - 1));
+            }
+        }
     }
 
     /// Purge log ids upto the log with index `upto_index`, inclusive.

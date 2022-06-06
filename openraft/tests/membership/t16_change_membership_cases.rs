@@ -140,6 +140,9 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
     {
         // get new leader
 
+        // TODO(xp): leader may not be stable, other node may take leadership by a higher vote.
+        //           Then client write may receive a ForwardToLeader Error with empty leader.
+        //           Need to wait for the leader become stable.
         let m = router
             .wait(new.iter().next().unwrap(), timeout())
             .metrics(|x| x.current_leader.is_some(), format!("wait for new leader, {}", mes))

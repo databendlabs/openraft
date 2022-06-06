@@ -136,11 +136,115 @@ fn test_log_id_list_append() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_log_id_list_purge() -> anyhow::Result<()> {
-    // Append log id one by one, check the internally constructed `key_log_id` as expected.
+fn test_log_id_list_truncate() -> anyhow::Result<()> {
+    // Sample data for test
+    let make_ids = || {
+        LogIdList::<u64>::new(vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ])
+    };
 
     let cases = vec![
-        //
+        (0, vec![
+            //
+        ]),
+        (1, vec![
+            //
+        ]),
+        (2, vec![
+            //
+        ]),
+        (3, vec![
+            log_id(2, 2), //
+        ]),
+        (4, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+        ]),
+        (5, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(3, 4),
+        ]),
+        (6, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(3, 5),
+        ]),
+        (7, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(6, 6),
+        ]),
+        (8, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(6, 7),
+        ]),
+        (9, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(6, 8),
+        ]),
+        (10, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+        ]),
+        (11, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 10),
+        ]),
+        (12, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ]),
+        (13, vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ]),
+    ];
+
+    for (at, want) in cases {
+        let mut ids = make_ids();
+
+        ids.truncate(at);
+        assert_eq!(want, ids.key_log_ids(), "truncate since: [{}, +oo)", at);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_log_id_list_purge() -> anyhow::Result<()> {
+    // Sample data for test
+    let make_ids = || {
+        LogIdList::<u64>::new(vec![
+            log_id(2, 2), //
+            log_id(3, 3),
+            log_id(6, 6),
+            log_id(9, 9),
+            log_id(9, 11),
+        ])
+    };
+
+    let cases = vec![
         (log_id(2, 1), vec![
             log_id(2, 2),
             log_id(3, 3),
@@ -184,13 +288,7 @@ fn test_log_id_list_purge() -> anyhow::Result<()> {
     ];
 
     for (upto, want) in cases {
-        let mut ids = LogIdList::<u64>::new(vec![
-            log_id(2, 2), // force multi line
-            log_id(3, 3),
-            log_id(6, 6),
-            log_id(9, 9),
-            log_id(9, 11),
-        ]);
+        let mut ids = make_ids();
 
         ids.purge(&upto);
         assert_eq!(want, ids.key_log_ids(), "purge upto: {}", upto);
