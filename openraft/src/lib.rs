@@ -34,6 +34,8 @@ pub mod testing;
 pub mod timer;
 pub mod versioned;
 
+#[cfg(test)] mod raft_state_test;
+
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
