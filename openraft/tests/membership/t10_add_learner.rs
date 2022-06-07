@@ -11,7 +11,6 @@ use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::RaftStorage;
-use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -138,73 +137,42 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
         }
         .validate()?,
     );
-    let timeout = Some(Duration::from_millis(2000));
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
-    router.new_raft_node(1);
 
-    let mut log_index = 0;
-
-    // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1], None, timeout, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1], ServerState::Learner, timeout, "empty").await?;
-    router.assert_pristine_cluster();
-
-    // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
-    router.initialize_from_single_node(0).await?;
-    log_index += 1;
-
-    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "init").await?;
-    router.assert_stable_cluster(Some(1), Some(1));
+    tracing::info!("--- initializing cluster members: 0,1; learners: 2");
+    let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {2}).await?;
 
     // Submit a config change which adds two new nodes and removes the current leader.
-    let orig_leader = router.leader().expect("expected the cluster to have a leader");
-    assert_eq!(0, orig_leader, "expected original leader to be node 0");
-
-    // add a learner
-    router.new_raft_node(2);
-    router.add_learner(orig_leader, 2).await?;
-    log_index += 1;
-    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "add learner").await?;
+    let orig_leader_id = router.leader().expect("expected the cluster to have a leader");
+    assert_eq!(0, orig_leader_id, "expected original leader to be node 0");
 
     router.new_raft_node(3);
     router.new_raft_node(4);
-    router.add_learner(orig_leader, 3).await?;
-    router.add_learner(orig_leader, 4).await?;
+    router.add_learner(orig_leader_id, 3).await?;
+    router.add_learner(orig_leader_id, 4).await?;
     log_index += 2;
-    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout, "add learner").await?;
+    router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
 
-    let node = router.get_raft_handle(&orig_leader)?;
+    let node = router.get_raft_handle(&orig_leader_id)?;
     node.change_membership(btreeset![1, 3, 4], true, false).await?;
-
-    // 2 for change_membership
-    log_index += 2;
+    log_index += 2; // 2 change_membership log
 
     tracing::info!("--- old leader commits 2 membership log");
     {
         router
-            .wait(&orig_leader, timeout)
+            .wait(&orig_leader_id, timeout())
             .log(Some(log_index), "old leader commits 2 membership log")
             .await?;
     }
-
-    // Another node(e.g. node-1) in the old cluster may not commit the second membership change log.
-    // Because to commit the 2nd log it only need a quorum of the new cluster.
-
-    router
-        .wait(&1, timeout)
-        .log_at_least(Some(log_index), "node in old cluster commits at least 1 membership log")
-        .await?;
 
     tracing::info!("--- new cluster commits 2 membership logs");
     {
         // leader commit a new log.
         log_index += 1;
 
-        for id in [3, 4] {
+        for id in [1, 3, 4] {
             router
-                .wait(&id, timeout)
+                .wait(&id, timeout())
                 .log_at_least(
                     Some(log_index),
                     "node in new cluster finally commit at least one blank leader-initialize log",
@@ -215,8 +183,8 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 
     tracing::info!("--- check new cluster membership");
     {
-        let mut sto = router.get_storage_handle(&1)?;
-        let m = sto.get_membership().await?;
+        let mut sto1 = router.get_storage_handle(&1)?;
+        let m = sto1.get_membership().await?;
 
         // new membership is applied, thus get_membership() only returns one entry.
 
@@ -239,7 +207,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
         log_index += 1;
 
         for i in [1, 2, 3, 4] {
-            router.wait(&i, timeout).log_at_least(Some(log_index), "learner recv new log").await?;
+            router.wait(&i, timeout()).log_at_least(Some(log_index), "learner recv new log").await?;
         }
     }
 
@@ -247,5 +215,5 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
+    Some(Duration::from_millis(3_000))
 }
