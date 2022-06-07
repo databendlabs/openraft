@@ -538,11 +538,31 @@ where
     }
 
     /// Send a client request to the target node, causing test failure on error.
-    pub async fn client_request(&self, target: C::NodeId, client_id: &str, serial: u64) {
-        let req = <C::D as IntoMemClientRequest<C::D>>::make_request(client_id, serial);
-        if let Err(err) = self.send_client_request(target, req).await {
-            tracing::error!({error=%err}, "error from client request");
-            panic!("{:?}", err)
+    pub async fn client_request(&self, mut target: C::NodeId, client_id: &str, serial: u64) {
+        for ith in 0..3 {
+            let req = <C::D as IntoMemClientRequest<C::D>>::make_request(client_id, serial);
+            if let Err(err) = self.send_client_request(target, req).await {
+                tracing::error!({error=%err}, "error from client request");
+
+                #[allow(clippy::single_match)]
+                match &err {
+                    ClientWriteError::ForwardToLeader(e) => {
+                        tracing::info!(
+                            "{}-th request: target is not leader anymore. New leader is: {:?}",
+                            ith,
+                            e.leader_id
+                        );
+                        if let Some(l) = e.leader_id {
+                            target = l;
+                            continue;
+                        }
+                    }
+                    _ => {}
+                }
+                panic!("{:?}", err)
+            } else {
+                return;
+            }
         }
     }
 
