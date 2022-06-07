@@ -18,7 +18,7 @@ pub struct ReplicationMetrics<NID: NodeId> {
     pub replication: BTreeMap<NID, ReplicationTargetMetrics<NID>>,
 }
 
-impl<NID: NodeId> MessageSummary for ReplicationMetrics<NID> {
+impl<NID: NodeId> MessageSummary<ReplicationMetrics<NID>> for ReplicationMetrics<NID> {
     fn summary(&self) -> String {
         let mut res = vec!["LeaderMetrics{".to_string()];
         for (i, (k, v)) in self.replication.iter().enumerate() {
@@ -119,7 +119,7 @@ impl<NID: NodeId> ReplicationTargetMetrics<NID> {
     }
 }
 
-impl<NID: NodeId> MessageSummary for ReplicationTargetMetrics<NID> {
+impl<NID: NodeId> MessageSummary<ReplicationTargetMetrics<NID>> for ReplicationTargetMetrics<NID> {
     fn summary(&self) -> String {
         format!("{}", self.matched())
     }

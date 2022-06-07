@@ -66,8 +66,8 @@ where Data: Clone + Debug
     }
 }
 
-impl<Data> MessageSummary for Versioned<Data>
-where Data: Clone + MessageSummary
+impl<Data> MessageSummary<Versioned<Data>> for Versioned<Data>
+where Data: Clone + MessageSummary<Data>
 {
     fn summary(&self) -> String {
         format!("{{ver:{}, {}}}", self.version, self.data.summary())

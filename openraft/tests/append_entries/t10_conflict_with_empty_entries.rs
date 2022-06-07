@@ -45,7 +45,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     // Expect conflict even if the message contains no entries.
 
     let rpc = AppendEntriesRequest::<memstore::Config> {
-        vote: Vote::new(1, 1),
+        vote: Vote::new_committed(1, 1),
         prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 5)),
         entries: vec![],
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
@@ -58,7 +58,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     // Feed logs
 
     let rpc = AppendEntriesRequest::<memstore::Config> {
-        vote: Vote::new(1, 1),
+        vote: Vote::new_committed(1, 1),
         prev_log_id: None,
         entries: vec![blank(0, 0), blank(1, 1), Entry {
             log_id: LogId::new(LeaderId::new(1, 0), 2),
@@ -78,7 +78,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
     // Expect a conflict with prev_log_index == 3
 
     let rpc = AppendEntriesRequest::<memstore::Config> {
-        vote: Vote::new(1, 1),
+        vote: Vote::new_committed(1, 1),
         prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 3)),
         entries: vec![],
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),

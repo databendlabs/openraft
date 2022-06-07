@@ -12,54 +12,35 @@ use crate::Vote;
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Command<NID: NodeId> {
-    // Update server state, e.g., Leader, Follower etc.
-    // TODO: consider remove this variant. A runtime does not need to know about this. It is only meant for metrics
-    //       report.
-    UpdateServerState {
-        server_state: ServerState,
-    },
+    /// Update server state, e.g., Leader, Follower etc.
+    /// TODO: consider removing this variant. A runtime does not need to know about this. It is only meant for metrics
+    ///       report.
+    UpdateServerState { server_state: ServerState },
 
-    // Append a `range` of entries in the input buffer.
-    AppendInputEntries {
-        range: Range<usize>,
-    },
-
-    // Commit entries that are already in the store, upto `upto`, inclusive.
-    // And send applied result to the client that proposed the entry.
-    LeaderCommit {
-        upto: LogId<NID>,
-    },
+    /// Append a `range` of entries in the input buffer.
+    AppendInputEntries { range: Range<usize> },
 
     /// Commit entries that are already in the store, upto `upto`, inclusive.
-    #[allow(dead_code)]
-    FollowerCommit {
-        upto: LogId<NID>,
-    },
+    /// And send applied result to the client that proposed the entry.
+    LeaderCommit { upto: LogId<NID> },
 
-    // Replicate a `range` of entries in the input buffer.
-    ReplicateInputEntries {
-        range: Range<usize>,
-    },
+    /// Commit entries that are already in the store, upto `upto`, inclusive.
+    FollowerCommit { upto: LogId<NID> },
 
-    // Membership config changed, need to update replication stream etc.
-    UpdateMembership {
-        membership: Arc<EffectiveMembership<NID>>,
-    },
+    /// Replicate a `range` of entries in the input buffer.
+    ReplicateInputEntries { range: Range<usize> },
 
-    // Move the cursor pointing to an entry in the input buffer.
-    MoveInputCursorBy {
-        n: usize,
-    },
+    /// Membership config changed, need to update replication stream etc.
+    UpdateMembership { membership: Arc<EffectiveMembership<NID>> },
 
-    // Save vote to storage
-    SaveVote {
-        vote: Vote<NID>,
-    },
+    /// Move the cursor pointing to an entry in the input buffer.
+    MoveInputCursorBy { n: usize },
+
+    /// Save vote to storage
+    SaveVote { vote: Vote<NID> },
 
     /// Send vote to all other members
-    SendVote {
-        vote_req: VoteRequest<NID>,
-    },
+    SendVote { vote_req: VoteRequest<NID> },
 
     /// Install a timer to trigger an election, e.g., calling `Engine::elect()` after some `timeout` which is decided
     /// by the runtime. An already installed timer should be cleared.
@@ -70,23 +51,16 @@ pub(crate) enum Command<NID: NodeId> {
     ///
     /// When a leader is established and has not yet timeout,
     /// A candidate should not take the leadership.
-    #[allow(dead_code)]
     RejectElection {},
 
-    #[allow(dead_code)]
-    PurgeLog {
-        upto: LogId<NID>,
-    },
+    /// Purge log from the beginning to `upto`, inclusive.
+    PurgeLog { upto: LogId<NID> },
+
+    /// Delete logs that conflict with the leader from a follower/learner since log id `since`, inclusive.
+    DeleteConflictLog { since: LogId<NID> },
 
     //
     // --- Draft unimplemented commands:
-    //
-
-    // TODO:
-    #[allow(dead_code)]
-    DeleteConflictLog {
-        since: LogId<NID>,
-    },
 
     // TODO:
     #[allow(dead_code)]

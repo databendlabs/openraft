@@ -266,7 +266,13 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn run_engine_commands<'p>(&mut self, input_entries: &[EntryRef<'p, C>]) -> Result<(), Fatal<C::NodeId>> {
+        tracing::debug!("LeaderState run command: start...");
+        for c in self.core.engine.commands.iter() {
+            tracing::debug!("LeaderState run command: {:?}", c);
+        }
+
         let mut curr = 0;
         let mut commands = vec![];
         swap(&mut self.core.engine.commands, &mut commands);

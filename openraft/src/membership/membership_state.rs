@@ -35,4 +35,8 @@ pub struct MembershipState<NID: NodeId> {
     pub effective: Arc<EffectiveMembership<NID>>,
 }
 
-impl<NID: NodeId> MembershipState<NID> {}
+impl<NID: NodeId> MembershipState<NID> {
+    pub(crate) fn is_member(&self, id: &NID) -> bool {
+        self.effective.membership.is_member(id)
+    }
+}

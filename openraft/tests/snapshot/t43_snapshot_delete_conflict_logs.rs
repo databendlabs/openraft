@@ -85,7 +85,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         router.new_raft_node(1);
 
         let req = AppendEntriesRequest {
-            vote: Vote::new(1, 0),
+            vote: Vote::new_committed(1, 0),
             prev_log_id: None,
             entries: vec![
                 blank(0, 0),

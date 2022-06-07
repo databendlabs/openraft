@@ -29,7 +29,7 @@ pub(crate) struct ReplicationState<NID: NodeId> {
     pub tx: Option<RaftRespTx<AddLearnerResponse<NID>, AddLearnerError<NID>>>,
 }
 
-impl<NID: NodeId> MessageSummary for ReplicationState<NID> {
+impl<NID: NodeId> MessageSummary<ReplicationState<NID>> for ReplicationState<NID> {
     fn summary(&self) -> String {
         format!(
             "matched: {:?}, remove_after_commit: {:?}, failures: {}",

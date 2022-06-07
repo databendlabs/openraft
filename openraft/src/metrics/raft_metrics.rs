@@ -53,7 +53,7 @@ pub struct RaftMetrics<C: RaftTypeConfig> {
     pub replication: Option<Versioned<ReplicationMetrics<C::NodeId>>>,
 }
 
-impl<C: RaftTypeConfig> MessageSummary for RaftMetrics<C> {
+impl<C: RaftTypeConfig> MessageSummary<RaftMetrics<C>> for RaftMetrics<C> {
     fn summary(&self) -> String {
         format!("Metrics{{id:{},{:?}, term:{}, last_log:{:?}, last_applied:{:?}, leader:{:?}, membership:{}, snapshot:{:?}, replication:{}",
                 self.id,

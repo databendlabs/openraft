@@ -13,9 +13,11 @@ use crate::error::NotInMembers;
 use crate::error::RejectVoteRequest;
 use crate::leader::Leader;
 use crate::membership::EffectiveMembership;
+use crate::raft::AppendEntriesResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::RaftState;
+use crate::raft_types::RaftLogId;
 use crate::summary::MessageSummary;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -271,7 +273,106 @@ impl<NID: NodeId> Engine<NID> {
         self.push_command(Command::MoveInputCursorBy { n: l });
     }
 
-    /// Follower/Learner append entries.
+    /// Append entries to follower/learner.
+    ///
+    /// Also clean conflicting entries and update membership state.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn handle_append_entries_req<'a, Ent>(
+        &mut self,
+        vote: &Vote<NID>,
+        prev_log_id: Option<LogId<NID>>,
+        entries: &[Ent],
+        leader_committed: Option<LogId<NID>>,
+    ) -> AppendEntriesResponse<NID>
+    where
+        Ent: RaftEntry<NID> + MessageSummary<Ent> + 'a,
+    {
+        tracing::debug!(
+            vote = display(vote),
+            prev_log_id = display(prev_log_id.summary()),
+            entries = display(entries.summary()),
+            leader_committed = display(leader_committed.summary()),
+            "append-entries request"
+        );
+        tracing::debug!(
+            my_vote = display(self.state.vote),
+            my_last_log_id = display(self.state.last_log_id.summary()),
+            my_last_applied = display(self.state.last_applied.summary()),
+            "local state"
+        );
+
+        let res = self.internal_handle_vote_req(vote, &None);
+        if let Err(rejected) = res {
+            return rejected.into();
+        }
+
+        // Vote is legal. Check if prev_log_id matches local raft-log.
+
+        if let Some(ref prev) = prev_log_id {
+            if !self.state.has_log_id(prev) {
+                let local = self.state.get_log_id(prev.index);
+                tracing::debug!(local = debug(&local), "prev_log_id does not match");
+
+                self.truncate_logs(prev.index);
+                return AppendEntriesResponse::Conflict;
+            }
+        }
+        // else `prev_log_id.is_none()` means replicating logs from the very beginning.
+
+        tracing::debug!(
+            ?self.state.committed,
+            entries = %entries.summary(),
+            "prev_log_id matches, skip matching entries",
+        );
+
+        let l = entries.len();
+        let since = self.first_conflicting_index(entries);
+        if since < l {
+            // Before appending, if an entry overrides an conflicting one,
+            // the entries after it has to be deleted first.
+            // Raft requires log ids are in total order by (term,index).
+            // Otherwise the log id with max index makes committed entry invisible in election.
+            self.truncate_logs(entries[since].get_log_id().index);
+            self.follower_do_append_entries(entries, since);
+        }
+
+        self.follower_commit_entries(leader_committed, prev_log_id, entries);
+
+        AppendEntriesResponse::Success
+    }
+
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn follower_commit_entries<'a, Ent: RaftEntry<NID> + 'a>(
+        &mut self,
+        leader_committed: Option<LogId<NID>>,
+        prev_log_id: Option<LogId<NID>>,
+        entries: &[Ent],
+    ) {
+        tracing::debug!(
+            leader_committed = display(leader_committed.summary()),
+            prev_log_id = display(prev_log_id.summary()),
+        );
+
+        // Committed index can not > last_log_id.index
+        let last = entries.last().map(|x| *x.get_log_id());
+        let last = std::cmp::max(last, prev_log_id);
+        let committed = std::cmp::min(leader_committed, last);
+
+        tracing::debug!(committed = display(committed.summary()), "update committed");
+
+        if self.state.committed < committed {
+            self.state.committed = committed;
+            self.push_command(Command::FollowerCommit {
+                upto: committed.unwrap(),
+            })
+        }
+
+        if self.state.committed >= self.state.membership_state.effective.log_id {
+            self.state.membership_state.committed = self.state.membership_state.effective.clone();
+        }
+    }
+
+    /// Follower/Learner appends `entries[since..]`.
     ///
     /// It assumes:
     /// - Previous entries all match.
@@ -279,25 +380,28 @@ impl<NID: NodeId> Engine<NID> {
     ///
     /// Membership config changes are also detected and applied here.
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn follower_append_entries<'a, Ent: RaftEntry<NID> + 'a>(&mut self, entries: &[Ent]) {
+    pub(crate) fn follower_do_append_entries<'a, Ent: RaftEntry<NID> + 'a>(&mut self, entries: &[Ent], since: usize) {
         let l = entries.len();
-        if l == 0 {
+        if since == l {
             return;
         }
+
+        let entries = &entries[since..];
 
         debug_assert_eq!(
             entries[0].get_log_id().index,
             self.state.log_ids.last().cloned().next_index(),
         );
 
-        debug_assert!(entries[0].get_log_id() > self.state.log_ids.last().unwrap());
+        debug_assert!(Some(entries[0].get_log_id()) > self.state.log_ids.last());
 
         self.state.extend_log_ids(entries);
         self.state.last_log_id = entries.last().map(|x| *x.get_log_id());
 
-        self.push_command(Command::AppendInputEntries { range: 0..l });
+        self.push_command(Command::AppendInputEntries { range: since..l });
         self.follower_update_membership(entries.iter());
 
+        // TODO(xp): should be moved to handle_append_entries_req()
         self.push_command(Command::MoveInputCursorBy { n: l });
     }
 
@@ -338,7 +442,7 @@ impl<NID: NodeId> Engine<NID> {
 
         let effective = self.state.membership_state.effective.clone();
         if Some(since) <= effective.log_id.index() {
-            let was_member = self.is_member();
+            let server_state = self.calc_server_state();
 
             let committed = self.state.membership_state.committed.clone();
 
@@ -365,16 +469,57 @@ impl<NID: NodeId> Engine<NID> {
 
             tracing::debug!(effective = debug(&effective), "Done reverting membership");
 
-            let is_member = self.is_member();
-
-            if was_member != is_member {
-                if is_member {
-                    self.set_server_state(ServerState::Follower);
-                } else {
-                    self.set_server_state(ServerState::Learner);
-                }
-            }
+            self.update_server_state_if_changed(server_state);
         }
+    }
+
+    /// Purge applied log if needed.
+    ///
+    /// `max_keep` specifies the number of applied logs to keep.
+    /// `max_keep==0` means every applied log can be purged.
+    // NOTE: simple method, not tested.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn purge_applied_log(&mut self, max_keep: u64) {
+        if let Some(purge_upto) = self.calc_purge_upto(max_keep) {
+            self.purge_log(purge_upto);
+        }
+    }
+
+    /// Calculate the log id up to which to purge, inclusive.
+    ///
+    /// Only applied log will be purged.
+    /// It may return None if there is no log to purge.
+    ///
+    /// `max_keep` specifies the number of applied logs to keep.
+    /// `max_keep==0` means every applied log can be purged.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn calc_purge_upto(&mut self, max_keep: u64) -> Option<LogId<NID>> {
+        let st = &self.state;
+        let last_applied = &st.last_applied;
+
+        // TODO(xp): periodically batch purge
+        let purge_end = last_applied.next_index().saturating_sub(max_keep);
+
+        tracing::debug!(
+            last_applied = debug(last_applied),
+            max_keep,
+            "purge: (-oo, {})",
+            purge_end
+        );
+
+        if st.last_purged_log_id.next_index() >= purge_end {
+            return None;
+        }
+
+        let log_id = self.state.log_ids.get(purge_end - 1);
+        debug_assert!(
+            log_id.is_some(),
+            "log id not found at {}, engine.state:{:?}",
+            purge_end - 1,
+            st
+        );
+
+        log_id
     }
 
     /// Purge log entries upto `upto`, inclusive.
@@ -398,6 +543,43 @@ impl<NID: NodeId> Engine<NID> {
         self.push_command(Command::PurgeLog { upto });
     }
 
+    /// Update membership state with a committed membership config
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn update_committed_membership(&mut self, membership: EffectiveMembership<NID>) {
+        tracing::debug!("update committed membership: {}", membership.summary());
+
+        let server_state = self.calc_server_state();
+
+        let m = Arc::new(membership);
+
+        let mut committed = self.state.membership_state.committed.clone();
+        let mut effective = self.state.membership_state.effective.clone();
+
+        if committed.log_id < m.log_id {
+            committed = m.clone();
+        }
+
+        // The local effective membership may conflict with the leader.
+        // Thus it has to compare by log-index, e.g.:
+        //   membership.log_id       = (10, 5);
+        //   local_effective.log_id = (2, 10);
+        if effective.log_id.index() <= m.log_id.index() {
+            effective = m;
+        }
+
+        let mem_state = MembershipState { committed, effective };
+
+        if self.state.membership_state.effective != mem_state.effective {
+            self.push_command(Command::UpdateMembership {
+                membership: mem_state.effective.clone(),
+            })
+        }
+
+        self.state.membership_state = mem_state;
+
+        self.update_server_state_if_changed(server_state);
+    }
+
     // --- Draft API ---
 
     // // --- app API ---
@@ -407,8 +589,6 @@ impl<NID: NodeId> Engine<NID> {
     //
     // // --- raft protocol API ---
     //
-    // //
-    // pub(crate) fn handle_append_entries() {}
     // pub(crate) fn handle_install_snapshot() {}
     //
     // pub(crate) fn handle_append_entries_resp() {}
@@ -456,38 +636,28 @@ impl<NID: NodeId> Engine<NID> {
         &mut self,
         entries: impl DoubleEndedIterator<Item = &'a Ent>,
     ) {
-        let was_member = self.is_member();
+        let server_state = self.calc_server_state();
 
         let memberships = Self::last_two_memberships(entries);
         if memberships.is_empty() {
             return;
         }
 
-        tracing::debug!(memberships=?memberships, "applying new membership configs received from leader");
+        tracing::debug!(
+            first = display(memberships.first().summary()),
+            "applying new membership configs received from leader"
+        );
+        tracing::debug!(
+            last = display(memberships.last().summary()),
+            "applying new membership configs received from leader"
+        );
 
         self.update_membership_state(memberships);
         self.push_command(Command::UpdateMembership {
             membership: self.state.membership_state.effective.clone(),
         });
 
-        let is_member = self.is_member();
-
-        tracing::debug!(
-            was_member,
-            is_member,
-            membership = display(self.state.membership_state.effective.membership.summary()),
-            "membership updated"
-        );
-
-        if was_member == is_member {
-            return;
-        }
-
-        if is_member {
-            self.set_server_state(ServerState::Follower);
-        } else {
-            self.set_server_state(ServerState::Learner);
-        }
+        self.update_server_state_if_changed(server_state);
     }
 
     /// Find the last 2 membership entries in a list of entries.
@@ -533,6 +703,19 @@ impl<NID: NodeId> Engine<NID> {
             }
         };
         self.state.membership_state = new_mem_state;
+        tracing::debug!(
+            membership_state = debug(&self.state.membership_state),
+            "updated membership state"
+        );
+    }
+
+    fn update_server_state_if_changed(&mut self, prev_server_state: ServerState) {
+        let server_state = self.calc_server_state();
+
+        if prev_server_state != server_state {
+            self.state.server_state = server_state;
+            self.push_command(Command::UpdateServerState { server_state })
+        }
     }
 
     fn set_server_state(&mut self, server_state: ServerState) {
@@ -585,6 +768,30 @@ impl<NID: NodeId> Engine<NID> {
         } else {
             Ok(())
         }
+    }
+
+    /// Find the first entry in the input that does not exist on local raft-log,
+    /// by comparing the log id.
+    fn first_conflicting_index<Ent: RaftLogId<NID>>(&self, entries: &[Ent]) -> usize {
+        let l = entries.len();
+
+        for (i, ent) in entries.iter().enumerate() {
+            let log_id = ent.get_log_id();
+            // for i in 0..l {
+            // let log_id = entries[i].get_log_id();
+
+            if !self.state.has_log_id(log_id) {
+                tracing::debug!(
+                    at = display(i),
+                    entry_log_id = display(log_id),
+                    "found nonexistent log id"
+                );
+                return i;
+            }
+        }
+
+        tracing::debug!("not found nonexistent");
+        l
     }
 
     fn assign_log_ids<'a, Ent: RaftEntry<NID> + 'a>(&mut self, entries: impl Iterator<Item = &'a mut Ent>) {
@@ -670,8 +877,38 @@ impl<NID: NodeId> Engine<NID> {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
+    fn calc_server_state(&self) -> ServerState {
+        tracing::debug!(
+            is_member = display(self.is_member()),
+            is_leader = display(self.is_leader()),
+            is_becoming_leader = display(self.is_becoming_leader()),
+            "states"
+        );
+        if self.is_member() {
+            if self.is_leader() {
+                ServerState::Leader
+            } else if self.is_becoming_leader() {
+                ServerState::Candidate
+            } else {
+                ServerState::Follower
+            }
+        } else {
+            ServerState::Learner
+        }
+    }
+
     fn is_member(&self) -> bool {
-        self.state.membership_state.effective.membership.contains(&self.id)
+        self.state.membership_state.is_member(&self.id)
+    }
+
+    /// The node is candidate or leader
+    fn is_becoming_leader(&self) -> bool {
+        self.state.leader.is_some()
+    }
+
+    fn is_leader(&self) -> bool {
+        self.state.vote.node_id == self.id && self.state.vote.committed
     }
 
     fn push_command(&mut self, cmd: Command<NID>) {

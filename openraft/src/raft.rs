@@ -203,11 +203,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
-    #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
+    #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn append_entries(
         &self,
         rpc: AppendEntriesRequest<C>,
     ) -> Result<AppendEntriesResponse<C::NodeId>, AppendEntriesError<C::NodeId>> {
+        tracing::debug!(rpc = display(rpc.summary()), "Raft::append_entries");
+
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
     }
@@ -227,11 +229,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node up-to-speed
     /// with the leader (§7).
-    #[tracing::instrument(level = "debug", skip(self, rpc), fields(snapshot_id=%rpc.meta.last_log_id))]
+    #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn install_snapshot(
         &self,
         rpc: InstallSnapshotRequest<C>,
     ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
+        tracing::debug!(rpc = display(rpc.summary()), "Raft::install_snapshot()");
+
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::InstallSnapshot { rpc, tx }, rx).await
     }
@@ -703,7 +707,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 }
 
-impl<C, N, S> MessageSummary for RaftMsg<C, N, S>
+impl<C, N, S> MessageSummary<RaftMsg<C, N, S>> for RaftMsg<C, N, S>
 where
     C: RaftTypeConfig,
     N: RaftNetworkFactory<C>,
@@ -792,7 +796,7 @@ where C::D: Debug
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for AppendEntriesRequest<C> {
+impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntriesRequest<C> {
     fn summary(&self) -> String {
         format!(
             "vote={}, prev_log_id={}, leader_commit={}, entries={}",
@@ -806,6 +810,7 @@ impl<C: RaftTypeConfig> MessageSummary for AppendEntriesRequest<C> {
 
 /// The response to an `AppendEntriesRequest`.
 #[derive(Debug)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum AppendEntriesResponse<NID: NodeId> {
     Success,
@@ -823,7 +828,7 @@ impl<NID: NodeId> AppendEntriesResponse<NID> {
     }
 }
 
-impl<NID: NodeId> MessageSummary for AppendEntriesResponse<NID> {
+impl<NID: NodeId> MessageSummary<AppendEntriesResponse<NID>> for AppendEntriesResponse<NID> {
     fn summary(&self) -> String {
         match self {
             AppendEntriesResponse::Success => "Success".to_string(),
@@ -841,7 +846,7 @@ pub struct VoteRequest<NID: NodeId> {
     pub last_log_id: Option<LogId<NID>>,
 }
 
-impl<NID: NodeId> MessageSummary for VoteRequest<NID> {
+impl<NID: NodeId> MessageSummary<VoteRequest<NID>> for VoteRequest<NID> {
     fn summary(&self) -> String {
         format!("{}, last_log:{:?}", self.vote, self.last_log_id.map(|x| x.to_string()))
     }
@@ -868,7 +873,7 @@ pub struct VoteResponse<NID: NodeId> {
     pub last_log_id: Option<LogId<NID>>,
 }
 
-impl<NID: NodeId> MessageSummary for VoteResponse<NID> {
+impl<NID: NodeId> MessageSummary<VoteResponse<NID>> for VoteResponse<NID> {
     fn summary(&self) -> String {
         format!(
             "{{granted:{}, {}, last_log:{:?}}}",
@@ -897,7 +902,7 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub done: bool,
 }
 
-impl<C: RaftTypeConfig> MessageSummary for InstallSnapshotRequest<C> {
+impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSnapshotRequest<C> {
     fn summary(&self) -> String {
         format!(
             "vote={}, meta={:?}, offset={}, len={}, done={}",
@@ -937,7 +942,7 @@ where C::D: Debug
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for ClientWriteRequest<C> {
+impl<C: RaftTypeConfig> MessageSummary<ClientWriteRequest<C>> for ClientWriteRequest<C> {
     fn summary(&self) -> String {
         self.payload.summary()
     }
@@ -978,7 +983,7 @@ where C::R: Debug
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for ClientWriteResponse<C> {
+impl<C: RaftTypeConfig> MessageSummary<ClientWriteResponse<C>> for ClientWriteResponse<C> {
     fn summary(&self) -> String {
         format!("log_id: {}, membership: {:?}", self.log_id, self.membership)
     }

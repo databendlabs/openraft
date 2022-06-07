@@ -240,39 +240,34 @@ where
         node_ids: BTreeSet<C::NodeId>,
         learners: BTreeSet<C::NodeId>,
     ) -> anyhow::Result<u64> {
-        assert!(node_ids.contains(&C::NodeId::default()));
+        let leader_id = C::NodeId::default();
+        assert!(node_ids.contains(&leader_id));
 
-        self.new_raft_node(C::NodeId::default());
+        self.new_raft_node(leader_id);
 
         tracing::info!("--- wait for init node to ready");
 
-        self.wait_for_log(&btreeset![C::NodeId::default()], None, timeout(), "empty").await?;
-        self.wait_for_state(
-            &btreeset![C::NodeId::default()],
-            ServerState::Learner,
-            timeout(),
-            "empty",
-        )
-        .await?;
+        self.wait_for_log(&btreeset![leader_id], None, timeout(), "empty").await?;
+        self.wait_for_state(&btreeset![leader_id], ServerState::Learner, timeout(), "empty").await?;
 
         tracing::info!("--- initializing single node cluster: {}", 0);
 
-        self.initialize_from_single_node(C::NodeId::default()).await?;
+        self.initialize_from_single_node(leader_id).await?;
         let mut log_index = 1; // log 0: initial membership log; log 1: leader initial log
 
         tracing::info!("--- wait for init node to become leader");
 
-        self.wait_for_log(&btreeset![C::NodeId::default()], Some(log_index), timeout(), "init").await?;
+        self.wait_for_log(&btreeset![leader_id], Some(log_index), timeout(), "init").await?;
         self.assert_stable_cluster(Some(1), Some(log_index));
 
         for id in node_ids.iter() {
-            if *id == C::NodeId::default() {
+            if *id == leader_id {
                 continue;
             }
             tracing::info!("--- add voter: {}", id);
 
             self.new_raft_node(*id);
-            self.add_learner(C::NodeId::default(), *id).await?;
+            self.add_learner(leader_id, *id).await?;
             log_index += 1;
         }
         self.wait_for_log(

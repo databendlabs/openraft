@@ -30,7 +30,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
 
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
     let req = AppendEntriesRequest::<memstore::Config> {
-        vote: Vote::new(2, 1),
+        vote: Vote::new_committed(2, 1),
         prev_log_id: Some(LogId::new(LeaderId::new(1, 0), log_index)),
         entries: vec![],
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), log_index)),

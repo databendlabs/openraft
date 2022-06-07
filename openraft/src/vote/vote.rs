@@ -19,7 +19,7 @@ impl<NID: NodeId> std::fmt::Display for Vote<NID> {
     }
 }
 
-impl<NID: NodeId> MessageSummary for Vote<NID> {
+impl<NID: NodeId> MessageSummary<Vote<NID>> for Vote<NID> {
     fn summary(&self) -> String {
         format!(
             "{}-{}:{}",

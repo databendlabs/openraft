@@ -2,6 +2,7 @@ mod effective_membership;
 #[allow(clippy::module_inception)] mod membership;
 mod membership_state;
 
+#[cfg(test)] mod membership_state_test;
 #[cfg(test)] mod membership_test;
 
 pub mod quorum;

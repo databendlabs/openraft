@@ -32,7 +32,7 @@ pub enum EntryPayload<C: RaftTypeConfig> {
     Membership(Membership<C::NodeId>),
 }
 
-impl<C: RaftTypeConfig> MessageSummary for EntryPayload<C> {
+impl<C: RaftTypeConfig> MessageSummary<EntryPayload<C>> for EntryPayload<C> {
     fn summary(&self) -> String {
         match self {
             EntryPayload::Blank => "blank".to_string(),
@@ -71,31 +71,15 @@ impl<C: RaftTypeConfig> Default for Entry<C> {
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for Entry<C> {
-    fn summary(&self) -> String {
-        format!("{}:{}", self.log_id, self.payload.summary())
+impl<C: RaftTypeConfig> AsRef<Entry<C>> for Entry<C> {
+    fn as_ref(&self) -> &Entry<C> {
+        self
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for &[&Entry<C>] {
+impl<C: RaftTypeConfig> MessageSummary<Entry<C>> for Entry<C> {
     fn summary(&self) -> String {
-        if self.is_empty() {
-            return "{}".to_string();
-        }
-        let mut res = Vec::with_capacity(self.len());
-        if self.len() <= 5 {
-            for x in self.iter() {
-                let e = format!("{}:{}", x.log_id, x.payload.summary());
-                res.push(e);
-            }
-
-            res.join(",")
-        } else {
-            let first = *self.first().unwrap();
-            let last = *self.last().unwrap();
-
-            format!("{} ... {}", first.summary(), last.summary())
-        }
+        format!("{}:{}", self.log_id, self.payload.summary())
     }
 }
 
@@ -116,7 +100,7 @@ where C::D: Debug
     }
 }
 
-impl<'p, C: RaftTypeConfig> MessageSummary for EntryRef<'p, C> {
+impl<'p, C: RaftTypeConfig> MessageSummary<EntryRef<'p, C>> for EntryRef<'p, C> {
     fn summary(&self) -> String {
         format!("{}:{}", self.log_id, self.payload.summary())
     }
