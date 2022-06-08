@@ -6,11 +6,41 @@ use maplit::btreeset;
 use memstore::MemNodeId;
 use openraft::error::ChangeMembershipError;
 use openraft::Config;
+use openraft::LogIdOptionExt;
 use openraft::RaftLogReader;
 use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
+
+/// When a change-membership log is committed, the membership_state should be updated.
+#[async_entry::test(worker_threads = 3, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn update_membership_state() -> anyhow::Result<()> {
+    let config = Arc::new(Config::default().validate()?);
+    let mut router = RaftRouter::new(config.clone());
+
+    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {3,4}).await?;
+
+    tracing::info!("--- change membership from 012 to 01234");
+    {
+        let leader = router.get_raft_handle(&0)?;
+        let res = leader.change_membership(btreeset! {0,1,2,3,4}, true, false).await?;
+        log_index += 2;
+
+        tracing::info!("--- change_membership blocks until success: {:?}", res);
+
+        for node_id in [0, 1, 2, 3, 4] {
+            router.wait(&node_id, timeout()).log(Some(log_index), "change-membership log applied").await?;
+            router.external_request(node_id, move |st, _, _| {
+                tracing::debug!("--- got state: {:?}", st);
+                assert_eq!(st.membership_state.committed.log_id.index(), Some(log_index));
+                assert_eq!(st.membership_state.effective.log_id.index(), Some(log_index));
+            });
+        }
+    }
+
+    Ok(())
+}
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn change_with_new_learner_blocking() -> anyhow::Result<()> {

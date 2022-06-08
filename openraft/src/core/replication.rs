@@ -164,7 +164,13 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         // If a new commit index has been established, then update a few needed elements.
 
         if commit_log_id > self.core.engine.state.committed {
-            self.core.engine.state.committed = commit_log_id;
+            {
+                let st = &mut self.core.engine.state;
+                st.committed = commit_log_id;
+                if st.committed >= st.membership_state.effective.log_id {
+                    st.membership_state.committed = st.membership_state.effective.clone();
+                }
+            }
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
