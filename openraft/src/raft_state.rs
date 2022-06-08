@@ -2,6 +2,7 @@ use crate::engine::LogIdList;
 use crate::leader::Leader;
 use crate::raft_types::RaftLogId;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::MembershipState;
 use crate::NodeId;
 use crate::RaftStorage;
@@ -178,5 +179,23 @@ impl<NID: NodeId> RaftState<NID> {
     #[allow(dead_code)]
     pub(crate) fn get_log_id(&self, index: u64) -> Option<LogId<NID>> {
         self.log_ids.get(index)
+    }
+
+    /// Return if a log id exists.
+    ///
+    /// It assumes a committed log will always be chosen, according to raft spec.
+    #[allow(dead_code)]
+    pub(crate) fn has_log_id(&self, log_id: &LogId<NID>) -> bool {
+        if log_id.index < self.committed.next_index() {
+            debug_assert!(Some(*log_id) <= self.committed);
+            return true;
+        }
+
+        // The local log id exists at the index and is same as the input.
+        if let Some(local) = self.get_log_id(log_id.index) {
+            *log_id == local
+        } else {
+            false
+        }
     }
 }
