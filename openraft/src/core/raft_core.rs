@@ -755,11 +755,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
-    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(super) async fn handle_vote_request(
         &mut self,
         req: VoteRequest<C::NodeId>,
     ) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
+        tracing::debug!(req = display(req.summary()), "handle_vote_request");
+
         // TODO(xp): Checking last_heartbeat can be removed,
         //           if we have finished using blank log for heartbeat:
         //           https://github.com/datafuselabs/openraft/issues/151

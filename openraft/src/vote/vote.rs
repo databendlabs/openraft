@@ -1,6 +1,7 @@
 use std::fmt::Formatter;
 
 use crate::LeaderId;
+use crate::MessageSummary;
 use crate::NodeId;
 
 /// `Vote` represent the privilege of a node.
@@ -15,6 +16,17 @@ pub struct Vote<NID: NodeId> {
 impl<NID: NodeId> std::fmt::Display for Vote<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "vote:{}-{}", self.term, self.node_id)
+    }
+}
+
+impl<NID: NodeId> MessageSummary for Vote<NID> {
+    fn summary(&self) -> String {
+        format!(
+            "{}-{}:{}",
+            self.term,
+            self.node_id,
+            if self.committed { "committed" } else { "uncommitted" }
+        )
     }
 }
 
