@@ -77,7 +77,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -1057,6 +1057,24 @@ But the log entry at <code>last_applied.index</code> is not committed, thus it c
 <p>But deleting conflicting logs make the state cleaner. :)
 This way method such as <code>get_initial_state()</code> does not need to deal with
 conditions such as that <code>last_log_id</code> can be smaller than <code>last_applied</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="delete-conflicting-logs"><a class="header" href="#delete-conflicting-logs">Delete conflicting logs</a></h1>
+<ul>
+<li>When appending logs to a follower/learner, conflicting logs <strong>has</strong> be removed.</li>
+<li>When installing snapshot(another form of appending logs), conflicting logs <strong>should</strong> be removed.</li>
+</ul>
+<h2 id="why"><a class="header" href="#why">Why</a></h2>
+<h3 id="1-keep-it-clean"><a class="header" href="#1-keep-it-clean">1. Keep it clean</a></h3>
+<p>The first reason is to keep logs clean:
+to keep log ids all in ascending order.</p>
+<h3 id="2-committed-has-to-be-chosen"><a class="header" href="#2-committed-has-to-be-chosen">2. Committed has to be chosen</a></h3>
+<p>The second reason is to <strong>let the next leader always choose committed logs</strong>.</p>
+<p>If a leader commits logs that already are replicated to a quorum,
+the next leader has to have these log.
+The conflicting logs on a follower <code>A</code> may have smaller log id than the last log id on the leader.
+Thus, the next leader may choose another node <code>B</code> that has higher log than node <code>A</code> but has smaller log than the previous leader.</p>
+<h3 id="3-snapshot-replication-does-not-have-to-delete-conflicting-logs"><a class="header" href="#3-snapshot-replication-does-not-have-to-delete-conflicting-logs">3. Snapshot replication does not have to delete conflicting logs</a></h3>
+<p>See: <a href="https://datafuselabs.github.io/openraft/replication.html#necessity-to-delete-conflicting-logs">Deleting-conflicting-logs-when-installing-snapshot</a></p>
+<p>Deleting conflicting logs when installing snapshot is only for clarity.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="effective-membership"><a class="header" href="#effective-membership">Effective membership</a></h1>
 <p>In openraft a membership config log takes effect as soon as it is seen.</p>
 <p>Thus, the <strong>effective</strong> membership is always the last present one found in log.</p>

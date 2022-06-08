@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Threads - openraft</title>
+        <title>Delete-conflicting-logs - openraft</title>
         <!-- Custom HTML head -->
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <meta name="description" content="The openraft user guide.">
@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html" class="active"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html" class="active"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -135,121 +135,33 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="threadstasks"><a class="header" href="#threadstasks">Threads(tasks)</a></h1>
-<p>There are several threads, AKA tokio-tasks in this raft impl:</p>
+                        <h1 id="delete-conflicting-logs"><a class="header" href="#delete-conflicting-logs">Delete conflicting logs</a></h1>
 <ul>
-<li>
-<p>RaftCore: all logs and state machine operations are done in this thread.
-Thus there is no race condition</p>
-<ul>
-<li>All raft state runs in this task, such as LeaderState, CandidateState etc.</li>
-<li>All write to store is done in this task, i.e., write to store is serialized.</li>
+<li>When appending logs to a follower/learner, conflicting logs <strong>has</strong> be removed.</li>
+<li>When installing snapshot(another form of appending logs), conflicting logs <strong>should</strong> be removed.</li>
 </ul>
-<p>Lifecycle:</p>
-<ul>
-<li>RaftCore thread is spawnd when a raft node is created and keeps running until
-the raft node is dropped.</li>
-</ul>
-</li>
-<li>
-<p>Replication tasks:</p>
-<p>There is exactly one replication task spawned for every replication target,
-i.e., a follower or learner.</p>
-<p>A replication task replicates logs or snapshot to its target.
-A replication thread do not write logs or state machine, but only read from it.</p>
-<p>Lifecycle:</p>
-<ul>
-<li>
-<p>A replication task is spawned when RaftCore enters <code>LeaderState</code>, or a leader
-target is added by user.</p>
-</li>
-<li>
-<p>A replication task is dropped when a follower of learner is removed by
-<strong>change-membership</strong> or when RaftCore quits <code>LeaderState</code>.</p>
-</li>
-</ul>
-</li>
-<li>
-<p>Snapshot building task:</p>
-<p>When RaftCore receives a RaftMsg that requires a snapshot, which is sent by a
-<strong>replication task</strong>, RaftCore spawns a sub task to build a snapshot.</p>
-<p>Lifecycle:</p>
-<ul>
-<li>It is spawned when a snapshot is requested,
-and is dropped at once when the snapshot is ready.</li>
-</ul>
-</li>
-<li>
-<p>User application runs in another task that spawns RaftCore task.</p>
-</li>
-</ul>
-<h1 id="communication-between-tasks"><a class="header" href="#communication-between-tasks">Communication between tasks</a></h1>
-<p>All tasks communicate with channels:</p>
-<pre><code>User
-|
-| write;
-| change_membership;
-| ...
-|
-|                     new log to
-|                     replicate;
-`---------&gt; RaftCore -------------+-&gt; Replication -.
-            ^  ^                  |                |
-            |  |                  `-&gt; Replication -+
-            |  |                                   |
-            |  `-----------------------------------'
-            |      update replication state;
-            |      need snapshot;
-            |
-            |
-            | snapshot is ready;
-            |
-            Build-snapshot
-
-</code></pre>
-<ul>
-<li>
-<p>User to RaftCore: <code>Raft</code> sends <code>RaftMsg</code> though <code>Raft.tx_api</code> to <code>RaftCore</code>,
-along with a channel for <code>RaftCore</code> to send back response.</p>
-</li>
-<li>
-<p>RaftCore to Replication: <code>RaftCore</code> stores a channel for every repliation
-task.
-The messages sent to replication task includes:</p>
-<ul>
-<li>a new log id to replicate,</li>
-<li>and the index the leader has committed.</li>
-</ul>
-</li>
-<li>
-<p>Replication to RaftCore:</p>
-<ul>
-<li>
-<p>Replication task sends the already replicated log id
-to RaftCore through another per-replication channel.</p>
-</li>
-<li>
-<p>Replication task sends a <code>NeedSnapshot</code> request through the same channel to
-ask RaftCore to build a snapshot if there is no log a follower/learner
-needs.</p>
-</li>
-</ul>
-</li>
-<li>
-<p>Build-snapshot to RaftCore: RaftCore spawn a separate task to build a snapshot
-asynchronously. When finished, the spawned task sends to RaftCore a message
-including the snapshot info.</p>
-</li>
-</ul>
+<h2 id="why"><a class="header" href="#why">Why</a></h2>
+<h3 id="1-keep-it-clean"><a class="header" href="#1-keep-it-clean">1. Keep it clean</a></h3>
+<p>The first reason is to keep logs clean:
+to keep log ids all in ascending order.</p>
+<h3 id="2-committed-has-to-be-chosen"><a class="header" href="#2-committed-has-to-be-chosen">2. Committed has to be chosen</a></h3>
+<p>The second reason is to <strong>let the next leader always choose committed logs</strong>.</p>
+<p>If a leader commits logs that already are replicated to a quorum,
+the next leader has to have these log.
+The conflicting logs on a follower <code>A</code> may have smaller log id than the last log id on the leader.
+Thus, the next leader may choose another node <code>B</code> that has higher log than node <code>A</code> but has smaller log than the previous leader.</p>
+<h3 id="3-snapshot-replication-does-not-have-to-delete-conflicting-logs"><a class="header" href="#3-snapshot-replication-does-not-have-to-delete-conflicting-logs">3. Snapshot replication does not have to delete conflicting logs</a></h3>
+<p>See: <a href="https://datafuselabs.github.io/openraft/replication.html#necessity-to-delete-conflicting-logs">Deleting-conflicting-logs-when-installing-snapshot</a></p>
+<p>Deleting conflicting logs when installing snapshot is only for clarity.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="architecture.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="replication.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
-                            <a rel="next" href="replication.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="effective-membership.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
@@ -258,10 +170,10 @@ including the snapshot info.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="architecture.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="replication.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
-                    <a rel="next" href="replication.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="effective-membership.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
