@@ -57,6 +57,7 @@ use openraft::Raft;
 use openraft::RaftMetrics;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
+use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft::StoreExt;
@@ -568,7 +569,7 @@ where
 
     /// Send external request to the particular node.
     pub fn external_request<
-        F: FnOnce(ServerState, &mut StoreExt<C, S>, &mut TypedRaftRouter<C, S>) + Send + 'static,
+        F: FnOnce(&RaftState<C::NodeId>, &mut StoreExt<C, S>, &mut TypedRaftRouter<C, S>) + Send + 'static,
     >(
         &self,
         target: C::NodeId,

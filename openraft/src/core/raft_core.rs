@@ -858,7 +858,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
             RaftMsg::ExternalRequest { req } => {
-                req(self.engine.state.server_state, &mut self.storage, &mut self.network);
+                req(&self.engine.state, &mut self.storage, &mut self.network);
             }
             RaftMsg::Elect { server_state_count } => {
                 if server_state_count != Some(self.server_state_count) {

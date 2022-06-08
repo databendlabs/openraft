@@ -61,7 +61,7 @@ async fn initialization() -> anyhow::Result<()> {
     // (since they are awaited).
     for node in [0, 1, 2] {
         router.external_request(node, |s, _sto, _net| {
-            assert_eq!(s, ServerState::Learner);
+            assert_eq!(s.server_state, ServerState::Learner);
         });
     }
 
@@ -110,7 +110,7 @@ async fn initialization() -> anyhow::Result<()> {
     let mut follower_count = 0;
     for node in [0, 1, 2] {
         let (tx, rx) = oneshot::channel();
-        router.external_request(node, |s, _sm, _net| tx.send(s).unwrap());
+        router.external_request(node, |s, _sm, _net| tx.send(s.server_state).unwrap());
         match rx.await.unwrap() {
             ServerState::Leader => {
                 assert!(!found_leader);
@@ -140,7 +140,7 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
 
     for node in [0, 1] {
         router.external_request(node, |s, _sto, _net| {
-            assert_eq!(s, ServerState::Learner);
+            assert_eq!(s.server_state, ServerState::Learner);
         });
     }
 
@@ -174,7 +174,7 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 
     for node in [0] {
         router.external_request(node, |s, _sto, _net| {
-            assert_eq!(s, ServerState::Learner);
+            assert_eq!(s.server_state, ServerState::Learner);
         });
     }
 

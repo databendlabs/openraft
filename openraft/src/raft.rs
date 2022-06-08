@@ -16,7 +16,6 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::core::RaftCore;
-use crate::core::ServerState;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
 use crate::error::CheckIsLeaderError;
@@ -38,6 +37,7 @@ use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
 use crate::RaftNetworkFactory;
+use crate::RaftState;
 use crate::RaftStorage;
 use crate::SnapshotMeta;
 use crate::Vote;
@@ -524,7 +524,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
-    pub fn external_request<F: FnOnce(ServerState, &mut S, &mut N) + Send + 'static>(&self, req: F) {
+    pub fn external_request<F: FnOnce(&RaftState<C::NodeId>, &mut S, &mut N) + Send + 'static>(&self, req: F) {
         let _ignore_error = self.inner.tx_api.send((
             RaftMsg::ExternalRequest { req: Box::new(req) },
             tracing::span::Span::none(), // fire-and-forget, so no span
@@ -667,7 +667,8 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     ExternalRequest {
-        req: Box<dyn FnOnce(ServerState, &mut S, &mut N) + Send + 'static>,
+        #[allow(clippy::type_complexity)]
+        req: Box<dyn FnOnce(&RaftState<C::NodeId>, &mut S, &mut N) + Send + 'static>,
     },
 
     /// Trigger an election
@@ -930,6 +931,7 @@ impl<C: RaftTypeConfig> ClientWriteRequest<C> {
     serde(bound = "C::R: AppDataResponse")
 )]
 pub struct ClientWriteResponse<C: RaftTypeConfig> {
+    /// The id of the log that is applied.
     pub log_id: LogId<C::NodeId>,
 
     /// Application specific response data.
