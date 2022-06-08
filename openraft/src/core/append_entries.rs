@@ -224,6 +224,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // commit index must not > last_log_id.index
         // This is guaranteed by caller.
         self.engine.state.committed = committed;
+        {
+            let st = &mut self.engine.state;
+            if st.committed >= st.membership_state.effective.log_id {
+                st.membership_state.committed = st.membership_state.effective.clone();
+            }
+        }
 
         self.replicate_to_state_machine_if_needed().await?;
 
