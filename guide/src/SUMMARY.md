@@ -14,4 +14,5 @@
     - [Architecture](./architecture.md)
     - [Threads](./threading.md)
     - [Replication](./replication.md)
+      - [Delete-conflicting-logs](./delete_log.md)
     - [Effective Membership](./effective-membership.md)

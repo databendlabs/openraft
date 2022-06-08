@@ -209,8 +209,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
-    #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
+    #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn vote(&self, rpc: VoteRequest<C::NodeId>) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
+        tracing::debug!(rpc = display(rpc.summary()), "Raft::vote()");
+
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
@@ -815,7 +817,7 @@ pub struct VoteRequest<NID: NodeId> {
 
 impl<NID: NodeId> MessageSummary for VoteRequest<NID> {
     fn summary(&self) -> String {
-        format!("{}, last_log:{:?}", self.vote, self.last_log_id)
+        format!("{}, last_log:{:?}", self.vote, self.last_log_id.map(|x| x.to_string()))
     }
 }
 
@@ -840,7 +842,16 @@ pub struct VoteResponse<NID: NodeId> {
     pub last_log_id: Option<LogId<NID>>,
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
+impl<NID: NodeId> MessageSummary for VoteResponse<NID> {
+    fn summary(&self) -> String {
+        format!(
+            "{{granted:{}, {}, last_log:{:?}}}",
+            self.vote_granted,
+            self.vote,
+            self.last_log_id.map(|x| x.to_string())
+        )
+    }
+}
 
 /// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
 #[derive(Clone, Debug)]
