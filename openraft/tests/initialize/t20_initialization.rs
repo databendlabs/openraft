@@ -72,12 +72,35 @@ async fn initialization() -> anyhow::Result<()> {
         n0.initialize(btreeset! {0,1,2}).await?;
         log_index += 1;
 
-        router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "init").await?;
+        for node_id in [0, 1, 2] {
+            router.wait(&node_id, timeout()).log(Some(log_index), "init").await?;
+        }
     }
 
     router.assert_stable_cluster(Some(1), Some(log_index));
 
-    for i in 0..3 {
+    tracing::info!("--- check membership state");
+    for node_id in [0, 1, 2] {
+        router.external_request(node_id, move |s, _sto, _net| {
+            let want = EffectiveMembership::new(
+                Some(LogId::new(LeaderId::new(0, 0), 0)),
+                Membership::new(vec![btreeset! {0,1,2}], None),
+            );
+            let want = Arc::new(want);
+            assert_eq!(
+                s.membership_state.effective, want,
+                "node-{}: effective membership",
+                node_id
+            );
+            assert_eq!(
+                s.membership_state.committed, want,
+                "node-{}: committed membership",
+                node_id
+            );
+        });
+    }
+
+    for i in [0, 1, 2] {
         let mut sto = router.get_storage_handle(&1)?;
         let first = sto.get_log_entries(0..2).await?.first().cloned();
 
