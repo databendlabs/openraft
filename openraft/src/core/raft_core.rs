@@ -379,7 +379,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Set a value for the next election timeout.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn update_election_timeout(&mut self) {
+    pub(crate) fn set_next_election_time(&mut self) {
         let now = Instant::now();
 
         let t = Duration::from_millis(self.config.new_rand_election_timeout());
@@ -389,7 +389,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn update_last_heartbeat(&mut self) {
+    pub(crate) fn reject_election_for_a_while(&mut self) {
         let now = Instant::now();
         self.last_heartbeat = Some(now);
     }
@@ -640,7 +640,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.flush_metrics(None);
 
             // Generates a new rand value within range.
-            self.update_election_timeout();
+            self.set_next_election_time();
 
             self.engine.elect();
             self.run_engine_commands(&[]).await?;
@@ -916,7 +916,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 self.storage.save_vote(vote).await?;
             }
             Command::InstallElectionTimer { .. } => {
-                self.update_election_timeout();
+                self.set_next_election_time();
             }
             Command::PurgeLog { .. } => {}
             Command::DeleteConflictLog { .. } => {}
