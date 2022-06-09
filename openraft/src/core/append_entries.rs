@@ -37,8 +37,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(AppendEntriesResponse::HigherVote(self.engine.state.vote));
         }
 
-        self.update_election_timeout();
-        self.update_last_heartbeat();
+        self.set_next_election_time();
+        self.reject_election_for_a_while();
 
         tracing::debug!("start to check and update to latest term/leader");
         if req.vote > self.engine.state.vote {
