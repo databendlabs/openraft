@@ -1,5 +1,6 @@
 use crate::engine::Command;
-use crate::entry::EntryRef;
+use crate::raft_types::RaftLogId;
+use crate::Entry;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 
@@ -71,10 +72,13 @@ pub(crate) trait RaftRuntime<C: RaftTypeConfig> {
     ///           This can be done after moving all raft-algorithm logic into Engine.
     ///           Then a Runtime do not need to differentiate states such as LeaderState or FollowerState and all
     ///           command execution can be implemented in one method.
-    async fn run_command<'p>(
+    async fn run_command<'e, Ent>(
         &mut self,
-        input_entries: &[EntryRef<'p, C>],
+        input_entries: &'e [Ent],
         curr: &mut usize,
         cmd: &Command<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>>;
+    ) -> Result<(), StorageError<C::NodeId>>
+    where
+        Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
+        &'e Ent: Into<Entry<C>>;
 }

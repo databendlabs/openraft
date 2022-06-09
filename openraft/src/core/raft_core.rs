@@ -40,6 +40,7 @@ use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
+use crate::raft_types::RaftLogId;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
 use crate::timer::RaftTimer;
@@ -879,12 +880,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
 #[async_trait::async_trait]
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime<C> for RaftCore<C, N, S> {
-    async fn run_command<'p>(
+    async fn run_command<'e, Ent>(
         &mut self,
-        input_ref_entries: &[EntryRef<'p, C>],
+        input_ref_entries: &'e [Ent],
         cur: &mut usize,
         cmd: &Command<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), StorageError<C::NodeId>>
+    where
+        Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
+        &'e Ent: Into<Entry<C>>,
+    {
         // TODO: run_command does not need to return Fatal.
         // Run non-role-specific command.
         match cmd {
