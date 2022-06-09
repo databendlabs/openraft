@@ -8,7 +8,6 @@ use crate::core::RaftCore;
 use crate::core::ReplicationState;
 use crate::core::ServerState;
 use crate::engine::Command;
-use crate::entry::EntryRef;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
@@ -20,6 +19,7 @@ use crate::replication::ReplicaEvent;
 use crate::runtime::RaftRuntime;
 use crate::summary::MessageSummary;
 use crate::versioned::Versioned;
+use crate::Entry;
 use crate::EntryPayload;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
@@ -176,17 +176,21 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 /// impl Runtime for LeaderState
 #[async_trait::async_trait]
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime<C> for LeaderState<'a, C, N, S> {
-    async fn run_command<'p>(
+    async fn run_command<'e, Ent>(
         &mut self,
-        input_entries: &[EntryRef<'p, C>],
+        input_entries: &'e [Ent],
         curr: &mut usize,
         cmd: &Command<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>> {
+    ) -> Result<(), StorageError<C::NodeId>>
+    where
+        Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
+        &'e Ent: Into<Entry<C>>,
+    {
         // Run leader specific commands or pass non leader specific commands to self.core.
         match cmd {
             Command::Commit { ref upto } => {
                 for ent in input_entries.iter() {
-                    let log_id = &ent.log_id;
+                    let log_id = ent.get_log_id();
                     if log_id <= upto {
                         self.client_request_post_commit(log_id.index).await?;
                     } else {
