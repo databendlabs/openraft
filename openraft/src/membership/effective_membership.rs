@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 
+use crate::entry::RaftEntry;
+use crate::raft_types::RaftLogId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -40,6 +42,19 @@ impl<NID: NodeId> Debug for EffectiveMembership<NID> {
 impl<NID: NodeId> PartialEq for EffectiveMembership<NID> {
     fn eq(&self, other: &Self) -> bool {
         self.log_id == other.log_id && self.membership == other.membership && self.all_members == other.all_members
+    }
+}
+
+impl<NID: NodeId, LID: RaftLogId<NID>> From<(&LID, Membership<NID>)> for EffectiveMembership<NID> {
+    fn from(v: (&LID, Membership<NID>)) -> Self {
+        EffectiveMembership::new(Some(*v.0.get_log_id()), v.1)
+    }
+}
+
+/// Build a EffectiveMembership from a membership config entry
+impl<NID: NodeId, Ent: RaftEntry<NID>> From<&Ent> for EffectiveMembership<NID> {
+    fn from(v: &Ent) -> Self {
+        EffectiveMembership::new(Some(*v.get_log_id()), v.get_membership().unwrap().clone())
     }
 }
 

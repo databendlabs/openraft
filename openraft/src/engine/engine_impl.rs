@@ -245,10 +245,13 @@ impl<NID: NodeId> Engine<NID> {
         // Seen a higher log. Keep waiting.
     }
 
-    /// Update the state for a new log entry to append. Update effective membership if the payload contains
+    /// Append new log entries by a leader.
+    ///
+    /// Also Update effective membership if the payload contains
     /// membership config.
     ///
-    /// TODO(xp): There is no check and this method must be called by a leader.
+    /// If there is a membership config log entry, the caller has to guarantee the previous one is committed.
+    ///
     /// TODO(xp): metrics flag needs to be dealt with.
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, entries))]
@@ -263,25 +266,26 @@ impl<NID: NodeId> Engine<NID> {
 
         self.push_command(Command::AppendInputEntries { range: 0..l });
 
-        for entry in entries.iter_mut() {
-            // TODO: if previous membership is not committed, reject a new change-membership propose.
-            //       unless the new config does not change any members but only learners.
-            self.try_update_membership(entry);
+        let mut membership = None;
+        for entry in entries.iter() {
+            if let Some(_m) = entry.get_membership() {
+                debug_assert!(membership.is_none());
+
+                let em = Arc::new(EffectiveMembership::from(entry));
+                self.state.membership_state.effective = em.clone();
+                membership = Some(em);
+
+                self.push_command(Command::UpdateMembership {
+                    membership: self.state.membership_state.effective.clone(),
+                });
+            }
         }
 
-        if self.state.membership_state.effective.membership.is_majority(&self.single_node_cluster) {
-            // already committed
-            let last = entries.last().unwrap();
-            let last_log_id = last.get_log_id();
-            self.state.committed = Some(*last_log_id);
-            // TODO: only leader need to do this. currently only leader call this method.
-            self.push_command(Command::Commit { upto: *last_log_id });
-        }
+        // If membership does not change, try fast commit.
+        self.fast_commit(&membership, entries.last().unwrap());
 
-        // TODO: only leader need to do this. currently only leader call this method.
-        // still need to replicate to learners
+        // Still need to replicate to learners, even when it is fast-committed.
         self.push_command(Command::ReplicateInputEntries { range: 0..l });
-
         self.push_command(Command::MoveInputCursorBy { n: l });
     }
 
@@ -418,13 +422,34 @@ impl<NID: NodeId> Engine<NID> {
     /// Update effective membership config if encountering a membership config log entry.
     fn try_update_membership<Ent: RaftEntry<NID>>(&mut self, entry: &Ent) {
         if let Some(m) = entry.get_membership() {
-            let em = EffectiveMembership::new(Some(*entry.get_log_id()), m.clone());
+            let em = EffectiveMembership::from((entry, m.clone()));
             self.state.membership_state.effective = Arc::new(em);
 
             self.push_command(Command::UpdateMembership {
                 membership: self.state.membership_state.effective.clone(),
             });
         }
+    }
+
+    /// Commit at once if a single node constitute a quorum.
+    fn fast_commit<Ent: RaftEntry<NID>>(
+        &mut self,
+        prev_membership: &Option<Arc<EffectiveMembership<NID>>>,
+        entry: &Ent,
+    ) {
+        if let Some(m) = prev_membership {
+            if !m.membership.is_majority(&self.single_node_cluster) {
+                return;
+            }
+        }
+
+        if !self.state.membership_state.effective.membership.is_majority(&self.single_node_cluster) {
+            return;
+        }
+
+        let log_id = entry.get_log_id();
+        self.state.committed = Some(*log_id);
+        self.push_command(Command::Commit { upto: *log_id });
     }
 
     /// Update membership state if membership config entries are found.
