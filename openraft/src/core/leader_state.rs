@@ -188,7 +188,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
     {
         // Run leader specific commands or pass non leader specific commands to self.core.
         match cmd {
-            Command::Commit { ref upto } => {
+            Command::LeaderCommit { ref upto } => {
                 for ent in input_entries.iter() {
                     let log_id = ent.get_log_id();
                     if log_id <= upto {

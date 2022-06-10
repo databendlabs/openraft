@@ -194,7 +194,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendInputEntries { range: 0..3 },
-            Command::Commit {
+            Command::LeaderCommit {
                 upto: LogId::new(LeaderId::new(3, 2), 6)
             },
             Command::ReplicateInputEntries { range: 0..3 },
@@ -323,7 +323,7 @@ fn test_leader_append_entries_allow_fast_commit_if_no_member_changed() -> anyhow
                     m2_1()
                 )),
             },
-            Command::Commit {
+            Command::LeaderCommit {
                 upto: LogId::new(LeaderId::new(3, 2), 6)
             },
             Command::ReplicateInputEntries { range: 0..3 },

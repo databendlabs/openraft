@@ -109,5 +109,5 @@ async fn step_down() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(2000))
+    Some(Duration::from_millis(3_000))
 }
