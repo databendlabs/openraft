@@ -366,7 +366,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Very importantly, this routine must not block the main control loop main task, else it
     /// may cause the Raft leader to timeout the requests to this node.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), StorageError<C::NodeId>> {
+    pub(crate) async fn replicate_to_state_machine_if_needed(&mut self) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(?self.engine.state.last_applied, ?self.engine.state.committed, "replicate_to_sm_if_needed");
 
         // If we don't have any new entries to replicate, then do nothing.

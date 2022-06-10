@@ -613,10 +613,14 @@ where
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
-    pub(crate) async fn run_engine_commands<'p>(
+    pub(crate) async fn run_engine_commands<'e, Ent>(
         &mut self,
-        input_entries: &[EntryRef<'p, C>],
-    ) -> Result<(), StorageError<C::NodeId>> {
+        input_entries: &'e [Ent],
+    ) -> Result<(), StorageError<C::NodeId>>
+    where
+        Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
+        &'e Ent: Into<Entry<C>>,
+    {
         let mut curr = 0;
         let mut commands = vec![];
         swap(&mut self.engine.commands, &mut commands);
@@ -643,7 +647,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.set_next_election_time();
 
             self.engine.elect();
-            self.run_engine_commands(&[]).await?;
+            self.run_engine_commands::<Entry<C>>(&[]).await?;
 
             loop {
                 if !self.engine.state.server_state.is_candidate() {
@@ -785,7 +789,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         let resp = self.engine.handle_vote_req(req);
-        self.run_engine_commands(&[]).await?;
+        self.run_engine_commands::<Entry<C>>(&[]).await?;
 
         Ok(resp)
     }
@@ -805,7 +809,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             "recv vote response");
 
         self.engine.handle_vote_resp(target, resp);
-        self.run_engine_commands(&[]).await?;
+        self.run_engine_commands::<Entry<C>>(&[]).await?;
 
         Ok(())
     }
@@ -918,13 +922,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::InstallElectionTimer { .. } => {
                 self.set_next_election_time();
             }
+            Command::RejectElection {} => {
+                self.reject_election_for_a_while();
+            }
             Command::PurgeLog { .. } => {}
-            Command::DeleteConflictLog { .. } => {}
+            Command::DeleteConflictLog { since } => {
+                self.storage.delete_conflict_logs_since(*since).await?;
+            }
             Command::BuildSnapshot { .. } => {}
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(vote_req).await;
             }
-            Command::Commit { .. } => {}
+            Command::LeaderCommit { .. } => {}
+            Command::FollowerCommit { upto: _ } => {
+                self.replicate_to_state_machine_if_needed().await?;
+            }
             Command::ReplicateInputEntries { .. } => {
                 unreachable!("leader specific command")
             }

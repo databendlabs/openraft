@@ -10,6 +10,7 @@ use crate::error::InitializeError;
 use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
+use crate::error::RejectVoteRequest;
 use crate::leader::Leader;
 use crate::membership::EffectiveMembership;
 use crate::raft::VoteRequest;
@@ -143,43 +144,24 @@ impl<NID: NodeId> Engine<NID> {
             "Engine::handle_vote_res"
         );
 
-        let last_log_id = self.state.last_log_id;
-        let vote = self.state.vote;
-
-        // Grant vote if [req.vote, req.last_log_id] >= mine by vector comparison.
-        // Note: A higher req.vote still won't be stored if req.last_log_id is smaller.
-        // We do not need to upgrade `vote` for some node that can not become leader.
-        let vote_granted = req.vote >= vote && req.last_log_id >= last_log_id;
-
-        if vote_granted {
-            self.push_command(Command::InstallElectionTimer {});
-
-            self.state.vote = req.vote;
-            if req.vote > vote {
-                self.push_command(Command::SaveVote { vote: req.vote });
-            }
-
-            self.state.leader = None;
-            #[allow(clippy::collapsible_else_if)]
-            if self.state.server_state == ServerState::Follower || self.state.server_state == ServerState::Learner {
-                // nothing to do
-            } else {
-                if self.state.membership_state.effective.all_members().contains(&self.id) {
-                    self.set_server_state(ServerState::Follower);
-                } else {
-                    self.set_server_state(ServerState::Learner);
-                }
-            }
-        }
-
-        tracing::debug!(?req, %vote, ?last_log_id, %vote_granted, "handle vote request" );
+        let res = self.internal_handle_vote_req(&req.vote, &req.last_log_id);
+        let vote_granted = if let Err(reject) = res {
+            tracing::debug!(
+                req = display(req.summary()),
+                err = display(reject),
+                "reject vote request"
+            );
+            false
+        } else {
+            true
+        };
 
         VoteResponse {
             // Return the updated vote, this way the candidate knows which vote is granted, in case the candidate's vote
             // is changed after sending the vote request.
             vote: self.state.vote,
             vote_granted,
-            last_log_id,
+            last_log_id: self.state.last_log_id,
         }
     }
 
@@ -294,6 +276,8 @@ impl<NID: NodeId> Engine<NID> {
     /// It assumes:
     /// - Previous entries all match.
     /// - conflicting entries are deleted.
+    ///
+    /// Membership config changes are also detected and applied here.
     #[tracing::instrument(level = "debug", skip(self, entries))]
     pub(crate) fn follower_append_entries<'a, Ent: RaftEntry<NID> + 'a>(&mut self, entries: &[Ent]) {
         let l = entries.len();
@@ -323,6 +307,8 @@ impl<NID: NodeId> Engine<NID> {
     /// And revert effective membership to the last committed if it is from the conflicting logs.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn truncate_logs(&mut self, since: u64) {
+        tracing::debug!(since = since, "truncate_logs");
+
         debug_assert!(since >= self.state.last_purged_log_id.next_index());
 
         let since_log_id = match self.state.get_log_id(since) {
@@ -449,7 +435,7 @@ impl<NID: NodeId> Engine<NID> {
 
         let log_id = entry.get_log_id();
         self.state.committed = Some(*log_id);
-        self.push_command(Command::Commit { upto: *log_id });
+        self.push_command(Command::LeaderCommit { upto: *log_id });
     }
 
     /// Update membership state if membership config entries are found.
@@ -602,6 +588,74 @@ impl<NID: NodeId> Engine<NID> {
         self.state.last_log_id = Some(log_id);
 
         log_id
+    }
+
+    /// Check and grant a vote request.
+    /// This is used by all 3 RPC append-entries, vote, install-snapshot to check the `vote` field.
+    ///
+    /// Grant vote if [vote, last_log_id] >= mine by vector comparison.
+    /// Note: A greater `vote` won't be stored if `last_log_id` is smaller.
+    /// We do not need to upgrade `vote` for a node that can not become leader.
+    ///
+    /// If the `vote` is committed, i.e., it is granted by a quorum, then the vote holder, e.g. the leader already has
+    /// all of the committed logs, thus in such case, we do not need to check `last_log_id`.
+    fn internal_handle_vote_req(
+        &mut self,
+        vote: &Vote<NID>,
+        last_log_id: &Option<LogId<NID>>,
+    ) -> Result<(), RejectVoteRequest<NID>> {
+        // Partial ord compare:
+        // Vote does not has to be total ord.
+        // `!(a >= b)` does not imply `a < b`.
+        if vote >= &self.state.vote {
+            // Ok
+        } else {
+            return Err(RejectVoteRequest::ByVote(self.state.vote));
+        }
+
+        if vote.committed {
+            // OK: a quorum has already granted this vote, then I'll grant it too.
+        } else {
+            // Grant non-committed vote
+            if last_log_id >= &self.state.last_log_id {
+                // OK
+            } else {
+                return Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id));
+            }
+        };
+
+        tracing::debug!(%vote, ?last_log_id, "grant vote request" );
+
+        // Grant the vote
+
+        // There is an active leader or an active candidate.
+        // Do not elect for a while.
+        self.push_command(Command::InstallElectionTimer {});
+        if vote.committed {
+            // There is an active leader, reject election for a while.
+            self.push_command(Command::RejectElection {});
+        }
+
+        if vote > &self.state.vote {
+            self.state.vote = *vote;
+            self.push_command(Command::SaveVote { vote: *vote });
+        }
+
+        // I'm no longer a leader.
+        self.state.leader = None;
+
+        #[allow(clippy::collapsible_else_if)]
+        if self.state.server_state == ServerState::Follower || self.state.server_state == ServerState::Learner {
+            // nothing to do
+        } else {
+            if self.state.membership_state.effective.all_members().contains(&self.id) {
+                self.set_server_state(ServerState::Follower);
+            } else {
+                self.set_server_state(ServerState::Learner);
+            }
+        }
+
+        Ok(())
     }
 
     fn is_member(&self) -> bool {

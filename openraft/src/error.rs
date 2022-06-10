@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 
+use crate::raft::AppendEntriesResponse;
 use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
 use crate::Membership;
@@ -437,3 +438,24 @@ pub struct NodeNotFound<NID: NodeId> {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("infallible")]
 pub enum Infallible {}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+pub(crate) enum RejectVoteRequest<NID: NodeId> {
+    #[error("reject vote request by a greater vote: {0}")]
+    ByVote(Vote<NID>),
+
+    #[error("reject vote request by a greater last-log-id: {0:?}")]
+    ByLastLogId(Option<LogId<NID>>),
+}
+
+impl<NID: NodeId> From<RejectVoteRequest<NID>> for AppendEntriesResponse<NID> {
+    fn from(r: RejectVoteRequest<NID>) -> Self {
+        match r {
+            RejectVoteRequest::ByVote(v) => AppendEntriesResponse::HigherVote(v),
+            RejectVoteRequest::ByLastLogId(_) => {
+                unreachable!("the leader should always has a greater last log id")
+            }
+        }
+    }
+}
