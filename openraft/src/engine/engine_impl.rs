@@ -599,7 +599,7 @@ impl<NID: NodeId> Engine<NID> {
     ///
     /// If the `vote` is committed, i.e., it is granted by a quorum, then the vote holder, e.g. the leader already has
     /// all of the committed logs, thus in such case, we do not need to check `last_log_id`.
-    fn internal_handle_vote_req(
+    pub(crate) fn internal_handle_vote_req(
         &mut self,
         vote: &Vote<NID>,
         last_log_id: &Option<LogId<NID>>,
