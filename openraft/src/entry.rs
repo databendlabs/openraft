@@ -77,22 +77,6 @@ impl<C: RaftTypeConfig> MessageSummary for Entry<C> {
     }
 }
 
-impl<C: RaftTypeConfig> MessageSummary for Option<Entry<C>> {
-    fn summary(&self) -> String {
-        match self {
-            None => "None".to_string(),
-            Some(x) => format!("Some({})", x.summary()),
-        }
-    }
-}
-
-impl<C: RaftTypeConfig> MessageSummary for &[Entry<C>] {
-    fn summary(&self) -> String {
-        let entry_refs: Vec<_> = self.iter().collect();
-        entry_refs.as_slice().summary()
-    }
-}
-
 impl<C: RaftTypeConfig> MessageSummary for &[&Entry<C>] {
     fn summary(&self) -> String {
         if self.is_empty() {
