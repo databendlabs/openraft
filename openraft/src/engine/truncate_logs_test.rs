@@ -11,6 +11,7 @@ use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
+use crate::ServerState;
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
@@ -27,8 +28,16 @@ fn m12() -> Membership<u64> {
     Membership::<u64>::new(vec![btreeset! {1,2}], None)
 }
 
+fn m23() -> Membership<u64> {
+    Membership::<u64>::new(vec![btreeset! {2,3}], None)
+}
+
 fn eng() -> Engine<u64> {
-    let mut eng = Engine::<u64>::default();
+    let mut eng = Engine::<u64> {
+        id: 2,
+        ..Default::default()
+    };
+    eng.state.server_state = ServerState::Follower;
     eng.state.log_ids = LogIdList::new(vec![
         log_id(2, 2), //
         log_id(4, 4),
@@ -36,6 +45,8 @@ fn eng() -> Engine<u64> {
     ]);
     eng.state.last_purged_log_id = Some(log_id(2, 2));
     eng.state.last_log_id = Some(log_id(4, 6));
+    eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
+    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
     eng
 }
 
@@ -54,8 +65,28 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
         },
         eng.metrics_flags
     );
+    assert_eq!(
+        MembershipState {
+            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            effective: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
+        },
+        eng.state.membership_state
+    );
+    assert_eq!(ServerState::Learner, eng.state.server_state);
 
-    assert_eq!(vec![Command::DeleteConflictLog { since: log_id(2, 3) }], eng.commands);
+    assert_eq!(
+        vec![
+            //
+            Command::DeleteConflictLog { since: log_id(2, 3) },
+            Command::UpdateMembership {
+                membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
+            },
+            Command::UpdateServerState {
+                server_state: ServerState::Learner
+            },
+        ],
+        eng.commands
+    );
 
     Ok(())
 }
@@ -75,6 +106,14 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
         },
         eng.metrics_flags
     );
+    assert_eq!(
+        MembershipState {
+            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
+        },
+        eng.state.membership_state
+    );
+    assert_eq!(ServerState::Follower, eng.state.server_state);
 
     assert_eq!(vec![Command::DeleteConflictLog { since: log_id(4, 4) }], eng.commands);
 
@@ -200,7 +239,10 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
             Command::DeleteConflictLog { since: log_id(4, 4) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01()))
-            }
+            },
+            Command::UpdateServerState {
+                server_state: ServerState::Learner
+            },
         ],
         eng.commands
     );

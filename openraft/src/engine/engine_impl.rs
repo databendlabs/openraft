@@ -338,6 +338,8 @@ impl<NID: NodeId> Engine<NID> {
 
         let effective = self.state.membership_state.effective.clone();
         if Some(since) <= effective.log_id.index() {
+            let was_member = self.is_member();
+
             let committed = self.state.membership_state.committed.clone();
 
             tracing::debug!(
@@ -362,6 +364,16 @@ impl<NID: NodeId> Engine<NID> {
             });
 
             tracing::debug!(effective = debug(&effective), "Done reverting membership");
+
+            let is_member = self.is_member();
+
+            if was_member != is_member {
+                if is_member {
+                    self.set_server_state(ServerState::Follower);
+                } else {
+                    self.set_server_state(ServerState::Learner);
+                }
+            }
         }
     }
 
