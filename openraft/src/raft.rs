@@ -36,6 +36,7 @@ use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
+use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
 use crate::RaftStorage;
@@ -70,6 +71,12 @@ pub trait RaftTypeConfig:
     /// Application-specific response data returned by the state machine.
     type R: AppDataResponse;
 
+    /// Application-specific storage configuration.
+    type S: RaftStorage<Self>;
+
+    /// Application-specific network configuration.
+    type N: RaftNetwork<Self>;
+
     /// A Raft node's ID.
     type NodeId: NodeId;
 }
@@ -86,22 +93,30 @@ pub trait RaftTypeConfig:
 /// ```ignore
 /// openraft::declare_raft_types!(
 ///    /// Declare the type configuration for `MemStore`.
-///    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId
+///    pub Config: D = ClientRequest, R = ClientResponse, ClientStorage<Self>, ClientNetwork<Self>, NodeId = MemNodeId
 /// );
 /// ```
 #[macro_export]
 macro_rules! declare_raft_types {
-    ( $(#[$outer:meta])* $visibility:vis $id:ident: $($(#[$inner:meta])* $type_id:ident = $type:ty),+ ) => {
+    ( $(#[$outer:meta])* $visibility:vis
+    $config:ident:
+    $d_id:ident = $d_type:ty,
+    $r_id:ident = $r_type:ty,
+    $s_id:ident = $s_type:ident<$self_s:ident>,
+    $n_id:ident = $n_type:ident<$self_n:ident>,
+    $node_id:ident = $node_type:ident
+    ) => {
         $(#[$outer])*
         #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
         #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-        $visibility struct $id {}
+        $visibility struct $config{}
 
-        impl $crate::RaftTypeConfig for $id {
-            $(
-                $(#[$inner])*
-                type $type_id = $type;
-            )+
+        impl $crate::RaftTypeConfig for $config{
+            type $d_id = $d_type;
+            type $r_id = $r_type;
+            type $s_id = $s_type<$self_s>;
+            type $n_id = $n_type<$self_n>;
+            type $node_id = $node_type;
         }
     };
 }

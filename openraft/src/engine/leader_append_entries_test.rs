@@ -4,6 +4,8 @@ use maplit::btreeset;
 
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::DummyNetwork;
+use crate::DummyStorage;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
@@ -15,7 +17,7 @@ use crate::MetricsChangeFlags;
 use crate::Vote;
 
 crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64
+    pub(crate) Foo: D=(), R=(), S = DummyStorage<Self>, N = DummyNetwork<Self>, NodeId=u64
 );
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {

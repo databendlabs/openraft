@@ -14,6 +14,8 @@ use openraft::storage::RaftLogReader;
 use openraft::storage::RaftSnapshotBuilder;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
+use openraft::DummyNetwork;
+use openraft::DummyStorage;
 use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -72,7 +74,7 @@ pub type MemNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId
+    pub Config: D = ClientRequest, R = ClientResponse, S = DummyStorage<Self>, N = DummyNetwork<Self>, NodeId = MemNodeId
 );
 
 /// The application snapshot type which the `MemStore` works with.
