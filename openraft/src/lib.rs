@@ -36,10 +36,15 @@ pub mod versioned;
 
 #[cfg(test)] mod raft_state_test;
 
+use std::fmt::Debug;
+use std::marker::PhantomData;
+
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
 pub use metrics::ReplicationTargetMetrics;
+use store_ext::LogReaderExt;
+use store_ext::SnapshotBuilderExt;
 
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
@@ -140,3 +145,367 @@ pub trait AppDataResponse: Clone + Send + Sync + 'static {}
 
 #[cfg(not(feature = "serde"))]
 impl<T> AppDataResponse for T where T: Clone + Send + Sync + 'static {}
+
+/// This struct is only used for configuration or testing.
+///
+/// ## Note
+///
+/// (Un)Implemented RaftStorage trait.
+pub struct DummyStorage<C: RaftTypeConfig> {
+    c: PhantomData<C>,
+}
+
+#[async_trait::async_trait]
+impl<C: RaftTypeConfig> RaftStorage<C> for DummyStorage<C>
+where C: RaftTypeConfig
+{
+    type SnapshotData = <<C as RaftTypeConfig>::S as RaftStorage<C>>::SnapshotData;
+
+    type LogReader = LogReaderExt<C, C::S>;
+
+    type SnapshotBuilder = SnapshotBuilderExt<C, C::S>;
+
+    fn save_vote<'life0, 'life1, 'async_trait>(
+        &'life0 mut self,
+        _vote: &'life1 crate::Vote<<C as RaftTypeConfig>::NodeId>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(), crate::StorageError<<C as RaftTypeConfig>::NodeId>>>
+                + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn read_vote<'life0, 'async_trait>(
+        &'life0 mut self,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        Option<crate::Vote<<C as RaftTypeConfig>::NodeId>>,
+                        crate::StorageError<<C as RaftTypeConfig>::NodeId>,
+                    >,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn get_log_reader<'life0, 'async_trait>(
+        &'life0 mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Self::LogReader> + std::marker::Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn append_to_log<'life0, 'life1, 'life2, 'async_trait>(
+        &'life0 mut self,
+        _entries: &'life1 [&'life2 crate::Entry<C>],
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(), crate::StorageError<<C as RaftTypeConfig>::NodeId>>>
+                + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn delete_conflict_logs_since<'life0, 'async_trait>(
+        &'life0 mut self,
+        _log_id: crate::LogId<<C as RaftTypeConfig>::NodeId>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(), crate::StorageError<<C as RaftTypeConfig>::NodeId>>>
+                + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn purge_logs_upto<'life0, 'async_trait>(
+        &'life0 mut self,
+        _log_id: crate::LogId<<C as RaftTypeConfig>::NodeId>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(), crate::StorageError<<C as RaftTypeConfig>::NodeId>>>
+                + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn last_applied_state<'life0, 'async_trait>(
+        &'life0 mut self,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        (
+                            Option<crate::LogId<<C as RaftTypeConfig>::NodeId>>,
+                            crate::EffectiveMembership<<C as RaftTypeConfig>::NodeId>,
+                        ),
+                        crate::StorageError<<C as RaftTypeConfig>::NodeId>,
+                    >,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn apply_to_state_machine<'life0, 'life1, 'life2, 'async_trait>(
+        &'life0 mut self,
+        _entries: &'life1 [&'life2 crate::Entry<C>],
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<Vec<<C as RaftTypeConfig>::R>, crate::StorageError<<C as RaftTypeConfig>::NodeId>>,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        'life2: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn get_snapshot_builder<'life0, 'async_trait>(
+        &'life0 mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Self::SnapshotBuilder> + std::marker::Send + 'async_trait>>
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn begin_receiving_snapshot<'life0, 'async_trait>(
+        &'life0 mut self,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<Box<Self::SnapshotData>, crate::StorageError<<C as RaftTypeConfig>::NodeId>>,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn install_snapshot<'life0, 'life1, 'async_trait>(
+        &'life0 mut self,
+        _meta: &'life1 crate::SnapshotMeta<<C as RaftTypeConfig>::NodeId>,
+        _snapshot: Box<Self::SnapshotData>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<crate::StateMachineChanges<C>, crate::StorageError<<C as RaftTypeConfig>::NodeId>>,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn get_current_snapshot<'life0, 'async_trait>(
+        &'life0 mut self,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        Option<crate::storage::Snapshot<<C as RaftTypeConfig>::NodeId, Self::SnapshotData>>,
+                        crate::StorageError<<C as RaftTypeConfig>::NodeId>,
+                    >,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+}
+
+#[async_trait::async_trait]
+impl<C: RaftTypeConfig> RaftLogReader<C> for DummyStorage<C> {
+    fn get_log_state<'life0, 'async_trait>(
+        &'life0 mut self,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<crate::storage::LogState<C>, crate::StorageError<<C as RaftTypeConfig>::NodeId>>,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn try_get_log_entries<'life0, 'async_trait, RB>(
+        &'life0 mut self,
+        _range: RB,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<Vec<crate::Entry<C>>, crate::StorageError<<C as RaftTypeConfig>::NodeId>>,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        RB: 'async_trait + std::ops::RangeBounds<u64> + Clone + std::fmt::Debug + Send + Sync,
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+}
+
+/// This struct is only used for configuration or testing.
+///
+/// ## Note
+///
+/// (Un)Implemented RaftNetwork trait.
+pub struct DummyNetwork<C: RaftTypeConfig>
+where
+    C::D: Debug,
+    C::R: Debug,
+    //S: Default + Clone,
+{
+    dummy_use_c: PhantomData<C>,
+}
+
+#[async_trait::async_trait]
+impl<C: RaftTypeConfig> RaftNetwork<C> for DummyNetwork<C>
+where
+    C::D: Debug,
+    C::R: Debug,
+    //S: Default + Clone,
+{
+    fn send_append_entries<'life0, 'async_trait>(
+        &'life0 mut self,
+        _rpc: crate::raft::AppendEntriesRequest<C>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        crate::raft::AppendEntriesResponse<<C as RaftTypeConfig>::NodeId>,
+                        crate::error::RPCError<
+                            <C as RaftTypeConfig>::NodeId,
+                            crate::error::AppendEntriesError<<C as RaftTypeConfig>::NodeId>,
+                        >,
+                    >,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn send_install_snapshot<'life0, 'async_trait>(
+        &'life0 mut self,
+        _rpc: crate::raft::InstallSnapshotRequest<C>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        crate::raft::InstallSnapshotResponse<<C as RaftTypeConfig>::NodeId>,
+                        crate::error::RPCError<
+                            <C as RaftTypeConfig>::NodeId,
+                            crate::error::InstallSnapshotError<<C as RaftTypeConfig>::NodeId>,
+                        >,
+                    >,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+
+    fn send_vote<'life0, 'async_trait>(
+        &'life0 mut self,
+        _rpc: crate::raft::VoteRequest<<C as RaftTypeConfig>::NodeId>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        crate::raft::VoteResponse<<C as RaftTypeConfig>::NodeId>,
+                        crate::error::RPCError<
+                            <C as RaftTypeConfig>::NodeId,
+                            crate::error::VoteError<<C as RaftTypeConfig>::NodeId>,
+                        >,
+                    >,
+                > + std::marker::Send
+                + 'async_trait,
+        >,
+    >
+    where
+        'life0: 'async_trait,
+        Self: 'async_trait,
+    {
+        unimplemented!()
+    }
+}
