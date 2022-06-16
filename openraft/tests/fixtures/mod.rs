@@ -539,7 +539,12 @@ where
     }
 
     /// Send a client request to the target node, causing test failure on error.
-    pub async fn client_request(&self, mut target: C::NodeId, client_id: &str, serial: u64) {
+    pub async fn client_request(
+        &self,
+        mut target: C::NodeId,
+        client_id: &str,
+        serial: u64,
+    ) -> Result<(), ClientWriteError<C::NodeId>> {
         for ith in 0..3 {
             let req = <C::D as IntoMemClientRequest<C::D>>::make_request(client_id, serial);
             if let Err(err) = self.send_client_request(target, req).await {
@@ -560,11 +565,13 @@ where
                     }
                     _ => {}
                 }
-                panic!("{:?}", err)
+                // panic!("{:?}", err)
+                return Err(err);
             } else {
-                return;
+                return Ok(());
             }
         }
+        Ok(())
     }
 
     /// Send external request to the particular node.
@@ -591,7 +598,7 @@ where
     /// Send multiple client requests to the target node, causing test failure on error.
     pub async fn client_request_many(&self, target: C::NodeId, client_id: &str, count: usize) {
         for idx in 0..count {
-            self.client_request(target, client_id, idx as u64).await
+            let _ = self.client_request(target, client_id, idx as u64).await;
         }
     }
 

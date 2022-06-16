@@ -30,7 +30,7 @@ async fn clean_applied_logs() -> Result<()> {
 
     let count = (10 - log_index) as usize;
     for idx in 0..count {
-        router.client_request(0, "0", idx as u64).await;
+        let _ = router.client_request(0, "0", idx as u64).await;
         // raft commit at once with a single leader cluster.
         // If we send too fast, logs are removed before forwarding to learner.
         // Then it triggers snapshot replication, which is not expected.

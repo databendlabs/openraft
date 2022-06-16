@@ -94,7 +94,7 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
     let now = Instant::now();
 
     for i in 0..n {
-        router.client_request(0, "foo", i as u64).await
+        let _ = router.client_request(0, "foo", i as u64).await;
     }
 
     let elapsed = now.elapsed();

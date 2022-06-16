@@ -106,17 +106,19 @@ macro_rules! declare_raft_types {
     };
 }
 
+enum CoreState<NID: NodeId> {
+    Running(JoinHandle<Result<(), Fatal<NID>>>),
+    Stopped(Result<(), Fatal<NID>>),
+}
+
 struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
     rx_metrics: watch::Receiver<RaftMetrics<C>>,
     #[allow(clippy::type_complexity)]
-    raft_handle: Mutex<Option<JoinHandle<Result<(), Fatal<C::NodeId>>>>>,
     tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
     marker_n: std::marker::PhantomData<N>,
     marker_s: std::marker::PhantomData<S>,
-
-    /// The error that cause RaftCore to quit.
-    core_error: std::sync::Mutex<Option<Fatal<C::NodeId>>>,
+    core_state: Mutex<CoreState<C::NodeId>>,
 }
 
 /// The Raft API.
@@ -183,12 +185,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let inner = RaftInner {
             tx_api,
             rx_metrics,
-            raft_handle: Mutex::new(Some(raft_handle)),
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
             marker_n: std::marker::PhantomData,
             marker_s: std::marker::PhantomData,
-
-            core_error: std::sync::Mutex::new(None),
+            core_state: Mutex::new(CoreState::Running(raft_handle)),
         };
         Self { inner: Arc::new(inner) }
     }
@@ -456,60 +456,57 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
         let send_res = self.inner.tx_api.send((mes, span));
         if let Err(send_err) = send_res {
-            let last_err = self.get_core_error().await;
-            tracing::error!(%send_err, mes=%sum.unwrap_or_default(), last_error=?last_err, "error send tx to RaftCore");
-            return Err(last_err.into());
+            if let Err(last_err) = self.get_core_error().await {
+                tracing::error!(%send_err, mes=%sum.unwrap_or_default(), last_error=?last_err, "error send tx to RaftCore");
+                return Err(last_err.into());
+            }
         }
 
         let recv_res = rx.await;
         let res = match recv_res {
             Ok(x) => x,
             Err(e) => {
-                let last_err = self.get_core_error().await;
-                tracing::error!(%e, mes=%sum.unwrap_or_default(), last_error=?last_err, "error recv rx from RaftCore");
-                Err(last_err.into())
+                if let Err(last_err) = self.get_core_error().await {
+                    tracing::error!(%e, mes=%sum.unwrap_or_default(), last_error=?last_err, "error recv rx from RaftCore");
+                    Err(last_err.into())
+                } else {
+                    Err(Fatal::Stopped.into())
+                }
             }
         };
 
         res
     }
 
-    async fn get_core_error(&self) -> Fatal<C::NodeId> {
-        // If there is an error recorded, return it.
-        {
-            let guard = self.inner.core_error.lock().unwrap();
-            if let Some(x) = &*guard {
-                return x.clone();
-            }
-        }
+    async fn get_core_error(&self) -> Result<(), Fatal<C::NodeId>> {
+        let mut state = self.inner.core_state.lock().await;
+        match &mut *state {
+            CoreState::Running(handle) => {
+                let res = handle.await;
+                tracing::error!(res=?res, "RaftCore exited");
 
-        if let Some(h) = self.inner.raft_handle.lock().await.take() {
-            let res = h.await;
-            tracing::error!(res=?res, "RaftCore exited");
-
-            if let Err(err) = res {
-                let mut guard = self.inner.core_error.lock().unwrap();
-
-                if err.is_panic() {
-                    *guard = Some(Fatal::Panicked);
-                    return Fatal::Panicked;
-                } else if err.is_cancelled() {
-                    *guard = Some(Fatal::Stopped);
-                    return Fatal::Stopped;
+                if let Err(err) = res {
+                    if err.is_cancelled() {
+                        *state = CoreState::Stopped(Err(Fatal::Stopped));
+                        Err(Fatal::Stopped)
+                    } else if err.is_panic() {
+                        *state = CoreState::Stopped(Err(Fatal::Panicked));
+                        Err(Fatal::Panicked)
+                    } else {
+                        *state = CoreState::Stopped(Err(Fatal::Stopped));
+                        Err(Fatal::Stopped)
+                    }
+                } else {
+                    *state = CoreState::Stopped(Ok(()));
+                    Ok(())
                 }
             }
+            // If there is an error recorded, return it.
+            CoreState::Stopped(s) => match &*s {
+                Ok(()) => Ok(()),
+                Err(e) => Err(e.clone()),
+            },
         }
-
-        // RaftCore encountered an un-handleable error
-        let last_err = self.inner.rx_metrics.borrow().running_state.clone();
-        if let Err(err) = last_err {
-            let mut guard = self.inner.core_error.lock().unwrap();
-            *guard = Some(err.clone());
-
-            return err;
-        }
-
-        unreachable!("no RaftCore error found")
     }
 
     /// Send a request to the Raft core loop in a fire-and-forget manner.
@@ -569,8 +566,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         if let Some(tx) = self.inner.tx_shutdown.lock().await.take() {
             let _ = tx.send(());
         }
-        if let Some(handle) = self.inner.raft_handle.lock().await.take() {
-            let _ = handle.await?;
+
+        let mut state = self.inner.core_state.lock().await;
+        match &mut *state {
+            CoreState::Running(handle) => {
+                let res = handle.await;
+
+                if let Err(err) = res {
+                    if err.is_cancelled() {
+                        *state = CoreState::Stopped(Err(Fatal::Stopped));
+                    } else if err.is_panic() {
+                        *state = CoreState::Stopped(Err(Fatal::Panicked));
+                    }
+                    return Err(err);
+                } else {
+                    *state = CoreState::Stopped(Ok(()));
+                    return Ok(());
+                }
+            }
+            CoreState::Stopped(_) => {}
         }
         Ok(())
     }
