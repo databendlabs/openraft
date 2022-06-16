@@ -5,6 +5,8 @@ use anyhow::anyhow;
 use anyhow::Result;
 use fixtures::RaftRouter;
 use maplit::btreeset;
+use openraft::error::ClientWriteError;
+use openraft::error::Fatal;
 use openraft::Config;
 use openraft::ServerState;
 
@@ -61,4 +63,57 @@ async fn initialization() -> Result<()> {
 
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(1000))
+}
+
+/// A panicked RaftCore should also return a proper error the next time accessing the `Raft`.
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn return_error_after_panic() -> Result<()> {
+    let config = Arc::new(Config::default().validate()?);
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let _ = log_index; // unused;
+
+    tracing::info!("--- panic the RaftCore");
+    {
+        router.external_request(0, |_s, _sto, _net| {
+            panic!("foo");
+        });
+    }
+
+    tracing::info!("--- calls the panicked raft should get a Fatal::Panicked error");
+    {
+        let res = router.client_request(0, "foo", 2).await;
+        let err = res.unwrap_err();
+        assert_eq!(ClientWriteError::<u64>::Fatal(Fatal::Panicked), err);
+    }
+
+    Ok(())
+}
+
+/// After shutdown(), access to Raft should return a Fatal::Stopped error.
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn return_error_after_shutdown() -> Result<()> {
+    let config = Arc::new(Config::default().validate()?);
+    let mut router = RaftRouter::new(config.clone());
+
+    tracing::info!("--- initializing cluster");
+    let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let _ = log_index; // unused;
+
+    tracing::info!("--- shutdown the raft");
+    {
+        let n = router.get_raft_handle(&0)?;
+        n.shutdown().await?;
+    }
+
+    tracing::info!("--- calls the panicked raft should get a Fatal::Panicked error");
+    {
+        let res = router.client_request(0, "foo", 2).await;
+        let err = res.unwrap_err();
+        assert_eq!(ClientWriteError::<u64>::Fatal(Fatal::Stopped), err);
+    }
+
+    Ok(())
 }
