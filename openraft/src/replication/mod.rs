@@ -657,9 +657,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                 });
             }
 
-            let span = tracing::debug_span!("CHrx:LineRate");
-            let _en = span.enter();
-
             tokio::select! {
                 _ = self.heartbeat.tick() => {
                     tracing::debug!("heartbeat triggered");
