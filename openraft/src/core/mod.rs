@@ -765,9 +765,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 return Ok(());
             }
 
-            let span = tracing::debug_span!("CHrx:LeaderState");
-            let _ent = span.enter();
-
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {
                     self.handle_msg(msg).instrument(span).await?;
@@ -913,9 +910,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                     return Ok(());
                 }
                 let timeout_fut = sleep_until(self.core.get_next_election_timeout());
-
-                let span = tracing::debug_span!("CHrx:CandidateState");
-                let _ent = span.enter();
 
                 tokio::select! {
                     _ = timeout_fut => break, // This election has timed-out. Break to outer loop, which starts a new term.
@@ -1066,9 +1060,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             if !self.core.target_state.is_learner() {
                 return Ok(());
             }
-
-            let span = tracing::debug_span!("CHrx:LearnerState");
-            let _ent = span.enter();
 
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {
