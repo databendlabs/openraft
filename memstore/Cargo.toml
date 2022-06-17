@@ -17,7 +17,7 @@ readme = "README.md"
 
 [dependencies]
 anyhow = "1.0.32"
-openraft = { version="0.6", path= "../openraft" }
+openraft = { version="0.6.4-patch.1", path= "../openraft" }
 async-trait = "0.1.36"
 serde = { version="1.0.114", features=["derive"] }
 serde_json = "1.0.57"
