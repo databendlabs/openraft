@@ -722,9 +722,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 }));
             }
 
-            let span = tracing::debug_span!("CHrx:LineRate");
-            let _en = span.enter();
-
             // Check raft channel to ensure we are staying up-to-date
             self.try_drain_raft_rx().await?;
             if self.need_to_replicate {

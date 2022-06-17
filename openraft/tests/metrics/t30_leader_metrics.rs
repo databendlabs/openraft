@@ -32,9 +32,6 @@ use crate::fixtures::RaftRouter;
 /// - asserts node-4 becomes learner and the leader stops sending logs to it.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn leader_metrics() -> Result<()> {
-    let span = tracing::debug_span!("leader_metrics");
-    let _ent = span.enter();
-
     let all_members = btreeset![0, 1, 2, 3, 4];
     let left_members = btreeset![0, 1, 2, 3];
 
