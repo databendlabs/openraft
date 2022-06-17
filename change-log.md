@@ -1,7 +1,15 @@
+## v0.6.5
+
+### Fixed:
+
+-   Fixed: [4cd2a12b](https://github.com/datafuselabs/openraft/commit/4cd2a12b09c5b574e79c81f39a301597f1d4bd6b) span.enter() in async loop causes memory leak; by 张炎泼; 2022-06-17
+
 ## v0.6.4
 
 
+
 ## v0.6.3
+
 
 
 ## v0.6.2
@@ -260,6 +268,7 @@
     - Let user impl a base `RaftStorage`. Then raft wraps it with a
       `StoreExt` thus the defensive checks apply to every impl of
       `RaftStorage`.
+
 ## v0.6.2-alpha.16
 
 ### Changed:
@@ -374,6 +383,7 @@
     - R0 to R1 `append_entries: entries=[{1,2}], prev_log_id = {1,1}, commit_index = 3`
     - R1 accepted this `append_entries` request but was not aware of that entry {2,3} is inconsistent to leader.
       Updating commit index to 3 allows it to apply an uncommitted entrie `{2,3}`.
+
 ## v0.6.2-alpha.15
 
 ### Changed:
@@ -411,6 +421,7 @@
 -   Changed: [5d0c0b25](https://github.com/datafuselabs/openraft/commit/5d0c0b25e28443f65415ac2af5b27a6c65b67ce7) rename SnapshotPointer to PurgedMarker; by drdr xp; 2021-08-24
 
 -   Changed: [72b02249](https://github.com/datafuselabs/openraft/commit/72b0224909850c1740d2fa8aed747a786074e0f3) rename replicate_to_state_machine to apply_to_state_machine; by drdr xp; 2021-08-24
+
 ## v0.6.2-alpha.14
 
 ### Fixed:
@@ -425,6 +436,7 @@
     - When applying finished, the applied entries are not removed from the
       cache.
       Thus there could be entries being applied more than once.
+
 ## v0.6.2-alpha.13
 
 ### Fixed:
@@ -441,10 +453,13 @@
     decode an empty snapshot data.
 
     - feature: add config `install_snapshot_timeout`.
+
 ## v0.6.2-alpha.12
 
 
+
 ## v0.6.2-alpha.11
+
 
 
 ## v0.6.2-alpha.10
@@ -505,11 +520,13 @@
     - Removed membership related channels.
 
     - Refactor: convert several func from async to sync.
+
 ## v0.6.2-alpha.9
 
 ### Changed:
 
 -   Changed: [8b59966d](https://github.com/datafuselabs/openraft/commit/8b59966dd0a6bf804eb0ba978b5375010bfbc3f3) MembershipConfig.member type is changed form HashSet BTreeSet; by drdr xp; 2021-08-17
+
 ## v0.6.2-alpha.8
 
 ### Changed:
@@ -533,7 +550,9 @@
     By letting the state machine remember the membership log applied,
     the snapshto creation becomes more convinient and intuitive: it does not
     need to scan the applied logs any more.
+
 ## v0.6.2-alpha.7
+
 
 
 ## v0.6.2-alpha.6
@@ -549,6 +568,7 @@
     Using LogId{term, index} is a more natural way in every aspect.
 
     changes: RaftCore: change type of `last_applied` from u64 to LogId.
+
 ## v0.6.2-alpha.5
 
 ### Fixed:
@@ -593,6 +613,7 @@
 
     - Refactor: remove redundent param `delete_through` from
       `finalize_snapshot_installation`.
+
 ## v0.6.2-alpha.4
 
 ### Changed:
@@ -649,6 +670,7 @@
 
     - Add: `Wait.snapshot()` to watch snapshot changes.
     - Test: replace `sleep()` with `wait_for_snapshot()` to speed up tests.
+
 ## v0.6.2-alpha.3
 
 ### Dependency:
@@ -672,6 +694,7 @@
 
     In such case, force to create a snapshot without considering the
     threshold.
+
 ## v0.6.2-alpha.2
 
 ### Dependency:
@@ -697,6 +720,7 @@
 ### Fixed:
 
 -   Fixed: [d60f1e85](https://github.com/datafuselabs/openraft/commit/d60f1e852d3e5b9455589593067599d261f695b2) client_read has using wrong quorum=majority-1; by drdr xp; 2021-07-02
+
 ## v0.6.2-alpha.1
 
 ### Added:
@@ -720,6 +744,7 @@
 
     The timeout is now an option arg to all wait_for_xxx functions in
     fixtures. wait_for_xxx_timeout are all removed.
+
 ## v0.6.2-alpha
 
 ### Added:
@@ -799,6 +824,7 @@
 ### Dependency:
 
 -   Dependency: [919d91cb](https://github.com/datafuselabs/openraft/commit/919d91cb31b307cede7d0911ff45e1030174a340) upgrade tokio from 1.0 to 1.7; by drdr xp; 2021-06-16
+
 ## v0.6.1
 
 ## async-raft 0.6.1
@@ -935,3 +961,4 @@ My hope is that this will be the last backwards incompatible change needed befor
 
 ## 0.1.0
 - Initial release!
+
