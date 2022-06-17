@@ -1,7 +1,104 @@
+## v0.7.0-alpha.1
+
+### Fixed:
+
+-   Fixed: [d836d85c](https://github.com/datafuselabs/openraft/commit/d836d85c963f6763eb7e5a5c72fb81da3435bdb2) if there may be more logs to replicate, continue to call send_append_entries in next loop, no need to wait heartbeat tick; by lichuang; 2022-01-04
+
+-   Fixed: [5a026674](https://github.com/datafuselabs/openraft/commit/5a026674617b5e4f5402ff148d261169fe392b24) defensive_no_dirty_log hangs tests; by YangKian; 2022-01-08
+
+-   Fixed: [8651625e](https://github.com/datafuselabs/openraft/commit/8651625ed0c18354ff329a37f042f9471f333fa6) save leader_id if a higher term is seen when handling append-entries RPC; by 张炎泼; 2022-01-10
+
+    Problem:
+
+    A follower saves hard state `(term=msg.term, voted_for=None)`
+    when a `msg.term > local.term` when handling append-entries RPC.
+
+    This is quite enough to be correct but not perfect. Correct because:
+
+    - In one term, only an established leader will send append-entries;
+
+    - Thus, there is a quorum voted for this leader;
+
+    - Thus, no matter what `voted_for` is saved, it is still correct. E.g.
+      when handling append-entries, a follower node could save hard state
+      `(term=msg.term, voted_for=Some(ANY_VALUE))`.
+
+    The problem is that a follower already knows the legal leader for a term
+    but still does not save it. This leads to an unstable cluster state: The
+    test sometimes fails.
+
+    Solution:
+
+    A follower always save hard state with the id of a known legal leader.
+
+-   Fixed: [1a781e1b](https://github.com/datafuselabs/openraft/commit/1a781e1be204ce165248ea0d075880cd06d8fb00) when lack entry, the snapshot to build has to include at least all purged logs; by 张炎泼; 2022-01-18
+
+-   Fixed: [a0a94af7](https://github.com/datafuselabs/openraft/commit/a0a94af7612bd9aaae5a5404325887b16d7a96ae) span.enter() in async loop causes memory leak; by 张炎泼; 2022-06-17
+
+    It is explained in:
+    https://onesignal.com/blog/solving-memory-leaks-in-rust/
+
+### Changed:
+
+-   Changed: [c9c8d898](https://github.com/datafuselabs/openraft/commit/c9c8d8987805c29476bcfd3eab5bff83e00e342e) trait RaftStore: remove get_membership_config(), add last_membership_in_log() and get_membership() with default impl; by drdr xp; 2022-01-04
+
+    Goal: minimize the work for users to implement a correct raft application.
+
+    Now RaftStorage provides default implementations for `get_membership()`
+    and `last_membership_in_log()`.
+
+    These two methods just can be implemented with other basic user impl
+    methods.
+
+    - fix: #59
+
+-   Changed: [abda0d10](https://github.com/datafuselabs/openraft/commit/abda0d1015542ad701f52fb1a6ca7f997a81102a) rename RaftStorage methods do_log_compaction: build_snapshot, delete_logs_from: delete_log; by 张炎泼; 2022-01-15
+
+-   Changed: [a52a9300](https://github.com/datafuselabs/openraft/commit/a52a9300e5be96a73a7c76ce4095f723d8750837) RaftStorage::get_log_state() returns last purge log id; by 张炎泼; 2022-01-16
+
+    -   Change: `get_log_state()` returns the `last_purged_log_id` instead of the `first_log_id`.
+        Because there are some cases in which log are empty:
+        When a snapshot is install that covers all logs,
+        or when `max_applied_log_to_keep` is 0.
+
+        Returning `None` is not clear about if there are no logs at all or
+        all logs are deleted.
+
+        In such cases, raft still needs to maintain log continuity
+        when repilcating. Thus the last log id that once existed is important.
+        Previously this is done by checking the `last_applied_log_id`, which is
+        dirty and buggy.
+
+        Now an implementation of `RaftStorage` has to maintain the
+        `last_purged_log_id` in its store.
+
+    -   Change: Remove `first_id_in_log()`, `last_log_id()`, `first_known_log_id()`,
+        because concepts are changed.
+
+    -   Change: Split `delete_logs()` into two method for clarity:
+
+        `delete_conflict_logs_since()` for deleting conflict logs when the
+        replication receiving end find a conflict log.
+
+        `purge_logs_upto()` for cleaning applied logs
+
+    -   Change: Rename `finalize_snapshot_installation()` to `install_snapshot()`.
+
+    -   Refactor: Remove `initial_replicate_to_state_machine()`, which does nothing
+        more than a normal applying-logs.
+
+    -   Refactor: Remove `enum UpdateCurrentLeader`. It is just a wrapper of Option.
+
+-   Changed: [7424c968](https://github.com/datafuselabs/openraft/commit/7424c9687f2ae378ff4647326fcd53f2c172b50b) remove unused error MembershipError::Incompatible; by 张炎泼; 2022-01-17
+
+-   Changed: [beeae721](https://github.com/datafuselabs/openraft/commit/beeae721d31d89e3ad98fe66376d8edf57f3dcd0) add ChangeMembershipError sub error for reuse; by 张炎泼; 2022-01-17
+
 ## v0.6.4
 
 
+
 ## v0.6.3
+
 
 
 ## v0.6.2
@@ -260,6 +357,7 @@
     - Let user impl a base `RaftStorage`. Then raft wraps it with a
       `StoreExt` thus the defensive checks apply to every impl of
       `RaftStorage`.
+
 ## v0.6.2-alpha.16
 
 ### Changed:
@@ -374,6 +472,7 @@
     - R0 to R1 `append_entries: entries=[{1,2}], prev_log_id = {1,1}, commit_index = 3`
     - R1 accepted this `append_entries` request but was not aware of that entry {2,3} is inconsistent to leader.
       Updating commit index to 3 allows it to apply an uncommitted entrie `{2,3}`.
+
 ## v0.6.2-alpha.15
 
 ### Changed:
@@ -411,6 +510,7 @@
 -   Changed: [5d0c0b25](https://github.com/datafuselabs/openraft/commit/5d0c0b25e28443f65415ac2af5b27a6c65b67ce7) rename SnapshotPointer to PurgedMarker; by drdr xp; 2021-08-24
 
 -   Changed: [72b02249](https://github.com/datafuselabs/openraft/commit/72b0224909850c1740d2fa8aed747a786074e0f3) rename replicate_to_state_machine to apply_to_state_machine; by drdr xp; 2021-08-24
+
 ## v0.6.2-alpha.14
 
 ### Fixed:
@@ -425,6 +525,7 @@
     - When applying finished, the applied entries are not removed from the
       cache.
       Thus there could be entries being applied more than once.
+
 ## v0.6.2-alpha.13
 
 ### Fixed:
@@ -441,10 +542,13 @@
     decode an empty snapshot data.
 
     - feature: add config `install_snapshot_timeout`.
+
 ## v0.6.2-alpha.12
 
 
+
 ## v0.6.2-alpha.11
+
 
 
 ## v0.6.2-alpha.10
@@ -505,11 +609,13 @@
     - Removed membership related channels.
 
     - Refactor: convert several func from async to sync.
+
 ## v0.6.2-alpha.9
 
 ### Changed:
 
 -   Changed: [8b59966d](https://github.com/datafuselabs/openraft/commit/8b59966dd0a6bf804eb0ba978b5375010bfbc3f3) MembershipConfig.member type is changed form HashSet BTreeSet; by drdr xp; 2021-08-17
+
 ## v0.6.2-alpha.8
 
 ### Changed:
@@ -533,7 +639,9 @@
     By letting the state machine remember the membership log applied,
     the snapshto creation becomes more convinient and intuitive: it does not
     need to scan the applied logs any more.
+
 ## v0.6.2-alpha.7
+
 
 
 ## v0.6.2-alpha.6
@@ -549,11 +657,10 @@
     Using LogId{term, index} is a more natural way in every aspect.
 
     changes: RaftCore: change type of `last_applied` from u64 to LogId.
+
 ## v0.6.2-alpha.5
 
 ### Fixed:
-
--   Fixed: [178d520](https://github.com/veeupup/openraft/commit/178d520e3db47b361582fe4aedd96f04a5dae160) typo; by Veeupup; 2022-01-04
 
 -   Fixed: [fc8e92a8](https://github.com/datafuselabs/openraft/commit/fc8e92a8207c1cf8bd1dba2e8de5c0c5eebedc1c) typo; by drdr xp; 2021-07-12
 
@@ -595,6 +702,7 @@
 
     - Refactor: remove redundent param `delete_through` from
       `finalize_snapshot_installation`.
+
 ## v0.6.2-alpha.4
 
 ### Changed:
@@ -651,6 +759,7 @@
 
     - Add: `Wait.snapshot()` to watch snapshot changes.
     - Test: replace `sleep()` with `wait_for_snapshot()` to speed up tests.
+
 ## v0.6.2-alpha.3
 
 ### Dependency:
@@ -674,6 +783,7 @@
 
     In such case, force to create a snapshot without considering the
     threshold.
+
 ## v0.6.2-alpha.2
 
 ### Dependency:
@@ -699,6 +809,7 @@
 ### Fixed:
 
 -   Fixed: [d60f1e85](https://github.com/datafuselabs/openraft/commit/d60f1e852d3e5b9455589593067599d261f695b2) client_read has using wrong quorum=majority-1; by drdr xp; 2021-07-02
+
 ## v0.6.2-alpha.1
 
 ### Added:
@@ -722,6 +833,7 @@
 
     The timeout is now an option arg to all wait_for_xxx functions in
     fixtures. wait_for_xxx_timeout are all removed.
+
 ## v0.6.2-alpha
 
 ### Added:
@@ -801,6 +913,7 @@
 ### Dependency:
 
 -   Dependency: [919d91cb](https://github.com/datafuselabs/openraft/commit/919d91cb31b307cede7d0911ff45e1030174a340) upgrade tokio from 1.0 to 1.7; by drdr xp; 2021-06-16
+
 ## v0.6.1
 
 ## async-raft 0.6.1
@@ -937,3 +1050,4 @@ My hope is that this will be the last backwards incompatible change needed befor
 
 ## 0.1.0
 - Initial release!
+
