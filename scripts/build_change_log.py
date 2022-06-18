@@ -4,6 +4,7 @@
 import sys
 import subprocess
 import semantic_version
+import toml
 import yaml
 import re
 import os
@@ -271,14 +272,22 @@ def build_changelog():
 
             f.write(cont + '\n\n')
 
+def load_cargo_version():
+    with open('./openraft/Cargo.toml',  'r') as f:
+        cargo = f.read()
+
+    t = toml.loads(cargo)
+    ver = t['package']['version']
+    print("--- openraft/Cargo.toml version is",  ver)
+    return ver
+
+
 if __name__ == "__main__":
-    # Usage: to build change log from git log
-    # ./scripts/build_change_log.py 0.5.10
-    new_ver = sys.argv[1]
-    if len(sys.argv) > 2:
-        commit = sys.argv[2]
-    else:
-        commit = 'HEAD'
-    build_ver_changelog(new_ver, commit=commit)
+    # Usage: to build change log from git log for the current version.
+    # ./scripts/build_change_log.py
+
+    new_ver = load_cargo_version()
+
+    build_ver_changelog(new_ver)
     build_changelog()
 
