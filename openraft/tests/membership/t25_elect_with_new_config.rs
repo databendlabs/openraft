@@ -23,9 +23,6 @@ use crate::fixtures::RaftRouter;
 /// - restore the isolated node and assert that it becomes a follower.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn leader_election_after_changing_0_to_01234() -> Result<()> {
-    let span = tracing::debug_span!("ut-dynamic_membership");
-    let _ent = span.enter();
-
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

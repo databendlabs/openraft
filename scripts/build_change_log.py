@@ -4,8 +4,10 @@
 import sys
 import subprocess
 import semantic_version
+import toml
 import yaml
 import re
+import os
 from collections import defaultdict
 
 with open('scripts/change-types.yaml', 'r') as f:
@@ -24,6 +26,7 @@ categories = {
         'fixdoc:':       typs['fixdoc'],
         'dep:':          typs['dep'],
         'ci:':           typs['ci'],
+        'CI:':           typs['ci'],
 
         # fix typo
         'Change:':       typs['api-change'],
@@ -37,6 +40,7 @@ categories = {
         'new-features:': typs['new-feature'],
         'docs:':         typs['doc'],
         'fix:':          typs['fixbug'],
+        'Fix:':          typs['fixbug'],
         'fixup:':          typs['fixbug'],
 
         'test:':         typs['test'],
@@ -45,9 +49,11 @@ categories = {
         'Update:':  typs['other'],
         'update:':  typs['other'],
         'turn:':  typs['other'],
-        'replace:': typs['refactor'], 
-        'use:': typs['refactor'], 
-        'Create:': typs['other'], 
+        'replace:': typs['refactor'],
+        'format:': typs['refactor'],
+        'use:': typs['refactor'],
+        'Create:': typs['other'],
+        'BumpVer:': typs['other'],
 }
 
 category_display = {
@@ -62,20 +68,21 @@ category_display = {
 replace_subjects = [
         (r'^([^: ]+) ', r'\1: '), # add ":" if not
         (r'^(\w+:) *', r'\1 '),  # 0 or many space to 1 space
-        (r'^build\(dpes\): ',  r'dep: '), 
+        (r'^build\(dpes\): ',  r'dep: '),
 ]
 
 ignores = [
-        '^Merge pull request', 
+        '^Merge pull request',
+        '^BumpVer:',
 ]
 
 to_display = {
-        'other': False, 
+        'other': False,
         'doc': False,
         'refactor': False,
         'internal': False,
         'test': False,
-        'ci': False, 
+        'ci': False,
 }
 
 commit_url_ptn = 'https://github.com/datafuselabs/openraft/commit/{hash}'
@@ -127,13 +134,13 @@ def changes(frm, to):
         body = cmd(["git", "log", '-1', '--format=%b', commit])
 
         item = {
-                'hash': commit, 
+                'hash': commit,
                 'subject': elts[0],
                 # 2019-04-18 13:36:42 +0800
                 'time': elts[1].split()[0],
                 'author': elts[2],
                 'email': elts[3],
-                'body': body, 
+                'body': body,
         }
 
         rst.append(item)
@@ -168,9 +175,10 @@ def norm_changes(changes):
     '''
     rst = {}
     for ch in changes:
+        print("--- Normalize subject:", ch['hash'], ch['subject'])
         sub = ch['subject']
-        cate, cont = sub.split(' ', 1)
-        catetitle = categories[cate]
+        cate, cont = (sub.split(' ', 1) + [''])[:2]
+        catetitle = categories.get(cate, typs['other'])
 
         if catetitle not in rst:
             rst[catetitle] = []
@@ -179,12 +187,12 @@ def norm_changes(changes):
         bodylines = ch['body'].strip().splitlines()
         bodylines = ['    ' + x for x in bodylines]
         desc = {
-                'hash': ch['hash'], 
+                'hash': ch['hash'],
                 "content": cont,
                 "time": ch['time'],
                 "author": ch['author'],
                 'email': ch['email'],
-                'body': bodylines, 
+                'body': bodylines,
         }
         c.append(desc)
 
@@ -195,6 +203,12 @@ def build_ver_changelog(new_ver, commit="HEAD"):
     Build change log for ``new_ver`` at ``commit``.
     It will find out all commit since the last tag that is less than ``new_ver``
     '''
+
+    fn = 'change-log/v{new_ver}.md'.format(new_ver=new_ver)
+    if os.path.exists(fn):
+        print("--- Version {new_ver} change log exists, skip...".format(new_ver=new_ver))
+        print("--- To rebuild it, delete {fn} and re-run".format(fn=fn))
+        return
 
     tags = list_tags()
     tags.sort()
@@ -234,7 +248,7 @@ def build_ver_changelog(new_ver, commit="HEAD"):
 
     changelog = '\n'.join(lines)
 
-    with open('change-log/v{new_ver}.md'.format(new_ver=new_ver), 'w') as f:
+    with open(fn, 'w') as f:
         f.write(changelog)
 
 def build_changelog():
@@ -256,16 +270,24 @@ def build_changelog():
             cont = cont.splitlines()
             cont = '\n'.join(cont)
 
-            f.write(cont + '\n')
+            f.write(cont + '\n\n')
+
+def load_cargo_version():
+    with open('./openraft/Cargo.toml',  'r') as f:
+        cargo = f.read()
+
+    t = toml.loads(cargo)
+    ver = t['package']['version']
+    print("--- openraft/Cargo.toml version is",  ver)
+    return ver
+
 
 if __name__ == "__main__":
-    # Usage: to build change log from git log
-    # ./scripts/build_change_log.py v0.5.10
-    new_ver = sys.argv[1]
-    if len(sys.argv) > 2:
-        commit = sys.argv[2]
-    else:
-        commit = 'HEAD'
-    build_ver_changelog(new_ver, commit=commit)
+    # Usage: to build change log from git log for the current version.
+    # ./scripts/build_change_log.py
+
+    new_ver = load_cargo_version()
+
+    build_ver_changelog(new_ver)
     build_changelog()
 
