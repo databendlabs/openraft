@@ -24,10 +24,23 @@ Currently openraft is the consensus engine of meta-service cluster in [databend]
 
 - **Get started**: [The guide](https://datafuselabs.github.io/openraft) is the best place to get started,
   followed by [the docs](https://docs.rs/openraft/latest/) for more in-depth details.
-- **Openraft API is not stable yet.** Before `1.0.0`, an upgrade may contain incompatible changes.
-  Check our [change-log](https://github.com/datafuselabs/openraft/blob/main/change-log.md)
 - Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/datafuselabs/openraft/blob/main/derived-from-async-raft.md).
 
+# Versions
+
+- **Openraft API is not stable yet**. Before `1.0.0`, an upgrade may contain incompatible changes.
+  Check our [change-log](https://github.com/datafuselabs/openraft/blob/main/change-log.md). A commit message starts with a keyword to indicate the modification type of the commit:
+
+  - `Change:` if it introduces incompatible changes.
+  - `Feature:` if it introduces compatible non-breaking new features.
+  - `Fix:` if it just fixes a bug.
+
+- **Branch [release-0.6](https://github.com/datafuselabs/openraft/tree/release-0.6)**: In this release branch, [v0.6.5](https://github.com/datafuselabs/openraft/tree/v0.6.5) is the latest
+    published version. `release-0.6` won't accept new features but only bug fixes.
+
+- **Branch [release-0.7](https://github.com/datafuselabs/openraft/tree/release-0.7)**: In this release branch, [v0.7.0-alpha.1](https://github.com/datafuselabs/openraft/tree/v0.7.0-alpha.1) is the latest version. `release-0.7` won't be published until the backward compatibility with `release-0.6` is ready.
+
+- **Branch main** has been under active development.
 
 # Roadmap
 
@@ -47,7 +60,7 @@ Currently openraft is the consensus engine of meta-service cluster in [databend]
    - - [ ] Consider to separate log storage and log order storage.
    -   Leader only determines and replicates the index of log entries, not log
    -   payload.
-   -->
+      -->
 
 
 # Features
