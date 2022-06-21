@@ -53,7 +53,7 @@ async fn learner_restart() -> Result<()> {
     }
 
     router.add_learner(0, 1).await?;
-    router.client_request(0, "foo", 1).await;
+    router.client_request(0, "foo", 1).await?;
     log_index += 2;
 
     router.wait_for_log(&btreeset![0, 1], Some(log_index), None, "write one log").await?;
