@@ -54,7 +54,7 @@ async fn total_order_apply() -> Result<()> {
     });
 
     let n = 10_000;
-    router.client_request_many(0, "foo", n).await;
+    router.client_request_many(0, "foo", n).await?;
 
     // stop the log checking task.
     tx.send(true)?;

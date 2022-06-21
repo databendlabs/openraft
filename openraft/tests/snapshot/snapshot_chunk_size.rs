@@ -50,7 +50,7 @@ async fn snapshot_chunk_size() -> Result<()> {
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
-        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await;
+        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
         let want_snap = Some((log_index.into(), 1));

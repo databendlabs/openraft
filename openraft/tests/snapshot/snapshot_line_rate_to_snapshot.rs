@@ -38,7 +38,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
 
     tracing::info!("--- send more than half threshold logs");
     {
-        router.client_request_many(0, "0", (snapshot_threshold / 2 + 2 - log_index) as usize).await;
+        router.client_request_many(0, "0", (snapshot_threshold / 2 + 2 - log_index) as usize).await?;
         log_index = snapshot_threshold / 2 + 2;
 
         router
@@ -56,7 +56,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     {
         router.isolate_node(1);
 
-        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await;
+        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
 
         log_index = snapshot_threshold - 1;
 

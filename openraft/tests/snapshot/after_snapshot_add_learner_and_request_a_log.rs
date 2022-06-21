@@ -36,7 +36,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
-        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await;
+        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
         router
@@ -79,7 +79,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
             log_index += 1;
 
             tracing::info!("--- DONE add learner");
-            router.client_request_many(0, "0", 1).await;
+            router.client_request_many(0, "0", 1).await?;
             log_index += 1;
             tracing::info!("--- after request a log");
 

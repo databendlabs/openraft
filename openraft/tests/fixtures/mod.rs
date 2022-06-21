@@ -589,10 +589,17 @@ where
     }
 
     /// Send multiple client requests to the target node, causing test failure on error.
-    pub async fn client_request_many(&self, target: C::NodeId, client_id: &str, count: usize) {
+    pub async fn client_request_many(
+        &self,
+        target: C::NodeId,
+        client_id: &str,
+        count: usize,
+    ) -> Result<(), ClientWriteError<C::NodeId>> {
         for idx in 0..count {
             self.client_request(target, client_id, idx as u64).await
         }
+
+        Ok(())
     }
 
     async fn send_client_request(

@@ -61,7 +61,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
 
     tracing::info!("--- write up to 100 logs");
     {
-        router.client_request_many(0, "non_voter_add", 100 - log_index as usize).await;
+        router.client_request_many(0, "non_voter_add", 100 - log_index as usize).await?;
         log_index = 100;
 
         router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
@@ -115,7 +115,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
 
     tracing::info!("--- write up to 100 logs");
     {
-        router.client_request_many(0, "non_voter_add", 500 - log_index as usize).await;
+        router.client_request_many(0, "non_voter_add", 500 - log_index as usize).await?;
         log_index = 500;
 
         router.wait(&0, timeout()).log(Some(log_index), "received 500 logs").await?;
@@ -159,7 +159,7 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
 
     tracing::info!("--- write up to 1 logs");
     {
-        router.client_request_many(0, "non_voter_add", 1).await;
+        router.client_request_many(0, "non_voter_add", 1).await?;
         log_index += 1;
 
         // all the nodes MUST recv the log
@@ -178,7 +178,7 @@ async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
 
     tracing::info!("--- write up to 1 logs");
     {
-        router.client_request_many(0, "non_voter_add", 1).await;
+        router.client_request_many(0, "non_voter_add", 1).await?;
         log_index += 1;
 
         // node [0,1] MUST recv the log

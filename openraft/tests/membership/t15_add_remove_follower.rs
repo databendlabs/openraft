@@ -28,7 +28,7 @@ async fn add_remove_voter() -> Result<()> {
 
     tracing::info!("--- write 100 logs");
     {
-        router.client_request_many(0, "client", 100).await;
+        router.client_request_many(0, "client", 100).await?;
         log_index += 100;
 
         router.wait_for_log(&cluster_of_5, Some(log_index), timeout(), "write 100 logs").await?;
@@ -46,7 +46,7 @@ async fn add_remove_voter() -> Result<()> {
 
     tracing::info!("--- write another 100 logs");
     {
-        router.client_request_many(0, "client", 100).await;
+        router.client_request_many(0, "client", 100).await?;
         log_index += 100;
     }
 

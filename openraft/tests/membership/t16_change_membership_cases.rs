@@ -62,7 +62,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
 
     tracing::info!("--- write 100 logs");
     {
-        router.client_request_many(0, "client", 100).await;
+        router.client_request_many(0, "client", 100).await?;
         log_index += 100;
 
         router.wait_for_log(&old, Some(log_index), timeout(), &format!("write 100 logs, {}", mes)).await?;
@@ -150,7 +150,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
 
         let leader = m.current_leader.unwrap();
 
-        router.client_request_many(leader, "client", 100).await;
+        router.client_request_many(leader, "client", 100).await?;
         log_index += 100;
     }
 

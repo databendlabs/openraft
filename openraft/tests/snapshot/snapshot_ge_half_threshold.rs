@@ -39,7 +39,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
-        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await;
+        router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
         log_index = snapshot_threshold - 1;
 
         router.wait_for_log(&btreeset![0], Some(log_index), None, "send log to trigger snapshot").await?;
@@ -66,7 +66,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
 
     tracing::info!("--- send logs to make distance between snapshot index and last_log_index");
     {
-        router.client_request_many(0, "0", (log_cnt - log_index) as usize).await;
+        router.client_request_many(0, "0", (log_cnt - log_index) as usize).await?;
         log_index = log_cnt;
     }
 

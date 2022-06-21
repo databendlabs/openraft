@@ -29,7 +29,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
     {
         router.isolate_node(1);
 
-        router.client_request_many(0, "0", (10 - log_index) as usize).await;
+        router.client_request_many(0, "0", (10 - log_index) as usize).await?;
         log_index = 10;
 
         router
@@ -46,7 +46,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
     {
         router.restore_node(1);
 
-        router.client_request_many(0, "0", (10 - log_index) as usize).await;
+        router.client_request_many(0, "0", (10 - log_index) as usize).await?;
         log_index = 10;
 
         router
