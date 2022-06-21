@@ -42,7 +42,7 @@ async fn metrics_state_machine_consistency() -> Result<()> {
     log_index += 1;
 
     tracing::info!("--- write one log");
-    router.client_request(0, "foo", 1).await;
+    router.client_request(0, "foo", 1).await?;
 
     // Wait for metrics to be up to date.
     // Once last_applied updated, the key should be visible in state machine.
