@@ -44,7 +44,7 @@ async fn stale_last_log_id() -> Result<()> {
             let tx = tx.clone();
 
             async move {
-                router.client_request_many(0, &format!("{}", i), n_ops).await;
+                router.client_request_many(0, &format!("{}", i), n_ops).await.unwrap();
                 let _ = tx.send(());
             }
         });

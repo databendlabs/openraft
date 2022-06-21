@@ -66,7 +66,7 @@ async fn compaction() -> Result<()> {
     // Puts us exactly at the configured snapshot policy threshold.
 
     // Log at 0 count as 1
-    router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await;
+    router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
     log_index = snapshot_threshold - 1;
 
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "write").await?;
@@ -104,7 +104,7 @@ async fn compaction() -> Result<()> {
 
     tracing::info!("--- add 1 log after snapshot");
     {
-        router.client_request_many(0, "0", 1).await;
+        router.client_request_many(0, "0", 1).await?;
         log_index += 1;
     }
 

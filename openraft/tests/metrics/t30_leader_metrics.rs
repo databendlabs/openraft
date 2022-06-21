@@ -120,7 +120,7 @@ async fn leader_metrics() -> Result<()> {
         .await?;
 
     // Send some requests
-    router.client_request_many(0, "client", 10).await;
+    router.client_request_many(0, "client", 10).await?;
     log_index += 10;
 
     tracing::info!("--- remove n{}", 4);

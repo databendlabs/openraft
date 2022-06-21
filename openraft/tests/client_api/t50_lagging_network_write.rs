@@ -58,7 +58,7 @@ async fn lagging_network_write() -> Result<()> {
 
     router.wait_for_log(&btreeset![1, 2], Some(log_index), timeout(), "learner init").await?;
 
-    router.client_request_many(0, "client", 1).await;
+    router.client_request_many(0, "client", 1).await?;
     log_index += 1;
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "write one log").await?;
 
@@ -69,7 +69,7 @@ async fn lagging_network_write() -> Result<()> {
     router.wait_for_state(&btreeset![1, 2], ServerState::Follower, None, "changed").await?;
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "3 candidates").await?;
 
-    router.client_request_many(0, "client", 1).await;
+    router.client_request_many(0, "client", 1).await?;
     log_index += 1;
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "write 2nd log").await?;
 

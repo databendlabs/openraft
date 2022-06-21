@@ -49,7 +49,7 @@ async fn add_learner_basic() -> Result<()> {
     {
         tracing::info!("--- write up to 1000 logs");
 
-        router.client_request_many(0, "learner_add", 1000 - log_index as usize).await;
+        router.client_request_many(0, "learner_add", 1000 - log_index as usize).await?;
         log_index = 1000;
 
         tracing::info!("--- write up to 1000 logs done");
@@ -109,7 +109,7 @@ async fn add_learner_non_blocking() -> Result<()> {
     {
         tracing::info!("--- write up to 100 logs");
 
-        router.client_request_many(0, "learner_add", 100 - log_index as usize).await;
+        router.client_request_many(0, "learner_add", 100 - log_index as usize).await?;
         log_index = 100;
 
         router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
@@ -203,7 +203,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     tracing::info!("--- check learner in new cluster can receive new log");
     {
         let new_leader = router.leader().expect("expected the cluster to have a new leader");
-        router.client_request_many(new_leader, "0", 1).await;
+        router.client_request_many(new_leader, "0", 1).await?;
         log_index += 1;
 
         for i in [1, 2, 3, 4] {

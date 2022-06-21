@@ -81,7 +81,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
 
     tracing::info!("--- write one log");
     {
-        router.client_request_many(leader, "client", 1).await;
+        router.client_request_many(leader, "client", 1).await?;
         log_index += 1;
 
         wait_log(&router, &candidates, log_index).await?;
@@ -103,7 +103,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
             )
         };
         log_index += 1; // one add_learner log
-        router.client_request_many(leader, "client", 1).await;
+        router.client_request_many(leader, "client", 1).await?;
         log_index += 1;
 
         let _ = handle.await?;

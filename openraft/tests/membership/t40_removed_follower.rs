@@ -49,7 +49,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
     tracing::info!("--- write to new cluster, cuurent log={}", log_index);
     {
         let n = 10;
-        router.client_request_many(0, "after_change", n).await;
+        router.client_request_many(0, "after_change", n).await?;
         log_index += n as u64;
 
         for i in &[0, 3, 4] {

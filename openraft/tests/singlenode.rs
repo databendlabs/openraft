@@ -46,7 +46,7 @@ async fn single_node() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(1));
 
     // Write some data to the single node cluster.
-    router.client_request_many(0, "0", 1000).await;
+    router.client_request_many(0, "0", 1000).await?;
     log_index += 1000;
     router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "client_request_many").await?;
     router.assert_stable_cluster(Some(1), Some(log_index));
