@@ -3,16 +3,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
-
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Cluster concurrent_write_and_add_learner test.
 ///
@@ -132,7 +129,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     Ok(())
 }
 
-async fn wait_log(router: &fixtures::RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) -> anyhow::Result<()> {
+async fn wait_log(router: &RaftRouter, node_ids: &BTreeSet<u64>, want_log: u64) -> anyhow::Result<()> {
     let timeout = Duration::from_millis(500);
     for i in node_ids.iter() {
         router

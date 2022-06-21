@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::Config;
@@ -13,18 +12,16 @@ use openraft::SnapshotMeta;
 use openraft::Vote;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::RaftRouter;
 
-#[macro_use]
-mod fixtures;
-
-///  API test: install_snapshot with various condition.
+///  API test: install_snapshot with various arguments.
 ///
 /// What does this test do?
 ///
 /// - build a stable single node cluster.
 /// - send install_snapshot request with matched/mismatched id and offset
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn snapshot_ge_half_threshold() -> Result<()> {
+async fn snapshot_arguments() -> Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
 

@@ -1,5 +1,7 @@
+#![cfg_attr(feature = "bt", feature(backtrace))]
+
 #[macro_use]
 #[path = "../fixtures/mod.rs"]
 mod fixtures;
 
-mod compaction;
+mod t10_compaction;

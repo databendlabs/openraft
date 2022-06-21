@@ -2,12 +2,14 @@
 
 #![allow(dead_code)]
 
+#[cfg(feature = "bt")] use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::env;
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::panic::PanicInfo;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -88,11 +90,45 @@ lazy_static! {
 }
 
 pub fn init_global_tracing(app_name: &str, dir: &str, level: &str) -> WorkerGuard {
+    set_panic_hook();
+
     let (g, sub) = init_file_logging(app_name, dir, level);
     tracing::subscriber::set_global_default(sub).expect("error setting global tracing subscriber");
 
     tracing::info!("initialized global tracing: in {}/{} at {}", dir, app_name, level);
     g
+}
+
+pub fn set_panic_hook() {
+    std::panic::set_hook(Box::new(|panic| {
+        log_panic(panic);
+    }));
+}
+
+pub fn log_panic(panic: &PanicInfo) {
+    let backtrace = {
+        #[cfg(feature = "bt")]
+        {
+            format!("{:?}", Backtrace::force_capture())
+        }
+
+        #[cfg(not(feature = "bt"))]
+        {
+            "backtrace is disabled without --features 'bt'".to_string()
+        }
+    };
+
+    if let Some(location) = panic.location() {
+        tracing::error!(
+            message = %panic,
+            backtrace = %backtrace,
+            panic.file = location.file(),
+            panic.line = location.line(),
+            panic.column = location.column(),
+        );
+    } else {
+        tracing::error!(message = %panic, backtrace = %backtrace);
+    }
 }
 
 /// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
