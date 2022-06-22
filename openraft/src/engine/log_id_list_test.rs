@@ -233,6 +233,13 @@ fn test_log_id_list_truncate() -> anyhow::Result<()> {
 
 #[test]
 fn test_log_id_list_purge() -> anyhow::Result<()> {
+    // Purge on an empty log id list:
+    {
+        let mut ids = LogIdList::<u64>::new(vec![]);
+        ids.purge(&log_id(2, 2));
+        assert_eq!(vec![log_id(2, 2)], ids.key_log_ids());
+    }
+
     // Sample data for test
     let make_ids = || {
         LogIdList::<u64>::new(vec![
