@@ -199,8 +199,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
                 }
             }
             Command::ReplicateInputEntries { range } => {
-                for i in range.clone() {
-                    self.replicate_entry(*input_entries[i].get_log_id());
+                if let Some(last) = range.clone().last() {
+                    self.replicate_entry(*input_entries[last].get_log_id());
                 }
             }
             Command::UpdateMembership { .. } => {

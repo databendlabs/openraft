@@ -54,7 +54,7 @@ pub(crate) struct ReplicationStream<NID: NodeId> {
     pub handle: JoinHandle<()>,
 
     /// The channel used for communicating with the replication task.
-    pub repl_tx: mpsc::UnboundedSender<(RaftEvent<NID>, Span)>,
+    pub repl_tx: mpsc::UnboundedSender<UpdateReplication<NID>>,
 }
 
 impl<NID: NodeId> ReplicationStream<NID> {
@@ -107,7 +107,7 @@ struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStora
     raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<C::NodeId, S::SnapshotData>, Span)>,
 
     /// A channel for receiving events from the Raft node.
-    repl_rx: mpsc::UnboundedReceiver<(RaftEvent<C::NodeId>, Span)>,
+    repl_rx: mpsc::UnboundedReceiver<UpdateReplication<C::NodeId>>,
 
     /// The `RaftNetwork` interface.
     network: N::Network,
@@ -519,8 +519,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         tracing::debug!("try_drain_raft_rx");
 
         for _i in 0..self.config.max_payload_entries {
-            let ev = self.repl_rx.recv().now_or_never();
-            let ev = match ev {
+            let event_or_nothing = self.repl_rx.recv().now_or_never();
+            let ev_opt = match event_or_nothing {
                 None => {
                     // no event in self.repl_rx
                     return Ok(());
@@ -528,7 +528,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 Some(x) => x,
             };
 
-            let ev_and_span = match ev {
+            let event = match ev_opt {
                 None => {
                     // channel is closed, Leader quited.
                     return Err(ReplicationError::Closed);
@@ -536,31 +536,26 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 Some(x) => x,
             };
 
-            // TODO(xp): the span is not used. remove it from event.
-            self.process_raft_event(ev_and_span.0)?
+            self.process_raft_event(event)?
         }
 
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
-    pub fn process_raft_event(&mut self, event: RaftEvent<C::NodeId>) -> Result<(), ReplicationError<C::NodeId>> {
+    pub fn process_raft_event(
+        &mut self,
+        event: UpdateReplication<C::NodeId>,
+    ) -> Result<(), ReplicationError<C::NodeId>> {
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
-        match event {
-            RaftEvent::UpdateCommittedLogId { committed } => {
-                self.need_to_replicate = self.need_to_replicate || committed > self.committed;
-                self.committed = committed;
-            }
+        if event.committed > self.committed {
+            self.need_to_replicate = true;
+            self.committed = event.committed;
+        }
 
-            RaftEvent::Replicate { appended, committed } => {
-                self.need_to_replicate = self.need_to_replicate || committed > self.committed;
-                self.committed = committed;
-
-                if Some(appended).index() > self.matched.index() {
-                    self.need_to_replicate = true;
-                }
-            }
+        if event.last_log_id.index() > self.matched.index() {
+            self.need_to_replicate = true;
         }
 
         Ok(())
@@ -582,38 +577,23 @@ enum TargetReplState<NID: NodeId> {
     Shutdown,
 }
 
-// TODO(xp): remove Replicate
-/// An event from the Raft node.
-pub(crate) enum RaftEvent<NID: NodeId> {
-    Replicate {
-        /// The new entry which needs to be replicated.
-        ///
-        /// The logId of the most recent entry to have been appended to the log, its index is the
-        /// new last_log_index value.
-        appended: LogId<NID>,
+/// An event from the RaftCore in leader state to replication stream.
+pub(crate) struct UpdateReplication<NID: NodeId> {
+    /// The new entry which needs to be replicated.
+    ///
+    /// The logId of the most recent entry to have been appended to the log.
+    pub(crate) last_log_id: Option<LogId<NID>>,
 
-        /// The index of the highest log entry which is known to be committed in the cluster.
-        committed: Option<LogId<NID>>,
-    },
-    /// A message from Raft indicating a new commit index value.
-    UpdateCommittedLogId {
-        /// The index of the highest log entry which is known to be committed in the cluster.
-        committed: Option<LogId<NID>>,
-    },
+    /// The index of the highest log entry which is known to be committed in the cluster.
+    pub(crate) committed: Option<LogId<NID>>,
 }
 
-impl<NID: NodeId> MessageSummary<RaftEvent<NID>> for RaftEvent<NID> {
+impl<NID: NodeId> MessageSummary<UpdateReplication<NID>> for UpdateReplication<NID> {
     fn summary(&self) -> String {
-        match self {
-            RaftEvent::Replicate { appended, committed } => {
-                format!("Replicate: appended: {:?}, committed: {:?}", appended, committed)
-            }
-            RaftEvent::UpdateCommittedLogId {
-                committed: commit_index,
-            } => {
-                format!("UpdateCommitIndex: commit_index: {:?}", commit_index)
-            }
-        }
+        format!(
+            "UpdateReplication: last_log_id: {:?}, committed: {:?}",
+            self.last_log_id, self.committed
+        )
     }
 }
 
@@ -739,7 +719,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
                 event_span = self.repl_rx.recv() => {
                     match event_span {
-                        Some((event, _span)) => {
+                        Some(event) => {
                             self.process_raft_event(event)?;
                             self.try_drain_raft_rx().await?;
                         },
@@ -814,9 +794,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                         }
                     },
 
-                    event_span = self.repl_rx.recv() =>  {
-                        match event_span {
-                            Some((event, _span)) => {
+                    event_opt = self.repl_rx.recv() =>  {
+                        match event_opt {
+                            Some(event) => {
                                 self.process_raft_event(event)?;
                                 self.try_drain_raft_rx().await?;
                             },

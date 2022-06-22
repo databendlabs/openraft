@@ -18,7 +18,7 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::RaftRespTx;
-use crate::replication::RaftEvent;
+use crate::replication::UpdateReplication;
 use crate::Entry;
 use crate::EntryPayload;
 use crate::LogId;
@@ -149,20 +149,17 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         .into()));
     }
 
-    /// Begin replicating the given log entry.
+    /// Begin replicating upto the given log id.
     ///
     /// It does not block until the entry is committed or actually sent out.
     /// It merely broadcasts a signal to inform the replication threads.
     #[tracing::instrument(level = "debug", skip(self), fields(log_id=%log_id))]
     pub(super) fn replicate_entry(&mut self, log_id: LogId<C::NodeId>) {
         for node in self.nodes.values() {
-            let _ = node.repl_stream.repl_tx.send((
-                RaftEvent::Replicate {
-                    appended: log_id,
-                    committed: self.core.engine.state.committed,
-                },
-                tracing::debug_span!("CH"),
-            ));
+            let _ = node.repl_stream.repl_tx.send(UpdateReplication {
+                last_log_id: Some(log_id),
+                committed: self.core.engine.state.committed,
+            });
         }
     }
 
