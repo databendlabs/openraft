@@ -5,6 +5,7 @@ use maplit::btreeset;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::LogIdList;
 use crate::leader::Leader;
 use crate::raft::VoteRequest;
 use crate::EffectiveMembership;
@@ -122,7 +123,7 @@ fn test_elect() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.id = 1;
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m12()));
-        eng.state.last_log_id = Some(log_id(1, 1));
+        eng.state.log_ids = LogIdList::new(vec![log_id(1, 1)]);
 
         eng.elect();
 

@@ -72,7 +72,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         if target == self.core.id {
             tracing::debug!("target node is this node");
             let _ = tx.send(Ok(AddLearnerResponse {
-                matched: self.core.engine.state.last_log_id,
+                matched: self.core.engine.state.last_log_id(),
             }));
             return;
         }
@@ -118,7 +118,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         tracing::debug!(
             "after add target node {} as learner {:?}",
             target,
-            self.core.engine.state.last_log_id
+            self.core.engine.state.last_log_id()
         );
     }
 
@@ -204,7 +204,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         for node_id in nodes.iter() {
             match self.nodes.get(node_id) {
                 Some(node) => {
-                    if node.is_line_rate(&self.core.engine.state.last_log_id, &self.core.config) {
+                    if node.is_line_rate(&self.core.engine.state.last_log_id(), &self.core.config) {
                         // Node is ready to join.
                         continue;
                     }
@@ -219,7 +219,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                                     .core
                                     .engine
                                     .state
-                                    .last_log_id
+                                    .last_log_id()
                                     .next_index()
                                     .saturating_sub(node.matched.next_index()),
                             }),

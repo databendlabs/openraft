@@ -130,7 +130,7 @@ impl<NID: NodeId> Engine<NID> {
 
         self.push_command(Command::SaveVote { vote: self.state.vote });
         self.push_command(Command::SendVote {
-            vote_req: VoteRequest::new(self.state.vote, self.state.last_log_id),
+            vote_req: VoteRequest::new(self.state.vote, self.state.last_log_id()),
         });
 
         // TODO: For compatibility. remove it. The runtime does not need to know about server state.
@@ -142,7 +142,7 @@ impl<NID: NodeId> Engine<NID> {
         tracing::debug!(req = display(req.summary()), "Engine::handle_vote_res");
         tracing::debug!(
             my_vote = display(self.state.vote.summary()),
-            my_last_log_id = display(self.state.last_purged_log_id.summary()),
+            my_last_log_id = display(self.state.last_purged_log_id().summary()),
             "Engine::handle_vote_res"
         );
 
@@ -163,7 +163,7 @@ impl<NID: NodeId> Engine<NID> {
             // is changed after sending the vote request.
             vote: self.state.vote,
             vote_granted,
-            last_log_id: self.state.last_log_id,
+            last_log_id: self.state.last_log_id(),
         }
     }
 
@@ -176,7 +176,7 @@ impl<NID: NodeId> Engine<NID> {
         );
         tracing::debug!(
             my_vote = display(self.state.vote),
-            my_last_log_id = display(self.state.last_log_id.summary()),
+            my_last_log_id = display(self.state.last_log_id().summary()),
             "handle_vote_resp"
         );
 
@@ -296,7 +296,7 @@ impl<NID: NodeId> Engine<NID> {
         );
         tracing::debug!(
             my_vote = display(self.state.vote),
-            my_last_log_id = display(self.state.last_log_id.summary()),
+            my_last_log_id = display(self.state.last_log_id().summary()),
             my_last_applied = display(self.state.last_applied.summary()),
             "local state"
         );
@@ -396,7 +396,6 @@ impl<NID: NodeId> Engine<NID> {
         debug_assert!(Some(entries[0].get_log_id()) > self.state.log_ids.last());
 
         self.state.extend_log_ids(entries);
-        self.state.last_log_id = entries.last().map(|x| *x.get_log_id());
 
         self.push_command(Command::AppendInputEntries { range: since..l });
         self.follower_update_membership(entries.iter());
@@ -413,7 +412,7 @@ impl<NID: NodeId> Engine<NID> {
     pub(crate) fn truncate_logs(&mut self, since: u64) {
         tracing::debug!(since = since, "truncate_logs");
 
-        debug_assert!(since >= self.state.last_purged_log_id.next_index());
+        debug_assert!(since >= self.state.last_purged_log_id().next_index());
 
         let since_log_id = match self.state.get_log_id(since) {
             None => {
@@ -424,7 +423,6 @@ impl<NID: NodeId> Engine<NID> {
         };
 
         self.state.log_ids.truncate(since);
-        self.state.last_log_id = self.state.get_log_id(since - 1);
 
         self.push_command(Command::DeleteConflictLog { since: since_log_id });
 
@@ -507,7 +505,7 @@ impl<NID: NodeId> Engine<NID> {
             purge_end
         );
 
-        if st.last_purged_log_id.next_index() >= purge_end {
+        if st.last_purged_log_id().next_index() >= purge_end {
             return None;
         }
 
@@ -528,17 +526,11 @@ impl<NID: NodeId> Engine<NID> {
         let st = &mut self.state;
         let log_id = Some(upto);
 
-        if log_id <= st.last_purged_log_id {
+        if log_id <= st.last_purged_log_id() {
             return;
         }
 
         st.log_ids.purge(&upto);
-
-        st.last_purged_log_id = log_id;
-
-        if st.last_log_id < log_id {
-            st.last_log_id = log_id;
-        }
 
         self.push_command(Command::PurgeLog { upto });
     }
@@ -745,14 +737,14 @@ impl<NID: NodeId> Engine<NID> {
     /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(term=0, node_id=0)`.
     /// See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
     fn check_initialize(&self) -> Result<(), NotAllowed<NID>> {
-        if self.state.last_log_id.is_none() && self.state.vote == Vote::default() {
+        if self.state.last_log_id().is_none() && self.state.vote == Vote::default() {
             return Ok(());
         }
 
-        tracing::error!(?self.state.last_log_id, ?self.state.vote, "Can not initialize");
+        tracing::error!(last_log_id = display(self.state.last_log_id().summary()), ?self.state.vote, "Can not initialize");
 
         Err(NotAllowed {
-            last_log_id: self.state.last_log_id,
+            last_log_id: self.state.last_log_id(),
             vote: self.state.vote,
         })
     }
@@ -795,18 +787,12 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     fn assign_log_ids<'a, Ent: RaftEntry<NID> + 'a>(&mut self, entries: impl Iterator<Item = &'a mut Ent>) {
+        let mut log_id = LogId::new(self.state.vote.leader_id(), self.state.last_log_id().next_index());
         for entry in entries {
-            let log_id = self.next_log_id();
             entry.set_log_id(&log_id);
             tracing::debug!("assign log id: {}", log_id);
+            log_id.index += 1;
         }
-    }
-
-    fn next_log_id(&mut self) -> LogId<NID> {
-        let log_id = LogId::new(self.state.vote.leader_id(), self.state.last_log_id.next_index());
-        self.state.last_log_id = Some(log_id);
-
-        log_id
     }
 
     /// Check and grant a vote request.
@@ -836,10 +822,10 @@ impl<NID: NodeId> Engine<NID> {
             // OK: a quorum has already granted this vote, then I'll grant it too.
         } else {
             // Grant non-committed vote
-            if last_log_id >= &self.state.last_log_id {
+            if last_log_id >= &self.state.last_log_id() {
                 // OK
             } else {
-                return Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id));
+                return Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id()));
             }
         };
 

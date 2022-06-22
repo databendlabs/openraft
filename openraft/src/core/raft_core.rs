@@ -195,7 +195,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.engine.metrics_flags.set_data_changed();
         }
 
-        let has_log = self.engine.state.last_log_id.is_some();
+        let has_log = self.engine.state.last_log_id().is_some();
         let single = self.engine.state.membership_state.effective.is_single();
         let is_voter = self.engine.state.membership_state.effective.membership.is_member(&self.id);
 
@@ -293,7 +293,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             // --- data ---
             current_term: self.engine.state.vote.term,
-            last_log_index: self.engine.state.last_log_id.map(|id| id.index),
+            last_log_index: self.engine.state.last_log_id().map(|id| id.index),
             last_applied: self.engine.state.last_applied,
             snapshot: self.snapshot_last_log_id,
 
@@ -734,7 +734,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Ok(VoteResponse {
                     vote: self.engine.state.vote,
                     vote_granted: false,
-                    last_log_id: self.engine.state.last_log_id,
+                    last_log_id: self.engine.state.last_log_id(),
                 });
             }
         }
@@ -753,11 +753,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         target: C::NodeId,
     ) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(
-            ?resp,
-            target=display(target),
-            %self.engine.state.vote,
-            ?self.engine.state.last_log_id,
-            "recv vote response");
+            resp = debug(&resp),
+            target = display(target),
+            my_vote = display(&self.engine.state.vote),
+            my_last_log_id = debug(self.engine.state.last_log_id()),
+            "recv vote response"
+        );
 
         self.engine.handle_vote_resp(target, resp);
         self.run_engine_commands::<Entry<C>>(&[]).await?;

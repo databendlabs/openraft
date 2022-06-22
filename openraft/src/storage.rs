@@ -288,8 +288,6 @@ where C: RaftTypeConfig
         let log_ids = RaftState::load_log_ids(last_purged_log_id, last_log_id, self).await?;
 
         Ok(RaftState {
-            last_log_id,
-            last_purged_log_id,
             last_applied,
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)

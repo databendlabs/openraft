@@ -42,7 +42,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             target_node.cloned(),
             self.core.engine.state.vote,
             self.core.config.clone(),
-            self.core.engine.state.last_log_id,
+            self.core.engine.state.last_log_id(),
             self.core.engine.state.committed,
             self.core.network.connect(target, target_node).await,
             self.core.storage.get_log_reader().await,
@@ -136,7 +136,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         state.matched = Some(matched);
 
         // Issue a response on the learners response channel if needed.
-        if state.is_line_rate(&self.core.engine.state.last_log_id, &self.core.config) {
+        if state.is_line_rate(&self.core.engine.state.last_log_id(), &self.core.config) {
             // This replication became line rate.
 
             // When adding a learner, it blocks until the replication becomes line-rate.
@@ -222,7 +222,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         for id in node_ids.iter() {
             let matched = if *id == self.core.id {
-                self.core.engine.state.last_log_id
+                self.core.engine.state.last_log_id()
             } else {
                 let repl_state = self.nodes.get(id);
                 repl_state.map(|x| x.matched).unwrap_or_default()
@@ -269,7 +269,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 // of the configured snapshot threshold, else create a new snapshot.
                 if snapshot_is_within_half_of_threshold(
                     &snapshot.meta.last_log_id.index,
-                    &self.core.engine.state.last_log_id.unwrap_or_default().index,
+                    &self.core.engine.state.last_log_id().unwrap_or_default().index,
                     &threshold,
                 ) {
                     let _ = tx.send(snapshot);

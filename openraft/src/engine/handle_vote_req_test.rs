@@ -5,6 +5,7 @@ use maplit::btreeset;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::LogIdList;
 use crate::leader::Leader;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -75,7 +76,7 @@ fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
 #[test]
 fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.last_log_id = Some(log_id(2, 3));
+    eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 2),
@@ -112,7 +113,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
     // Equal vote should not emit a SaveVote command.
 
     let mut eng = eng();
-    eng.state.last_log_id = Some(log_id(2, 3));
+    eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(2, 1),
@@ -158,7 +159,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
     // A greater vote should emit a SaveVote command.
 
     let mut eng = eng();
-    eng.state.last_log_id = Some(log_id(2, 3));
+    eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 1),

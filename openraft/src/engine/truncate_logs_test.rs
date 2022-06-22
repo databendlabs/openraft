@@ -43,8 +43,6 @@ fn eng() -> Engine<u64> {
         log_id(4, 4),
         log_id(4, 6),
     ]);
-    eng.state.last_purged_log_id = Some(log_id(2, 2));
-    eng.state.last_log_id = Some(log_id(4, 6));
     eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
     eng
@@ -56,7 +54,7 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
 
     eng.truncate_logs(3);
 
-    assert_eq!(Some(log_id(2, 2)), eng.state.last_log_id,);
+    assert_eq!(Some(log_id(2, 2)), eng.state.last_log_id(),);
     assert_eq!(&[log_id(2, 2)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MetricsChangeFlags {
@@ -97,7 +95,7 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
 
     eng.truncate_logs(4);
 
-    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id,);
+    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id(),);
     assert_eq!(&[log_id(2, 2), log_id(2, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MetricsChangeFlags {
@@ -126,7 +124,7 @@ fn test_truncate_logs_since_5() -> anyhow::Result<()> {
 
     eng.truncate_logs(5);
 
-    assert_eq!(Some(log_id(4, 4)), eng.state.last_log_id,);
+    assert_eq!(Some(log_id(4, 4)), eng.state.last_log_id(),);
     assert_eq!(&[log_id(2, 2), log_id(4, 4)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MetricsChangeFlags {
@@ -147,7 +145,7 @@ fn test_truncate_logs_since_6() -> anyhow::Result<()> {
 
     eng.truncate_logs(6);
 
-    assert_eq!(Some(log_id(4, 5)), eng.state.last_log_id,);
+    assert_eq!(Some(log_id(4, 5)), eng.state.last_log_id(),);
     assert_eq!(
         &[log_id(2, 2), log_id(4, 4), log_id(4, 5)],
         eng.state.log_ids.key_log_ids()
@@ -171,7 +169,7 @@ fn test_truncate_logs_since_7() -> anyhow::Result<()> {
 
     eng.truncate_logs(7);
 
-    assert_eq!(Some(log_id(4, 6)), eng.state.last_log_id,);
+    assert_eq!(Some(log_id(4, 6)), eng.state.last_log_id(),);
     assert_eq!(
         &[log_id(2, 2), log_id(4, 4), log_id(4, 6)],
         eng.state.log_ids.key_log_ids()
@@ -195,7 +193,7 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
 
     eng.truncate_logs(8);
 
-    assert_eq!(Some(log_id(4, 6)), eng.state.last_log_id,);
+    assert_eq!(Some(log_id(4, 6)), eng.state.last_log_id(),);
     assert_eq!(
         &[log_id(2, 2), log_id(4, 4), log_id(4, 6)],
         eng.state.log_ids.key_log_ids()
@@ -223,7 +221,7 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
 
     eng.truncate_logs(4);
 
-    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id,);
+    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id(),);
     assert_eq!(&[log_id(2, 2), log_id(2, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MetricsChangeFlags {
