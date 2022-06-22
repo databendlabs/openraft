@@ -7,6 +7,4 @@ mod fixtures;
 // The number indicate the preferred running order for these case.
 // The later tests may depend on the earlier ones.
 
-mod t10_total_order_apply;
-mod t20_state_machine_apply_membership;
-mod t40_clean_applied_logs;
+mod t10_elect_compare_last_log;

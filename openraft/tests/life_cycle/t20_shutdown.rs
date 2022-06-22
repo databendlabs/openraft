@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
@@ -11,9 +10,7 @@ use openraft::Config;
 use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
-
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Cluster shutdown test.
 ///

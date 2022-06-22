@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "bt", feature(backtrace))]
+
 #[macro_use]
 #[path = "../fixtures/mod.rs"]
 mod fixtures;
@@ -6,3 +8,4 @@ mod fixtures;
 // The later tests may depend on the earlier ones.
 
 mod t20_initialization;
+mod t20_shutdown;

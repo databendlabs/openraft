@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LeaderId;
@@ -10,9 +9,7 @@ use openraft::LogId;
 use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
-
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// Single-node cluster initialization test.
 ///

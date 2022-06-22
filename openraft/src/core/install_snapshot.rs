@@ -30,11 +30,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Leaders always send chunks in order. It is important to note that, according to the Raft spec,
     /// a log may only have one snapshot at any time. As snapshot contents are application specific,
     /// the Raft log will only store a pointer to the snapshot file along with the index & term.
-    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(super) async fn handle_install_snapshot_request(
         &mut self,
         req: InstallSnapshotRequest<C>,
     ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
+        tracing::debug!(req = display(req.summary()));
+
         if req.vote < self.engine.state.vote {
             tracing::debug!(?self.engine.state.vote, %req.vote, "InstallSnapshot RPC term is less than current term");
 
@@ -92,11 +94,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
-    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn begin_installing_snapshot(
         &mut self,
         req: InstallSnapshotRequest<C>,
     ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
+        tracing::debug!(req = display(req.summary()));
+
         let id = req.meta.snapshot_id.clone();
 
         if req.offset > 0 {
@@ -139,13 +143,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         })
     }
 
-    #[tracing::instrument(level = "debug", skip(self, req, snapshot), fields(req=%req.summary()))]
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn continue_installing_snapshot(
         &mut self,
         req: InstallSnapshotRequest<C>,
         mut offset: u64,
         mut snapshot: Box<S::SnapshotData>,
     ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
+        tracing::debug!(req = display(req.summary()));
+
         let id = req.meta.snapshot_id.clone();
 
         // Always seek to the target offset if not an exact match.
@@ -185,12 +191,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Finalize the installation of a new snapshot.
     ///
     /// Any errors which come up from this routine will cause the Raft node to go into shutdown.
-    #[tracing::instrument(level = "debug", skip(self, req, snapshot), fields(req=%req.summary()))]
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn finalize_snapshot_installation(
         &mut self,
         req: InstallSnapshotRequest<C>,
         mut snapshot: Box<S::SnapshotData>,
     ) -> Result<(), StorageError<C::NodeId>> {
+        tracing::debug!(req = display(req.summary()));
+
         snapshot.as_mut().shutdown().await.map_err(|e| StorageError::IO {
             source: StorageIOError::new(
                 ErrorSubject::Snapshot(req.meta.clone()),

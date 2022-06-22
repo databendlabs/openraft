@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use fixtures::RaftRouter;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::Entry;
@@ -17,9 +16,7 @@ use openraft::Vote;
 
 use crate::fixtures::blank;
 use crate::fixtures::init_default_ut_tracing;
-
-#[macro_use]
-mod fixtures;
+use crate::fixtures::RaftRouter;
 
 /// The last_log in a vote request must be greater or equal than the local one.
 ///
