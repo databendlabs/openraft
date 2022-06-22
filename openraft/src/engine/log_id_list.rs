@@ -1,5 +1,6 @@
 use crate::raft_types::RaftLogId;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::NodeId;
 
 /// Efficient storage for log ids.
@@ -134,10 +135,13 @@ impl<NID: NodeId> LogIdList<NID> {
     /// Purge log ids upto the log with index `upto_index`, inclusive.
     #[allow(dead_code)]
     pub(crate) fn purge(&mut self, upto: &LogId<NID>) {
+        let last = self.last().cloned();
+
         // When installing  snapshot it may need to purge across the `last_log_id`.
-        if upto.index > self.key_log_ids[self.key_log_ids.len() - 1].index {
-            assert!(upto > &self.key_log_ids[self.key_log_ids.len() - 1]);
+        if upto.index >= last.next_index() {
+            debug_assert!(Some(upto) > self.last());
             self.key_log_ids = vec![*upto];
+            return;
         }
 
         if upto.index < self.key_log_ids[0].index {
