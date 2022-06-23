@@ -249,9 +249,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let last_applied = changes.last_applied;
 
-        if st.last_log_id < Some(last_applied) {
-            st.last_log_id = Some(last_applied);
-        }
         if st.committed < Some(last_applied) {
             st.committed = Some(last_applied);
         }
@@ -259,7 +256,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             st.last_applied = Some(last_applied);
         }
 
-        assert!(st.last_purged_log_id <= Some(last_applied));
+        debug_assert!(st.last_purged_log_id() <= Some(last_applied));
 
         // A local log that is <= last_applied may be inconsistent with the leader.
         // It has to purge all of them to prevent these log form being replicated, when this node becomes leader.

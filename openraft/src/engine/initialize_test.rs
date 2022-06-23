@@ -4,6 +4,7 @@ use crate::core::ServerState;
 use crate::engine::testing::Config;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::LogIdList;
 use crate::entry::EntryRef;
 use crate::error::InitializeError;
 use crate::error::NotAMembershipEntry;
@@ -40,7 +41,7 @@ fn test_initialize() -> anyhow::Result<()> {
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
         assert_eq!(None, eng.state.get_log_id(1));
-        assert_eq!(Some(log_id0), eng.state.last_log_id);
+        assert_eq!(Some(log_id0), eng.state.last_log_id());
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
@@ -70,7 +71,7 @@ fn test_initialize() -> anyhow::Result<()> {
     tracing::info!("--- not allowed because of last_log_id");
     {
         let mut eng = eng();
-        eng.state.last_log_id = Some(log_id0);
+        eng.state.log_ids = LogIdList::new(vec![log_id0]);
 
         assert_eq!(
             Err(InitializeError::NotAllowed(NotAllowed {

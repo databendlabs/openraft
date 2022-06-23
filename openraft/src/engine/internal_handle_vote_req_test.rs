@@ -5,6 +5,7 @@ use maplit::btreeset;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::LogIdList;
 use crate::error::RejectVoteRequest;
 use crate::leader::Leader;
 use crate::EffectiveMembership;
@@ -64,7 +65,7 @@ fn test_internal_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
 #[test]
 fn test_internal_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.last_log_id = Some(log_id(2, 3));
+    eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
     let resp = eng.internal_handle_vote_req(&Vote::new(3, 2), &Some(log_id(1, 3)));
 
@@ -89,7 +90,7 @@ fn test_internal_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<
 #[test]
 fn test_internal_handle_vote_req_committed_vote() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.last_log_id = Some(log_id(2, 3));
+    eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
     let resp = eng.internal_handle_vote_req(&Vote::new_committed(3, 2), &None);
 
@@ -130,7 +131,7 @@ fn test_internal_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow:
     // Equal vote should not emit a SaveVote command.
 
     let mut eng = eng();
-    eng.state.last_log_id = Some(log_id(2, 3));
+    eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
     let resp = eng.internal_handle_vote_req(&Vote::new(2, 1), &Some(log_id(2, 3)));
 
@@ -166,7 +167,7 @@ fn test_internal_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
     // A greater vote should emit a SaveVote command.
 
     let mut eng = eng();
-    eng.state.last_log_id = Some(log_id(2, 3));
+    eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
     let resp = eng.internal_handle_vote_req(&Vote::new(3, 1), &Some(log_id(2, 3)));
 

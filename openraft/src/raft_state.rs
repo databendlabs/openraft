@@ -17,16 +17,6 @@ pub struct RaftState<NID: NodeId> {
     /// The vote state of this node.
     pub vote: Vote<NID>,
 
-    /// The greatest log id that has been purged after being applied to state machine.
-    /// The range of log entries that exist in storage is `(last_purged_log_id, last_log_id]`,
-    /// left open and right close.
-    ///
-    /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
-    pub last_purged_log_id: Option<LogId<NID>>,
-
-    /// The id of the last log entry.
-    pub last_log_id: Option<LogId<NID>>,
-
     /// The LogId of the last log applied to the state machine.
     pub last_applied: Option<LogId<NID>>,
 
@@ -164,8 +154,8 @@ impl<NID: NodeId> RaftState<NID> {
     /// Append a list of `log_id`.
     ///
     /// The log ids in the input has to be continuous.
-    pub(crate) fn extend_log_ids_from_same_leader<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_log_id: &[LID]) {
-        self.log_ids.extend_from_same_leader(new_log_id)
+    pub(crate) fn extend_log_ids_from_same_leader<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_log_ids: &[LID]) {
+        self.log_ids.extend_from_same_leader(new_log_ids)
     }
 
     #[allow(dead_code)]
@@ -197,5 +187,20 @@ impl<NID: NodeId> RaftState<NID> {
         } else {
             false
         }
+    }
+
+    /// The last known log id in the store.
+    pub(crate) fn last_log_id(&self) -> Option<LogId<NID>> {
+        self.log_ids.last().cloned()
+    }
+
+    /// The greatest log id that has been purged after being applied to state machine, i.e., the oldest known log id.
+    ///
+    /// The range of log entries that exist in storage is `(last_purged_log_id, last_log_id]`,
+    /// left open and right close.
+    ///
+    /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
+    pub(crate) fn last_purged_log_id(&self) -> Option<LogId<NID>> {
+        self.log_ids.first().cloned()
     }
 }
