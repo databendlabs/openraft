@@ -2,6 +2,8 @@ use std::collections::BTreeSet;
 use std::mem::swap;
 use std::option::Option::None;
 
+use tracing::Level;
+
 use crate::config::RemoveReplicationPolicy;
 use crate::core::replication_state::ReplicationState;
 use crate::core::LeaderState;
@@ -268,9 +270,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn run_engine_commands<'p>(&mut self, input_entries: &[EntryRef<'p, C>]) -> Result<(), Fatal<C::NodeId>> {
-        tracing::debug!("LeaderState run command: start...");
-        for c in self.core.engine.commands.iter() {
-            tracing::debug!("LeaderState run command: {:?}", c);
+        if tracing::enabled!(Level::DEBUG) {
+            tracing::debug!("LeaderState run command: start...");
+            for c in self.core.engine.commands.iter() {
+                tracing::debug!("LeaderState run command: {:?}", c);
+            }
         }
 
         let mut curr = 0;
