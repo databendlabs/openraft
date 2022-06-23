@@ -6,7 +6,8 @@ use std::collections::BTreeSet;
 use maplit::btreemap;
 
 use crate::error::MissingNodeInfo;
-use crate::membership::quorum;
+use crate::quorum::majority_of;
+use crate::quorum::QuorumSet;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
@@ -249,19 +250,6 @@ impl<NID: NodeId> Membership<NID> {
         self.contains(node_id) && !self.is_member(node_id)
     }
 
-    /// Return true if the given set of ids constitutes a majority.
-    ///
-    /// I.e. the id set includes a majority of every config.
-    pub(crate) fn is_majority(&self, granted: &BTreeSet<NID>) -> bool {
-        for config in self.configs.iter() {
-            if !Self::is_majority_of_single_config(granted, config) {
-                return false;
-            }
-        }
-
-        true
-    }
-
     /// Returns the greatest value that presents in `values` that constitutes a joint majority.
     ///
     /// E.g., for a given membership: [{1,2,3}, {4,5,6}], and a value set: {1:10, 2:20, 5:20, 6:20},
@@ -281,7 +269,7 @@ impl<NID: NodeId> Membership<NID> {
                 }
             }
 
-            let majority = quorum::majority_of(config.len());
+            let majority = majority_of(config.len());
 
             if vs.len() < majority {
                 res.push(None);
@@ -359,19 +347,18 @@ impl<NID: NodeId> Membership<NID> {
         Ok(m)
     }
 
-    fn is_majority_of_single_config(granted: &BTreeSet<NID>, single_config: &BTreeSet<NID>) -> bool {
-        let d = granted.intersection(single_config);
-        let n_granted = d.fold(0, |a, _x| a + 1);
-
-        let majority = quorum::majority_of(single_config.len());
-        n_granted >= majority
-    }
-
     fn build_all_member_ids(configs: &[BTreeSet<NID>]) -> BTreeSet<NID> {
         let mut members = BTreeSet::new();
         for config in configs.iter() {
             members.extend(config)
         }
         members
+    }
+}
+
+/// Implement joint quorum set for `Membership`.
+impl<NID: NodeId> QuorumSet<NID> for Membership<NID> {
+    fn is_quorum<'a, I: Iterator<Item = &'a NID> + Clone>(&self, ids: I) -> bool {
+        self.configs.is_quorum(ids)
     }
 }

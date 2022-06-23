@@ -56,7 +56,7 @@ fn m34() -> Membership<u64> {
 fn eng() -> Engine<u64> {
     let mut eng = Engine::<u64> {
         id: 2, // make it a member
-        single_node_cluster: btreeset! {2},
+        single_node_cluster: [2],
         ..Default::default()
     };
     eng.state.vote = Vote::new(3, 2);
