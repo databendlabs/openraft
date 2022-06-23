@@ -37,7 +37,7 @@ impl<NID: NodeId> Display for LogId<NID> {
     }
 }
 
-impl<NID: NodeId> MessageSummary for Option<LogId<NID>> {
+impl<NID: NodeId> MessageSummary<LogId<NID>> for Option<LogId<NID>> {
     fn summary(&self) -> String {
         match self {
             None => "None".to_string(),

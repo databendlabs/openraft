@@ -63,10 +63,12 @@ fn eng() -> Engine<u64> {
 }
 
 #[test]
-fn test_follower_append_entries_empty() -> anyhow::Result<()> {
+fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.follower_append_entries(&Vec::<Entry<Foo>>::new());
+    // Neither of these two will update anything.
+    eng.follower_do_append_entries(&Vec::<Entry<Foo>>::new(), 0);
+    eng.follower_do_append_entries(&[blank(3, 4)], 1);
 
     assert_eq!(
         &[
@@ -99,13 +101,16 @@ fn test_follower_append_entries_empty() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_follower_append_entries_no_membership_entries() -> anyhow::Result<()> {
+fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.follower_append_entries(&[
-        //
-        blank(3, 4),
-    ]);
+    eng.follower_do_append_entries(
+        &[
+            blank(100, 100), // just be ignored
+            blank(3, 4),
+        ],
+        1,
+    );
 
     assert_eq!(
         &[
@@ -135,8 +140,8 @@ fn test_follower_append_entries_no_membership_entries() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 0..1 },
-            Command::MoveInputCursorBy { n: 1 }
+            Command::AppendInputEntries { range: 1..2 },
+            Command::MoveInputCursorBy { n: 2 }
         ],
         eng.commands
     );
@@ -145,20 +150,25 @@ fn test_follower_append_entries_no_membership_entries() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_follower_append_entries_one_membership_entry() -> anyhow::Result<()> {
+fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> {
     // - The membership entry in the input becomes effective membership. The previous effective becomes committed.
     // - Follower become Learner, since it is not in the new effective membership.
     let mut eng = eng();
     eng.id = 2; // make it a member, the become learner
 
-    eng.follower_append_entries(&[
-        //
-        blank(3, 4),
-        Entry {
-            log_id: log_id(3, 5),
-            payload: EntryPayload::<Foo>::Membership(m34()),
-        },
-    ]);
+    eng.follower_do_append_entries(
+        &[
+            blank(3, 3), // ignored
+            blank(3, 3), // ignored
+            blank(3, 3), // ignored
+            blank(3, 4),
+            Entry {
+                log_id: log_id(3, 5),
+                payload: EntryPayload::<Foo>::Membership(m34()),
+            },
+        ],
+        3,
+    );
 
     assert_eq!(
         &[
@@ -194,14 +204,14 @@ fn test_follower_append_entries_one_membership_entry() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 0..2 },
+            Command::AppendInputEntries { range: 3..5 },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34())),
             },
             Command::UpdateServerState {
                 server_state: ServerState::Learner
             },
-            Command::MoveInputCursorBy { n: 2 }
+            Command::MoveInputCursorBy { n: 5 }
         ],
         eng.commands
     );
@@ -210,29 +220,35 @@ fn test_follower_append_entries_one_membership_entry() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_follower_append_entries_three_membership_entries() -> anyhow::Result<()> {
+fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<()> {
     // - The last 2 of the 3 membership entries take effect.
     // - A learner become follower.
 
     let mut eng = eng();
     eng.id = 5; // make it a learner, then become follower
 
-    eng.follower_append_entries(&[
-        //
-        blank(3, 4),
-        Entry {
-            log_id: log_id(3, 5),
-            payload: EntryPayload::<Foo>::Membership(m01()),
-        },
-        Entry {
-            log_id: log_id(4, 6),
-            payload: EntryPayload::<Foo>::Membership(m34()),
-        },
-        Entry {
-            log_id: log_id(4, 7),
-            payload: EntryPayload::<Foo>::Membership(m45()),
-        },
-    ]);
+    eng.follower_do_append_entries(
+        &[
+            Entry {
+                log_id: log_id(3, 4),
+                payload: EntryPayload::<Foo>::Membership(m01()),
+            }, // ignored
+            blank(3, 4),
+            Entry {
+                log_id: log_id(3, 5),
+                payload: EntryPayload::<Foo>::Membership(m01()),
+            },
+            Entry {
+                log_id: log_id(4, 6),
+                payload: EntryPayload::<Foo>::Membership(m34()),
+            },
+            Entry {
+                log_id: log_id(4, 7),
+                payload: EntryPayload::<Foo>::Membership(m45()),
+            },
+        ],
+        1,
+    );
 
     assert_eq!(
         &[
@@ -269,14 +285,14 @@ fn test_follower_append_entries_three_membership_entries() -> anyhow::Result<()>
 
     assert_eq!(
         vec![
-            Command::AppendInputEntries { range: 0..4 },
+            Command::AppendInputEntries { range: 1..5 },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(4, 7)), m45())),
             },
             Command::UpdateServerState {
                 server_state: ServerState::Follower
             },
-            Command::MoveInputCursorBy { n: 4 }
+            Command::MoveInputCursorBy { n: 5 }
         ],
         eng.commands
     );

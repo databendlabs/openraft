@@ -88,7 +88,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         tracing::info!("--- add a membership config log to the learner");
         {
             let req = AppendEntriesRequest {
-                vote: Vote::new(1, 0),
+                vote: Vote::new_committed(1, 0),
                 prev_log_id: None,
                 entries: vec![blank(0, 0), Entry {
                     log_id: LogId::new(LeaderId::new(1, 0), 1),

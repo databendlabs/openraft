@@ -102,7 +102,7 @@ impl<NID: NodeId> EffectiveMembership<NID> {
     }
 }
 
-impl<NID: NodeId> MessageSummary for EffectiveMembership<NID> {
+impl<NID: NodeId> MessageSummary<EffectiveMembership<NID>> for EffectiveMembership<NID> {
     fn summary(&self) -> String {
         format!("{{log_id:{:?} membership:{}}}", self.log_id, self.membership.summary())
     }

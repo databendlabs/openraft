@@ -1,10 +1,10 @@
-pub trait MessageSummary {
+pub trait MessageSummary<M> {
     /// Return a string of a big message
     fn summary(&self) -> String;
 }
 
-impl<T> MessageSummary for &[T]
-where T: MessageSummary
+impl<'a, T> MessageSummary<T> for &[&T]
+where T: MessageSummary<T> + 'a
 {
     fn summary(&self) -> String {
         if self.is_empty() {
@@ -26,9 +26,30 @@ where T: MessageSummary
         }
     }
 }
+impl<'a, T> MessageSummary<T> for &[T]
+where T: MessageSummary<T> + 'a
+{
+    fn summary(&self) -> String {
+        let u = self.iter().collect::<Vec<_>>();
+        u.as_slice().summary()
+    }
+}
 
-impl<T> MessageSummary for Option<T>
-where T: MessageSummary
+impl<T> MessageSummary<T> for Option<T>
+where T: MessageSummary<T> + 'static
+{
+    fn summary(&self) -> String {
+        match self {
+            None => "None".to_string(),
+            Some(x) => {
+                format!("Some({})", x.summary())
+            }
+        }
+    }
+}
+
+impl<T> MessageSummary<T> for Option<&T>
+where T: MessageSummary<T> + 'static
 {
     fn summary(&self) -> String {
         match self {

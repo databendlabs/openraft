@@ -602,7 +602,7 @@ pub(crate) enum RaftEvent<NID: NodeId> {
     },
 }
 
-impl<NID: NodeId> MessageSummary for RaftEvent<NID> {
+impl<NID: NodeId> MessageSummary<RaftEvent<NID>> for RaftEvent<NID> {
     fn summary(&self) -> String {
         match self {
             RaftEvent::Replicate { appended, committed } => {
@@ -657,7 +657,9 @@ where
     Shutdown,
 }
 
-impl<NID: NodeId, S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary for ReplicaEvent<NID, S> {
+impl<NID: NodeId, S: AsyncRead + AsyncSeek + Send + Unpin + 'static> MessageSummary<ReplicaEvent<NID, S>>
+    for ReplicaEvent<NID, S>
+{
     fn summary(&self) -> String {
         match self {
             ReplicaEvent::UpdateMatched { ref target, ref result } => {

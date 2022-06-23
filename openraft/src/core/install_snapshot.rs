@@ -1,5 +1,4 @@
 use std::io::SeekFrom;
-use std::sync::Arc;
 
 use anyerror::AnyError;
 use tokio::io::AsyncSeekExt;
@@ -12,10 +11,9 @@ use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
+use crate::Entry;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
-use crate::LogIdOptionExt;
-use crate::MembershipState;
 use crate::MessageSummary;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
@@ -207,7 +205,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             ),
         })?;
 
-        // Caveat: All changes to state machine must be serialized
+        // Caveat: All changes to state machine has to be serialized.
         //
         // If `finalize_snapshot_installation` is run in RaftCore thread,
         // there is chance the last_applied being reset to a previous value:
@@ -239,7 +237,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     );
                 }
 
-                self.delete_conflict_logs_since(snap_last_log_id).await?;
+                self.engine.truncate_logs(snap_last_log_id.index);
+                self.run_engine_commands::<Entry<C>>(&[]).await?;
             }
         }
 
@@ -264,30 +263,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // A local log that is <= last_applied may be inconsistent with the leader.
         // It has to purge all of them to prevent these log form being replicated, when this node becomes leader.
-        st.last_purged_log_id = Some(last_applied);
-        self.storage.purge_logs_upto(last_applied).await?;
+        self.engine.purge_log(last_applied);
+        self.run_engine_commands::<Entry<C>>(&[]).await?;
 
-        {
-            let snap_mem = req.meta.last_membership;
-            let mut committed = st.membership_state.committed.clone();
-            let mut effective = st.membership_state.effective.clone();
-            if committed.log_id < snap_mem.log_id {
-                committed = Arc::new(snap_mem.clone());
-            }
-
-            // The local effective membership may be inconsistent to the leader.
-            // Thus it has to compare by log-index, e.g.:
-            //   snap_mem.log_id        = (10, 5);
-            //   local_effective.log_id = (2, 10);
-            if effective.log_id.index() <= snap_mem.log_id.index() {
-                effective = Arc::new(snap_mem);
-            }
-
-            let mem_state = MembershipState { committed, effective };
-            tracing::debug!("update membership: {:?}", mem_state);
-
-            self.update_membership(mem_state);
-        }
+        self.engine.update_committed_membership(req.meta.last_membership);
+        self.run_engine_commands::<Entry<C>>(&[]).await?;
 
         self.snapshot_last_log_id = self.engine.state.last_applied;
         self.engine.metrics_flags.set_data_changed();

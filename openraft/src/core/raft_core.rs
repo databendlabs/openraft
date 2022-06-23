@@ -50,7 +50,6 @@ use crate::Entry;
 use crate::EntryPayload;
 use crate::LogId;
 use crate::Membership;
-use crate::MembershipState;
 use crate::MessageSummary;
 use crate::Node;
 use crate::RaftNetwork;
@@ -394,32 +393,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.last_heartbeat = Some(now);
     }
 
-    /// Update the node's current membership config & save hard state.
-    /// TODO(xp): this method is only called by a follower or learner.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn update_membership(&mut self, membership_state: MembershipState<C::NodeId>) {
-        let st = &mut self.engine.state;
-
-        st.membership_state = membership_state;
-
-        // If the given config does not contain this node's ID, it means one of the following:
-        //
-        // - the node is currently a learner and is replicating an old config to which it has
-        // not yet been added.
-        // - the node has been removed from the cluster. The parent application can observe the
-        // transition to the learner state as a signal for when it is safe to shutdown a node
-        // being removed.
-        if st.membership_state.effective.membership.is_member(&self.id) {
-            if st.server_state == ServerState::Learner {
-                // The node is a Learner and the new config has it configured as a normal member.
-                // Transition to follower.
-                self.set_target_state(ServerState::Follower);
-            }
-        } else {
-            self.set_target_state(ServerState::Learner);
-        }
-    }
-
     #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) async fn handle_internal_msg(
         &mut self,
@@ -555,7 +528,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 }
 
-#[tracing::instrument(level = "trace", skip(core), fields(entries=%entries.summary()))]
+#[tracing::instrument(level = "trace", skip_all)]
 pub(crate) async fn apply_to_state_machine<C, N, S>(
     core: &mut RaftCore<C, N, S>,
     entries: &[&Entry<C>],
@@ -575,44 +548,17 @@ where
         let res = core.storage.apply_to_state_machine(entries).await?;
         core.engine.state.last_applied = Some(last_applied);
 
-        purge_applied_logs(core, &last_applied, max_keep).await?;
+        core.engine.purge_applied_log(max_keep);
+        core.run_engine_commands::<Entry<C>>(&[]).await?;
+
         Ok(res)
     } else {
         Ok(vec![])
     }
 }
 
-#[tracing::instrument(level = "trace", skip(core))]
-pub(crate) async fn purge_applied_logs<C, N, S>(
-    core: &mut RaftCore<C, N, S>,
-    last_applied: &LogId<C::NodeId>,
-    max_keep: u64,
-) -> Result<(), StorageError<C::NodeId>>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    S: RaftStorage<C>,
-{
-    // TODO(xp): periodically batch delete
-    let end = last_applied.index + 1;
-    let end = end.saturating_sub(max_keep);
-
-    tracing::debug!(%last_applied, max_keep, delete_lt = end, "delete_applied_logs");
-
-    let st = core.storage.get_log_state().await?;
-
-    // non applied logs are deleted. it is a bug.
-    assert!(st.last_purged_log_id <= Some(*last_applied));
-
-    if st.last_purged_log_id.next_index() >= end {
-        return Ok(());
-    }
-
-    let log_id = core.storage.get_log_id(end - 1).await?;
-    core.storage.purge_logs_upto(log_id).await
-}
-
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn run_engine_commands<'e, Ent>(
         &mut self,
         input_entries: &'e [Ent],
@@ -621,6 +567,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
         &'e Ent: Into<Entry<C>>,
     {
+        tracing::debug!("run command: start...");
+        for c in self.engine.commands.iter() {
+            tracing::debug!("run command: {:?}", c);
+        }
+
         let mut curr = 0;
         let mut commands = vec![];
         swap(&mut self.engine.commands, &mut commands);
@@ -925,7 +876,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::RejectElection {} => {
                 self.reject_election_for_a_while();
             }
-            Command::PurgeLog { .. } => {}
+            Command::PurgeLog { upto } => self.storage.purge_logs_upto(*upto).await?,
             Command::DeleteConflictLog { since } => {
                 self.storage.delete_conflict_logs_since(*since).await?;
             }

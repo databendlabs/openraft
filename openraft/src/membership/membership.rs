@@ -70,7 +70,7 @@ impl<NID: NodeId> TryFrom<BTreeMap<NID, Option<Node>>> for Membership<NID> {
     }
 }
 
-impl<NID: NodeId> MessageSummary for Membership<NID> {
+impl<NID: NodeId> MessageSummary<Membership<NID>> for Membership<NID> {
     fn summary(&self) -> String {
         let mut res = vec!["members:[".to_string()];
         for (i, c) in self.configs.iter().enumerate() {
