@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
-use std::option::Option::None;
 
 use maplit::btreemap;
 use maplit::btreeset;
 
 use crate::error::MissingNodeInfo;
+use crate::quorum::QuorumSet;
 use crate::testing::DummyConfig as Config;
 use crate::Membership;
 use crate::MessageSummary;
@@ -248,23 +248,25 @@ fn test_membership_with_nodes() -> anyhow::Result<()> {
 #[test]
 fn test_membership_majority() -> anyhow::Result<()> {
     {
-        let m12345 = Membership::<u64>::new(vec![btreeset! {1,2,3,4,5}], None);
-        assert!(!m12345.is_majority(&btreeset! {0}));
-        assert!(!m12345.is_majority(&btreeset! {0,1,2}));
-        assert!(!m12345.is_majority(&btreeset! {6,7,8}));
-        assert!(m12345.is_majority(&btreeset! {1,2,3}));
-        assert!(m12345.is_majority(&btreeset! {3,4,5}));
-        assert!(m12345.is_majority(&btreeset! {1,3,4,5}));
+        let m12345 = Membership::<u64>::new(vec![btreeset! {1,2,3,4,5 }], None);
+
+        assert!(!m12345.is_quorum([0].iter()));
+        assert!(!m12345.is_quorum([0, 1, 2].iter()));
+        assert!(!m12345.is_quorum([6, 7, 8].iter()));
+        assert!(m12345.is_quorum([1, 2, 3].iter()));
+        assert!(m12345.is_quorum([3, 4, 5].iter()));
+        assert!(m12345.is_quorum([1, 3, 4, 5].iter()));
     }
 
     {
-        let m12345_678 = Membership::<u64>::new(vec![btreeset! {1,2,3,4,5}, btreeset! {6,7,8}], None);
-        assert!(!m12345_678.is_majority(&btreeset! {0}));
-        assert!(!m12345_678.is_majority(&btreeset! {0,1,2}));
-        assert!(!m12345_678.is_majority(&btreeset! {6,7,8}));
-        assert!(!m12345_678.is_majority(&btreeset! {1,2,3}));
-        assert!(m12345_678.is_majority(&btreeset! {1,2,3,6,7}));
-        assert!(m12345_678.is_majority(&btreeset! {1,2,3,4,7,8}));
+        let m12345_678 = Membership::<u64>::new(vec![btreeset! {1,2,3,4,5 }, btreeset! {6,7,8}], None);
+
+        assert!(!m12345_678.is_quorum([0].iter()));
+        assert!(!m12345_678.is_quorum([0, 1, 2].iter()));
+        assert!(!m12345_678.is_quorum([6, 7, 8].iter()));
+        assert!(!m12345_678.is_quorum([1, 2, 3].iter()));
+        assert!(m12345_678.is_quorum([1, 2, 3, 6, 7].iter()));
+        assert!(m12345_678.is_quorum([1, 2, 3, 4, 7, 8].iter()));
     }
 
     Ok(())

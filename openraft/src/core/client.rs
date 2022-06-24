@@ -14,6 +14,7 @@ use crate::error::ClientWriteError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
+use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
@@ -50,7 +51,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let mem = &self.core.engine.state.membership_state.effective.membership;
         let mut granted = btreeset! {self.core.id};
 
-        if mem.is_majority(&granted) {
+        if mem.is_quorum(granted.iter()) {
             let _ = tx.send(Ok(()));
             return;
         }
@@ -133,7 +134,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             granted.insert(target);
 
             let mem = &self.core.engine.state.membership_state.effective.membership;
-            if mem.is_majority(&granted) {
+            if mem.is_quorum(granted.iter()) {
                 let _ = tx.send(Ok(()));
                 return;
             }

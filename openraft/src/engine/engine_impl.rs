@@ -1,7 +1,4 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
-
-use maplit::btreeset;
 
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -13,6 +10,7 @@ use crate::error::NotInMembers;
 use crate::error::RejectVoteRequest;
 use crate::leader::Leader;
 use crate::membership::EffectiveMembership;
+use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -45,7 +43,7 @@ pub(crate) struct Engine<NID: NodeId> {
     /// Cache of a cluster of only this node.
     ///
     /// It is used to check an early commit if there is only one node in a cluster.
-    pub(crate) single_node_cluster: BTreeSet<NID>,
+    pub(crate) single_node_cluster: [NID; 1],
 
     /// The state of this raft node.
     pub(crate) state: RaftState<NID>,
@@ -61,7 +59,7 @@ impl<NID: NodeId> Engine<NID> {
     pub(crate) fn new(id: NID, init_state: &RaftState<NID>) -> Self {
         Self {
             id,
-            single_node_cluster: btreeset! {id},
+            single_node_cluster: [id],
             state: init_state.clone(),
             metrics_flags: MetricsChangeFlags::default(),
             commands: vec![],
@@ -608,12 +606,12 @@ impl<NID: NodeId> Engine<NID> {
         entry: &Ent,
     ) {
         if let Some(m) = prev_membership {
-            if !m.membership.is_majority(&self.single_node_cluster) {
+            if !m.membership.is_quorum(self.single_node_cluster.iter()) {
                 return;
             }
         }
 
-        if !self.state.membership_state.effective.membership.is_majority(&self.single_node_cluster) {
+        if !self.state.membership_state.effective.membership.is_quorum(self.single_node_cluster.iter()) {
             return;
         }
 
