@@ -1,11 +1,19 @@
 #![doc = include_str!("../../README.md")]
 #![cfg_attr(feature = "bt", feature(backtrace))]
+#![cfg_attr(feature = "bench", feature(test))]
 
 //! # Feature flags
 //!
+//! - `bench`: Enables benchmarks in unittest. Benchmark in openraft depends on the unstable feature `test` thus it can
+//!   not be used with stable rust. In order to run the benchmark with stable toolchain, the unstable features have to
+//!   be enabled explicitly with environment variable `RUSTC_BOOTSTRAP=1`.
+//!
 //! - `bt`: Enable backtrace: generate backtrace for errors. This requires a unstable feature `backtrace` thus it can
-//!   not be used with stable rust, unless explicity allowing using unstable features in stable rust with
+//!   not be used with stable rust, unless explicitly allowing using unstable features in stable rust with
 //!   `RUSTC_BOOTSTRAP=1`.
+//!
+//! - `serde`: Add serde::Serialize and serde:Deserialize bound to data types. If you'd like to use `serde` to serialize
+//!   messages.
 
 mod config;
 mod core;

@@ -43,14 +43,22 @@ tracing-appender = "0.2.0"
 tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
 
 
-
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
+
+# Enables benchmarks in unittest.
+#
+# Benchmark in openraft depends on the unstable feature `test` thus it can not be used with stable rust.
+# In order to run the benchmark with stable toolchain,
+# the unstable features have to be enabled explicitly with environment variable `RUSTC_BOOTSTRAP=1`.
+bench = []
 
 # Enable backtrace when generating an error.
 # Stable rust does not support backtrace.
 bt  = ["anyerror/backtrace", "anyhow/backtrace"]
 
+# Add serde::Serialize and serde:Deserialize bound to data types.
+# If you'd like to use `serde` to serialize messages.
 serde = ["dep:serde"]
 
 [package.metadata.docs.rs]
