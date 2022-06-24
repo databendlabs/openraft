@@ -85,11 +85,11 @@ echo "Adding node 2 and node 3 as learners, to receive log from leader node 1"
 sleep 1
 echo
 rpc 21001/add-learner       '[2, "127.0.0.1:21002"]'
-echo "Node 2 added as leaner"
+echo "Node 2 added as learner"
 sleep 1
 echo
 rpc 21001/add-learner       '[3, "127.0.0.1:21003"]'
-echo "Node 3 added as leaner"
+echo "Node 3 added as learner"
 sleep 1
 
 echo "Get metrics from the leader, after adding 2 learners"
