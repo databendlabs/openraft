@@ -219,8 +219,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             (NO_LOG, MULTI, IS_LEARNER) => ServerState::Learner,  // impossible: no logs but there are other members.
 
             // If this is the only configured member and there is live state, then this is
-            // a single-node cluster. Become leader.
-            (HAS_LOG, SINGLE, IS_VOTER) => ServerState::Leader,
+            // a single-node cluster. It should become the leader at once.
+            (HAS_LOG, SINGLE, IS_VOTER) => ServerState::Candidate,
 
             // The initial state when a raft is created from empty store.
             (NO_LOG, SINGLE, IS_VOTER) => ServerState::Learner,

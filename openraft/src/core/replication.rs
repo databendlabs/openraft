@@ -12,9 +12,9 @@ use crate::error::AddLearnerError;
 use crate::metrics::UpdateMatchedLogId;
 use crate::raft::AddLearnerResponse;
 use crate::raft::RaftRespTx;
-use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
+use crate::replication::UpdateReplication;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
 use crate::versioned::Updatable;
@@ -174,12 +174,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
             // Update all replication streams based on new commit index.
             for node in self.nodes.values() {
-                let _ = node.repl_stream.repl_tx.send((
-                    RaftEvent::UpdateCommittedLogId {
-                        committed: self.core.engine.state.committed,
-                    },
-                    tracing::debug_span!("CH"),
-                ));
+                let _ = node.repl_stream.repl_tx.send(UpdateReplication {
+                    last_log_id: None,
+                    committed: self.core.engine.state.committed,
+                });
             }
 
             // Apply committed entries, and send applying result to client if there is a channel awaiting it

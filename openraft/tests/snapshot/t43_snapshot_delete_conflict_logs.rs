@@ -51,7 +51,8 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
     {
         let mut sto0 = router.new_store();
 
-        sto0.save_vote(&Vote::new(5, 0)).await?;
+        // When the node starts, it will become candidate and increment its vote to (5,0)
+        sto0.save_vote(&Vote::new(4, 0)).await?;
         sto0.append_to_log(&[
             // manually insert the initializing log
             &Entry {
