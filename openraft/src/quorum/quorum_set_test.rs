@@ -1,6 +1,7 @@
 use maplit::btreeset;
 
 use crate::quorum::AsJoint;
+use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 
 #[test]
@@ -77,6 +78,19 @@ fn test_joint_quorum_set_impl() -> anyhow::Result<()> {
     {
         let m12345_678 = vec![vec![1, 2, 3, 4, 5], vec![6, 7, 8]];
         let qs = m12345_678.as_joint();
+
+        assert!(!qs.is_quorum([0].iter()));
+        assert!(!qs.is_quorum([0, 1, 2].iter()));
+        assert!(!qs.is_quorum([6, 7, 8].iter()));
+        assert!(!qs.is_quorum([1, 2, 3].iter()));
+        assert!(qs.is_quorum([1, 2, 3, 6, 7].iter()));
+        assert!(qs.is_quorum([1, 2, 3, 4, 7, 8].iter()));
+    }
+
+    // Vec<Vec, Vec> into Joint
+    {
+        let m12345_678 = vec![vec![1, 2, 3, 4, 5], vec![6, 7, 8]];
+        let qs = Joint::from(m12345_678);
 
         assert!(!qs.is_quorum([0].iter()));
         assert!(!qs.is_quorum([0, 1, 2].iter()));
