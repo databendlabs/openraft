@@ -7,6 +7,7 @@ use maplit::btreemap;
 
 use crate::error::MissingNodeInfo;
 use crate::quorum::majority_of;
+use crate::quorum::AsJoint;
 use crate::quorum::QuorumSet;
 use crate::MessageSummary;
 use crate::Node;
@@ -359,6 +360,6 @@ impl<NID: NodeId> Membership<NID> {
 /// Implement joint quorum set for `Membership`.
 impl<NID: NodeId> QuorumSet<NID> for Membership<NID> {
     fn is_quorum<'a, I: Iterator<Item = &'a NID> + Clone>(&self, ids: I) -> bool {
-        self.configs.is_quorum(ids)
+        self.configs.as_joint().is_quorum(ids)
     }
 }
