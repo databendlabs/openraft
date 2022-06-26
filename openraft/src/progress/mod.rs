@@ -68,10 +68,11 @@ where
     QS: QuorumSet<ID>,
 {
     #[allow(dead_code)]
-    pub(crate) fn new<'i>(ids: impl Iterator<Item = &'i ID>, quorum_set: QS) -> Self {
+    pub(crate) fn new(quorum_set: QS) -> Self {
+        let ids = quorum_set.ids();
         let mut vector = Vec::new();
         for id in ids {
-            vector.push((*id, V::default()));
+            vector.push((id, V::default()));
         }
 
         Self {
@@ -210,8 +211,8 @@ mod t {
 
     #[test]
     fn vec_progress_move_up() -> anyhow::Result<()> {
-        let quorum_set: Vec<u64> = vec![0, 1, 2];
-        let mut progress = VecProgress::<u64, u64, _>::new([0, 1, 2, 3, 4].iter(), quorum_set);
+        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set);
 
         // initial: 0-0, 1-0, 2-0, 3-0, 4-0
         let cases = vec![
@@ -243,7 +244,7 @@ mod t {
     #[test]
     fn vec_progress_update() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, _>::new([0, 1, 2, 3, 4].iter(), quorum_set);
+        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set);
 
         // initial: 0,0,0,0,0
         let cases = vec![
