@@ -21,6 +21,7 @@ mod defensive;
 mod entry;
 mod membership;
 mod node;
+mod progress;
 mod quorum;
 mod raft_types;
 mod replication;
