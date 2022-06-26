@@ -1,4 +1,7 @@
+use std::collections::BTreeSet;
 use std::marker::PhantomData;
+
+use maplit::btreeset;
 
 use crate::quorum::QuorumSet;
 
@@ -39,7 +42,7 @@ where
 /// Implement QuorumSet for Joint<..&[QS]>
 impl<'d, ID, QS> QuorumSet<ID> for Joint<ID, QS, &'d [QS]>
 where
-    ID: 'static,
+    ID: PartialOrd + Ord + 'static,
     QS: QuorumSet<ID>,
 {
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
@@ -50,12 +53,20 @@ where
         }
         true
     }
+
+    fn ids(&self) -> BTreeSet<ID> {
+        let mut ids = btreeset! {};
+        for child in self.data.iter() {
+            ids.append(&mut child.ids())
+        }
+        ids
+    }
 }
 
 /// Implement QuorumSet for Joint<..Vec<QS>>
 impl<ID, QS> QuorumSet<ID> for Joint<ID, QS, Vec<QS>>
 where
-    ID: 'static,
+    ID: PartialOrd + Ord + 'static,
     QS: QuorumSet<ID>,
 {
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
@@ -65,5 +76,13 @@ where
             }
         }
         true
+    }
+
+    fn ids(&self) -> BTreeSet<ID> {
+        let mut ids = btreeset! {};
+        for child in self.data.iter() {
+            ids.append(&mut child.ids())
+        }
+        ids
     }
 }

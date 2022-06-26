@@ -4,7 +4,7 @@ use crate::quorum::quorum_set::QuorumSet;
 
 /// Impl a simple majority quorum set
 impl<ID> QuorumSet<ID> for BTreeSet<ID>
-where ID: PartialOrd + Ord + 'static
+where ID: PartialOrd + Ord + Copy + 'static
 {
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
         let mut count = 0;
@@ -18,12 +18,16 @@ where ID: PartialOrd + Ord + 'static
             }
         }
         false
+    }
+
+    fn ids(&self) -> BTreeSet<ID> {
+        self.iter().copied().collect::<BTreeSet<_>>()
     }
 }
 
 /// Impl a simple majority quorum set
 impl<ID> QuorumSet<ID> for Vec<ID>
-where ID: PartialEq + 'static
+where ID: PartialOrd + Ord + Copy + 'static
 {
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
         let mut count = 0;
@@ -38,11 +42,15 @@ where ID: PartialEq + 'static
         }
         false
     }
+
+    fn ids(&self) -> BTreeSet<ID> {
+        self.iter().copied().collect::<BTreeSet<_>>()
+    }
 }
 
 /// Impl a simple majority quorum set
 impl<ID> QuorumSet<ID> for &[ID]
-where ID: PartialEq + 'static
+where ID: PartialOrd + Ord + Copy + 'static
 {
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
         let mut count = 0;
@@ -56,5 +64,9 @@ where ID: PartialEq + 'static
             }
         }
         false
+    }
+
+    fn ids(&self) -> BTreeSet<ID> {
+        self.iter().copied().collect::<BTreeSet<_>>()
     }
 }
