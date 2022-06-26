@@ -16,8 +16,7 @@ use crate::quorum::QuorumSet;
 /// It calculates the committed value through a `QuorumSet`, when one of the value is updated.
 pub(crate) trait Progress<ID, V, QS>
 where
-    ID: Copy + 'static,
-    V: PartialOrd + Ord + Copy + Debug + Default + 'static,
+    ID: 'static,
     QS: QuorumSet<ID>,
 {
     /// Update one of the scalar value and re-calculate the committed value.
@@ -36,8 +35,7 @@ where
 #[derive(Debug)]
 pub(crate) struct VecProgress<ID, V, QS>
 where
-    ID: Copy + 'static,
-    V: PartialOrd + Ord + Copy + Debug + Default + 'static,
+    ID: 'static,
     QS: QuorumSet<ID>,
 {
     /// Quorum set to determine if a set of `id` constitutes a quorum, i.e., committed.
@@ -65,8 +63,8 @@ pub(crate) struct Stat {
 
 impl<ID, V, QS> VecProgress<ID, V, QS>
 where
-    ID: PartialOrd + Ord + Copy + Debug + 'static,
-    V: PartialOrd + Ord + Copy + Debug + Default + 'static,
+    ID: PartialEq + Copy + Debug + 'static,
+    V: PartialOrd + Ord + Default + 'static,
     QS: QuorumSet<ID>,
 {
     #[allow(dead_code)]
@@ -119,8 +117,8 @@ where
 
 impl<ID, V, QS> Progress<ID, V, QS> for VecProgress<ID, V, QS>
 where
-    ID: PartialOrd + Ord + Debug + Copy + 'static,
-    V: PartialOrd + Ord + Copy + Debug + Default + 'static,
+    ID: PartialEq + Debug + Copy + 'static,
+    V: PartialOrd + Ord + Copy + Default + 'static,
     QS: QuorumSet<ID> + 'static,
 {
     /// Update one of the scalar value and re-calculate the committed value.

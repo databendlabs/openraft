@@ -7,6 +7,15 @@ test: lint fmt
 	cargo test
 	cargo test --manifest-path example-raft-kv/Cargo.toml
 
+bench_cluster_of_1:
+	cargo test --package openraft --test benchmark --release bench_cluster_of_1 -- --ignored --nocapture
+
+bench_cluster_of_3:
+	cargo test --package openraft --test benchmark --release bench_cluster_of_3 -- --ignored --nocapture
+
+bench_cluster_of_5:
+	cargo test --package openraft --test benchmark --release bench_cluster_of_5 -- --ignored --nocapture
+
 fmt:
 	cargo fmt
 
