@@ -8,6 +8,8 @@ use maplit::btreemap;
 use crate::error::MissingNodeInfo;
 use crate::quorum::majority_of;
 use crate::quorum::AsJoint;
+use crate::quorum::FindCoherent;
+use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
 use crate::MessageSummary;
 use crate::Node;
@@ -287,22 +289,6 @@ impl<NID: NodeId> Membership<NID> {
         min_greatest.unwrap_or(None)
     }
 
-    /// Check if the `other` membership is safe to change to.
-    ///
-    /// Read more about:
-    /// [safe-membership-change](https://datafuselabs.github.io/openraft/dynamic-membership.html#the-safe-to-relation)
-    // TODO(xp): not used.
-    #[allow(dead_code)]
-    pub(crate) fn is_safe_to(&self, other: &Self) -> bool {
-        for d in &other.configs {
-            if self.configs.contains(d) {
-                return true;
-            }
-        }
-
-        false
-    }
-
     /// Returns the next safe membership to change to while the expected final membership is `goal`.
     ///
     /// E.g.(`cicj` is a joint membership of `ci` and `cj`):
@@ -326,11 +312,9 @@ impl<NID: NodeId> Membership<NID> {
 
         let goal_ids = goal.keys().cloned().collect::<BTreeSet<_>>();
 
-        let new_configs = if self.configs.contains(&goal_ids) {
-            vec![goal_ids]
-        } else {
-            vec![self.configs.last().cloned().unwrap(), goal_ids]
-        };
+        let new_configs = Joint::from(self.configs.clone());
+        let new_configs = new_configs.find_coherent(goal_ids);
+        let new_configs = new_configs.children().clone();
 
         let mut new_nodes = Self::extend_nodes(self.nodes.clone(), &goal);
 

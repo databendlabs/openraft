@@ -19,6 +19,8 @@ where
 /// A wrapper that uses other data to define a joint quorum set.
 ///
 /// The input ids has to be a quorum in every sub-config to constitute a joint-quorum.
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub(crate) struct Joint<ID, QS, D>
 where
     ID: 'static,
@@ -35,6 +37,10 @@ where
 {
     pub(crate) fn new(data: D) -> Self {
         Self { data, _p: PhantomData }
+    }
+
+    pub(crate) fn children(&self) -> &D {
+        &self.data
     }
 }
 
