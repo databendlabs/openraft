@@ -69,11 +69,7 @@ where
 {
     #[allow(dead_code)]
     pub(crate) fn new(quorum_set: QS) -> Self {
-        let ids = quorum_set.ids();
-        let mut vector = Vec::new();
-        for id in ids {
-            vector.push((id, V::default()));
-        }
+        let vector = quorum_set.ids().iter().map(|id| (*id, V::default())).collect();
 
         Self {
             quorum_set,
