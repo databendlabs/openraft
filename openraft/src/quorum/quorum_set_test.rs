@@ -101,3 +101,30 @@ fn test_joint_quorum_set_impl() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn test_ids() -> anyhow::Result<()> {
+    {
+        let m12345: &[u64] = &[1, 2, 3, 4, 5];
+        assert_eq!(btreeset! {1,2,3,4,5}, m12345.ids());
+    }
+
+    {
+        let m12345 = vec![1, 2, 3, 4, 5];
+        assert_eq!(btreeset! {1,2,3,4,5}, m12345.ids());
+    }
+
+    {
+        let m12345 = btreeset! {1,2,3,4,5};
+        assert_eq!(btreeset! {1,2,3,4,5}, m12345.ids());
+    }
+
+    {
+        let m12345_678 = vec![btreeset! {1,2,3,4,5}, btreeset! {4,5,6,7,8}];
+        let qs = m12345_678.as_joint();
+
+        assert_eq!(btreeset! {1,2,3,4,5,6,7,8}, qs.ids());
+    }
+
+    Ok(())
+}
