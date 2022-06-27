@@ -69,7 +69,7 @@ where
 {
     #[allow(dead_code)]
     pub(crate) fn new(quorum_set: QS) -> Self {
-        let vector = quorum_set.ids().iter().map(|id| (*id, V::default())).collect();
+        let vector = quorum_set.ids().map(|id| (id, V::default())).collect();
 
         Self {
             quorum_set,
