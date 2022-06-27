@@ -6,6 +6,8 @@ use crate::quorum::quorum_set::QuorumSet;
 impl<ID> QuorumSet<ID> for BTreeSet<ID>
 where ID: PartialOrd + Ord + Copy + 'static
 {
+    type Iter = std::collections::btree_set::IntoIter<ID>;
+
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
         let mut count = 0;
         let limit = self.len();
@@ -20,8 +22,8 @@ where ID: PartialOrd + Ord + Copy + 'static
         false
     }
 
-    fn ids(&self) -> BTreeSet<ID> {
-        self.iter().copied().collect::<BTreeSet<_>>()
+    fn ids(&self) -> Self::Iter {
+        self.clone().into_iter()
     }
 }
 
@@ -29,6 +31,8 @@ where ID: PartialOrd + Ord + Copy + 'static
 impl<ID> QuorumSet<ID> for Vec<ID>
 where ID: PartialOrd + Ord + Copy + 'static
 {
+    type Iter = std::collections::btree_set::IntoIter<ID>;
+
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
         let mut count = 0;
         let limit = self.len();
@@ -43,8 +47,8 @@ where ID: PartialOrd + Ord + Copy + 'static
         false
     }
 
-    fn ids(&self) -> BTreeSet<ID> {
-        self.iter().copied().collect::<BTreeSet<_>>()
+    fn ids(&self) -> Self::Iter {
+        BTreeSet::from_iter(self.iter().cloned()).into_iter()
     }
 }
 
@@ -52,6 +56,8 @@ where ID: PartialOrd + Ord + Copy + 'static
 impl<ID> QuorumSet<ID> for &[ID]
 where ID: PartialOrd + Ord + Copy + 'static
 {
+    type Iter = std::collections::btree_set::IntoIter<ID>;
+
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
         let mut count = 0;
         let limit = self.len();
@@ -66,7 +72,7 @@ where ID: PartialOrd + Ord + Copy + 'static
         false
     }
 
-    fn ids(&self) -> BTreeSet<ID> {
-        self.iter().copied().collect::<BTreeSet<_>>()
+    fn ids(&self) -> Self::Iter {
+        BTreeSet::from_iter(self.iter().copied()).into_iter()
     }
 }

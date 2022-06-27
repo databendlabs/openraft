@@ -359,11 +359,13 @@ impl<NID: NodeId> Membership<NID> {
 
 /// Implement joint quorum set for `Membership`.
 impl<NID: NodeId> QuorumSet<NID> for Membership<NID> {
+    type Iter = std::collections::btree_set::IntoIter<NID>;
+
     fn is_quorum<'a, I: Iterator<Item = &'a NID> + Clone>(&self, ids: I) -> bool {
         self.configs.as_joint().is_quorum(ids)
     }
 
-    fn ids(&self) -> BTreeSet<NID> {
+    fn ids(&self) -> Self::Iter {
         self.configs.as_joint().ids()
     }
 }

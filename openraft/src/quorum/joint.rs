@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::marker::PhantomData;
 
 use maplit::btreeset;
@@ -45,6 +44,8 @@ where
     ID: PartialOrd + Ord + 'static,
     QS: QuorumSet<ID>,
 {
+    type Iter = std::collections::btree_set::IntoIter<ID>;
+
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
         for child in self.data.iter() {
             if !child.is_quorum(ids.clone()) {
@@ -54,12 +55,12 @@ where
         true
     }
 
-    fn ids(&self) -> BTreeSet<ID> {
+    fn ids(&self) -> Self::Iter {
         let mut ids = btreeset! {};
         for child in self.data.iter() {
-            ids.append(&mut child.ids())
+            ids.extend(child.ids())
         }
-        ids
+        ids.into_iter()
     }
 }
 
@@ -69,6 +70,8 @@ where
     ID: PartialOrd + Ord + 'static,
     QS: QuorumSet<ID>,
 {
+    type Iter = std::collections::btree_set::IntoIter<ID>;
+
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
         for child in self.data.iter() {
             if !child.is_quorum(ids.clone()) {
@@ -78,11 +81,11 @@ where
         true
     }
 
-    fn ids(&self) -> BTreeSet<ID> {
+    fn ids(&self) -> Self::Iter {
         let mut ids = btreeset! {};
         for child in self.data.iter() {
-            ids.append(&mut child.ids())
+            ids.extend(child.ids())
         }
-        ids
+        ids.into_iter()
     }
 }
