@@ -1,6 +1,8 @@
 #![doc = include_str!("../../README.md")]
 #![cfg_attr(feature = "bt", feature(backtrace))]
 #![cfg_attr(feature = "bench", feature(test))]
+// #![feature(generic_associated_types)]
+// #![feature(type_alias_impl_trait)]
 
 //! # Feature flags
 //!
@@ -14,6 +16,24 @@
 //!
 //! - `serde`: Add serde::Serialize and serde:Deserialize bound to data types. If you'd like to use `serde` to serialize
 //!   messages.
+
+// trait Q {
+//     type Iter<'a>: Iterator<Item = &'a u64>
+//     where Self: 'a;
+//     fn ids(&self) -> Self::Iter<'_>;
+// }
+//
+// struct Foo {
+//     vec: Vec<u64>,
+// }
+//
+// impl Q for Foo {
+//     type Iter<'a> = impl Iterator<Item = &'a u64>;
+//
+//     fn ids(&self) -> Self::Iter<'_> {
+//         self.vec.iter()
+//     }
+// }
 
 mod config;
 mod core;

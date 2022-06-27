@@ -11,3 +11,16 @@ pub(crate) trait QuorumSet<ID: 'static> {
     /// Returns all ids in this QuorumSet
     fn ids(&self) -> BTreeSet<ID>;
 }
+
+pub(crate) trait Coherent<ID, A, B>
+where
+    A: QuorumSet<ID>,
+    B: QuorumSet<ID>,
+{
+    /// Returns if this QuorumSet is coherent with another.
+    ///
+    /// **Coherent** quorum set A and B is defined as: `∀ qᵢ ∈ A, qⱼ ∈ B: qᵢ ∩ qⱼ != ø`
+    /// Openraft is only allowed to switch between two **coherent** quorum sets when changing membership.
+    /// This is one of the two restrictions. The other restriction is to disable other smaller candidate to elect.
+    fn is_coherent(a: &A, b: &B) -> bool;
+}

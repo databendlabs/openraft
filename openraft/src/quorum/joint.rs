@@ -40,49 +40,32 @@ where
 }
 
 /// Implement QuorumSet for Joint<..&[QS]>
-impl<'d, ID, QS> QuorumSet<ID> for Joint<ID, QS, &'d [QS]>
+impl<'d, ID, QS, D> QuorumSet<ID> for Joint<ID, QS, D>
 where
     ID: PartialOrd + Ord + 'static,
     QS: QuorumSet<ID>,
+    D: AsRef<[QS]>,
 {
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
-        for child in self.data.iter() {
-            if !child.is_quorum(ids.clone()) {
-                return false;
-            }
-        }
-        true
+        todo!()
     }
 
     fn ids(&self) -> BTreeSet<ID> {
-        let mut ids = btreeset! {};
-        for child in self.data.iter() {
-            ids.append(&mut child.ids())
-        }
-        ids
+        todo!()
     }
 }
 
-/// Implement QuorumSet for Joint<..Vec<QS>>
-impl<ID, QS> QuorumSet<ID> for Joint<ID, QS, Vec<QS>>
+/// Implement QuorumSet for Joint<..&[QS]>
+impl<'d, ID, QS> QuorumSet<ID> for Joint<ID, QS, BTreeSet<ID>>
 where
     ID: PartialOrd + Ord + 'static,
     QS: QuorumSet<ID>,
 {
     fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
-        for child in self.data.iter() {
-            if !child.is_quorum(ids.clone()) {
-                return false;
-            }
-        }
-        true
+        todo!()
     }
 
     fn ids(&self) -> BTreeSet<ID> {
-        let mut ids = btreeset! {};
-        for child in self.data.iter() {
-            ids.append(&mut child.ids())
-        }
-        ids
+        todo!()
     }
 }
