@@ -197,8 +197,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         let has_log = self.engine.state.last_log_id().is_some();
-        let single = self.engine.state.membership_state.effective.is_single();
-        let is_voter = self.engine.state.membership_state.effective.membership.is_member(&self.id);
+        let single = self.engine.state.membership_state.effective.voter_ids().count() <= 1;
+        let is_voter = self.engine.state.membership_state.effective.membership.is_voter(&self.id);
 
         const HAS_LOG: bool = true;
         const NO_LOG: bool = false;
@@ -354,7 +354,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(id = display(self.id), ?target_state, "set_target_state");
 
         if target_state == ServerState::Follower
-            && !self.engine.state.membership_state.effective.membership.is_member(&self.id)
+            && !self.engine.state.membership_state.effective.membership.is_voter(&self.id)
         {
             self.engine.state.server_state = ServerState::Learner;
         } else {
@@ -684,11 +684,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip(self))]
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) {
-        let members = self.engine.state.membership_state.effective.all_members();
+        let members = self.engine.state.membership_state.effective.voter_ids();
 
-        for member in members.iter() {
-            let target = *member;
-
+        for target in members {
             if target == self.id {
                 continue;
             }

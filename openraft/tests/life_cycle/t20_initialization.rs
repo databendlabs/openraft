@@ -111,7 +111,7 @@ async fn initialization() -> anyhow::Result<()> {
                 panic!("expect Membership payload")
             }
         };
-        assert_eq!(btreeset![0, 1, 2], mem.get_configs()[0].clone());
+        assert_eq!(btreeset![0, 1, 2], mem.get_joint_config()[0].clone());
 
         let sm_mem = sto.last_applied_state().await?.1;
         assert_eq!(

@@ -214,15 +214,15 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
     /// Collect indexes of the greatest matching log on every replica(include the leader itself)
     fn get_match_log_ids(&self) -> BTreeMap<C::NodeId, LogId<C::NodeId>> {
-        let node_ids = self.core.engine.state.membership_state.effective.all_members();
+        let member_node_ids = self.core.engine.state.membership_state.effective.voter_ids();
 
         let mut res = BTreeMap::new();
 
-        for id in node_ids.iter() {
-            let matched = if *id == self.core.id {
+        for id in member_node_ids {
+            let matched = if id == self.core.id {
                 self.core.engine.state.last_log_id()
             } else {
-                let repl_state = self.nodes.get(id);
+                let repl_state = self.nodes.get(&id);
                 repl_state.map(|x| x.matched).unwrap_or_default()
             };
 
@@ -231,7 +231,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             // Thus it is not considered as committed.
             if let Some(log_id) = matched {
                 if log_id.leader_id == self.core.engine.state.vote.leader_id() {
-                    res.insert(*id, log_id);
+                    res.insert(id, log_id);
                 }
             }
         }

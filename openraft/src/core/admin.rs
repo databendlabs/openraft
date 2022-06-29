@@ -80,8 +80,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         }
 
         let curr = &self.core.engine.state.membership_state.effective;
-        let exists = curr.get_nodes().contains_key(&target);
-        if exists {
+        if curr.contains(&target) {
             tracing::debug!("target {:?} already member or learner, can't add", target);
 
             if let Some(t) = self.nodes.get(&target) {
@@ -140,7 +139,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     ) -> Result<(), Fatal<C::NodeId>> {
         let members = change_members
-            .apply_to(self.core.engine.state.membership_state.effective.membership.get_configs().last().unwrap());
+            .apply_to(self.core.engine.state.membership_state.effective.membership.get_joint_config().last().unwrap());
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
@@ -159,9 +158,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             return Ok(());
         }
 
-        let curr = self.core.engine.state.membership_state.effective.membership.clone();
-        let all_members = self.core.engine.state.membership_state.effective.all_members();
-        let new_members = members.difference(all_members);
+        let mem = &self.core.engine.state.membership_state.effective;
+        let curr = mem.membership.clone();
+
+        let old_members = mem.voter_ids().collect::<BTreeSet<_>>();
+        let only_in_new = members.difference(&old_members);
 
         let new_config = {
             let res = curr.next_safe(members.clone(), turn_to_learner);
@@ -177,7 +178,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         tracing::debug!(?new_config, "new_config");
 
-        if let Err(e) = self.are_nodes_at_line_rate(&new_members.cloned().collect::<BTreeSet<_>>(), blocking) {
+        if let Err(e) = self.are_nodes_at_line_rate(&only_in_new.cloned().collect::<BTreeSet<_>>(), blocking) {
             let _ = tx.send(Err(e));
             return Ok(());
         }
@@ -295,7 +296,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let index = log_id.index;
 
         // Step down if needed.
-        if !self.core.engine.state.membership_state.effective.membership.is_member(&self.core.id) {
+        if !self.core.engine.state.membership_state.effective.membership.is_voter(&self.core.id) {
             tracing::debug!("raft node is stepping down");
 
             // TODO(xp): transfer leadership

@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use crate::quorum::QuorumSet;
-use crate::Membership;
+use crate::EffectiveMembership;
 use crate::NodeId;
 
 /// Leader data.
@@ -37,7 +37,7 @@ impl<NID: NodeId> Leader<NID> {
     }
 
     /// Return if a quorum of `membership` has granted it.
-    pub(crate) fn is_granted_by(&self, membership: &Membership<NID>) -> bool {
-        membership.is_quorum(self.vote_granted_by.iter())
+    pub(crate) fn is_granted_by(&self, em: &EffectiveMembership<NID>) -> bool {
+        em.is_quorum(self.vote_granted_by.iter())
     }
 }

@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use maplit::btreemap;
 
 use crate::error::MissingNodeInfo;
+use crate::membership::NodeRole;
 use crate::quorum::majority_of;
 use crate::quorum::AsJoint;
 use crate::quorum::FindCoherent;
@@ -98,7 +99,7 @@ impl<NID: NodeId> MessageSummary<Membership<NID>> for Membership<NID> {
         res.push("]".to_string());
 
         let all_node_ids = self.nodes.keys().cloned().collect::<BTreeSet<_>>();
-        let members = self.build_member_ids();
+        let members = self.voter_ids().collect::<BTreeSet<_>>();
 
         res.push(",learners:[".to_string());
         for (learner_cnt, learner_id) in all_node_ids.difference(&members).enumerate() {
@@ -122,7 +123,7 @@ impl<NID: NodeId> Membership<NID> {
     ///
     /// A node id that is in `node_ids` but is not in `configs` is a **learner**.
     pub fn new(configs: Vec<BTreeSet<NID>>, node_ids: Option<BTreeSet<NID>>) -> Self {
-        let all_members = Self::build_all_member_ids(&configs);
+        let voter_ids = configs.as_joint().ids().collect::<BTreeSet<_>>();
 
         let nodes = match node_ids {
             None => {
@@ -131,7 +132,7 @@ impl<NID: NodeId> Membership<NID> {
             Some(x) => x.into_option_nodes(),
         };
 
-        let nodes = Self::extend_nodes(nodes, &all_members.into_option_nodes());
+        let nodes = Self::extend_nodes(nodes, &voter_ids.into_option_nodes());
 
         Membership { configs, nodes }
     }
@@ -146,14 +147,12 @@ impl<NID: NodeId> Membership<NID> {
     ///   or an error will be returned.
     pub(crate) fn with_nodes<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Result<Self, MissingNodeInfo<NID>>
     where T: IntoOptionNodes<NID> {
-        let all_members = Self::build_all_member_ids(&configs);
-
         let nodes = nodes.into_option_nodes();
 
-        for node_id in all_members.iter() {
-            if !nodes.contains_key(node_id) {
+        for voter_id in configs.as_joint().ids() {
+            if !nodes.contains_key(&voter_id) {
                 return Err(MissingNodeInfo {
-                    node_id: *node_id,
+                    node_id: voter_id,
                     reason: format!("is not in cluster: {:?}", nodes.keys().cloned().collect::<Vec<_>>()),
                 });
             }
@@ -171,15 +170,6 @@ impl<NID: NodeId> Membership<NID> {
         }
 
         Ok(Membership { configs, nodes })
-    }
-
-    pub(crate) fn get_nodes(&self) -> &BTreeMap<NID, Option<Node>> {
-        &self.nodes
-    }
-
-    pub(crate) fn get_node(&self, node_id: &NID) -> Option<&Node> {
-        let x = self.nodes.get(node_id)?;
-        x.as_ref()
     }
 
     /// Extends nodes btreemap with another.
@@ -202,10 +192,6 @@ impl<NID: NodeId> Membership<NID> {
         res
     }
 
-    pub fn get_configs(&self) -> &Vec<BTreeSet<NID>> {
-        &self.configs
-    }
-
     /// Check to see if the config is currently in joint consensus.
     pub fn is_in_joint_consensus(&self) -> bool {
         self.configs.len() > 1
@@ -220,26 +206,24 @@ impl<NID: NodeId> Membership<NID> {
 
         Ok(m)
     }
+}
 
+/// Membership API
+impl<NID: NodeId> Membership<NID> {
+    /// Return if a node is a voter or learner, or not in this membership config at all.
     #[allow(dead_code)]
-    pub(crate) fn learner_ids(&self) -> impl Iterator<Item = &NID> {
-        self.nodes.keys().filter(|x| !self.is_member(x))
+    pub(crate) fn get_node_role(&self, nid: &NID) -> Option<NodeRole> {
+        if self.is_voter(nid) {
+            Some(NodeRole::Voter)
+        } else if self.contains(nid) {
+            Some(NodeRole::Learner)
+        } else {
+            None
+        }
     }
 
-    pub(crate) fn node_ids(&self) -> impl Iterator<Item = &NID> {
-        self.nodes.keys()
-    }
-
-    pub(crate) fn build_member_ids(&self) -> BTreeSet<NID> {
-        Self::build_all_member_ids(&self.configs)
-    }
-
-    pub(crate) fn contains(&self, node_id: &NID) -> bool {
-        self.nodes.contains_key(node_id)
-    }
-
-    /// Check if the given `NodeId` exists in this membership config.
-    pub(crate) fn is_member(&self, node_id: &NID) -> bool {
+    /// Check if the given `NodeId` exists and is a voter.
+    pub(crate) fn is_voter(&self, node_id: &NID) -> bool {
         for c in self.configs.iter() {
             if c.contains(node_id) {
                 return true;
@@ -248,11 +232,44 @@ impl<NID: NodeId> Membership<NID> {
         false
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn is_learner(&self, node_id: &NID) -> bool {
-        self.contains(node_id) && !self.is_member(node_id)
+    /// Returns an Iterator of all voter node ids. Learners are not included.
+    pub(crate) fn voter_ids(&self) -> impl Iterator<Item = NID> {
+        self.configs.as_joint().ids()
     }
 
+    /// Returns an Iterator of all learner node ids. Voters are not included.
+    #[allow(dead_code)]
+    pub(crate) fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
+        self.nodes.keys().filter(|x| !self.is_voter(x)).copied()
+    }
+
+    /// Returns if a voter or learner exists in this membership.
+    pub(crate) fn contains(&self, node_id: &NID) -> bool {
+        self.nodes.contains_key(node_id)
+    }
+
+    /// Get a the node(either voter or learner) by node id.
+    pub(crate) fn get_node(&self, node_id: &NID) -> Option<&Node> {
+        let x = self.nodes.get(node_id)?;
+        x.as_ref()
+    }
+
+    /// Returns an Iterator of all nodes(voters and learners).
+    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &Option<Node>)> {
+        self.nodes.iter()
+    }
+
+    /// Returns reference to the joint config.
+    ///
+    /// Membership is defined by a joint of multiple configs.
+    /// Each config is a vec of node-id.
+    pub fn get_joint_config(&self) -> &Vec<BTreeSet<NID>> {
+        &self.configs
+    }
+}
+
+/// Quorum related API
+impl<NID: NodeId> Membership<NID> {
     /// Returns the greatest value that presents in `values` that constitutes a joint majority.
     ///
     /// E.g., for a given membership: [{1,2,3}, {4,5,6}], and a value set: {1:10, 2:20, 5:20, 6:20},
@@ -312,44 +329,20 @@ impl<NID: NodeId> Membership<NID> {
 
         let goal_ids = goal.keys().cloned().collect::<BTreeSet<_>>();
 
-        let new_configs = Joint::from(self.configs.clone());
-        let new_configs = new_configs.find_coherent(goal_ids);
-        let new_configs = new_configs.children().clone();
+        let config = Joint::from(self.configs.clone()).find_coherent(goal_ids).children().clone();
 
-        let mut new_nodes = Self::extend_nodes(self.nodes.clone(), &goal);
+        let mut nodes = Self::extend_nodes(self.nodes.clone(), &goal);
 
         if !turn_to_learner {
-            let old_members = Self::build_all_member_ids(&self.configs);
-            let new_members = Self::build_all_member_ids(&new_configs);
-            let not_in_new = old_members.difference(&new_members);
+            let old_voter_ids = self.configs.as_joint().ids().collect::<BTreeSet<_>>();
+            let new_voter_ids = config.as_joint().ids().collect::<BTreeSet<_>>();
 
-            for node_id in not_in_new {
-                new_nodes.remove(node_id);
+            for node_id in old_voter_ids.difference(&new_voter_ids) {
+                nodes.remove(node_id);
             }
         };
 
-        let m = Membership::with_nodes(new_configs, new_nodes)?;
+        let m = Membership::with_nodes(config, nodes)?;
         Ok(m)
-    }
-
-    fn build_all_member_ids(configs: &[BTreeSet<NID>]) -> BTreeSet<NID> {
-        let mut members = BTreeSet::new();
-        for config in configs.iter() {
-            members.extend(config)
-        }
-        members
-    }
-}
-
-/// Implement joint quorum set for `Membership`.
-impl<NID: NodeId> QuorumSet<NID> for Membership<NID> {
-    type Iter = std::collections::btree_set::IntoIter<NID>;
-
-    fn is_quorum<'a, I: Iterator<Item = &'a NID> + Clone>(&self, ids: I) -> bool {
-        self.configs.as_joint().is_quorum(ids)
-    }
-
-    fn ids(&self) -> Self::Iter {
-        self.configs.as_joint().ids()
     }
 }

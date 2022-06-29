@@ -470,10 +470,7 @@ where
         for i in node_ids.iter() {
             let wait = self.wait(i, timeout);
             wait.metrics(
-                |x| {
-                    x.membership_config.get_configs().len() == 1
-                        && x.membership_config.get_configs()[0].clone() == members
-                },
+                |x| x.membership_config.voter_ids().collect::<BTreeSet<C::NodeId>>() == members,
                 msg,
             )
             .await?;
@@ -694,8 +691,8 @@ where
                 node.id, node.last_log_index
             );
 
-            let configs = node.membership_config.get_configs();
-            assert_eq!(0, configs.len(), "expected empty configs, got: {:?}", configs);
+            let nodes_count = node.membership_config.nodes().count();
+            assert_eq!(0, nodes_count, "expected empty configs, got: {:?}", nodes_count);
 
             assert!(
                 !node.membership_config.membership.is_in_joint_consensus(),
@@ -777,9 +774,7 @@ where
                 "node {} has last_log_index {:?}, expected {:?}",
                 node.id, node.last_log_index, expected_last_log
             );
-            let members = node.membership_config.get_configs()[0].clone();
-            let mut members = members.into_iter().collect::<Vec<_>>();
-            members.sort_unstable();
+            let members = node.membership_config.voter_ids().collect::<Vec<_>>();
             assert_eq!(
                 members, all_nodes,
                 "node {} has membership {:?}, expected {:?}",
