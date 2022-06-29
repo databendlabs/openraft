@@ -111,7 +111,7 @@ impl<NID: NodeId> Engine<NID> {
         // Safe unwrap()
         let leader = self.state.leader.as_mut().unwrap();
         leader.grant_vote_by(self.id);
-        let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective.membership);
+        let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective);
 
         // Fast-path: if there is only one node in the cluster.
 
@@ -209,7 +209,7 @@ impl<NID: NodeId> Engine<NID> {
         if resp.vote_granted {
             leader.grant_vote_by(target);
 
-            let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective.membership);
+            let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective);
             if quorum_granted {
                 tracing::debug!("quorum granted vote");
 
@@ -606,12 +606,12 @@ impl<NID: NodeId> Engine<NID> {
         entry: &Ent,
     ) {
         if let Some(m) = prev_membership {
-            if !m.membership.is_quorum(self.single_node_cluster.iter()) {
+            if !m.is_quorum(self.single_node_cluster.iter()) {
                 return;
             }
         }
 
-        if !self.state.membership_state.effective.membership.is_quorum(self.single_node_cluster.iter()) {
+        if !self.state.membership_state.effective.is_quorum(self.single_node_cluster.iter()) {
             return;
         }
 

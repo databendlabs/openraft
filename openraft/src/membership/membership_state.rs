@@ -27,7 +27,6 @@ use crate::NodeId;
 // Thus a raft node will only need to store at most two recent membership logs.
 #[derive(Debug, Clone, Default)]
 #[derive(PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct MembershipState<NID: NodeId> {
     pub committed: Arc<EffectiveMembership<NID>>,
 

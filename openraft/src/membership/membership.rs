@@ -7,10 +7,8 @@ use maplit::btreemap;
 
 use crate::error::MissingNodeInfo;
 use crate::quorum::majority_of;
-use crate::quorum::AsJoint;
 use crate::quorum::FindCoherent;
 use crate::quorum::Joint;
-use crate::quorum::QuorumSet;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
@@ -248,11 +246,6 @@ impl<NID: NodeId> Membership<NID> {
         false
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn is_learner(&self, node_id: &NID) -> bool {
-        self.contains(node_id) && !self.is_member(node_id)
-    }
-
     /// Returns the greatest value that presents in `values` that constitutes a joint majority.
     ///
     /// E.g., for a given membership: [{1,2,3}, {4,5,6}], and a value set: {1:10, 2:20, 5:20, 6:20},
@@ -338,18 +331,5 @@ impl<NID: NodeId> Membership<NID> {
             members.extend(config)
         }
         members
-    }
-}
-
-/// Implement joint quorum set for `Membership`.
-impl<NID: NodeId> QuorumSet<NID> for Membership<NID> {
-    type Iter = std::collections::btree_set::IntoIter<NID>;
-
-    fn is_quorum<'a, I: Iterator<Item = &'a NID> + Clone>(&self, ids: I) -> bool {
-        self.configs.as_joint().is_quorum(ids)
-    }
-
-    fn ids(&self) -> Self::Iter {
-        self.configs.as_joint().ids()
     }
 }

@@ -3,6 +3,8 @@ use std::collections::BTreeSet;
 use std::fmt::Debug;
 
 use crate::entry::RaftEntry;
+use crate::quorum::Joint;
+use crate::quorum::QuorumSet;
 use crate::raft_types::RaftLogId;
 use crate::LogId;
 use crate::Membership;
@@ -25,6 +27,19 @@ pub struct EffectiveMembership<NID: NodeId> {
 
     pub membership: Membership<NID>,
 
+    /// The quorum set built from `membership`.
+    #[serde(skip)]
+    node_id_quorum_set: Joint<NID, Vec<NID>, Vec<Vec<NID>>>,
+
+    // --- TODO: use node index as QuorumSet element and progress element
+    // /// The quorum set built from `membership`.
+    // #[serde(skip)]
+    // node_index_quorum_set: Joint<usize, Vec<usize>, Vec<Vec<usize>>>,
+    //
+    // /// Sorted node ids for mapping node-id to node-index
+    // #[serde(skip)]
+    // member_node_ids: Vec<usize>,
+    // ---
     /// Cache of union of all members
     all_members: BTreeSet<NID>,
 }
@@ -61,9 +76,34 @@ impl<NID: NodeId, Ent: RaftEntry<NID>> From<&Ent> for EffectiveMembership<NID> {
 impl<NID: NodeId> EffectiveMembership<NID> {
     pub fn new(log_id: Option<LogId<NID>>, membership: Membership<NID>) -> Self {
         let all_members = membership.build_member_ids();
+
+        let configs = membership.get_configs();
+        let mut vec_configs = vec![];
+        for c in configs {
+            vec_configs.push(c.iter().copied().collect::<Vec<_>>());
+        }
+
+        let node_id_quorum_set = Joint::from(vec_configs);
+
+        // let mut member_node_ids = node_id_quorum_set.ids().collect::<Vec<_>>();
+        // member_node_ids.sort();
+        //
+        // fn node_id_to_index(nid: &NID) -> usize {
+        //     member_node_ids.iter().position(|&e| e == nid)
+        // }
+        //
+        // let mut node_index_configs = vec![];
+        // for c in configs {
+        //     node_index_configs.push(c.iter().map(node_id_to_index).collect::<Vec<_>>());
+        // }
+        // let node_index_quorum_set = Joint::from(node_index_configs);
+
         Self {
             log_id,
             membership,
+            node_id_quorum_set,
+            // node_index_quorum_set,
+            // member_node_ids,
             all_members,
         }
     }
@@ -105,5 +145,18 @@ impl<NID: NodeId> EffectiveMembership<NID> {
 impl<NID: NodeId> MessageSummary<EffectiveMembership<NID>> for EffectiveMembership<NID> {
     fn summary(&self) -> String {
         format!("{{log_id:{:?} membership:{}}}", self.log_id, self.membership.summary())
+    }
+}
+
+/// Implement node-id joint quorum set.
+impl<NID: NodeId> QuorumSet<NID> for EffectiveMembership<NID> {
+    type Iter = std::collections::btree_set::IntoIter<NID>;
+
+    fn is_quorum<'a, I: Iterator<Item = &'a NID> + Clone>(&self, ids: I) -> bool {
+        self.node_id_quorum_set.is_quorum(ids)
+    }
+
+    fn ids(&self) -> Self::Iter {
+        self.node_id_quorum_set.ids()
     }
 }

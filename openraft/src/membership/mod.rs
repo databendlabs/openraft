@@ -6,6 +6,7 @@ mod membership_state;
 #[cfg(test)]
 mod bench;
 
+#[cfg(test)] mod effective_membership_test;
 #[cfg(test)] mod membership_state_test;
 #[cfg(test)] mod membership_test;
 
