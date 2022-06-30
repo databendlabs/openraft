@@ -379,7 +379,7 @@ pub struct InProgress<NID: NodeId> {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("to add a member {node_id} first need to add it as learner")]
+#[error("Learner {node_id} not found: add it as learner before adding it as a voter")]
 pub struct LearnerNotFound<NID: NodeId> {
     pub node_id: NID,
 }

@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 use tracing::Span;
 
 use crate::config::Config;
+use crate::core::Expectation;
 use crate::core::RaftCore;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
@@ -349,20 +350,23 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
     async fn do_change_membership(
         &self,
-        change_members: ChangeMembers<C::NodeId>,
-        blocking: bool,
+        changes: ChangeMembers<C::NodeId>,
+        when: Option<Expectation>,
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
-        tracing::info!("do_change_membership: start to commit joint config");
+        tracing::info!(
+            change = debug(&changes),
+            "do_change_membership: start to commit joint config"
+        );
 
         let (tx, rx) = oneshot::channel();
         // res is error if membership can not be changed.
-        // If it is not error, it will go into a joint state
+        // If no error, it will enter a joint state
         let res = self
             .call_core(
                 RaftMsg::ChangeMembership {
-                    members: change_members.clone(),
-                    blocking,
+                    changes: changes.clone(),
+                    when: when.clone(),
                     turn_to_learner,
                     tx,
                 },
@@ -374,20 +378,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
         let (log_id, joint) = (res.log_id, res.membership.clone().unwrap());
 
-        // There is a previously in progress joint state and it becomes the membership config we want.
         if !joint.is_in_joint_consensus() {
             return Ok(res);
         }
 
         tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
-        tracing::debug!("the second step is to change to uniform config: {:?}", change_members);
+        tracing::debug!("the second step is to change to uniform config: {:?}", changes);
 
         let (tx, rx) = oneshot::channel();
         let res = self
             .call_core(
                 RaftMsg::ChangeMembership {
-                    members: change_members.clone(),
-                    blocking,
+                    changes,
+                    when,
                     turn_to_learner,
                     tx,
                 },
@@ -395,21 +398,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             )
             .await?;
 
-        tracing::info!("res of second do_change_membership: {}", res.summary());
+        tracing::info!("res of second step of do_change_membership: {}", res.summary());
 
         Ok(res)
     }
 
     /// Propose a cluster configuration change.
     ///
-    /// If a node in the proposed config but is not yet a voter or learner, it first calls `add_learner` to setup
-    /// replication to the new node.
+    /// A node in the proposed config has to be a learner, otherwise it fails with LearnerNotFound error.
     ///
-    /// Internal:
+    /// Internally:
     /// - It proposes a **joint** config.
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
-    /// If `blocking` is true, it blocks until every learner becomes up to date.
+    /// If `allow_lagging` is true, it will always propose the new membership and wait until committed.
     /// Otherwise it returns error `ChangeMembershipError::LearnerIsLagging` if there is a lagging learner.
     ///
     /// If `turn_to_learner` is true, then all the members which not exists in the new membership,
@@ -422,18 +424,23 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///    - Otherwise if `turn_to_learner` is false, then the new membership is {"members":{3,4,5}, "learners":{}}, in
     ///      which the members not exists in the new membership just be removed from the cluster.
     ///
-    /// if change_membership from {1,2,3} to {}
-    /// If it lost leadership or crashed before committing the second **uniform** config log, the cluster is left in the
-    /// **joint** config.
+    /// If it loses leadership or crashed before committing the second **uniform** config log, the cluster is left in
+    /// the **joint** config.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn change_membership(
         &self,
         members: BTreeSet<C::NodeId>,
-        blocking: bool,
+        allow_lagging: bool,
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         tracing::info!("change_membership: start to commit joint config");
-        return self.do_change_membership(ChangeMembers::Replace(members), blocking, turn_to_learner).await;
+
+        let when = if allow_lagging {
+            None
+        } else {
+            Some(Expectation::AtLineRate)
+        };
+        return self.do_change_membership(ChangeMembers::Replace(members), when, turn_to_learner).await;
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -443,17 +450,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         tracing::debug!("remove_members: start to commit joint config");
-        return self.do_change_membership(ChangeMembers::Remove(remove_members), false, turn_to_learner).await;
+
+        return self.do_change_membership(ChangeMembers::Remove(remove_members), None, turn_to_learner).await;
     }
 
+    /// Same as `change_membership()` but only add members.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn add_members(
         &self,
         add_members: BTreeSet<C::NodeId>,
-        blocking: bool,
+        allow_lagging: bool,
     ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         tracing::debug!("add_members: start to commit joint config");
-        return self.do_change_membership(ChangeMembers::Add(add_members), blocking, false).await;
+
+        let when = if allow_lagging {
+            None
+        } else {
+            Some(Expectation::AtLineRate)
+        };
+        return self.do_change_membership(ChangeMembers::Add(add_members), when, false).await;
     }
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
@@ -655,6 +670,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         rpc: InstallSnapshotRequest<C>,
         tx: RaftRespTx<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>>,
     },
+
     ClientWriteRequest {
         rpc: ClientWriteRequest<C>,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
@@ -662,11 +678,11 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     CheckIsLeaderRequest {
         tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId>>,
     },
+
     Initialize {
         members: BTreeMap<C::NodeId, Option<Node>>,
         tx: RaftRespTx<(), InitializeError<C::NodeId>>,
     },
-    // TODO(xp): make tx a field of a struct
     /// Request raft core to setup a new replication to a learner.
     AddLearner {
         id: C::NodeId,
@@ -680,13 +696,11 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
     },
     ChangeMembership {
-        members: ChangeMembers<C::NodeId>,
+        changes: ChangeMembers<C::NodeId>,
 
-        /// If `blocking` is `false`, respond to the client with a `ChangeMembershipError::LearnerIsLagging` error at
-        /// once if a non-member is lagging.
-        ///
-        /// Otherwise, wait for the commit of the member change log.
-        blocking: bool,
+        /// Defines what conditions the replication states has to satisfy before change membership.
+        /// If expectation is not satisfied, a corresponding error will return.
+        when: Option<Expectation>,
 
         /// If `turn_to_learner` is `true`, then all the members which do not exist in the new membership
         /// will be turned into learners, otherwise they will be removed.
@@ -735,14 +749,14 @@ where
                 format!("AddLearner: id: {}, blocking: {}", id, blocking)
             }
             RaftMsg::ChangeMembership {
-                members,
-                blocking,
+                changes: members,
+                when,
                 turn_to_learner,
                 ..
             } => {
                 format!(
-                    "ChangeMembership: members: {:?}, blocking: {}, turn_to_learner: {}",
-                    members, blocking, turn_to_learner,
+                    "ChangeMembership: members: {:?}, when: {:?}, turn_to_learner: {}",
+                    members, when, turn_to_learner,
                 )
             }
             RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
