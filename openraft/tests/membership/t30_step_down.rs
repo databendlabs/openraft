@@ -99,7 +99,7 @@ async fn step_down() -> Result<()> {
         assert_eq!(metrics.current_term, 1);
         assert_eq!(metrics.last_log_index, Some(8));
         assert_eq!(metrics.last_applied, Some(LogId::new(LeaderId::new(1, 0), 8)));
-        assert_eq!(metrics.membership_config.get_configs().clone(), vec![btreeset![
+        assert_eq!(metrics.membership_config.get_joint_config().clone(), vec![vec![
             1, 2, 3
         ]]);
         assert!(!cfg.is_in_joint_consensus());

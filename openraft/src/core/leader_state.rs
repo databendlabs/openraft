@@ -72,16 +72,13 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         debug_assert!(self.core.engine.state.vote.committed);
 
         // Spawn replication streams for followers and learners.
-        let targets = self
-            .core
-            .engine
-            .state
-            .membership_state
-            .effective
-            .node_ids()
-            .filter(|elem| *elem != &self.core.id)
-            .cloned()
-            .collect::<Vec<_>>();
+
+        let targets = {
+            let mem = &self.core.engine.state.membership_state.effective;
+
+            let node_ids = mem.nodes().map(|(&nid, _)| nid);
+            node_ids.filter(|elem| elem != &self.core.id).collect::<Vec<_>>()
+        };
 
         for target in targets {
             let state = self.spawn_replication_stream(target, None).await;

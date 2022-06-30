@@ -48,10 +48,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub(super) async fn handle_check_is_leader_request(&mut self, tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId>>) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
-        let mem = &self.core.engine.state.membership_state.effective.membership;
+        let em = &self.core.engine.state.membership_state.effective;
         let mut granted = btreeset! {self.core.id};
 
-        if mem.is_quorum(granted.iter()) {
+        if em.is_quorum(granted.iter()) {
             let _ = tx.send(Ok(()));
             return;
         }
@@ -61,7 +61,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let membership = &self.core.engine.state.membership_state.effective.membership;
 
         for (target, node) in self.nodes.iter() {
-            if !membership.is_member(target) {
+            if !membership.is_voter(target) {
                 continue;
             }
 
@@ -133,7 +133,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
             granted.insert(target);
 
-            let mem = &self.core.engine.state.membership_state.effective.membership;
+            let mem = &self.core.engine.state.membership_state.effective;
             if mem.is_quorum(granted.iter()) {
                 let _ = tx.send(Ok(()));
                 return;

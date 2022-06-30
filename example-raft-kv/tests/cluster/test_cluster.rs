@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::thread;
 use std::time::Duration;
 
@@ -83,11 +84,12 @@ async fn test_cluster() -> anyhow::Result<()> {
     println!("=== metrics after add-learner");
     let x = client.metrics().await?;
 
-    assert_eq!(&vec![btreeset! {1}], x.membership_config.get_configs());
+    assert_eq!(&vec![vec![1]], x.membership_config.get_joint_config());
 
-    let nodes_in_cluster = x.membership_config.get_nodes();
+    let nodes_in_cluster =
+        x.membership_config.nodes().map(|(nid, node)| (*nid, node.clone())).collect::<BTreeMap<_, _>>();
     assert_eq!(
-        &btreemap! {
+        btreemap! {
             1 => Some(Node::new("127.0.0.1:21001")),
             2 => Some(Node::new("127.0.0.1:21002")),
             3 => Some(Node::new("127.0.0.1:21003")),
@@ -117,7 +119,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     println!("=== metrics after change-member");
     let x = client.metrics().await?;
-    assert_eq!(&vec![btreeset! {1,2,3}], x.membership_config.get_configs());
+    assert_eq!(&vec![vec![1, 2, 3]], x.membership_config.get_joint_config());
 
     // --- Try to write some application data through the leader.
 

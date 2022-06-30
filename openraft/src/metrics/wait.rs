@@ -146,8 +146,7 @@ impl<C: RaftTypeConfig> Wait<C> {
         .await
     }
 
-    /// Wait for `membership_config.members` to become expected node set or timeout.
-    /// TODO(xp): this method wait for a uniform config. There should be method waiting for a generalized config.
+    /// Wait for `membership` to become the expected node id set or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn members(
         &self,
@@ -156,26 +155,10 @@ impl<C: RaftTypeConfig> Wait<C> {
     ) -> Result<RaftMetrics<C>, WaitError> {
         self.metrics(
             |x| {
-                let configs = x.membership_config.get_configs();
-                let first = configs.get(0);
-                first == Some(&want_members)
+                let got = x.membership_config.nodes().map(|(nid, _)| *nid).collect::<BTreeSet<_>>();
+                want_members == got
             },
-            &format!("{} .membership_config.members -> {:?}", msg.to_string(), want_members),
-        )
-        .await
-    }
-
-    // TODO(xp): remove this
-    /// Wait for `membership_config.members_after_consensus` to become expected node set or timeout.
-    #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn next_members(
-        &self,
-        want_members: Option<BTreeSet<C::NodeId>>,
-        msg: impl ToString,
-    ) -> Result<RaftMetrics<C>, WaitError> {
-        self.metrics(
-            |x| x.membership_config.membership.get_configs().get(1) == want_members.as_ref(),
-            &format!("{} .membership_config.next -> {:?}", msg.to_string(), want_members),
+            &format!("{} .members -> {:?}", msg.to_string(), want_members),
         )
         .await
     }

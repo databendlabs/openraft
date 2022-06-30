@@ -100,30 +100,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
         assert_eq!(
             btreeset![1, 2],
-            got.membership_config.membership.get_configs().get(0).unwrap().clone()
-        );
-    }
-
-    {
-        // wait for next_members
-        let (init, w, tx) = init_wait_test::<Config>();
-
-        let h = tokio::spawn(async move {
-            sleep(Duration::from_millis(10)).await;
-            let mut update = init.clone();
-            update.membership_config = Arc::new(EffectiveMembership::new(
-                None,
-                Membership::new(vec![btreeset! {}, btreeset! {1,2}], None),
-            ));
-            let rst = tx.send(update);
-            assert!(rst.is_ok());
-        });
-        let got = w.next_members(Some(btreeset![1, 2]), "next_members").await?;
-        h.await?;
-
-        assert_eq!(
-            Some(btreeset![1, 2]),
-            got.membership_config.membership.get_configs().get(1).cloned()
+            got.membership_config.membership.get_joint_config().get(0).unwrap().clone()
         );
     }
 

@@ -73,7 +73,7 @@ async fn add_learner_basic() -> Result<()> {
         router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "replication to learner").await?;
     }
 
-    tracing::info!("--- re-add node-1, expect error");
+    tracing::info!("--- re-add node-1, nothing changes");
     {
         let res = router.add_learner(0, 1).await?;
         assert_eq!(

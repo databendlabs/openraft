@@ -15,7 +15,6 @@ use tokio::time::interval;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tokio::time::Interval;
-use tracing::Instrument;
 use tracing::Span;
 
 use crate::config::Config;
@@ -185,12 +184,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             need_to_replicate: true,
         };
 
-        let handle = tokio::spawn(this.main().instrument(tracing::trace_span!("repl-stream").or_current()));
+        let handle = tokio::spawn(this.main());
 
         ReplicationStream { handle, repl_tx }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(vote=%self.vote, target=display(self.target), cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="debug", skip(self), fields(vote=%self.vote, target=display(self.target), cluster=%self.config.cluster_name))]
     async fn main(mut self) {
         loop {
             // If it returns Ok(), always go back to LineRate state.

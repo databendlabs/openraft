@@ -10,6 +10,7 @@ use crate::error::NotInMembers;
 use crate::error::RejectVoteRequest;
 use crate::leader::Leader;
 use crate::membership::EffectiveMembership;
+use crate::membership::NodeRole;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::VoteRequest;
@@ -111,7 +112,7 @@ impl<NID: NodeId> Engine<NID> {
         // Safe unwrap()
         let leader = self.state.leader.as_mut().unwrap();
         leader.grant_vote_by(self.id);
-        let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective.membership);
+        let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective);
 
         // Fast-path: if there is only one node in the cluster.
 
@@ -194,7 +195,8 @@ impl<NID: NodeId> Engine<NID> {
             // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `vote`.
             //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
             //           election.
-            if self.state.membership_state.effective.all_members().contains(&self.id) {
+            let node_type = self.state.membership_state.effective.get_node_role(&self.id);
+            if node_type == Some(NodeRole::Voter) {
                 self.set_server_state(ServerState::Follower);
             } else {
                 self.set_server_state(ServerState::Learner);
@@ -209,7 +211,7 @@ impl<NID: NodeId> Engine<NID> {
         if resp.vote_granted {
             leader.grant_vote_by(target);
 
-            let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective.membership);
+            let quorum_granted = leader.is_granted_by(&self.state.membership_state.effective);
             if quorum_granted {
                 tracing::debug!("quorum granted vote");
 
@@ -606,12 +608,12 @@ impl<NID: NodeId> Engine<NID> {
         entry: &Ent,
     ) {
         if let Some(m) = prev_membership {
-            if !m.membership.is_quorum(self.single_node_cluster.iter()) {
+            if !m.is_quorum(self.single_node_cluster.iter()) {
                 return;
             }
         }
 
-        if !self.state.membership_state.effective.membership.is_quorum(self.single_node_cluster.iter()) {
+        if !self.state.membership_state.effective.is_quorum(self.single_node_cluster.iter()) {
             return;
         }
 
@@ -720,8 +722,7 @@ impl<NID: NodeId> Engine<NID> {
         // } else {
         //     self.state.target_state = server_state;
         // }
-        if server_state == ServerState::Follower
-            && !self.state.membership_state.effective.membership.is_member(&self.id)
+        if server_state == ServerState::Follower && !self.state.membership_state.effective.membership.is_voter(&self.id)
         {
             unreachable!("caller does not know what to do?")
         }
@@ -749,7 +750,7 @@ impl<NID: NodeId> Engine<NID> {
 
     /// When initialize, the node that accept initialize request has to be a member of the initial config.
     fn check_members_contain_me(&self, m: &Membership<NID>) -> Result<(), NotInMembers<NID>> {
-        if !m.is_member(&self.id) {
+        if !m.is_voter(&self.id) {
             let e = NotInMembers {
                 node_id: self.id,
                 membership: m.clone(),
@@ -851,7 +852,8 @@ impl<NID: NodeId> Engine<NID> {
         if self.state.server_state == ServerState::Follower || self.state.server_state == ServerState::Learner {
             // nothing to do
         } else {
-            if self.state.membership_state.effective.all_members().contains(&self.id) {
+            let node_type = self.state.membership_state.effective.get_node_role(&self.id);
+            if node_type == Some(NodeRole::Voter) {
                 self.set_server_state(ServerState::Follower);
             } else {
                 self.set_server_state(ServerState::Learner);

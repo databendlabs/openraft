@@ -4,7 +4,6 @@ use maplit::btreemap;
 use maplit::btreeset;
 
 use crate::error::MissingNodeInfo;
-use crate::quorum::QuorumSet;
 use crate::testing::DummyConfig as Config;
 use crate::Membership;
 use crate::MessageSummary;
@@ -47,22 +46,22 @@ fn test_membership() -> anyhow::Result<()> {
     let m123 = Membership::<u64>::new(vec![btreeset! {1,2,3}], None);
     let m123_345 = Membership::<u64>::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None);
 
-    assert_eq!(Some(btreeset! {1}), m1.get_configs().get(0).cloned());
-    assert_eq!(Some(btreeset! {1,2,3}), m123.get_configs().get(0).cloned());
-    assert_eq!(Some(btreeset! {1,2,3}), m123_345.get_configs().get(0).cloned());
+    assert_eq!(Some(btreeset! {1}), m1.get_joint_config().get(0).cloned());
+    assert_eq!(Some(btreeset! {1,2,3}), m123.get_joint_config().get(0).cloned());
+    assert_eq!(Some(btreeset! {1,2,3}), m123_345.get_joint_config().get(0).cloned());
 
-    assert_eq!(None, m1.get_configs().get(1).cloned());
-    assert_eq!(None, m123.get_configs().get(1).cloned());
-    assert_eq!(Some(btreeset! {3,4,5}), m123_345.get_configs().get(1).cloned());
+    assert_eq!(None, m1.get_joint_config().get(1).cloned());
+    assert_eq!(None, m123.get_joint_config().get(1).cloned());
+    assert_eq!(Some(btreeset! {3,4,5}), m123_345.get_joint_config().get(1).cloned());
 
-    assert_eq!(btreeset! {1}, m1.build_member_ids());
-    assert_eq!(btreeset! {1,2,3}, m123.build_member_ids());
-    assert_eq!(btreeset! {1,2,3,4,5}, m123_345.build_member_ids());
+    assert_eq!(vec![1], m1.voter_ids().collect::<Vec<_>>());
+    assert_eq!(vec![1, 2, 3], m123.voter_ids().collect::<Vec<_>>());
+    assert_eq!(vec![1, 2, 3, 4, 5], m123_345.voter_ids().collect::<Vec<_>>());
 
-    assert!(!m1.is_member(&0));
-    assert!(m1.is_member(&1));
-    assert!(m123_345.is_member(&4));
-    assert!(!m123_345.is_member(&6));
+    assert!(!m1.is_voter(&0));
+    assert!(m1.is_voter(&1));
+    assert!(m123_345.is_voter(&4));
+    assert!(!m123_345.is_voter(&6));
 
     assert!(!m123.is_in_joint_consensus());
     assert!(m123_345.is_in_joint_consensus());
@@ -78,31 +77,28 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
         let m1_23 = m1_2.add_learner(3, None)?;
 
         // test learner and membership
-        assert_eq!(btreeset! {1}, m1_2.build_member_ids());
-        assert_eq!(btreeset! {2}, m1_2.learner_ids().cloned().collect());
-        assert!(m1_2.is_learner(&2));
+        assert_eq!(vec![1], m1_2.voter_ids().collect::<Vec<_>>());
+        assert_eq!(btreeset! {2}, m1_2.learner_ids().collect());
 
-        assert_eq!(btreeset! {1}, m1_23.build_member_ids());
-        assert_eq!(btreeset! {2,3}, m1_23.learner_ids().cloned().collect());
-        assert!(m1_23.is_learner(&2));
-        assert!(m1_23.is_learner(&3));
+        assert_eq!(vec![1], m1_23.voter_ids().collect::<Vec<_>>());
+        assert_eq!(vec![2, 3], m1_23.learner_ids().collect::<Vec<_>>());
 
         // Adding a member as learner has no effect:
 
         let m = m1_23.add_learner(1, None)?;
-        assert_eq!(btreeset! {1}, m.build_member_ids());
+        assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
 
         // Adding a existent learner has no effect:
 
         let m = m1_23.add_learner(3, None)?;
-        assert_eq!(btreeset! {1}, m.build_member_ids());
-        assert_eq!(btreeset! {2,3}, m.learner_ids().cloned().collect());
+        assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
+        assert_eq!(btreeset! {2,3}, m.learner_ids().collect());
     }
 
     // overlapping members and learners
     {
         let s1_2 = Membership::<u64>::new(vec![btreeset! {1,2,3}, btreeset! {5,6,7}], Some(btreeset! {3,4,5}));
-        let x = s1_2.learner_ids().cloned().collect();
+        let x = s1_2.learner_ids().collect();
         assert_eq!(btreeset! {4}, x);
     }
 
@@ -212,16 +208,28 @@ fn test_membership_with_nodes() -> anyhow::Result<()> {
     let ns_123 = || btreemap! {1=>node(), 2=>node(), 3=>node()};
 
     let res = m(btreemap! {1=>None, 2=>None})?;
-    assert_eq!(&btreemap! {1=>None, 2=>None}, res.get_nodes());
+    assert_eq!(
+        btreemap! {1=>None, 2=>None},
+        res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+    );
 
     let res = m(btreemap! {1=>None, 2=>None,3=>None})?;
-    assert_eq!(&btreemap! {1=>None, 2=>None, 3=>None}, res.get_nodes());
+    assert_eq!(
+        btreemap! {1=>None, 2=>None, 3=>None},
+        res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+    );
 
     let res = m(ns_12())?;
-    assert_eq!(&ns_12(), res.get_nodes());
+    assert_eq!(
+        ns_12(),
+        res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+    );
 
     let res = m(ns_123())?;
-    assert_eq!(&ns_123(), res.get_nodes());
+    assert_eq!(
+        ns_123(),
+        res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+    );
 
     // errors:
     let res = m(btreemap! {1=>None});
@@ -241,33 +249,6 @@ fn test_membership_with_nodes() -> anyhow::Result<()> {
         }),
         res
     );
-
-    Ok(())
-}
-
-#[test]
-fn test_membership_majority() -> anyhow::Result<()> {
-    {
-        let m12345 = Membership::<u64>::new(vec![btreeset! {1,2,3,4,5 }], None);
-
-        assert!(!m12345.is_quorum([0].iter()));
-        assert!(!m12345.is_quorum([0, 1, 2].iter()));
-        assert!(!m12345.is_quorum([6, 7, 8].iter()));
-        assert!(m12345.is_quorum([1, 2, 3].iter()));
-        assert!(m12345.is_quorum([3, 4, 5].iter()));
-        assert!(m12345.is_quorum([1, 3, 4, 5].iter()));
-    }
-
-    {
-        let m12345_678 = Membership::<u64>::new(vec![btreeset! {1,2,3,4,5 }, btreeset! {6,7,8}], None);
-
-        assert!(!m12345_678.is_quorum([0].iter()));
-        assert!(!m12345_678.is_quorum([0, 1, 2].iter()));
-        assert!(!m12345_678.is_quorum([6, 7, 8].iter()));
-        assert!(!m12345_678.is_quorum([1, 2, 3].iter()));
-        assert!(m12345_678.is_quorum([1, 2, 3, 6, 7].iter()));
-        assert!(m12345_678.is_quorum([1, 2, 3, 4, 7, 8].iter()));
-    }
 
     Ok(())
 }
@@ -356,7 +337,10 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
         // next_safe() can not change node info type from None to Some
 
         let res = without_nodes.next_safe(btreemap! {1=>node("1"), 2=>node("2")}, false)?;
-        assert_eq!(&btreemap! {1=>None, 2=>None}, res.get_nodes());
+        assert_eq!(
+            btreemap! {1=>None, 2=>None},
+            res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+        );
 
         // joint [{2}, {1,3}] requires node info for 2
 
@@ -372,7 +356,7 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
         // Changing to Membership without nodes is always OK
 
         let res = without_nodes.next_safe(btreeset! {5,6}, false)?;
-        assert_eq!(&vec![btreeset! {2}, btreeset! {5,6}], res.get_configs());
+        assert_eq!(&vec![btreeset! {2}, btreeset! {5,6}], res.get_joint_config());
     }
 
     // change from a Membership with nodes
@@ -383,7 +367,10 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
         // joint [{2}, {1,2}]
 
         let res = with_node_infos.next_safe(btreeset! {1,2}, false)?;
-        assert_eq!(&btreemap! {1=>Some(node("1")), 2=>Some(node("2"))}, res.get_nodes());
+        assert_eq!(
+            btreemap! {1=>Some(node("1")), 2=>Some(node("2"))},
+            res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+        );
 
         // joint [{2}, {1,3}]
 
@@ -399,8 +386,11 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
         // Removed to learner
 
         let res = with_node_infos.next_safe(btreeset! {1}, true)?;
-        assert_eq!(&btreemap! {1=>Some(node("1")), 2=>Some(node("2"))}, res.get_nodes());
-        assert_eq!(&vec![btreeset! {1}], res.get_configs());
+        assert_eq!(
+            btreemap! {1=>Some(node("1")), 2=>Some(node("2"))},
+            res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+        );
+        assert_eq!(&vec![btreeset! {1}], res.get_joint_config());
     }
 
     Ok(())
