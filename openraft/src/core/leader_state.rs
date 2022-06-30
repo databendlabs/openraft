@@ -152,12 +152,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 self.add_learner(id, node, tx, blocking).await;
             }
             RaftMsg::ChangeMembership {
-                members,
-                blocking,
+                changes,
+                when,
                 turn_to_learner,
                 tx,
             } => {
-                self.change_membership(members, blocking, turn_to_learner, tx).await?;
+                self.change_membership(changes, when, turn_to_learner, tx).await?;
             }
 
             _ => {

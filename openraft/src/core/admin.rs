@@ -6,6 +6,7 @@ use tracing::Level;
 
 use crate::config::RemoveReplicationPolicy;
 use crate::core::replication_state::ReplicationState;
+use crate::core::Expectation;
 use crate::core::LeaderState;
 use crate::core::ServerState;
 use crate::entry::EntryRef;
@@ -130,16 +131,20 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         self.core.engine.state.committed < self.core.engine.state.membership_state.effective.log_id
     }
 
+    /// Submit change-membership by writing a Membership log entry, if the `expect` is satisfied.
+    ///
+    /// If `turn_to_learner` is `true`, removed `voter` will becomes `learner`. Otherwise they will be just removed.
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(
         &mut self,
-        change_members: ChangeMembers<C::NodeId>,
-        blocking: bool,
+        changes: ChangeMembers<C::NodeId>,
+        expectation: Option<Expectation>,
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     ) -> Result<(), Fatal<C::NodeId>> {
-        let members = change_members
-            .apply_to(self.core.engine.state.membership_state.effective.membership.get_joint_config().last().unwrap());
+        let last = self.core.engine.state.membership_state.effective.membership.get_joint_config().last().unwrap();
+        let members = changes.apply_to(last);
+
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
@@ -178,8 +183,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         tracing::debug!(?new_config, "new_config");
 
-        if let Err(e) = self.are_nodes_at_line_rate(&only_in_new.cloned().collect::<BTreeSet<_>>(), blocking) {
-            let _ = tx.send(Err(e));
+        if let Err(e) = self.check_replication_states(only_in_new, expectation) {
+            let _ = tx.send(Err(e.into()));
             return Ok(());
         }
 
@@ -187,54 +192,45 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         Ok(())
     }
 
-    /// return Ok if all the nodes is `is_line_rate`
-    fn are_nodes_at_line_rate(
+    /// return Ok if all the current replication states satisfy the `expectation` for changing membership.
+    fn check_replication_states<'n>(
         &self,
-        nodes: &BTreeSet<C::NodeId>,
-        blocking: bool,
-    ) -> Result<(), ClientWriteError<C::NodeId>> {
-        // Check the proposed config for any new nodes. If ALL new nodes already have replication
-        // streams AND are ready to join, then we can immediately proceed with entering joint
-        // consensus. Else, new nodes need to first be brought up-to-speed.
-        //
-        // Here, all we do is check to see which nodes still need to be synced, which determines
-        // if we can proceed.
+        nodes: impl Iterator<Item = &'n C::NodeId>,
+        expectation: Option<Expectation>,
+    ) -> Result<(), ChangeMembershipError<C::NodeId>> {
+        for node_id in nodes {
+            let repl_state = match self.nodes.get(node_id) {
+                None => {
+                    return Err(ChangeMembershipError::LearnerNotFound(LearnerNotFound {
+                        node_id: *node_id,
+                    }));
+                }
+                Some(x) => x,
+            };
 
-        // TODO(xp): test change membership without adding as learner.
+            match expectation {
+                None => {
+                    // No expectation, whatever is OK.
+                    continue;
+                }
+                Some(Expectation::AtLineRate) => {
+                    // Expect to be at line rate but not.
 
-        // TODO(xp): 111 test adding a node that is not learner.
-        // TODO(xp): 111 test adding a node that is lagging.
-        for node_id in nodes.iter() {
-            match self.nodes.get(node_id) {
-                Some(node) => {
-                    if node.is_line_rate(&self.core.engine.state.last_log_id(), &self.core.config) {
-                        // Node is ready to join.
+                    let last_log_id = &self.core.engine.state.last_log_id();
+
+                    if repl_state.is_line_rate(last_log_id, &self.core.config) {
                         continue;
                     }
 
-                    if !blocking {
-                        // Node has repl stream, but is not yet ready to join.
-                        return Err(ClientWriteError::ChangeMembershipError(
-                            ChangeMembershipError::LearnerIsLagging(LearnerIsLagging {
-                                node_id: *node_id,
-                                matched: node.matched,
-                                distance: self
-                                    .core
-                                    .engine
-                                    .state
-                                    .last_log_id()
-                                    .next_index()
-                                    .saturating_sub(node.matched.next_index()),
-                            }),
-                        ));
-                    }
-                }
+                    let distance = last_log_id.next_index().saturating_sub(repl_state.matched.next_index());
 
-                // Node does not yet have a repl stream, spawn one.
-                None => {
-                    return Err(ClientWriteError::ChangeMembershipError(
-                        ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: *node_id }),
-                    ));
+                    let lagging = LearnerIsLagging {
+                        node_id: *node_id,
+                        matched: repl_state.matched,
+                        distance,
+                    };
+
+                    return Err(ChangeMembershipError::LearnerIsLagging(lagging));
                 }
             }
         }

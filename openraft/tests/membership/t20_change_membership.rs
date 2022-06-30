@@ -5,6 +5,7 @@ use std::time::Duration;
 use maplit::btreeset;
 use memstore::MemNodeId;
 use openraft::error::ChangeMembershipError;
+use openraft::error::ClientWriteError;
 use openraft::Config;
 use openraft::LogIdOptionExt;
 use openraft::RaftLogReader;
@@ -85,6 +86,33 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
             assert_eq!(log_index, logs[logs.len() - 1].log_id.index, "node: {}", node_id);
             // 0-th log
             assert_eq!(log_index + 1, logs.len() as u64, "node: {}", node_id);
+        }
+    }
+
+    Ok(())
+}
+
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn change_without_adding_learner() -> anyhow::Result<()> {
+    let config = Arc::new(Config { ..Default::default() }.validate()?);
+    let mut router = RaftRouter::new(config.clone());
+
+    let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
+
+    tracing::info!("--- change membership without adding-learner");
+    {
+        router.new_raft_node(1);
+
+        let node = router.get_raft_handle(&0)?;
+        let res = node.change_membership(btreeset! {0,1}, true, false).await;
+        match res {
+            Err(ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err))) => {
+                assert_eq!(1, err.node_id);
+            }
+            _ => {
+                unreachable!("expect LearnerNotFound")
+            }
         }
     }
 
