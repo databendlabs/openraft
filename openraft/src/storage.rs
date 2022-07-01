@@ -10,6 +10,7 @@ use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
 use crate::defensive::check_range_matches_entries;
+use crate::engine::LogIdList;
 use crate::membership::EffectiveMembership;
 use crate::raft_state::RaftState;
 use crate::raft_types::SnapshotId;
@@ -285,7 +286,7 @@ where C: RaftTypeConfig
             last_purged_log_id = last_applied;
         }
 
-        let log_ids = RaftState::load_log_ids(last_purged_log_id, last_log_id, self).await?;
+        let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self).await?;
 
         Ok(RaftState {
             last_applied,
