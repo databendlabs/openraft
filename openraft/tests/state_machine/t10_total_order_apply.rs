@@ -14,6 +14,7 @@ use crate::fixtures::RaftRouter;
 
 /// The logs have to be applied in log index order.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+#[ignore]
 async fn total_order_apply() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate().expect("failed to build Raft config"));
