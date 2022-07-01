@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::raft::AddLearnerResponse;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
@@ -37,12 +36,7 @@ async fn add_learner_basic() -> Result<()> {
     tracing::info!("--- re-adding leader does nothing");
     {
         let res = router.add_learner(0, 0).await?;
-        assert_eq!(
-            AddLearnerResponse {
-                matched: Some(LogId::new(LeaderId::new(1, 0), log_index))
-            },
-            res
-        );
+        assert_eq!(Some(LogId::new(LeaderId::new(1, 0), log_index)), res.matched);
     }
 
     tracing::info!("--- add new node node-1");
@@ -78,12 +72,7 @@ async fn add_learner_basic() -> Result<()> {
     tracing::info!("--- re-add node-1, nothing changes");
     {
         let res = router.add_learner(0, 1).await?;
-        assert_eq!(
-            AddLearnerResponse {
-                matched: Some(LogId::new(LeaderId::new(1, 0), log_index))
-            },
-            res
-        );
+        assert_eq!(Some(LogId::new(LeaderId::new(1, 0), log_index)), res.matched);
     }
 
     Ok(())
@@ -120,7 +109,7 @@ async fn add_learner_non_blocking() -> Result<()> {
         let raft = router.get_raft_handle(&0)?;
         let res = raft.add_learner(1, None, false).await?;
 
-        assert_eq!(AddLearnerResponse { matched: None }, res);
+        assert_eq!(None, res.matched);
     }
 
     Ok(())

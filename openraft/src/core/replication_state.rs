@@ -2,9 +2,6 @@ use std::fmt::Debug;
 use std::fmt::Formatter;
 
 use crate::config::Config;
-use crate::error::AddLearnerError;
-use crate::raft::AddLearnerResponse;
-use crate::raft::RaftRespTx;
 use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicationStream;
 use crate::LogId;
@@ -23,10 +20,6 @@ pub(crate) struct ReplicationState<NID: NodeId> {
     ///
     /// It will be reset once a successful replication is done.
     pub failures: u64,
-
-    /// The response channel to use for when this node has successfully synced with the cluster.
-    #[allow(clippy::type_complexity)]
-    pub tx: Option<RaftRespTx<AddLearnerResponse<NID>, AddLearnerError<NID>>>,
 }
 
 impl<NID: NodeId> MessageSummary<ReplicationState<NID>> for ReplicationState<NID> {

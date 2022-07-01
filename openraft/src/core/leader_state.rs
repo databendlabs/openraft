@@ -81,7 +81,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         };
 
         for target in targets {
-            let state = self.spawn_replication_stream(target, None).await;
+            let state = self.spawn_replication_stream(target).await;
             self.nodes.insert(target, state);
         }
 
@@ -148,8 +148,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             RaftMsg::ClientWriteRequest { rpc, tx } => {
                 self.write_entry(rpc.payload, Some(tx)).await?;
             }
-            RaftMsg::AddLearner { id, node, tx, blocking } => {
-                self.add_learner(id, node, tx, blocking).await;
+            RaftMsg::AddLearner { id, node, tx } => {
+                self.add_learner(id, node, tx).await?;
             }
             RaftMsg::ChangeMembership {
                 changes,
