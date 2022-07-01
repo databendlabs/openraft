@@ -62,15 +62,17 @@ async fn add_learner_basic() -> Result<()> {
         router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "add learner").await?;
 
         tracing::info!("--- add_learner blocks until the replication catches up");
-        let mut sto1 = router.get_storage_handle(&1)?;
+        {
+            let mut sto1 = router.get_storage_handle(&1)?;
 
-        let logs = sto1.get_log_entries(..).await?;
+            let logs = sto1.get_log_entries(..).await?;
 
-        assert_eq!(log_index, logs[logs.len() - 1].log_id.index);
-        // 0-th log
-        assert_eq!(log_index + 1, logs.len() as u64);
+            assert_eq!(log_index, logs[logs.len() - 1].log_id.index);
+            // 0-th log
+            assert_eq!(log_index + 1, logs.len() as u64);
 
-        router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "replication to learner").await?;
+            router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "replication to learner").await?;
+        }
     }
 
     tracing::info!("--- re-add node-1, nothing changes");
