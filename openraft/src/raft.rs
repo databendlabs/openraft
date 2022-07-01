@@ -119,7 +119,7 @@ enum CoreState<NID: NodeId> {
 
 struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
-    rx_metrics: watch::Receiver<RaftMetrics<C>>,
+    rx_metrics: watch::Receiver<RaftMetrics<C::NodeId>>,
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
     tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
@@ -542,7 +542,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     }
 
     /// Get a handle to the metrics channel.
-    pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C>> {
+    pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C::NodeId>> {
         self.inner.rx_metrics.clone()
     }
 
@@ -563,7 +563,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// // wait for raft state to become a follower
     /// r.wait(None).state(State::Follower, "state").await?;
     /// ```
-    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C::NodeId> {
         let timeout = match timeout {
             Some(t) => t,
             None => Duration::from_millis(500),

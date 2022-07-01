@@ -385,7 +385,7 @@ where
     }
 
     /// Get a payload of the latest metrics from each node in the cluster.
-    pub fn latest_metrics(&self) -> Vec<RaftMetrics<C>> {
+    pub fn latest_metrics(&self) -> Vec<RaftMetrics<C::NodeId>> {
         let rt = self.routing_table.lock().unwrap();
         let mut metrics = vec![];
         for node in rt.values() {
@@ -394,7 +394,7 @@ where
         metrics
     }
 
-    pub fn get_metrics(&self, node_id: &C::NodeId) -> Result<RaftMetrics<C>> {
+    pub fn get_metrics(&self, node_id: &C::NodeId) -> Result<RaftMetrics<C::NodeId>> {
         let node = self.get_raft_handle(node_id)?;
         let metrics = node.metrics().borrow().clone();
         Ok(metrics)
@@ -426,16 +426,16 @@ where
         func: T,
         timeout: Option<Duration>,
         msg: &str,
-    ) -> Result<RaftMetrics<C>>
+    ) -> Result<RaftMetrics<C::NodeId>>
     where
-        T: Fn(&RaftMetrics<C>) -> bool + Send,
+        T: Fn(&RaftMetrics<C::NodeId>) -> bool + Send,
     {
         let wait = self.wait(node_id, timeout);
         let rst = wait.metrics(func, format!("node-{} {}", node_id, msg)).await?;
         Ok(rst)
     }
 
-    pub fn wait(&self, node_id: &C::NodeId, timeout: Option<Duration>) -> Wait<C> {
+    pub fn wait(&self, node_id: &C::NodeId, timeout: Option<Duration>) -> Wait<C::NodeId> {
         let node = {
             let rt = self.routing_table.lock().unwrap();
             rt.get(node_id).expect("target node not found in routing table").clone().0

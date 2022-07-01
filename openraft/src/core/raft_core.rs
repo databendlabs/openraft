@@ -106,7 +106,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
     pub(crate) rx_api: mpsc::UnboundedReceiver<(RaftMsg<C, N, S>, Span)>,
 
-    tx_metrics: watch::Sender<RaftMetrics<C>>,
+    tx_metrics: watch::Sender<RaftMetrics<C::NodeId>>,
 
     pub(crate) rx_shutdown: oneshot::Receiver<()>,
 }
@@ -119,7 +119,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         storage: S,
         tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
         rx_api: mpsc::UnboundedReceiver<(RaftMsg<C, N, S>, Span)>,
-        tx_metrics: watch::Sender<RaftMetrics<C>>,
+        tx_metrics: watch::Sender<RaftMetrics<C::NodeId>>,
         rx_shutdown: oneshot::Receiver<()>,
     ) -> JoinHandle<Result<(), Fatal<C::NodeId>>> {
         //
