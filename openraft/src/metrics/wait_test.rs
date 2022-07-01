@@ -10,19 +10,18 @@ use crate::membership::EffectiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::raft_types::LogIdOptionExt;
-use crate::testing::DummyConfig as Config;
 use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
+use crate::NodeId;
 use crate::RaftMetrics;
-use crate::RaftTypeConfig;
 
 /// Test wait for different state changes
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn test_wait() -> anyhow::Result<()> {
     {
         // wait for leader
-        let (init, w, tx) = init_wait_test::<Config>();
+        let (init, w, tx) = init_wait_test::<u64>();
 
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
@@ -38,7 +37,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
     {
         // wait for log
-        let (init, w, tx) = init_wait_test::<Config>();
+        let (init, w, tx) = init_wait_test::<u64>();
 
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
@@ -66,7 +65,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
     {
         // wait for state
-        let (init, w, tx) = init_wait_test::<Config>();
+        let (init, w, tx) = init_wait_test::<u64>();
 
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
@@ -83,7 +82,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
     {
         // wait for members
-        let (init, w, tx) = init_wait_test::<Config>();
+        let (init, w, tx) = init_wait_test::<u64>();
 
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
@@ -106,7 +105,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
     tracing::info!("--- wait for snapshot, Ok");
     {
-        let (init, w, tx) = init_wait_test::<Config>();
+        let (init, w, tx) = init_wait_test::<u64>();
 
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
@@ -123,7 +122,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
     tracing::info!("--- wait for snapshot, only index matches");
     {
-        let (init, w, tx) = init_wait_test::<Config>();
+        let (init, w, tx) = init_wait_test::<u64>();
 
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
@@ -148,7 +147,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
     {
         // timeout
-        let (_init, w, _tx) = init_wait_test::<Config>();
+        let (_init, w, _tx) = init_wait_test::<u64>();
 
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(200)).await;
@@ -171,10 +170,10 @@ async fn test_wait() -> anyhow::Result<()> {
 
 /// Build a initial state for testing of Wait:
 /// Returns init metrics, Wait, and the tx to send an updated metrics.
-fn init_wait_test<C: RaftTypeConfig>() -> (RaftMetrics<C>, Wait<C>, watch::Sender<RaftMetrics<C>>) {
+fn init_wait_test<NID: NodeId>() -> (RaftMetrics<NID>, Wait<NID>, watch::Sender<RaftMetrics<NID>>) {
     let init = RaftMetrics {
         running_state: Ok(()),
-        id: C::NodeId::default(),
+        id: NID::default(),
         state: ServerState::Learner,
         current_term: 0,
         last_log_index: None,

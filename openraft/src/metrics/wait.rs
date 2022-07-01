@@ -6,10 +6,10 @@ use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::metrics::RaftMetrics;
-use crate::raft::RaftTypeConfig;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
+use crate::NodeId;
 
 // Error variants related to metrics.
 #[derive(Debug, thiserror::Error)]
@@ -22,16 +22,16 @@ pub enum WaitError {
 }
 
 /// Wait is a wrapper of RaftMetrics channel that impls several utils to wait for metrics to satisfy some condition.
-pub struct Wait<C: RaftTypeConfig> {
+pub struct Wait<NID: NodeId> {
     pub timeout: Duration,
-    pub rx: watch::Receiver<RaftMetrics<C>>,
+    pub rx: watch::Receiver<RaftMetrics<NID>>,
 }
 
-impl<C: RaftTypeConfig> Wait<C> {
+impl<NID: NodeId> Wait<NID> {
     /// Wait for metrics to satisfy some condition or timeout.
     #[tracing::instrument(level = "trace", skip(self, func), fields(msg=%msg.to_string()))]
-    pub async fn metrics<T>(&self, func: T, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError>
-    where T: Fn(&RaftMetrics<C>) -> bool + Send {
+    pub async fn metrics<T>(&self, func: T, msg: impl ToString) -> Result<RaftMetrics<NID>, WaitError>
+    where T: Fn(&RaftMetrics<NID>) -> bool + Send {
         let timeout_at = Instant::now() + self.timeout;
 
         let mut rx = self.rx.clone();
@@ -96,7 +96,7 @@ impl<C: RaftTypeConfig> Wait<C> {
 
     /// Wait for `current_leader` to become `Some(leader_id)` until timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn current_leader(&self, leader_id: C::NodeId, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn current_leader(&self, leader_id: NID, msg: impl ToString) -> Result<RaftMetrics<NID>, WaitError> {
         self.metrics(
             |x| x.current_leader == Some(leader_id),
             &format!("{} .current_leader -> {}", msg.to_string(), leader_id),
@@ -106,7 +106,7 @@ impl<C: RaftTypeConfig> Wait<C> {
 
     /// Wait until applied exactly `want_log`(inclusive) logs or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn log(&self, want_log_index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn log(&self, want_log_index: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<NID>, WaitError> {
         self.metrics(
             |x| x.last_log_index == want_log_index,
             &format!("{} .last_log_index -> {:?}", msg.to_string(), want_log_index),
@@ -122,7 +122,7 @@ impl<C: RaftTypeConfig> Wait<C> {
 
     /// Wait until applied at least `want_log`(inclusive) logs or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn log_at_least(&self, want_log: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn log_at_least(&self, want_log: Option<u64>, msg: impl ToString) -> Result<RaftMetrics<NID>, WaitError> {
         self.metrics(
             |x| x.last_log_index >= want_log,
             &format!("{} .last_log_index >= {:?}", msg.to_string(), want_log),
@@ -138,7 +138,7 @@ impl<C: RaftTypeConfig> Wait<C> {
 
     /// Wait for `state` to become `want_state` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn state(&self, want_state: ServerState, msg: impl ToString) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn state(&self, want_state: ServerState, msg: impl ToString) -> Result<RaftMetrics<NID>, WaitError> {
         self.metrics(
             |x| x.state == want_state,
             &format!("{} .state -> {:?}", msg.to_string(), want_state),
@@ -150,9 +150,9 @@ impl<C: RaftTypeConfig> Wait<C> {
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
     pub async fn members(
         &self,
-        want_members: BTreeSet<C::NodeId>,
+        want_members: BTreeSet<NID>,
         msg: impl ToString,
-    ) -> Result<RaftMetrics<C>, WaitError> {
+    ) -> Result<RaftMetrics<NID>, WaitError> {
         self.metrics(
             |x| {
                 let got = x.membership_config.nodes().map(|(nid, _)| *nid).collect::<BTreeSet<_>>();
@@ -165,11 +165,7 @@ impl<C: RaftTypeConfig> Wait<C> {
 
     /// Wait for `snapshot` to become `want_snapshot` or timeout.
     #[tracing::instrument(level = "trace", skip(self), fields(msg=msg.to_string().as_str()))]
-    pub async fn snapshot(
-        &self,
-        want_snapshot: LogId<C::NodeId>,
-        msg: impl ToString,
-    ) -> Result<RaftMetrics<C>, WaitError> {
+    pub async fn snapshot(&self, want_snapshot: LogId<NID>, msg: impl ToString) -> Result<RaftMetrics<NID>, WaitError> {
         self.metrics(
             |x| x.snapshot == Some(want_snapshot),
             &format!("{} .snapshot -> {:?}", msg.to_string(), want_snapshot),
