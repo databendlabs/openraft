@@ -199,6 +199,19 @@ Allow leadership to be taken in one term by a node with greater node-id.</p>
 <p>Consider introducing read-quorum and write-quorum,
 improve efficiency with a cluster with an even number of nodes.</p>
 </li>
+<li><input disabled="" type="checkbox"/>
+<p>Goal performance is 1,000,000 put/sec.</p>
+<ul>
+<li>2022 Jul 01: 41,000 put/sec.</li>
+</ul>
+<p>Run the benchmark: <code>make bench_cluster_of_3</code></p>
+<p>Benchmark setting:</p>
+<ul>
+<li>No network.</li>
+<li>A cluster of 3 nodes on one server.</li>
+<li>Single client.</li>
+</ul>
+</li>
 </ul>
 <!--
    - - [ ] Consider to separate log storage and log order storage.
