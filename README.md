@@ -56,6 +56,17 @@ Currently openraft is the consensus engine of meta-service cluster in [databend]
 - [ ] Consider introducing read-quorum and write-quorum,
   improve efficiency with a cluster with an even number of nodes.
 
+- [ ] Goal performance is 1,000,000 put/sec.
+
+    - 2022 Jul 01: 41,000 put/sec.
+
+    Run the benchmark: `make bench_cluster_of_3`
+
+    Benchmark setting:
+    - No network.
+    - A cluster of 3 nodes on one server.
+    - Single client.
+
 <!--
    - - [ ] Consider to separate log storage and log order storage.
    -   Leader only determines and replicates the index of log entries, not log

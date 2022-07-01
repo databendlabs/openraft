@@ -535,6 +535,7 @@ where
         nodes.remove(&id);
     }
 
+    /// Bring up a new learner and add it to the leader's membership.
     pub async fn add_learner(
         &self,
         leader: C::NodeId,
@@ -542,19 +543,6 @@ where
     ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>> {
         let node = self.get_raft_handle(&leader).unwrap();
         node.add_learner(target, None, true).await
-    }
-
-    pub async fn add_learner_with_blocking(
-        &self,
-        leader: C::NodeId,
-        target: C::NodeId,
-        blocking: bool,
-    ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>> {
-        let node = {
-            let rt = self.routing_table.lock().unwrap();
-            rt.get(&leader).unwrap_or_else(|| panic!("node with ID {} does not exist", leader)).clone()
-        };
-        node.0.add_learner(target, None, blocking).await
     }
 
     /// Send a is_leader request to the target node.
@@ -627,17 +615,18 @@ where
     }
 
     /// Send multiple client requests to the target node, causing test failure on error.
+    /// Returns the number of log written to raft.
     pub async fn client_request_many(
         &self,
         target: C::NodeId,
         client_id: &str,
         count: usize,
-    ) -> Result<(), ClientWriteError<C::NodeId>> {
+    ) -> Result<u64, ClientWriteError<C::NodeId>> {
         for idx in 0..count {
             self.client_request(target, client_id, idx as u64).await?;
         }
 
-        Ok(())
+        Ok(count as u64)
     }
 
     async fn send_client_request(

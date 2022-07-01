@@ -15,6 +15,7 @@
 //! - `serde`: Add serde::Serialize and serde:Deserialize bound to data types. If you'd like to use `serde` to serialize
 //!   messages.
 
+mod change_members;
 mod config;
 mod core;
 mod defensive;
@@ -51,6 +52,7 @@ pub use anyerror::AnyError;
 pub use async_trait;
 pub use metrics::ReplicationTargetMetrics;
 
+pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
 pub use crate::config::RemoveReplicationPolicy;
@@ -70,7 +72,6 @@ pub use crate::network::RaftNetwork;
 pub use crate::network::RaftNetworkFactory;
 pub use crate::node::Node;
 pub use crate::node::NodeId;
-pub use crate::raft::ChangeMembers;
 pub use crate::raft::Raft;
 pub use crate::raft::RaftTypeConfig;
 pub use crate::raft_state::RaftState;
