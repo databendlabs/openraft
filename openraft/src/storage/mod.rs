@@ -1,25 +1,21 @@
 //! The Raft storage interface and data types.
 
+mod helper;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
-use std::sync::Arc;
 
 use async_trait::async_trait;
+pub use helper::StorageHelper;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
 use crate::defensive::check_range_matches_entries;
-use crate::engine::LogIdList;
 use crate::membership::EffectiveMembership;
-use crate::raft_state::RaftState;
 use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
 use crate::Entry;
-use crate::EntryPayload;
 use crate::LogId;
-use crate::LogIdOptionExt;
-use crate::MembershipState;
 use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
@@ -164,8 +160,6 @@ where
 pub trait RaftStorage<C>: RaftLogReader<C> + Send + Sync + 'static
 where C: RaftTypeConfig
 {
-    // TODO(xp): simplify storage API
-
     /// The storage engine's associated type used for exposing a snapshot for reading & writing.
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
@@ -177,144 +171,6 @@ where C: RaftTypeConfig
 
     /// Snapshot builder type.
     type SnapshotBuilder: RaftSnapshotBuilder<C, Self::SnapshotData>;
-
-    /// Returns the last 2 membership config found in log or state machine.
-    ///
-    /// A raft node needs to store at most 2 membership config log:
-    /// - The first one must be committed, because raft allows to propose new membership only when the previous one is
-    ///   committed.
-    /// - The second may be committed or not.
-    ///
-    /// Because when handling append-entries RPC, (1) a raft follower will delete logs that are inconsistent with the
-    /// leader,
-    /// and (2) a membership will take effect at once it is written,
-    /// a follower needs to revert the effective membership to a previous one.
-    ///
-    /// And because (3) there is at most one outstanding, uncommitted membership log,
-    /// a follower only need to revert at most one membership log.
-    ///
-    /// Thus a raft node will only need to store at most two recent membership logs.
-    ///
-    /// It returns a vec of one or two memberships:
-    /// - the `first()` is committed.
-    /// - the `last()` is the effective one but may not be committed.
-    ///
-    /// If there is no membership log, return `[{log_id:None, membership: vec![]}]`.
-    /// The raft core always have an `effective_membership`.
-    async fn get_membership(&mut self) -> Result<MembershipState<C::NodeId>, StorageError<C::NodeId>> {
-        let (_, sm_mem) = self.last_applied_state().await?;
-
-        let sm_mem_next_index = sm_mem.log_id.next_index();
-
-        let log_mem = self.last_membership_in_log(sm_mem_next_index).await?;
-        tracing::debug!(membership_in_sm=?sm_mem, membership_in_log=?log_mem, "RaftStorage::get_membership");
-
-        // There 2 membership configs in logs.
-        if log_mem.len() == 2 {
-            return Ok(MembershipState {
-                committed: Arc::new(log_mem[0].clone()),
-                effective: Arc::new(log_mem[1].clone()),
-            });
-        }
-
-        let effective = if log_mem.is_empty() {
-            sm_mem.clone()
-        } else {
-            log_mem[0].clone()
-        };
-
-        let res = MembershipState {
-            committed: Arc::new(sm_mem),
-            effective: Arc::new(effective),
-        };
-
-        return Ok(res);
-    }
-
-    /// Get the last 2 membership configs found in the log.
-    ///
-    /// This method returns at most membership logs with greatest log index which is `>=since_index`.
-    /// If no such membership log is found, it returns `None`, e.g., when logs are cleaned after being applied.
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn last_membership_in_log(
-        &mut self,
-        since_index: u64,
-    ) -> Result<Vec<EffectiveMembership<C::NodeId>>, StorageError<C::NodeId>> {
-        let st = self.get_log_state().await?;
-
-        let mut end = st.last_log_id.next_index();
-        let start = std::cmp::max(st.last_purged_log_id.next_index(), since_index);
-        let step = 64;
-
-        let mut res = vec![];
-
-        while start < end {
-            let entries = self.try_get_log_entries(start..end).await?;
-
-            for ent in entries.iter().rev() {
-                if let EntryPayload::Membership(ref mem) = ent.payload {
-                    let em = EffectiveMembership::new(Some(ent.log_id), mem.clone());
-                    res.insert(0, em);
-                    if res.len() == 2 {
-                        return Ok(res);
-                    }
-                }
-            }
-
-            end = end.saturating_sub(step);
-        }
-
-        Ok(res)
-    }
-
-    /// Get Raft's state information from storage.
-    ///
-    /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
-    /// storage.
-    async fn get_initial_state(&mut self) -> Result<RaftState<C::NodeId>, StorageError<C::NodeId>> {
-        let vote = self.read_vote().await?;
-        let st = self.get_log_state().await?;
-        let mut last_purged_log_id = st.last_purged_log_id;
-        let mut last_log_id = st.last_log_id;
-        let (last_applied, _) = self.last_applied_state().await?;
-        let mem_state = self.get_membership().await?;
-
-        // Clean up dirty state: snapshot is installed but logs are not cleaned.
-        if last_log_id < last_applied {
-            self.purge_logs_upto(last_applied.unwrap()).await?;
-            last_log_id = last_applied;
-            last_purged_log_id = last_applied;
-        }
-
-        let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self).await?;
-
-        Ok(RaftState {
-            last_applied,
-            // The initial value for `vote` is the minimal possible value.
-            // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
-            vote: vote.unwrap_or_default(),
-            log_ids,
-            membership_state: mem_state,
-
-            // -- volatile fields: they are not persisted.
-            leader: None,
-            committed: None,
-            server_state: Default::default(),
-        })
-    }
-
-    /// Get the log id of the entry at `index`.
-    async fn get_log_id(&mut self, log_index: u64) -> Result<LogId<C::NodeId>, StorageError<C::NodeId>> {
-        let st = self.get_log_state().await?;
-
-        if Some(log_index) == st.last_purged_log_id.index() {
-            return Ok(st.last_purged_log_id.unwrap());
-        }
-
-        let entries = self.get_log_entries(log_index..=log_index).await?;
-
-        Ok(entries[0].log_id)
-    }
 
     // --- Vote
 

@@ -9,8 +9,8 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
-use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
+use openraft::StorageHelper;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -73,7 +73,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             let logs = sto0.get_log_entries(..).await?;
             assert_eq!(3, logs.len(), "only one applied log is kept");
         }
-        let m = sto0.get_membership().await?;
+        let m = StorageHelper::new(&mut sto0).get_membership().await?;
 
         assert_eq!(
             Membership::new(vec![btreeset! {0,1}], None),
@@ -126,7 +126,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             let logs = sto0.get_log_entries(..).await?;
             assert_eq!(3, logs.len(), "only one applied log");
         }
-        let m = sto0.get_membership().await?;
+        let m = StorageHelper::new(&mut sto0).get_membership().await?;
 
         assert_eq!(
             Membership::new(vec![btreeset! {0,1}], None),

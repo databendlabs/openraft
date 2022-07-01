@@ -19,6 +19,7 @@ use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
 use openraft::ServerState;
 use openraft::SnapshotPolicy;
+use openraft::StorageHelper;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -117,7 +118,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         tracing::info!("--- check that learner membership is affected");
         {
             let mut sto1 = router.get_storage_handle(&1)?;
-            let m = sto1.get_membership().await?;
+            let m = StorageHelper::new(&mut sto1).get_membership().await?;
 
             tracing::info!("got membership of node-1: {:?}", m);
             assert_eq!(Membership::new(vec![btreeset! {2,3}], None), m.committed.membership);
@@ -157,7 +158,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
     {
         let mut sto1 = router.get_storage_handle(&1)?;
 
-        let m = sto1.get_membership().await?;
+        let m = StorageHelper::new(&mut sto1).get_membership().await?;
 
         tracing::info!("got membership of node-1: {:?}", m);
         assert_eq!(

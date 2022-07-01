@@ -44,6 +44,7 @@ use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
+use crate::storage::StorageHelper;
 use crate::timer::RaftTimer;
 use crate::timer::Timeout;
 use crate::versioned::Versioned;
@@ -177,7 +178,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     async fn do_main(&mut self) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("raft node is initializing");
 
-        let state = self.storage.get_initial_state().await?;
+        let state = {
+            let mut helper = StorageHelper::new(&mut self.storage);
+            helper.get_initial_state().await?
+        };
 
         // TODO(xp): this is not necessary.
         self.storage.save_vote(&state.vote).await?;

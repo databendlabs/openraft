@@ -9,7 +9,7 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
-use openraft::RaftStorage;
+use openraft::StorageHelper;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -175,7 +175,7 @@ async fn check_learner_after_leader_transfered() -> Result<()> {
     tracing::info!("--- check new cluster membership");
     {
         let mut sto1 = router.get_storage_handle(&1)?;
-        let m = sto1.get_membership().await?;
+        let m = StorageHelper::new(&mut sto1).get_membership().await?;
 
         // new membership is applied, thus get_membership() only returns one entry.
 

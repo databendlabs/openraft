@@ -1,4 +1,5 @@
 use crate::raft_types::RaftLogId;
+use crate::storage::StorageHelper;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
@@ -40,14 +41,14 @@ impl<NID: NodeId> LogIdList<NID> {
     /// A-------B-------C : find(A,B); find(B,C)   // both find `B`, need to de-dup
     /// A-------C-------C : find(A,C)
     /// ```
-    pub async fn load_log_ids<C, Sto>(
+    pub(crate) async fn load_log_ids<C, Sto>(
         last_purged_log_id: Option<LogId<NID>>,
         last_log_id: Option<LogId<NID>>,
-        sto: &mut Sto,
+        sto: &mut StorageHelper<'_, C, Sto>,
     ) -> Result<LogIdList<NID>, StorageError<NID>>
     where
         C: RaftTypeConfig<NodeId = NID>,
-        Sto: RaftStorage<C> + ?Sized,
+        Sto: RaftStorage<C>,
     {
         let mut res = vec![];
 

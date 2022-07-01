@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
+use openraft::storage::StorageHelper;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::Entry;
@@ -14,7 +15,6 @@ use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
-use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 use openraft::Vote;
 
@@ -100,7 +100,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             tracing::info!("--- check that learner membership is affected");
             {
-                let m = sto.get_membership().await?;
+                let m = StorageHelper::new(&mut sto).get_membership().await?;
 
                 println!("{:?}", m);
                 assert_eq!(&EffectiveMembership::default(), m.committed.as_ref());
@@ -132,7 +132,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 )
                 .await?;
 
-            let m = sto.get_membership().await?;
+            let m = StorageHelper::new(&mut sto).get_membership().await?;
 
             assert_eq!(
                 Membership::new(vec![btreeset! {0}], Some(btreeset! {1})),

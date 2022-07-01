@@ -8,6 +8,7 @@ use maplit::btreeset;
 use crate::membership::EffectiveMembership;
 use crate::raft_state::RaftState;
 use crate::storage::LogState;
+use crate::storage::StorageHelper;
 use crate::testing::DefensiveStoreBuilder;
 use crate::testing::StoreBuilder;
 use crate::AppData;
@@ -113,7 +114,7 @@ where
     pub async fn last_membership_in_log_initial(builder: &B) -> Result<(), StorageError<C::NodeId>> {
         let mut store = builder.build().await;
 
-        let membership = store.last_membership_in_log(0).await?;
+        let membership = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
 
         assert!(membership.is_empty());
 
@@ -138,7 +139,7 @@ where
                 ])
                 .await?;
 
-            let mem = store.last_membership_in_log(0).await?;
+            let mem = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
 
             assert!(mem.is_empty());
         }
@@ -152,17 +153,17 @@ where
                 }])
                 .await?;
 
-            let mem = store.last_membership_in_log(0).await?;
+            let mem = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
             assert_eq!(1, mem.len());
             let mem = mem[0].clone();
             assert_eq!(Membership::new(vec![btreeset! {1, 2, 3}], None), mem.membership,);
 
-            let mem = store.last_membership_in_log(1).await?;
+            let mem = StorageHelper::new(&mut store).last_membership_in_log(1).await?;
             assert_eq!(1, mem.len());
             let mem = mem[0].clone();
             assert_eq!(Membership::new(vec![btreeset! {1, 2, 3}], None), mem.membership,);
 
-            let mem = store.last_membership_in_log(2).await?;
+            let mem = StorageHelper::new(&mut store).last_membership_in_log(2).await?;
             assert!(mem.is_empty());
         }
 
@@ -185,7 +186,7 @@ where
                 ])
                 .await?;
 
-            let mems = store.last_membership_in_log(0).await?;
+            let mems = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
             assert_eq!(2, mems.len());
 
             let mem = mems[0].clone();
@@ -197,7 +198,7 @@ where
 
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log but since_index is greater than the last");
         {
-            let mem = store.last_membership_in_log(4).await?;
+            let mem = StorageHelper::new(&mut store).last_membership_in_log(4).await?;
             assert!(mem.is_empty());
         }
 
@@ -210,7 +211,7 @@ where
                 }])
                 .await?;
 
-            let mems = store.last_membership_in_log(0).await?;
+            let mems = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
             assert_eq!(2, mems.len());
 
             let mem = mems[0].clone();
@@ -226,7 +227,7 @@ where
     pub async fn get_membership_initial(builder: &B) -> Result<(), StorageError<C::NodeId>> {
         let mut store = builder.build().await;
 
-        let mem_state = store.get_membership().await?;
+        let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
         assert_eq!(&EffectiveMembership::default(), mem_state.committed.as_ref());
         assert_eq!(&EffectiveMembership::default(), mem_state.effective.as_ref());
@@ -248,7 +249,7 @@ where
                 }])
                 .await?;
 
-            let mem_state = store.get_membership().await?;
+            let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
             assert_eq!(&EffectiveMembership::default(), mem_state.committed.as_ref());
             assert_eq!(
@@ -278,7 +279,7 @@ where
                 ])
                 .await?;
 
-            let mem_state = store.get_membership().await?;
+            let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
@@ -299,7 +300,7 @@ where
                 }])
                 .await?;
 
-            let mem_state = store.get_membership().await?;
+            let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
@@ -326,7 +327,7 @@ where
                 ])
                 .await?;
 
-            let mem_state = store.get_membership().await?;
+            let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
@@ -353,7 +354,7 @@ where
                 ])
                 .await?;
 
-            let mem_state = store.get_membership().await?;
+            let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
             assert_eq!(
                 Membership::new(vec![btreeset! {7,8,9}], None),
@@ -371,7 +372,7 @@ where
     pub async fn get_initial_state_without_init(builder: &B) -> Result<(), StorageError<C::NodeId>> {
         let mut store = builder.build().await;
 
-        let initial = store.get_initial_state().await?;
+        let initial = StorageHelper::new(&mut store).get_initial_state().await?;
         assert_eq!(RaftState::default(), initial, "uninitialized state");
         Ok(())
     }
@@ -394,7 +395,7 @@ where
             }])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
         assert_eq!(
             initial.last_log_id(),
@@ -441,7 +442,7 @@ where
                 ])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
@@ -458,7 +459,7 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
@@ -475,7 +476,7 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
             assert_eq!(
                 Membership::new(vec![btreeset! {1,2,3}], None),
@@ -510,7 +511,7 @@ where
             ])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
         assert_eq!(
             initial.last_log_id(),
@@ -528,7 +529,7 @@ where
 
         store.apply_to_state_machine(&[&blank(3, 1)]).await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
         assert_eq!(
             initial.last_log_id(),
@@ -556,7 +557,7 @@ where
 
         tracing::info!("--- empty store, expect []");
         {
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(Vec::<LogId<C::NodeId>>::new(), initial.log_ids.key_log_ids());
         }
 
@@ -564,7 +565,7 @@ where
         {
             store.append_to_log(&[&blank(0, 0)]).await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(vec![log_id(0, 0, 0)], initial.log_ids.key_log_ids());
         }
 
@@ -572,7 +573,7 @@ where
         {
             store.append_to_log(&[&blank(1, 1), &blank(1, 2), &blank(2, 3)]).await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(
                 vec![log_id(0, 0, 0), log_id(1, 0, 1), log_id(2, 0, 3)],
                 initial.log_ids.key_log_ids()
@@ -585,7 +586,7 @@ where
         {
             store.append_to_log(&[&blank(2, 4), &blank(3, 5), &blank(3, 6)]).await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(
                 vec![
                     log_id(0, 0, 0),
@@ -604,7 +605,7 @@ where
         {
             store.purge_logs_upto(log_id(0, 0, 0)).await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(
                 vec![
                     log_id(0, 0, 0),
@@ -621,7 +622,7 @@ where
         {
             store.purge_logs_upto(log_id(1, 0, 1)).await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(
                 vec![log_id(1, 0, 1), log_id(2, 0, 3), log_id(3, 0, 5), log_id(3, 0, 6)],
                 initial.log_ids.key_log_ids()
@@ -632,7 +633,7 @@ where
         {
             store.purge_logs_upto(log_id(1, 0, 2)).await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(
                 vec![log_id(1, 0, 2), log_id(2, 0, 3), log_id(3, 0, 5), log_id(3, 0, 6)],
                 initial.log_ids.key_log_ids()
@@ -643,7 +644,7 @@ where
         {
             store.purge_logs_upto(log_id(2, 0, 3)).await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(
                 vec![log_id(2, 0, 3), log_id(3, 0, 5), log_id(3, 0, 6)],
                 initial.log_ids.key_log_ids()
@@ -654,7 +655,7 @@ where
         {
             store.purge_logs_upto(log_id(3, 0, 6)).await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&mut store).get_initial_state().await?;
             assert_eq!(vec![log_id(3, 0, 6)], initial.log_ids.key_log_ids());
         }
 
@@ -799,16 +800,16 @@ where
 
         store.purge_logs_upto(LogId::new(LeaderId::new(1, NODE_ID.into()), 3)).await?;
 
-        let res = store.get_log_id(0).await;
+        let res = StorageHelper::new(&mut store).get_log_id(0).await;
         assert!(res.is_err());
 
-        let res = store.get_log_id(11).await;
+        let res = StorageHelper::new(&mut store).get_log_id(11).await;
         assert!(res.is_err());
 
-        let res = store.get_log_id(3).await?;
+        let res = StorageHelper::new(&mut store).get_log_id(3).await?;
         assert_eq!(LogId::new(LeaderId::new(1, NODE_ID.into()), 3), res);
 
-        let res = store.get_log_id(4).await?;
+        let res = StorageHelper::new(&mut store).get_log_id(4).await?;
         assert_eq!(LogId::new(LeaderId::new(1, NODE_ID.into()), 4), res);
 
         Ok(())
@@ -1267,7 +1268,7 @@ where
                 }])
                 .await?;
 
-            let res = store.get_membership().await;
+            let res = StorageHelper::new(&mut store).get_membership().await;
 
             let e = res.unwrap_err().into_defensive().unwrap();
             assert!(matches!(e, DefensiveError {
@@ -1320,7 +1321,7 @@ where
                 }])
                 .await?;
 
-            let state = store.get_initial_state().await;
+            let state = StorageHelper::new(&mut store).get_initial_state().await;
             let e = state.unwrap_err().into_defensive().unwrap();
 
             assert!(matches!(e, DefensiveError {
