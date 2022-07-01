@@ -136,9 +136,6 @@ pub enum AddLearnerError<NID: NodeId> {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader<NID>),
 
-    #[error("node {0} is already a learner")]
-    Exists(NID),
-
     #[error(transparent)]
     MissingNodeInfo(#[from] MissingNodeInfo<NID>),
 
