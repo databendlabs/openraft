@@ -23,6 +23,7 @@ use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::RaftRespTx;
 use crate::raft_types::LogIdOptionExt;
+use crate::raft_types::RaftLogId;
 use crate::runtime::RaftRuntime;
 use crate::versioned::Updatable;
 use crate::ChangeMembers;
@@ -40,15 +41,15 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         target: C::NodeId,
         node: Option<Node>,
-    ) -> Result<(), AddLearnerError<C::NodeId>> {
+    ) -> Result<LogId<C::NodeId>, AddLearnerError<C::NodeId>> {
         let curr = &self.core.engine.state.membership_state.effective.membership;
         let new_membership = curr.add_learner(target, node)?;
 
         tracing::debug!(?new_membership, "new_config");
 
-        self.write_entry(EntryPayload::Membership(new_membership), None).await?;
+        let log_id = self.write_entry(EntryPayload::Membership(new_membership), None).await?;
 
-        Ok(())
+        Ok(log_id)
     }
 
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
@@ -60,24 +61,26 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// If `blocking` is `true`, the result is sent to `tx` as the target node log has caught up. Otherwise, result is
     /// sent at once, no matter whether the target node log is lagging or not.
-    #[tracing::instrument(level = "debug", skip(self, tx))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn add_learner(
         &mut self,
         target: C::NodeId,
         node: Option<Node>,
         tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
-        blocking: bool,
-    ) {
+    ) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("add target node {} as learner {:?}", target, self.nodes.keys());
 
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
+        // TODO: remove this
         if target == self.core.id {
             tracing::debug!("target node is this node");
+
             let _ = tx.send(Ok(AddLearnerResponse {
+                membership_log_id: self.core.engine.state.membership_state.effective.log_id,
                 matched: self.core.engine.state.last_log_id(),
             }));
-            return;
+            return Ok(());
         }
 
         let curr = &self.core.engine.state.membership_state.effective;
@@ -86,8 +89,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
             if let Some(t) = self.nodes.get(&target) {
                 tracing::debug!("target node is already a cluster member or is being synced");
-                let _ = tx.send(Ok(AddLearnerResponse { matched: t.matched }));
-                return;
+                let _ = tx.send(Ok(AddLearnerResponse {
+                    membership_log_id: self.core.engine.state.membership_state.effective.log_id,
+                    matched: t.matched,
+                }));
+                return Ok(());
             } else {
                 unreachable!(
                     "node {} in membership but there is no replication stream for it",
@@ -99,29 +105,31 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         // TODO(xp): when new membership log is appended, write_entry() should be responsible to setup new replication
         //           stream.
         let res = self.write_add_learner_entry(target, node).await;
-        if let Err(e) = res {
-            let _ = tx.send(Err(e));
-            return;
-        }
+        let log_id = match res {
+            Ok(x) => x,
+            Err(e) => {
+                let _ = tx.send(Err(e));
+                return Ok(());
+            }
+        };
 
-        if blocking {
-            let state = self.spawn_replication_stream(target, Some(tx)).await;
-            // TODO(xp): nodes, i.e., replication streams, should also be a property of follower or candidate, for
-            //           sending vote requests etc?
-            self.nodes.insert(target, state);
-        } else {
-            let state = self.spawn_replication_stream(target, None).await;
-            self.nodes.insert(target, state);
-
-            // non-blocking mode, do not know about the replication stat.
-            let _ = tx.send(Ok(AddLearnerResponse { matched: None }));
-        }
+        // TODO(xp): nodes, i.e., replication streams, should also be a property of follower or candidate, for
+        //           sending vote requests etc?
+        let state = self.spawn_replication_stream(target).await;
+        self.nodes.insert(target, state);
 
         tracing::debug!(
             "after add target node {} as learner {:?}",
             target,
             self.core.engine.state.last_log_id()
         );
+
+        let _ = tx.send(Ok(AddLearnerResponse {
+            membership_log_id: Some(log_id),
+            matched: None,
+        }));
+
+        Ok(())
     }
 
     /// return true if there is pending uncommitted config change
@@ -250,7 +258,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         &mut self,
         payload: EntryPayload<C>,
         resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
-    ) -> Result<(), Fatal<C::NodeId>> {
+    ) -> Result<LogId<C::NodeId>, Fatal<C::NodeId>> {
         let mut entry_refs = [EntryRef::new(&payload)];
         // TODO: it should returns membership config error etc. currently this is done by the caller.
         self.core.engine.leader_append_entries(&mut entry_refs);
@@ -262,7 +270,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.run_engine_commands(&entry_refs).await?;
 
-        Ok(())
+        Ok(*entry_refs[0].get_log_id())
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

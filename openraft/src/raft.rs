@@ -15,6 +15,7 @@ use tokio::task::JoinHandle;
 use tracing::Span;
 
 use crate::config::Config;
+use crate::core::is_matched_upto_date;
 use crate::core::Expectation;
 use crate::core::RaftCore;
 use crate::error::AddLearnerError;
@@ -118,6 +119,8 @@ enum CoreState<NID: NodeId> {
 }
 
 struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+    id: C::NodeId,
+    config: Arc<Config>,
     tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
     rx_metrics: watch::Receiver<RaftMetrics<C::NodeId>>,
     // TODO(xp): it does not need to be a async mutex.
@@ -180,7 +183,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
         let raft_handle = RaftCore::spawn(
             id,
-            config,
+            config.clone(),
             network,
             storage,
             tx_api.clone(),
@@ -190,6 +193,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         );
 
         let inner = RaftInner {
+            id,
+            config,
             tx_api,
             rx_metrics,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
@@ -345,7 +350,96 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         blocking: bool,
     ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::AddLearner { id, node, blocking, tx }, rx).await
+        let resp = self.call_core(RaftMsg::AddLearner { id, node, tx }, rx).await?;
+
+        if !blocking {
+            return Ok(resp);
+        }
+
+        if self.inner.id == id {
+            return Ok(resp);
+        }
+
+        // Otherwise, blocks until the replication to the new learner becomes up to date.
+
+        // The log id of the membership that contains the added learner.
+        let membership_log_id = resp.membership_log_id;
+
+        let res0 = Arc::new(std::sync::Mutex::new(resp));
+        let res = res0.clone();
+
+        let wait_res = self
+            .wait(None)
+            .metrics(
+                |metrics| match self.check_replication_upto_date(metrics, id, membership_log_id) {
+                    Ok(resp) => {
+                        res.lock().unwrap().membership_log_id = resp;
+                        true
+                    }
+                    // keep waiting
+                    Err(_) => false,
+                },
+                "wait new learner to become line-rate",
+            )
+            .await;
+
+        tracing::info!(wait_res = debug(&wait_res), "waiting for replication to new learner");
+
+        let r = {
+            let x = res0.lock().unwrap();
+            x.clone()
+        };
+        Ok(r)
+    }
+
+    /// Returns Ok() with the latest known matched log id if it should quit waiting: leader change, node removed, or
+    /// replication becomes upto date.
+    ///
+    /// Returns Err() if it should keep waiting.
+    fn check_replication_upto_date(
+        &self,
+        metrics: &RaftMetrics<C::NodeId>,
+        node_id: C::NodeId,
+        membership_log_id: Option<LogId<C::NodeId>>,
+    ) -> Result<Option<LogId<C::NodeId>>, ()> {
+        if metrics.membership_config.log_id < membership_log_id {
+            // Waiting for the latest metrics to report.
+            return Err(());
+        }
+
+        if !metrics.membership_config.membership.contains(&node_id) {
+            // This learner has been removed.
+            return Ok(None);
+        }
+
+        let repl = match &metrics.replication {
+            None => {
+                // This node is no longer a leader.
+                return Ok(None);
+            }
+            Some(x) => x,
+        };
+
+        let replication_metrics = &repl.data().replication;
+        let target_metrics = match replication_metrics.get(&node_id) {
+            None => {
+                // Maybe replication is not reported yet. Keep waiting.
+                return Err(());
+            }
+            Some(x) => x,
+        };
+
+        let matched = target_metrics.matched();
+
+        let last_log_id = LogId::new(matched.leader_id, metrics.last_log_index.unwrap_or_default());
+
+        if is_matched_upto_date(&Some(matched), &Some(last_log_id), &self.inner.config) {
+            // replication became up to date.
+            return Ok(Some(matched));
+        }
+
+        // Not up to date, keep waiting.
+        Err(())
     }
 
     /// Propose a cluster configuration change.
@@ -604,6 +698,10 @@ pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct AddLearnerResponse<NID: NodeId> {
+    /// The log id of the membership that contains the added learner.
+    pub membership_log_id: Option<LogId<NID>>,
+
+    /// The last log id that matches leader log.
     pub matched: Option<LogId<NID>>,
 }
 
@@ -639,9 +737,6 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         id: C::NodeId,
 
         node: Option<Node>,
-
-        /// If block until the newly added learner becomes line-rate.
-        blocking: bool,
 
         /// Send the log id when the replication becomes line-rate.
         tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
@@ -696,8 +791,8 @@ where
             RaftMsg::Initialize { members, .. } => {
                 format!("Initialize: {:?}", members)
             }
-            RaftMsg::AddLearner { id, blocking, .. } => {
-                format!("AddLearner: id: {}, blocking: {}", id, blocking)
+            RaftMsg::AddLearner { id, node, .. } => {
+                format!("AddLearner: id: {}, node: {:?}", id, node)
             }
             RaftMsg::ChangeMembership {
                 changes: members,

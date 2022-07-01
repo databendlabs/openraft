@@ -8,10 +8,7 @@ use crate::core::LeaderState;
 use crate::core::ReplicationState;
 use crate::core::ServerState;
 use crate::core::SnapshotState;
-use crate::error::AddLearnerError;
 use crate::metrics::UpdateMatchedLogId;
-use crate::raft::AddLearnerResponse;
-use crate::raft::RaftRespTx;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::replication::UpdateReplication;
@@ -28,13 +25,9 @@ use crate::StorageError;
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
-    #[tracing::instrument(level = "debug", skip(self, caller_tx))]
+    #[tracing::instrument(level = "debug", skip(self))]
     #[allow(clippy::type_complexity)]
-    pub(super) async fn spawn_replication_stream(
-        &mut self,
-        target: C::NodeId,
-        caller_tx: Option<RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>>,
-    ) -> ReplicationState<C::NodeId> {
+    pub(super) async fn spawn_replication_stream(&mut self, target: C::NodeId) -> ReplicationState<C::NodeId> {
         let target_node = self.core.engine.state.membership_state.effective.get_node(&target);
 
         let repl_stream = ReplicationStream::new::<C, N, S>(
@@ -53,7 +46,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             matched: None,
             repl_stream,
             remove_since: None,
-            tx: caller_tx,
             failures: 0,
         }
     }
@@ -134,18 +126,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         assert!(Some(matched) >= state.matched, "the matched increments monotonically");
 
         state.matched = Some(matched);
-
-        // Issue a response on the learners response channel if needed.
-        if state.is_line_rate(&self.core.engine.state.last_log_id(), &self.core.config) {
-            // This replication became line rate.
-
-            // When adding a learner, it blocks until the replication becomes line-rate.
-            if let Some(tx) = state.tx.take() {
-                // TODO(xp): define a specific response type for learner matched event.
-                let x = AddLearnerResponse { matched: state.matched };
-                let _ = tx.send(Ok(x));
-            }
-        }
 
         // Drop replication stream if needed.
         if self.try_remove_replication(target).await {
