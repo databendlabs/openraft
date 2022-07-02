@@ -27,6 +27,9 @@ where
 
     /// Get the currently committed value.
     fn committed(&self) -> &V;
+
+    /// Build a new instance with the new quorum set.
+    fn upgrade_quorum_set(self, quorum_set: QS) -> Self;
 }
 
 /// A Progress implementation with vector as storage.
@@ -54,7 +57,7 @@ where
     stat: Stat,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct Stat {
     update_count: u64,
     move_count: u64,
@@ -89,6 +92,15 @@ where
         }
 
         unreachable!("{:?} not found", target)
+    }
+
+    fn safe_index(&self, target: &ID) -> Option<usize> {
+        for (i, elt) in self.vector.iter().enumerate() {
+            if elt.0 == *target {
+                return Some(i);
+            }
+        }
+        None
     }
 
     /// Move an element at `index` up so that all the values greater than `committed` are sorted.
@@ -198,12 +210,26 @@ where
     fn committed(&self) -> &V {
         &self.committed
     }
+
+    fn upgrade_quorum_set(self, quorum_set: QS) -> Self {
+        let mut x = Self::new(quorum_set);
+
+        x.stat = self.stat.clone();
+
+        for id in self.quorum_set.ids() {
+            if x.safe_index(&id).is_some() {
+                x.update(&id, *self.get(&id));
+            }
+        }
+        x
+    }
 }
 
 #[cfg(test)]
 mod t {
     use super::Progress;
     use super::VecProgress;
+    use crate::quorum::Joint;
 
     #[test]
     fn vec_progress_move_up() -> anyhow::Result<()> {
@@ -258,6 +284,45 @@ mod t {
             let got = progress.update(id, *v);
             assert_eq!(want_committed, got, "{}-th case: id:{}, v:{}", ith, id, v);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn vec_progress_upgrade_quorum_set() -> anyhow::Result<()> {
+        let qs012 = Joint::from(vec![vec![0, 1, 2]]);
+        let qs012_345 = Joint::from(vec![vec![0, 1, 2], vec![3, 4, 5]]);
+        let qs345 = Joint::from(vec![vec![3, 4, 5]]);
+
+        // Initially, committed is 5
+
+        let mut p012 = VecProgress::<u64, u64, _>::new(qs012);
+
+        p012.update(&0, 5);
+        p012.update(&1, 6);
+        assert_eq!(&5, p012.committed());
+
+        // After upgrading to a bigger quorum set, committed fall back to 0
+
+        let mut p012_345 = p012.upgrade_quorum_set(qs012_345);
+        assert_eq!(
+            &0,
+            p012_345.committed(),
+            "quorum extended from 012 to 012_345, committed falls back"
+        );
+
+        // When quorum set shrinks, committed becomes greater.
+
+        p012_345.update(&3, 7);
+        p012_345.update(&4, 8);
+        assert_eq!(&5, p012_345.committed());
+
+        let p345 = p012_345.upgrade_quorum_set(qs345);
+        assert_eq!(
+            &7,
+            p345.committed(),
+            "shrink quorum set, greater value becomes committed"
+        );
+
         Ok(())
     }
 }
