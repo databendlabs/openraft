@@ -87,6 +87,7 @@ pub use crate::storage::RaftSnapshotBuilder;
 pub use crate::storage::RaftStorage;
 pub use crate::storage::RaftStorageDebug;
 pub use crate::storage::SnapshotMeta;
+pub use crate::storage::StorageHelper;
 pub use crate::storage_error::DefensiveError;
 pub use crate::storage_error::ErrorSubject;
 pub use crate::storage_error::ErrorVerb;
