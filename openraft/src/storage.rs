@@ -136,7 +136,8 @@ where
         let step = 64;
 
         while start < end {
-            let entries = self.try_get_log_entries(start..end).await?;
+            let step_start = std::cmp::max(start, end.saturating_sub(step));
+            let entries = self.try_get_log_entries(step_start..end).await?;
 
             for ent in entries.iter().rev() {
                 if let EntryPayload::Membership(ref mem) = ent.payload {

@@ -65,6 +65,7 @@ where
     pub fn test_store(builder: &B) -> anyhow::Result<()> {
         run_fut(Suite::last_membership_in_log_initial(builder))?;
         run_fut(Suite::last_membership_in_log(builder))?;
+        run_fut(Suite::last_membership_in_log_multi_step(builder))?;
         run_fut(Suite::get_membership_initial(builder))?;
         run_fut(Suite::get_membership_from_log_and_sm(builder))?;
         run_fut(Suite::get_initial_state_without_init(builder))?;
@@ -169,6 +170,44 @@ where
         {
             let mem = store.last_membership_in_log(4).await?;
             assert!(mem.is_none());
+        }
+
+        Ok(())
+    }
+
+    pub async fn last_membership_in_log_multi_step(builder: &B) -> anyhow::Result<()> {
+        let store = builder.build().await;
+
+        tracing::info!("--- find membership log entry backwards, multiple steps");
+        {
+            store
+                .append_to_log(&[
+                    //
+                    &Entry {
+                        log_id: log_id(1, 1),
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {1,2,3})),
+                    },
+                    &Entry {
+                        log_id: log_id(1, 2),
+                        payload: EntryPayload::Membership(Membership::new_single(btreeset! {3,4,5})),
+                    },
+                ])
+                .await?;
+
+            for i in 3..100 {
+                store.append_to_log(&[&blank(1, i)]).await?;
+            }
+
+            store
+                .append_to_log(&[&Entry {
+                    log_id: log_id(1, 100),
+                    payload: EntryPayload::Membership(Membership::new_single(btreeset! {5,6,7})),
+                }])
+                .await?;
+
+            let mem = store.last_membership_in_log(0).await?;
+            assert!(mem.is_some());
+            assert_eq!(Membership::new_single(btreeset! {5,6,7}), mem.unwrap().membership,);
         }
 
         Ok(())
@@ -1465,6 +1504,10 @@ where
 
         Ok(())
     }
+}
+
+fn log_id(term: u64, index: u64) -> LogId {
+    LogId { term, index }
 }
 
 /// Create a blank log entry for test
