@@ -82,6 +82,7 @@ where
     pub fn test_store(builder: &B) -> Result<(), StorageError<C::NodeId>> {
         run_fut(Suite::last_membership_in_log_initial(builder))?;
         run_fut(Suite::last_membership_in_log(builder))?;
+        run_fut(Suite::last_membership_in_log_multi_step(builder))?;
         run_fut(Suite::get_membership_initial(builder))?;
         run_fut(Suite::get_membership_from_log_and_empty_sm(builder))?;
         run_fut(Suite::get_membership_from_log_and_sm(builder))?;
@@ -219,6 +220,48 @@ where
 
             let mem = mems[1].clone();
             assert_eq!(Membership::new(vec![btreeset! {10,11}], None), mem.membership,);
+        }
+
+        Ok(())
+    }
+
+    pub async fn last_membership_in_log_multi_step(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+        let mut store = builder.build().await;
+
+        tracing::info!("--- find membership log entry backwards, multiple steps");
+        {
+            store
+                .append_to_log(&[
+                    //
+                    &Entry {
+                        log_id: log_id(1, 1),
+                        payload: EntryPayload::Membership(Membership::new(vec![btreeset! {1,2,3}], None)),
+                    },
+                    &Entry {
+                        log_id: log_id(1, 2),
+                        payload: EntryPayload::Membership(Membership::new(vec![btreeset! {3,4,5}], None)),
+                    },
+                ])
+                .await?;
+
+            for i in 3..100 {
+                store.append_to_log(&[&blank(1, i)]).await?;
+            }
+
+            store
+                .append_to_log(&[&Entry {
+                    log_id: log_id(1, 100),
+                    payload: EntryPayload::Membership(Membership::new(vec![btreeset! {5,6,7}], None)),
+                }])
+                .await?;
+
+            let mems = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
+            assert_eq!(2, mems.len());
+            let mem = mems[0].clone();
+            assert_eq!(Membership::new(vec![btreeset! {3,4,5}], None), mem.membership,);
+
+            let mem = mems[1].clone();
+            assert_eq!(Membership::new(vec![btreeset! {5,6,7}], None), mem.membership,);
         }
 
         Ok(())
