@@ -16,19 +16,19 @@ use crate::error::ClientWriteError;
 use crate::error::RaftError;
 use crate::error::RaftResult;
 use crate::quorum;
-use crate::raft::AppendEntriesRequest;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
-use crate::raft::Entry;
-use crate::raft::EntryPayload;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
-use crate::AppData;
-use crate::AppDataResponse;
-use crate::LogId;
+use crate::types::v065::AppData;
+use crate::types::v065::AppDataResponse;
+use crate::types::v065::AppendEntriesRequest;
+use crate::types::v065::Entry;
+use crate::types::v065::EntryPayload;
+use crate::types::v065::LogId;
+use crate::types::v065::RaftNetwork;
+use crate::types::v065::RaftStorage;
 use crate::MessageSummary;
-use crate::RaftNetwork;
-use crate::RaftStorage;
 use crate::StorageError;
 
 /// A wrapper around a ClientRequest which has been transformed into an Entry, along with its response channel.

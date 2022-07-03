@@ -17,12 +17,12 @@ use tokio::sync::watch;
 use tokio::time::Duration;
 use tokio::time::Instant;
 
-use crate::core::EffectiveMembership;
 use crate::core::State;
-use crate::raft::Membership;
-use crate::LogId;
+use crate::types::v065::EffectiveMembership;
+use crate::types::v065::LogId;
+use crate::types::v065::Membership;
+use crate::types::v065::NodeId;
 use crate::MessageSummary;
-use crate::NodeId;
 use crate::RaftError;
 use crate::ReplicationMetrics;
 

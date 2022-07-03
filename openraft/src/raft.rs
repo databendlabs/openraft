@@ -2,13 +2,10 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use serde::Deserialize;
-use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -27,14 +24,25 @@ use crate::error::RaftResult;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::quorum;
-use crate::AppData;
-use crate::AppDataResponse;
-use crate::LogId;
+pub use crate::types::v065::AddLearnerResponse;
+use crate::types::v065::AppData;
+use crate::types::v065::AppDataResponse;
+pub use crate::types::v065::AppendEntriesRequest;
+pub use crate::types::v065::AppendEntriesResponse;
+pub use crate::types::v065::ClientWriteRequest;
+pub use crate::types::v065::ClientWriteResponse;
+pub use crate::types::v065::Entry;
+pub use crate::types::v065::EntryPayload;
+pub use crate::types::v065::InstallSnapshotRequest;
+pub use crate::types::v065::InstallSnapshotResponse;
+use crate::types::v065::LogId;
+pub use crate::types::v065::Membership;
+use crate::types::v065::NodeId;
+use crate::types::v065::RaftNetwork;
+use crate::types::v065::RaftStorage;
+pub use crate::types::v065::VoteRequest;
+pub use crate::types::v065::VoteResponse;
 use crate::MessageSummary;
-use crate::NodeId;
-use crate::RaftNetwork;
-use crate::RaftStorage;
-use crate::SnapshotMeta;
 
 struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     tx_api: mpsc::UnboundedSender<(RaftMsg<D, R>, Span)>,
@@ -396,11 +404,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Cl
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AddLearnerResponse {
-    pub matched: LogId,
-}
-
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     AppendEntries {
@@ -481,30 +484,6 @@ where
     }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppendEntriesRequest<D: AppData> {
-    /// The leader's current term.
-    pub term: u64,
-
-    /// The leader's ID. Useful in redirecting clients.
-    pub leader_id: u64,
-
-    pub prev_log_id: LogId,
-
-    /// The new log entries to store.
-    ///
-    /// This may be empty when the leader is sending heartbeats. Entries
-    /// are batched for efficiency.
-    #[serde(bound = "D: AppData")]
-    pub entries: Vec<Entry<D>>,
-
-    /// The leader's committed log id.
-    pub leader_commit: LogId,
-}
-
 impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
     fn summary(&self) -> String {
         format!(
@@ -516,40 +495,6 @@ impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
             self.entries.as_slice().summary()
         )
     }
-}
-
-/// The response to an `AppendEntriesRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AppendEntriesResponse {
-    /// The responding node's current term, for leader to update itself.
-    pub term: u64,
-
-    /// The last matching log id on follower.
-    ///
-    /// It is a successful append-entry iff `matched` is `Some()`.
-    pub matched: Option<LogId>,
-
-    /// The log id that is different from the leader on follower.
-    ///
-    /// `conflict` is None if `matched` is `Some()`, because if there is a matching entry, all following inconsistent
-    /// entries will be deleted.
-    pub conflict: Option<LogId>,
-}
-
-impl AppendEntriesResponse {
-    pub fn success(&self) -> bool {
-        self.matched.is_some()
-    }
-}
-
-/// A Raft log entry.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Entry<D: AppData> {
-    pub log_id: LogId,
-
-    /// This entry's payload.
-    #[serde(bound = "D: AppData")]
-    pub payload: EntryPayload<D>,
 }
 
 impl<D: AppData> MessageSummary for Entry<D> {
@@ -593,19 +538,6 @@ impl<D: AppData> MessageSummary for &[&Entry<D>] {
     }
 }
 
-/// Log entry payload variants.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum EntryPayload<D: AppData> {
-    /// An empty payload committed by a new cluster leader.
-    Blank,
-
-    #[serde(bound = "D: AppData")]
-    Normal(D),
-
-    /// A change-membership log entry.
-    Membership(Membership),
-}
-
 impl<D: AppData> MessageSummary for EntryPayload<D> {
     fn summary(&self) -> String {
         match self {
@@ -619,71 +551,6 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// The membership configuration of the cluster.
-///
-/// It could be a joint of one, two or more members list, i.e., a quorum requires a majority of every members.
-///
-/// The structure of membership is actually a log:
-/// ```text
-/// 2-3: [6,7,8]
-/// 1-2: [3,4,5]
-/// 1-1: [1,2,3]
-/// ```
-///
-/// Without any limitation, a node uses the **joint** of every config
-/// as the effective quorum.
-///
-/// But **raft** tries to eliminate the items in a membership config to at most 2, e.g.:
-/// single item config is the normal majority quorum,
-/// double items config is the raft joint membership config.
-///
-/// To achieve this, raft has to guarantee that a 2-entries config contains all valid quorum:
-/// E.g.: given the current config of node p and q as the following:
-///
-/// Node p:
-/// ```text
-/// A-B: [a,b,c]
-/// 1-2: [3,4,5] <- commit_index
-/// 1-1: [1,2,3]
-/// ```
-///
-/// Node q:
-/// ```text
-/// X-Y: [x,y,z]
-/// 1-1: [1,2,3] <- commit_index
-/// ```
-///
-/// ```text
-/// A-B <- p
-///  |
-/// 1-2   X-Y <- q
-///  |  /
-/// 1-1
-/// ```
-///
-/// If we knows about which log entry is committed,
-/// the effective membership can be reduced to the joint of the last committed membership and all uncommitted
-/// memberships, because:
-///
-/// - Two nodes has equal greatest committed membership always include the last committed membership in the joint config
-///   so that they won't both become a leader.
-///
-/// - A node has smaller committed membership will see a higher log thus it won't be a new leader, such as q.
-///
-/// This way, to keep at most 2 member list in the membership config:
-///
-/// - raft does not allow two uncommitted membership in its log,
-/// - and stores the last committed membership and the newly proposed membership in on log entry(because raft does not
-///   store committed index), which is the joint membership entry.
-#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Membership {
-    /// Multi configs.
-    configs: Vec<BTreeSet<NodeId>>,
-
-    /// Cache of all node ids.
-    all_nodes: BTreeSet<NodeId>,
-}
 
 impl MessageSummary for Membership {
     fn summary(&self) -> String {
@@ -833,19 +700,6 @@ impl Membership {
     }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// An RPC sent by candidates to gather votes (§5.2).
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VoteRequest {
-    /// The candidate's current term.
-    pub term: u64,
-
-    pub candidate_id: u64,
-
-    pub last_log_id: LogId,
-}
-
 impl MessageSummary for VoteRequest {
     fn summary(&self) -> String {
         format!("{}-{}, last_log:{}", self.term, self.candidate_id, self.last_log_id)
@@ -862,41 +716,6 @@ impl VoteRequest {
     }
 }
 
-/// The response to a `VoteRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VoteResponse {
-    /// The current term of the responding node, for the candidate to update itself.
-    pub term: u64,
-
-    /// Will be true if the candidate received a vote from the responder.
-    pub vote_granted: bool,
-
-    /// The last log id stored on the remote voter.
-    pub last_log_id: LogId,
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct InstallSnapshotRequest {
-    /// The leader's current term.
-    pub term: u64,
-    /// The leader's ID. Useful in redirecting clients.
-    pub leader_id: u64,
-
-    /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
-    pub meta: SnapshotMeta,
-
-    /// The byte offset where this chunk of data is positioned in the snapshot file.
-    pub offset: u64,
-    /// The raw bytes of the snapshot chunk, starting at `offset`.
-    pub data: Vec<u8>,
-
-    /// Will be `true` if this is the last chunk in the snapshot.
-    pub done: bool,
-}
-
 impl MessageSummary for InstallSnapshotRequest {
     fn summary(&self) -> String {
         format!(
@@ -909,26 +728,6 @@ impl MessageSummary for InstallSnapshotRequest {
             self.done
         )
     }
-}
-
-/// The response to an `InstallSnapshotRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct InstallSnapshotResponse {
-    /// The receiving node's current term, for leader to update itself.
-    pub term: u64,
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// An application specific client request to update the state of the system (§5.1).
-///
-/// The entry of this payload will be appended to the Raft log and then applied to the Raft state
-/// machine according to the Raft protocol.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClientWriteRequest<D: AppData> {
-    /// The application specific contents of this client request.
-    #[serde(bound = "D: AppData")]
-    pub(crate) entry: EntryPayload<D>,
 }
 
 impl<D: AppData> MessageSummary for ClientWriteRequest<D> {
@@ -961,21 +760,14 @@ impl<D: AppData> ClientWriteRequest<D> {
     }
 }
 
-/// The response to a `ClientRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClientWriteResponse<R: AppDataResponse> {
-    pub log_id: LogId,
-
-    /// Application specific response data.
-    #[serde(bound = "R: AppDataResponse")]
-    pub data: R,
-
-    /// If the log entry is a change-membership entry.
-    pub membership: Option<Membership>,
-}
-
 impl<R: AppDataResponse> MessageSummary for ClientWriteResponse<R> {
     fn summary(&self) -> String {
         format!("log_id: {}, membership: {:?}", self.log_id, self.membership)
+    }
+}
+
+impl AppendEntriesResponse {
+    pub fn success(&self) -> bool {
+        self.matched.is_some()
     }
 }
