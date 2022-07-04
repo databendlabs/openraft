@@ -1,6 +1,6 @@
-use std::backtrace::Backtrace;
 use std::ops::Bound;
 
+use anyerror::AnyError;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -18,7 +18,7 @@ pub struct DefensiveError {
     /// The description of the violation.
     pub violation: Violation,
 
-    pub backtrace: Backtrace,
+    pub backtrace: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,7 +59,7 @@ pub enum ErrorVerb {
 }
 
 /// Violations a store would return when running defensive check.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Violation {
     #[error("term can only be change to a greater value, current: {curr}, change to {to}")]
     TermNotAscending { curr: u64, to: u64 },
@@ -121,6 +121,6 @@ pub enum StorageError {
 pub struct StorageIOError {
     pub(crate) subject: ErrorSubject,
     pub(crate) verb: ErrorVerb,
-    pub(crate) source: anyhow::Error,
-    pub(crate) backtrace: Backtrace,
+    pub(crate) source: AnyError,
+    pub(crate) backtrace: String,
 }

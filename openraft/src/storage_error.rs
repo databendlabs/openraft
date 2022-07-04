@@ -1,6 +1,8 @@
 use std::backtrace::Backtrace;
 use std::fmt::Formatter;
 
+use anyerror::AnyError;
+
 use crate::types::v065::DefensiveError;
 use crate::types::v065::ErrorSubject;
 use crate::types::v065::Violation;
@@ -13,7 +15,7 @@ impl DefensiveError {
         DefensiveError {
             subject,
             violation,
-            backtrace: Backtrace::capture(),
+            backtrace: format!("{:?}", Backtrace::capture()),
         }
     }
 }
@@ -47,12 +49,12 @@ impl std::fmt::Display for StorageIOError {
 }
 
 impl StorageIOError {
-    pub fn new(subject: ErrorSubject, verb: ErrorVerb, source: anyhow::Error) -> StorageIOError {
+    pub fn new(subject: ErrorSubject, verb: ErrorVerb, source: AnyError) -> StorageIOError {
         StorageIOError {
             subject,
             verb,
             source,
-            backtrace: Backtrace::capture(),
+            backtrace: format!("{:?}", Backtrace::capture()),
         }
     }
 }

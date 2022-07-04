@@ -11,7 +11,7 @@ use super::Membership;
 /// - and the config.
 ///
 /// An active config is just the last seen config in raft spec.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EffectiveMembership {
     /// The id of the log that applies this membership config
     pub log_id: LogId,

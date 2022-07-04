@@ -18,6 +18,7 @@ readme = "../README.md"
 [dependencies]
 anyhow = "1.0.32"
 async-trait = "0.1.36"
+anyerror = "0.1.6"
 byte-unit = "4.0.12"
 bytes = "1.0"
 derive_more = { version="0.99.9" }
