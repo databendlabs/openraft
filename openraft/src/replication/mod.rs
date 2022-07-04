@@ -22,17 +22,17 @@ use tracing::Span;
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::error::LackEntry;
-use crate::raft::AppendEntriesRequest;
-use crate::raft::Entry;
 use crate::raft::InstallSnapshotRequest;
-use crate::storage::Snapshot;
-use crate::AppData;
-use crate::AppDataResponse;
-use crate::LogId;
+use crate::types::v065::AppData;
+use crate::types::v065::AppDataResponse;
+use crate::types::v065::AppendEntriesRequest;
+use crate::types::v065::Entry;
+use crate::types::v065::LogId;
+use crate::types::v065::NodeId;
+use crate::types::v065::RaftNetwork;
+use crate::types::v065::RaftStorage;
+use crate::types::v065::Snapshot;
 use crate::MessageSummary;
-use crate::NodeId;
-use crate::RaftNetwork;
-use crate::RaftStorage;
 use crate::ReplicationError;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

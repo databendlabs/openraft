@@ -4,21 +4,21 @@ use std::ops::RangeBounds;
 use std::sync::RwLock;
 
 use crate::async_trait::async_trait;
-use crate::raft::Entry;
-use crate::storage::HardState;
-use crate::storage::InitialState;
-use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
-use crate::AppData;
-use crate::AppDataResponse;
+use crate::types::v065::AppData;
+use crate::types::v065::AppDataResponse;
+use crate::types::v065::EffectiveMembership;
+use crate::types::v065::Entry;
+use crate::types::v065::HardState;
+use crate::types::v065::InitialState;
+use crate::types::v065::LogId;
+use crate::types::v065::RaftStorage;
+use crate::types::v065::RaftStorageDebug;
+use crate::types::v065::Snapshot;
+use crate::types::v065::SnapshotMeta;
+use crate::types::v065::StateMachineChanges;
+use crate::types::v065::StorageError;
 use crate::DefensiveCheck;
-use crate::EffectiveMembership;
-use crate::LogId;
-use crate::RaftStorage;
-use crate::RaftStorageDebug;
-use crate::SnapshotMeta;
-use crate::StateMachineChanges;
-use crate::StorageError;
 use crate::Wrapper;
 
 /// Extended store backed by another impl.

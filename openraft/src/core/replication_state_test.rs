@@ -1,6 +1,6 @@
 use crate::core::is_matched_upto_date;
+use crate::types::v065::LogId;
 use crate::Config;
-use crate::LogId;
 
 #[test]
 fn test_is_line_rate() -> anyhow::Result<()> {

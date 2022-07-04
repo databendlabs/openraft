@@ -50,39 +50,25 @@ use crate::metrics::RaftMetrics;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
-use crate::raft::Entry;
-use crate::raft::EntryPayload;
-use crate::raft::Membership;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
-use crate::storage::HardState;
-use crate::AppData;
-use crate::AppDataResponse;
-use crate::LogId;
+use crate::types::v065::AppData;
+use crate::types::v065::AppDataResponse;
+pub use crate::types::v065::EffectiveMembership;
+use crate::types::v065::Entry;
+use crate::types::v065::EntryPayload;
+use crate::types::v065::HardState;
+use crate::types::v065::LogId;
+use crate::types::v065::Membership;
+use crate::types::v065::NodeId;
+use crate::types::v065::RaftNetwork;
+use crate::types::v065::RaftStorage;
 use crate::MessageSummary;
-use crate::NodeId;
-use crate::RaftNetwork;
-use crate::RaftStorage;
 use crate::StorageError;
 use crate::Update;
-
-/// The currently active membership config.
-///
-/// It includes:
-/// - the id of the log that sets this membership config,
-/// - and the config.
-///
-/// An active config is just the last seen config in raft spec.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EffectiveMembership {
-    /// The id of the log that applies this membership config
-    pub log_id: LogId,
-
-    pub membership: Membership,
-}
 
 impl MessageSummary for EffectiveMembership {
     fn summary(&self) -> String {
