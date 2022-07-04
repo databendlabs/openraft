@@ -3,7 +3,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use fixtures::RaftRouter;
 use maplit::btreeset;
-use memstore::ClientRequest;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
 use openraft::AppData;
@@ -13,6 +12,7 @@ use openraft::LogId;
 use openraft::MessageSummary;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft_memstore::ClientRequest;
 
 use crate::fixtures::ent;
 

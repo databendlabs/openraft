@@ -1,6 +1,6 @@
 [package]
-name = "memstore"
-version = "0.2.0"
+name = "openraft-memstore"
+version = "0.6.5"
 edition = "2021"
 authors = [
     "Databend Authors <opensource@datafuselabs.com>",
