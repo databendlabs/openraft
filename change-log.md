@@ -1,3 +1,9 @@
+## v0.6.6
+
+### Changed:
+
+-   Changed: [af10f087](https://github.com/datafuselabs/openraft/commit/af10f087406d25b0a1da7fe8605f47f78837b2f4) API: use AnyError and string backtrace in StorageIOError and Violation.; by 张炎泼; 2022-07-04
+
 ## v0.6.5
 
 ### Fixed:
