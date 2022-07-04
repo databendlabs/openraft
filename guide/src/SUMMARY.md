@@ -16,3 +16,5 @@
     - [Replication](./replication.md)
       - [Delete-conflicting-logs](./delete_log.md)
     - [Effective Membership](./effective-membership.md)
+
+- [Upgrade Tips](./upgrade-tips.md)
