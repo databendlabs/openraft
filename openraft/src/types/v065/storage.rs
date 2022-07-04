@@ -22,8 +22,8 @@ use crate::HardState;
 
 /// A trait defining the interface for a Raft storage system.
 ///
-/// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
-/// for details on where and how this is used.
+/// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
+/// for details and discussion on this trait and how to implement it.
 #[async_trait]
 pub trait RaftStorage<D, R>: Send + Sync + 'static
 where
@@ -83,7 +83,9 @@ where
 
     /// Get a series of log entries from storage.
     ///
-    /// Entry not found is allowed
+    /// The start value is inclusive in the search and the stop value is non-inclusive: `[start, stop)`.
+    ///
+    /// Entry that is not found is allowed.
     async fn try_get_log_entries<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RNG,
@@ -110,8 +112,6 @@ where
     async fn last_applied_state(&self) -> Result<(LogId, Option<EffectiveMembership>), StorageError>;
 
     /// Delete all logs in a `range`.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn delete_logs_from<RNG: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &self,
         range: RNG,
@@ -121,14 +121,12 @@ where
     ///
     /// Though the entries will always be presented in order, each entry's index should be used to
     /// determine its location to be written in the log.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn append_to_log(&self, entries: &[&Entry<D>]) -> Result<(), StorageError>;
 
     /// Apply the given payload of entries to the state machine.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
-    /// have been replicated to a majority of the cluster, will be applied to the state machine.
+    /// have been replicated to a quorum of the cluster, will be applied to the state machine.
     ///
     /// This is where the business logic of interacting with your application's state machine
     /// should live. This is 100% application specific. Perhaps this is where an application
@@ -136,23 +134,20 @@ where
     /// is being stored.
     ///
     /// An impl should do:
+    /// - Store the last applied log id.
     /// - Deal with the EntryPayload::Normal() log, which is business logic log.
-    /// - Deal with EntryPayload::Membership
-    /// - A EntryPayload::SnapshotPointer log should never be seen.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
+    /// - Deal with EntryPayload::Membership, store the membership config.
     async fn apply_to_state_machine(&self, entries: &[&Entry<D>]) -> Result<Vec<R>, StorageError>;
 
-    /// Perform log compaction, returning a handle to the generated snapshot.
+    // --- Snapshot
+
+    /// Build snapshot
     ///
-    /// ### implementation guide
-    /// When performing log compaction, the compaction can only cover the breadth of the log up to
-    /// the last applied log and under write load this value may change quickly. As such, the
-    /// storage implementation should export/checkpoint/snapshot its state machine, and then use
-    /// the value of that export's last applied log as the metadata indicating the breadth of the
-    /// log covered by the snapshot.
+    /// A snapshot has to contain information about exactly all logs upto the last applied.
     ///
-    /// Errors returned from this method will be logged and retried.
+    /// Building snapshot can be done by:
+    /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a LSM-tree does,
+    /// - or by fetching a snapshot from the state machine.
     async fn do_log_compaction(&self) -> Result<Snapshot<Self::SnapshotData>, StorageError>;
 
     /// Create a new blank snapshot, returning a writable handle to the snapshot object.
@@ -162,18 +157,14 @@ where
     /// ### implementation guide
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
     /// for details on log compaction / snapshotting.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn begin_receiving_snapshot(&self) -> Result<Box<Self::SnapshotData>, StorageError>;
 
-    /// Finalize the installation of a snapshot which has finished streaming from the cluster leader.
+    /// Install a snapshot which has finished streaming from the cluster leader.
     ///
     /// All other snapshots should be deleted at this point.
     ///
     /// ### snapshot
     /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the snapshot.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn finalize_snapshot_installation(
         &self,
         meta: &SnapshotMeta,
@@ -191,8 +182,6 @@ where
     ///
     /// A proper snapshot implementation will store the term, index and membership config as part
     /// of the snapshot, which should be decoded for creating this method's response data.
-    ///
-    /// Errors returned from this method will cause Raft to go into shutdown.
     async fn get_current_snapshot(&self) -> Result<Option<Snapshot<Self::SnapshotData>>, StorageError>;
 }
 
