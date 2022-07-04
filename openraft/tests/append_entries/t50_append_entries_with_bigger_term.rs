@@ -6,6 +6,7 @@ use openraft::raft::AppendEntriesRequest;
 use openraft::Config;
 use openraft::LogId;
 use openraft::RaftNetwork;
+use openraft_memstore::ClientRequest;
 
 use crate::fixtures::RaftRouter;
 
@@ -27,7 +28,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
 
     tracing::info!("append-entries with bigger term");
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
-    let req = AppendEntriesRequest::<memstore::ClientRequest> {
+    let req = AppendEntriesRequest::<ClientRequest> {
         term: 2,
         leader_id: 1,
         prev_log_id: Some(LogId::new(1, n_logs)),

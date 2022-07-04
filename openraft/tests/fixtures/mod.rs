@@ -16,11 +16,6 @@ use anyhow::Context;
 use anyhow::Result;
 use lazy_static::lazy_static;
 use maplit::btreeset;
-use memstore::ClientRequest as MemClientRequest;
-use memstore::ClientRequest;
-use memstore::ClientResponse;
-use memstore::ClientResponse as MemClientResponse;
-use memstore::MemStore;
 use openraft::async_trait::async_trait;
 use openraft::error::AddLearnerError;
 use openraft::error::ClientReadError;
@@ -49,6 +44,11 @@ use openraft::RaftMetrics;
 use openraft::RaftNetwork;
 use openraft::State;
 use openraft::StoreExt;
+use openraft_memstore::ClientRequest as MemClientRequest;
+use openraft_memstore::ClientRequest;
+use openraft_memstore::ClientResponse;
+use openraft_memstore::ClientResponse as MemClientResponse;
+use openraft_memstore::MemStore;
 #[allow(unused_imports)]
 use pretty_assertions::assert_eq;
 #[allow(unused_imports)]
