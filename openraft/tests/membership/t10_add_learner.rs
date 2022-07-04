@@ -6,7 +6,7 @@ use maplit::btreeset;
 use openraft::raft::AddLearnerResponse;
 use openraft::Config;
 use openraft::LogId;
-use openraft::RaftStorage;
+use openraft::StorageHelper;
 
 use crate::fixtures::RaftRouter;
 
@@ -60,7 +60,7 @@ async fn add_learner_basic() -> Result<()> {
         tracing::info!("--- add_learner blocks until the replication catches up");
         let sto1 = router.get_storage_handle(&1).await?;
 
-        let logs = sto1.get_log_entries(..).await?;
+        let logs = StorageHelper::new(&sto1).get_log_entries(..).await?;
 
         assert_eq!(log_index, logs[logs.len() - 1].log_id.index);
         // 0-th log

@@ -13,6 +13,7 @@ use openraft::LogId;
 use openraft::MessageSummary;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft::StorageHelper;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -230,7 +231,7 @@ where
     R: AppDataResponse,
     Sto: RaftStorage<D, R>,
 {
-    let logs = sto.get_log_entries(..).await?;
+    let logs = StorageHelper::new(sto).get_log_entries(..).await?;
     let skip = 0;
     let want: Vec<Entry<ClientRequest>> = terms
         .iter()

@@ -22,6 +22,7 @@ pub mod types;
 
 #[cfg(test)]
 mod metrics_wait_test;
+mod storage_helper;
 
 pub use async_trait;
 
@@ -35,6 +36,7 @@ pub use crate::raft::Raft;
 pub use crate::raft_types::LogIdOptionExt;
 pub use crate::raft_types::Update;
 pub use crate::replication::ReplicationMetrics;
+pub use crate::storage_helper::StorageHelper;
 pub use crate::store_ext::StoreExt;
 pub use crate::store_wrapper::Wrapper;
 pub use crate::summary::MessageSummary;

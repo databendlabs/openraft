@@ -6,8 +6,8 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LogId;
 use openraft::Membership;
-use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
+use openraft::StorageHelper;
 
 use crate::fixtures::RaftRouter;
 
@@ -72,10 +72,10 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             .await?;
 
         {
-            let logs = sto0.get_log_entries(..).await?;
+            let logs = StorageHelper::new(&sto0).get_log_entries(..).await?;
             assert_eq!(2, logs.len(), "only one applied log is kept");
         }
-        let m = sto0.get_membership().await?;
+        let m = StorageHelper::new(&sto0).get_membership().await?;
 
         let m = m.unwrap();
 
@@ -121,10 +121,10 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     tracing::info!("--- check membership");
     {
         {
-            let logs = sto0.get_log_entries(..).await?;
+            let logs = StorageHelper::new(&sto0).get_log_entries(..).await?;
             assert_eq!(2, logs.len(), "only one applied log");
         }
-        let m = sto0.get_membership().await?;
+        let m = StorageHelper::new(&sto0).get_membership().await?;
 
         let m = m.unwrap();
 

@@ -10,8 +10,8 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftNetwork;
-use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
+use openraft::StorageHelper;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -104,7 +104,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             tracing::info!("--- check that learner membership is affected");
             {
-                let m = sto.get_membership().await?;
+                let m = StorageHelper::new(&sto).get_membership().await?;
 
                 let m = m.unwrap();
 
@@ -146,7 +146,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 )
                 .await?;
 
-            let m = sto.get_membership().await?;
+            let m = StorageHelper::new(&sto).get_membership().await?;
 
             let m = m.unwrap();
 

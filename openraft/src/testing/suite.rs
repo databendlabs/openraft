@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use maplit::btreeset;
 
@@ -19,6 +20,7 @@ use crate::InitialState;
 use crate::LogId;
 use crate::Membership;
 use crate::RaftStorage;
+use crate::StorageHelper;
 use crate::Violation;
 
 const NODE_ID: u64 = 0;
@@ -92,9 +94,9 @@ where
     }
 
     pub async fn last_membership_in_log_initial(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
-        let membership = store.last_membership_in_log(0).await?;
+        let membership = StorageHelper::new(&store).last_membership_in_log(0).await?;
 
         assert!(membership.is_none());
 
@@ -102,7 +104,7 @@ where
     }
 
     pub async fn last_membership_in_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         tracing::info!("--- no log, do not read membership from state machine");
         {
@@ -119,7 +121,7 @@ where
                 ])
                 .await?;
 
-            let mem = store.last_membership_in_log(0).await?;
+            let mem = StorageHelper::new(&store).last_membership_in_log(0).await?;
 
             assert!(mem.is_none());
         }
@@ -133,15 +135,15 @@ where
                 }])
                 .await?;
 
-            let mem = store.last_membership_in_log(0).await?;
+            let mem = StorageHelper::new(&store).last_membership_in_log(0).await?;
             let mem = mem.unwrap();
             assert_eq!(Membership::new_single(btreeset! {1, 2, 3}), mem.membership,);
 
-            let mem = store.last_membership_in_log(1).await?;
+            let mem = StorageHelper::new(&store).last_membership_in_log(1).await?;
             let mem = mem.unwrap();
             assert_eq!(Membership::new_single(btreeset! {1, 2, 3}), mem.membership,);
 
-            let mem = store.last_membership_in_log(2).await?;
+            let mem = StorageHelper::new(&store).last_membership_in_log(2).await?;
             assert!(mem.is_none());
         }
 
@@ -160,7 +162,7 @@ where
                 ])
                 .await?;
 
-            let mem = store.last_membership_in_log(0).await?;
+            let mem = StorageHelper::new(&store).last_membership_in_log(0).await?;
             let mem = mem.unwrap();
 
             assert_eq!(Membership::new_single(btreeset! {7,8,9},), mem.membership,);
@@ -168,7 +170,7 @@ where
 
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log but since_index is greater than the last");
         {
-            let mem = store.last_membership_in_log(4).await?;
+            let mem = StorageHelper::new(&store).last_membership_in_log(4).await?;
             assert!(mem.is_none());
         }
 
@@ -176,7 +178,7 @@ where
     }
 
     pub async fn last_membership_in_log_multi_step(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         tracing::info!("--- find membership log entry backwards, multiple steps");
         {
@@ -205,7 +207,7 @@ where
                 }])
                 .await?;
 
-            let mem = store.last_membership_in_log(0).await?;
+            let mem = StorageHelper::new(&store).last_membership_in_log(0).await?;
             assert!(mem.is_some());
             assert_eq!(Membership::new_single(btreeset! {5,6,7}), mem.unwrap().membership,);
         }
@@ -214,9 +216,9 @@ where
     }
 
     pub async fn get_membership_initial(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
-        let membership = store.get_membership().await?;
+        let membership = StorageHelper::new(&store).get_membership().await?;
 
         assert!(membership.is_none());
 
@@ -224,7 +226,7 @@ where
     }
 
     pub async fn get_membership_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         tracing::info!("--- no log, read membership from state machine");
         {
@@ -241,7 +243,7 @@ where
                 ])
                 .await?;
 
-            let mem = store.get_membership().await?;
+            let mem = StorageHelper::new(&store).get_membership().await?;
             let mem = mem.unwrap();
 
             assert_eq!(Membership::new_single(btreeset! {3,4,5}), mem.membership,);
@@ -256,7 +258,7 @@ where
                 }])
                 .await?;
 
-            let mem = store.get_membership().await?;
+            let mem = StorageHelper::new(&store).get_membership().await?;
 
             let mem = mem.unwrap();
 
@@ -272,7 +274,7 @@ where
                 }])
                 .await?;
 
-            let mem = store.get_membership().await?;
+            let mem = StorageHelper::new(&store).get_membership().await?;
 
             let mem = mem.unwrap();
 
@@ -283,15 +285,15 @@ where
     }
 
     pub async fn get_initial_state_without_init(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
-        let initial = store.get_initial_state().await?;
+        let initial = StorageHelper::new(&store).get_initial_state().await?;
         assert_eq!(InitialState::default(), initial, "uninitialized state");
         Ok(())
     }
 
     pub async fn get_initial_state_with_state(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
         Self::default_hard_state(&store).await?;
 
         store
@@ -308,7 +310,7 @@ where
             }])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = StorageHelper::new(&store).get_initial_state().await?;
 
         assert_eq!(
             initial.last_log_id,
@@ -334,7 +336,7 @@ where
     pub async fn get_initial_state_membership_from_log_and_sm(builder: &B) -> anyhow::Result<()> {
         // It should never return membership from logs that are included in state machine present.
 
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
         Self::default_hard_state(&store).await?;
 
         // copy the test from get_membership_config
@@ -354,7 +356,7 @@ where
                 ])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&store).get_initial_state().await?;
 
             assert_eq!(
                 Membership::new_single(btreeset! {3,4,5}),
@@ -371,7 +373,7 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&store).get_initial_state().await?;
 
             assert_eq!(
                 Membership::new_single(btreeset! {3,4,5}),
@@ -388,7 +390,7 @@ where
                 }])
                 .await?;
 
-            let initial = store.get_initial_state().await?;
+            let initial = StorageHelper::new(&store).get_initial_state().await?;
 
             assert_eq!(
                 Membership::new_single(btreeset! {1,2,3}),
@@ -400,7 +402,7 @@ where
     }
 
     pub async fn get_initial_state_last_log_gt_sm(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
         Self::default_hard_state(&store).await?;
 
         store
@@ -423,7 +425,7 @@ where
             ])
             .await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = StorageHelper::new(&store).get_initial_state().await?;
 
         assert_eq!(
             initial.last_log_id,
@@ -434,14 +436,14 @@ where
     }
 
     pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
         Self::default_hard_state(&store).await?;
 
         store.append_to_log(&[&blank(1, 2)]).await?;
 
         store.apply_to_state_machine(&[&blank(3, 1)]).await?;
 
-        let initial = store.get_initial_state().await?;
+        let initial = StorageHelper::new(&store).get_initial_state().await?;
 
         assert_eq!(
             initial.last_log_id,
@@ -452,7 +454,7 @@ where
     }
 
     pub async fn save_hard_state(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         store
             .save_hard_state(&HardState {
@@ -474,18 +476,18 @@ where
     }
 
     pub async fn get_log_entries(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
         Self::feed_10_logs_vote_self(&store).await?;
 
         tracing::info!("--- get start == stop");
         {
-            let logs = store.get_log_entries(3..3).await?;
+            let logs = StorageHelper::new(&store).get_log_entries(3..3).await?;
             assert_eq!(logs.len(), 0, "expected no logs to be returned");
         }
 
         tracing::info!("--- get start < stop");
         {
-            let logs = store.get_log_entries(5..7).await?;
+            let logs = StorageHelper::new(&store).get_log_entries(5..7).await?;
 
             assert_eq!(logs.len(), 2);
             assert_eq!(logs[0].log_id, (1, 5).into());
@@ -496,34 +498,34 @@ where
     }
 
     pub async fn try_get_log_entry(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
         Self::feed_10_logs_vote_self(&store).await?;
 
         store.purge_logs_upto(LogId::new(0, 0)).await?;
 
-        let ent = store.try_get_log_entry(3).await?;
+        let ent = StorageHelper::new(&store).try_get_log_entry(3).await?;
         assert_eq!(Some(LogId { term: 1, index: 3 }), ent.map(|x| x.log_id));
 
-        let ent = store.try_get_log_entry(0).await?;
+        let ent = StorageHelper::new(&store).try_get_log_entry(0).await?;
         assert_eq!(None, ent.map(|x| x.log_id));
 
-        let ent = store.try_get_log_entry(11).await?;
+        let ent = StorageHelper::new(&store).try_get_log_entry(11).await?;
         assert_eq!(None, ent.map(|x| x.log_id));
 
         Ok(())
     }
 
     pub async fn initial_logs(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
-        let ent = store.try_get_log_entry(0).await?;
+        let ent = StorageHelper::new(&store).try_get_log_entry(0).await?;
         assert!(ent.is_none(), "store initialized");
 
         Ok(())
     }
 
     pub async fn get_log_state(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         let st = store.get_log_state().await?;
 
@@ -570,28 +572,28 @@ where
     }
 
     pub async fn get_log_id(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
         Self::feed_10_logs_vote_self(&store).await?;
 
         store.purge_logs_upto(LogId::new(1, 3)).await?;
 
-        let res = store.get_log_id(0).await;
+        let res = StorageHelper::new(&store).get_log_id(0).await;
         assert!(res.is_err());
 
-        let res = store.get_log_id(11).await;
+        let res = StorageHelper::new(&store).get_log_id(11).await;
         assert!(res.is_err());
 
-        let res = store.get_log_id(3).await?;
+        let res = StorageHelper::new(&store).get_log_id(3).await?;
         assert_eq!(LogId::new(1, 3), res);
 
-        let res = store.get_log_id(4).await?;
+        let res = StorageHelper::new(&store).get_log_id(4).await?;
         assert_eq!(LogId::new(1, 4), res);
 
         Ok(())
     }
 
     pub async fn last_id_in_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         let log_id = store.get_log_state().await?.last_log_id;
         assert_eq!(None, log_id);
@@ -628,7 +630,7 @@ where
     }
 
     pub async fn last_applied_state(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         let (applied, membership) = store.last_applied_state().await?;
         assert_eq!(None, applied);
@@ -680,7 +682,7 @@ where
     pub async fn delete_logs(builder: &B) -> anyhow::Result<()> {
         tracing::info!("--- delete (-oo, 0]");
         {
-            let store = builder.build().await;
+            let store = Arc::new(builder.build().await);
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.purge_logs_upto(LogId::new(0, 0)).await?;
@@ -700,7 +702,7 @@ where
 
         tracing::info!("--- delete (-oo, 5]");
         {
-            let store = builder.build().await;
+            let store = Arc::new(builder.build().await);
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.purge_logs_upto(LogId::new(1, 5)).await?;
@@ -720,7 +722,7 @@ where
 
         tracing::info!("--- delete (-oo, 20]");
         {
-            let store = builder.build().await;
+            let store = Arc::new(builder.build().await);
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.purge_logs_upto(LogId::new(1, 20)).await?;
@@ -739,7 +741,7 @@ where
 
         tracing::info!("--- delete [11, +oo)");
         {
-            let store = builder.build().await;
+            let store = Arc::new(builder.build().await);
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.delete_conflict_logs_since(LogId::new(1, 11)).await?;
@@ -758,7 +760,7 @@ where
 
         tracing::info!("--- delete [0, +oo)");
         {
-            let store = builder.build().await;
+            let store = Arc::new(builder.build().await);
             Self::feed_10_logs_vote_self(&store).await?;
 
             store.delete_conflict_logs_since(LogId::new(0, 0)).await?;
@@ -779,7 +781,7 @@ where
     }
 
     pub async fn append_to_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
         Self::feed_10_logs_vote_self(&store).await?;
 
         store.purge_logs_upto(LogId::new(0, 0)).await?;
@@ -795,7 +797,7 @@ where
     }
 
     // pub async fn apply_single(builder: &B) -> anyhow::Result<()> {
-    //     let store = builder.build().await;
+    //     let store = Arc::new(builder.build().await);
     //
     //     let entry = Entry {
     //         log_id: LogId { term: 3, index: 1 },
@@ -832,7 +834,7 @@ where
     // }
     //
     // pub async fn apply_multi(builder: &B) -> anyhow::Result<()> {
-    //     let store = builder.build().await;
+    //     let store = Arc::new(builder.build().await);
     //
     //     let req0 = ClientRequest {
     //         client: "1".into(),
@@ -966,7 +968,7 @@ where
     }
 
     pub async fn df_get_membership_config_dirty_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
@@ -1007,7 +1009,7 @@ where
                 ])
                 .await?;
 
-            let res = store.get_membership().await;
+            let res = StorageHelper::new(&store).get_membership().await;
 
             let e = res.unwrap_err().into_defensive().unwrap();
             assert!(matches!(e, DefensiveError {
@@ -1024,7 +1026,7 @@ where
     }
 
     pub async fn df_get_initial_state_dirty_log(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
@@ -1042,7 +1044,7 @@ where
                 }])
                 .await?;
 
-            let state = store.get_initial_state().await;
+            let state = StorageHelper::new(&store).get_initial_state().await;
             let e = state.unwrap_err().into_defensive().unwrap();
 
             assert!(matches!(e, DefensiveError {
@@ -1059,7 +1061,7 @@ where
     }
 
     pub async fn df_save_hard_state_ascending(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         store
             .save_hard_state(&HardState {
@@ -1171,21 +1173,21 @@ where
     }
 
     pub async fn df_get_log_entries(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
         Self::feed_10_logs_vote_self(&store).await?;
 
         store.apply_to_state_machine(&[&blank(0, 0)]).await?;
 
         store.purge_logs_upto(LogId::new(0, 0)).await?;
 
-        store.get_log_entries(..).await?;
-        store.get_log_entries(5..).await?;
-        store.get_log_entries(..5).await?;
-        store.get_log_entries(5..7).await?;
+        StorageHelper::new(&store).get_log_entries(..).await?;
+        StorageHelper::new(&store).get_log_entries(5..).await?;
+        StorageHelper::new(&store).get_log_entries(..5).await?;
+        StorageHelper::new(&store).get_log_entries(5..7).await?;
 
         // mismatched bound.
 
-        let res = store.get_log_entries(11..).await;
+        let res = StorageHelper::new(&store).get_log_entries(11..).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::LogIndex(11),
@@ -1193,7 +1195,7 @@ where
             ..
         }));
 
-        let res = store.get_log_entries(1..1).await;
+        let res = StorageHelper::new(&store).get_log_entries(1..1).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::Logs,
@@ -1204,7 +1206,7 @@ where
             ..
         }));
 
-        let res = store.get_log_entries(0..1).await;
+        let res = StorageHelper::new(&store).get_log_entries(0..1).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::LogIndex(0),
@@ -1212,7 +1214,7 @@ where
             ..
         }));
 
-        let res = store.get_log_entries(0..2).await;
+        let res = StorageHelper::new(&store).get_log_entries(0..2).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::LogIndex(0),
@@ -1220,7 +1222,7 @@ where
             ..
         }));
 
-        let res = store.get_log_entries(10..12).await;
+        let res = StorageHelper::new(&store).get_log_entries(10..12).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::LogIndex(11),
@@ -1235,7 +1237,7 @@ where
     }
 
     pub async fn df_append_to_log_nonempty_input(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         let res = store.append_to_log(Vec::<&Entry<_>>::new().as_slice()).await;
 
@@ -1247,7 +1249,7 @@ where
     }
 
     pub async fn df_append_to_log_nonconsecutive_input(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         let res = store
             .append_to_log(&[
@@ -1276,7 +1278,7 @@ where
     }
 
     pub async fn df_append_to_log_eq_last_plus_one(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         tracing::info!("-- log_id <= last_applied");
         tracing::info!("-- nonconsecutive log");
@@ -1305,7 +1307,7 @@ where
         // last_log: 1,1
         // last_applied: 1,2
         // append_to_log: 1,4
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         tracing::info!("-- log_id <= last_applied");
         tracing::info!("-- nonconsecutive log");
@@ -1333,7 +1335,7 @@ where
     pub async fn df_append_to_log_gt_last_log_id(builder: &B) -> anyhow::Result<()> {
         // last_log: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
@@ -1356,7 +1358,7 @@ where
         // last_log: 2,1
         // last_applied: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
@@ -1380,7 +1382,7 @@ where
     }
 
     pub async fn df_apply_nonempty_input(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         let res = store.apply_to_state_machine(Vec::<&Entry<_>>::new().as_slice()).await;
 
@@ -1392,7 +1394,7 @@ where
     }
 
     pub async fn df_apply_index_eq_last_applied_plus_one(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         let entry = blank(3, 1);
 
@@ -1433,7 +1435,7 @@ where
     }
 
     pub async fn df_apply_gt_last_applied_id(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         let entry = blank(3, 1);
 
@@ -1460,7 +1462,7 @@ where
     }
 
     pub async fn df_purge_applied_le_last_applied(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
 
@@ -1483,7 +1485,7 @@ where
     }
 
     pub async fn df_delete_conflict_gt_last_applied(builder: &B) -> anyhow::Result<()> {
-        let store = builder.build().await;
+        let store = Arc::new(builder.build().await);
 
         store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
 

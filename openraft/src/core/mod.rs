@@ -62,6 +62,7 @@ use crate::types::v070::RaftNetwork;
 use crate::types::v070::RaftStorage;
 use crate::types::v070::StorageError;
 use crate::MessageSummary;
+use crate::StorageHelper;
 use crate::Update;
 
 impl EffectiveMembership {
@@ -223,7 +224,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn do_main(&mut self) -> Result<(), Fatal> {
         tracing::debug!("raft node is initializing");
 
-        let state = self.storage.get_initial_state().await?;
+        let state = StorageHelper::new(&self.storage).get_initial_state().await?;
 
         // TODO(xp): this is not necessary.
         self.storage.save_hard_state(&state.hard_state).await?;
@@ -600,7 +601,7 @@ where
         return Ok(());
     }
 
-    let log_id = sto.get_log_id(end - 1).await?;
+    let log_id = StorageHelper::new(&sto).get_log_id(end - 1).await?;
     sto.purge_logs_upto(log_id).await
 }
 

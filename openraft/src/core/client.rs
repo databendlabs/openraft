@@ -28,6 +28,7 @@ use crate::MessageSummary;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::StorageError;
+use crate::StorageHelper;
 
 /// A wrapper around a ClientRequest which has been transformed into an Entry, along with its response channel.
 pub(super) struct ClientRequestEntry<D: AppData, R: AppDataResponse> {
@@ -304,7 +305,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         };
 
         if index != expected_next_index {
-            let entries = self.core.storage.get_log_entries(expected_next_index..index).await?;
+            let entries = StorageHelper::new(&self.core.storage).get_log_entries(expected_next_index..index).await?;
 
             if let Some(entry) = entries.last() {
                 self.core.last_applied = Some(entry.log_id);

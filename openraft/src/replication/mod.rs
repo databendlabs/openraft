@@ -35,6 +35,7 @@ use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::Snapshot;
+use crate::StorageHelper;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReplicationMetrics {
@@ -297,7 +298,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             let prev_log_id = if prev_index == last_purged.index() {
                 last_purged
             } else if let Some(prev_i) = prev_index {
-                let first = self.storage.try_get_log_entry(prev_i).await?;
+                let first = StorageHelper::new(&self.storage).try_get_log_entry(prev_i).await?;
                 match first {
                     Some(f) => Some(f.log_id),
                     None => {

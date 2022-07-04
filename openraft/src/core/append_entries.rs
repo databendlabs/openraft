@@ -15,6 +15,7 @@ use crate::MessageSummary;
 use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::StorageError;
+use crate::StorageHelper;
 use crate::Update;
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
@@ -113,7 +114,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // TODO(xp): get_membership() should have a defensive check to ensure it always returns Some() if node is
         //           initialized. Because a node always commit a membership log as the first log entry.
-        let membership = self.storage.get_membership().await?;
+        let membership = StorageHelper::new(&self.storage).get_membership().await?;
 
         // TODO(xp): This is a dirty patch:
         //           When a node starts in a single-node mode, it does not append an initial log
@@ -284,7 +285,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             let index = log_id.index;
 
             // TODO(xp): this is a naive impl. Batch loading entries from storage.
-            let log = self.storage.try_get_log_entry(index).await?;
+            let log = StorageHelper::new(&self.storage).try_get_log_entry(index).await?;
 
             if let Some(local) = log {
                 if local.log_id == log_id {
@@ -317,7 +318,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         let index = log_id.index;
 
-        let log = self.storage.try_get_log_entry(index).await?;
+        let log = StorageHelper::new(&self.storage).try_get_log_entry(index).await?;
         tracing::debug!(
             "check log id matching: local: {:?} remote: {}",
             log.as_ref().map(|x| x.log_id),
@@ -393,7 +394,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Drain entries from the beginning of the cache up to commit index.
 
-        let entries = self.storage.get_log_entries(self.last_applied.next_index()..self.committed.next_index()).await?;
+        let entries = StorageHelper::new(&self.storage)
+            .get_log_entries(self.last_applied.next_index()..self.committed.next_index())
+            .await?;
 
         let last_log_id = entries.last().map(|x| x.log_id).unwrap();
 

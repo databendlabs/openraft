@@ -11,6 +11,7 @@ use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft::StorageHelper;
 
 #[macro_use]
 mod fixtures;
@@ -54,7 +55,7 @@ async fn initialization() -> Result<()> {
 
     for i in 0..3 {
         let sto = router.get_storage_handle(&1).await?;
-        let first = sto.get_log_entries(0..2).await?.first().cloned();
+        let first = StorageHelper::new(&sto).get_log_entries(0..2).await?.first().cloned();
 
         tracing::info!("--- check membership is replicated: id: {}, first log: {:?}", i, first);
         let mem = match first.unwrap().payload {
