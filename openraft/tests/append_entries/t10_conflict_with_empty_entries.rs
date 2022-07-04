@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use memstore::ClientRequest;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
 use openraft::Config;
 use openraft::LogId;
 use openraft::RaftNetwork;
+use openraft_memstore::ClientRequest;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -43,7 +43,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     // Expect conflict even if the message contains no entries.
 
-    let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
+    let rpc = AppendEntriesRequest::<ClientRequest> {
         term: 1,
         leader_id: 1,
         prev_log_id: Some(LogId::new(1, 5)),
@@ -57,7 +57,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     // Feed logs
 
-    let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
+    let rpc = AppendEntriesRequest::<ClientRequest> {
         term: 1,
         leader_id: 1,
         prev_log_id: None,
@@ -78,7 +78,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     // Expect a conflict with prev_log_index == 3
 
-    let rpc = AppendEntriesRequest::<memstore::ClientRequest> {
+    let rpc = AppendEntriesRequest::<ClientRequest> {
         term: 1,
         leader_id: 1,
         prev_log_id: Some(LogId::new(1, 3)),
