@@ -5,5 +5,3 @@ mod membership;
 mod membership_test;
 
 pub mod quorum;
-
-pub use membership::Membership;

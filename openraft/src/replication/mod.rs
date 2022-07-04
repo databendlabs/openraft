@@ -27,7 +27,6 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::LogIndexOptionExt;
-use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::LogId;
@@ -35,6 +34,7 @@ use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftNetwork;
 use crate::RaftStorage;
+use crate::Snapshot;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReplicationMetrics {

@@ -7,9 +7,9 @@ use std::time::Duration;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
 use crate::NodeId;
+use crate::SnapshotSegmentId;
 use crate::StorageError;
 
 /// Fatal is unrecoverable and shuts down raft at once.
