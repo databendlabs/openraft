@@ -6,11 +6,11 @@ use async_trait::async_trait;
 
 use crate::raft::Entry;
 use crate::raft_types::LogIdOptionExt;
-use crate::storage::HardState;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::DefensiveError;
 use crate::ErrorSubject;
+use crate::HardState;
 use crate::LogId;
 use crate::RaftStorage;
 use crate::StorageError;

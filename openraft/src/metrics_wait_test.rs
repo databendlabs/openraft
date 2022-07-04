@@ -4,10 +4,10 @@ use maplit::btreeset;
 use tokio::sync::watch;
 use tokio::time::sleep;
 
-use crate::core::EffectiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::raft_types::LogIdOptionExt;
+use crate::types::v070::EffectiveMembership;
 use crate::LogId;
 use crate::Membership;
 use crate::RaftMetrics;

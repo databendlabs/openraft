@@ -6,25 +6,11 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use maplit::btreeset;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::membership::quorum;
+use crate::Membership;
 use crate::MessageSummary;
 use crate::NodeId;
-
-/// The membership configuration of the cluster.
-///
-/// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset of a majority of
-/// every config.
-#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Membership {
-    /// Multi configs.
-    configs: Vec<BTreeSet<NodeId>>,
-
-    /// Cache of all node ids.
-    all_nodes: BTreeSet<NodeId>,
-}
 
 impl MessageSummary for Membership {
     fn summary(&self) -> String {

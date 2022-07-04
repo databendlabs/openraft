@@ -13,6 +13,7 @@ use openraft::RaftNetwork;
 use openraft::RaftStorage;
 use openraft::SnapshotPolicy;
 use openraft::State;
+use openraft::StorageHelper;
 
 use crate::fixtures::blank;
 use crate::fixtures::RaftRouter;
@@ -115,7 +116,7 @@ async fn compaction() -> Result<()> {
     tracing::info!("--- logs should be deleted after installing snapshot; left only the last one");
     {
         let sto = router.get_storage_handle(&1).await?;
-        let logs = sto.get_log_entries(..).await?;
+        let logs = StorageHelper::new(&sto).get_log_entries(..).await?;
         assert_eq!(1, logs.len());
         assert_eq!(LogId { term: 1, index: 50 }, logs[0].log_id)
     }

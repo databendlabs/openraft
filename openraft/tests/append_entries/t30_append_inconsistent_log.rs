@@ -10,6 +10,7 @@ use openraft::Config;
 use openraft::LogId;
 use openraft::RaftStorage;
 use openraft::State;
+use openraft::StorageHelper;
 
 use crate::fixtures::RaftRouter;
 
@@ -121,7 +122,7 @@ async fn append_inconsistent_log() -> Result<()> {
         .metrics(|x| x.last_log_index == Some(n_logs), "sync log to node 0")
         .await?;
 
-    let logs = sto0.get_log_entries(60..=60).await?;
+    let logs = StorageHelper::new(&sto0).get_log_entries(60..=60).await?;
     assert_eq!(3, logs.first().unwrap().log_id.term, "log is overridden by leader logs");
 
     Ok(())

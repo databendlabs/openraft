@@ -51,32 +51,19 @@ use crate::raft::RaftRespTx;
 use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
-use crate::storage::HardState;
-use crate::AppData;
-use crate::AppDataResponse;
-use crate::LogId;
-use crate::Membership;
+use crate::types::v070::AppData;
+use crate::types::v070::AppDataResponse;
+use crate::types::v070::EffectiveMembership;
+use crate::types::v070::HardState;
+use crate::types::v070::LogId;
+use crate::types::v070::Membership;
+use crate::types::v070::NodeId;
+use crate::types::v070::RaftNetwork;
+use crate::types::v070::RaftStorage;
+use crate::types::v070::StorageError;
 use crate::MessageSummary;
-use crate::NodeId;
-use crate::RaftNetwork;
-use crate::RaftStorage;
-use crate::StorageError;
+use crate::StorageHelper;
 use crate::Update;
-
-/// The currently active membership config.
-///
-/// It includes:
-/// - the id of the log that sets this membership config,
-/// - and the config.
-///
-/// An active config is just the last seen config in raft spec.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EffectiveMembership {
-    /// The id of the log that applies this membership config
-    pub log_id: LogId,
-
-    pub membership: Membership,
-}
 
 impl EffectiveMembership {
     pub fn new_initial(node_id: u64) -> Self {
@@ -237,7 +224,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn do_main(&mut self) -> Result<(), Fatal> {
         tracing::debug!("raft node is initializing");
 
-        let state = self.storage.get_initial_state().await?;
+        let state = StorageHelper::new(&self.storage).get_initial_state().await?;
 
         // TODO(xp): this is not necessary.
         self.storage.save_hard_state(&state.hard_state).await?;
@@ -614,7 +601,7 @@ where
         return Ok(());
     }
 
-    let log_id = sto.get_log_id(end - 1).await?;
+    let log_id = StorageHelper::new(&sto).get_log_id(end - 1).await?;
     sto.purge_logs_upto(log_id).await
 }
 

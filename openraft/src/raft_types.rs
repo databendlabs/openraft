@@ -4,13 +4,8 @@ use std::fmt::Formatter;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// The identity of a raft log.
-/// A term and an index identifies an log globally.
-#[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LogId {
-    pub term: u64,
-    pub index: u64,
-}
+use crate::LogId;
+use crate::SnapshotSegmentId;
 
 impl From<(u64, u64)> for LogId {
     fn from(v: (u64, u64)) -> Self {
@@ -86,16 +81,6 @@ impl LogIndexOptionExt for Option<u64> {
     }
 }
 
-// Everytime a snapshot is created, it is assigned with a globally unique id.
-pub type SnapshotId = String;
-
-/// The identity of a segment of a snapshot.
-#[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SnapshotSegmentId {
-    pub id: SnapshotId,
-    pub offset: u64,
-}
-
 impl<D: ToString> From<(D, u64)> for SnapshotSegmentId {
     fn from(v: (D, u64)) -> Self {
         SnapshotSegmentId {
@@ -116,12 +101,4 @@ impl Display for SnapshotSegmentId {
 pub enum Update<T> {
     Update(T),
     AsIs,
-}
-
-/// The changes of a state machine.
-/// E.g. when applying a log to state machine, or installing a state machine from snapshot.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StateMachineChanges {
-    pub last_applied: LogId,
-    pub is_snapshot: bool,
 }

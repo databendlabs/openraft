@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
-use openraft::RaftStorage;
+use openraft::StorageHelper;
 use tokio::time::sleep;
 
 use crate::fixtures::RaftRouter;
@@ -46,7 +46,7 @@ async fn clean_applied_logs() -> Result<()> {
     {
         for node_id in 0..1 {
             let sto = router.get_storage_handle(&node_id).await?;
-            let logs = sto.get_log_entries(..).await?;
+            let logs = StorageHelper::new(&sto).get_log_entries(..).await?;
             assert_eq!(2, logs.len(), "node {} should have only {} logs", node_id, 2);
         }
     }

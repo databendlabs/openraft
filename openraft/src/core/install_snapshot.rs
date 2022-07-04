@@ -21,6 +21,7 @@ use crate::RaftNetwork;
 use crate::RaftStorage;
 use crate::SnapshotSegmentId;
 use crate::StorageError;
+use crate::StorageHelper;
 use crate::StorageIOError;
 use crate::Update;
 
@@ -249,7 +250,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         // There could be unknown membership in the snapshot.
-        let membership = self.storage.get_membership().await?;
+        let membership = StorageHelper::new(&self.storage).get_membership().await?;
         tracing::debug!("storage membership: {:?}", membership);
 
         assert!(membership.is_some());

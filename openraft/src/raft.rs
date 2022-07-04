@@ -1,12 +1,9 @@
 //! Public Raft interface and data types.
 
 use std::collections::BTreeSet;
-use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::Deserialize;
-use serde::Serialize;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -26,15 +23,25 @@ use crate::error::InstallSnapshotError;
 use crate::error::VoteError;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
-use crate::AppData;
-use crate::AppDataResponse;
-use crate::LogId;
-use crate::Membership;
+pub use crate::types::v070::AddLearnerResponse;
+use crate::types::v070::AppData;
+use crate::types::v070::AppDataResponse;
+pub use crate::types::v070::AppendEntriesRequest;
+pub use crate::types::v070::AppendEntriesResponse;
+pub use crate::types::v070::ClientWriteRequest;
+pub use crate::types::v070::ClientWriteResponse;
+pub use crate::types::v070::Entry;
+pub use crate::types::v070::EntryPayload;
+pub use crate::types::v070::InstallSnapshotRequest;
+pub use crate::types::v070::InstallSnapshotResponse;
+use crate::types::v070::LogId;
+pub use crate::types::v070::Membership;
+use crate::types::v070::NodeId;
+use crate::types::v070::RaftNetwork;
+use crate::types::v070::RaftStorage;
+pub use crate::types::v070::VoteRequest;
+pub use crate::types::v070::VoteResponse;
 use crate::MessageSummary;
-use crate::NodeId;
-use crate::RaftNetwork;
-use crate::RaftStorage;
-use crate::SnapshotMeta;
 
 struct RaftInner<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> {
     tx_api: mpsc::UnboundedSender<(RaftMsg<D, R>, Span)>,
@@ -422,11 +429,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Cl
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AddLearnerResponse {
-    pub matched: Option<LogId>,
-}
-
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     AppendEntries {
@@ -509,28 +511,6 @@ where
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppendEntriesRequest<D: AppData> {
-    /// The leader's current term.
-    pub term: u64,
-
-    /// The leader's ID. Useful in redirecting clients.
-    pub leader_id: u64,
-
-    pub prev_log_id: Option<LogId>,
-
-    /// The new log entries to store.
-    ///
-    /// This may be empty when the leader is sending heartbeats. Entries
-    /// are batched for efficiency.
-    #[serde(bound = "D: AppData")]
-    pub entries: Vec<Entry<D>>,
-
-    /// The leader's committed log id.
-    pub leader_commit: Option<LogId>,
-}
-
 impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
     fn summary(&self) -> String {
         format!(
@@ -544,16 +524,6 @@ impl<D: AppData> MessageSummary for AppendEntriesRequest<D> {
     }
 }
 
-/// The response to an `AppendEntriesRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AppendEntriesResponse {
-    /// The responding node's current term, for leader to update itself.
-    pub term: u64,
-
-    pub success: bool,
-    pub conflict: bool,
-}
-
 impl MessageSummary for AppendEntriesResponse {
     fn summary(&self) -> String {
         format!(
@@ -561,16 +531,6 @@ impl MessageSummary for AppendEntriesResponse {
             self.term, self.success, self.conflict
         )
     }
-}
-
-/// A Raft log entry.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Entry<D: AppData> {
-    pub log_id: LogId,
-
-    /// This entry's payload.
-    #[serde(bound = "D: AppData")]
-    pub payload: EntryPayload<D>,
 }
 
 impl<D: AppData> MessageSummary for Entry<D> {
@@ -614,19 +574,6 @@ impl<D: AppData> MessageSummary for &[&Entry<D>] {
     }
 }
 
-/// Log entry payload variants.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum EntryPayload<D: AppData> {
-    /// An empty payload committed by a new cluster leader.
-    Blank,
-
-    #[serde(bound = "D: AppData")]
-    Normal(D),
-
-    /// A change-membership log entry.
-    Membership(Membership),
-}
-
 impl<D: AppData> MessageSummary for EntryPayload<D> {
     fn summary(&self) -> String {
         match self {
@@ -637,17 +584,6 @@ impl<D: AppData> MessageSummary for EntryPayload<D> {
             }
         }
     }
-}
-
-/// An RPC sent by candidates to gather votes (§5.2).
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VoteRequest {
-    /// The candidate's current term.
-    pub term: u64,
-
-    pub candidate_id: u64,
-
-    pub last_log_id: Option<LogId>,
 }
 
 impl MessageSummary for VoteRequest {
@@ -666,41 +602,6 @@ impl VoteRequest {
     }
 }
 
-/// The response to a `VoteRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VoteResponse {
-    /// The current term of the responding node, for the candidate to update itself.
-    pub term: u64,
-
-    /// Will be true if the candidate received a vote from the responder.
-    pub vote_granted: bool,
-
-    /// The last log id stored on the remote voter.
-    pub last_log_id: Option<LogId>,
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct InstallSnapshotRequest {
-    /// The leader's current term.
-    pub term: u64,
-    /// The leader's ID. Useful in redirecting clients.
-    pub leader_id: u64,
-
-    /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
-    pub meta: SnapshotMeta,
-
-    /// The byte offset where this chunk of data is positioned in the snapshot file.
-    pub offset: u64,
-    /// The raw bytes of the snapshot chunk, starting at `offset`.
-    pub data: Vec<u8>,
-
-    /// Will be `true` if this is the last chunk in the snapshot.
-    pub done: bool,
-}
-
 impl MessageSummary for InstallSnapshotRequest {
     fn summary(&self) -> String {
         format!(
@@ -715,26 +616,6 @@ impl MessageSummary for InstallSnapshotRequest {
     }
 }
 
-/// The response to an `InstallSnapshotRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct InstallSnapshotResponse {
-    /// The receiving node's current term, for leader to update itself.
-    pub term: u64,
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// An application specific client request to update the state of the system (§5.1).
-///
-/// The entry of this payload will be appended to the Raft log and then applied to the Raft state
-/// machine according to the Raft protocol.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClientWriteRequest<D: AppData> {
-    /// The application specific contents of this client request.
-    #[serde(bound = "D: AppData")]
-    pub(crate) payload: EntryPayload<D>,
-}
-
 impl<D: AppData> MessageSummary for ClientWriteRequest<D> {
     fn summary(&self) -> String {
         self.payload.summary()
@@ -745,19 +626,6 @@ impl<D: AppData> ClientWriteRequest<D> {
     pub fn new(entry: EntryPayload<D>) -> Self {
         Self { payload: entry }
     }
-}
-
-/// The response to a `ClientRequest`.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClientWriteResponse<R: AppDataResponse> {
-    pub log_id: LogId,
-
-    /// Application specific response data.
-    #[serde(bound = "R: AppDataResponse")]
-    pub data: R,
-
-    /// If the log entry is a change-membership entry.
-    pub membership: Option<Membership>,
 }
 
 impl<R: AppDataResponse> MessageSummary for ClientWriteResponse<R> {
