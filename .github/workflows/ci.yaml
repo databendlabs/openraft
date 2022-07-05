@@ -58,11 +58,11 @@ jobs:
           components: rustfmt, clippy
 
 
-      - name: Test example-raft-kv
+      - name: Test examples/raft-kv-memstore
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --manifest-path example-raft-kv/Cargo.toml
+          args: --manifest-path examples/raft-kv-memstore/Cargo.toml
 
 
       - name: Format
@@ -139,11 +139,11 @@ jobs:
           toolchain: "stable"
           override: true
 
-      - name: Test example-raft-kv
+      - name: Test examples/raft-kv-memstore
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --manifest-path example-raft-kv/Cargo.toml
+          args: --manifest-path examples/raft-kv-memstore/Cargo.toml
 
   lint:
     name: lint

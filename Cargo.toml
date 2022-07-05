@@ -4,5 +4,5 @@ members = [
     "memstore",
 ]
 exclude = [
-    "example-raft-kv",
+    "examples/raft-kv-memstore",
 ]

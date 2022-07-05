@@ -2,7 +2,7 @@
 
 In this chapter we are going to build a key-value store cluster with [openraft](https://github.com/datafuselabs/openraft).
 
-[example-raft-kv](https://github.com/datafuselabs/openraft/tree/main/example-raft-kv)
+[examples/raft-kv-memstore](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore)
 is the complete example application including the server, the client and a demo cluster.
 
 ---
@@ -89,7 +89,7 @@ or a wrapper of a remote SQL DB.
     ```
 
 The APIs have been made quite obvious, and there is a good example
-[`ExampleStore`](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/store/mod.rs),
+[`ExampleStore`](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs),
 which is a pure-in-memory implementation that shows what should be done when a
 method is called.
 
@@ -140,12 +140,12 @@ where D: AppData
 }
 ```
 
-[ExampleNetwork](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft_network_impl.rs)
+[ExampleNetwork](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs)
 shows how to forward messages to other raft nodes.
 
 And there should be a server endpoint for each of these RPCs.
 When the server receives a raft RPC, it just passes it to its `raft` instance and replies with what returned:
-[raft-server-endpoint](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft.rs).
+[raft-server-endpoint](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs).
 
 As a real-world impl, you may want to use [Tonic gRPC](https://github.com/hyperium/tonic).
 [databend-meta](https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89) would be an excellent real-world example.
@@ -197,7 +197,7 @@ You have two ways to find the address of a remote peer:
 ## 4. Put everything together
 
 Finally, we put these parts together and boot up a raft node
-[main.rs](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/bin/main.rs)
+[main.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/bin/main.rs)
 :
 
 ```rust
@@ -271,15 +271,15 @@ To set up a demo raft cluster includes:
 - Add more raft nodes into it;
 - Update the membership config.
 
-[example-raft-kv](https://github.com/datafuselabs/openraft/tree/main/example-raft-kv) describes these steps in detail.
+[examples/raft-kv-memstore](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore) describes these steps in detail.
 
 And two test scripts for setting up a cluster are provided:
 
-- [test-cluster.sh](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/test-cluster.sh)
+- [test-cluster.sh](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/test-cluster.sh)
   is a minimized bash script using curl to communicate with the raft cluster,
   to show what messages are sent and received in plain HTTP.
 
-- [test_cluster.rs](https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/tests/cluster/test_cluster.rs)
+- [test_cluster.rs](https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs)
   Use ExampleClient to set up a cluster, write data, and then read it.
 
 

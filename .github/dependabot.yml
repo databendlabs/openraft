@@ -8,7 +8,7 @@ updates:
   open-pull-requests-limit: 2
 
 - package-ecosystem: cargo
-  directory: "/example-raft-kv"
+  directory: "/examples/raft-kv-memstore"
   schedule:
     interval: daily
     time: "17:00"
