@@ -8,7 +8,7 @@ authors = [
 ]
 categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An in-memory implementation of the `openraft::RaftStorage` trait."
-documentation = "https://docs.rs/memstore"
+documentation = "https://docs.rs/openraft-memstore"
 homepage = "https://github.com/datafuselabs/openraft"
 keywords = ["raft", "consensus"]
 license = "MIT/Apache-2.0"
