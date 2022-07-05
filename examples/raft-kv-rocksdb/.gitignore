@@ -1,0 +1,5 @@
+target
+vendor
+.idea
+*.db
+*.log
