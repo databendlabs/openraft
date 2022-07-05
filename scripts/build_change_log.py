@@ -26,6 +26,7 @@ categories = {
         'fixbug:':       typs['fixbug'],
         'fixdoc:':       typs['fixdoc'],
         'dep:':          typs['dep'],
+        'Dep:':          typs['dep'],
         'ci:':           typs['ci'],
         'CI:':           typs['ci'],
 
