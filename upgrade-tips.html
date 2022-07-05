@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Cluster Controls - openraft</title>
+        <title>Upgrade Tips - openraft</title>
         <!-- Custom HTML head -->
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <meta name="description" content="The openraft user guide.">
@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html" class="active"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html" class="active"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -135,47 +135,40 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="cluster-controls"><a class="header" href="#cluster-controls">Cluster Controls</a></h1>
-<p>A raft cluster may be controlled in various ways using the API methods of the <code>Raft</code> type.
-This allows the application to influence the raft behavior.</p>
-<p>There are several concepts related to cluster control:</p>
+                        <h1 id="upgrade-tips"><a class="header" href="#upgrade-tips">Upgrade tips</a></h1>
+<p>First, have a look at the change log for the version to upgrade to.
+A commit message starting with these keywords needs attention:</p>
 <ul>
 <li>
-<p>Voter: a raft node that is responsible to vote, elect itself for leadership(Candidate),
-become Leader or Follower</p>
+<p>Change: introduces breaking changes. Your application needs adjustment to pass compilation.
+If storage related data structure changed too, a data migration tool is required for the upgrade. See below.</p>
 </li>
 <li>
-<p>Candidate: a node tries to elect itself as the Leader.</p>
+<p>Feature: introduces non-breaking new features. Your application should compile without modification.</p>
 </li>
 <li>
-<p>Leader: the only node in a cluster that deals with application request.</p>
-</li>
-<li>
-<p>Follower: a node that believes there is a legal leader and just receives
-replicated logs.</p>
-</li>
-<li>
-<p>Learner: a node that is not allow to vote but only receives logs.</p>
+<p>Fix: bug fix. No modification is required.</p>
 </li>
 </ul>
-<p>Voter state transition:</p>
-<pre><code>                         vote granted by a quorum
-          .--&gt; Candidate ----------------------&gt; Leader
-heartbeat |     |                                  |
-timeout   |     | seen a higher Leader             | seen a higher Leader
-          |     v                                  |
-          '----Follower &lt;--------------------------'
-</code></pre>
+<h2 id="upgrade-guide"><a class="header" href="#upgrade-guide">Upgrade guide</a></h2>
+<ul>
+<li>
+<p>To upgrade from <a href="https://github.com/datafuselabs/openraft/tree/v0.6.5">v0.6.5</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.6.6">v0.6.6</a>:
+just modify application code to pass compile.</p>
+<p><a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md#v066">Change log v0.6.6</a></p>
+<ul>
+<li>API changes: struct fields changed in <code>StorageIOError</code> and <code>Violation</code></li>
+<li>Data changes: no</li>
+</ul>
+</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="getting-started.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="effective-membership.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
-                            </a>
-                            <a rel="next" href="cluster-formation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
                     </nav>
@@ -183,11 +176,8 @@ timeout   |     | seen a higher Leader             | seen a higher Leader
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="getting-started.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="effective-membership.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
-                    </a>
-                    <a rel="next" href="cluster-formation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
 
