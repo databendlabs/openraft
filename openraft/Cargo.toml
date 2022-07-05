@@ -34,7 +34,7 @@ tracing-futures = "0.2.4"
 
 [dev-dependencies]
 lazy_static = "1.4.0"
-openraft-memstore = { version="0.6.6", path="../memstore" }
+openraft-memstore = { path="../memstore" }
 pretty_assertions = "1.0.0"
 tracing-appender = "0.2.0"
 tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
