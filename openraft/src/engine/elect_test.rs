@@ -7,6 +7,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::leader::Leader;
+use crate::progress::VecProgress;
 use crate::raft::VoteRequest;
 use crate::EffectiveMembership;
 use crate::LeaderId;
@@ -47,7 +48,8 @@ fn test_elect() -> anyhow::Result<()> {
         assert_eq!(Vote::new_committed(1, 1), eng.state.vote);
         assert_eq!(
             Some(Leader {
-                vote_granted_by: btreeset! {1}
+                vote_granted_by: btreeset! {1},
+                progress: VecProgress::new(eng.state.membership_state.effective)
             }),
             eng.state.leader
         );
@@ -82,16 +84,16 @@ fn test_elect() -> anyhow::Result<()> {
 
         // Build in-progress election state
         eng.state.vote = Vote::new_committed(1, 2);
-        eng.state.leader = Some(Leader {
-            vote_granted_by: btreeset! {1},
-        });
+        eng.state.new_leader();
+        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
 
         eng.elect();
 
         assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
         assert_eq!(
             Some(Leader {
-                vote_granted_by: btreeset! {1}
+                vote_granted_by: btreeset! {1},
+                progress: VecProgress::new(eng.state.membership_state.effective)
             }),
             eng.state.leader
         );
@@ -130,7 +132,8 @@ fn test_elect() -> anyhow::Result<()> {
         assert_eq!(Vote::new(1, 1), eng.state.vote);
         assert_eq!(
             Some(Leader {
-                vote_granted_by: btreeset! {1}
+                vote_granted_by: btreeset! {1},
+                progress: VecProgress::new(eng.state.membership_state.effective)
             }),
             eng.state.leader
         );

@@ -17,6 +17,8 @@ mod log_id_list;
 #[cfg(test)] mod testing;
 #[cfg(test)] mod truncate_logs_test;
 #[cfg(test)] mod update_committed_membership_test;
+#[cfg(test)] mod update_effective_membership_test;
+#[cfg(test)] mod update_progress_test;
 
 pub(crate) use command::Command;
 pub(crate) use engine_impl::Engine;

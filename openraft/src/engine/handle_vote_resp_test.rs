@@ -6,6 +6,7 @@ use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::leader::Leader;
+use crate::progress::VecProgress;
 use crate::raft::VoteResponse;
 use crate::EffectiveMembership;
 use crate::LeaderId;
@@ -67,10 +68,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.leader = Some(Leader {
-            vote_granted_by: btreeset! {1},
-        });
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state.new_leader();
+        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -82,7 +82,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(
             Some(Leader {
-                vote_granted_by: btreeset! {1}
+                vote_granted_by: btreeset! {1},
+                progress: VecProgress::new(eng.state.membership_state.effective)
             }),
             eng.state.leader
         );
@@ -104,10 +105,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.leader = Some(Leader {
-            vote_granted_by: btreeset! {1},
-        });
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state.new_leader();
+        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -144,10 +144,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.leader = Some(Leader {
-            vote_granted_by: btreeset! {1},
-        });
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state.new_leader();
+        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -159,7 +158,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(
             Some(Leader {
-                vote_granted_by: btreeset! {1}
+                vote_granted_by: btreeset! {1},
+                progress: VecProgress::new(eng.state.membership_state.effective)
             }),
             eng.state.leader
         );
@@ -181,10 +181,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.leader = Some(Leader {
-            vote_granted_by: btreeset! {1},
-        });
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()));
+        eng.state.new_leader();
+        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -196,7 +195,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(
             Some(Leader {
-                vote_granted_by: btreeset! {1,2}
+                vote_granted_by: btreeset! {1,2},
+                progress: VecProgress::new(eng.state.membership_state.effective)
             }),
             eng.state.leader
         );
@@ -218,10 +218,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.leader = Some(Leader {
-            vote_granted_by: btreeset! {1},
-        });
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state.new_leader();
+        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -233,7 +232,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
         assert_eq!(
             Some(Leader {
-                vote_granted_by: btreeset! {1,2}
+                vote_granted_by: btreeset! {1,2},
+                progress: VecProgress::new(eng.state.membership_state.effective)
             }),
             eng.state.leader
         );

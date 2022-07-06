@@ -6,7 +6,6 @@ use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
-use crate::leader::Leader;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::EffectiveMembership;
@@ -32,9 +31,7 @@ fn eng() -> Engine<u64> {
     eng.state.vote = Vote::new(2, 1);
     eng.state.server_state = ServerState::Candidate;
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
-    eng.state.leader = Some(Leader {
-        vote_granted_by: Default::default(),
-    });
+    eng.state.new_leader();
     eng
 }
 

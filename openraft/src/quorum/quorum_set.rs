@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 /// A set of quorums is a collection of quorum.
 ///
 /// A quorum is a collection of nodes that a read or write operation in distributed system has to contact to.
@@ -10,4 +12,16 @@ pub(crate) trait QuorumSet<ID: 'static> {
 
     /// Returns all ids in this QuorumSet
     fn ids(&self) -> Self::Iter;
+}
+
+impl<ID: 'static, T: QuorumSet<ID>> QuorumSet<ID> for Arc<T> {
+    type Iter = T::Iter;
+
+    fn is_quorum<'a, I: Iterator<Item = &'a ID> + Clone>(&self, ids: I) -> bool {
+        self.as_ref().is_quorum(ids)
+    }
+
+    fn ids(&self) -> Self::Iter {
+        self.as_ref().ids()
+    }
 }

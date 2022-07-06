@@ -59,6 +59,11 @@ fn test_initialize() -> anyhow::Result<()> {
                 Command::UpdateMembership {
                     membership: eng.state.membership_state.effective.clone()
                 },
+                // When update the effective membership, the engine set it to Follower.
+                // But when initializing, it will switch to Candidate at once, in the last output command.
+                Command::UpdateServerState {
+                    server_state: ServerState::Follower,
+                },
                 Command::MoveInputCursorBy { n: 1 },
                 Command::UpdateServerState {
                     server_state: ServerState::Candidate

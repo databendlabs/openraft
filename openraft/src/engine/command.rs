@@ -20,12 +20,21 @@ pub(crate) enum Command<NID: NodeId> {
     /// Append a `range` of entries in the input buffer.
     AppendInputEntries { range: Range<usize> },
 
-    /// Commit entries that are already in the store, upto `upto`, inclusive.
-    /// And send applied result to the client that proposed the entry.
-    LeaderCommit { upto: LogId<NID> },
+    /// Replicate the committed log id to other nodes
+    ReplicateCommitted { committed: Option<LogId<NID>> },
 
     /// Commit entries that are already in the store, upto `upto`, inclusive.
-    FollowerCommit { upto: LogId<NID> },
+    /// And send applied result to the client that proposed the entry.
+    LeaderCommit {
+        since: Option<LogId<NID>>,
+        upto: LogId<NID>,
+    },
+
+    /// Commit entries that are already in the store, upto `upto`, inclusive.
+    FollowerCommit {
+        since: Option<LogId<NID>>,
+        upto: LogId<NID>,
+    },
 
     /// Replicate a `range` of entries in the input buffer.
     ReplicateInputEntries { range: Range<usize> },
@@ -73,6 +82,7 @@ impl<NID: NodeId> Command<NID> {
         match &self {
             Command::UpdateServerState { .. } => flags.set_cluster_changed(),
             Command::AppendInputEntries { .. } => flags.set_data_changed(),
+            Command::ReplicateCommitted { .. } => {}
             Command::LeaderCommit { .. } => flags.set_data_changed(),
             Command::FollowerCommit { .. } => flags.set_data_changed(),
             Command::ReplicateInputEntries { .. } => {}

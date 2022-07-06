@@ -4,11 +4,9 @@ use maplit::btreemap;
 use maplit::btreeset;
 
 use crate::error::MissingNodeInfo;
-use crate::testing::DummyConfig as Config;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
-use crate::RaftTypeConfig;
 
 #[test]
 fn test_membership_summary() -> anyhow::Result<()> {
@@ -249,45 +247,6 @@ fn test_membership_with_nodes() -> anyhow::Result<()> {
         }),
         res
     );
-
-    Ok(())
-}
-
-#[test]
-fn test_membership_greatest_majority_value() -> anyhow::Result<()> {
-    {
-        let m123 = Membership::<u64>::new(vec![btreeset! {1,2,3}], None);
-        assert_eq!(
-            None,
-            m123.greatest_majority_value(&BTreeMap::<<Config as RaftTypeConfig>::NodeId, u64>::new())
-        );
-        assert_eq!(None, m123.greatest_majority_value(&btreemap! {0=>10}));
-        assert_eq!(None, m123.greatest_majority_value(&btreemap! {0=>10,1=>10}));
-        assert_eq!(Some(&10), m123.greatest_majority_value(&btreemap! {0=>10,1=>10,2=>20}));
-        assert_eq!(
-            Some(&20),
-            m123.greatest_majority_value(&btreemap! {0=>10,1=>10,2=>20,3=>30})
-        );
-    }
-
-    {
-        let m123_678 = Membership::<u64>::new(vec![btreeset! {1,2,3}, btreeset! {6,7,8}], None);
-        assert_eq!(None, m123_678.greatest_majority_value(&btreemap! {0=>10}));
-        assert_eq!(None, m123_678.greatest_majority_value(&btreemap! {0=>10,1=>10}));
-        assert_eq!(None, m123_678.greatest_majority_value(&btreemap! {0=>10,1=>10,2=>20}));
-        assert_eq!(
-            None,
-            m123_678.greatest_majority_value(&btreemap! {0=>10,1=>10,2=>20,6=>15})
-        );
-        assert_eq!(
-            Some(&10),
-            m123_678.greatest_majority_value(&btreemap! {0=>10,1=>10,2=>20,6=>15,7=>20})
-        );
-        assert_eq!(
-            Some(&15),
-            m123_678.greatest_majority_value(&btreemap! {0=>10,1=>10,2=>20,3=>20,6=>15,7=>20})
-        );
-    }
 
     Ok(())
 }

@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use tokio::sync::oneshot;
 use tracing_futures::Instrument;
 
@@ -11,13 +9,11 @@ use crate::core::SnapshotState;
 use crate::metrics::UpdateMatchedLogId;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
-use crate::replication::UpdateReplication;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
 use crate::versioned::Updatable;
 use crate::vote::Vote;
 use crate::LogId;
-use crate::LogIdOptionExt;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -138,35 +134,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             return Ok(());
         }
 
-        let commit_log_id = self.calc_commit_log_id();
-
-        // Determine if we have a new commit index, accounting for joint consensus.
-        // If a new commit index has been established, then update a few needed elements.
-
-        if commit_log_id > self.core.engine.state.committed {
-            {
-                let st = &mut self.core.engine.state;
-                st.committed = commit_log_id;
-                if st.committed >= st.membership_state.effective.log_id {
-                    st.membership_state.committed = st.membership_state.effective.clone();
-                }
-            }
-
-            // Update all replication streams based on new commit index.
-            for node in self.nodes.values() {
-                let _ = node.repl_stream.repl_tx.send(UpdateReplication {
-                    last_log_id: None,
-                    committed: self.core.engine.state.committed,
-                });
-            }
-
-            // Apply committed entries, and send applying result to client if there is a channel awaiting it
-            for i in self.core.engine.state.last_applied.next_index()..self.core.engine.state.committed.next_index() {
-                self.client_request_post_commit(i).await?;
-            }
-
-            self.core.engine.metrics_flags.set_data_changed();
-        }
+        self.core.engine.update_progress(target, Some(matched));
+        self.run_engine_commands(&[]).await?;
 
         Ok(())
     }
@@ -177,46 +146,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         self.replication_metrics.update(UpdateMatchedLogId { target, matched });
         self.core.engine.metrics_flags.set_replication_changed()
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    fn calc_commit_log_id(&self) -> Option<LogId<C::NodeId>> {
-        let repl_indexes = self.get_match_log_ids();
-
-        let committed =
-            self.core.engine.state.membership_state.effective.membership.greatest_majority_value(&repl_indexes);
-
-        // TODO(xp): remove this line
-        std::cmp::max(committed.cloned(), self.core.engine.state.committed)
-
-        // *committed.unwrap_or(&self.core.log_store.st.committed)
-    }
-
-    /// Collect indexes of the greatest matching log on every replica(include the leader itself)
-    fn get_match_log_ids(&self) -> BTreeMap<C::NodeId, LogId<C::NodeId>> {
-        let member_node_ids = self.core.engine.state.membership_state.effective.voter_ids();
-
-        let mut res = BTreeMap::new();
-
-        for id in member_node_ids {
-            let matched = if id == self.core.id {
-                self.core.engine.state.last_log_id()
-            } else {
-                let repl_state = self.nodes.get(&id);
-                repl_state.map(|x| x.matched).unwrap_or_default()
-            };
-
-            // Mismatching term can not prevent other replica with higher term log from being chosen as leader,
-            // and that new leader may overrides any lower term logs.
-            // Thus it is not considered as committed.
-            if let Some(log_id) = matched {
-                if log_id.leader_id == self.core.engine.state.vote.leader_id() {
-                    res.insert(id, log_id);
-                }
-            }
-        }
-
-        res
     }
 
     /// A replication streams requesting for snapshot info.

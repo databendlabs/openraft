@@ -126,7 +126,13 @@ fn test_follower_commit_entries_lt_last_entry() -> anyhow::Result<()> {
         eng.metrics_flags
     );
 
-    assert_eq!(vec![Command::FollowerCommit { upto: log_id(2, 3) }], eng.commands);
+    assert_eq!(
+        vec![Command::FollowerCommit {
+            since: Some(log_id(1, 1)),
+            upto: log_id(2, 3)
+        }],
+        eng.commands
+    );
 
     Ok(())
 }
@@ -154,7 +160,13 @@ fn test_follower_commit_entries_gt_last_entry() -> anyhow::Result<()> {
         eng.metrics_flags
     );
 
-    assert_eq!(vec![Command::FollowerCommit { upto: log_id(2, 3) }], eng.commands);
+    assert_eq!(
+        vec![Command::FollowerCommit {
+            since: Some(log_id(1, 1)),
+            upto: log_id(2, 3)
+        }],
+        eng.commands
+    );
 
     Ok(())
 }

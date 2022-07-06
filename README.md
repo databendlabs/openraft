@@ -58,12 +58,15 @@ Currently openraft is the consensus engine of meta-service cluster in [databend]
 
 - [ ] Goal performance is 1,000,000 put/sec.
 
-    - 2022 Jul 01: 41,000 put/sec.
+    Bench history:
+    - 2022 Jul 01: 41,000 put/sec; ns/op: 23,255;
+    - 2022 Jul 07: 43,000 put/sec; ns/op: 23,218; [hash](url) Use `Progress` to track replication.
 
     Run the benchmark: `make bench_cluster_of_3`
 
     Benchmark setting:
     - No network.
+    - In memory store.
     - A cluster of 3 nodes on one server.
     - Single client.
 
