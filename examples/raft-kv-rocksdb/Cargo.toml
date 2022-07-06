@@ -1,0 +1,51 @@
+[package]
+name = "raft-key-value-rocks"
+version = "0.1.0"
+edition = "2021"
+authors = [
+  "drdr xp <drdr.xp@gmail.com>",
+  "Pedro Paulo de Amorim <pepa.amorim@gmail.com>",
+  "The Tremor Team",
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "An example distributed key-value store built upon `openraft`."
+homepage = "https://github.com/datafuselabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT/Apache-2.0"
+repository = "https://github.com/datafuselabs/openraft"
+readme = "README.md"
+
+[[bin]]
+name = "raft-key-value-rocks"
+path = "src/bin/main.rs"
+
+[dependencies]
+rocksdb = "0.18.0"
+tide = { version = "0.16" }
+async-std = { version = "1.12.0", features = ["attributes", "tokio1"] }
+async-trait = "0.1.36"
+clap = { version = "3.0.13", features = ["derive", "env"] }
+tracing-subscriber = "0.3.0"
+openraft = { version = "0.6", path = "../../openraft", features = ["serde"] }
+reqwest = { version = "0.11.9", features = ["json"] }
+serde = { version = "1.0.114", features = ["derive"] }
+serde_json = "1.0.57"
+tracing = "0.1.29"
+tracing-futures = "0.2.4"
+toy-rpc = { version = "*", features = [
+  "ws_async_std",
+  "server",
+  "client",
+  "async_std_runtime",
+] }
+byteorder = "1.4.3"
+
+[dev-dependencies]
+maplit = "1.0.2"
+tempdir = "0.3.0"
+
+[features]
+docinclude = [] # Used only for activating `doc(include="...")` on nightly.
+
+[package.metadata.docs.rs]
+features = ["docinclude"] # Activate `docinclude` during docs.rs build.

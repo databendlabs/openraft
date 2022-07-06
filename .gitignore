@@ -13,3 +13,4 @@ perf.data*
 nohup*
 *svg
 .DS_Store
+.vscode
