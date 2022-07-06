@@ -265,7 +265,7 @@ This can be used for <a href="https://docs.rs/tracing/latest/tracing/index.html#
 <p>Openraft is licensed under the terms of the MIT License or the Apache License 2.0, at your choosing.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="getting-started"><a class="header" href="#getting-started">Getting Started</a></h1>
 <p>In this chapter we are going to build a key-value store cluster with <a href="https://github.com/datafuselabs/openraft">openraft</a>.</p>
-<p><a href="https://github.com/datafuselabs/openraft/tree/main/example-raft-kv">example-raft-kv</a>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore">examples/raft-kv-memstore</a>
 is the complete example application including the server, the client and a demo cluster.</p>
 <hr />
 <p>Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients.</p>
@@ -359,7 +359,7 @@ fn install_snapshot(meta, snapshot)
 </li>
 </ul>
 <p>The APIs have been made quite obvious, and there is a good example
-<a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/store/mod.rs"><code>ExampleStore</code></a>,
+<a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/store/mod.rs"><code>ExampleStore</code></a>,
 which is a pure-in-memory implementation that shows what should be done when a
 method is called.</p>
 <h3 id="how-do-i-impl-raftstorage-correctly"><a class="header" href="#how-do-i-impl-raftstorage-correctly">How do I impl RaftStorage correctly?</a></h3>
@@ -400,11 +400,11 @@ where D: AppData
 }
 <span class="boring">}
 </span></code></pre></pre>
-<p><a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft_network_impl.rs">ExampleNetwork</a>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft_network_impl.rs">ExampleNetwork</a>
 shows how to forward messages to other raft nodes.</p>
 <p>And there should be a server endpoint for each of these RPCs.
 When the server receives a raft RPC, it just passes it to its <code>raft</code> instance and replies with what returned:
-<a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/network/raft.rs">raft-server-endpoint</a>.</p>
+<a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/network/raft.rs">raft-server-endpoint</a>.</p>
 <p>As a real-world impl, you may want to use <a href="https://github.com/hyperium/tonic">Tonic gRPC</a>.
 <a href="https://github.com/datafuselabs/databend/blob/6603392a958ba8593b1f4b01410bebedd484c6a9/metasrv/src/network.rs#L89">databend-meta</a> would be an excellent real-world example.</p>
 <h3 id="find-the-address-of-the-target-node"><a class="header" href="#find-the-address-of-the-target-node">Find the address of the target node.</a></h3>
@@ -450,7 +450,7 @@ to store node-id, and its address in <code>Membership</code> too:</p>
 </ol>
 <h2 id="4-put-everything-together"><a class="header" href="#4-put-everything-together">4. Put everything together</a></h2>
 <p>Finally, we put these parts together and boot up a raft node
-<a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/src/bin/main.rs">main.rs</a>
+<a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/src/bin/main.rs">main.rs</a>
 :</p>
 <pre><pre class="playground"><code class="language-rust">#[tokio::main]
 async fn main() {
@@ -521,16 +521,16 @@ async fn main() {
 <li>Add more raft nodes into it;</li>
 <li>Update the membership config.</li>
 </ul>
-<p><a href="https://github.com/datafuselabs/openraft/tree/main/example-raft-kv">example-raft-kv</a> describes these steps in detail.</p>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore">examples/raft-kv-memstore</a> describes these steps in detail.</p>
 <p>And two test scripts for setting up a cluster are provided:</p>
 <ul>
 <li>
-<p><a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/test-cluster.sh">test-cluster.sh</a>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/test-cluster.sh">test-cluster.sh</a>
 is a minimized bash script using curl to communicate with the raft cluster,
 to show what messages are sent and received in plain HTTP.</p>
 </li>
 <li>
-<p><a href="https://github.com/datafuselabs/openraft/blob/main/example-raft-kv/tests/cluster/test_cluster.rs">test_cluster.rs</a>
+<p><a href="https://github.com/datafuselabs/openraft/blob/main/examples/raft-kv-memstore/tests/cluster/test_cluster.rs">test_cluster.rs</a>
 Use ExampleClient to set up a cluster, write data, and then read it.</p>
 </li>
 </ul>
