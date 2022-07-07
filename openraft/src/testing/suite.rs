@@ -80,29 +80,33 @@ where
     }
 
     pub fn test_store(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        run_fut(Suite::last_membership_in_log_initial(builder))?;
-        run_fut(Suite::last_membership_in_log(builder))?;
-        run_fut(Suite::last_membership_in_log_multi_step(builder))?;
-        run_fut(Suite::get_membership_initial(builder))?;
-        run_fut(Suite::get_membership_from_log_and_empty_sm(builder))?;
-        run_fut(Suite::get_membership_from_log_and_sm(builder))?;
-        run_fut(Suite::get_initial_state_without_init(builder))?;
-        run_fut(Suite::get_initial_state_membership_from_log_and_sm(builder))?;
-        run_fut(Suite::get_initial_state_with_state(builder))?;
-        run_fut(Suite::get_initial_state_last_log_gt_sm(builder))?;
-        run_fut(Suite::get_initial_state_last_log_lt_sm(builder))?;
-        run_fut(Suite::get_initial_state_log_ids(builder))?;
-        run_fut(Suite::save_vote(builder))?;
-        run_fut(Suite::get_log_entries(builder))?;
-        run_fut(Suite::try_get_log_entry(builder))?;
-        run_fut(Suite::initial_logs(builder))?;
-        run_fut(Suite::get_log_state(builder))?;
-        run_fut(Suite::get_log_id(builder))?;
-        run_fut(Suite::last_id_in_log(builder))?;
-        run_fut(Suite::last_applied_state(builder))?;
-        run_fut(Suite::delete_logs(builder))?;
-        run_fut(Suite::append_to_log(builder))?;
-        run_fut(Suite::snapshot_meta(builder))?;
+        run_fut(builder.run_test(Self::last_membership_in_log_initial))?;
+        run_fut(builder.run_test(Self::last_membership_in_log))?;
+        run_fut(builder.run_test(Self::last_membership_in_log_multi_step))?;
+        run_fut(builder.run_test(Self::get_membership_initial))?;
+        run_fut(builder.run_test(Self::get_membership_from_log_and_empty_sm))?;
+        run_fut(builder.run_test(Self::get_membership_from_log_and_sm))?;
+        run_fut(builder.run_test(Self::get_initial_state_without_init))?;
+        run_fut(builder.run_test(Self::get_initial_state_membership_from_log_and_sm))?;
+        run_fut(builder.run_test(Self::get_initial_state_with_state))?;
+        run_fut(builder.run_test(Self::get_initial_state_last_log_gt_sm))?;
+        run_fut(builder.run_test(Self::get_initial_state_last_log_lt_sm))?;
+        run_fut(builder.run_test(Self::get_initial_state_log_ids))?;
+        run_fut(builder.run_test(Self::save_vote))?;
+        run_fut(builder.run_test(Self::get_log_entries))?;
+        run_fut(builder.run_test(Self::try_get_log_entry))?;
+        run_fut(builder.run_test(Self::initial_logs))?;
+        run_fut(builder.run_test(Self::get_log_state))?;
+        run_fut(builder.run_test(Self::get_log_id))?;
+        run_fut(builder.run_test(Self::last_id_in_log))?;
+        run_fut(builder.run_test(Self::last_applied_state))?;
+        run_fut(builder.run_test(Self::delete_logs1))?;
+        run_fut(builder.run_test(Self::delete_logs2))?;
+        run_fut(builder.run_test(Self::delete_logs3))?;
+        run_fut(builder.run_test(Self::delete_logs4))?;
+        run_fut(builder.run_test(Self::delete_logs5))?;
+        run_fut(builder.run_test(Self::append_to_log))?;
+        run_fut(builder.run_test(Self::snapshot_meta))?;
 
         // run_fut(Suite::apply_single(builder))?;
         // run_fut(Suite::apply_multi(builder))?;
@@ -112,9 +116,7 @@ where
         Ok(())
     }
 
-    pub async fn last_membership_in_log_initial(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn last_membership_in_log_initial(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let membership = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
 
         assert!(membership.is_empty());
@@ -122,9 +124,7 @@ where
         Ok(())
     }
 
-    pub async fn last_membership_in_log(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn last_membership_in_log(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- no log, do not read membership from state machine");
         {
             store
@@ -225,9 +225,7 @@ where
         Ok(())
     }
 
-    pub async fn last_membership_in_log_multi_step(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn last_membership_in_log_multi_step(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- find membership log entry backwards, multiple steps");
         {
             store
@@ -267,9 +265,7 @@ where
         Ok(())
     }
 
-    pub async fn get_membership_initial(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn get_membership_initial(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
         assert_eq!(&EffectiveMembership::default(), mem_state.committed.as_ref());
@@ -278,9 +274,7 @@ where
         Ok(())
     }
 
-    pub async fn get_membership_from_log_and_empty_sm(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn get_membership_from_log_and_empty_sm(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- no log, read membership from state machine");
         {
             // There is an empty membership config in an empty state machine.
@@ -304,9 +298,7 @@ where
         Ok(())
     }
 
-    pub async fn get_membership_from_log_and_sm(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn get_membership_from_log_and_sm(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- no log, read membership from state machine");
         {
             store
@@ -412,16 +404,13 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_without_init(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn get_initial_state_without_init(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let initial = StorageHelper::new(&mut store).get_initial_state().await?;
         assert_eq!(RaftState::default(), initial, "uninitialized state");
         Ok(())
     }
 
-    pub async fn get_initial_state_with_state(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
+    pub async fn get_initial_state_with_state(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::default_vote(&mut store).await?;
 
         store
@@ -462,10 +451,9 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_membership_from_log_and_sm(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+    pub async fn get_initial_state_membership_from_log_and_sm(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         // It should never return membership from logs that are included in state machine present.
 
-        let mut store = builder.build().await;
         Self::default_vote(&mut store).await?;
 
         // copy the test from get_membership_config
@@ -530,8 +518,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_last_log_gt_sm(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
+    pub async fn get_initial_state_last_log_gt_sm(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::default_vote(&mut store).await?;
 
         store
@@ -564,8 +551,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_last_log_lt_sm(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
+    pub async fn get_initial_state_last_log_lt_sm(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::default_vote(&mut store).await?;
 
         store.append_to_log(&[&blank(1, 2)]).await?;
@@ -587,9 +573,7 @@ where
         Ok(())
     }
 
-    pub async fn get_initial_state_log_ids(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn get_initial_state_log_ids(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let log_id = |t, n: u64, i| LogId::<C::NodeId> {
             leader_id: LeaderId {
                 term: t,
@@ -705,9 +689,7 @@ where
         Ok(())
     }
 
-    pub async fn save_vote(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn save_vote(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         store
             .save_vote(&Vote {
                 term: 100,
@@ -729,8 +711,7 @@ where
         Ok(())
     }
 
-    pub async fn get_log_entries(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
+    pub async fn get_log_entries(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
         tracing::info!("--- get start == stop");
@@ -751,8 +732,7 @@ where
         Ok(())
     }
 
-    pub async fn try_get_log_entry(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
+    pub async fn try_get_log_entry(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.purge_logs_upto(LogId::new(LeaderId::new(0, C::NodeId::default()), 0)).await?;
@@ -772,18 +752,14 @@ where
         Ok(())
     }
 
-    pub async fn initial_logs(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn initial_logs(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let ent = store.try_get_log_entry(0).await?;
         assert!(ent.is_none(), "store initialized");
 
         Ok(())
     }
 
-    pub async fn get_log_state(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn get_log_state(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let st = store.get_log_state().await?;
 
         assert_eq!(None, st.last_purged_log_id);
@@ -837,8 +813,7 @@ where
         Ok(())
     }
 
-    pub async fn get_log_id(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
+    pub async fn get_log_id(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.purge_logs_upto(LogId::new(LeaderId::new(1, NODE_ID.into()), 3)).await?;
@@ -858,9 +833,7 @@ where
         Ok(())
     }
 
-    pub async fn last_id_in_log(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn last_id_in_log(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let log_id = store.get_log_state().await?.last_log_id;
         assert_eq!(None, log_id);
 
@@ -895,9 +868,7 @@ where
         Ok(())
     }
 
-    pub async fn last_applied_state(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn last_applied_state(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let (applied, membership) = store.last_applied_state().await?;
         assert_eq!(None, applied);
         assert_eq!(EffectiveMembership::default(), membership);
@@ -945,109 +916,107 @@ where
         Ok(())
     }
 
-    pub async fn delete_logs(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+    pub async fn delete_logs1(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete (-oo, 0]");
-        {
-            let mut store = builder.build().await;
-            Self::feed_10_logs_vote_self(&mut store).await?;
 
-            store.purge_logs_upto(LogId::new(LeaderId::new(0, NODE_ID.into()), 0)).await?;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
-            let logs = store.try_get_log_entries(0..100).await?;
-            assert_eq!(logs.len(), 10);
-            assert_eq!(logs[0].log_id.index, 1);
+        store.purge_logs_upto(LogId::new(LeaderId::new(0, NODE_ID.into()), 0)).await?;
 
-            assert_eq!(
-                LogState {
-                    last_purged_log_id: Some(LogId::new(LeaderId::new(0, NODE_ID.into()), 0)),
-                    last_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 10)),
-                },
-                store.get_log_state().await?
-            );
-        }
+        let logs = store.try_get_log_entries(0..100).await?;
+        assert_eq!(logs.len(), 10);
+        assert_eq!(logs[0].log_id.index, 1);
 
+        assert_eq!(
+            LogState {
+                last_purged_log_id: Some(LogId::new(LeaderId::new(0, NODE_ID.into()), 0)),
+                last_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 10)),
+            },
+            store.get_log_state().await?
+        );
+        Ok(())
+    }
+    pub async fn delete_logs2(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete (-oo, 5]");
-        {
-            let mut store = builder.build().await;
-            Self::feed_10_logs_vote_self(&mut store).await?;
 
-            store.purge_logs_upto(LogId::new(LeaderId::new(1, NODE_ID.into()), 5)).await?;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
-            let logs = store.try_get_log_entries(0..100).await?;
-            assert_eq!(logs.len(), 5);
-            assert_eq!(logs[0].log_id.index, 6);
+        store.purge_logs_upto(LogId::new(LeaderId::new(1, NODE_ID.into()), 5)).await?;
 
-            assert_eq!(
-                LogState {
-                    last_purged_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 5)),
-                    last_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 10)),
-                },
-                store.get_log_state().await?
-            );
-        }
+        let logs = store.try_get_log_entries(0..100).await?;
+        assert_eq!(logs.len(), 5);
+        assert_eq!(logs[0].log_id.index, 6);
 
+        assert_eq!(
+            LogState {
+                last_purged_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 5)),
+                last_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 10)),
+            },
+            store.get_log_state().await?
+        );
+        Ok(())
+    }
+    pub async fn delete_logs3(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete (-oo, 20]");
-        {
-            let mut store = builder.build().await;
-            Self::feed_10_logs_vote_self(&mut store).await?;
 
-            store.purge_logs_upto(LogId::new(LeaderId::new(1, NODE_ID.into()), 20)).await?;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
-            let logs = store.try_get_log_entries(0..100).await?;
-            assert_eq!(logs.len(), 0);
+        store.purge_logs_upto(LogId::new(LeaderId::new(1, NODE_ID.into()), 20)).await?;
 
-            assert_eq!(
-                LogState {
-                    last_purged_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 20)),
-                    last_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 20)),
-                },
-                store.get_log_state().await?
-            );
-        }
+        let logs = store.try_get_log_entries(0..100).await?;
+        assert_eq!(logs.len(), 0);
 
+        assert_eq!(
+            LogState {
+                last_purged_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 20)),
+                last_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 20)),
+            },
+            store.get_log_state().await?
+        );
+        Ok(())
+    }
+
+    pub async fn delete_logs4(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete [11, +oo)");
-        {
-            let mut store = builder.build().await;
-            Self::feed_10_logs_vote_self(&mut store).await?;
 
-            store.delete_conflict_logs_since(LogId::new(LeaderId::new(1, NODE_ID.into()), 11)).await?;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
-            let logs = store.try_get_log_entries(0..100).await?;
-            assert_eq!(logs.len(), 11);
+        store.delete_conflict_logs_since(LogId::new(LeaderId::new(1, NODE_ID.into()), 11)).await?;
 
-            assert_eq!(
-                LogState {
-                    last_purged_log_id: None,
-                    last_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 10)),
-                },
-                store.get_log_state().await?
-            );
-        }
+        let logs = store.try_get_log_entries(0..100).await?;
+        assert_eq!(logs.len(), 11);
 
+        assert_eq!(
+            LogState {
+                last_purged_log_id: None,
+                last_log_id: Some(LogId::new(LeaderId::new(1, NODE_ID.into()), 10)),
+            },
+            store.get_log_state().await?
+        );
+        Ok(())
+    }
+    pub async fn delete_logs5(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete [0, +oo)");
-        {
-            let mut store = builder.build().await;
-            Self::feed_10_logs_vote_self(&mut store).await?;
 
-            store.delete_conflict_logs_since(LogId::new(LeaderId::new(0, NODE_ID.into()), 0)).await?;
+        Self::feed_10_logs_vote_self(&mut store).await?;
 
-            let logs = store.try_get_log_entries(0..100).await?;
-            assert_eq!(logs.len(), 0);
+        store.delete_conflict_logs_since(LogId::new(LeaderId::new(0, NODE_ID.into()), 0)).await?;
 
-            assert_eq!(
-                LogState {
-                    last_purged_log_id: None,
-                    last_log_id: None,
-                },
-                store.get_log_state().await?
-            );
-        }
+        let logs = store.try_get_log_entries(0..100).await?;
+        assert_eq!(logs.len(), 0);
+
+        assert_eq!(
+            LogState {
+                last_purged_log_id: None,
+                last_log_id: None,
+            },
+            store.get_log_state().await?
+        );
 
         Ok(())
     }
 
-    pub async fn append_to_log(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
+    pub async fn append_to_log(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.purge_logs_upto(LogId::new(LeaderId::new(0, NODE_ID.into()), 0)).await?;
@@ -1066,9 +1035,7 @@ where
         Ok(())
     }
 
-    pub async fn snapshot_meta(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn snapshot_meta(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- just initialized");
         {
             store
@@ -1119,8 +1086,8 @@ where
         Ok(())
     }
 
-    // pub async fn apply_single(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-    //     let mut store = builder.build().await;
+    // pub async fn apply_single(mut store: S) -> Result<(), StorageError<C::NodeId>> {
+
     //
     //     let entry = Entry {
     //         log_id: LogId::new(LeaderId::new(3, NODE_ID.into()), 1),
@@ -1156,8 +1123,8 @@ where
     //     Ok(())
     // }
     //
-    // pub async fn apply_multi(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-    //     let store = builder.build().await;
+    // pub async fn apply_multi(mut store: S) -> Result<(), StorageError<C::NodeId>> {
+
     //
     //     let req0 = ClientRequest {
     //         client: "1".into(),
@@ -1274,28 +1241,26 @@ where
     B: StoreBuilder<C, S>,
 {
     pub fn test_store_defensive(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        run_fut(Suite::df_get_membership_config_dirty_log(builder))?;
-        run_fut(Suite::df_get_initial_state_dirty_log(builder))?;
-        run_fut(Suite::df_save_vote_ascending(builder))?;
-        run_fut(Suite::df_get_log_entries(builder))?;
-        run_fut(Suite::df_append_to_log_nonempty_input(builder))?;
-        run_fut(Suite::df_append_to_log_nonconsecutive_input(builder))?;
-        run_fut(Suite::df_append_to_log_eq_last_plus_one(builder))?;
-        run_fut(Suite::df_append_to_log_eq_last_applied_plus_one(builder))?;
-        run_fut(Suite::df_append_to_log_gt_last_log_id(builder))?;
-        run_fut(Suite::df_append_to_log_gt_last_applied_id(builder))?;
-        run_fut(Suite::df_apply_nonempty_input(builder))?;
-        run_fut(Suite::df_apply_index_eq_last_applied_plus_one(builder))?;
-        run_fut(Suite::df_apply_gt_last_applied_id(builder))?;
-        run_fut(Suite::df_purge_applied_le_last_applied(builder))?;
-        run_fut(Suite::df_delete_conflict_gt_last_applied(builder))?;
+        run_fut(builder.run_test(Self::df_get_membership_config_dirty_log))?;
+        run_fut(builder.run_test(Self::df_get_initial_state_dirty_log))?;
+        run_fut(builder.run_test(Self::df_save_vote_ascending))?;
+        run_fut(builder.run_test(Self::df_get_log_entries))?;
+        run_fut(builder.run_test(Self::df_append_to_log_nonempty_input))?;
+        run_fut(builder.run_test(Self::df_append_to_log_nonconsecutive_input))?;
+        run_fut(builder.run_test(Self::df_append_to_log_eq_last_plus_one))?;
+        run_fut(builder.run_test(Self::df_append_to_log_eq_last_applied_plus_one))?;
+        run_fut(builder.run_test(Self::df_append_to_log_gt_last_log_id))?;
+        run_fut(builder.run_test(Self::df_append_to_log_gt_last_applied_id))?;
+        run_fut(builder.run_test(Self::df_apply_nonempty_input))?;
+        run_fut(builder.run_test(Self::df_apply_index_eq_last_applied_plus_one))?;
+        run_fut(builder.run_test(Self::df_apply_gt_last_applied_id))?;
+        run_fut(builder.run_test(Self::df_purge_applied_le_last_applied))?;
+        run_fut(builder.run_test(Self::df_delete_conflict_gt_last_applied))?;
 
         Ok(())
     }
 
-    pub async fn df_get_membership_config_dirty_log(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_get_membership_config_dirty_log(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
             store
@@ -1345,9 +1310,7 @@ where
         Ok(())
     }
 
-    pub async fn df_get_initial_state_dirty_log(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_get_initial_state_dirty_log(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- dirty log: log.index > last_applied.index && log < last_applied");
         {
             store
@@ -1398,9 +1361,7 @@ where
         Ok(())
     }
 
-    pub async fn df_save_vote_ascending(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_save_vote_ascending(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         store
             .save_vote(&Vote {
                 term: 10,
@@ -1481,8 +1442,7 @@ where
         Ok(())
     }
 
-    pub async fn df_get_log_entries(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
+    pub async fn df_get_log_entries(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         Self::feed_10_logs_vote_self(&mut store).await?;
 
         store.apply_to_state_machine(&[&blank(0, 0)]).await?;
@@ -1545,9 +1505,7 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_nonempty_input(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_append_to_log_nonempty_input(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let res = store.append_to_log(Vec::<&Entry<_>>::new().as_slice()).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
@@ -1557,9 +1515,7 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_nonconsecutive_input(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_append_to_log_nonconsecutive_input(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let res = store
             .append_to_log(&[
                 &Entry {
@@ -1586,9 +1542,7 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_eq_last_plus_one(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_append_to_log_eq_last_plus_one(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("-- log_id <= last_applied");
         tracing::info!("-- nonconsecutive log");
         tracing::info!("-- overlapping log");
@@ -1615,11 +1569,10 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_eq_last_applied_plus_one(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+    pub async fn df_append_to_log_eq_last_applied_plus_one(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         // last_log: 1,1
         // last_applied: 1,2
         // append_to_log: 1,4
-        let mut store = builder.build().await;
 
         tracing::info!("-- log_id <= last_applied");
         tracing::info!("-- nonconsecutive log");
@@ -1647,10 +1600,9 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_gt_last_log_id(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+    pub async fn df_append_to_log_gt_last_log_id(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         // last_log: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
-        let mut store = builder.build().await;
 
         store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
@@ -1672,11 +1624,10 @@ where
         Ok(())
     }
 
-    pub async fn df_append_to_log_gt_last_applied_id(builder: &B) -> Result<(), StorageError<C::NodeId>> {
+    pub async fn df_append_to_log_gt_last_applied_id(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         // last_log: 2,1
         // last_applied: 2,2
         // append_to_log: 1,3: index == last + 1 but term is lower
-        let mut store = builder.build().await;
 
         store.append_to_log(&[&blank(0, 0), &blank(2, 1), &blank(2, 2)]).await?;
 
@@ -1702,9 +1653,7 @@ where
         Ok(())
     }
 
-    pub async fn df_apply_nonempty_input(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_apply_nonempty_input(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let res = store.apply_to_state_machine(Vec::<&Entry<_>>::new().as_slice()).await;
 
         let e = res.unwrap_err().into_defensive().unwrap();
@@ -1714,9 +1663,7 @@ where
         Ok(())
     }
 
-    pub async fn df_apply_index_eq_last_applied_plus_one(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_apply_index_eq_last_applied_plus_one(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let entry = blank(3, 1);
 
         store.apply_to_state_machine(&[&blank(0, 0), &entry]).await?;
@@ -1761,9 +1708,7 @@ where
         Ok(())
     }
 
-    pub async fn df_apply_gt_last_applied_id(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_apply_gt_last_applied_id(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let entry = blank(3, 1);
 
         store.apply_to_state_machine(&[&blank(0, 0), &entry]).await?;
@@ -1791,9 +1736,7 @@ where
         Ok(())
     }
 
-    pub async fn df_purge_applied_le_last_applied(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_purge_applied_le_last_applied(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
 
         {
@@ -1817,9 +1760,7 @@ where
         Ok(())
     }
 
-    pub async fn df_delete_conflict_gt_last_applied(builder: &B) -> Result<(), StorageError<C::NodeId>> {
-        let mut store = builder.build().await;
-
+    pub async fn df_delete_conflict_gt_last_applied(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         store.apply_to_state_machine(&[&blank(0, 0), &blank(3, 1)]).await?;
 
         {

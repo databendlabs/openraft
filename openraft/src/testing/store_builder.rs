@@ -9,6 +9,7 @@ use crate::AppDataResponse;
 use crate::DefensiveCheckBase;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
+use crate::StorageError;
 use crate::StoreExt;
 
 /// The trait to build a [`RaftStorage`] implementation.
@@ -19,6 +20,14 @@ where
     S: RaftStorage<C>,
 {
     async fn build(&self) -> S;
+    async fn run_test<Fun, Ret, Res>(&self, t: Fun) -> Result<Ret, StorageError<C::NodeId>>
+    where
+        Res: Future<Output = Result<Ret, StorageError<C::NodeId>>> + Send,
+        Fun: Fn(S) -> Res + Sync + Send,
+    {
+        let store = self.build().await;
+        t(store).await
+    }
 }
 
 /// Make the tests easy to use by converting a closure to a [`StoreBuilder`].
