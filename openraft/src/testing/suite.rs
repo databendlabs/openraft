@@ -100,11 +100,11 @@ where
         run_fut(builder.run_test(Self::get_log_id))?;
         run_fut(builder.run_test(Self::last_id_in_log))?;
         run_fut(builder.run_test(Self::last_applied_state))?;
-        run_fut(builder.run_test(Self::delete_logs1))?;
-        run_fut(builder.run_test(Self::delete_logs2))?;
-        run_fut(builder.run_test(Self::delete_logs3))?;
-        run_fut(builder.run_test(Self::delete_logs4))?;
-        run_fut(builder.run_test(Self::delete_logs5))?;
+        run_fut(builder.run_test(Self::purge_logs_upto_0))?;
+        run_fut(builder.run_test(Self::purge_logs_upto_5))?;
+        run_fut(builder.run_test(Self::purge_logs_upto_20))?;
+        run_fut(builder.run_test(Self::delete_logs_since_11))?;
+        run_fut(builder.run_test(Self::delete_logs_since_0))?;
         run_fut(builder.run_test(Self::append_to_log))?;
         run_fut(builder.run_test(Self::snapshot_meta))?;
 
@@ -916,7 +916,7 @@ where
         Ok(())
     }
 
-    pub async fn delete_logs1(mut store: S) -> Result<(), StorageError<C::NodeId>> {
+    pub async fn purge_logs_upto_0(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete (-oo, 0]");
 
         Self::feed_10_logs_vote_self(&mut store).await?;
@@ -936,7 +936,8 @@ where
         );
         Ok(())
     }
-    pub async fn delete_logs2(mut store: S) -> Result<(), StorageError<C::NodeId>> {
+
+    pub async fn purge_logs_upto_5(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete (-oo, 5]");
 
         Self::feed_10_logs_vote_self(&mut store).await?;
@@ -956,7 +957,8 @@ where
         );
         Ok(())
     }
-    pub async fn delete_logs3(mut store: S) -> Result<(), StorageError<C::NodeId>> {
+
+    pub async fn purge_logs_upto_20(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete (-oo, 20]");
 
         Self::feed_10_logs_vote_self(&mut store).await?;
@@ -976,7 +978,7 @@ where
         Ok(())
     }
 
-    pub async fn delete_logs4(mut store: S) -> Result<(), StorageError<C::NodeId>> {
+    pub async fn delete_logs_since_11(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete [11, +oo)");
 
         Self::feed_10_logs_vote_self(&mut store).await?;
@@ -995,7 +997,8 @@ where
         );
         Ok(())
     }
-    pub async fn delete_logs5(mut store: S) -> Result<(), StorageError<C::NodeId>> {
+
+    pub async fn delete_logs_since_0(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("--- delete [0, +oo)");
 
         Self::feed_10_logs_vote_self(&mut store).await?;
