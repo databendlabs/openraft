@@ -5,6 +5,9 @@ In this chapter we are going to build a key-value store cluster with [openraft](
 [examples/raft-kv-memstore](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore)
 is the complete example application including the server, the client and a demo cluster.
 
+[examples/raft-kv-rocksdb](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-rocksdb)
+is the complete example application including the server, the client and a demo cluster using rocksdb for persistant storage.
+
 ---
 
 Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients.
@@ -107,6 +110,8 @@ pub fn test_mem_store() -> anyhow::Result<()> {
   openraft::testing::Suite::test_all(MemStore::new)
 }
 ```
+
+There is a second example in [Test suite for RaftStorage](https://github.com/datafuselabs/openraft/blob/main/rocksstore/src/test.rs) that showcases building a rocksdb backed store.
 
 ### Race condition about RaftStorage
 
