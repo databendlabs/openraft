@@ -460,7 +460,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
         self.set_last_purged_(log_id)?;
         let from = id_to_bin(0);
-        let to = id_to_bin(log_id.index);
+        let to = id_to_bin(log_id.index + 1);
         self.db
             .delete_range_cf(self.logs(), &from, &to)
             .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)).into())
