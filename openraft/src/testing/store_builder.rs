@@ -19,32 +19,10 @@ where
     C: RaftTypeConfig,
     S: RaftStorage<C>,
 {
-    async fn build(&self) -> S;
     async fn run_test<Fun, Ret, Res>(&self, t: Fun) -> Result<Ret, StorageError<C::NodeId>>
     where
         Res: Future<Output = Result<Ret, StorageError<C::NodeId>>> + Send,
-        Fun: Fn(S) -> Res + Sync + Send,
-    {
-        let store = self.build().await;
-        t(store).await
-    }
-}
-
-/// Make the tests easy to use by converting a closure to a [`StoreBuilder`].
-///
-/// E.g. to run tests on your [`RaftStorage`] implementation, just use `Suite::test_all(|| new_store())`,
-/// if your have already provided `async fn new_store() -> MyStore`
-#[async_trait]
-impl<C, S, Fu, F> StoreBuilder<C, S> for F
-where
-    C: RaftTypeConfig,
-    S: RaftStorage<C>,
-    Fu: Future<Output = S> + Send,
-    F: Fn() -> Fu + Sync + Send,
-{
-    async fn build(&self) -> S {
-        (self)().await
-    }
+        Fun: Fn(S) -> Res + Sync + Send;
 }
 
 /// A builder for testing [`StoreExt`].
@@ -71,12 +49,18 @@ where
     BaseStore: RaftStorage<C>,
     BaseBuilder: StoreBuilder<C, BaseStore>,
 {
-    async fn build(&self) -> StoreExt<C, BaseStore> {
-        let sto = self.base_builder.build().await;
-        let sto_ext = StoreExt::new(sto);
-        sto_ext.set_defensive(true);
-
-        assert!(sto_ext.is_defensive(), "must impl defensive check");
-        sto_ext
+    async fn run_test<Fun, Ret, Res>(&self, t: Fun) -> Result<Ret, StorageError<C::NodeId>>
+    where
+        Res: Future<Output = Result<Ret, StorageError<C::NodeId>>> + Send,
+        Fun: Fn(StoreExt<C, BaseStore>) -> Res + Sync + Send,
+    {
+        self.base_builder
+            .run_test(|base_store| async {
+                let sto_ext = StoreExt::new(base_store);
+                sto_ext.set_defensive(true);
+                assert!(sto_ext.is_defensive(), "must impl defensive check");
+                t(sto_ext).await
+            })
+            .await
     }
 }
