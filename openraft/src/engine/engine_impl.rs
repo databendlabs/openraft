@@ -25,6 +25,26 @@ use crate::MetricsChangeFlags;
 use crate::NodeId;
 use crate::Vote;
 
+/// Config for Engine
+#[derive(Clone, Debug)]
+#[derive(PartialEq, Eq)]
+pub(crate) struct EngineConfig {
+    /// The maximum number of applied logs to keep before purging.
+    pub(crate) max_applied_log_to_keep: u64,
+
+    /// The minimal number of applied logs to purge in a batch.
+    pub(crate) purge_batch_size: u64,
+}
+
+impl Default for EngineConfig {
+    fn default() -> Self {
+        Self {
+            max_applied_log_to_keep: 1000,
+            purge_batch_size: 256,
+        }
+    }
+}
+
 /// Raft protocol algorithm.
 ///
 /// It implement the complete raft algorithm except does not actually update any states.
@@ -41,6 +61,8 @@ pub(crate) struct Engine<NID: NodeId> {
     #[allow(dead_code)]
     pub(crate) id: NID,
 
+    pub(crate) config: EngineConfig,
+
     /// The state of this raft node.
     pub(crate) state: RaftState<NID>,
 
@@ -52,9 +74,10 @@ pub(crate) struct Engine<NID: NodeId> {
 }
 
 impl<NID: NodeId> Engine<NID> {
-    pub(crate) fn new(id: NID, init_state: &RaftState<NID>) -> Self {
+    pub(crate) fn new(id: NID, init_state: &RaftState<NID>, config: EngineConfig) -> Self {
         Self {
             id,
+            config,
             state: init_state.clone(),
             metrics_flags: MetricsChangeFlags::default(),
             commands: vec![],
@@ -385,6 +408,7 @@ impl<NID: NodeId> Engine<NID> {
                 since: prev_committed,
                 upto: committed.unwrap(),
             });
+            self.purge_applied_log();
         }
     }
 
@@ -489,12 +513,12 @@ impl<NID: NodeId> Engine<NID> {
 
     /// Purge applied log if needed.
     ///
-    /// `max_keep` specifies the number of applied logs to keep.
-    /// `max_keep==0` means every applied log can be purged.
+    /// `max_applied_log_to_keep` specifies the number of applied logs to keep.
+    /// `max_applied_log_to_keep==0` means every applied log can be purged.
     // NOTE: simple method, not tested.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn purge_applied_log(&mut self, max_keep: u64) {
-        if let Some(purge_upto) = self.calc_purge_upto(max_keep) {
+    pub(crate) fn purge_applied_log(&mut self) {
+        if let Some(purge_upto) = self.calc_purge_upto() {
             self.purge_log(purge_upto);
         }
     }
@@ -507,21 +531,30 @@ impl<NID: NodeId> Engine<NID> {
     /// `max_keep` specifies the number of applied logs to keep.
     /// `max_keep==0` means every applied log can be purged.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn calc_purge_upto(&mut self, max_keep: u64) -> Option<LogId<NID>> {
+    pub(crate) fn calc_purge_upto(&mut self) -> Option<LogId<NID>> {
         let st = &self.state;
-        let last_applied = &st.last_applied;
+        let last_applied = &st.committed;
+        let max_keep = self.config.max_applied_log_to_keep;
+        let batch_size = self.config.purge_batch_size;
 
-        // TODO(xp): periodically batch purge
         let purge_end = last_applied.next_index().saturating_sub(max_keep);
 
         tracing::debug!(
             last_applied = debug(last_applied),
             max_keep,
-            "purge: (-oo, {})",
+            "try purge: (-oo, {})",
             purge_end
         );
 
-        if st.last_purged_log_id().next_index() >= purge_end {
+        if st.last_purged_log_id().next_index() + batch_size > purge_end {
+            tracing::debug!(
+                last_applied = debug(last_applied),
+                max_keep,
+                last_purged_log_id = display(st.last_purged_log_id().summary()),
+                batch_size,
+                purge_end,
+                "no need to purge",
+            );
             return None;
         }
 
@@ -648,6 +681,7 @@ impl<NID: NodeId> Engine<NID> {
                 since: prev_committed,
                 upto: self.state.committed.unwrap(),
             });
+            self.purge_applied_log();
         }
     }
 

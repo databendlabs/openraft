@@ -26,6 +26,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
             max_applied_log_to_keep: 0,
+            purge_batch_size: 1,
             ..Default::default()
         }
         .validate()?,

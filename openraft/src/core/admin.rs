@@ -273,7 +273,9 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         // Install callback channels.
         if let Some(tx) = resp_tx {
-            self.client_resp_channels.insert(entry_refs[0].log_id.index, tx);
+            if let Some(l) = &mut self.core.leader_data {
+                l.client_resp_channels.insert(entry_refs[0].log_id.index, tx);
+            }
         }
 
         self.run_engine_commands(&entry_refs).await?;

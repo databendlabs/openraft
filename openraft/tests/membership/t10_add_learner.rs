@@ -25,6 +25,7 @@ async fn add_learner_basic() -> Result<()> {
         Config {
             replication_lag_threshold: 0,
             max_applied_log_to_keep: 2000, // prevent snapshot
+            purge_batch_size: 1,
             ..Default::default()
         }
         .validate()?,

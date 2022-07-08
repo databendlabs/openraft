@@ -1,10 +1,7 @@
-use crate::core::apply_to_state_machine;
 use crate::core::RaftCore;
 use crate::error::AppendEntriesError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
-use crate::raft_types::LogIdOptionExt;
-use crate::MessageSummary;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -42,24 +39,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
-        // Drain entries from the beginning of the cache up to commit index.
+        if let Some(c) = self.engine.state.committed {
+            self.apply_to_state_machine(c.index).await?;
+        }
 
-        let entries = self
-            .storage
-            .get_log_entries(self.engine.state.last_applied.next_index()..self.engine.state.committed.next_index())
-            .await?;
-
-        let last_log_id = entries.last().map(|x| x.log_id).unwrap();
-
-        tracing::debug!("entries: {}", entries.as_slice().summary());
-        tracing::debug!(?last_log_id);
-
-        let entries_refs: Vec<_> = entries.iter().collect();
-
-        apply_to_state_machine(self, &entries_refs, self.config.max_applied_log_to_keep).await?;
-
-        self.trigger_log_compaction_if_needed(false).await;
-        self.engine.metrics_flags.set_data_changed();
         Ok(())
     }
 }

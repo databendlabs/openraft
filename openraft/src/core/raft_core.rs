@@ -28,7 +28,9 @@ use crate::core::SnapshotState;
 use crate::core::SnapshotUpdate;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::EngineConfig;
 use crate::entry::EntryRef;
+use crate::error::ClientWriteError;
 use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
@@ -36,6 +38,7 @@ use crate::error::InitializeError;
 use crate::error::VoteError;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
+use crate::raft::ClientWriteResponse;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
@@ -61,6 +64,20 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Update;
 
+/// Data for a Leader
+pub(crate) struct LeaderData<C: RaftTypeConfig> {
+    /// Channels to send result back to client when logs are committed.
+    pub(super) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
+}
+
+impl<C: RaftTypeConfig> LeaderData<C> {
+    pub(crate) fn new() -> Self {
+        Self {
+            client_resp_channels: Default::default(),
+        }
+    }
+}
+
 /// The core type implementing the Raft protocol.
 pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     /// This node's ID.
@@ -76,6 +93,8 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) storage: S,
 
     pub(crate) engine: Engine<C::NodeId>,
+
+    pub(crate) leader_data: Option<LeaderData<C>>,
 
     /// Count the number of times ServerState switched.
     ///
@@ -134,6 +153,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             storage,
 
             engine: Engine::default(),
+            leader_data: None,
 
             server_state_count: 0,
 
@@ -186,7 +206,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // TODO(xp): this is not necessary.
         self.storage.save_vote(&state.vote).await?;
 
-        self.engine = Engine::new(self.id, &state);
+        self.engine = Engine::new(self.id, &state, EngineConfig {
+            max_applied_log_to_keep: self.config.max_applied_log_to_keep,
+            purge_batch_size: self.config.purge_batch_size,
+        });
 
         self.engine.state.last_applied = state.last_applied;
 
@@ -253,8 +276,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         loop {
             self.server_state_count += 1;
 
+            self.leader_data = None;
+
             match &self.engine.state.server_state {
-                ServerState::Leader => LeaderState::new(self).run().await?,
+                ServerState::Leader => {
+                    self.leader_data = Some(LeaderData::new());
+                    LeaderState::new(self).run().await?
+                }
                 ServerState::Candidate => self.candidate_loop().await?,
                 ServerState::Follower => self.follower_learner_loop(ServerState::Follower).await?,
                 ServerState::Learner => self.follower_learner_loop(ServerState::Learner).await?,
@@ -531,34 +559,84 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             Some(id) => self.engine.state.membership_state.effective.get_node(&id).cloned(),
         }
     }
-}
 
-#[tracing::instrument(level = "trace", skip_all)]
-pub(crate) async fn apply_to_state_machine<C, N, S>(
-    core: &mut RaftCore<C, N, S>,
-    entries: &[&Entry<C>],
-    max_keep: u64,
-) -> Result<Vec<C::R>, StorageError<C::NodeId>>
-where
-    C: RaftTypeConfig,
-    N: RaftNetworkFactory<C>,
-    S: RaftStorage<C>,
-{
-    tracing::debug!(entries=%entries.summary(), max_keep, "apply_to_state_machine");
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) async fn apply_to_state_machine(&mut self, upto_index: u64) -> Result<(), StorageError<C::NodeId>> {
+        tracing::debug!(upto_index = display(upto_index), "apply_to_state_machine");
 
-    let last = entries.last().map(|x| x.log_id);
+        let since = self.engine.state.last_applied.next_index();
+        let end = upto_index + 1;
 
-    if let Some(last_applied) = last {
-        // TODO(xp): apply_to_state_machine should return the last applied
-        let res = core.storage.apply_to_state_machine(entries).await?;
-        core.engine.state.last_applied = Some(last_applied);
+        debug_assert!(
+            since <= end,
+            "last_applied index {} should <= committed index {}",
+            since,
+            end
+        );
 
-        core.engine.purge_applied_log(max_keep);
-        core.run_engine_commands::<Entry<C>>(&[]).await?;
+        if since == end {
+            return Ok(());
+        }
 
-        Ok(res)
-    } else {
-        Ok(vec![])
+        let entries = self.storage.get_log_entries(since..end).await?;
+        tracing::debug!(entries=%entries.as_slice().summary(), "about to apply");
+
+        let entry_refs = entries.iter().collect::<Vec<_>>();
+        let apply_results = self.storage.apply_to_state_machine(&entry_refs).await?;
+
+        let last_applied = entries[entries.len() - 1].log_id;
+        self.engine.state.last_applied = Some(last_applied);
+
+        tracing::debug!(last_applied = display(last_applied), "update last_applied");
+
+        if let Some(leader_data) = &mut self.leader_data {
+            let mut results = apply_results.into_iter();
+
+            for log_index in since..end {
+                let tx = leader_data.client_resp_channels.remove(&log_index);
+
+                let i = log_index - since;
+                let entry = &entries[i as usize];
+                let apply_res = results.next().unwrap();
+
+                Self::send_response(entry, apply_res, tx).await;
+            }
+        }
+
+        self.trigger_log_compaction_if_needed(false).await;
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(super) async fn send_response(
+        entry: &Entry<C>,
+        resp: C::R,
+        tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
+    ) {
+        tracing::debug!(entry = display(entry.summary()), "send_response");
+
+        let tx = match tx {
+            None => return,
+            Some(x) => x,
+        };
+
+        let membership = if let EntryPayload::Membership(ref c) = entry.payload {
+            Some(c.clone())
+        } else {
+            None
+        };
+
+        let res = Ok(ClientWriteResponse {
+            log_id: entry.log_id,
+            data: resp,
+            membership,
+        });
+
+        let send_res = tx.send(res);
+        tracing::debug!(
+            "send client response through tx, send_res is error: {}",
+            send_res.is_err()
+        );
     }
 }
 

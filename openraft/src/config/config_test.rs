@@ -60,6 +60,7 @@ fn test_build() -> anyhow::Result<()> {
         "--snapshot-max-chunk-size=204",
         "--max-applied-log-to-keep=205",
         "--remove-replication=max_network_failures:206",
+        "--purge-batch-size=207",
     ])?;
 
     assert_eq!("bar", config.cluster_name);
@@ -76,6 +77,7 @@ fn test_build() -> anyhow::Result<()> {
         RemoveReplicationPolicy::MaxNetworkFailures(206),
         config.remove_replication
     );
+    assert_eq!(207, config.purge_batch_size);
 
     Ok(())
 }

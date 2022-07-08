@@ -4,6 +4,7 @@ use maplit::btreeset;
 
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::LogIdList;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;
@@ -95,6 +96,68 @@ fn test_update_progress_update_leader_progress() -> anyhow::Result<()> {
                 since: Some(log_id(2, 1)),
                 upto: log_id(2, 3)
             }
+        ],
+        eng.commands
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_update_progress_purge_upto_committed() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.log_ids = LogIdList::new([log_id(2, 0), log_id(2, 5)]);
+    eng.config.max_applied_log_to_keep = 0;
+    eng.config.purge_batch_size = 1;
+
+    eng.state.new_leader();
+
+    // progress: None, (2,1), (2,3); committed: (2,1)
+    eng.update_progress(3, Some(log_id(1, 2)));
+    eng.update_progress(2, Some(log_id(2, 1)));
+    eng.update_progress(3, Some(log_id(2, 3)));
+    assert_eq!(Some(log_id(2, 1)), eng.state.committed);
+    assert_eq!(
+        vec![
+            Command::ReplicateCommitted {
+                committed: Some(log_id(2, 1))
+            },
+            Command::LeaderCommit {
+                since: None,
+                upto: log_id(2, 1)
+            },
+            Command::PurgeLog { upto: log_id(2, 1) },
+        ],
+        eng.commands
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_update_progress_purge_upto_committed_minus_1() -> anyhow::Result<()> {
+    let mut eng = eng();
+    eng.state.log_ids = LogIdList::new([log_id(2, 0), log_id(2, 5)]);
+    eng.config.max_applied_log_to_keep = 1;
+    eng.config.purge_batch_size = 1;
+
+    eng.state.new_leader();
+
+    // progress: None, (2,1), (2,3); committed: (2,1)
+    eng.update_progress(3, Some(log_id(1, 2)));
+    eng.update_progress(2, Some(log_id(2, 2)));
+    eng.update_progress(3, Some(log_id(2, 4)));
+    assert_eq!(Some(log_id(2, 2)), eng.state.committed);
+    assert_eq!(
+        vec![
+            Command::ReplicateCommitted {
+                committed: Some(log_id(2, 2))
+            },
+            Command::LeaderCommit {
+                since: None,
+                upto: log_id(2, 2)
+            },
+            Command::PurgeLog { upto: log_id(2, 1) },
         ],
         eng.commands
     );

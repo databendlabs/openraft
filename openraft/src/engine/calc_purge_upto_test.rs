@@ -53,18 +53,21 @@ fn test_calc_purge_upto() -> anyhow::Result<()> {
         (Some(log_id(1, 2)), Some(log_id(3, 4)), 5, None),
     ];
 
-    for (last_purged, last_applied, max_keep, want) in cases {
+    for (last_purged, committed, max_keep, want) in cases {
         let mut eng = eng();
+        eng.config.max_applied_log_to_keep = max_keep;
+        eng.config.purge_batch_size = 1;
+
         if let Some(last_purged) = last_purged {
             eng.state.log_ids.purge(&last_purged);
         }
-        eng.state.last_applied = last_applied;
-        let got = eng.calc_purge_upto(max_keep);
+        eng.state.committed = committed;
+        let got = eng.calc_purge_upto();
 
         assert_eq!(
             want, got,
             "case: last_purged: {:?}, last_applied: {:?}, max_keep: {}",
-            last_purged, last_applied, max_keep
+            last_purged, committed, max_keep
         );
     }
 

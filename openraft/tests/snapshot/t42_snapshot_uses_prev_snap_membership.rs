@@ -37,6 +37,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             // Use 3, with 1 it triggers a compaction when replicating ent-1,
             // because ent-0 is removed.
             max_applied_log_to_keep: 3,
+            purge_batch_size: 1,
             ..Default::default()
         }
         .validate()?,
