@@ -25,6 +25,7 @@ use crate::raft::RaftRespTx;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
 use crate::runtime::RaftRuntime;
+use crate::summary::MessageSummary;
 use crate::versioned::Updatable;
 use crate::ChangeMembers;
 use crate::EntryPayload;
@@ -62,14 +63,18 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// If `blocking` is `true`, the result is sent to `tx` as the target node log has caught up. Otherwise, result is
     /// sent at once, no matter whether the target node log is lagging or not.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(super) async fn add_learner(
         &mut self,
         target: C::NodeId,
         node: Option<Node>,
         tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
     ) -> Result<(), Fatal<C::NodeId>> {
-        tracing::debug!("add target node {} as learner {:?}", target, self.nodes.keys());
+        tracing::debug!(
+            "add target node {} as learner; current nodes: {:?}",
+            target,
+            self.nodes.keys()
+        );
 
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
@@ -254,12 +259,14 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
-    #[tracing::instrument(level = "debug", skip(self, payload, resp_tx), fields(id = display(self.core.id)))]
+    #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.core.id)))]
     pub async fn write_entry(
         &mut self,
         payload: EntryPayload<C>,
         resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
     ) -> Result<LogId<C::NodeId>, Fatal<C::NodeId>> {
+        tracing::debug!(payload = display(payload.summary()), "write_entry");
+
         let mut entry_refs = [EntryRef::new(&payload)];
         // TODO: it should returns membership config error etc. currently this is done by the caller.
         self.core.engine.leader_append_entries(&mut entry_refs);

@@ -5,6 +5,7 @@ use maplit::btreeset;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tracing::Instrument;
+use tracing::Level;
 
 use crate::core::apply_to_state_machine;
 use crate::core::LeaderState;
@@ -154,8 +155,14 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// It does not block until the entry is committed or actually sent out.
     /// It merely broadcasts a signal to inform the replication threads.
-    #[tracing::instrument(level = "debug", skip(self), fields(log_id=%log_id))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn replicate_entry(&mut self, log_id: LogId<C::NodeId>) {
+        if tracing::enabled!(Level::DEBUG) {
+            for node_id in self.nodes.keys() {
+                tracing::debug!(node_id = display(node_id), log_id = display(log_id), "replicate_entry");
+            }
+        }
+
         for node in self.nodes.values() {
             let _ = node.repl_stream.repl_tx.send(UpdateReplication {
                 last_log_id: Some(log_id),

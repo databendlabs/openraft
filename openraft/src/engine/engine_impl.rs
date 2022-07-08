@@ -626,8 +626,12 @@ impl<NID: NodeId> Engine<NID> {
                 Some(x) => x,
             };
 
+            tracing::debug!(progress = debug(&leader.progress), "leader progress");
+
             *leader.progress.update(&node_id, log_id)
         };
+
+        tracing::debug!(committed = debug(&committed), "committed after updating progress");
 
         // Only when the log id is proposed by current leader, it is committed.
         if let Some(c) = committed {
