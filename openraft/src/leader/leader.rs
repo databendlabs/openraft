@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
 
+use crate::progress::Progress;
+use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
-use crate::EffectiveMembership;
+use crate::LogId;
 use crate::NodeId;
 
 /// Leader data.
@@ -17,17 +19,25 @@ use crate::NodeId;
 /// By combining candidate and leader into one stage, openraft does not need to lose leadership when a higher
 /// `leader_id`(roughly the `term` in original raft) is seen.
 /// But instead it will be able to upgrade its `leader_id` without losing leadership.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub struct Leader<NID: NodeId> {
+pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
     /// Which nodes have granted the the vote of this node.
     pub(crate) vote_granted_by: BTreeSet<NID>,
+
+    /// Tracks the replication progress and committed index
+    pub(crate) progress: VecProgress<NID, Option<LogId<NID>>, QS>,
 }
 
-impl<NID: NodeId> Leader<NID> {
-    pub(crate) fn new() -> Self {
+impl<NID, QS> Leader<NID, QS>
+where
+    NID: NodeId,
+    QS: QuorumSet<NID> + 'static,
+{
+    pub(crate) fn new(quorum_set: QS) -> Self {
         Self {
             vote_granted_by: BTreeSet::new(),
+            progress: VecProgress::new(quorum_set),
         }
     }
 
@@ -37,7 +47,8 @@ impl<NID: NodeId> Leader<NID> {
     }
 
     /// Return if a quorum of `membership` has granted it.
-    pub(crate) fn is_granted_by(&self, em: &EffectiveMembership<NID>) -> bool {
-        em.is_quorum(self.vote_granted_by.iter())
+    pub(crate) fn is_vote_granted(&self) -> bool {
+        let qs = self.progress.quorum_set();
+        qs.is_quorum(self.vote_granted_by.iter())
     }
 }

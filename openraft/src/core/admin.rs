@@ -33,6 +33,7 @@ use crate::Node;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
+use crate::StorageError;
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     // add node into learner,return true if the node is already a member or learner
@@ -274,7 +275,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn run_engine_commands<'p>(&mut self, input_entries: &[EntryRef<'p, C>]) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) async fn run_engine_commands<'p>(
+        &mut self,
+        input_entries: &[EntryRef<'p, C>],
+    ) -> Result<(), StorageError<C::NodeId>> {
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!("LeaderState run command: start...");
             for c in self.core.engine.commands.iter() {

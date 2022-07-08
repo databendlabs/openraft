@@ -851,7 +851,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
         Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
         &'e Ent: Into<Entry<C>>,
     {
-        // TODO: run_command does not need to return Fatal.
         // Run non-role-specific command.
         match cmd {
             Command::UpdateServerState { .. } => {
@@ -890,8 +889,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(vote_req).await;
             }
-            Command::LeaderCommit { .. } => {}
-            Command::FollowerCommit { upto: _ } => {
+            Command::ReplicateCommitted { .. } => {
+                unreachable!("leader specific command")
+            }
+            Command::LeaderCommit { .. } => {
+                unreachable!("leader specific command")
+            }
+            Command::FollowerCommit { upto: _, .. } => {
                 self.replicate_to_state_machine_if_needed().await?;
             }
             Command::ReplicateInputEntries { .. } => {

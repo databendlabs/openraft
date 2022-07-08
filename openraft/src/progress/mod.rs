@@ -26,7 +26,12 @@ where
     fn get(&self, id: &ID) -> &V;
 
     /// Get the currently committed value.
+    // TODO: rename it: a quorum does not means committed, Raft need another condition to be satisfied: log is proposed
+    //       by the current leader
     fn committed(&self) -> &V;
+
+    /// Returns the reference to the quorum set
+    fn quorum_set(&self) -> &QS;
 
     /// Build a new instance with the new quorum set.
     fn upgrade_quorum_set(self, quorum_set: QS) -> Self;
@@ -35,7 +40,8 @@ where
 /// A Progress implementation with vector as storage.
 ///
 /// Suitable for small quorum set
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+#[derive(PartialEq, Eq)]
 pub(crate) struct VecProgress<ID, V, QS>
 where
     ID: 'static,
@@ -58,6 +64,7 @@ where
 }
 
 #[derive(Clone, Debug, Default)]
+#[derive(PartialEq, Eq)]
 pub(crate) struct Stat {
     update_count: u64,
     move_count: u64,
@@ -84,22 +91,13 @@ where
 
     /// Find the index in of the specified id.
     #[inline(always)]
-    fn index(&self, target: &ID) -> usize {
-        for (i, elt) in self.vector.iter().enumerate() {
-            if elt.0 == *target {
-                return i;
-            }
-        }
-
-        unreachable!("{:?} not found", target)
-    }
-
-    fn safe_index(&self, target: &ID) -> Option<usize> {
+    fn index(&self, target: &ID) -> Option<usize> {
         for (i, elt) in self.vector.iter().enumerate() {
             if elt.0 == *target {
                 return Some(i);
             }
         }
+
         None
     }
 
@@ -165,7 +163,13 @@ where
     fn update(&mut self, id: &ID, value: V) -> &V {
         self.stat.update_count += 1;
 
-        let index = self.index(id);
+        let index = match self.index(id) {
+            None => {
+                return &self.committed;
+            }
+            Some(x) => x,
+        };
+
         let elt = &mut self.vector[index];
         let prev = elt.1;
 
@@ -203,7 +207,7 @@ where
     }
 
     fn get(&self, id: &ID) -> &V {
-        let index = self.index(id);
+        let index = self.index(id).unwrap();
         &self.vector[index].1
     }
 
@@ -211,17 +215,19 @@ where
         &self.committed
     }
 
-    fn upgrade_quorum_set(self, quorum_set: QS) -> Self {
-        let mut x = Self::new(quorum_set);
+    fn quorum_set(&self) -> &QS {
+        &self.quorum_set
+    }
 
-        x.stat = self.stat.clone();
+    fn upgrade_quorum_set(self, quorum_set: QS) -> Self {
+        let mut new_qs = Self::new(quorum_set);
+
+        new_qs.stat = self.stat.clone();
 
         for id in self.quorum_set.ids() {
-            if x.safe_index(&id).is_some() {
-                x.update(&id, *self.get(&id));
-            }
+            new_qs.update(&id, *self.get(&id));
         }
-        x
+        new_qs
     }
 }
 
@@ -246,7 +252,7 @@ mod t {
         ];
         for (ith, ((id, v), want_vec, want_new_index)) in cases.iter().enumerate() {
             // Update a value and move it up to keep the order.
-            let index = progress.index(id);
+            let index = progress.index(id).unwrap();
             progress.vector[index].1 = *v;
             let got = progress.move_up(index);
 
@@ -278,6 +284,7 @@ mod t {
             ((3, 2), 3), // 4,2,3,2,5
             ((3, 3), 3), // 4,2,3,2,5
             ((1, 4), 4), // 4,4,3,2,5
+            ((9, 1), 4), // nonexistent id, ignore.
         ];
 
         for (ith, ((id, v), want_committed)) in cases.iter().enumerate() {

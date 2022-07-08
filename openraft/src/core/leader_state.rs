@@ -16,11 +16,13 @@ use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft_types::RaftLogId;
 use crate::replication::ReplicaEvent;
+use crate::replication::UpdateReplication;
 use crate::runtime::RaftRuntime;
 use crate::summary::MessageSummary;
 use crate::versioned::Versioned;
 use crate::Entry;
 use crate::EntryPayload;
+use crate::LogIdOptionExt;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -185,14 +187,17 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
     {
         // Run leader specific commands or pass non leader specific commands to self.core.
         match cmd {
-            Command::LeaderCommit { ref upto } => {
-                for ent in input_entries.iter() {
-                    let log_id = ent.get_log_id();
-                    if log_id <= upto {
-                        self.client_request_post_commit(log_id.index).await?;
-                    } else {
-                        break;
-                    }
+            Command::ReplicateCommitted { committed } => {
+                for node in self.nodes.values() {
+                    let _ = node.repl_stream.repl_tx.send(UpdateReplication {
+                        last_log_id: None,
+                        committed: *committed,
+                    });
+                }
+            }
+            Command::LeaderCommit { ref upto, .. } => {
+                for i in self.core.engine.state.last_applied.next_index()..(upto.index + 1) {
+                    self.client_request_post_commit(i).await?;
                 }
             }
             Command::ReplicateInputEntries { range } => {
@@ -202,7 +207,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
             }
             Command::UpdateMembership { .. } => {
                 // TODO: rebuild replication streams. not used yet. Currently replication stream management is done
-                // before this step.
+                //       before this step.
             }
             _ => self.core.run_command(input_entries, curr, cmd).await?,
         }

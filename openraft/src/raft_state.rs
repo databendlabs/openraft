@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use crate::engine::LogIdList;
 use crate::leader::Leader;
 use crate::raft_types::RaftLogId;
+use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
@@ -38,7 +41,7 @@ pub struct RaftState<NID: NodeId> {
     ///
     /// - A follower will just receive replication from a leader. A follower that is one of the member will be able to
     ///   become leader. A follower that is not a member is just a learner.
-    pub leader: Option<Leader<NID>>,
+    pub(crate) leader: Option<Leader<NID, Arc<EffectiveMembership<NID>>>>,
 
     /// The log id of the last known committed entry.
     ///
@@ -52,7 +55,9 @@ pub struct RaftState<NID: NodeId> {
     pub server_state: ServerState,
 }
 
-impl<NID: NodeId> RaftState<NID> {
+impl<NID> RaftState<NID>
+where NID: NodeId
+{
     /// Append a list of `log_id`.
     ///
     /// The log ids in the input has to be continuous.
@@ -104,5 +109,30 @@ impl<NID: NodeId> RaftState<NID> {
     /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
     pub(crate) fn last_purged_log_id(&self) -> Option<LogId<NID>> {
         self.log_ids.first().cloned()
+    }
+
+    /// Create a new Leader, when raft enters candidate state.
+    /// In openraft, Leader and Candidate shares the same state.
+    pub(crate) fn new_leader(&mut self) {
+        self.leader = Some(Leader::new(self.membership_state.effective.clone()));
+    }
+
+    /// Update field `committed` if the input is greater.
+    /// If updated, it returns the previous value in a `Some()`.
+    pub(crate) fn update_committed(&mut self, committed: &Option<LogId<NID>>) -> Option<Option<LogId<NID>>> {
+        if committed > &self.committed {
+            let prev = self.committed;
+
+            self.committed = *committed;
+
+            // TODO(xp): use a vec to store committed and effective membership.
+            if self.committed >= self.membership_state.effective.log_id {
+                self.membership_state.committed = self.membership_state.effective.clone();
+            }
+
+            Some(prev)
+        } else {
+            None
+        }
     }
 }
