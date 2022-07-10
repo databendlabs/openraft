@@ -5,6 +5,7 @@ use std::option::Option::None;
 use tracing::Level;
 
 use crate::config::RemoveReplicationPolicy;
+use crate::core::replication_state::replication_lag;
 use crate::core::replication_state::ReplicationState;
 use crate::core::Expectation;
 use crate::core::LeaderState;
@@ -197,6 +198,16 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         tracing::debug!(?new_config, "new_config");
 
+        for node_id in only_in_new.clone() {
+            if !mem.contains(node_id) {
+                let not_found = LearnerNotFound { node_id: *node_id };
+                let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                    ChangeMembershipError::LearnerNotFound(not_found),
+                )));
+                return Ok(());
+            }
+        }
+
         if let Err(e) = self.check_replication_states(only_in_new, expectation) {
             let _ = tx.send(Err(e.into()));
             return Ok(());
@@ -212,35 +223,31 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         nodes: impl Iterator<Item = &'n C::NodeId>,
         expectation: Option<Expectation>,
     ) -> Result<(), ChangeMembershipError<C::NodeId>> {
-        for node_id in nodes {
-            let repl_state = match self.nodes.get(node_id) {
-                None => {
-                    return Err(ChangeMembershipError::LearnerNotFound(LearnerNotFound {
-                        node_id: *node_id,
-                    }));
-                }
-                Some(x) => x,
-            };
+        let expectation = match &expectation {
+            None => {
+                // No expectation, whatever is OK.
+                return Ok(());
+            }
+            Some(x) => x,
+        };
 
+        let last_log_id = self.core.engine.state.last_log_id();
+
+        for node_id in nodes {
             match expectation {
-                None => {
-                    // No expectation, whatever is OK.
-                    continue;
-                }
-                Some(Expectation::AtLineRate) => {
+                Expectation::AtLineRate => {
                     // Expect to be at line rate but not.
 
-                    let last_log_id = &self.core.engine.state.last_log_id();
+                    let matched = self.nodes.get(node_id).map(|x| x.matched).unwrap();
+                    let distance = replication_lag(&matched, &last_log_id);
 
-                    if repl_state.is_line_rate(last_log_id, &self.core.config) {
+                    if distance <= self.core.config.replication_lag_threshold {
                         continue;
                     }
 
-                    let distance = last_log_id.next_index().saturating_sub(repl_state.matched.next_index());
-
                     let lagging = LearnerIsLagging {
                         node_id: *node_id,
-                        matched: repl_state.matched,
+                        matched,
                         distance,
                     };
 
