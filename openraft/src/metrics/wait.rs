@@ -168,7 +168,7 @@ impl<NID: NodeId> Wait<NID> {
     pub async fn snapshot(&self, want_snapshot: LogId<NID>, msg: impl ToString) -> Result<RaftMetrics<NID>, WaitError> {
         self.metrics(
             |x| x.snapshot == Some(want_snapshot),
-            &format!("{} .snapshot -> {:?}", msg.to_string(), want_snapshot),
+            &format!("{} .snapshot -> {}", msg.to_string(), want_snapshot),
         )
         .await
     }
