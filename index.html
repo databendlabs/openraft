@@ -202,8 +202,9 @@ improve efficiency with a cluster with an even number of nodes.</p>
 <p>Goal performance is 1,000,000 put/sec.</p>
 <p>Bench history:</p>
 <ul>
-<li>2022 Jul 01: 41,000 put/sec; ns/op: 23,255;</li>
-<li>2022 Jul 07: 43,000 put/sec; ns/op: 23,218; <a href="url">hash</a> Use <code>Progress</code> to track replication.</li>
+<li>2022 Jul 01: 41,000 put/sec; 23,255 ns/op;</li>
+<li>2022 Jul 07: 43,000 put/sec; 23,218 ns/op; Use <code>Progress</code> to track replication.</li>
+<li>2022 Jul 09: 45,000 put/sec; 21,784 ns/op; Batch purge applied log</li>
 </ul>
 <p>Run the benchmark: <code>make bench_cluster_of_3</code></p>
 <p>Benchmark setting:</p>
