@@ -17,7 +17,6 @@ mod snapshot_state;
 
 pub(crate) use internal_msg::InternalMessage;
 use leader_state::LeaderState;
-use raft_core::apply_to_state_machine;
 pub use raft_core::RaftCore;
 pub(crate) use replication_expectation::Expectation;
 pub use replication_state::is_matched_upto_date;

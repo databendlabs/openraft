@@ -5,19 +5,17 @@ use maplit::btreeset;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tracing::Instrument;
+use tracing::Level;
 
-use crate::core::apply_to_state_machine;
 use crate::core::LeaderState;
 use crate::core::ServerState;
 use crate::error::CheckIsLeaderError;
-use crate::error::ClientWriteError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::ClientWriteResponse;
 use crate::raft::RaftRespTx;
 use crate::replication::UpdateReplication;
 use crate::Entry;
@@ -154,8 +152,14 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ///
     /// It does not block until the entry is committed or actually sent out.
     /// It merely broadcasts a signal to inform the replication threads.
-    #[tracing::instrument(level = "debug", skip(self), fields(log_id=%log_id))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn replicate_entry(&mut self, log_id: LogId<C::NodeId>) {
+        if tracing::enabled!(Level::DEBUG) {
+            for node_id in self.nodes.keys() {
+                tracing::debug!(node_id = display(node_id), log_id = display(log_id), "replicate_entry");
+            }
+        }
+
         for node in self.nodes.values() {
             let _ = node.repl_stream.repl_tx.send(UpdateReplication {
                 last_log_id: Some(log_id),
@@ -170,46 +174,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let entries = self.core.storage.get_log_entries(log_index..=log_index).await?;
         let entry = &entries[0];
 
-        let tx = self.client_resp_channels.remove(&log_index);
+        self.handle_special_log(entry).await;
 
-        let apply_res = self.apply_entry_to_state_machine(entry).await?;
+        self.core.apply_to_state_machine(log_index).await?;
 
-        self.send_response(entry, apply_res, tx).await;
-
-        // Trigger log compaction if needed.
-        self.core.trigger_log_compaction_if_needed(false).await;
         Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self, entry, resp, tx), fields(entry=%entry.summary()))]
-    pub(super) async fn send_response(
-        &mut self,
-        entry: &Entry<C>,
-        resp: C::R,
-        tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
-    ) {
-        let tx = match tx {
-            None => return,
-            Some(x) => x,
-        };
-
-        let membership = if let EntryPayload::Membership(ref c) = entry.payload {
-            Some(c.clone())
-        } else {
-            None
-        };
-
-        let res = Ok(ClientWriteResponse {
-            log_id: entry.log_id,
-            data: resp,
-            membership,
-        });
-
-        let send_res = tx.send(res);
-        tracing::debug!(
-            "send client response through tx, send_res is error: {}",
-            send_res.is_err()
-        );
     }
 
     pub async fn handle_special_log(&mut self, entry: &Entry<C>) {
@@ -224,48 +193,5 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             EntryPayload::Blank => {}
             EntryPayload::Normal(_) => {}
         }
-    }
-
-    /// Apply the given log entry to the state machine.
-    #[tracing::instrument(level = "debug", skip(self, entry))]
-    pub(super) async fn apply_entry_to_state_machine(
-        &mut self,
-        entry: &Entry<C>,
-    ) -> Result<C::R, StorageError<C::NodeId>> {
-        self.handle_special_log(entry).await;
-
-        // First, we just ensure that we apply any outstanding up to, but not including, the index
-        // of the given entry. We need to be able to return the data response from applying this
-        // entry to the state machine.
-        //
-        // Note that this would only ever happen if a node had unapplied logs from before becoming leader.
-
-        let log_id = &entry.log_id;
-        let index = log_id.index;
-        let max_keep = self.core.config.max_applied_log_to_keep;
-
-        let expected_next_index = match self.core.engine.state.last_applied {
-            None => 0,
-            Some(log_id) => log_id.index + 1,
-        };
-
-        if index != expected_next_index {
-            let entries = self.core.storage.get_log_entries(expected_next_index..index).await?;
-
-            let data_entries: Vec<_> = entries.iter().collect();
-            if !data_entries.is_empty() {
-                apply_to_state_machine(self.core, &data_entries, max_keep).await?;
-            }
-        }
-
-        // Apply this entry to the state machine and return its data response.
-        let apply_res = apply_to_state_machine(self.core, &[entry], max_keep).await?;
-
-        // TODO(xp): deal with partial apply.
-        self.core.engine.metrics_flags.set_data_changed();
-
-        // TODO(xp) merge this function to replication_to_state_machine?
-
-        Ok(apply_res.into_iter().next().unwrap())
     }
 }

@@ -8,12 +8,9 @@ use crate::core::RaftCore;
 use crate::core::ReplicationState;
 use crate::core::ServerState;
 use crate::engine::Command;
-use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::metrics::ReplicationMetrics;
-use crate::raft::ClientWriteResponse;
 use crate::raft::RaftMsg;
-use crate::raft::RaftRespTx;
 use crate::raft_types::RaftLogId;
 use crate::replication::ReplicaEvent;
 use crate::replication::UpdateReplication;
@@ -46,9 +43,6 @@ pub(crate) struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     /// The cloneable sender channel for replication stream events.
     #[allow(clippy::type_complexity)]
     pub(super) replication_tx: mpsc::UnboundedSender<(ReplicaEvent<C::NodeId, S::SnapshotData>, Span)>,
-
-    /// Channels to send result back to client when logs are committed.
-    pub(super) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
 }
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
@@ -61,7 +55,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             replication_metrics: Versioned::new(ReplicationMetrics::default()),
             replication_tx,
             replication_rx,
-            client_resp_channels: Default::default(),
         }
     }
 

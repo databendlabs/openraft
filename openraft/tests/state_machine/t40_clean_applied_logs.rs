@@ -20,6 +20,7 @@ async fn clean_applied_logs() -> Result<()> {
     let config = Arc::new(
         Config {
             max_applied_log_to_keep: 2,
+            purge_batch_size: 1,
             ..Default::default()
         }
         .validate()?,

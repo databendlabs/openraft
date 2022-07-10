@@ -82,6 +82,7 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
         Config {
             election_timeout_min: 200,
             election_timeout_max: 2000,
+            purge_batch_size: 1024,
             ..Default::default()
         }
         .validate()?,

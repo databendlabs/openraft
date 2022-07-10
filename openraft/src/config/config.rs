@@ -175,6 +175,10 @@ pub struct Config {
     #[clap(long, env = "RAFT_MAX_APPLIED_LOG_TO_KEEP", default_value = "1000")]
     pub max_applied_log_to_keep: u64,
 
+    /// The minimal number of applied logs to purge in a batch.
+    #[clap(long, default_value = "1")]
+    pub purge_batch_size: u64,
+
     /// Policy to remove a replication stream for an unreachable removed node.
     #[clap(
         long,
