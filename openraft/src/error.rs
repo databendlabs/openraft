@@ -119,7 +119,6 @@ pub enum ChangeMembershipError<NID: NodeId> {
     #[error(transparent)]
     EmptyMembership(#[from] EmptyMembership),
 
-    // TODO(xp): 111 test it
     #[error(transparent)]
     LearnerNotFound(#[from] LearnerNotFound<NID>),
 

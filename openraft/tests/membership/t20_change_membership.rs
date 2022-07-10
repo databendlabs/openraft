@@ -100,12 +100,25 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
     let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
     router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
 
-    tracing::info!("--- change membership without adding-learner");
-    {
-        router.new_raft_node(1);
+    router.new_raft_node(1);
+    let leader = router.get_raft_handle(&0)?;
 
-        let node = router.get_raft_handle(&0)?;
-        let res = node.change_membership(btreeset! {0,1}, true, false).await;
+    tracing::info!("--- change membership without adding-learner, allow_lagging=true");
+    {
+        let res = leader.change_membership(btreeset! {0,1}, true, false).await;
+        match res {
+            Err(ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err))) => {
+                assert_eq!(1, err.node_id);
+            }
+            _ => {
+                unreachable!("expect LearnerNotFound")
+            }
+        }
+    }
+
+    tracing::info!("--- change membership without adding-learner, allow_lagging=false");
+    {
+        let res = leader.change_membership(btreeset! {0,1}, false, false).await;
         match res {
             Err(ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err))) => {
                 assert_eq!(1, err.node_id);
@@ -141,7 +154,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         router.isolate_node(1);
     }
 
-    tracing::info!("--- write up to 100 logs");
+    tracing::info!("--- write up to 500 logs");
     {
         router.client_request_many(0, "non_voter_add", 500 - log_index as usize).await?;
         log_index = 500;
@@ -149,9 +162,8 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         router.wait(&0, timeout()).log(Some(log_index), "received 500 logs").await?;
     }
 
-    tracing::info!("--- restore replication and change membership at once, expect NonVoterIsLagging");
+    tracing::info!("--- changing membership expects LearnerIsLagging");
     {
-        router.restore_node(1);
         let node = router.get_raft_handle(&0)?;
         let res = node.change_membership(btreeset! {0,1}, false, false).await;
 
@@ -177,7 +189,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
 }
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn change_with_turn_not_exist_member_to_learner() -> anyhow::Result<()> {
+async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
     // Add a member without adding it as learner, in blocking mode it should finish successfully.
 
     let config = Arc::new(Config { ..Default::default() }.validate()?);

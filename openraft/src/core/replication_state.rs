@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 use std::fmt::Formatter;
 
-use crate::config::Config;
 use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicationStream;
 use crate::LogId;
@@ -41,21 +40,35 @@ impl<NID: NodeId> Debug for ReplicationState<NID> {
     }
 }
 
-impl<NID: NodeId> ReplicationState<NID> {
-    // TODO(xp): make this a method of Config?
-
-    /// Return true if the distance behind last_log_id is smaller than the threshold to join.
-    pub fn is_line_rate(&self, last_log_id: &Option<LogId<NID>>, config: &Config) -> bool {
-        is_matched_upto_date::<NID>(&self.matched, last_log_id, config)
-    }
+/// Calculate the distance between the matched log id on a replication target and local last log id
+pub(crate) fn replication_lag<NID: NodeId>(matched: &Option<LogId<NID>>, last_log_id: &Option<LogId<NID>>) -> u64 {
+    last_log_id.next_index().saturating_sub(matched.next_index())
 }
 
-pub fn is_matched_upto_date<NID: NodeId>(
-    matched: &Option<LogId<NID>>,
-    last_log_id: &Option<LogId<NID>>,
-    config: &Config,
-) -> bool {
-    let my_index = matched.next_index();
-    let distance = last_log_id.next_index().saturating_sub(my_index);
-    distance <= config.replication_lag_threshold
+#[cfg(test)]
+mod test {
+    use crate::core::replication_state::replication_lag;
+    use crate::LeaderId;
+    use crate::LogId;
+
+    #[test]
+    fn test_replication_lag() -> anyhow::Result<()> {
+        let log_id = |term, node_id, index| LogId::<u64>::new(LeaderId::new(term, node_id), index);
+
+        assert_eq!(0, replication_lag::<u64>(&None, &None));
+        assert_eq!(4, replication_lag::<u64>(&None, &Some(log_id(1, 2, 3))));
+        assert_eq!(
+            1,
+            replication_lag::<u64>(&Some(log_id(1, 2, 2)), &Some(log_id(1, 2, 3)))
+        );
+        assert_eq!(
+            0,
+            replication_lag::<u64>(&Some(log_id(1, 2, 3)), &Some(log_id(1, 2, 3)))
+        );
+        assert_eq!(
+            0,
+            replication_lag::<u64>(&Some(log_id(1, 2, 4)), &Some(log_id(1, 2, 3)))
+        );
+        Ok(())
+    }
 }
