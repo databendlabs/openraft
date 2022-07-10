@@ -114,7 +114,8 @@ where NID: NodeId
     /// Create a new Leader, when raft enters candidate state.
     /// In openraft, Leader and Candidate shares the same state.
     pub(crate) fn new_leader(&mut self) {
-        self.leader = Some(Leader::new(self.membership_state.effective.clone()));
+        let em = &self.membership_state.effective;
+        self.leader = Some(Leader::new(em.clone(), em.learner_ids()));
     }
 
     /// Update field `committed` if the input is greater.

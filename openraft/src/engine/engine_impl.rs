@@ -633,7 +633,11 @@ impl<NID: NodeId> Engine<NID> {
 
         // If membership changes, the progress should be upgraded.
         if let Some(leader) = &mut self.state.leader {
-            leader.progress = leader.progress.clone().upgrade_quorum_set(em);
+            let old_progress = leader.progress.clone();
+
+            let learner_ids = em.learner_ids().collect::<Vec<_>>();
+
+            leader.progress = old_progress.upgrade_quorum_set(em, &learner_ids);
         }
 
         self.push_command(Command::UpdateMembership {
@@ -662,10 +666,23 @@ impl<NID: NodeId> Engine<NID> {
             tracing::debug!(progress = debug(&leader.progress), "leader progress");
 
             let res = leader.progress.update(&node_id, log_id);
-            // TODO(xp): update learner progress.
             match res {
                 Ok(c) => *c,
-                Err(c) => *c,
+                Err(_) => {
+                    // TODO: leader should not append log if it is no longer in the membership.
+                    //       There is a chance this will happen:
+                    //       If leader is `1`, when a the membership changes from [1,2,3] to [2,3],
+                    //       The leader will still try to append log to its local store.
+                    //       This is still correct but unnecessary.
+                    //       To make thing clear, a leader should stop appending log at once if it is no longer in the
+                    //       membership.
+                    //       The replication task should be generalized to write log for
+                    //       both leader and follower.
+
+                    // unreachable!("updating nonexistent id: {}, progress: {:?}", node_id, leader.progress);
+
+                    return;
+                }
             }
         };
 
