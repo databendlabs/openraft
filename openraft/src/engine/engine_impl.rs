@@ -661,7 +661,12 @@ impl<NID: NodeId> Engine<NID> {
 
             tracing::debug!(progress = debug(&leader.progress), "leader progress");
 
-            *leader.progress.update(&node_id, log_id)
+            let res = leader.progress.update(&node_id, log_id);
+            // TODO(xp): update learner progress.
+            match res {
+                Ok(c) => *c,
+                Err(c) => *c,
+            }
         };
 
         tracing::debug!(committed = debug(&committed), "committed after updating progress");

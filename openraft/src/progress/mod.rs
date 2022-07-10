@@ -20,7 +20,9 @@ where
     QS: QuorumSet<ID>,
 {
     /// Update one of the scalar value and re-calculate the committed value.
-    fn update(&mut self, id: &ID, value: V) -> &V;
+    ///
+    /// It returns Err(committed) if the id is not in this progress.
+    fn update(&mut self, id: &ID, value: V) -> Result<&V, &V>;
 
     /// Get the value by `id`.
     fn get(&self, id: &ID) -> &V;
@@ -160,12 +162,12 @@ where
     /// ------------------------------
     ///      1   3   5
     /// ```
-    fn update(&mut self, id: &ID, value: V) -> &V {
+    fn update(&mut self, id: &ID, value: V) -> Result<&V, &V> {
         self.stat.update_count += 1;
 
         let index = match self.index(id) {
             None => {
-                return &self.committed;
+                return Err(&self.committed);
             }
             Some(x) => x,
         };
@@ -174,7 +176,7 @@ where
         let prev = elt.1;
 
         if prev == value {
-            return &self.committed;
+            return Ok(&self.committed);
         }
 
         debug_assert!(value > prev);
@@ -203,7 +205,7 @@ where
             }
         }
 
-        &self.committed
+        Ok(&self.committed)
     }
 
     fn get(&self, id: &ID) -> &V {
@@ -225,7 +227,7 @@ where
         new_qs.stat = self.stat.clone();
 
         for id in self.quorum_set.ids() {
-            new_qs.update(&id, *self.get(&id));
+            let _ = new_qs.update(&id, *self.get(&id));
         }
         new_qs
     }
@@ -276,20 +278,20 @@ mod t {
 
         // initial: 0,0,0,0,0
         let cases = vec![
-            ((1, 2), 0), // 0,2,0,0,0
-            ((2, 3), 0), // 0,2,3,0,0
-            ((3, 1), 1), // 0,2,3,1,0
-            ((4, 5), 2), // 0,2,3,1,5
-            ((0, 4), 3), // 4,2,3,1,5
-            ((3, 2), 3), // 4,2,3,2,5
-            ((3, 3), 3), // 4,2,3,2,5
-            ((1, 4), 4), // 4,4,3,2,5
-            ((9, 1), 4), // nonexistent id, ignore.
+            ((1, 2), Ok(&0)),  // 0,2,0,0,0
+            ((2, 3), Ok(&0)),  // 0,2,3,0,0
+            ((3, 1), Ok(&1)),  // 0,2,3,1,0
+            ((4, 5), Ok(&2)),  // 0,2,3,1,5
+            ((0, 4), Ok(&3)),  // 4,2,3,1,5
+            ((3, 2), Ok(&3)),  // 4,2,3,2,5
+            ((3, 3), Ok(&3)),  // 4,2,3,2,5
+            ((1, 4), Ok(&4)),  // 4,4,3,2,5
+            ((9, 1), Err(&4)), // nonexistent id, ignore.
         ];
 
         for (ith, ((id, v), want_committed)) in cases.iter().enumerate() {
             let got = progress.update(id, *v);
-            assert_eq!(want_committed, got, "{}-th case: id:{}, v:{}", ith, id, v);
+            assert_eq!(want_committed.clone(), got, "{}-th case: id:{}, v:{}", ith, id, v);
         }
         Ok(())
     }
@@ -304,8 +306,8 @@ mod t {
 
         let mut p012 = VecProgress::<u64, u64, _>::new(qs012);
 
-        p012.update(&0, 5);
-        p012.update(&1, 6);
+        let _ = p012.update(&0, 5);
+        let _ = p012.update(&1, 6);
         assert_eq!(&5, p012.committed());
 
         // After upgrading to a bigger quorum set, committed fall back to 0
@@ -319,8 +321,8 @@ mod t {
 
         // When quorum set shrinks, committed becomes greater.
 
-        p012_345.update(&3, 7);
-        p012_345.update(&4, 8);
+        let _ = p012_345.update(&3, 7);
+        let _ = p012_345.update(&4, 8);
         assert_eq!(&5, p012_345.committed());
 
         let p345 = p012_345.upgrade_quorum_set(qs345);
