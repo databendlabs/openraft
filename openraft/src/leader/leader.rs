@@ -34,10 +34,10 @@ where
     NID: NodeId,
     QS: QuorumSet<NID> + 'static,
 {
-    pub(crate) fn new(quorum_set: QS) -> Self {
+    pub(crate) fn new(quorum_set: QS, learner_ids: impl Iterator<Item = NID>) -> Self {
         Self {
             vote_granted_by: BTreeSet::new(),
-            progress: VecProgress::new(quorum_set),
+            progress: VecProgress::new(quorum_set, learner_ids),
         }
     }
 
