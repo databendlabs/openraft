@@ -19,7 +19,6 @@ use crate::summary::MessageSummary;
 use crate::versioned::Versioned;
 use crate::Entry;
 use crate::EntryPayload;
-use crate::LogIdOptionExt;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
@@ -187,11 +186,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
                         last_log_id: None,
                         committed: *committed,
                     });
-                }
-            }
-            Command::LeaderCommit { ref upto, .. } => {
-                for i in self.core.engine.state.last_applied.next_index()..(upto.index + 1) {
-                    self.client_request_post_commit(i).await?;
                 }
             }
             Command::ReplicateInputEntries { range } => {

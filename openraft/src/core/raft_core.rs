@@ -638,6 +638,38 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             send_res.is_err()
         );
     }
+
+    /// Handle the post-commit logic for a client request.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub(super) async fn leader_commit(&mut self, log_index: u64) -> Result<(), StorageError<C::NodeId>> {
+        self.leader_step_down();
+
+        self.apply_to_state_machine(log_index).await?;
+
+        Ok(())
+    }
+
+    /// Leader will keep working until the effective membership that removes it committed.
+    ///
+    /// This is ony called by leader.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(super) fn leader_step_down(&mut self) {
+        let em = &self.engine.state.membership_state.effective;
+
+        if self.engine.state.committed < em.log_id {
+            return;
+        }
+
+        // TODO: Leader does not need to step down. It can keep working.
+        //       This requires to separate Leader(Proposer) and Acceptors.
+        if !em.is_voter(&self.id) {
+            tracing::debug!("leader is stepping down");
+
+            // TODO(xp): transfer leadership
+            self.set_target_state(ServerState::Learner);
+            self.engine.metrics_flags.set_cluster_changed();
+        }
+    }
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
@@ -970,8 +1002,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::ReplicateCommitted { .. } => {
                 unreachable!("leader specific command")
             }
-            Command::LeaderCommit { .. } => {
-                unreachable!("leader specific command")
+            Command::LeaderCommit { ref upto, .. } => {
+                for i in self.engine.state.last_applied.next_index()..(upto.index + 1) {
+                    self.leader_commit(i).await?;
+                }
             }
             Command::FollowerCommit { upto: _, .. } => {
                 self.replicate_to_state_machine_if_needed().await?;
