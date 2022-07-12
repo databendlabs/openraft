@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html" class="active"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html" class="active"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">2.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -147,12 +147,9 @@ and immediately begin syncing logs from the leader.</p>
 </ul>
 <h2 id="raftchange_membershipnode_list-turn_to_learner"><a class="header" href="#raftchange_membershipnode_list-turn_to_learner"><code>Raft::change_membership(node_list, turn_to_learner)</code></a></h2>
 <p>This method will initiate a membership change and returns when the effective
-membership becomes <code>node_list</code>.</p>
-<p>If there are nodes in the given membership that is not a <code>Learner</code>, this method will add it
-as Learner first.
-Thus it is recommended that the application always call <code>Raft::add_learner</code> first.
-Otherwise, <code>Raft::change_membership</code> may block for long before committing the
-given membership and return.</p>
+membership becomes <code>node_list</code> and committed.</p>
+<p>If there are nodes in the given membership that is not a <code>Learner</code>, this method will fail.
+Thus the application should always call <code>Raft::add_learner</code> first.</p>
 <p>Once the new membership is committed, whether or not a <code>Voter</code> that is not in the new membership will
 revert to a <code>Learner</code> is base on the <code>turn_to_learner</code>.</p>
 <p>If <code>turn_to_learner</code> is true, then all the members which not exists in the new membership,
@@ -163,10 +160,6 @@ with <code>node_list</code> {3,4,5}, then:
 - If <code>turn_to_learner</code> is true, after commit the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}.
 - Otherwise if <code>turn_to_learner</code> is false, then the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}, 
 in which the members not exists in the new membership just be removed from the cluster.</p>
-<h2 id="raftremove_membersmembers-turn_to_learner"><a class="header" href="#raftremove_membersmembers-turn_to_learner"><code>Raft::remove_members(members, turn_to_learner)</code></a></h2>
-<p>Remove members directly, <code>turn_to_learner</code> has the same meaning in <code>change_membership</code>.</p>
-<h2 id="raftadd_membersmembers"><a class="header" href="#raftadd_membersmembers"><code>Raft::add_members(members)</code></a></h2>
-<p>Add members directly.</p>
 <h2 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h2>
 <p>Openraft tries to commit one or more membership logs to finally change the
 membership to <code>node_list</code>.
@@ -302,7 +295,7 @@ because log replication or voting will always see a higher <code>term_2</code> o
                             <a rel="prev" href="cluster-formation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
-                            <a rel="next" href="metrics.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="node-lifecycle.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
@@ -314,7 +307,7 @@ because log replication or voting will always see a higher <code>term_2</code> o
                     <a rel="prev" href="cluster-formation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
-                    <a rel="next" href="metrics.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="node-lifecycle.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Delete-conflicting-logs - openraft</title>
+        <title>Node lifecycle - openraft</title>
         <!-- Custom HTML head -->
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <meta name="description" content="The openraft user guide.">
@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">2.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html" class="active"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html" class="active"><strong aria-hidden="true">2.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -135,33 +135,72 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="delete-conflicting-logs"><a class="header" href="#delete-conflicting-logs">Delete conflicting logs</a></h1>
+                        <h1 id="node-life-cycle"><a class="header" href="#node-life-cycle">Node life cycle</a></h1>
 <ul>
-<li>When appending logs to a follower/learner, conflicting logs <strong>has</strong> be removed.</li>
-<li>When installing snapshot(another form of appending logs), conflicting logs <strong>should</strong> be removed.</li>
+<li>
+<p>When a node is added with <code>Raft::add_learner()</code>, it starts to receive log
+replication from the leader at once, i.e., becomes a <code>Learner</code>.</p>
+</li>
+<li>
+<p>A learner becomes a <code>Voter</code>, when <code>Raft::change_membership()</code> adds it a
+<code>Voter</code>. A <code>Voter</code> will then become <code>Candidate</code> or <code>Leader</code>.</p>
+</li>
+<li>
+<p>When a node, no matter a <code>Learner</code> or <code>Voter</code>, is removed from membership, the
+leader stops replicating to it at once, i.e., when the new membership that
+does not contain the node is seen(no need to commit).</p>
+<p>The removed node won't receive any log replication or heartbeat from the
+leader. It will enter <code>Candidate</code> because it does not know it is removed.</p>
+</li>
 </ul>
-<h2 id="why"><a class="header" href="#why">Why</a></h2>
-<h3 id="1-keep-it-clean"><a class="header" href="#1-keep-it-clean">1. Keep it clean</a></h3>
-<p>The first reason is to keep logs clean:
-to keep log ids all in ascending order.</p>
-<h3 id="2-committed-has-to-be-chosen"><a class="header" href="#2-committed-has-to-be-chosen">2. Committed has to be chosen</a></h3>
-<p>The second reason is to <strong>let the next leader always choose committed logs</strong>.</p>
-<p>If a leader commits logs that already are replicated to a quorum,
-the next leader has to have these log.
-The conflicting logs on a follower <code>A</code> may have smaller log id than the last log id on the leader.
-Thus, the next leader may choose another node <code>B</code> that has higher log than node <code>A</code> but has smaller log than the previous leader.</p>
-<h3 id="3-snapshot-replication-does-not-have-to-delete-conflicting-logs"><a class="header" href="#3-snapshot-replication-does-not-have-to-delete-conflicting-logs">3. Snapshot replication does not have to delete conflicting logs</a></h3>
-<p>See: <a href="https://datafuselabs.github.io/openraft/replication.html#necessity-to-delete-conflicting-logs">Deleting-conflicting-logs-when-installing-snapshot</a></p>
-<p>Deleting conflicting logs when installing snapshot is only for clarity.</p>
+<h2 id="remove-a-node-from-membership-config"><a class="header" href="#remove-a-node-from-membership-config">Remove a node from membership config</a></h2>
+<p>When membership changes, e.g., from a joint config <code>[(1,2,3), (3,4,5)]</code> to uniform config <code>[3,4,5]</code>(assuming the leader is <code>3</code>), the leader
+stops replication to <code>1,2</code> when <code>[3,4,5]</code> is seen(not committed).</p>
+<p>It is correct because:</p>
+<ul>
+<li>
+<p>If the leader(<code>3</code>) finally committed <code>[3,4,5]</code>, it will eventually stop replication to <code>1,2</code>.</p>
+</li>
+<li>
+<p>If the leader(<code>3</code>) crashes before committing <code>[3,4,5]</code>:</p>
+<ul>
+<li>And a new leader sees the membership config log <code>[3,4,5]</code>, it will continue to commit it and finally stop replication to <code>1,2</code>.</li>
+<li>Or a new leader does not see membership config log <code>[3,4,5]</code>, it will re-establish replication to <code>1,2</code>.</li>
+</ul>
+</li>
+</ul>
+<p>In any case, stopping replication at once is OK.</p>
+<p>One of the considerations is:
+The nodes, e.g., <code>1,2</code> do not know they have been removed from the cluster:</p>
+<ul>
+<li>
+<p>Removed node will enter the candidate state and keeps increasing its term and electing itself.
+This won't affect the working cluster: </p>
+<ul>
+<li>
+<p>The nodes in the working cluster have greater logs; thus, the election will never succeed.</p>
+</li>
+<li>
+<p>The leader won't try to communicate with the removed nodes thus it won't see their higher <code>term</code>.</p>
+</li>
+</ul>
+</li>
+<li>
+<p>Removed nodes should be shut down finally. No matter whether the leader
+replicates the membership without these removed nodes to them, there should
+always be an external process that shuts them down. Because there is no
+guarantee that a removed node can receive the membership log in a finite time.</p>
+</li>
+</ul>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="replication.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="dynamic-membership.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
-                            <a rel="next" href="effective-membership.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="metrics.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
@@ -170,10 +209,10 @@ Thus, the next leader may choose another node <code>B</code> that has higher log
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="replication.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="dynamic-membership.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
-                    <a rel="next" href="effective-membership.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="metrics.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
