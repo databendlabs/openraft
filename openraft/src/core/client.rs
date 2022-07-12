@@ -167,7 +167,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         }
 
         for node in self.nodes.values() {
-            let _ = node.repl_stream.repl_tx.send(UpdateReplication {
+            let _ = node.repl_tx.send(UpdateReplication {
                 last_log_id: Some(log_id),
                 committed: self.core.engine.state.committed,
             });

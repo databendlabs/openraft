@@ -1,21 +1,6 @@
-use std::fmt::Debug;
-use std::fmt::Formatter;
-
 use crate::raft_types::LogIdOptionExt;
-use crate::replication::ReplicationStream;
 use crate::LogId;
 use crate::NodeId;
-
-/// A struct tracking the state of a replication stream from the perspective of the Raft actor.
-pub(crate) struct ReplicationState<NID: NodeId> {
-    pub repl_stream: ReplicationStream<NID>,
-}
-
-impl<NID: NodeId> Debug for ReplicationState<NID> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ReplicationState").finish()
-    }
-}
 
 /// Calculate the distance between the matched log id on a replication target and local last log id
 pub(crate) fn replication_lag<NID: NodeId>(matched: &Option<LogId<NID>>, last_log_id: &Option<LogId<NID>>) -> u64 {

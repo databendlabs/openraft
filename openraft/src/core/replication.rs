@@ -3,7 +3,6 @@ use tracing_futures::Instrument;
 
 use crate::config::SnapshotPolicy;
 use crate::core::LeaderState;
-use crate::core::ReplicationState;
 use crate::core::ServerState;
 use crate::core::SnapshotState;
 use crate::metrics::UpdateMatchedLogId;
@@ -23,10 +22,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self))]
     #[allow(clippy::type_complexity)]
-    pub(super) async fn spawn_replication_stream(&mut self, target: C::NodeId) -> ReplicationState<C::NodeId> {
+    pub(super) async fn spawn_replication_stream(&mut self, target: C::NodeId) -> ReplicationStream<C::NodeId> {
         let target_node = self.core.engine.state.membership_state.effective.get_node(&target);
 
-        let repl_stream = ReplicationStream::new::<C, N, S>(
+        ReplicationStream::new::<C, N, S>(
             target,
             target_node.cloned(),
             self.core.engine.state.vote,
@@ -36,9 +35,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.core.network.connect(target, target_node).await,
             self.core.storage.get_log_reader().await,
             self.replication_tx.clone(),
-        );
-
-        ReplicationState { repl_stream }
+        )
     }
 
     /// Handle a replication event coming from one of the replication streams.

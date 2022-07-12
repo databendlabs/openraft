@@ -5,7 +5,6 @@ use tracing::Instrument;
 use tracing::Span;
 
 use crate::core::RaftCore;
-use crate::core::ReplicationState;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::error::Fatal;
@@ -13,6 +12,7 @@ use crate::metrics::ReplicationMetrics;
 use crate::raft::RaftMsg;
 use crate::raft_types::RaftLogId;
 use crate::replication::ReplicaEvent;
+use crate::replication::ReplicationStream;
 use crate::replication::UpdateReplication;
 use crate::runtime::RaftRuntime;
 use crate::summary::MessageSummary;
@@ -30,7 +30,7 @@ pub(crate) struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     pub(super) core: &'a mut RaftCore<C, N, S>,
 
     /// A mapping of node IDs the replication state of the target node.
-    pub(super) nodes: BTreeMap<C::NodeId, ReplicationState<C::NodeId>>,
+    pub(super) nodes: BTreeMap<C::NodeId, ReplicationStream<C::NodeId>>,
 
     /// The metrics about a leader
     pub replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
@@ -182,7 +182,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
         match cmd {
             Command::ReplicateCommitted { committed } => {
                 for node in self.nodes.values() {
-                    let _ = node.repl_stream.repl_tx.send(UpdateReplication {
+                    let _ = node.repl_tx.send(UpdateReplication {
                         last_log_id: None,
                         committed: *committed,
                     });
