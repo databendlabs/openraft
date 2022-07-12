@@ -35,12 +35,22 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
         node.change_membership(btreeset![0, 3, 4], true, false).await?;
         log_index += 2;
 
-        for i in 0..5 {
+        for i in [0, 3, 4] {
             router
                 .wait(&i, timeout())
                 .metrics(
                     |x| x.last_log_index >= Some(log_index),
-                    "all nodes recv change-membership logs",
+                    "new cluster nodes recv 2 change-membership logs",
+                )
+                .await?;
+        }
+
+        for i in [1, 2] {
+            router
+                .wait(&i, timeout())
+                .metrics(
+                    |x| x.last_log_index >= Some(log_index - 1),
+                    "removed nodes recv at least 1 change-membership log",
                 )
                 .await?;
         }

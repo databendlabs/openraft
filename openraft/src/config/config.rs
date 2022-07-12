@@ -53,50 +53,6 @@ fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
     Ok(SnapshotPolicy::LogsSinceLast(n_logs))
 }
 
-/// Policy to remove a replication.
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub enum RemoveReplicationPolicy {
-    /// Leader will remove a replication to a node that is removed from membership,
-    /// if the `committed` index advanced too many the index of the **uniform** membership log in which the node is
-    /// removed.
-    CommittedAdvance(u64),
-
-    /// Leader removes a replication if it encountered the specified number of network failures.
-    MaxNetworkFailures(u64),
-}
-
-fn parse_remove_replication_policy(src: &str) -> Result<RemoveReplicationPolicy, ConfigError> {
-    let elts = src.split(':').collect::<Vec<_>>();
-    if elts.len() != 2 {
-        return Err(ConfigError::InvalidRemoveReplicationPolicy {
-            syntax: "committed_advance:<num>|max_network_failures:<num>".to_string(),
-            invalid: src.to_string(),
-        });
-    }
-
-    if elts[0] == "committed_advance" {
-        let n_logs = elts[1].parse::<u64>().map_err(|e| ConfigError::InvalidNumber {
-            invalid: src.to_string(),
-            reason: e.to_string(),
-        })?;
-        return Ok(RemoveReplicationPolicy::CommittedAdvance(n_logs));
-    }
-
-    if elts[0] == "max_network_failures" {
-        let n = elts[1].parse::<u64>().map_err(|e| ConfigError::InvalidNumber {
-            invalid: src.to_string(),
-            reason: e.to_string(),
-        })?;
-        return Ok(RemoveReplicationPolicy::MaxNetworkFailures(n));
-    }
-
-    Err(ConfigError::InvalidRemoveReplicationPolicy {
-        syntax: "committed_advance:<num>|max_network_failures:<num>".to_string(),
-        invalid: src.to_string(),
-    })
-}
-
 /// The runtime configuration for a Raft node.
 ///
 /// The default values used by this type should generally work well for Raft clusters which will
@@ -178,15 +134,6 @@ pub struct Config {
     /// The minimal number of applied logs to purge in a batch.
     #[clap(long, default_value = "1")]
     pub purge_batch_size: u64,
-
-    /// Policy to remove a replication stream for an unreachable removed node.
-    #[clap(
-        long,
-        env = "RAFT_FORCE_REMOVE_REPLICATION",
-        default_value = "max_network_failures:10",
-        parse(try_from_str=parse_remove_replication_policy)
-    )]
-    pub remove_replication: RemoveReplicationPolicy,
 }
 
 impl Default for Config {

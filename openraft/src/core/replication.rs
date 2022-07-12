@@ -38,12 +38,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.replication_tx.clone(),
         );
 
-        ReplicationState {
-            matched: None,
-            repl_stream,
-            remove_since: None,
-            failures: 0,
-        }
+        ReplicationState { repl_stream }
     }
 
     /// Handle a replication event coming from one of the replication streams.
@@ -97,42 +92,21 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     ) -> Result<(), StorageError<C::NodeId>> {
         // Update target's match index & check if it is awaiting removal.
 
-        let state = if let Some(state) = self.nodes.get_mut(&target) {
-            state
-        } else {
+        // TODO(xp): a leader has to refuse a message from a previous leader.
+        if !self.nodes.contains_key(&target) {
             return Ok(());
         };
 
-        tracing::debug!("state.matched: {:?}, update to matched: {:?}", state.matched, result);
+        tracing::debug!("update matched: {:?}", result);
 
         let matched = match result {
-            Ok(matched) => {
-                //
-                state.failures = 0;
-                matched
-            }
+            Ok(matched) => matched,
             Err(_err_str) => {
-                state.failures += 1;
-
-                self.try_remove_replication(target).await;
                 return Ok(());
             }
         };
 
-        assert!(Some(matched) >= state.matched, "the matched increments monotonically");
-
-        state.matched = Some(matched);
-
-        // Drop replication stream if needed.
-        if self.try_remove_replication(target).await {
-            // nothing to do
-        } else {
-            self.update_replication_metrics(target, matched);
-        }
-
-        if Some(matched) <= self.core.engine.state.committed {
-            return Ok(());
-        }
+        self.update_replication_metrics(target, matched);
 
         self.core.engine.update_progress(target, Some(matched));
         self.run_engine_commands(&[]).await?;

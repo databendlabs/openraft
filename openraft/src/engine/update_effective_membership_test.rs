@@ -119,16 +119,23 @@ fn test_update_effective_membership_for_leader() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
+            leader: true,
             other_metrics: true
         },
         eng.metrics_flags
     );
 
     assert_eq!(
-        vec![Command::UpdateMembership {
-            membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
-        },],
+        vec![
+            //
+            Command::UpdateMembership {
+                membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
+            },
+            Command::UpdateReplicationStreams {
+                add: vec![(4, None)],
+                remove: vec![], // node-2 is leader, won't be removed
+            }
+        ],
         eng.commands
     );
 

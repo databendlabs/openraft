@@ -18,7 +18,4 @@ pub enum ConfigError {
 
     #[error("{reason} when parsing {invalid:?}")]
     InvalidNumber { invalid: String, reason: String },
-
-    #[error("remove replication policy string is invalid: '{invalid:?}' expect: '{syntax}'")]
-    InvalidRemoveReplicationPolicy { invalid: String, syntax: String },
 }

@@ -39,8 +39,19 @@ pub(crate) enum Command<NID: NodeId> {
     /// Replicate a `range` of entries in the input buffer.
     ReplicateInputEntries { range: Range<usize> },
 
-    /// Membership config changed, need to update replication stream etc.
-    UpdateMembership { membership: Arc<EffectiveMembership<NID>> },
+    /// Membership config changed, need to update replication streams.
+    UpdateMembership {
+        // TODO: not used yet.
+        membership: Arc<EffectiveMembership<NID>>,
+    },
+
+    /// Membership config changed, need to update replication streams.
+    UpdateReplicationStreams {
+        /// Replication to remove.
+        remove: Vec<(NID, Option<LogId<NID>>)>,
+        /// Replication to add.
+        add: Vec<(NID, Option<LogId<NID>>)>,
+    },
 
     /// Move the cursor pointing to an entry in the input buffer.
     MoveInputCursorBy { n: usize },
@@ -87,6 +98,7 @@ impl<NID: NodeId> Command<NID> {
             Command::FollowerCommit { .. } => flags.set_data_changed(),
             Command::ReplicateInputEntries { .. } => {}
             Command::UpdateMembership { .. } => flags.set_cluster_changed(),
+            Command::UpdateReplicationStreams { .. } => flags.set_replication_changed(),
             Command::MoveInputCursorBy { .. } => {}
             Command::SaveVote { .. } => flags.set_data_changed(),
             Command::SendVote { .. } => {}

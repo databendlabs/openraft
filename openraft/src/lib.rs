@@ -55,7 +55,6 @@ pub use metrics::ReplicationTargetMetrics;
 pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;
 pub use crate::config::ConfigError;
-pub use crate::config::RemoveReplicationPolicy;
 pub use crate::config::SnapshotPolicy;
 pub use crate::core::ServerState;
 pub use crate::defensive::DefensiveCheck;

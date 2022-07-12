@@ -4,39 +4,16 @@ use std::fmt::Formatter;
 use crate::raft_types::LogIdOptionExt;
 use crate::replication::ReplicationStream;
 use crate::LogId;
-use crate::MessageSummary;
 use crate::NodeId;
 
 /// A struct tracking the state of a replication stream from the perspective of the Raft actor.
 pub(crate) struct ReplicationState<NID: NodeId> {
-    pub matched: Option<LogId<NID>>,
-
-    pub remove_since: Option<u64>,
-
     pub repl_stream: ReplicationStream<NID>,
-
-    /// Count of replication failures.
-    ///
-    /// It will be reset once a successful replication is done.
-    pub failures: u64,
-}
-
-impl<NID: NodeId> MessageSummary<ReplicationState<NID>> for ReplicationState<NID> {
-    fn summary(&self) -> String {
-        format!(
-            "matched: {:?}, remove_after_commit: {:?}, failures: {}",
-            self.matched, self.remove_since, self.failures
-        )
-    }
 }
 
 impl<NID: NodeId> Debug for ReplicationState<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ReplicationState")
-            .field("matched", &self.matched)
-            .field("remove_since", &self.remove_since)
-            .field("failures", &self.failures)
-            .finish()
+        f.debug_struct("ReplicationState").finish()
     }
 }
 

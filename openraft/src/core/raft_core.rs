@@ -979,7 +979,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::ReplicateInputEntries { .. } => {
                 unreachable!("leader specific command")
             }
-            Command::UpdateMembership { .. } => {}
+            Command::UpdateReplicationStreams { .. } => {
+                unreachable!("leader specific command")
+            }
+            Command::UpdateMembership { .. } => {
+                // TODO: not used
+            }
         }
 
         Ok(())
