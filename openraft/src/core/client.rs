@@ -19,8 +19,6 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::RaftRespTx;
 use crate::replication::UpdateReplication;
-use crate::Entry;
-use crate::EntryPayload;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::RPCTypes;
@@ -28,7 +26,6 @@ use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
-use crate::StorageError;
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
     /// Handle `is_leader` requests.
@@ -174,33 +171,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 last_log_id: Some(log_id),
                 committed: self.core.engine.state.committed,
             });
-        }
-    }
-
-    /// Handle the post-commit logic for a client request.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) async fn client_request_post_commit(&mut self, log_index: u64) -> Result<(), StorageError<C::NodeId>> {
-        let entries = self.core.storage.get_log_entries(log_index..=log_index).await?;
-        let entry = &entries[0];
-
-        self.handle_special_log(entry).await;
-
-        self.core.apply_to_state_machine(log_index).await?;
-
-        Ok(())
-    }
-
-    pub async fn handle_special_log(&mut self, entry: &Entry<C>) {
-        match &entry.payload {
-            EntryPayload::Membership(ref m) => {
-                if m.is_in_joint_consensus() {
-                    // nothing to do
-                } else {
-                    self.handle_uniform_consensus_committed(&entry.log_id).await;
-                }
-            }
-            EntryPayload::Blank => {}
-            EntryPayload::Normal(_) => {}
         }
     }
 }

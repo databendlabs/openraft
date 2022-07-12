@@ -167,20 +167,14 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
         }
 
         for id in only_in_old.clone() {
-            // TODO(xp): There is a chance the older leader quits before replicating 2 membership logs to every node.
-            //           Thus a node in old cluster may start electing while a new leader already elected in the new
-            //           cluster. Such a node keeps electing but it has less logs thus will never succeed.
-            //
-            //           Error: timeout after 1s when node 2 only in old, from {0, 1, 2} to {4, 5, 6} .state -> Learner
-            //           latest: Metrics{id:2,Candidate, term:7, last_log:Some(109), last_applied:Some(LogId
-            //           { leader_id: LeaderId { term: 1, node_id: 0 }, index: 109 }), leader:None,
-            //           membership:{log_id:1-0-109 membership:members:[{0, 1, 2},{4, 5, 6}],learners:[]},
-            //           snapshot:None, replication:
-
             router
                 .wait(id, timeout())
                 .metrics(
-                    |x| x.state == ServerState::Learner || x.state == ServerState::Candidate,
+                    |x| {
+                        x.state == ServerState::Follower
+                            || x.state == ServerState::Learner
+                            || x.state == ServerState::Candidate
+                    },
                     format!("node {} only in old, {}", id, mes),
                 )
                 .await?;

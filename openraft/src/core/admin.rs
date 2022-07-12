@@ -7,7 +7,6 @@ use tracing::Level;
 use crate::core::replication_state::replication_lag;
 use crate::core::Expectation;
 use crate::core::LeaderState;
-use crate::core::ServerState;
 use crate::entry::EntryRef;
 use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
@@ -286,26 +285,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         }
 
         Ok(())
-    }
-
-    /// Handle the commitment of a uniform consensus cluster configuration.
-    ///
-    /// This is ony called by leader.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) async fn handle_uniform_consensus_committed(&mut self, log_id: &LogId<C::NodeId>) {
-        // Step down if needed.
-
-        let _ = log_id;
-
-        // TODO: Leader does not need to step down. It can keep working.
-        //       This requires to separate Leader(Proposer) and Acceptors.
-        if !self.core.engine.state.membership_state.effective.is_voter(&self.core.id) {
-            tracing::debug!("raft node is stepping down");
-
-            // TODO(xp): transfer leadership
-            self.core.set_target_state(ServerState::Learner);
-            self.core.engine.metrics_flags.set_cluster_changed();
-        }
     }
 
     /// Remove a replication if the membership that does not include it has committed.
