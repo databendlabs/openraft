@@ -13,7 +13,8 @@ use crate::fixtures::RaftRouter;
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn stop_replication_to_removed_unreachable_follower_network_failure() -> Result<()> {
     // If the uniform membership is committed and replication to a node encountered 2 network failure, just remove it.
-    let config = Arc::new(Config::build(&["foo", "--remove-replication=max_network_failures:2"])?);
+    // let config = Arc::new(Config::build(&["foo", "--remove-replication=max_network_failures:2"])?);
+    let config = Arc::new(Config::build(&["foo"])?);
 
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0);
@@ -36,15 +37,23 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
         node.change_membership(btreeset![0, 1, 2], true, false).await?;
         log_index += 2;
 
-        for i in &[0, 1, 2, 3] {
+        for i in &[0, 1, 2] {
             router
                 .wait(i, timeout())
                 .metrics(
                     |x| x.last_log_index >= Some(log_index),
-                    "0,1,2,3 recv change-membership logs",
+                    "0,1,2 recv 2 change-membership logs",
                 )
                 .await?;
         }
+
+        router
+            .wait(&3, timeout())
+            .metrics(
+                |x| x.last_log_index >= Some(log_index - 1),
+                "node-3 recv at least 1 change-membership log",
+            )
+            .await?;
     }
 
     tracing::info!("--- replication to node 4 will be removed");

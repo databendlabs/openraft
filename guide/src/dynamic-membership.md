@@ -16,13 +16,10 @@ and immediately begin syncing logs from the leader.
 ## `Raft::change_membership(node_list, turn_to_learner)`
 
 This method will initiate a membership change and returns when the effective
-membership becomes `node_list`.
+membership becomes `node_list` and committed.
 
-If there are nodes in the given membership that is not a `Learner`, this method will add it
-as Learner first.
-Thus it is recommended that the application always call `Raft::add_learner` first.
-Otherwise, `Raft::change_membership` may block for long before committing the
-given membership and return.
+If there are nodes in the given membership that is not a `Learner`, this method will fail.
+Thus the application should always call `Raft::add_learner` first.
 
 Once the new membership is committed, whether or not a `Voter` that is not in the new membership will
 revert to a `Learner` is base on the `turn_to_learner`.
@@ -36,12 +33,6 @@ with `node_list` {3,4,5}, then:
     - If `turn_to_learner` is true, after commit the new membership is {"members":{3,4,5}, "learners":{1,2}}.
     - Otherwise if `turn_to_learner` is false, then the new membership is {"members":{3,4,5}, "learners":{}}, 
       in which the members not exists in the new membership just be removed from the cluster.
-
-## `Raft::remove_members(members, turn_to_learner)`
-Remove members directly, `turn_to_learner` has the same meaning in `change_membership`.
-
-## `Raft::add_members(members)`
-Add members directly.
 
 ## Extended membership change algo
 

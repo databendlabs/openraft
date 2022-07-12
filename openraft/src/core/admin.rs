@@ -4,9 +4,7 @@ use std::option::Option::None;
 
 use tracing::Level;
 
-use crate::config::RemoveReplicationPolicy;
 use crate::core::replication_state::replication_lag;
-use crate::core::replication_state::ReplicationState;
 use crate::core::Expectation;
 use crate::core::LeaderState;
 use crate::core::ServerState;
@@ -20,10 +18,10 @@ use crate::error::InProgress;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
 use crate::metrics::RemoveTarget;
+use crate::progress::Progress;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::RaftRespTx;
-use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
 use crate::runtime::RaftRuntime;
 use crate::summary::MessageSummary;
@@ -38,23 +36,6 @@ use crate::RaftTypeConfig;
 use crate::StorageError;
 
 impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderState<'a, C, N, S> {
-    // add node into learner,return true if the node is already a member or learner
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn write_add_learner_entry(
-        &mut self,
-        target: C::NodeId,
-        node: Option<Node>,
-    ) -> Result<LogId<C::NodeId>, AddLearnerError<C::NodeId>> {
-        let curr = &self.core.engine.state.membership_state.effective.membership;
-        let new_membership = curr.add_learner(target, node)?;
-
-        tracing::debug!(?new_membership, "new_config");
-
-        let log_id = self.write_entry(EntryPayload::Membership(new_membership), None).await?;
-
-        Ok(log_id)
-    }
-
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
     /// on the given channel.
     ///
@@ -79,51 +60,41 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
-        // TODO: remove this
-        if target == self.core.id {
-            tracing::debug!("target node is this node");
+
+        let curr = &self.core.engine.state.membership_state.effective;
+        if curr.contains(&target) {
+            let matched = if let Some(l) = &self.core.engine.state.leader {
+                *l.progress.get(&target)
+            } else {
+                unreachable!("it has to be a leader!!!");
+            };
+
+            tracing::debug!(
+                "target {:?} already member or learner, can't add; matched:{:?}",
+                target,
+                matched
+            );
 
             let _ = tx.send(Ok(AddLearnerResponse {
                 membership_log_id: self.core.engine.state.membership_state.effective.log_id,
-                matched: self.core.engine.state.last_log_id(),
+                matched,
             }));
             return Ok(());
         }
 
-        let curr = &self.core.engine.state.membership_state.effective;
-        if curr.contains(&target) {
-            tracing::debug!("target {:?} already member or learner, can't add", target);
-
-            if let Some(t) = self.nodes.get(&target) {
-                tracing::debug!("target node is already a cluster member or is being synced");
-                let _ = tx.send(Ok(AddLearnerResponse {
-                    membership_log_id: self.core.engine.state.membership_state.effective.log_id,
-                    matched: t.matched,
-                }));
-                return Ok(());
-            } else {
-                unreachable!(
-                    "node {} in membership but there is no replication stream for it",
-                    target
-                )
-            }
-        }
-
-        // TODO(xp): when new membership log is appended, write_entry() should be responsible to setup new replication
-        //           stream.
-        let res = self.write_add_learner_entry(target, node).await;
-        let log_id = match res {
+        let curr = &self.core.engine.state.membership_state.effective.membership;
+        let res = curr.add_learner(target, node);
+        let new_membership = match res {
             Ok(x) => x,
             Err(e) => {
-                let _ = tx.send(Err(e));
+                let _ = tx.send(Err(AddLearnerError::MissingNodeInfo(e)));
                 return Ok(());
             }
         };
 
-        // TODO(xp): nodes, i.e., replication streams, should also be a property of follower or candidate, for
-        //           sending vote requests etc?
-        let state = self.spawn_replication_stream(target).await;
-        self.nodes.insert(target, state);
+        tracing::debug!(?new_membership, "new_membership with added learner: {}", target);
+
+        let log_id = self.write_entry(EntryPayload::Membership(new_membership), None).await?;
 
         tracing::debug!(
             "after add target node {} as learner {:?}",
@@ -238,7 +209,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 Expectation::AtLineRate => {
                     // Expect to be at line rate but not.
 
-                    let matched = self.nodes.get(node_id).map(|x| x.matched).unwrap();
+                    let matched = if let Some(l) = &self.core.engine.state.leader {
+                        *l.progress.get(node_id)
+                    } else {
+                        unreachable!("it has to be a leader!!!");
+                    };
+
                     let distance = replication_lag(&matched, &last_log_id);
 
                     if distance <= self.core.config.replication_lag_threshold {
@@ -317,64 +293,28 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     /// This is ony called by leader.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) async fn handle_uniform_consensus_committed(&mut self, log_id: &LogId<C::NodeId>) {
-        let index = log_id.index;
-
         // Step down if needed.
-        if !self.core.engine.state.membership_state.effective.membership.is_voter(&self.core.id) {
+
+        let _ = log_id;
+
+        // TODO: Leader does not need to step down. It can keep working.
+        //       This requires to separate Leader(Proposer) and Acceptors.
+        if !self.core.engine.state.membership_state.effective.is_voter(&self.core.id) {
             tracing::debug!("raft node is stepping down");
 
             // TODO(xp): transfer leadership
             self.core.set_target_state(ServerState::Learner);
-            return;
+            self.core.engine.metrics_flags.set_cluster_changed();
         }
-
-        let membership = &self.core.engine.state.membership_state.effective.membership;
-
-        // remove nodes which not included in nodes and learners
-        for (id, state) in self.nodes.iter_mut() {
-            if membership.contains(id) {
-                continue;
-            }
-
-            tracing::info!(
-                "set remove_after_commit for {} = {}, membership: {:?}",
-                id,
-                index,
-                self.core.engine.state.membership_state.effective
-            );
-
-            state.remove_since = Some(index)
-        }
-
-        let targets = self.nodes.keys().cloned().collect::<Vec<_>>();
-        for target in targets {
-            self.try_remove_replication(target).await;
-        }
-
-        self.core.engine.metrics_flags.set_replication_changed();
     }
 
     /// Remove a replication if the membership that does not include it has committed.
     ///
     /// Return true if removed.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn try_remove_replication(&mut self, target: C::NodeId) -> bool {
-        tracing::debug!(target = display(target), "try_remove_replication");
+    pub async fn remove_replication(&mut self, target: C::NodeId) -> bool {
+        tracing::info!("removed_replication to: {}", target);
 
-        {
-            let n = self.nodes.get(&target);
-
-            if let Some(n) = n {
-                if !self.need_to_remove_replication(n) {
-                    return false;
-                }
-            } else {
-                tracing::warn!("trying to remove absent replication to {}", target);
-                return false;
-            }
-        }
-
-        tracing::info!("removed replication to: {}", target);
         let repl_state = self.nodes.remove(&target);
         if let Some(s) = repl_state {
             let handle = s.repl_stream.handle;
@@ -385,6 +325,8 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             tracing::debug!("joining removed replication: {}", target);
             let _x = handle.await;
             tracing::info!("Done joining removed replication : {}", target);
+        } else {
+            unreachable!("try to nonexistent replication to {}", target);
         }
 
         self.replication_metrics.update(RemoveTarget { target });
@@ -393,54 +335,5 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         self.core.engine.metrics_flags.set_replication_changed();
 
         true
-    }
-
-    fn need_to_remove_replication(&self, node: &ReplicationState<C::NodeId>) -> bool {
-        tracing::debug!(node=?node, "check if to remove a replication");
-
-        let cfg = &self.core.config;
-        let policy = &cfg.remove_replication;
-
-        let st = &self.core.engine.state;
-        let committed = st.committed;
-
-        // `remove_since` is set only when the uniform membership log is committed.
-        // Do not remove replication if it is not committed.
-        let since = if let Some(since) = node.remove_since {
-            since
-        } else {
-            return false;
-        };
-
-        if node.matched.index() >= Some(since) {
-            tracing::debug!(
-                node = debug(node),
-                committed = debug(committed),
-                "remove replication: uniform membership log committed and replicated to target"
-            );
-            return true;
-        }
-
-        match policy {
-            RemoveReplicationPolicy::CommittedAdvance(n) => {
-                // TODO(xp): test this. but not for now. It is meaningless without blank-log heartbeat.
-                if committed.next_index() - since > *n {
-                    tracing::debug!(
-                        node = debug(node),
-                        committed = debug(committed),
-                        "remove replication: committed index is head of remove_since too much"
-                    );
-                    return true;
-                }
-            }
-            RemoveReplicationPolicy::MaxNetworkFailures(n) => {
-                if node.failures >= *n {
-                    tracing::debug!(node = debug(node), "remove replication: too many replication failure");
-                    return true;
-                }
-            }
-        }
-
-        false
     }
 }

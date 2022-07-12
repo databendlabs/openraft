@@ -32,8 +32,8 @@ use crate::fixtures::RaftRouter;
 /// - asserts node-4 becomes learner and the leader stops sending logs to it.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn leader_metrics() -> Result<()> {
-    let all_members = btreeset![0, 1, 2, 3, 4];
-    let left_members = btreeset![0, 1, 2, 3];
+    let c01234 = btreeset![0, 1, 2, 3, 4];
+    let c0123 = btreeset![0, 1, 2, 3];
 
     // Setup test dependencies.
     let config = Arc::new(Config::default().validate()?);
@@ -90,15 +90,15 @@ async fn leader_metrics() -> Result<()> {
         }
     }
     log_index += 4; // 4 add_learner log
-    router.wait_for_log(&all_members, Some(log_index), timeout(), "add learner 1,2,3,4").await?;
+    router.wait_for_log(&c01234, Some(log_index), timeout(), "add learner 1,2,3,4").await?;
 
     tracing::info!("--- changing cluster config to 012");
 
     let node = router.get_raft_handle(&0)?;
-    node.change_membership(all_members.clone(), true, false).await?;
+    node.change_membership(c01234.clone(), true, false).await?;
     log_index += 2; // 2 member-change logs
 
-    router.wait_for_log(&all_members, Some(log_index), timeout(), "change members to 0,1,2,3,4").await?;
+    router.wait_for_log(&c01234, Some(log_index), timeout(), "change members to 0,1,2,3,4").await?;
 
     router.assert_stable_cluster(Some(1), Some(log_index)); // Still in term 1, so leader is still node 0.
 
@@ -126,22 +126,12 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!("--- remove n{}", 4);
     {
         let node = router.get_raft_handle(&0)?;
-        node.change_membership(left_members.clone(), true, false).await?;
+        node.change_membership(c0123.clone(), true, false).await?;
         log_index += 2; // two member-change logs
-
-        tracing::info!("--- n{} should revert to learner", 4);
-        router
-            .wait_for_metrics(
-                &4,
-                |x| x.state == ServerState::Learner,
-                timeout(),
-                &format!("n{}.state -> {:?}", 4, ServerState::Learner),
-            )
-            .await?;
 
         router
             .wait_for_log(
-                &left_members,
+                &c0123,
                 Some(log_index),
                 timeout(),
                 "other nodes should commit the membership change log",

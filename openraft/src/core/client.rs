@@ -13,6 +13,7 @@ use crate::error::CheckIsLeaderError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
+use crate::progress::Progress;
 use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
@@ -56,22 +57,30 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         // Spawn parallel requests, all with the standard timeout for heartbeats.
         let mut pending = FuturesUnordered::new();
-        let membership = &self.core.engine.state.membership_state.effective.membership;
 
-        for (target, node) in self.nodes.iter() {
-            if !membership.is_voter(target) {
+        let voter_progresses = if let Some(l) = &self.core.engine.state.leader {
+            l.progress
+                .iter()
+                .filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
+                .copied()
+                .collect::<Vec<_>>()
+        } else {
+            unreachable!("it has to be a leader!!!");
+        };
+
+        for (target, matched) in voter_progresses {
+            if target == self.core.id {
                 continue;
             }
 
             let rpc = AppendEntriesRequest {
                 vote: self.core.engine.state.vote,
-                prev_log_id: node.matched,
+                prev_log_id: matched,
                 entries: vec![],
                 leader_commit: self.core.engine.state.committed,
             };
 
             let my_id = self.core.id;
-            let target = *target;
             let target_node = self.core.engine.state.membership_state.effective.get_node(&target).cloned();
             let mut network = self.core.network.connect(target, target_node.as_ref()).await;
 

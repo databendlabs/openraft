@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::core::ServerState;
@@ -625,24 +626,50 @@ impl<NID: NodeId> Engine<NID> {
     pub(crate) fn update_effective_membership(&mut self, log_id: &LogId<NID>, m: &Membership<NID>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
 
+        self.metrics_flags.set_cluster_changed();
+
         let server_state = self.calc_server_state();
 
         let em = Arc::new(EffectiveMembership::new(Some(*log_id), m.clone()));
 
         self.state.membership_state.effective = em.clone();
 
+        self.push_command(Command::UpdateMembership {
+            membership: self.state.membership_state.effective.clone(),
+        });
+
         // If membership changes, the progress should be upgraded.
         if let Some(leader) = &mut self.state.leader {
             let old_progress = leader.progress.clone();
 
+            let old_repls = old_progress.iter().copied().collect::<BTreeMap<_, _>>();
+
             let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
             leader.progress = old_progress.upgrade_quorum_set(em, &learner_ids);
-        }
 
-        self.push_command(Command::UpdateMembership {
-            membership: self.state.membership_state.effective.clone(),
-        });
+            // If it is leader, update replication to reflect membership change.
+
+            let new_repls = leader.progress.iter().copied().collect::<BTreeMap<_, _>>();
+
+            // TODO: test
+            let mut add = vec![];
+            let mut remove = vec![];
+            for (node_id, matched) in new_repls.iter() {
+                if !old_repls.contains_key(node_id) {
+                    add.push((*node_id, *matched));
+                }
+            }
+
+            for (node_id, matched) in old_repls.iter() {
+                // A leader that is removed will be shut down when this membership log is committed.
+                if !new_repls.contains_key(node_id) && node_id != &self.id {
+                    remove.push((*node_id, *matched));
+                }
+            }
+
+            self.push_command(Command::UpdateReplicationStreams { remove, add });
+        }
 
         // Leader should not quit at once.
         // A leader should always keep replicating logs.

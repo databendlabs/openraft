@@ -75,6 +75,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             node_ids.filter(|elem| elem != &self.core.id).collect::<Vec<_>>()
         };
 
+        // TODO(xp): make this Engine::Command driven.
         for target in targets {
             let state = self.spawn_replication_stream(target).await;
             self.nodes.insert(target, state);
@@ -198,9 +199,14 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
                     self.replicate_entry(*input_entries[last].get_log_id());
                 }
             }
-            Command::UpdateMembership { .. } => {
-                // TODO: rebuild replication streams. not used yet. Currently replication stream management is done
-                //       before this step.
+            Command::UpdateReplicationStreams { remove, add } => {
+                for (node_id, _matched) in remove.iter() {
+                    self.remove_replication(*node_id).await;
+                }
+                for (node_id, _matched) in add.iter() {
+                    let state = self.spawn_replication_stream(*node_id).await;
+                    self.nodes.insert(*node_id, state);
+                }
             }
             _ => self.core.run_command(input_entries, curr, cmd).await?,
         }

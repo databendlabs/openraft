@@ -261,7 +261,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
+            leader: true,
             other_metrics: true
         },
         eng.metrics_flags
@@ -282,6 +282,10 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
                     Some(LogId::new(LeaderId::new(3, 1), 5)),
                     m34()
                 )),
+            },
+            Command::UpdateReplicationStreams {
+                remove: vec![],
+                add: vec![(3, None), (4, None)]
             },
             Command::ReplicateInputEntries { range: 0..3 },
             Command::MoveInputCursorBy { n: 3 },
@@ -336,7 +340,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
+            leader: true,
             other_metrics: true
         },
         eng.metrics_flags
@@ -358,6 +362,10 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                     Some(LogId::new(LeaderId::new(3, 1), 5)),
                     m1_2()
                 )),
+            },
+            Command::UpdateReplicationStreams {
+                remove: vec![],
+                add: vec![(2, None)]
             },
             // second commit upto the end.
             Command::ReplicateCommitted {
@@ -422,7 +430,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
+            leader: true,
             other_metrics: true
         },
         eng.metrics_flags
@@ -436,6 +444,10 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
                     Some(LogId::new(LeaderId::new(3, 1), 5)),
                     m1_2()
                 )),
+            },
+            Command::UpdateReplicationStreams {
+                remove: vec![(3, None)],
+                add: vec![(2, None)]
             },
             // It is correct to commit if the membership change ot a one node cluster.
             Command::ReplicateCommitted {
