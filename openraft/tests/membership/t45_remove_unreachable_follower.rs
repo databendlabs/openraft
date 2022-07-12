@@ -74,7 +74,10 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
         router
             .wait(&4, timeout())
             .metrics(
-                |x| x.last_log_index == Some(node4_log_index) && x.state == ServerState::Candidate,
+                |x| {
+                    x.last_log_index == Some(node4_log_index)
+                        && (x.state == ServerState::Candidate || x.state == ServerState::Follower)
+                },
                 "node 4 stopped recv log and start to elect",
             )
             .await?;
