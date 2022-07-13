@@ -122,10 +122,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             }
         };
 
-        self.update_replication_metrics(target, matched);
-
         self.core.engine.update_progress(target, Some(matched));
         self.run_engine_commands(&[]).await?;
+
+        self.update_replication_metrics(target, matched);
 
         Ok(())
     }
