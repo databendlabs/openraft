@@ -99,9 +99,19 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         );
 
         // TODO(xp): a leader has to refuse a message from a previous leader.
-        if !self.nodes.contains_key(&target) {
+        if let Some(l) = &self.core.leader_data {
+            if !l.nodes.contains_key(&target) {
+                return Ok(());
+            };
+        } else {
+            // no longer a leader.
+            tracing::warn!(
+                target = display(target),
+                result = debug(&result),
+                "received replication update but no longer a leader"
+            );
             return Ok(());
-        };
+        }
 
         tracing::debug!("update matched: {:?}", result);
 
@@ -112,10 +122,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             }
         };
 
-        self.update_replication_metrics(target, matched);
-
         self.core.engine.update_progress(target, Some(matched));
         self.run_engine_commands(&[]).await?;
+
+        self.update_replication_metrics(target, matched);
 
         Ok(())
     }

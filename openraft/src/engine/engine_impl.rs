@@ -124,8 +124,8 @@ impl<NID: NodeId> Engine<NID> {
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
         // init election
+        self.enter_leader();
         self.state.vote = Vote::new(self.state.vote.term + 1, self.id);
-        self.state.new_leader();
 
         // Safe unwrap()
         let leader = self.state.leader.as_mut().unwrap();
@@ -220,8 +220,8 @@ impl<NID: NodeId> Engine<NID> {
                 self.set_server_state(ServerState::Learner);
             }
 
+            self.leave_leader();
             self.state.vote = resp.vote;
-            self.state.leader = None;
             self.push_command(Command::SaveVote { vote: self.state.vote });
             return;
         }
@@ -751,6 +751,22 @@ impl<NID: NodeId> Engine<NID> {
 
 /// Supporting util
 impl<NID: NodeId> Engine<NID> {
+    /// Enter leader state.
+    ///
+    /// Leader state has two phase: election phase and replication phase, similar to paxos phase-1 and phase-2
+    fn enter_leader(&mut self) {
+        self.state.new_leader();
+        // TODO: install heartbeat timer
+    }
+
+    /// Leave leader state.
+    ///
+    /// This node then becomes raft-follower or raft-learner.
+    fn leave_leader(&mut self) {
+        self.state.leader = None;
+        // TODO: install election timer if it is a voter
+    }
+
     /// Update effective membership config if encountering a membership config log entry.
     fn try_update_membership<Ent: RaftEntry<NID>>(&mut self, entry: &Ent) {
         if let Some(m) = entry.get_membership() {
@@ -981,7 +997,7 @@ impl<NID: NodeId> Engine<NID> {
         }
 
         // I'm no longer a leader.
-        self.state.leader = None;
+        self.leave_leader();
 
         #[allow(clippy::collapsible_else_if)]
         if self.state.server_state == ServerState::Follower || self.state.server_state == ServerState::Learner {

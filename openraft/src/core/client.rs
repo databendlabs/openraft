@@ -5,7 +5,6 @@ use maplit::btreeset;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tracing::Instrument;
-use tracing::Level;
 
 use crate::core::LeaderState;
 use crate::core::ServerState;
@@ -18,8 +17,6 @@ use crate::quorum::QuorumSet;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::RaftRespTx;
-use crate::replication::UpdateReplication;
-use crate::LogId;
 use crate::MessageSummary;
 use crate::RPCTypes;
 use crate::RaftNetwork;
@@ -152,25 +149,5 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             got: granted,
         }
         .into()));
-    }
-
-    /// Begin replicating upto the given log id.
-    ///
-    /// It does not block until the entry is committed or actually sent out.
-    /// It merely broadcasts a signal to inform the replication threads.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn replicate_entry(&mut self, log_id: LogId<C::NodeId>) {
-        if tracing::enabled!(Level::DEBUG) {
-            for node_id in self.nodes.keys() {
-                tracing::debug!(node_id = display(node_id), log_id = display(log_id), "replicate_entry");
-            }
-        }
-
-        for node in self.nodes.values() {
-            let _ = node.repl_tx.send(UpdateReplication {
-                last_log_id: Some(log_id),
-                committed: self.core.engine.state.committed,
-            });
-        }
     }
 }

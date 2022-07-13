@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use tokio::sync::mpsc;
 use tracing::Instrument;
 use tracing::Span;
@@ -11,8 +9,6 @@ use crate::error::Fatal;
 use crate::raft::RaftMsg;
 use crate::raft_types::RaftLogId;
 use crate::replication::ReplicaEvent;
-use crate::replication::ReplicationStream;
-use crate::replication::UpdateReplication;
 use crate::runtime::RaftRuntime;
 use crate::summary::MessageSummary;
 use crate::Entry;
@@ -26,9 +22,6 @@ use crate::Update;
 /// Volatile state specific to a Raft node in leader state.
 pub(crate) struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     pub(super) core: &'a mut RaftCore<C, N, S>,
-
-    /// A mapping of node IDs the replication state of the target node.
-    pub(super) nodes: BTreeMap<C::NodeId, ReplicationStream<C::NodeId>>,
 
     /// The stream of events coming from replication streams.
     #[allow(clippy::type_complexity)]
@@ -45,7 +38,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         let (replication_tx, replication_rx) = mpsc::unbounded_channel();
         Self {
             core,
-            nodes: BTreeMap::new(),
             replication_tx,
             replication_rx,
         }
@@ -71,7 +63,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         // TODO(xp): make this Engine::Command driven.
         for target in targets {
             let state = self.spawn_replication_stream(target).await;
-            self.nodes.insert(target, state);
+            if let Some(l) = &mut self.core.leader_data {
+                l.nodes.insert(target, state);
+            } else {
+                unreachable!("it has to be a leader!!!");
+            }
         }
 
         // Commit the initial entry when new leader established.
@@ -179,26 +175,17 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRun
     {
         // Run leader specific commands or pass non leader specific commands to self.core.
         match cmd {
-            Command::ReplicateCommitted { committed } => {
-                for node in self.nodes.values() {
-                    let _ = node.repl_tx.send(UpdateReplication {
-                        last_log_id: None,
-                        committed: *committed,
-                    });
-                }
-            }
-            Command::ReplicateInputEntries { range } => {
-                if let Some(last) = range.clone().last() {
-                    self.replicate_entry(*input_entries[last].get_log_id());
-                }
-            }
             Command::UpdateReplicationStreams { remove, add } => {
                 for (node_id, _matched) in remove.iter() {
-                    self.remove_replication(*node_id).await;
+                    self.core.remove_replication(*node_id).await;
                 }
                 for (node_id, _matched) in add.iter() {
                     let state = self.spawn_replication_stream(*node_id).await;
-                    self.nodes.insert(*node_id, state);
+                    if let Some(l) = &mut self.core.leader_data {
+                        l.nodes.insert(*node_id, state);
+                    } else {
+                        unreachable!("it has to be a leader!!!");
+                    }
                 }
             }
             _ => self.core.run_command(input_entries, curr, cmd).await?,

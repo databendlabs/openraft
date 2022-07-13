@@ -16,7 +16,6 @@ use crate::error::Fatal;
 use crate::error::InProgress;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
-use crate::metrics::RemoveTarget;
 use crate::progress::Progress;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
@@ -24,7 +23,6 @@ use crate::raft::RaftRespTx;
 use crate::raft_types::RaftLogId;
 use crate::runtime::RaftRuntime;
 use crate::summary::MessageSummary;
-use crate::versioned::Updatable;
 use crate::ChangeMembers;
 use crate::EntryPayload;
 use crate::LogId;
@@ -51,11 +49,15 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         node: Option<Node>,
         tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
     ) -> Result<(), Fatal<C::NodeId>> {
-        tracing::debug!(
-            "add target node {} as learner; current nodes: {:?}",
-            target,
-            self.nodes.keys()
-        );
+        if let Some(l) = &self.core.leader_data {
+            tracing::debug!(
+                "add target node {} as learner; current nodes: {:?}",
+                target,
+                l.nodes.keys()
+            );
+        } else {
+            unreachable!("it has to be a leader!!!");
+        }
 
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
@@ -285,39 +287,5 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         }
 
         Ok(())
-    }
-
-    /// Remove a replication if the membership that does not include it has committed.
-    ///
-    /// Return true if removed.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn remove_replication(&mut self, target: C::NodeId) -> bool {
-        tracing::info!("removed_replication to: {}", target);
-
-        let repl_state = self.nodes.remove(&target);
-        if let Some(s) = repl_state {
-            let handle = s.handle;
-
-            // Drop sender to notify the task to shutdown
-            drop(s.repl_tx);
-
-            tracing::debug!("joining removed replication: {}", target);
-            let _x = handle.await;
-            tracing::info!("Done joining removed replication : {}", target);
-        } else {
-            unreachable!("try to nonexistent replication to {}", target);
-        }
-
-        if let Some(l) = &mut self.core.leader_data {
-            l.replication_metrics.update(RemoveTarget { target });
-        } else {
-            unreachable!("It has to be a leader!!!");
-        }
-
-        // TODO(xp): set_replication_metrics_changed() can be removed.
-        //           Use self.replication_metrics.version to detect changes.
-        self.core.engine.metrics_flags.set_replication_changed();
-
-        true
     }
 }
