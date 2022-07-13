@@ -67,13 +67,17 @@ use crate::Update;
 /// Data for a Leader
 pub(crate) struct LeaderData<C: RaftTypeConfig> {
     /// Channels to send result back to client when logs are committed.
-    pub(super) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
+    pub(crate) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
+
+    /// The metrics of all replication streams
+    pub(crate) replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
 }
 
 impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
             client_resp_channels: Default::default(),
+            replication_metrics: Versioned::new(ReplicationMetrics::default()),
         }
     }
 }
@@ -309,13 +313,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
     /// Then clear flags about the cached changes, to avoid unnecessary metrics report.
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn flush_metrics(&mut self, repl_metrics: Option<&Versioned<ReplicationMetrics<C::NodeId>>>) {
+    pub fn flush_metrics(&mut self) {
         if !self.engine.metrics_flags.changed() {
             return;
         }
 
         let leader_metrics = if self.engine.metrics_flags.leader {
-            Update::Update(repl_metrics.cloned())
+            let replication_metrics = self.leader_data.as_ref().map(|x| x.replication_metrics.clone());
+            Update::Update(replication_metrics)
         } else {
             Update::AsIs
         };
@@ -721,7 +726,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Ok(());
             }
 
-            self.flush_metrics(None);
+            self.flush_metrics();
 
             // Generates a new rand value within range.
             self.set_next_election_time();
@@ -788,7 +793,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Ok(());
             }
 
-            self.flush_metrics(None);
+            self.flush_metrics();
 
             if let Some(t) = &timeout {
                 // timeout is updated as heartbeats are received

@@ -124,7 +124,11 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     fn update_replication_metrics(&mut self, target: C::NodeId, matched: LogId<C::NodeId>) {
         tracing::debug!(%target, ?matched, "update_leader_metrics");
 
-        self.replication_metrics.update(UpdateMatchedLogId { target, matched });
+        if let Some(l) = &mut self.core.leader_data {
+            l.replication_metrics.update(UpdateMatchedLogId { target, matched });
+        } else {
+            unreachable!("it has to be a leader!!!");
+        }
         self.core.engine.metrics_flags.set_replication_changed()
     }
 
