@@ -37,6 +37,7 @@ use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
 use crate::error::VoteError;
 use crate::metrics::RaftMetrics;
+use crate::metrics::RemoveTarget;
 use crate::metrics::ReplicationMetrics;
 use crate::raft::ClientWriteResponse;
 use crate::raft::RaftMsg;
@@ -45,11 +46,14 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
+use crate::replication::ReplicationStream;
+use crate::replication::UpdateReplication;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
 use crate::storage::StorageHelper;
 use crate::timer::RaftTimer;
 use crate::timer::Timeout;
+use crate::versioned::Updatable;
 use crate::versioned::Versioned;
 use crate::Entry;
 use crate::EntryPayload;
@@ -69,6 +73,11 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
     /// Channels to send result back to client when logs are committed.
     pub(crate) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
 
+    /// A mapping of node IDs the replication state of the target node.
+    // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
+    //           It requires the Engine to emit correct add/remove replication commands
+    pub(super) nodes: BTreeMap<C::NodeId, ReplicationStream<C::NodeId>>,
+
     /// The metrics of all replication streams
     pub(crate) replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
 }
@@ -77,6 +86,7 @@ impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
             client_resp_channels: Default::default(),
+            nodes: BTreeMap::new(),
             replication_metrics: Versioned::new(ReplicationMetrics::default()),
         }
     }
@@ -666,6 +676,69 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
+    /// Begin replicating upto the given log id.
+    ///
+    /// It does not block until the entry is committed or actually sent out.
+    /// It merely broadcasts a signal to inform the replication threads.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(super) fn replicate_entry(&mut self, log_id: LogId<C::NodeId>) {
+        if let Some(l) = &self.leader_data {
+            if tracing::enabled!(Level::DEBUG) {
+                for node_id in l.nodes.keys() {
+                    tracing::debug!(node_id = display(node_id), log_id = display(log_id), "replicate_entry");
+                }
+            }
+
+            for node in l.nodes.values() {
+                let _ = node.repl_tx.send(UpdateReplication {
+                    last_log_id: Some(log_id),
+                    committed: self.engine.state.committed,
+                });
+            }
+        } else {
+            unreachable!("it has to be a leader!!!");
+        }
+    }
+
+    /// Remove a replication if the membership that does not include it has committed.
+    ///
+    /// Return true if removed.
+    #[tracing::instrument(level = "trace", skip(self))]
+    pub async fn remove_replication(&mut self, target: C::NodeId) -> bool {
+        tracing::info!("removed_replication to: {}", target);
+
+        let repl_state = if let Some(l) = &mut self.leader_data {
+            l.nodes.remove(&target)
+        } else {
+            unreachable!("it has to be a leader!!!");
+        };
+
+        if let Some(s) = repl_state {
+            let handle = s.handle;
+
+            // Drop sender to notify the task to shutdown
+            drop(s.repl_tx);
+
+            tracing::debug!("joining removed replication: {}", target);
+            let _x = handle.await;
+            tracing::info!("Done joining removed replication : {}", target);
+        } else {
+            unreachable!("try to nonexistent replication to {}", target);
+        }
+
+        if let Some(l) = &mut self.leader_data {
+            l.replication_metrics.update(RemoveTarget { target });
+        } else {
+            unreachable!("It has to be a leader!!!");
+        }
+
+        // TODO(xp): set_replication_metrics_changed() can be removed.
+        //           Use self.replication_metrics.version to detect changes.
+        self.engine.metrics_flags.set_replication_changed();
+
+        true
+    }
+
     /// Leader will keep working until the effective membership that removes it committed.
     ///
     /// This is ony called by leader.
@@ -1016,8 +1089,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(vote_req).await;
             }
-            Command::ReplicateCommitted { .. } => {
-                unreachable!("leader specific command")
+            Command::ReplicateCommitted { committed } => {
+                if let Some(l) = &self.leader_data {
+                    for node in l.nodes.values() {
+                        let _ = node.repl_tx.send(UpdateReplication {
+                            last_log_id: None,
+                            committed: *committed,
+                        });
+                    }
+                } else {
+                    unreachable!("it has to be a leader!!!");
+                }
             }
             Command::LeaderCommit { ref upto, .. } => {
                 for i in self.engine.state.last_applied.next_index()..(upto.index + 1) {
@@ -1027,8 +1109,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::FollowerCommit { upto: _, .. } => {
                 self.replicate_to_state_machine_if_needed().await?;
             }
-            Command::ReplicateInputEntries { .. } => {
-                unreachable!("leader specific command")
+            Command::ReplicateInputEntries { range } => {
+                if let Some(last) = range.clone().last() {
+                    self.replicate_entry(*input_ref_entries[last].get_log_id());
+                }
             }
             Command::UpdateReplicationStreams { .. } => {
                 unreachable!("leader specific command")
