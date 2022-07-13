@@ -57,7 +57,13 @@ async fn add_remove_voter() -> Result<()> {
         assert!(x[4].last_log_index < Some(log_index - 50));
     }
 
-    router.wait(&4, timeout()).state(ServerState::Candidate, "node-4 tries to elect").await?;
+    router
+        .wait(&4, timeout())
+        .metrics(
+            |x| x.state == ServerState::Learner || x.state == ServerState::Candidate,
+            "node-4 is left a learner or follower, depending on if it received the uniform config",
+        )
+        .await?;
 
     Ok(())
 }

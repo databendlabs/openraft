@@ -1,9 +1,15 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::fmt::Display;
 use std::mem::swap;
 use std::sync::Arc;
 
 use futures::future::AbortHandle;
 use futures::future::Abortable;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
+use futures::TryFutureExt;
+use maplit::btreeset;
 use rand::thread_rng;
 use rand::Rng;
 use tokio::sync::broadcast;
@@ -12,6 +18,7 @@ use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::sleep_until;
+use tokio::time::timeout;
 use tokio::time::Duration;
 use tokio::time::Instant;
 use tracing::trace_span;
@@ -21,8 +28,10 @@ use tracing::Span;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
+use crate::core::replication::snapshot_is_within_half_of_threshold;
+use crate::core::replication_lag;
+use crate::core::Expectation;
 use crate::core::InternalMessage;
-use crate::core::LeaderState;
 use crate::core::ServerState;
 use crate::core::SnapshotState;
 use crate::core::SnapshotUpdate;
@@ -30,15 +39,31 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
 use crate::entry::EntryRef;
+use crate::error::AddLearnerError;
+use crate::error::ChangeMembershipError;
+use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
+use crate::error::EmptyMembership;
 use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
+use crate::error::InProgress;
 use crate::error::InitializeError;
+use crate::error::LearnerIsLagging;
+use crate::error::LearnerNotFound;
+use crate::error::QuorumNotEnough;
+use crate::error::RPCError;
+use crate::error::Timeout;
 use crate::error::VoteError;
 use crate::metrics::RaftMetrics;
 use crate::metrics::RemoveTarget;
 use crate::metrics::ReplicationMetrics;
+use crate::metrics::UpdateMatchedLogId;
+use crate::progress::Progress;
+use crate::quorum::QuorumSet;
+use crate::raft::AddLearnerResponse;
+use crate::raft::AppendEntriesRequest;
+use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
@@ -46,29 +71,35 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
+use crate::replication::ReplicationCore;
 use crate::replication::ReplicationStream;
 use crate::replication::UpdateReplication;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
+use crate::storage::Snapshot;
 use crate::storage::StorageHelper;
 use crate::timer::RaftTimer;
-use crate::timer::Timeout;
 use crate::versioned::Updatable;
 use crate::versioned::Versioned;
+use crate::ChangeMembers;
 use crate::Entry;
 use crate::EntryPayload;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::Node;
+use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Update;
+use crate::Vote;
 
-/// Data for a Leader
+/// Data for a Leader.
+///
+/// It is created when RaftCore enters leader state, and will be dropped when it quits leader state.
 pub(crate) struct LeaderData<C: RaftTypeConfig> {
     /// Channels to send result back to client when logs are committed.
     pub(crate) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
@@ -135,8 +166,6 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     pub(crate) rx_internal: mpsc::Receiver<InternalMessage<C::NodeId>>,
 
-    // TODO(xp): remove this
-    #[allow(dead_code)]
     pub(crate) tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
     pub(crate) rx_api: mpsc::UnboundedReceiver<(RaftMsg<C, N, S>, Span)>,
 
@@ -144,7 +173,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     pub(crate) rx_shutdown: oneshot::Receiver<()>,
 
-    pub(crate) span: tracing::Span,
+    pub(crate) span: Span,
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
@@ -307,7 +336,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             match &self.engine.state.server_state {
                 ServerState::Leader => {
                     self.leader_data = Some(LeaderData::new());
-                    LeaderState::new(self).run().await?
+                    self.leader_loop().await?;
                 }
                 ServerState::Candidate => self.candidate_loop().await?,
                 ServerState::Follower => self.follower_learner_loop(ServerState::Follower).await?,
@@ -318,6 +347,366 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
         }
+    }
+
+    /// Handle `is_leader` requests.
+    ///
+    /// Spawn requests to all members of the cluster, include members being added in joint
+    /// consensus. Each request will have a timeout, and we respond once we have a majority
+    /// agreement from each config group. Most of the time, we will have a single uniform
+    /// config group.
+    ///
+    /// From the spec (§8):
+    /// Second, a leader must check whether it has been deposed before processing a read-only
+    /// request (its information may be stale if a more recent leader has been elected). Raft
+    /// handles this by having the leader exchange heartbeat messages with a majority of the
+    /// cluster before responding to read-only requests.
+    #[tracing::instrument(level = "trace", skip(self, tx))]
+    pub(super) async fn handle_check_is_leader_request(&mut self, tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId>>) {
+        // Setup sentinel values to track when we've received majority confirmation of leadership.
+
+        let em = &self.engine.state.membership_state.effective;
+        let mut granted = btreeset! {self.id};
+
+        if em.is_quorum(granted.iter()) {
+            let _ = tx.send(Ok(()));
+            return;
+        }
+
+        // Spawn parallel requests, all with the standard timeout for heartbeats.
+        let mut pending = FuturesUnordered::new();
+
+        let voter_progresses = if let Some(l) = &self.engine.state.leader {
+            l.progress
+                .iter()
+                .filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
+                .copied()
+                .collect::<Vec<_>>()
+        } else {
+            unreachable!("it has to be a leader!!!");
+        };
+
+        for (target, matched) in voter_progresses {
+            if target == self.id {
+                continue;
+            }
+
+            let rpc = AppendEntriesRequest {
+                vote: self.engine.state.vote,
+                prev_log_id: matched,
+                entries: vec![],
+                leader_commit: self.engine.state.committed,
+            };
+
+            let my_id = self.id;
+            let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
+            let mut network = self.network.connect(target, target_node.as_ref()).await;
+
+            let ttl = Duration::from_millis(self.config.heartbeat_interval);
+
+            let task = tokio::spawn(
+                async move {
+                    let outer_res = timeout(ttl, network.send_append_entries(rpc)).await;
+                    match outer_res {
+                        Ok(append_res) => match append_res {
+                            Ok(x) => Ok((target, x)),
+                            Err(err) => Err((target, err)),
+                        },
+                        Err(_timeout) => {
+                            let timeout_err = Timeout {
+                                action: RPCTypes::AppendEntries,
+                                id: my_id,
+                                target,
+                                timeout: ttl,
+                            };
+
+                            Err((target, RPCError::Timeout(timeout_err)))
+                        }
+                    }
+                }
+                // TODO(xp): add target to span
+                .instrument(tracing::debug_span!("SPAWN_append_entries")),
+            )
+            .map_err(move |err| (target, err));
+
+            pending.push(task);
+        }
+
+        // Handle responses as they return.
+        while let Some(res) = pending.next().await {
+            let (target, data) = match res {
+                Ok(Ok(res)) => res,
+                Ok(Err((target, err))) => {
+                    tracing::error!(target=display(target), error=%err, "timeout while confirming leadership for read request");
+                    continue;
+                }
+                Err((target, err)) => {
+                    tracing::error!(target = display(target), "{}", err);
+                    continue;
+                }
+            };
+
+            // If we receive a response with a greater term, then revert to follower and abort this request.
+            if let AppendEntriesResponse::HigherVote(vote) = data {
+                assert!(vote > self.engine.state.vote);
+                self.engine.state.vote = vote;
+                // TODO(xp): deal with storage error
+                self.save_vote().await.unwrap();
+                // TODO(xp): if receives error about a higher term, it should stop at once?
+                self.set_target_state(ServerState::Follower);
+            }
+
+            granted.insert(target);
+
+            let mem = &self.engine.state.membership_state.effective;
+            if mem.is_quorum(granted.iter()) {
+                let _ = tx.send(Ok(()));
+                return;
+            }
+        }
+
+        // If we've hit this location, then we've failed to gather needed confirmations due to
+        // request failures.
+
+        let _ = tx.send(Err(QuorumNotEnough {
+            cluster: self.engine.state.membership_state.effective.membership.summary(),
+            got: granted,
+        }
+        .into()));
+    }
+
+    /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
+    /// on the given channel.
+    ///
+    /// Adding a learner does not affect election, thus it does not need to enter joint consensus.
+    ///
+    /// And it does not need to wait for the previous membership log to commit to propose the new membership log.
+    ///
+    /// If `blocking` is `true`, the result is sent to `tx` as the target node log has caught up. Otherwise, result is
+    /// sent at once, no matter whether the target node log is lagging or not.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(super) async fn add_learner(
+        &mut self,
+        target: C::NodeId,
+        node: Option<Node>,
+        tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
+    ) -> Result<(), Fatal<C::NodeId>> {
+        if let Some(l) = &self.leader_data {
+            tracing::debug!(
+                "add target node {} as learner; current nodes: {:?}",
+                target,
+                l.nodes.keys()
+            );
+        } else {
+            unreachable!("it has to be a leader!!!");
+        }
+
+        // Ensure the node doesn't already exist in the current
+        // config, in the set of new nodes already being synced, or in the nodes being removed.
+
+        let curr = &self.engine.state.membership_state.effective;
+        if curr.contains(&target) {
+            let matched = if let Some(l) = &self.engine.state.leader {
+                *l.progress.get(&target)
+            } else {
+                unreachable!("it has to be a leader!!!");
+            };
+
+            tracing::debug!(
+                "target {:?} already member or learner, can't add; matched:{:?}",
+                target,
+                matched
+            );
+
+            let _ = tx.send(Ok(AddLearnerResponse {
+                membership_log_id: self.engine.state.membership_state.effective.log_id,
+                matched,
+            }));
+            return Ok(());
+        }
+
+        let curr = &self.engine.state.membership_state.effective.membership;
+        let res = curr.add_learner(target, node);
+        let new_membership = match res {
+            Ok(x) => x,
+            Err(e) => {
+                let _ = tx.send(Err(AddLearnerError::MissingNodeInfo(e)));
+                return Ok(());
+            }
+        };
+
+        tracing::debug!(?new_membership, "new_membership with added learner: {}", target);
+
+        let log_id = self.write_entry(EntryPayload::Membership(new_membership), None).await?;
+
+        tracing::debug!(
+            "after add target node {} as learner {:?}",
+            target,
+            self.engine.state.last_log_id()
+        );
+
+        let _ = tx.send(Ok(AddLearnerResponse {
+            membership_log_id: Some(log_id),
+            matched: None,
+        }));
+
+        Ok(())
+    }
+
+    /// return true if there is pending uncommitted config change
+    fn has_pending_config(&self) -> bool {
+        // The last membership config is not committed yet.
+        // Can not process the next one.
+        self.engine.state.committed < self.engine.state.membership_state.effective.log_id
+    }
+
+    /// Submit change-membership by writing a Membership log entry, if the `expect` is satisfied.
+    ///
+    /// If `turn_to_learner` is `true`, removed `voter` will becomes `learner`. Otherwise they will be just removed.
+    #[tracing::instrument(level = "debug", skip(self, tx))]
+    pub(super) async fn change_membership(
+        &mut self,
+        changes: ChangeMembers<C::NodeId>,
+        expectation: Option<Expectation>,
+        turn_to_learner: bool,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
+    ) -> Result<(), Fatal<C::NodeId>> {
+        let last = self.engine.state.membership_state.effective.membership.get_joint_config().last().unwrap();
+        let members = changes.apply_to(last);
+
+        // Ensure cluster will have at least one node.
+        if members.is_empty() {
+            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                ChangeMembershipError::EmptyMembership(EmptyMembership {}),
+            )));
+            return Ok(());
+        }
+
+        if self.has_pending_config() {
+            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                ChangeMembershipError::InProgress(InProgress {
+                    // has_pending_config() implies an existing membership log.
+                    membership_log_id: self.engine.state.membership_state.effective.log_id.unwrap(),
+                }),
+            )));
+            return Ok(());
+        }
+
+        let mem = &self.engine.state.membership_state.effective;
+        let curr = mem.membership.clone();
+
+        let old_members = mem.voter_ids().collect::<BTreeSet<_>>();
+        let only_in_new = members.difference(&old_members);
+
+        let new_config = {
+            let res = curr.next_safe(members.clone(), turn_to_learner);
+            match res {
+                Ok(x) => x,
+                Err(e) => {
+                    let change_err = ChangeMembershipError::MissingNodeInfo(e);
+                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(change_err)));
+                    return Ok(());
+                }
+            }
+        };
+
+        tracing::debug!(?new_config, "new_config");
+
+        for node_id in only_in_new.clone() {
+            if !mem.contains(node_id) {
+                let not_found = LearnerNotFound { node_id: *node_id };
+                let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
+                    ChangeMembershipError::LearnerNotFound(not_found),
+                )));
+                return Ok(());
+            }
+        }
+
+        if let Err(e) = self.check_replication_states(only_in_new, expectation) {
+            let _ = tx.send(Err(e.into()));
+            return Ok(());
+        }
+
+        self.write_entry(EntryPayload::Membership(new_config), Some(tx)).await?;
+        Ok(())
+    }
+
+    /// return Ok if all the current replication states satisfy the `expectation` for changing membership.
+    fn check_replication_states<'n>(
+        &self,
+        nodes: impl Iterator<Item = &'n C::NodeId>,
+        expectation: Option<Expectation>,
+    ) -> Result<(), ChangeMembershipError<C::NodeId>> {
+        let expectation = match &expectation {
+            None => {
+                // No expectation, whatever is OK.
+                return Ok(());
+            }
+            Some(x) => x,
+        };
+
+        let last_log_id = self.engine.state.last_log_id();
+
+        for node_id in nodes {
+            match expectation {
+                Expectation::AtLineRate => {
+                    // Expect to be at line rate but not.
+
+                    let matched = if let Some(l) = &self.engine.state.leader {
+                        *l.progress.get(node_id)
+                    } else {
+                        unreachable!("it has to be a leader!!!");
+                    };
+
+                    let distance = replication_lag(&matched, &last_log_id);
+
+                    if distance <= self.config.replication_lag_threshold {
+                        continue;
+                    }
+
+                    let lagging = LearnerIsLagging {
+                        node_id: *node_id,
+                        matched,
+                        distance,
+                    };
+
+                    return Err(ChangeMembershipError::LearnerIsLagging(lagging));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Write a log entry to the cluster through raft protocol.
+    ///
+    /// I.e.: append the log entry to local store, forward it to a quorum(including the leader), waiting for it to be
+    /// committed and applied.
+    ///
+    /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
+    /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
+    #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
+    pub async fn write_entry(
+        &mut self,
+        payload: EntryPayload<C>,
+        resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
+    ) -> Result<LogId<C::NodeId>, Fatal<C::NodeId>> {
+        tracing::debug!(payload = display(payload.summary()), "write_entry");
+
+        let mut entry_refs = [EntryRef::new(&payload)];
+        // TODO: it should returns membership config error etc. currently this is done by the caller.
+        self.engine.leader_append_entries(&mut entry_refs);
+
+        // Install callback channels.
+        if let Some(tx) = resp_tx {
+            if let Some(l) = &mut self.leader_data {
+                l.client_resp_channels.insert(entry_refs[0].log_id.index, tx);
+            }
+        }
+
+        self.run_engine_commands(&entry_refs).await?;
+
+        Ok(*entry_refs[0].get_log_id())
     }
 
     /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
@@ -700,6 +1089,27 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
+    /// Spawn a new replication stream returning its replication state handle.
+    #[tracing::instrument(level = "debug", skip(self))]
+    #[allow(clippy::type_complexity)]
+    pub(crate) async fn spawn_replication_stream(&mut self, target: C::NodeId) -> ReplicationStream<C::NodeId> {
+        let target_node = self.engine.state.membership_state.effective.get_node(&target);
+
+        ReplicationCore::<C, N, S>::spawn(
+            target,
+            target_node.cloned(),
+            self.engine.state.vote,
+            self.config.clone(),
+            self.engine.state.last_log_id(),
+            self.engine.state.committed,
+            self.network.connect(target, target_node).await,
+            self.storage.get_log_reader().await,
+            self.tx_api.clone(),
+            self.server_state_count,
+            tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
+        )
+    }
+
     /// Remove a replication if the membership that does not include it has committed.
     ///
     /// Return true if removed.
@@ -789,6 +1199,74 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
+    #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id), raft_state="leader"))]
+    pub(crate) async fn leader_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
+        // Setup state as leader.
+        self.last_heartbeat = None;
+        self.next_election_timeout = None;
+        debug_assert!(self.engine.state.vote.committed);
+
+        // Spawn replication streams for followers and learners.
+
+        let targets = {
+            let mem = &self.engine.state.membership_state.effective;
+
+            let node_ids = mem.nodes().map(|(&nid, _)| nid);
+            node_ids.filter(|elem| elem != &self.id).collect::<Vec<_>>()
+        };
+
+        // TODO(xp): make this Engine::Command driven.
+        for target in targets {
+            let state = self.spawn_replication_stream(target).await;
+            if let Some(l) = &mut self.leader_data {
+                l.nodes.insert(target, state);
+            } else {
+                unreachable!("it has to be a leader!!!");
+            }
+        }
+
+        // Commit the initial entry when new leader established.
+        self.write_entry(EntryPayload::Blank, None).await?;
+
+        // report the leader metrics every time there came to a new leader
+        // if not `report_metrics` before the leader loop, the leader metrics may not be updated cause no coming event.
+
+        let replication_metrics = if let Some(l) = &self.leader_data {
+            l.replication_metrics.clone()
+        } else {
+            unreachable!("it has to be a leader!!!");
+        };
+        self.report_metrics(Update::Update(Some(replication_metrics)));
+
+        loop {
+            if !self.engine.state.server_state.is_leader() {
+                tracing::info!("id={} state becomes: {:?}", self.id, self.engine.state.server_state);
+
+                // implicit drop replication_rx
+                // notify to all nodes DO NOT send replication event any more.
+                return Ok(());
+            }
+
+            self.flush_metrics();
+
+            tokio::select! {
+                Some((msg,span)) = self.rx_api.recv() => {
+                    self.handle_api_msg(msg).instrument(span).await?;
+                },
+
+                Some(internal_msg) = self.rx_internal.recv() => {
+                    tracing::info!("leader recv from rx_internal: {:?}", internal_msg);
+                    self.handle_internal_msg(internal_msg).await?;
+                }
+
+                Ok(_) = &mut self.rx_shutdown => {
+                    tracing::info!("leader recv from rx_shudown");
+                    self.set_target_state(ServerState::Shutdown);
+                }
+            }
+        }
+    }
+
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id), raft_state="candidate"))]
     async fn candidate_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
         // report the new state before enter the loop
@@ -801,7 +1279,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             self.flush_metrics();
 
-            // Generates a new rand value within range.
             self.set_next_election_time();
 
             self.engine.elect();
@@ -844,11 +1321,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             let tx_api = self.tx_api.clone();
             let state_count = self.server_state_count;
 
-            let t = Timeout::new(
+            let t = crate::timer::Timeout::new(
                 move || {
                     let _ = tx_api.send((
                         RaftMsg::Elect {
-                            server_state_count: Some(state_count),
+                            server_state_count: state_count,
                         },
                         tracing::Span::current(),
                     ));
@@ -911,7 +1388,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
                     }
                 }
-                .instrument(tracing::debug_span!(parent: &self.span, "send_vote_req", target = display(target))),
+                .instrument(tracing::debug_span!(
+                    parent: &Span::current(),
+                    "send_vote_req",
+                    target = display(target)
+                )),
             );
         }
     }
@@ -989,14 +1470,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if is_leader() {
-                    unimplemented!("can not handle CheckIsLeaderRequest");
+                    self.handle_check_is_leader_request(tx).await;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }
             }
-            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+            RaftMsg::ClientWriteRequest { rpc, tx } => {
                 if is_leader() {
-                    unimplemented!("can not handle ClientWriteRequest");
+                    self.write_entry(rpc.payload, Some(tx)).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }
@@ -1004,16 +1485,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             RaftMsg::Initialize { members, tx } => {
                 let _ = tx.send(self.handle_initialize(members).await.extract_fatal()?);
             }
-            RaftMsg::AddLearner { tx, .. } => {
+            RaftMsg::AddLearner { id, node, tx } => {
                 if is_leader() {
-                    unimplemented!("can not handle this AddLearner");
+                    self.add_learner(id, node, tx).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }
             }
-            RaftMsg::ChangeMembership { tx, .. } => {
+            RaftMsg::ChangeMembership {
+                changes,
+                when,
+                turn_to_learner,
+                tx,
+            } => {
                 if is_leader() {
-                    unimplemented!("can not handle ChangeMembership");
+                    self.change_membership(changes, when, turn_to_learner, tx).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }
@@ -1022,18 +1508,200 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 req(&self.engine.state, &mut self.storage, &mut self.network);
             }
             RaftMsg::Elect { server_state_count } => {
-                if server_state_count != Some(self.server_state_count) {
-                    tracing::info!(
-                        "server state changed: msg sent by: {:?}; curr: {}; ignore",
-                        server_state_count,
-                        self.server_state_count
-                    );
-                } else {
+                if self.does_server_state_count_match(server_state_count, "Elect") {
                     tracing::debug!("change to CandidateState");
                     self.set_target_state(ServerState::Candidate)
                 }
             }
+            RaftMsg::RevertToFollower {
+                target,
+                vote,
+                server_state_count,
+            } => {
+                if self.does_server_state_count_match(server_state_count, "RevertToFollower") {
+                    self.handle_revert_to_follower(target, vote).await?;
+                }
+            }
+            RaftMsg::UpdateReplicationMatched {
+                target,
+                result,
+                server_state_count,
+            } => {
+                if self.does_server_state_count_match(server_state_count, "UpdateReplicationMatched") {
+                    self.handle_update_matched(target, result).await?;
+                }
+            }
+            RaftMsg::NeedsSnapshot {
+                target: _,
+                must_include,
+                tx,
+                server_state_count,
+            } => {
+                if self.does_server_state_count_match(server_state_count, "NeedsSnapshot") {
+                    self.handle_needs_snapshot(must_include, tx).await?;
+                }
+            }
+            RaftMsg::ReplicationFatal => {
+                self.set_target_state(ServerState::Shutdown);
+            }
         };
+        Ok(())
+    }
+
+    /// Handle events from replication streams for when this node needs to revert to follower state.
+    #[tracing::instrument(level = "trace", skip(self))]
+    async fn handle_revert_to_follower(
+        &mut self,
+        _: C::NodeId,
+        vote: Vote<C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        if vote > self.engine.state.vote {
+            self.engine.state.vote = vote;
+            self.save_vote().await?;
+            self.set_target_state(ServerState::Follower);
+        }
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip_all)]
+    async fn handle_update_matched(
+        &mut self,
+        target: C::NodeId,
+        result: Result<LogId<C::NodeId>, String>,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        // Update target's match index & check if it is awaiting removal.
+
+        tracing::debug!(
+            target = display(target),
+            result = debug(&result),
+            "handle_update_matched"
+        );
+
+        // TODO(xp): a leader has to refuse a message from a previous leader.
+        if let Some(l) = &self.leader_data {
+            if !l.nodes.contains_key(&target) {
+                return Ok(());
+            };
+        } else {
+            // no longer a leader.
+            tracing::warn!(
+                target = display(target),
+                result = debug(&result),
+                "received replication update but no longer a leader"
+            );
+            return Ok(());
+        }
+
+        tracing::debug!("update matched: {:?}", result);
+
+        let matched = match result {
+            Ok(matched) => matched,
+            Err(_err_str) => {
+                return Ok(());
+            }
+        };
+
+        self.engine.update_progress(target, Some(matched));
+        self.run_engine_commands::<Entry<C>>(&[]).await?;
+
+        self.update_replication_metrics(target, matched);
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "trace", skip(self))]
+    fn update_replication_metrics(&mut self, target: C::NodeId, matched: LogId<C::NodeId>) {
+        tracing::debug!(%target, ?matched, "update_leader_metrics");
+
+        if let Some(l) = &mut self.leader_data {
+            l.replication_metrics.update(UpdateMatchedLogId { target, matched });
+        } else {
+            unreachable!("it has to be a leader!!!");
+        }
+        self.engine.metrics_flags.set_replication_changed()
+    }
+
+    /// If a message is sent by a previous server state but is received by current server state,
+    /// it is a stale message and should be just ignored.
+    fn does_server_state_count_match(&self, server_state_count: u64, msg: impl Display) -> bool {
+        if server_state_count != self.server_state_count {
+            tracing::warn!(
+                "server state changed: msg sent by: {:?}; curr: {}; ignore when ({})",
+                server_state_count,
+                self.server_state_count,
+                msg
+            );
+            false
+        } else {
+            true
+        }
+    }
+
+    /// A replication streams requesting for snapshot info.
+    ///
+    /// The snapshot has to include `must_include`.
+    #[tracing::instrument(level = "debug", skip(self, tx))]
+    async fn handle_needs_snapshot(
+        &mut self,
+        must_include: Option<LogId<C::NodeId>>,
+        tx: oneshot::Sender<Snapshot<C::NodeId, S::SnapshotData>>,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        // Ensure snapshotting is configured, else do nothing.
+        let threshold = match &self.config.snapshot_policy {
+            SnapshotPolicy::LogsSinceLast(threshold) => *threshold,
+        };
+
+        // Check for existence of current snapshot.
+        let current_snapshot_opt = self.storage.get_current_snapshot().await?;
+
+        if let Some(snapshot) = current_snapshot_opt {
+            if let Some(must_inc) = must_include {
+                if snapshot.meta.last_log_id >= must_inc {
+                    let _ = tx.send(snapshot);
+                    return Ok(());
+                }
+            } else {
+                // If snapshot exists, ensure its distance from the leader's last log index is <= half
+                // of the configured snapshot threshold, else create a new snapshot.
+                if snapshot_is_within_half_of_threshold(
+                    &snapshot.meta.last_log_id.index,
+                    &self.engine.state.last_log_id().unwrap_or_default().index,
+                    &threshold,
+                ) {
+                    let _ = tx.send(snapshot);
+                    return Ok(());
+                }
+            }
+        }
+
+        // Check if snapshot creation is already in progress. If so, we spawn a task to await its
+        // completion (or cancellation), and respond to the replication stream. The repl stream
+        // will wait for the completion and will then send another request to fetch the finished snapshot.
+        // Else we just drop any other state and continue. Leaders never enter `Streaming` state.
+        if let Some(SnapshotState::Snapshotting { handle, sender }) = self.snapshot_state.take() {
+            let mut chan = sender.subscribe();
+            tokio::spawn(
+                async move {
+                    let _ = chan.recv().await;
+                    // TODO(xp): send another ReplicaEvent::NeedSnapshot to raft core
+                    drop(tx);
+                }
+                .instrument(tracing::debug_span!("spawn-recv-and-drop")),
+            );
+            self.snapshot_state = Some(SnapshotState::Snapshotting { handle, sender });
+            return Ok(());
+        }
+
+        // At this point, we just attempt to request a snapshot. Under normal circumstances, the
+        // leader will always be keeping up-to-date with its snapshotting, and the latest snapshot
+        // will always be found and this block will never even be executed.
+        //
+        // If this block is executed, and a snapshot is needed, the repl stream will submit another
+        // request here shortly, and will hit the above logic where it will await the snapshot completion.
+        //
+        // If snapshot is too old, i.e., the distance from last_log_index is greater than half of snapshot threshold,
+        // always force a snapshot creation.
+        self.trigger_log_compaction_if_needed(true).await;
         Ok(())
     }
 }
@@ -1113,8 +1781,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     self.replicate_entry(*input_ref_entries[last].get_log_id());
                 }
             }
-            Command::UpdateReplicationStreams { .. } => {
-                unreachable!("leader specific command")
+            Command::UpdateReplicationStreams { remove, add } => {
+                for (node_id, _matched) in remove.iter() {
+                    self.remove_replication(*node_id).await;
+                }
+                for (node_id, _matched) in add.iter() {
+                    let state = self.spawn_replication_stream(*node_id).await;
+                    if let Some(l) = &mut self.leader_data {
+                        l.nodes.insert(*node_id, state);
+                    } else {
+                        unreachable!("it has to be a leader!!!");
+                    }
+                }
             }
             Command::UpdateMembership { .. } => {
                 // TODO: not used

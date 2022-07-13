@@ -156,11 +156,11 @@ impl<NID: NodeId> Engine<NID> {
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<NID>) -> VoteResponse<NID> {
-        tracing::debug!(req = display(req.summary()), "Engine::handle_vote_res");
+        tracing::debug!(req = display(req.summary()), "Engine::handle_vote_req");
         tracing::debug!(
             my_vote = display(self.state.vote.summary()),
-            my_last_log_id = display(self.state.last_purged_log_id().summary()),
-            "Engine::handle_vote_res"
+            my_last_log_id = display(self.state.last_log_id().summary()),
+            "Engine::handle_vote_req"
         );
 
         let res = self.internal_handle_vote_req(&req.vote, &req.last_log_id);
@@ -197,7 +197,7 @@ impl<NID: NodeId> Engine<NID> {
             "handle_vote_resp"
         );
 
-        // If this node is no longer a leader, just ignore the delayed vote_resp.
+        // If this node is no longer a leader(i.e., electing), just ignore the delayed vote_resp.
         let leader = match &mut self.state.leader {
             None => return,
             Some(l) => l,
