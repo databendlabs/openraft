@@ -129,6 +129,8 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     tx_metrics: watch::Sender<RaftMetrics<C::NodeId>>,
 
     pub(crate) rx_shutdown: oneshot::Receiver<()>,
+
+    pub(crate) span: tracing::Span,
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
@@ -145,6 +147,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         //
 
         let (tx_internal, rx_internal) = mpsc::channel(1024);
+
+        let span = tracing::span!(
+            parent: tracing::Span::current(),
+            Level::DEBUG,
+            "RaftCore",
+            id = display(id),
+            cluster = display(&config.cluster_name)
+        );
 
         let this = Self {
             id,
@@ -171,15 +181,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             tx_metrics,
 
             rx_shutdown,
+
+            span,
         };
 
         tokio::spawn(this.main().instrument(trace_span!("spawn").or_current()))
     }
 
     /// The main loop of the Raft protocol.
-    #[tracing::instrument(level="trace", skip(self), fields(id=display(self.id), cluster=%self.config.cluster_name))]
     async fn main(mut self) -> Result<(), Fatal<C::NodeId>> {
-        let res = self.do_main().await;
+        let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
+        let res = self.do_main().instrument(span).await;
         match res {
             Ok(_) => Ok(()),
             Err(err) => {
@@ -821,7 +833,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
                     }
                 }
-                .instrument(tracing::debug_span!("send_vote_req", target = display(target))),
+                .instrument(tracing::debug_span!(parent: &self.span, "send_vote_req", target = display(target))),
             );
         }
     }

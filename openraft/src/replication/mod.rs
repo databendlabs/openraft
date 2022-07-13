@@ -16,6 +16,7 @@ use tokio::time::timeout;
 use tokio::time::Duration;
 use tokio::time::Interval;
 use tracing::Span;
+use tracing_futures::Instrument;
 
 use crate::config::Config;
 use crate::config::SnapshotPolicy;
@@ -56,45 +57,12 @@ pub(crate) struct ReplicationStream<NID: NodeId> {
     pub repl_tx: mpsc::UnboundedSender<UpdateReplication<NID>>,
 }
 
-impl<NID: NodeId> ReplicationStream<NID> {
-    /// Create a new replication stream for the target peer.
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn new<C, N, S>(
-        target: NID,
-        target_node: Option<Node>,
-        vote: Vote<NID>,
-        config: Arc<Config>,
-        last_log: Option<LogId<NID>>,
-        committed: Option<LogId<NID>>,
-        network: N::Network,
-        log_reader: S::LogReader,
-        replication_tx: mpsc::UnboundedSender<(ReplicaEvent<NID, S::SnapshotData>, Span)>,
-    ) -> Self
-    where
-        C: RaftTypeConfig<NodeId = NID>,
-        N: RaftNetworkFactory<C>,
-        S: RaftStorage<C>,
-    {
-        ReplicationCore::<C, N, S>::spawn(
-            target,
-            target_node,
-            vote,
-            config,
-            last_log,
-            committed,
-            network,
-            log_reader,
-            replication_tx,
-        )
-    }
-}
-
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
 ///
 /// NOTE: we do not stack replication requests to targets because this could result in
 /// out-of-order delivery. We always buffer until we receive a success response, then send the
 /// next payload from the buffer.
-struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
+pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     /// The ID of the target Raft node which replication events are to be sent to.
     target: C::NodeId,
 
@@ -151,7 +119,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     /// Spawn a new replication task for the target node.
     #[tracing::instrument(level = "trace", skip(config, network, log_reader, raft_core_tx))]
     #[allow(clippy::type_complexity)]
-    pub(self) fn spawn(
+    pub(crate) fn spawn(
         target: C::NodeId,
         target_node: Option<Node>,
         vote: Vote<C::NodeId>,
@@ -161,6 +129,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         network: N::Network,
         log_reader: S::LogReader,
         raft_core_tx: mpsc::UnboundedSender<(ReplicaEvent<C::NodeId, S::SnapshotData>, Span)>,
+        span: tracing::Span,
     ) -> ReplicationStream<C::NodeId> {
         // other component to ReplicationStream
         let (repl_tx, repl_rx) = mpsc::unbounded_channel();
@@ -184,7 +153,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             need_to_replicate: true,
         };
 
-        let handle = tokio::spawn(this.main());
+        let handle = tokio::spawn(this.main().instrument(span));
 
         ReplicationStream { handle, repl_tx }
     }

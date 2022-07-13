@@ -1,4 +1,5 @@
 use tokio::sync::oneshot;
+use tracing::Level;
 use tracing_futures::Instrument;
 
 use crate::config::SnapshotPolicy;
@@ -7,6 +8,7 @@ use crate::core::ServerState;
 use crate::core::SnapshotState;
 use crate::metrics::UpdateMatchedLogId;
 use crate::replication::ReplicaEvent;
+use crate::replication::ReplicationCore;
 use crate::replication::ReplicationStream;
 use crate::storage::Snapshot;
 use crate::summary::MessageSummary;
@@ -25,7 +27,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub(super) async fn spawn_replication_stream(&mut self, target: C::NodeId) -> ReplicationStream<C::NodeId> {
         let target_node = self.core.engine.state.membership_state.effective.get_node(&target);
 
-        ReplicationStream::new::<C, N, S>(
+        ReplicationCore::<C, N, S>::spawn(
             target,
             target_node.cloned(),
             self.core.engine.state.vote,
@@ -35,6 +37,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             self.core.network.connect(target, target_node).await,
             self.core.storage.get_log_reader().await,
             self.replication_tx.clone(),
+            tracing::span!(parent: &self.core.span, Level::DEBUG, "replication", id=display(self.core.id), target=display(target)),
         )
     }
 
@@ -81,13 +84,19 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn handle_update_matched(
         &mut self,
         target: C::NodeId,
         result: Result<LogId<C::NodeId>, String>,
     ) -> Result<(), StorageError<C::NodeId>> {
         // Update target's match index & check if it is awaiting removal.
+
+        tracing::debug!(
+            target = display(target),
+            result = debug(&result),
+            "handle_update_matched"
+        );
 
         // TODO(xp): a leader has to refuse a message from a previous leader.
         if !self.nodes.contains_key(&target) {
