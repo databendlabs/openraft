@@ -8,7 +8,6 @@ use crate::core::RaftCore;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::error::Fatal;
-use crate::metrics::ReplicationMetrics;
 use crate::raft::RaftMsg;
 use crate::raft_types::RaftLogId;
 use crate::replication::ReplicaEvent;
@@ -16,7 +15,6 @@ use crate::replication::ReplicationStream;
 use crate::replication::UpdateReplication;
 use crate::runtime::RaftRuntime;
 use crate::summary::MessageSummary;
-use crate::versioned::Versioned;
 use crate::Entry;
 use crate::EntryPayload;
 use crate::RaftNetworkFactory;
@@ -31,9 +29,6 @@ pub(crate) struct LeaderState<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
 
     /// A mapping of node IDs the replication state of the target node.
     pub(super) nodes: BTreeMap<C::NodeId, ReplicationStream<C::NodeId>>,
-
-    /// The metrics about a leader
-    pub replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
 
     /// The stream of events coming from replication streams.
     #[allow(clippy::type_complexity)]
@@ -51,7 +46,6 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
         Self {
             core,
             nodes: BTreeMap::new(),
-            replication_metrics: Versioned::new(ReplicationMetrics::default()),
             replication_tx,
             replication_rx,
         }
@@ -92,7 +86,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
     pub(self) async fn leader_loop(mut self) -> Result<(), Fatal<C::NodeId>> {
         // report the leader metrics every time there came to a new leader
         // if not `report_metrics` before the leader loop, the leader metrics may not be updated cause no coming event.
-        self.core.report_metrics(Update::Update(Some(self.replication_metrics.clone())));
+        let replication_metrics = if let Some(l) = &self.core.leader_data {
+            l.replication_metrics.clone()
+        } else {
+            unreachable!("it has to be a leader!!!");
+        };
+        self.core.report_metrics(Update::Update(Some(replication_metrics)));
 
         loop {
             if !self.core.engine.state.server_state.is_leader() {
@@ -107,7 +106,7 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
                 return Ok(());
             }
 
-            self.core.flush_metrics(Some(&self.replication_metrics));
+            self.core.flush_metrics();
 
             tokio::select! {
                 Some((msg,span)) = self.core.rx_api.recv() => {

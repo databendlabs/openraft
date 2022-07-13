@@ -67,13 +67,17 @@ use crate::Update;
 /// Data for a Leader
 pub(crate) struct LeaderData<C: RaftTypeConfig> {
     /// Channels to send result back to client when logs are committed.
-    pub(super) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
+    pub(crate) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
+
+    /// The metrics of all replication streams
+    pub(crate) replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
 }
 
 impl<C: RaftTypeConfig> LeaderData<C> {
     pub(crate) fn new() -> Self {
         Self {
             client_resp_channels: Default::default(),
+            replication_metrics: Versioned::new(ReplicationMetrics::default()),
         }
     }
 }
@@ -129,6 +133,8 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     tx_metrics: watch::Sender<RaftMetrics<C::NodeId>>,
 
     pub(crate) rx_shutdown: oneshot::Receiver<()>,
+
+    pub(crate) span: tracing::Span,
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
@@ -145,6 +151,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         //
 
         let (tx_internal, rx_internal) = mpsc::channel(1024);
+
+        let span = tracing::span!(
+            parent: tracing::Span::current(),
+            Level::DEBUG,
+            "RaftCore",
+            id = display(id),
+            cluster = display(&config.cluster_name)
+        );
 
         let this = Self {
             id,
@@ -171,15 +185,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             tx_metrics,
 
             rx_shutdown,
+
+            span,
         };
 
         tokio::spawn(this.main().instrument(trace_span!("spawn").or_current()))
     }
 
     /// The main loop of the Raft protocol.
-    #[tracing::instrument(level="trace", skip(self), fields(id=display(self.id), cluster=%self.config.cluster_name))]
     async fn main(mut self) -> Result<(), Fatal<C::NodeId>> {
-        let res = self.do_main().await;
+        let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
+        let res = self.do_main().instrument(span).await;
         match res {
             Ok(_) => Ok(()),
             Err(err) => {
@@ -297,13 +313,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
     /// Then clear flags about the cached changes, to avoid unnecessary metrics report.
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn flush_metrics(&mut self, repl_metrics: Option<&Versioned<ReplicationMetrics<C::NodeId>>>) {
+    pub fn flush_metrics(&mut self) {
         if !self.engine.metrics_flags.changed() {
             return;
         }
 
         let leader_metrics = if self.engine.metrics_flags.leader {
-            Update::Update(repl_metrics.cloned())
+            let replication_metrics = self.leader_data.as_ref().map(|x| x.replication_metrics.clone());
+            Update::Update(replication_metrics)
         } else {
             Update::AsIs
         };
@@ -709,7 +726,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Ok(());
             }
 
-            self.flush_metrics(None);
+            self.flush_metrics();
 
             // Generates a new rand value within range.
             self.set_next_election_time();
@@ -776,7 +793,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Ok(());
             }
 
-            self.flush_metrics(None);
+            self.flush_metrics();
 
             if let Some(t) = &timeout {
                 // timeout is updated as heartbeats are received
@@ -821,7 +838,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
                     }
                 }
-                .instrument(tracing::debug_span!("send_vote_req", target = display(target))),
+                .instrument(tracing::debug_span!(parent: &self.span, "send_vote_req", target = display(target))),
             );
         }
     }

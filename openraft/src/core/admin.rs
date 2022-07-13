@@ -308,7 +308,12 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
             unreachable!("try to nonexistent replication to {}", target);
         }
 
-        self.replication_metrics.update(RemoveTarget { target });
+        if let Some(l) = &mut self.core.leader_data {
+            l.replication_metrics.update(RemoveTarget { target });
+        } else {
+            unreachable!("It has to be a leader!!!");
+        }
+
         // TODO(xp): set_replication_metrics_changed() can be removed.
         //           Use self.replication_metrics.version to detect changes.
         self.core.engine.metrics_flags.set_replication_changed();
