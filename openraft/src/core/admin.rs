@@ -296,10 +296,10 @@ impl<'a, C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> LeaderS
 
         let repl_state = self.nodes.remove(&target);
         if let Some(s) = repl_state {
-            let handle = s.repl_stream.handle;
+            let handle = s.handle;
 
             // Drop sender to notify the task to shutdown
-            drop(s.repl_stream.repl_tx);
+            drop(s.repl_tx);
 
             tracing::debug!("joining removed replication: {}", target);
             let _x = handle.await;

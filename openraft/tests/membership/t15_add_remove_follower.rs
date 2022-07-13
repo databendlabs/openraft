@@ -63,5 +63,5 @@ async fn add_remove_voter() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
+    Some(Duration::from_millis(2000))
 }

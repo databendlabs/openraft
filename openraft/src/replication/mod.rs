@@ -47,7 +47,7 @@ use crate::RaftTypeConfig;
 use crate::ToStorageResult;
 use crate::Vote;
 
-/// The public handle to a spawned replication stream.
+/// The handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<NID: NodeId> {
     /// The spawn handle the `ReplicationCore` task.
     pub handle: JoinHandle<()>,

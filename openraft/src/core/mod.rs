@@ -18,7 +18,6 @@ use leader_state::LeaderState;
 pub use raft_core::RaftCore;
 pub(crate) use replication_expectation::Expectation;
 pub(crate) use replication_state::replication_lag;
-use replication_state::ReplicationState;
 pub use server_state::ServerState;
 use snapshot_state::SnapshotState;
 use snapshot_state::SnapshotUpdate;
