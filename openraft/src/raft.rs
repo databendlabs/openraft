@@ -373,8 +373,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             .wait(None)
             .metrics(
                 |metrics| match self.check_replication_upto_date(metrics, id, membership_log_id) {
-                    Ok(resp) => {
-                        res.lock().unwrap().membership_log_id = resp;
+                    Ok(matched) => {
+                        res.lock().unwrap().matched = matched;
                         true
                     }
                     // keep waiting
