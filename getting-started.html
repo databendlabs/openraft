@@ -139,6 +139,8 @@
 <p>In this chapter we are going to build a key-value store cluster with <a href="https://github.com/datafuselabs/openraft">openraft</a>.</p>
 <p><a href="https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore">examples/raft-kv-memstore</a>
 is the complete example application including the server, the client and a demo cluster.</p>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-rocksdb">examples/raft-kv-rocksdb</a>
+is the complete example application including the server, the client and a demo cluster using rocksdb for persistant storage.</p>
 <hr />
 <p>Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients.</p>
 <p>
@@ -247,6 +249,7 @@ pub fn test_mem_store() -&gt; anyhow::Result&lt;()&gt; {
 }
 <span class="boring">}
 </span></code></pre></pre>
+<p>There is a second example in <a href="https://github.com/datafuselabs/openraft/blob/main/rocksstore/src/test.rs">Test suite for RaftStorage</a> that showcases building a rocksdb backed store.</p>
 <h3 id="race-condition-about-raftstorage"><a class="header" href="#race-condition-about-raftstorage">Race condition about RaftStorage</a></h3>
 <p>In our design, there is at most one thread at a time writing data to it.
 But there may be several threads reading from it concurrently,
