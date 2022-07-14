@@ -29,6 +29,7 @@ use crate::error::VoteError;
 use crate::membership::IntoOptionNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
+use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::ChangeMembers;
@@ -372,8 +373,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             .wait(None)
             .metrics(
                 |metrics| match self.check_replication_upto_date(metrics, id, membership_log_id) {
-                    Ok(resp) => {
-                        res.lock().unwrap().membership_log_id = resp;
+                    Ok(matched) => {
+                        res.lock().unwrap().matched = matched;
                         true
                     }
                     // keep waiting
@@ -762,10 +763,58 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     /// Trigger an election
+    /// Sent by a timer
     Elect {
         /// Which ServerState sent this message
-        server_state_count: Option<u64>,
+        server_state_count: u64,
     },
+
+    /// Update the `matched` log id of a replication target.
+    /// Sent by a replication task `ReplicationCore`.
+    UpdateReplicationMatched {
+        /// The ID of the target node for which the match index is to be updated.
+        target: C::NodeId,
+
+        /// Either the last log id that has been successfully replicated to the target,
+        /// or an error in string.
+        result: Result<LogId<C::NodeId>, String>,
+
+        /// Which ServerState sent this message
+        server_state_count: u64,
+    },
+
+    /// An event indicating that the Raft node needs to revert to follower state.
+    /// Sent by a replication task `ReplicationCore`.
+    // TODO: rename it
+    RevertToFollower {
+        /// The ID of the target node from which the new term was observed.
+        target: C::NodeId,
+
+        /// The new vote observed.
+        vote: Vote<C::NodeId>,
+
+        /// Which ServerState sent this message
+        server_state_count: u64,
+    },
+
+    /// An event from a replication stream requesting snapshot info.
+    /// Sent by a replication task `ReplicationCore`.
+    NeedsSnapshot {
+        target: C::NodeId,
+
+        /// The log id the caller requires the snapshot has to include.
+        must_include: Option<LogId<C::NodeId>>,
+
+        /// The response channel for delivering the snapshot data.
+        tx: oneshot::Sender<Snapshot<C::NodeId, S::SnapshotData>>,
+
+        /// Which ServerState sent this message
+        server_state_count: u64,
+    },
+
+    /// Some critical error has taken place, and Raft needs to shutdown.
+    /// Sent by a replication task `ReplicationCore`.
+    ReplicationFatal,
 }
 
 impl<C, N, S> MessageSummary<RaftMsg<C, N, S>> for RaftMsg<C, N, S>
@@ -810,6 +859,38 @@ where
             RaftMsg::Elect { server_state_count } => {
                 format!("Elect sent by {:?}", server_state_count)
             }
+            RaftMsg::UpdateReplicationMatched {
+                ref target,
+                ref result,
+                server_state_count,
+            } => {
+                format!(
+                    "UpdateMatchIndex: target: {}, result: {:?}, server_state_count: {}",
+                    target, result, server_state_count
+                )
+            }
+            RaftMsg::RevertToFollower {
+                ref target,
+                ref vote,
+                server_state_count,
+            } => {
+                format!(
+                    "RevertToFollower: target: {}, vote: {}, server_state_count: {}",
+                    target, vote, server_state_count
+                )
+            }
+            RaftMsg::NeedsSnapshot {
+                ref target,
+                ref must_include,
+                server_state_count,
+                ..
+            } => {
+                format!(
+                    "NeedsSnapshot: target: {}, must_include: {:?}, server_state_count: {}",
+                    target, must_include, server_state_count
+                )
+            }
+            RaftMsg::ReplicationFatal => "ReplicationFatal".to_string(),
         }
     }
 }
