@@ -1,7 +1,7 @@
-//! The `RaftCore` is a `Runtime` supporting the raft algorithm implementation [`Engine`].
+//! The `RaftCore` is a `Runtime` supporting the raft algorithm implementation `Engine`.
 //!
 //! It passes events from an application or timer or network to `Engine` to drive it to run.
-//! Also it receives and execute [`Command`] emitted by `Engine` to apply raft state to underlying storage or forward
+//! Also it receives and execute `Command` emitted by `Engine` to apply raft state to underlying storage or forward
 //! messages to other raft nodes.
 
 mod append_entries;
