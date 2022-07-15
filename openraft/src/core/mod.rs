@@ -4,7 +4,6 @@
 //! Also it receives and execute `Command` emitted by `Engine` to apply raft state to underlying storage or forward
 //! messages to other raft nodes.
 
-mod append_entries;
 mod install_snapshot;
 mod internal_msg;
 mod raft_core;

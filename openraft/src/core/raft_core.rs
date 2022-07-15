@@ -480,10 +480,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ///
     /// Adding a learner does not affect election, thus it does not need to enter joint consensus.
     ///
+    /// TODO: It has to wait for the previous membership to commit.
+    /// TODO: Otherwise a second proposed membership implies the previous one is committed.
+    /// TODO: Test it.
+    /// TODO: This limit can be removed if membership_state is replaced by a list of membership logs.
+    /// TODO: Because allowing this requires the engine to be able to store more than 2 membership logs.
     /// And it does not need to wait for the previous membership log to commit to propose the new membership log.
-    ///
-    /// If `blocking` is `true`, the result is sent to `tx` as the target node log has caught up. Otherwise, result is
-    /// sent at once, no matter whether the target node log is lagging or not.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) async fn add_learner(
         &mut self,
@@ -553,13 +555,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
-    /// return true if there is pending uncommitted config change
-    fn has_pending_config(&self) -> bool {
-        // The last membership config is not committed yet.
-        // Can not process the next one.
-        self.engine.state.committed < self.engine.state.membership_state.effective.log_id
-    }
-
     /// Submit change-membership by writing a Membership log entry, if the `expect` is satisfied.
     ///
     /// If `turn_to_learner` is `true`, removed `voter` will becomes `learner`. Otherwise they will be just removed.
@@ -582,13 +577,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
-        if self.has_pending_config() {
-            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                ChangeMembershipError::InProgress(InProgress {
-                    // has_pending_config() implies an existing membership log.
-                    membership_log_id: self.engine.state.membership_state.effective.log_id.unwrap(),
-                }),
-            )));
+        let res = self.check_membership_committed();
+        if let Err(e) = res {
+            let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(e)));
             return Ok(());
         }
 
@@ -629,6 +620,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.write_entry(EntryPayload::Membership(new_config), Some(tx)).await?;
         Ok(())
+    }
+
+    /// Check if the effective membership is committed, so that a new membership is allowed to be proposed.
+    fn check_membership_committed(&self) -> Result<(), ChangeMembershipError<C::NodeId>> {
+        let st = &self.engine.state;
+
+        if st.is_membership_committed() {
+            return Ok(());
+        }
+
+        Err(ChangeMembershipError::InProgress(InProgress {
+            committed: st.committed,
+            membership_log_id: st.membership_state.effective.log_id,
+        }))
     }
 
     /// return Ok if all the current replication states satisfy the `expectation` for changing membership.
@@ -1005,11 +1010,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         tracing::debug!(last_applied = display(last_applied), "update last_applied");
 
-        if let Some(leader_data) = &mut self.leader_data {
+        if let Some(l) = &mut self.leader_data {
             let mut results = apply_results.into_iter();
 
             for log_index in since..end {
-                let tx = leader_data.client_resp_channels.remove(&log_index);
+                let tx = l.client_resp_channels.remove(&log_index);
 
                 let i = log_index - since;
                 let entry = &entries[i as usize];
@@ -1023,6 +1028,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
+    /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) async fn send_response(
         entry: &Entry<C>,
@@ -1460,7 +1466,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
-                let _ = tx.send(self.handle_append_entries_request(rpc).await.extract_fatal()?);
+                let resp =
+                    self.engine.handle_append_entries_req(&rpc.vote, rpc.prev_log_id, &rpc.entries, rpc.leader_commit);
+                self.run_engine_commands(rpc.entries.as_slice()).await?;
+                let _ = tx.send(Ok(resp));
             }
             RaftMsg::RequestVote { rpc, tx } => {
                 let _ = tx.send(self.handle_vote_request(rpc).await.extract_fatal()?);
@@ -1773,8 +1782,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     self.leader_commit(i).await?;
                 }
             }
-            Command::FollowerCommit { upto: _, .. } => {
-                self.replicate_to_state_machine_if_needed().await?;
+            Command::FollowerCommit { upto, .. } => {
+                self.apply_to_state_machine(upto.index).await?;
             }
             Command::ReplicateInputEntries { range } => {
                 if let Some(last) = range.clone().last() {
