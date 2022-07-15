@@ -118,6 +118,11 @@ where NID: NodeId
         self.leader = Some(Leader::new(em.clone(), em.learner_ids()));
     }
 
+    /// Return true if the currently effective membership is committed.
+    pub(crate) fn is_membership_committed(&self) -> bool {
+        self.committed >= self.membership_state.effective.log_id
+    }
+
     /// Update field `committed` if the input is greater.
     /// If updated, it returns the previous value in a `Some()`.
     pub(crate) fn update_committed(&mut self, committed: &Option<LogId<NID>>) -> Option<Option<LogId<NID>>> {

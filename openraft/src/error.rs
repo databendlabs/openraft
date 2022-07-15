@@ -55,6 +55,7 @@ where E: TryInto<Fatal<NID>> + Clone
     }
 }
 
+// TODO: not used
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum AppendEntriesError<NID: NodeId> {
@@ -368,9 +369,10 @@ pub struct QuorumNotEnough<NID: NodeId> {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
+#[error("the cluster is already undergoing a configuration change at log {membership_log_id:?}, committed log id: {committed:?}")]
 pub struct InProgress<NID: NodeId> {
-    pub membership_log_id: LogId<NID>,
+    pub committed: Option<LogId<NID>>,
+    pub membership_log_id: Option<LogId<NID>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
