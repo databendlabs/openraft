@@ -112,11 +112,6 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
 
     /// if or not need to replicate log entries or states, e.g., `commit_index` etc.
     need_to_replicate: bool,
-
-    /// The id of the server state in which this replication is spawned.
-    /// A message sent back to RaftCore has to have the same server_state_count.
-    /// Otherwise it means raft server state changed. The message will be ignored.
-    server_state_count: u64,
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
@@ -134,7 +129,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         network: N::Network,
         log_reader: S::LogReader,
         raft_core_tx: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
-        server_state_count: u64,
         span: tracing::Span,
     ) -> ReplicationStream<C::NodeId> {
         // other component to ReplicationStream
@@ -157,7 +151,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             heartbeat: interval(heartbeat_timeout),
             install_snapshot_timeout,
             need_to_replicate: true,
-            server_state_count,
         };
 
         let handle = tokio::spawn(this.main().instrument(span));
@@ -196,8 +189,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     let _ = self.raft_core_tx.send((
                         RaftMsg::RevertToFollower {
                             target: self.target,
-                            vote: h.higher,
-                            server_state_count: self.server_state_count,
+                            new_vote: h.higher,
+                            vote: self.vote,
                         },
                         tracing::debug_span!("CH"),
                     ));
@@ -349,7 +342,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                                 RaftMsg::UpdateReplicationMatched {
                                     target: self.target,
                                     result: Err(e.to_string()),
-                                    server_state_count: self.server_state_count,
+                                    vote: self.vote,
                                 },
                                 tracing::debug_span!("CH"),
                             ));
@@ -360,7 +353,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                                 RaftMsg::UpdateReplicationMatched {
                                     target: self.target,
                                     result: Err(e.to_string()),
-                                    server_state_count: self.server_state_count,
+                                    vote: self.vote,
                                 },
                                 tracing::debug_span!("CH"),
                             ));
@@ -378,7 +371,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     RaftMsg::UpdateReplicationMatched {
                         target: self.target,
                         result: Err(timeout_err.to_string()),
-                        server_state_count: self.server_state_count,
+                        vote: self.vote,
                     },
                     tracing::debug_span!("CH"),
                 ));
@@ -470,7 +463,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     // `self.matched < new_matched` implies new_matched can not be None.
                     // Thus unwrap is safe.
                     result: Ok(self.matched.unwrap()),
-                    server_state_count: self.server_state_count,
+                    vote: self.vote,
                 },
                 tracing::debug_span!("CH"),
             ));
@@ -686,7 +679,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     target: self.target,
                     must_include: snapshot_must_include,
                     tx,
-                    server_state_count: self.server_state_count,
+                    vote: self.vote,
                 },
                 tracing::debug_span!("CH"),
             ));

@@ -766,7 +766,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     /// Sent by a timer
     Elect {
         /// Which ServerState sent this message
-        server_state_count: u64,
+        vote: Vote<C::NodeId>,
     },
 
     /// Update the `matched` log id of a replication target.
@@ -780,7 +780,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         result: Result<LogId<C::NodeId>, String>,
 
         /// Which ServerState sent this message
-        server_state_count: u64,
+        vote: Vote<C::NodeId>,
     },
 
     /// An event indicating that the Raft node needs to revert to follower state.
@@ -791,10 +791,10 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         target: C::NodeId,
 
         /// The new vote observed.
-        vote: Vote<C::NodeId>,
+        new_vote: Vote<C::NodeId>,
 
         /// Which ServerState sent this message
-        server_state_count: u64,
+        vote: Vote<C::NodeId>,
     },
 
     /// An event from a replication stream requesting snapshot info.
@@ -809,7 +809,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         tx: oneshot::Sender<Snapshot<C::NodeId, S::SnapshotData>>,
 
         /// Which ServerState sent this message
-        server_state_count: u64,
+        vote: Vote<C::NodeId>,
     },
 
     /// Some critical error has taken place, and Raft needs to shutdown.
@@ -856,38 +856,40 @@ where
                 )
             }
             RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
-            RaftMsg::Elect { server_state_count } => {
+            RaftMsg::Elect {
+                vote: server_state_count,
+            } => {
                 format!("Elect sent by {:?}", server_state_count)
             }
             RaftMsg::UpdateReplicationMatched {
                 ref target,
                 ref result,
-                server_state_count,
+                ref vote,
             } => {
                 format!(
-                    "UpdateMatchIndex: target: {}, result: {:?}, server_state_count: {}",
-                    target, result, server_state_count
+                    "UpdateMatchIndex: target: {}, result: {:?}, server_state_vote: {}",
+                    target, result, vote
                 )
             }
             RaftMsg::RevertToFollower {
                 ref target,
+                ref new_vote,
                 ref vote,
-                server_state_count,
             } => {
                 format!(
-                    "RevertToFollower: target: {}, vote: {}, server_state_count: {}",
-                    target, vote, server_state_count
+                    "RevertToFollower: target: {}, vote: {}, server_state_vote: {}",
+                    target, new_vote, vote
                 )
             }
             RaftMsg::NeedsSnapshot {
                 ref target,
                 ref must_include,
-                server_state_count,
+                ref vote,
                 ..
             } => {
                 format!(
-                    "NeedsSnapshot: target: {}, must_include: {:?}, server_state_count: {}",
-                    target, must_include, server_state_count
+                    "NeedsSnapshot: target: {}, must_include: {:?}, server_state_vote: {}",
+                    target, must_include, vote
                 )
             }
             RaftMsg::ReplicationFatal => "ReplicationFatal".to_string(),
