@@ -141,13 +141,6 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     pub(crate) leader_data: Option<LeaderData<C>>,
 
-    /// Count the number of times ServerState switched.
-    ///
-    /// This count can be used to identify different ServerState.
-    /// One of the use case is to filter out messages send by other ServerState.
-    /// E.g., one timeout message sent by previous follower state should be discarded.
-    pub(crate) server_state_count: u64,
-
     /// The node's current snapshot state.
     pub(crate) snapshot_state: Option<SnapshotState<S::SnapshotData>>,
 
@@ -207,8 +200,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             engine: Engine::default(),
             leader_data: None,
-
-            server_state_count: 0,
 
             snapshot_state: None,
             snapshot_last_log_id: None,
@@ -329,8 +320,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // controllers and simply awaits the delegated loop to return, which will only take place
         // if some error has been encountered, or if a state change is required.
         loop {
-            self.server_state_count += 1;
-
             self.leader_data = None;
 
             match &self.engine.state.server_state {
@@ -1111,7 +1100,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.network.connect(target, target_node).await,
             self.storage.get_log_reader().await,
             self.tx_api.clone(),
-            self.server_state_count,
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
         )
     }
@@ -1325,16 +1313,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // TODO(xp): setting up a timer should be triggered by Engine and executed by Runtime,
         let timeout = if server_state == ServerState::Follower {
             let tx_api = self.tx_api.clone();
-            let state_count = self.server_state_count;
+            let vote = self.engine.state.vote;
 
             let t = crate::timer::Timeout::new(
                 move || {
-                    let _ = tx_api.send((
-                        RaftMsg::Elect {
-                            server_state_count: state_count,
-                        },
-                        tracing::Span::current(),
-                    ));
+                    let _ = tx_api.send((RaftMsg::Elect { vote }, Span::current()));
                 },
                 self.get_next_election_timeout() - Instant::now(),
             );
@@ -1516,27 +1499,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             RaftMsg::ExternalRequest { req } => {
                 req(&self.engine.state, &mut self.storage, &mut self.network);
             }
-            RaftMsg::Elect { server_state_count } => {
-                if self.does_server_state_count_match(server_state_count, "Elect") {
+            RaftMsg::Elect { vote } => {
+                if self.does_server_state_count_match(vote, "Elect") {
                     tracing::debug!("change to CandidateState");
                     self.set_target_state(ServerState::Candidate)
                 }
             }
-            RaftMsg::RevertToFollower {
-                target,
-                vote,
-                server_state_count,
-            } => {
-                if self.does_server_state_count_match(server_state_count, "RevertToFollower") {
-                    self.handle_revert_to_follower(target, vote).await?;
+            RaftMsg::RevertToFollower { target, new_vote, vote } => {
+                if self.does_server_state_count_match(vote, "RevertToFollower") {
+                    self.handle_revert_to_follower(target, new_vote).await?;
                 }
             }
-            RaftMsg::UpdateReplicationMatched {
-                target,
-                result,
-                server_state_count,
-            } => {
-                if self.does_server_state_count_match(server_state_count, "UpdateReplicationMatched") {
+            RaftMsg::UpdateReplicationMatched { target, result, vote } => {
+                if self.does_server_state_count_match(vote, "UpdateReplicationMatched") {
                     self.handle_update_matched(target, result).await?;
                 }
             }
@@ -1544,9 +1519,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 target: _,
                 must_include,
                 tx,
-                server_state_count,
+                vote,
             } => {
-                if self.does_server_state_count_match(server_state_count, "NeedsSnapshot") {
+                if self.does_server_state_count_match(vote, "NeedsSnapshot") {
                     self.handle_needs_snapshot(must_include, tx).await?;
                 }
             }
@@ -1632,12 +1607,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// If a message is sent by a previous server state but is received by current server state,
     /// it is a stale message and should be just ignored.
-    fn does_server_state_count_match(&self, server_state_count: u64, msg: impl Display) -> bool {
-        if server_state_count != self.server_state_count {
+    fn does_server_state_count_match(&self, vote: Vote<C::NodeId>, msg: impl Display) -> bool {
+        if vote != self.engine.state.vote {
             tracing::warn!(
-                "server state changed: msg sent by: {:?}; curr: {}; ignore when ({})",
-                server_state_count,
-                self.server_state_count,
+                "vote changed: msg sent by: {:?}; curr: {}; ignore when ({})",
+                vote,
+                self.engine.state.vote,
                 msg
             );
             false
