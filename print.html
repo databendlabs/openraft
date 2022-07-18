@@ -77,7 +77,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">2.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.3.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.3.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.4.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">2.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">4.3.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.4.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.4.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.5.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -1018,6 +1018,48 @@ needs.</p>
 <p>Build-snapshot to RaftCore: RaftCore spawn a separate task to build a snapshot
 asynchronously. When finished, the spawned task sends to RaftCore a message
 including the snapshot info.</p>
+</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="vote"><a class="header" href="#vote">Vote</a></h1>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>struct Vote&lt;NID: NodeId&gt; {
+    term: u64,
+    node_id: NID,
+    committed: bool
+}
+<span class="boring">}
+</span></code></pre></pre>
+<p><code>vote</code> in openraft defines the pseudo <strong>time</strong>(in other word, defines every <code>leader</code>) in a distributed consensus.
+Each <code>vote</code> can be thought as unique time point(in paxos the pseudo time is round-number or <code>rnd</code>, or <code>ballot-number</code>).</p>
+<p>In a standard raft, the corresponding concept is <code>term</code>.
+Although in standard raft a single <code>term</code> is not enough to define a <strong>time
+point</strong>.</p>
+<p>Every server state(leader, candidate, follower or learner) has a unique
+corresponding <code>vote</code>, thus <code>vote</code> can be used to identify different server
+states, i.e, if the <code>vote</code> changes, the server state must have changed.</p>
+<p>Note: follower and learner in openraft is almost the same. The only difference
+is a learner does not try to elect itself.</p>
+<p>Note: a follower will switch to a learner and vice versa without changing the <code>vote</code>, when a
+new membership log is replicated to a follower or learner.</p>
+<p>E.g.:</p>
+<ul>
+<li>
+<p>A vote <code>(term=1, node_id=2, committed=false)</code> is in a candidate state for
+node-2.</p>
+</li>
+<li>
+<p>A vote <code>(term=1, node_id=2, committed=true)</code> is in a leader state for
+node-2.</p>
+</li>
+<li>
+<p>A vote <code>(term=1, node_id=2, committed=false|true)</code> is in a follower/learner
+state for node-3.</p>
+</li>
+<li>
+<p>A vote <code>(term=1, node_id=1, committed=false|true)</code> is in another different
+follower/learner state for node-3.</p>
 </li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="replication"><a class="header" href="#replication">Replication</a></h1>
