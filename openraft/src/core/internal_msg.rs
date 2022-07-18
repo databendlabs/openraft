@@ -1,5 +1,4 @@
 use crate::core::snapshot_state::SnapshotUpdate;
-use crate::raft::VoteResponse;
 use crate::NodeId;
 
 /// Message for communication between internal tasks.
@@ -8,5 +7,4 @@ use crate::NodeId;
 #[derive(Debug, Clone)]
 pub(crate) enum InternalMessage<NID: NodeId> {
     SnapshotUpdate(SnapshotUpdate<NID>),
-    VoteResponse { target: NID, vote_resp: VoteResponse<NID> },
 }
