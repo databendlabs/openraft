@@ -10,8 +10,6 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use maplit::btreeset;
-use rand::thread_rng;
-use rand::Rng;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -35,6 +33,7 @@ use crate::core::InternalMessage;
 use crate::core::ServerState;
 use crate::core::SnapshotState;
 use crate::core::SnapshotUpdate;
+use crate::core::VoteWiseTime;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
@@ -78,7 +77,6 @@ use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
 use crate::storage::Snapshot;
 use crate::storage::StorageHelper;
-use crate::timer::RaftTimer;
 use crate::versioned::Updatable;
 use crate::versioned::Versioned;
 use crate::ChangeMembers;
@@ -152,8 +150,8 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The last time a heartbeat was received.
     pub(crate) last_heartbeat: Option<Instant>,
 
-    /// The duration until the next election timeout.
-    pub(crate) next_election_timeout: Option<Instant>,
+    /// The time to elect if a follower does not receive any append-entry message.
+    pub(crate) next_election_time: VoteWiseTime<C::NodeId>,
 
     tx_internal: mpsc::Sender<InternalMessage<C::NodeId>>,
 
@@ -204,7 +202,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             snapshot_state: None,
             snapshot_last_log_id: None,
             last_heartbeat: None,
-            next_election_timeout: None,
+            next_election_time: VoteWiseTime::new(Vote::default(), Instant::now() + Duration::from_secs(86400)),
 
             tx_internal,
             rx_internal,
@@ -305,12 +303,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         };
 
         if self.engine.state.server_state == ServerState::Follower {
-            // Here we use a 30 second overhead on the initial next_election_timeout. This is because we need
-            // to ensure that restarted nodes don't disrupt a stable cluster by timing out and driving up their
-            // term before network communication is established.
-            let inst =
-                Instant::now() + Duration::from_millis(thread_rng().gen_range(1..3) * self.config.heartbeat_interval);
-            self.next_election_timeout = Some(inst);
+            // To ensure that restarted nodes don't disrupt a stable cluster.
+            self.set_next_election_time(false);
         }
 
         tracing::debug!("id={} target_state: {:?}", self.id, self.engine.state.server_state);
@@ -805,29 +799,42 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Get the next election timeout, generating a new value if not set.
+    /// TODO: get() should not have a side effect of updating the timer.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn get_next_election_timeout(&mut self) -> Instant {
-        match self.next_election_timeout {
-            Some(inst) => inst,
-            None => {
-                let t = Duration::from_millis(self.config.new_rand_election_timeout());
-                tracing::debug!("create election timeout after: {:?}", t);
-                let inst = Instant::now() + t;
-                self.next_election_timeout = Some(inst);
-                inst
-            }
+    pub(crate) fn get_next_election_time(&mut self) -> Instant {
+        let current_vote = &self.engine.state.vote;
+
+        let time = self.next_election_time.get_time(current_vote);
+        if let Some(t) = time {
+            t
+        } else {
+            let t = Duration::from_millis(self.config.new_rand_election_timeout());
+            tracing::debug!("create election timeout after: {:?}", t);
+
+            let t = Instant::now() + t;
+
+            self.next_election_time = VoteWiseTime::new(*current_vote, t);
+
+            t
         }
     }
 
     /// Set a value for the next election timeout.
     #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn set_next_election_time(&mut self) {
+    pub(crate) fn set_next_election_time(&mut self, can_be_leader: bool) {
         let now = Instant::now();
 
-        let t = Duration::from_millis(self.config.new_rand_election_timeout());
-        tracing::debug!("update election timeout after: {:?}", t);
+        let mut t = Duration::from_millis(self.config.new_rand_election_timeout());
+        if !can_be_leader {
+            t *= 2;
+        }
+        tracing::debug!(
+            "update election timeout after: {:?}, can_be_leader: {}",
+            t,
+            can_be_leader
+        );
 
-        self.next_election_timeout = Some(now + t);
+        self.next_election_time = VoteWiseTime::new(self.engine.state.vote, now + t);
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -844,9 +851,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         match msg {
             InternalMessage::SnapshotUpdate(update) => {
                 self.update_snapshot_state(update);
-            }
-            InternalMessage::VoteResponse { target, vote_resp } => {
-                self.handle_vote_resp(vote_resp, target).await?;
             }
         }
         Ok(())
@@ -1197,7 +1201,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) async fn leader_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
         // Setup state as leader.
         self.last_heartbeat = None;
-        self.next_election_timeout = None;
         debug_assert!(self.engine.state.vote.committed);
 
         // Spawn replication streams for followers and learners.
@@ -1273,7 +1276,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             self.flush_metrics();
 
-            self.set_next_election_time();
+            self.set_next_election_time(true);
 
             self.engine.elect();
             self.run_engine_commands::<Entry<C>>(&[]).await?;
@@ -1283,7 +1286,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     return Ok(());
                 }
 
-                let timeout_fut = sleep_until(self.get_next_election_timeout());
+                let timeout_fut = sleep_until(self.get_next_election_time());
 
                 tokio::select! {
                     _ = timeout_fut => {
@@ -1310,34 +1313,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // report the new state before enter the loop
         self.report_metrics(Update::Update(None));
 
-        // TODO(xp): setting up a timer should be triggered by Engine and executed by Runtime,
-        let timeout = if server_state == ServerState::Follower {
-            let tx_api = self.tx_api.clone();
-            let vote = self.engine.state.vote;
-
-            let t = crate::timer::Timeout::new(
-                move || {
-                    let _ = tx_api.send((RaftMsg::Elect { vote }, Span::current()));
-                },
-                self.get_next_election_timeout() - Instant::now(),
-            );
-
-            Some(t)
-        } else {
-            None
-        };
-
         loop {
             if self.engine.state.server_state != server_state {
                 return Ok(());
             }
 
             self.flush_metrics();
-
-            if let Some(t) = &timeout {
-                // timeout is updated as heartbeats are received
-                t.update_timeout(self.get_next_election_timeout() - Instant::now());
-            }
 
             tokio::select! {
                 Some((msg, span)) = self.rx_api.recv() => {
@@ -1356,6 +1337,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) {
         let members = self.engine.state.membership_state.effective.voter_ids();
 
+        let vote = vote_req.vote;
+
         for target in members {
             if target == self.id {
                 continue;
@@ -1364,15 +1347,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             let req = vote_req.clone();
             let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
             let mut network = self.network.connect(target, target_node.as_ref()).await;
-            let tx_inner = self.tx_internal.clone();
+            let tx = self.tx_api.clone();
 
             let _ = tokio::spawn(
                 async move {
                     let res = network.send_vote(req).await;
 
                     match res {
-                        Ok(vote_resp) => {
-                            let _ = tx_inner.send(InternalMessage::VoteResponse { target, vote_resp }).await;
+                        Ok(resp) => {
+                            let _ = tx.send((RaftMsg::VoteResponse { target, resp, vote }, Span::current()));
                         }
                         Err(err) => tracing::error!({error=%err, target=display(target)}, "while requesting vote"),
                     }
@@ -1457,6 +1440,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             RaftMsg::RequestVote { rpc, tx } => {
                 let _ = tx.send(self.handle_vote_request(rpc).await.extract_fatal()?);
             }
+            RaftMsg::VoteResponse { target, resp, vote } => {
+                if self.does_server_state_count_match(vote, "RevertToFollower") {
+                    self.handle_vote_resp(resp, target).await?;
+                }
+            }
             RaftMsg::InstallSnapshot { rpc, tx } => {
                 let _ = tx.send(self.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
@@ -1499,22 +1487,40 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             RaftMsg::ExternalRequest { req } => {
                 req(&self.engine.state, &mut self.storage, &mut self.network);
             }
-            RaftMsg::Elect { vote } => {
-                if self.does_server_state_count_match(vote, "Elect") {
-                    tracing::debug!("change to CandidateState");
-                    self.set_target_state(ServerState::Candidate)
+            RaftMsg::Tick { i } => {
+                // check every timer
+
+                tracing::debug!("received tick: {}", i);
+
+                let current_vote = &self.engine.state.vote;
+
+                // Follower timer: next election
+                if let Some(t) = self.next_election_time.get_time(current_vote) {
+                    #[allow(clippy::collapsible_else_if)]
+                    if Instant::now() < t {
+                        // timeout has not expired.
+                    } else {
+                        if self.engine.state.membership_state.effective.is_voter(&self.id) {
+                            self.set_target_state(ServerState::Candidate)
+                        } else {
+                            // Node is switched to learner after setting up next election time.
+                        }
+                    }
                 }
             }
+
             RaftMsg::RevertToFollower { target, new_vote, vote } => {
                 if self.does_server_state_count_match(vote, "RevertToFollower") {
                     self.handle_revert_to_follower(target, new_vote).await?;
                 }
             }
+
             RaftMsg::UpdateReplicationMatched { target, result, vote } => {
                 if self.does_server_state_count_match(vote, "UpdateReplicationMatched") {
                     self.handle_update_matched(target, result).await?;
                 }
             }
+
             RaftMsg::NeedsSnapshot {
                 target: _,
                 must_include,
@@ -1726,8 +1732,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::SaveVote { vote } => {
                 self.storage.save_vote(vote).await?;
             }
-            Command::InstallElectionTimer { .. } => {
-                self.set_next_election_time();
+            Command::InstallElectionTimer { can_be_leader } => {
+                self.set_next_election_time(*can_be_leader);
             }
             Command::RejectElection {} => {
                 self.reject_election_for_a_while();

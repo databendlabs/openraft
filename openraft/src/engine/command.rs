@@ -64,7 +64,12 @@ pub(crate) enum Command<NID: NodeId> {
 
     /// Install a timer to trigger an election, e.g., calling `Engine::elect()` after some `timeout` which is decided
     /// by the runtime. An already installed timer should be cleared.
-    InstallElectionTimer {},
+    InstallElectionTimer {
+        /// When a candidate fails to elect, it falls back to follower.
+        /// If many enough greater last-log-ids are seen, then this node can never become a leader.
+        /// Thus give it a longer sleep time before next election.
+        can_be_leader: bool,
+    },
 
     /// Reject election by other candidate for a while.
     /// The interval is decided by the runtime.

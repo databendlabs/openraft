@@ -141,7 +141,7 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer {},
+            Command::InstallElectionTimer { can_be_leader: false },
             Command::RejectElection {},
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
@@ -204,7 +204,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer {},
+            Command::InstallElectionTimer { can_be_leader: false },
             Command::RejectElection {},
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
@@ -273,7 +273,7 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer {},
+            Command::InstallElectionTimer { can_be_leader: false },
             Command::RejectElection {},
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
@@ -337,7 +337,7 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer {},
+            Command::InstallElectionTimer { can_be_leader: false },
             Command::RejectElection {},
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)

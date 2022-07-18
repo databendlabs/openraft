@@ -203,27 +203,8 @@ impl<NID: NodeId> Engine<NID> {
             Some(l) => l,
         };
 
-        // A response of an old vote request. ignore.
         if resp.vote < self.state.vote {
-            return;
-        }
-
-        // If peer's vote is greater than current vote, revert to follower state.
-        if resp.vote > self.state.vote {
-            // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `vote`.
-            //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
-            //           election.
-            let node_role = self.state.membership_state.effective.get_node_role(&self.id);
-            if node_role == Some(NodeRole::Voter) {
-                self.set_server_state(ServerState::Follower);
-            } else {
-                self.set_server_state(ServerState::Learner);
-            }
-
-            self.leave_leader();
-            self.state.vote = resp.vote;
-            self.push_command(Command::SaveVote { vote: self.state.vote });
-            return;
+            debug_assert!(!resp.vote_granted);
         }
 
         if resp.vote_granted {
@@ -242,9 +223,33 @@ impl<NID: NodeId> Engine<NID> {
 
                 self.set_server_state(ServerState::Leader);
             }
+            return;
         }
 
-        // Seen a higher log. Keep waiting.
+        // vote is rejected:
+
+        let node_role = self.state.membership_state.effective.get_node_role(&self.id);
+        debug_assert_eq!(Some(NodeRole::Voter), node_role);
+
+        // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `vote`.
+        //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
+        //           election.
+        self.set_server_state(ServerState::Follower);
+        self.leave_leader();
+
+        // If peer's vote is greater than current vote, revert to follower state.
+        if resp.vote > self.state.vote {
+            self.state.vote = resp.vote;
+            self.push_command(Command::SaveVote { vote: self.state.vote });
+        }
+
+        // Seen a higher log.
+        if resp.last_log_id > self.state.last_log_id() {
+            // TODO: if my log is greater, install a smaller election timeout.
+            self.push_command(Command::InstallElectionTimer { can_be_leader: false });
+        } else {
+            self.push_command(Command::InstallElectionTimer { can_be_leader: true });
+        }
     }
 
     /// Append new log entries by a leader.
@@ -968,8 +973,11 @@ impl<NID: NodeId> Engine<NID> {
             return Err(RejectVoteRequest::ByVote(self.state.vote));
         }
 
+        let mut can_be_leader = true;
+
         if vote.committed {
             // OK: a quorum has already granted this vote, then I'll grant it too.
+            can_be_leader = false;
         } else {
             // Grant non-committed vote
             if last_log_id >= &self.state.last_log_id() {
@@ -985,7 +993,7 @@ impl<NID: NodeId> Engine<NID> {
 
         // There is an active leader or an active candidate.
         // Do not elect for a while.
-        self.push_command(Command::InstallElectionTimer {});
+        self.push_command(Command::InstallElectionTimer { can_be_leader });
         if vote.committed {
             // There is an active leader, reject election for a while.
             self.push_command(Command::RejectElection {});

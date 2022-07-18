@@ -18,6 +18,7 @@ use crate::config::Config;
 use crate::core::replication_lag;
 use crate::core::Expectation;
 use crate::core::RaftCore;
+use crate::core::Tick;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
 use crate::error::CheckIsLeaderError;
@@ -182,7 +183,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
 
-        let raft_handle = RaftCore::spawn(
+        let _tick_handle = Tick::spawn(Duration::from_millis(config.heartbeat_interval * 3 / 2), tx_api.clone());
+
+        let core_handle = RaftCore::spawn(
             id,
             config.clone(),
             network,
@@ -201,7 +204,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
             marker_n: std::marker::PhantomData,
             marker_s: std::marker::PhantomData,
-            core_state: Mutex::new(CoreState::Running(raft_handle)),
+            core_state: Mutex::new(CoreState::Running(core_handle)),
         };
         Self { inner: Arc::new(inner) }
     }
@@ -717,6 +720,13 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         rpc: VoteRequest<C::NodeId>,
         tx: RaftRespTx<VoteResponse<C::NodeId>, VoteError<C::NodeId>>,
     },
+    VoteResponse {
+        target: C::NodeId,
+        resp: VoteResponse<C::NodeId>,
+
+        /// Which ServerState sent this message. It is also the requested vote.
+        vote: Vote<C::NodeId>,
+    },
     InstallSnapshot {
         rpc: InstallSnapshotRequest<C>,
         tx: RaftRespTx<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>>,
@@ -762,11 +772,10 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         req: Box<dyn FnOnce(&RaftState<C::NodeId>, &mut S, &mut N) + Send + 'static>,
     },
 
-    /// Trigger an election
-    /// Sent by a timer
-    Elect {
-        /// Which ServerState sent this message
-        vote: Vote<C::NodeId>,
+    /// A tick event to wake up RaftCore to check timeout etc.
+    Tick {
+        /// ith tick
+        i: usize,
     },
 
     /// Update the `matched` log id of a replication target.
@@ -831,6 +840,9 @@ where
             RaftMsg::RequestVote { rpc, .. } => {
                 format!("RequestVote: {}", rpc.summary())
             }
+            RaftMsg::VoteResponse { target, resp, vote } => {
+                format!("VoteResponse: from: {}: {}, res-vote: {}", target, resp.summary(), vote)
+            }
             RaftMsg::InstallSnapshot { rpc, .. } => {
                 format!("InstallSnapshot: {}", rpc.summary())
             }
@@ -856,10 +868,8 @@ where
                 )
             }
             RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
-            RaftMsg::Elect {
-                vote: server_state_count,
-            } => {
-                format!("Elect sent by {:?}", server_state_count)
+            RaftMsg::Tick { i } => {
+                format!("Tick {}", i)
             }
             RaftMsg::UpdateReplicationMatched {
                 ref target,

@@ -108,7 +108,7 @@ fn test_internal_handle_vote_req_committed_vote() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             //
-            Command::InstallElectionTimer {},
+            Command::InstallElectionTimer { can_be_leader: false },
             Command::RejectElection {},
             Command::SaveVote {
                 vote: Vote::new_committed(3, 2)
@@ -149,7 +149,7 @@ fn test_internal_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow:
     assert_eq!(
         vec![
             //
-            Command::InstallElectionTimer {},
+            Command::InstallElectionTimer { can_be_leader: true },
             Command::UpdateServerState {
                 server_state: ServerState::Follower
             }
@@ -184,7 +184,7 @@ fn test_internal_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer {},
+            Command::InstallElectionTimer { can_be_leader: true },
             Command::SaveVote { vote: Vote::new(3, 1) },
             Command::UpdateServerState {
                 server_state: ServerState::Follower
@@ -212,7 +212,7 @@ fn test_internal_handle_vote_req_granted_follower_learner_does_not_emit_update_s
         assert_eq!(
             vec![
                 //
-                Command::InstallElectionTimer {},
+                Command::InstallElectionTimer { can_be_leader: true },
                 Command::SaveVote { vote: Vote::new(3, 1) },
             ],
             eng.commands
