@@ -267,6 +267,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
         self.snapshot_last_log_id = self.engine.state.last_applied;
+        self.engine.update_snapshot_last_log(self.snapshot_last_log_id);
         self.engine.metrics_flags.set_data_changed();
 
         Ok(())

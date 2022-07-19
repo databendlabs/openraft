@@ -35,6 +35,10 @@ pub(crate) struct EngineConfig {
 
     /// The minimal number of applied logs to purge in a batch.
     pub(crate) purge_batch_size: u64,
+
+    /// whether to keep applied log that are not included in snapshots.
+    /// false by default
+    pub(crate) keep_unsnapshoted_log: bool,
 }
 
 impl Default for EngineConfig {
@@ -42,6 +46,7 @@ impl Default for EngineConfig {
         Self {
             max_applied_log_to_keep: 1000,
             purge_batch_size: 256,
+            keep_unsnapshoted_log: false,
         }
     }
 }
@@ -64,6 +69,9 @@ pub(crate) struct Engine<NID: NodeId> {
 
     pub(crate) config: EngineConfig,
 
+    /// Last log included in snapshot
+    pub(crate) snapshot_last_log_id: Option<LogId<NID>>,
+
     /// The state of this raft node.
     pub(crate) state: RaftState<NID>,
 
@@ -79,6 +87,7 @@ impl<NID: NodeId> Engine<NID> {
         Self {
             id,
             config,
+            snapshot_last_log_id: None,
             state: init_state.clone(),
             metrics_flags: MetricsChangeFlags::default(),
             commands: vec![],
@@ -543,7 +552,18 @@ impl<NID: NodeId> Engine<NID> {
         let max_keep = self.config.max_applied_log_to_keep;
         let batch_size = self.config.purge_batch_size;
 
-        let purge_end = last_applied.next_index().saturating_sub(max_keep);
+        let mut purge_end = last_applied.next_index().saturating_sub(max_keep);
+
+        if self.config.keep_unsnapshoted_log {
+            if let Some(id) = self.snapshot_last_log_id {
+                tracing::debug!("the very last log included in snapshot: {}", id);
+                // logs not included in snapshot should be kept.
+                purge_end = (id.index + 1).min(purge_end);
+            } else {
+                tracing::debug!("no snapshot, abort purge");
+                return None;
+            }
+        }
 
         tracing::debug!(
             last_applied = debug(last_applied),
@@ -740,6 +760,9 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     // --- Draft API ---
+    pub fn update_snapshot_last_log(&mut self, id: Option<LogId<NID>>) {
+        self.snapshot_last_log_id = id;
+    }
 
     // // --- app API ---
     //

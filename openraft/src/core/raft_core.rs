@@ -178,8 +178,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tx_metrics: watch::Sender<RaftMetrics<C::NodeId>>,
         rx_shutdown: oneshot::Receiver<()>,
     ) -> JoinHandle<Result<(), Fatal<C::NodeId>>> {
-        //
-
         let (tx_internal, rx_internal) = mpsc::channel(1024);
 
         let span = tracing::span!(
@@ -253,6 +251,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.engine = Engine::new(self.id, &state, EngineConfig {
             max_applied_log_to_keep: self.config.max_applied_log_to_keep,
             purge_batch_size: self.config.purge_batch_size,
+            keep_unsnapshoted_log: self.config.keep_unsnapshoted_log,
         });
 
         self.engine.state.last_applied = state.last_applied;
@@ -264,6 +263,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
             self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
+            self.engine.update_snapshot_last_log(self.snapshot_last_log_id);
             self.engine.metrics_flags.set_data_changed();
         }
 
@@ -861,6 +861,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) fn update_snapshot_state(&mut self, update: SnapshotUpdate<C::NodeId>) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
             self.snapshot_last_log_id = Some(log_id);
+            self.engine.update_snapshot_last_log(Some(log_id));
             self.engine.metrics_flags.set_data_changed();
         }
         // If snapshot state is anything other than streaming, then drop it.

@@ -11,7 +11,7 @@ use crate::quorum::Joint;
 fn progress_update_01234_567(b: &mut Bencher) {
     let membership: Vec<Vec<u64>> = vec![vec![0, 1, 2, 3, 4], vec![5, 6, 7]];
     let quorum_set = Joint::from(membership);
-    let mut progress = VecProgress::<u64, u64, _>::new(quorum_set);
+    let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, 0..=7);
 
     let mut id = 0u64;
     let mut values = vec![0, 1, 2, 3, 4, 5, 6, 7];
