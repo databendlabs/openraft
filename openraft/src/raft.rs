@@ -12,7 +12,7 @@ use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tokio::task::JoinHandle;
-use tracing::Span;
+use tracing::Level;
 
 use crate::config::Config;
 use crate::core::replication_lag;
@@ -123,7 +123,7 @@ enum CoreState<NID: NodeId> {
 struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     id: C::NodeId,
     config: Arc<Config>,
-    tx_api: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
+    tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
     rx_metrics: watch::Receiver<RaftMetrics<C::NodeId>>,
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
@@ -544,11 +544,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<C, N, S>, rx: RaftRespRx<T, E>) -> Result<T, E>
     where E: From<Fatal<C::NodeId>> {
-        let span = tracing::Span::current();
+        let sum = if tracing::enabled!(Level::DEBUG) {
+            None
+        } else {
+            Some(mes.summary())
+        };
 
-        let sum = if span.is_disabled() { None } else { Some(mes.summary()) };
-
-        let send_res = self.inner.tx_api.send((mes, span));
+        let send_res = self.inner.tx_api.send(mes);
 
         if send_res.is_err() {
             let fatal = self.get_core_stopped_error("sending tx to RaftCore", sum).await;
@@ -634,10 +636,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
     pub fn external_request<F: FnOnce(&RaftState<C::NodeId>, &mut S, &mut N) + Send + 'static>(&self, req: F) {
-        let _ignore_error = self.inner.tx_api.send((
-            RaftMsg::ExternalRequest { req: Box::new(req) },
-            tracing::span::Span::none(), // fire-and-forget, so no span
-        ));
+        let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalRequest { req: Box::new(req) });
     }
 
     /// Get a handle to the metrics channel.
