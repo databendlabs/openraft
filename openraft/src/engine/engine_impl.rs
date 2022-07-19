@@ -134,6 +134,7 @@ impl<NID: NodeId> Engine<NID> {
     pub(crate) fn elect(&mut self) {
         // init election
         self.enter_leader();
+        // TODO: this should be part of the job of enter_leader()
         self.state.vote = Vote::new(self.state.vote.term + 1, self.id);
 
         // Safe unwrap()
@@ -172,7 +173,12 @@ impl<NID: NodeId> Engine<NID> {
             "Engine::handle_vote_req"
         );
 
-        let res = self.internal_handle_vote_req(&req.vote, &req.last_log_id);
+        let res = if req.last_log_id >= self.state.last_log_id() {
+            self.internal_handle_vote_change(&req.vote)
+        } else {
+            Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id()))
+        };
+
         let vote_granted = if let Err(reject) = res {
             tracing::debug!(
                 req = display(req.summary()),
@@ -358,7 +364,7 @@ impl<NID: NodeId> Engine<NID> {
             "local state"
         );
 
-        let res = self.internal_handle_vote_req(vote, &None);
+        let res = self.internal_handle_vote_change(vote);
         if let Err(rejected) = res {
             return rejected.into();
         }
@@ -982,11 +988,7 @@ impl<NID: NodeId> Engine<NID> {
     ///
     /// If the `vote` is committed, i.e., it is granted by a quorum, then the vote holder, e.g. the leader already has
     /// all of the committed logs, thus in such case, we do not need to check `last_log_id`.
-    pub(crate) fn internal_handle_vote_req(
-        &mut self,
-        vote: &Vote<NID>,
-        last_log_id: &Option<LogId<NID>>,
-    ) -> Result<(), RejectVoteRequest<NID>> {
+    pub(crate) fn internal_handle_vote_change(&mut self, vote: &Vote<NID>) -> Result<(), RejectVoteRequest<NID>> {
         // Partial ord compare:
         // Vote does not has to be total ord.
         // `!(a >= b)` does not imply `a < b`.
@@ -996,23 +998,12 @@ impl<NID: NodeId> Engine<NID> {
             return Err(RejectVoteRequest::ByVote(self.state.vote));
         }
 
-        let mut can_be_leader = true;
-
-        if vote.committed {
-            // OK: a quorum has already granted this vote, then I'll grant it too.
-            can_be_leader = false;
-        } else {
-            // Grant non-committed vote
-            if last_log_id >= &self.state.last_log_id() {
-                // OK
-            } else {
-                return Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id()));
-            }
-        };
-
-        tracing::debug!(%vote, ?last_log_id, "grant vote request" );
+        tracing::debug!(%vote, "grant vote" );
 
         // Grant the vote
+
+        // If the vote is granted by a quorum, this node should not try to elect.
+        let can_be_leader = !vote.committed;
 
         // There is an active leader or an active candidate.
         // Do not elect for a while.
@@ -1048,12 +1039,12 @@ impl<NID: NodeId> Engine<NID> {
     #[tracing::instrument(level = "debug", skip_all)]
     fn calc_server_state(&self) -> ServerState {
         tracing::debug!(
-            is_member = display(self.is_member()),
+            is_member = display(self.is_voter()),
             is_leader = display(self.is_leader()),
             is_becoming_leader = display(self.is_becoming_leader()),
             "states"
         );
-        if self.is_member() {
+        if self.is_voter() {
             if self.is_leader() {
                 ServerState::Leader
             } else if self.is_becoming_leader() {
@@ -1066,12 +1057,13 @@ impl<NID: NodeId> Engine<NID> {
         }
     }
 
-    fn is_member(&self) -> bool {
-        self.state.membership_state.is_member(&self.id)
+    fn is_voter(&self) -> bool {
+        self.state.membership_state.is_voter(&self.id)
     }
 
     /// The node is candidate or leader
     fn is_becoming_leader(&self) -> bool {
+        // self.state.vote.node_id == self.id
         self.state.leader.is_some()
     }
 

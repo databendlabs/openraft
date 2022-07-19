@@ -35,7 +35,7 @@ pub struct MembershipState<NID: NodeId> {
 }
 
 impl<NID: NodeId> MembershipState<NID> {
-    pub(crate) fn is_member(&self, id: &NID) -> bool {
+    pub(crate) fn is_voter(&self, id: &NID) -> bool {
         self.effective.membership.is_voter(id)
     }
 }
