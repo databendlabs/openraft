@@ -381,7 +381,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             }
             AppendEntriesResponse::HigherVote(vote) => {
                 assert!(vote > self.vote, "higher vote should be greater than leader's vote");
-                tracing::debug!(%vote, "append entries faileCeverting to follower");
+                tracing::debug!(%vote, "append entries failed. converting to follower");
 
                 Err(ReplicationError::HigherVote(HigherVote {
                     higher: vote,
@@ -389,7 +389,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 }))
             }
             AppendEntriesResponse::Conflict => {
-                assert!(conflict.is_some(), "prev_log_id=None never conflict");
+                debug_assert!(conflict.is_some(), "prev_log_id=None never conflict");
                 let conflict = conflict.unwrap();
 
                 // Continue to find the matching log id on follower.
@@ -405,15 +405,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
-    #[tracing::instrument(level = "trace", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
-    fn check_consecutive(&self, last_purged: Option<LogId<C::NodeId>>) -> Result<(), ReplicationError<C::NodeId>> {
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn check_consecutive(&self, last_purged: Option<LogId<C::NodeId>>) -> Result<(), LackEntry<C::NodeId>> {
         tracing::debug!(?last_purged, ?self.max_possible_matched_index, "check_consecutive");
 
         if last_purged.index() > self.max_possible_matched_index {
-            return Err(ReplicationError::LackEntry(LackEntry {
+            return Err(LackEntry {
                 index: self.max_possible_matched_index,
                 last_purged_log_id: last_purged,
-            }));
+            });
         }
 
         Ok(())
@@ -493,17 +493,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 Some(x) => x,
             };
 
-            self.process_raft_event(event)?
+            self.process_raft_event(event)
         }
 
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
-    pub fn process_raft_event(
-        &mut self,
-        event: UpdateReplication<C::NodeId>,
-    ) -> Result<(), ReplicationError<C::NodeId>> {
+    #[tracing::instrument(level = "trace", skip_all)]
+    pub fn process_raft_event(&mut self, event: UpdateReplication<C::NodeId>) {
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
         if event.committed > self.committed {
@@ -514,8 +511,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         if event.last_log_id.index() > self.matched.index() {
             self.need_to_replicate = true;
         }
-
-        Ok(())
     }
 }
 
@@ -614,7 +609,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 event_span = self.repl_rx.recv() => {
                     match event_span {
                         Some(event) => {
-                            self.process_raft_event(event)?;
+                            self.process_raft_event(event);
                             self.try_drain_raft_rx().await?;
                         },
                         None => {
@@ -689,7 +684,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     event_opt = self.repl_rx.recv() =>  {
                         match event_opt {
                             Some(event) => {
-                                self.process_raft_event(event)?;
+                                self.process_raft_event(event);
                                 self.try_drain_raft_rx().await?;
                             },
                             None => {
