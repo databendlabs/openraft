@@ -52,7 +52,7 @@ where
 {
     interval: Duration,
 
-    tx: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>,
+    tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
 }
 
 impl<C, N, S> Tick<C, N, S>
@@ -61,7 +61,7 @@ where
     N: RaftNetworkFactory<C>,
     S: RaftStorage<C>,
 {
-    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<(RaftMsg<C, N, S>, Span)>) -> JoinHandle<()> {
+    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>) -> JoinHandle<()> {
         let t = Tick { interval, tx };
 
         tokio::spawn(
@@ -73,7 +73,7 @@ where
                     let at = Instant::now() + t.interval;
                     sleep_until(at).await;
 
-                    let send_res = t.tx.send((RaftMsg::Tick { i }, tracing::span!(Level::DEBUG, "tick")));
+                    let send_res = t.tx.send(RaftMsg::Tick { i });
                     if let Err(_e) = send_res {
                         tracing::info!("Tick fails to send, receiving end quit.");
                     } else {
