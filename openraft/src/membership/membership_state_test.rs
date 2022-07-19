@@ -30,13 +30,13 @@ fn test_membership_state_is_member() -> anyhow::Result<()> {
         effective: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m123_345())),
     };
 
-    assert!(!x.is_member(&0));
-    assert!(x.is_member(&1));
-    assert!(x.is_member(&2));
-    assert!(x.is_member(&3));
-    assert!(x.is_member(&4));
-    assert!(x.is_member(&5));
-    assert!(!x.is_member(&6));
+    assert!(!x.is_voter(&0));
+    assert!(x.is_voter(&1));
+    assert!(x.is_voter(&2));
+    assert!(x.is_voter(&3));
+    assert!(x.is_voter(&4));
+    assert!(x.is_voter(&5));
+    assert!(!x.is_voter(&6));
 
     Ok(())
 }

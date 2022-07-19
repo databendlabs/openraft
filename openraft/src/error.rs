@@ -55,7 +55,7 @@ where E: TryInto<Fatal<NID>> + Clone
     }
 }
 
-// TODO: not used
+// TODO: not used, remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum AppendEntriesError<NID: NodeId> {
@@ -63,6 +63,7 @@ pub enum AppendEntriesError<NID: NodeId> {
     Fatal(#[from] Fatal<NID>),
 }
 
+// TODO: not used, remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum VoteError<NID: NodeId> {
@@ -70,6 +71,7 @@ pub enum VoteError<NID: NodeId> {
     Fatal(#[from] Fatal<NID>),
 }
 
+// TODO: remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum InstallSnapshotError<NID: NodeId> {
