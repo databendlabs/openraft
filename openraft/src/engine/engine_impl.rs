@@ -69,7 +69,9 @@ pub(crate) struct Engine<NID: NodeId> {
 
     pub(crate) config: EngineConfig,
 
-    /// Last log included in snapshot
+    /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
+    ///
+    /// This is primarily used in making a determination on when a compaction job needs to be triggered.
     pub(crate) snapshot_last_log_id: Option<LogId<NID>>,
 
     /// The state of this raft node.
@@ -561,14 +563,9 @@ impl<NID: NodeId> Engine<NID> {
         let mut purge_end = last_applied.next_index().saturating_sub(max_keep);
 
         if self.config.keep_unsnapshoted_log {
-            if let Some(id) = self.snapshot_last_log_id {
-                tracing::debug!("the very last log included in snapshot: {}", id);
-                // logs not included in snapshot should be kept.
-                purge_end = (id.index + 1).min(purge_end);
-            } else {
-                tracing::debug!("no snapshot, abort purge");
-                return None;
-            }
+            let idx = self.snapshot_last_log_id.next_index();
+            tracing::debug!("the very last log included in snapshots: {}", idx);
+            purge_end = idx.min(purge_end);
         }
 
         tracing::debug!(
@@ -766,9 +763,6 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     // --- Draft API ---
-    pub fn update_snapshot_last_log(&mut self, id: Option<LogId<NID>>) {
-        self.snapshot_last_log_id = id;
-    }
 
     // // --- app API ---
     //

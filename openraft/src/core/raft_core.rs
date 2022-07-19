@@ -142,11 +142,6 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The node's current snapshot state.
     pub(crate) snapshot_state: Option<SnapshotState<S::SnapshotData>>,
 
-    /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
-    ///
-    /// This is primarily used in making a determination on when a compaction job needs to be triggered.
-    pub(crate) snapshot_last_log_id: Option<LogId<C::NodeId>>,
-
     /// The last time a heartbeat was received.
     pub(crate) last_heartbeat: Option<Instant>,
 
@@ -198,7 +193,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             leader_data: None,
 
             snapshot_state: None,
-            snapshot_last_log_id: None,
             last_heartbeat: None,
             next_election_time: VoteWiseTime::new(Vote::default(), Instant::now() + Duration::from_secs(86400)),
 
@@ -262,8 +256,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
-            self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
-            self.engine.update_snapshot_last_log(self.snapshot_last_log_id);
+            self.engine.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
             self.engine.metrics_flags.set_data_changed();
         }
 
@@ -734,7 +727,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             current_term: self.engine.state.vote.term,
             last_log_index: self.engine.state.last_log_id().map(|id| id.index),
             last_applied: self.engine.state.last_applied,
-            snapshot: self.snapshot_last_log_id,
+            snapshot: self.engine.snapshot_last_log_id,
 
             // --- cluster ---
             state: self.engine.state.server_state,
@@ -862,8 +855,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) fn update_snapshot_state(&mut self, update: SnapshotUpdate<C::NodeId>) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
-            self.snapshot_last_log_id = Some(log_id);
-            self.engine.update_snapshot_last_log(Some(log_id));
+            self.engine.snapshot_last_log_id = Some(log_id);
             self.engine.metrics_flags.set_data_changed();
         }
         // If snapshot state is anything other than streaming, then drop it.
@@ -889,13 +881,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         };
 
         // Check to ensure we have actual entries for compaction.
-        if Some(last_applied.index) < self.snapshot_last_log_id.index() {
+        if Some(last_applied.index) < self.engine.snapshot_last_log_id.index() {
             return;
         }
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
-            if self.engine.state.last_applied.next_index() - self.snapshot_last_log_id.next_index() < *threshold {
+            if self.engine.state.last_applied.next_index() - self.engine.snapshot_last_log_id.next_index() < *threshold
+            {
                 return;
             }
         }

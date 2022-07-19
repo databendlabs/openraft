@@ -123,14 +123,14 @@ pub struct Config {
     )]
     pub snapshot_policy: SnapshotPolicy,
 
-    /// Whether to keep all `applied_log`s if they are not included by snapshots.
+    /// Whether to keep `applied_log`s that are not included by snapshots.
     ///
     /// If your application may rebuild it's state machine from snapshots,
     /// please set this to true.
     ///
     /// By default, `OpenRaft` purges `applied_log`s from time to time regardless of snapshots, because it assumes once
     /// logs are `applied` to the state machine, logs are persisted on disk. If not so, set this to true.
-    #[clap(long, env = "RAFT_KEEP_UNSNAPSHOTED_LOG", default_value = "false")]
+    #[clap(long, env = "RAFT_KEEP_UNSNAPSHOTED_LOG", default_value_t = false, value_parser=clap::value_parser!(bool))]
     pub keep_unsnapshoted_log: bool,
 
     /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes)
