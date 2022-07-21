@@ -56,6 +56,7 @@ fn test_build() -> anyhow::Result<()> {
         "--max-payload-entries=201",
         "--replication-lag-threshold=202",
         "--snapshot-policy=since_last:203",
+        "--keep-unsnapshoted-log",
         "--snapshot-max-chunk-size=204",
         "--max-applied-log-to-keep=205",
         "--purge-batch-size=207",
@@ -69,9 +70,21 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(201, config.max_payload_entries);
     assert_eq!(202, config.replication_lag_threshold);
     assert_eq!(SnapshotPolicy::LogsSinceLast(203), config.snapshot_policy);
+    assert_eq!(true, config.keep_unsnapshoted_log);
     assert_eq!(204, config.snapshot_max_chunk_size);
     assert_eq!(205, config.max_applied_log_to_keep);
     assert_eq!(207, config.purge_batch_size);
+
+    Ok(())
+}
+
+#[test]
+fn test_config_build_() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--keep-unsnapshoted-log"])?;
+    assert_eq!(true, config.keep_unsnapshoted_log);
+
+    let config = Config::build(&["foo"])?;
+    assert_eq!(false, config.keep_unsnapshoted_log);
 
     Ok(())
 }
