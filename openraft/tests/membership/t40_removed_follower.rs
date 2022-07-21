@@ -29,7 +29,7 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
     log_index += 2;
     router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "cluster of 2 learners").await?;
 
-    tracing::info!("--- changing config to 2,3,4");
+    tracing::info!("--- changing config to 0,3,4");
     {
         let node = router.get_raft_handle(&0)?;
         node.change_membership(btreeset![0, 3, 4], true, false).await?;
@@ -45,18 +45,32 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
                 .await?;
         }
 
-        for i in [1, 2] {
-            router
-                .wait(&i, timeout())
-                .metrics(
-                    |x| x.last_log_index >= Some(log_index - 1),
-                    "removed nodes recv at least 1 change-membership log",
-                )
-                .await?;
-        }
+        let res1 = router
+            .wait(&1, timeout())
+            .metrics(
+                |x| x.last_log_index >= Some(log_index - 1),
+                "removed node-1 recv at least 1 change-membership log",
+            )
+            .await;
+
+        let res2 = router
+            .wait(&2, timeout())
+            .metrics(
+                |x| x.last_log_index >= Some(log_index - 1),
+                "removed node-2 recv at least 1 change-membership log",
+            )
+            .await;
+
+        tracing::info!("result waiting for node-1: {:?}", res1);
+        tracing::info!("result waiting for node-2: {:?}", res2);
+
+        assert!(
+            res1.is_ok() || res2.is_ok(),
+            "committing the first membership log only need to replication to one of node-1 and node-2. node-1 res: {:?}; node-2 res: {:?}",res1, res2
+        );
     }
 
-    tracing::info!("--- write to new cluster, cuurent log={}", log_index);
+    tracing::info!("--- write to new cluster, current log={}", log_index);
     {
         let n = 10;
         router.client_request_many(0, "after_change", n).await?;
@@ -87,5 +101,5 @@ async fn stop_replication_to_removed_follower() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5000))
+    Some(Duration::from_millis(1000))
 }
