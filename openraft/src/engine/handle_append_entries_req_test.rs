@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
+use pretty_assertions::assert_eq;
 
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -141,14 +142,11 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer { can_be_leader: false },
-            Command::RejectElection {},
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Follower
-            },
+            Command::InstallElectionTimer { can_be_leader: false },
+            Command::RejectElection {},
             Command::DeleteConflictLog { since: log_id(1, 2) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
@@ -204,14 +202,11 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer { can_be_leader: false },
-            Command::RejectElection {},
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Follower
-            },
+            Command::InstallElectionTimer { can_be_leader: false },
+            Command::RejectElection {},
             Command::DeleteConflictLog { since: log_id(1, 2) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
@@ -235,6 +230,8 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
 #[test]
 fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()> {
     let mut eng = eng();
+    eng.state.vote = Vote::new(1, 2);
+    eng.enter_leading();
 
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
@@ -273,11 +270,11 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer { can_be_leader: false },
-            Command::RejectElection {},
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
+            Command::InstallElectionTimer { can_be_leader: false },
+            Command::RejectElection {},
             Command::UpdateServerState {
                 server_state: ServerState::Follower
             },
@@ -337,14 +334,11 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer { can_be_leader: false },
-            Command::RejectElection {},
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Follower
-            },
+            Command::InstallElectionTimer { can_be_leader: false },
+            Command::RejectElection {},
             Command::DeleteConflictLog { since: log_id(2, 3) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))

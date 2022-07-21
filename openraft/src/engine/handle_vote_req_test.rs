@@ -54,7 +54,7 @@ fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
     );
 
     assert_eq!(Vote::new(2, 1), eng.state.vote);
-    assert!(eng.state.leader.is_some());
+    assert!(eng.state.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
     assert_eq!(
@@ -90,7 +90,7 @@ fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
     );
 
     assert_eq!(Vote::new(2, 1), eng.state.vote);
-    assert!(eng.state.leader.is_some());
+    assert!(eng.state.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
     assert_eq!(
@@ -127,7 +127,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
     );
 
     assert_eq!(Vote::new(2, 1), eng.state.vote);
-    assert!(eng.state.leader.is_none());
+    assert!(eng.state.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
@@ -174,7 +174,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
     );
 
     assert_eq!(Vote::new(3, 1), eng.state.vote);
-    assert!(eng.state.leader.is_none());
+    assert!(eng.state.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
@@ -187,8 +187,8 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::InstallElectionTimer { can_be_leader: true },
             Command::SaveVote { vote: Vote::new(3, 1) },
+            Command::InstallElectionTimer { can_be_leader: true },
             Command::UpdateServerState {
                 server_state: ServerState::Follower
             }
@@ -202,9 +202,15 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
 fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_state_cmd() -> anyhow::Result<()> {
     // A greater vote should emit a SaveVote command.
 
-    for st in [ServerState::Learner, ServerState::Follower] {
+    // Learner
+    {
+        let st = ServerState::Learner;
+
         let mut eng = eng();
+        eng.id = 100; // make it a non-voter
+        eng.enter_following();
         eng.state.server_state = st;
+        eng.commands = vec![];
 
         eng.handle_vote_req(VoteRequest {
             vote: Vote::new(3, 1),
@@ -215,8 +221,33 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
         assert_eq!(
             vec![
                 //
-                Command::InstallElectionTimer { can_be_leader: true },
                 Command::SaveVote { vote: Vote::new(3, 1) },
+                Command::InstallElectionTimer { can_be_leader: true },
+            ],
+            eng.commands
+        );
+    }
+    // Follower
+    {
+        let st = ServerState::Follower;
+
+        let mut eng = eng();
+        eng.id = 0; // make it a voter
+        eng.enter_following();
+        eng.state.server_state = st;
+        eng.commands = vec![];
+
+        eng.handle_vote_req(VoteRequest {
+            vote: Vote::new(3, 1),
+            last_log_id: Some(log_id(2, 3)),
+        });
+
+        assert_eq!(st, eng.state.server_state);
+        assert_eq!(
+            vec![
+                //
+                Command::SaveVote { vote: Vote::new(3, 1) },
+                Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.commands
         );

@@ -1,9 +1,7 @@
-use std::sync::Arc;
-
 use crate::engine::LogIdList;
+use crate::internal_server_state::InternalServerState;
 use crate::leader::Leader;
 use crate::raft_types::RaftLogId;
-use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
@@ -29,19 +27,8 @@ pub struct RaftState<NID: NodeId> {
     // --
     // -- volatile fields: they are not persisted.
     // --
-    /// The state a leader would have.
-    ///
-    /// In openraft there are only two state for a server:
-    /// Leader and follower:
-    ///
-    /// - A leader is able to vote(candidate in original raft) and is able to propose new log if its vote is granted by
-    ///   quorum(leader in original raft).
-    ///
-    ///   In this way the leadership won't be lost when it sees a higher `vote` and needs upgrade its `vote`.
-    ///
-    /// - A follower will just receive replication from a leader. A follower that is one of the member will be able to
-    ///   become leader. A follower that is not a member is just a learner.
-    pub(crate) leader: Option<Leader<NID, Arc<EffectiveMembership<NID>>>>,
+    /// The internal server state used by Engine.
+    pub(crate) internal_server_state: InternalServerState<NID>,
 
     /// The log id of the last known committed entry.
     ///
@@ -115,7 +102,7 @@ where NID: NodeId
     /// In openraft, Leader and Candidate shares the same state.
     pub(crate) fn new_leader(&mut self) {
         let em = &self.membership_state.effective;
-        self.leader = Some(Leader::new(em.clone(), em.learner_ids()));
+        self.internal_server_state = InternalServerState::Leading(Leader::new(em.clone(), em.learner_ids()));
     }
 
     /// Return true if the currently effective membership is committed.
