@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
+use pretty_assertions::assert_eq;
 
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -48,7 +49,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
-        assert_eq!(None, eng.state.leader);
+        assert!(eng.state.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
         assert_eq!(
@@ -62,14 +63,14 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(0, eng.commands.len());
     }
 
-    tracing::info!("--- recv an smaller vote. vote_granted==true always revert this node to follwoer");
+    tracing::info!("--- recv a smaller vote. vote_granted==false always revert this node to follower");
     {
         let mut eng = eng();
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.state.new_leader();
-        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -79,7 +80,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
-        assert_eq!(None, eng.state.leader.map(|x| x.vote_granted_by));
+        assert!(eng.state.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
         assert_eq!(
@@ -92,10 +93,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
+                Command::InstallElectionTimer { can_be_leader: false },
                 Command::UpdateServerState {
                     server_state: ServerState::Follower
                 },
-                Command::InstallElectionTimer { can_be_leader: false },
             ],
             eng.commands
         );
@@ -109,7 +110,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.log_ids = LogIdList::new(vec![log_id(3, 3)]);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.state.new_leader();
-        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -119,7 +120,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 2), eng.state.vote);
-        assert_eq!(None, eng.state.leader);
+        assert!(eng.state.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
         assert_eq!(
@@ -132,11 +133,11 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
+                Command::SaveVote { vote: Vote::new(2, 2) },
+                Command::InstallElectionTimer { can_be_leader: true },
                 Command::UpdateServerState {
                     server_state: ServerState::Follower
                 },
-                Command::SaveVote { vote: Vote::new(2, 2) },
-                Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.commands
         );
@@ -149,7 +150,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.state.new_leader();
-        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -159,7 +160,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
-        assert_eq!(None, eng.state.leader);
+        assert!(eng.state.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
         assert_eq!(
@@ -172,10 +173,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
+                Command::InstallElectionTimer { can_be_leader: false },
                 Command::UpdateServerState {
                     server_state: ServerState::Follower
                 },
-                Command::InstallElectionTimer { can_be_leader: false },
             ],
             eng.commands
         );
@@ -188,7 +189,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()));
         eng.state.new_leader();
-        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -198,7 +199,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
-        assert_eq!(Some(btreeset! {1,2},), eng.state.leader.map(|x| x.vote_granted_by));
+        assert_eq!(
+            Some(btreeset! {1,2},),
+            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+        );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
@@ -219,7 +223,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.state.new_leader();
-        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -229,7 +233,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
-        assert_eq!(Some(btreeset! {1,2},), eng.state.leader.map(|x| x.vote_granted_by));
+        assert_eq!(
+            Some(btreeset! {1,2},),
+            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+        );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(

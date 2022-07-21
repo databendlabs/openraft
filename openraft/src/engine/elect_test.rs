@@ -44,7 +44,10 @@ fn test_elect() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new_committed(1, 1), eng.state.vote);
-        assert_eq!(Some(btreeset! {1},), eng.state.leader.map(|x| x.vote_granted_by));
+        assert_eq!(
+            Some(btreeset! {1},),
+            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+        );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(
@@ -57,6 +60,7 @@ fn test_elect() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
+                Command::SaveVote { vote: Vote::new(1, 1) },
                 Command::SaveVote {
                     vote: Vote::new_committed(1, 1)
                 },
@@ -77,12 +81,15 @@ fn test_elect() -> anyhow::Result<()> {
         // Build in-progress election state
         eng.state.vote = Vote::new_committed(1, 2);
         eng.state.new_leader();
-        eng.state.leader.as_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
 
         eng.elect();
 
         assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
-        assert_eq!(Some(btreeset! {1},), eng.state.leader.map(|x| x.vote_granted_by));
+        assert_eq!(
+            Some(btreeset! {1},),
+            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+        );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(
@@ -95,6 +102,7 @@ fn test_elect() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
+                Command::SaveVote { vote: Vote::new(2, 1) },
                 Command::SaveVote {
                     vote: Vote::new_committed(2, 1)
                 },
@@ -116,7 +124,10 @@ fn test_elect() -> anyhow::Result<()> {
         eng.elect();
 
         assert_eq!(Vote::new(1, 1), eng.state.vote);
-        assert_eq!(Some(btreeset! {1},), eng.state.leader.map(|x| x.vote_granted_by));
+        assert_eq!(
+            Some(btreeset! {1},),
+            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+        );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(

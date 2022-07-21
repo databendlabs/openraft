@@ -140,7 +140,7 @@ fn test_update_effective_membership_for_leader() -> anyhow::Result<()> {
     );
 
     assert!(
-        eng.state.leader.unwrap().progress.get(&4).is_none(),
+        eng.state.internal_server_state.leading().unwrap().progress.get(&4).is_none(),
         "exists, but it is a None"
     );
 
@@ -159,7 +159,7 @@ fn test_update_effective_membership_update_learner_process() -> anyhow::Result<(
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23_45()));
     eng.state.new_leader();
 
-    if let Some(l) = &mut eng.state.leader {
+    if let Some(l) = &mut eng.state.internal_server_state.leading_mut() {
         assert_eq!(&None, l.progress.get(&4));
         assert_eq!(&None, l.progress.get(&5));
 
@@ -185,7 +185,7 @@ fn test_update_effective_membership_update_learner_process() -> anyhow::Result<(
         eng.state.membership_state
     );
 
-    if let Some(l) = &mut eng.state.leader {
+    if let Some(l) = &mut eng.state.internal_server_state.leading_mut() {
         assert_eq!(
             &Some(log_id(1, 4)),
             l.progress.get(&4),

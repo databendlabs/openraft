@@ -9,6 +9,7 @@ use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectVoteRequest;
+use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::membership::NodeRole;
 use crate::progress::Progress;
@@ -134,13 +135,10 @@ impl<NID: NodeId> Engine<NID> {
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        // init election
-        self.enter_leader();
-        // TODO: this should be part of the job of enter_leader()
-        self.state.vote = Vote::new(self.state.vote.term + 1, self.id);
+        self.handle_vote_change(&Vote::new(self.state.vote.term + 1, self.id)).unwrap();
 
         // Safe unwrap()
-        let leader = self.state.leader.as_mut().unwrap();
+        let leader = self.state.internal_server_state.leading_mut().unwrap();
         leader.grant_vote_by(self.id);
         let quorum_granted = leader.is_vote_granted();
 
@@ -157,7 +155,6 @@ impl<NID: NodeId> Engine<NID> {
 
         // Slow-path: send vote request, let a quorum grant it.
 
-        self.push_command(Command::SaveVote { vote: self.state.vote });
         self.push_command(Command::SendVote {
             vote_req: VoteRequest::new(self.state.vote, self.state.last_log_id()),
         });
@@ -176,7 +173,7 @@ impl<NID: NodeId> Engine<NID> {
         );
 
         let res = if req.last_log_id >= self.state.last_log_id() {
-            self.internal_handle_vote_change(&req.vote)
+            self.handle_vote_change(&req.vote)
         } else {
             Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id()))
         };
@@ -215,9 +212,9 @@ impl<NID: NodeId> Engine<NID> {
         );
 
         // If this node is no longer a leader(i.e., electing), just ignore the delayed vote_resp.
-        let leader = match &mut self.state.leader {
-            None => return,
-            Some(l) => l,
+        let leader = match &mut self.state.internal_server_state {
+            InternalServerState::Leading(l) => l,
+            InternalServerState::Following => return,
         };
 
         if resp.vote < self.state.vote {
@@ -245,14 +242,10 @@ impl<NID: NodeId> Engine<NID> {
 
         // vote is rejected:
 
-        let node_role = self.state.membership_state.effective.get_node_role(&self.id);
-        debug_assert_eq!(Some(NodeRole::Voter), node_role);
-
-        // TODO(xp): This is a simplified impl: revert to follower as soon as seeing a higher `vote`.
-        //           When reverted to follower, it waits for heartbeat for 2 second before starting a new round of
-        //           election.
-        self.set_server_state(ServerState::Follower);
-        self.leave_leader();
+        debug_assert_eq!(
+            Some(NodeRole::Voter),
+            self.state.membership_state.effective.get_node_role(&self.id)
+        );
 
         // If peer's vote is greater than current vote, revert to follower state.
         if resp.vote > self.state.vote {
@@ -266,6 +259,20 @@ impl<NID: NodeId> Engine<NID> {
             self.push_command(Command::InstallElectionTimer { can_be_leader: false });
         } else {
             self.push_command(Command::InstallElectionTimer { can_be_leader: true });
+        }
+
+        debug_assert!(self.is_voter());
+
+        if self.state.internal_server_state.is_following() {
+            return;
+        }
+
+        // TODO:  use enter_following()
+        // self.enter_following();
+        {
+            self.state.internal_server_state = InternalServerState::Following;
+
+            self.set_server_state(ServerState::Follower);
         }
     }
 
@@ -366,7 +373,7 @@ impl<NID: NodeId> Engine<NID> {
             "local state"
         );
 
-        let res = self.internal_handle_vote_change(vote);
+        let res = self.handle_vote_change(vote);
         if let Err(rejected) = res {
             return rejected.into();
         }
@@ -667,7 +674,7 @@ impl<NID: NodeId> Engine<NID> {
         });
 
         // If membership changes, the progress should be upgraded.
-        if let Some(leader) = &mut self.state.leader {
+        if let Some(leader) = &mut self.state.internal_server_state.leading_mut() {
             let old_progress = leader.progress.clone();
 
             let old_repls = old_progress.iter().copied().collect::<BTreeMap<_, _>>();
@@ -711,7 +718,7 @@ impl<NID: NodeId> Engine<NID> {
         tracing::debug!("update_progress: node_id:{} log_id:{:?}", node_id, log_id);
 
         let committed = {
-            let leader = match &mut self.state.leader {
+            let leader = match self.state.internal_server_state.leading_mut() {
                 None => {
                     return;
                 }
@@ -782,7 +789,9 @@ impl<NID: NodeId> Engine<NID> {
     /// Enter leader state.
     ///
     /// Leader state has two phase: election phase and replication phase, similar to paxos phase-1 and phase-2
-    fn enter_leader(&mut self) {
+    pub(crate) fn enter_leading(&mut self) {
+        debug_assert_eq!(self.state.vote.node_id, self.id);
+
         self.state.new_leader();
         // TODO: install heartbeat timer
     }
@@ -790,9 +799,41 @@ impl<NID: NodeId> Engine<NID> {
     /// Leave leader state.
     ///
     /// This node then becomes raft-follower or raft-learner.
-    fn leave_leader(&mut self) {
-        self.state.leader = None;
-        // TODO: install election timer if it is a voter
+    pub(crate) fn enter_following(&mut self) {
+        // TODO: entering following needs to check last-log-id on other node to decide the election timeout.
+
+        // TODO: a candidate that can not elect successfully should not enter following state.
+        //       It should just sleep in leading state(candidate state for an application).
+        //       This way it holds that 'vote.node_id != self.id <=> following state`.
+        // debug_assert_ne!(self.state.vote.node_id, self.id);
+
+        let vote = &self.state.vote;
+
+        if vote.committed {
+            // There is an active leader.
+            // Do not elect for a longer while.
+            // TODO: Installing a timer should not be part of the Engine's job.
+            self.push_command(Command::InstallElectionTimer { can_be_leader: false });
+            // There is an active leader, reject election for a while.
+            // TODO: remove this when heartbeat log is ready.
+            self.push_command(Command::RejectElection {});
+        } else {
+            // There is an active candidate.
+            // Do not elect for a short while.
+            self.push_command(Command::InstallElectionTimer { can_be_leader: true });
+        }
+
+        if self.state.internal_server_state.is_following() {
+            return;
+        }
+
+        self.state.internal_server_state = InternalServerState::Following;
+
+        if self.is_voter() {
+            self.set_server_state(ServerState::Follower);
+        } else {
+            self.set_server_state(ServerState::Learner);
+        }
     }
 
     /// Update effective membership config if encountering a membership config log entry.
@@ -973,16 +1014,12 @@ impl<NID: NodeId> Engine<NID> {
         }
     }
 
-    /// Check and grant a vote request.
+    /// Check and change vote.
     /// This is used by all 3 RPC append-entries, vote, install-snapshot to check the `vote` field.
     ///
-    /// Grant vote if [vote, last_log_id] >= mine by vector comparison.
-    /// Note: A greater `vote` won't be stored if `last_log_id` is smaller.
-    /// We do not need to upgrade `vote` for a node that can not become leader.
-    ///
-    /// If the `vote` is committed, i.e., it is granted by a quorum, then the vote holder, e.g. the leader already has
-    /// all of the committed logs, thus in such case, we do not need to check `last_log_id`.
-    pub(crate) fn internal_handle_vote_change(&mut self, vote: &Vote<NID>) -> Result<(), RejectVoteRequest<NID>> {
+    /// Grant vote if vote >= mine.
+    /// Note: This method does not check last-log-id. handle-vote-request has to deal with last-log-id itself.
+    pub(crate) fn handle_vote_change(&mut self, vote: &Vote<NID>) -> Result<(), RejectVoteRequest<NID>> {
         // Partial ord compare:
         // Vote does not has to be total ord.
         // `!(a >= b)` does not imply `a < b`.
@@ -996,35 +1033,15 @@ impl<NID: NodeId> Engine<NID> {
 
         // Grant the vote
 
-        // If the vote is granted by a quorum, this node should not try to elect.
-        let can_be_leader = !vote.committed;
-
-        // There is an active leader or an active candidate.
-        // Do not elect for a while.
-        self.push_command(Command::InstallElectionTimer { can_be_leader });
-        if vote.committed {
-            // There is an active leader, reject election for a while.
-            self.push_command(Command::RejectElection {});
-        }
-
         if vote > &self.state.vote {
             self.state.vote = *vote;
             self.push_command(Command::SaveVote { vote: *vote });
         }
 
-        // I'm no longer a leader.
-        self.leave_leader();
-
-        #[allow(clippy::collapsible_else_if)]
-        if self.state.server_state == ServerState::Follower || self.state.server_state == ServerState::Learner {
-            // nothing to do
+        if self.state.vote.node_id == self.id {
+            self.enter_leading();
         } else {
-            let node_type = self.state.membership_state.effective.get_node_role(&self.id);
-            if node_type == Some(NodeRole::Voter) {
-                self.set_server_state(ServerState::Follower);
-            } else {
-                self.set_server_state(ServerState::Learner);
-            }
+            self.enter_following();
         }
 
         Ok(())
@@ -1058,7 +1075,7 @@ impl<NID: NodeId> Engine<NID> {
     /// The node is candidate or leader
     fn is_becoming_leader(&self) -> bool {
         // self.state.vote.node_id == self.id
-        self.state.leader.is_some()
+        self.state.internal_server_state.is_leading()
     }
 
     fn is_leader(&self) -> bool {
