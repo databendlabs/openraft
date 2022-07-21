@@ -130,7 +130,12 @@ pub struct Config {
     ///
     /// By default, `OpenRaft` purges `applied_log`s from time to time regardless of snapshots, because it assumes once
     /// logs are `applied` to the state machine, logs are persisted on disk. If not so, set this to true.
-    #[clap(long, env = "RAFT_KEEP_UNSNAPSHOTED_LOG", default_value_t = false, value_parser=clap::value_parser!(bool))]
+    //
+    // This is another way to implement:
+    // #[clap(long, env = "RAFT_KEEP_UNSNAPSHOTED_LOG",
+    //        default_value_t = false,
+    //        value_parser=clap::value_parser!(bool))]
+    #[clap(long, env = "RAFT_KEEP_UNSNAPSHOTED_LOG")]
     pub keep_unsnapshoted_log: bool,
 
     /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes)
