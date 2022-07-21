@@ -127,7 +127,7 @@ impl<NID: NodeId> Engine<NID> {
         self.push_command(Command::MoveInputCursorBy { n: l });
 
         // With the new config, start to elect to become leader
-        self.set_server_state(ServerState::Candidate);
+        self.elect();
 
         Ok(())
     }
@@ -161,6 +161,7 @@ impl<NID: NodeId> Engine<NID> {
 
         // TODO: For compatibility. remove it. The runtime does not need to know about server state.
         self.set_server_state(ServerState::Candidate);
+        self.push_command(Command::InstallElectionTimer { can_be_leader: true });
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

@@ -15,7 +15,6 @@ use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-use tokio::time::sleep_until;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tokio::time::Instant;
@@ -295,7 +294,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             (NO_LOG, MULTI, IS_VOTER) => ServerState::Follower, // impossible: no logs but there are other members.
         };
 
-        if self.engine.state.server_state == ServerState::Follower {
+        if self.engine.state.server_state == ServerState::Follower
+            || self.engine.state.server_state == ServerState::Candidate
+        {
             // To ensure that restarted nodes don't disrupt a stable cluster.
             self.set_next_election_time(false);
         }
@@ -1253,7 +1254,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
 
                 Ok(_) = &mut self.rx_shutdown => {
-                    tracing::info!("leader recv from rx_shudown");
+                    tracing::info!("leader recv from rx_shutdown");
                     self.set_target_state(ServerState::Shutdown);
                 }
             }
@@ -1272,34 +1273,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             self.flush_metrics();
 
-            self.set_next_election_time(true);
+            tokio::select! {
+                Some(msg) = self.rx_api.recv() => {
+                    self.handle_api_msg(msg).await?;
+                },
 
-            self.engine.elect();
-            self.run_engine_commands::<Entry<C>>(&[]).await?;
+                Some(internal_msg) = self.rx_internal.recv() => {
+                    self.handle_internal_msg(internal_msg).await?;
+                },
 
-            loop {
-                if !self.engine.state.server_state.is_candidate() {
-                    return Ok(());
-                }
-
-                let timeout_fut = sleep_until(self.get_next_election_time());
-
-                tokio::select! {
-                    _ = timeout_fut => {
-                        // This election has timed-out. Leave to the caller to decide what to do.
-                        break;
-                    },
-
-                    Some(msg) = self.rx_api.recv() => {
-                        self.handle_api_msg(msg).await?;
-                    },
-
-                    Some(internal_msg) = self.rx_internal.recv() => {
-                        self.handle_internal_msg(internal_msg).await?;
-                    },
-
-                    Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
-                }
+                Ok(_) = &mut self.rx_shutdown => self.set_target_state(ServerState::Shutdown),
             }
         }
     }
@@ -1437,7 +1420,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 let _ = tx.send(self.handle_vote_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::VoteResponse { target, resp, vote } => {
-                if self.does_server_state_count_match(vote, "VoteResponse") {
+                if self.does_vote_match(vote, "VoteResponse") {
                     self.handle_vote_resp(resp, target).await?;
                 }
             }
@@ -1490,14 +1473,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
                 let current_vote = &self.engine.state.vote;
 
-                // Follower timer: next election
+                // Follower/Candidate timer: next election
                 if let Some(t) = self.next_election_time.get_time(current_vote) {
                     #[allow(clippy::collapsible_else_if)]
                     if Instant::now() < t {
                         // timeout has not expired.
                     } else {
                         if self.engine.state.membership_state.effective.is_voter(&self.id) {
-                            self.set_target_state(ServerState::Candidate)
+                            self.engine.elect();
+                            self.run_engine_commands::<Entry<C>>(&[]).await?;
                         } else {
                             // Node is switched to learner after setting up next election time.
                         }
@@ -1506,13 +1490,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
 
             RaftMsg::RevertToFollower { target, new_vote, vote } => {
-                if self.does_server_state_count_match(vote, "RevertToFollower") {
+                if self.does_vote_match(vote, "RevertToFollower") {
                     self.handle_revert_to_follower(target, new_vote).await?;
                 }
             }
 
             RaftMsg::UpdateReplicationMatched { target, result, vote } => {
-                if self.does_server_state_count_match(vote, "UpdateReplicationMatched") {
+                if self.does_vote_match(vote, "UpdateReplicationMatched") {
                     self.handle_update_matched(target, result).await?;
                 }
             }
@@ -1523,7 +1507,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 tx,
                 vote,
             } => {
-                if self.does_server_state_count_match(vote, "NeedsSnapshot") {
+                if self.does_vote_match(vote, "NeedsSnapshot") {
                     self.handle_needs_snapshot(must_include, tx).await?;
                 }
             }
@@ -1610,7 +1594,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// If a message is sent by a previous server state but is received by current server state,
     /// it is a stale message and should be just ignored.
-    fn does_server_state_count_match(&self, vote: Vote<C::NodeId>, msg: impl Display) -> bool {
+    fn does_vote_match(&self, vote: Vote<C::NodeId>, msg: impl Display) -> bool {
         if vote != self.engine.state.vote {
             tracing::warn!(
                 "vote changed: msg sent by: {:?}; curr: {}; ignore when ({})",

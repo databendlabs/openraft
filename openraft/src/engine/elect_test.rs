@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use maplit::btreeset;
+use pretty_assertions::assert_eq;
 
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -146,7 +147,8 @@ fn test_elect() -> anyhow::Result<()> {
                 },
                 Command::UpdateServerState {
                     server_state: ServerState::Candidate
-                }
+                },
+                Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.commands
         );
