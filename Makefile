@@ -20,6 +20,9 @@ bench_cluster_of_5:
 fmt:
 	cargo fmt
 
+fix:
+	cargo fix --allow-staged
+
 doc:
 	cargo doc --all --no-deps
 

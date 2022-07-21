@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::engine::LogIdList;
+use crate::internal_server_state::InternalServerState;
 use crate::EffectiveMembership;
 use crate::EntryPayload;
 use crate::LogId;
@@ -64,7 +65,7 @@ where
             membership_state: mem_state,
 
             // -- volatile fields: they are not persisted.
-            leader: None,
+            internal_server_state: InternalServerState::default(),
             committed: None,
             server_state: Default::default(),
         })
