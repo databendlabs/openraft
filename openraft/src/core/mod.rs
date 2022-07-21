@@ -5,7 +5,6 @@
 //! messages to other raft nodes.
 
 mod install_snapshot;
-mod internal_msg;
 mod raft_core;
 pub(crate) mod replication;
 mod replication_expectation;
@@ -14,12 +13,11 @@ mod server_state;
 mod snapshot_state;
 mod tick;
 
-pub(crate) use internal_msg::InternalMessage;
 pub use raft_core::RaftCore;
 pub(crate) use replication_expectation::Expectation;
 pub(crate) use replication_state::replication_lag;
 pub use server_state::ServerState;
-use snapshot_state::SnapshotState;
-use snapshot_state::SnapshotUpdate;
+pub(crate) use snapshot_state::SnapshotState;
+pub(crate) use snapshot_state::SnapshotUpdate;
 pub(crate) use tick::Tick;
 pub(crate) use tick::VoteWiseTime;

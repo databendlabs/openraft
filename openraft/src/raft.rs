@@ -18,6 +18,7 @@ use crate::config::Config;
 use crate::core::replication_lag;
 use crate::core::Expectation;
 use crate::core::RaftCore;
+use crate::core::SnapshotUpdate;
 use crate::core::Tick;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
@@ -731,6 +732,10 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         tx: RaftRespTx<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>>,
     },
 
+    SnapshotUpdate {
+        update: SnapshotUpdate<C::NodeId>,
+    },
+
     ClientWriteRequest {
         rpc: ClientWriteRequest<C>,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
@@ -844,6 +849,9 @@ where
             }
             RaftMsg::InstallSnapshot { rpc, .. } => {
                 format!("InstallSnapshot: {}", rpc.summary())
+            }
+            RaftMsg::SnapshotUpdate { update } => {
+                format!("SnapshotUpdate: {:?}", update)
             }
             RaftMsg::ClientWriteRequest { rpc, .. } => {
                 format!("ClientWriteRequest: {}", rpc.summary())
