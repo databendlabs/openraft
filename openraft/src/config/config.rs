@@ -129,7 +129,12 @@ pub struct Config {
     /// please set this to true.
     ///
     /// By default, `OpenRaft` purges `applied_log`s from time to time regardless of snapshots, because it assumes once
-    /// logs are `applied` to the state machine, logs are persisted on disk. If not so, set this to true.
+    /// logs are `applied` to the state machine, logs are persisted on disk.
+    ///
+    /// If an implementation does not persist data when `RaftStorage::apply_to_state_machine()` returns, and just
+    /// relies on `snapshot` to rebuild the state machine when the next time it restarts, the application must always
+    /// set `keep_unsnapshoted_log` to `true`, so that only logs that are already included in a snapshot will be
+    /// purged.
     //
     // This is another way to implement:
     // #[clap(long, env = "RAFT_KEEP_UNSNAPSHOTED_LOG",
