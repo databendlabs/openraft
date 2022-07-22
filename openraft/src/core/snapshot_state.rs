@@ -10,7 +10,7 @@ pub(crate) enum SnapshotState<S> {
     Snapshotting {
         /// A handle to abort the compaction process early if needed.
         handle: AbortHandle,
-        /// A sender for notifiying any other tasks of the completion of this compaction.
+        /// A sender for notifying any other tasks of the completion of this compaction.
         sender: broadcast::Sender<u64>,
     },
     /// The Raft node is streaming in a snapshot from the leader.
