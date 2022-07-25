@@ -1,3 +1,19 @@
+## v0.6.7
+
+### Added:
+
+-   Added: [e9d772be](https://github.com/datafuselabs/openraft/commit/e9d772bed84210c834d01fbeae15e999ec195ef6) add feature-flag: `bt` enables backtrace; by 张炎泼; 2022-03-12
+
+    `--features bt` enables backtrace when generating errors.
+    By default errors does not contain backtrace info.
+
+    Thus openraft can be built on stable rust by default.
+
+    To use on stable rust with backtrace, set `RUSTC_BOOTSTRAP=1`, e.g.:
+    ```
+    RUSTUP_TOOLCHAIN=stable RUSTC_BOOTSTRAP=1 make test
+    ```
+
 ## v0.6.6
 
 ### Changed:
