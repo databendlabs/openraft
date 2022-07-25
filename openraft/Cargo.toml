@@ -17,8 +17,8 @@ readme = "../README.md"
 
 [dependencies]
 anyhow = "1.0.32"
+anyerror = { version = "0.1.6", features = ["anyhow"]}
 async-trait = "0.1.36"
-anyerror = "0.1.6"
 byte-unit = "4.0.12"
 bytes = "1.0"
 derive_more = { version="0.99.9" }
@@ -43,6 +43,10 @@ tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
+
+# Enable backtrace when generating an error.
+# Stable rust does not support backtrace.
+bt  = ["anyerror/backtrace", "anyhow/backtrace"]
 
 [package.metadata.docs.rs]
 features = ["docinclude"] # Activate `docinclude` during docs.rs build.
