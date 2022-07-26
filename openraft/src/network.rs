@@ -1,6 +1,6 @@
 //! The Raft network interface.
 
-use std::fmt::Display;
+use std::error::Error;
 use std::fmt::Formatter;
 
 use async_trait::async_trait;
@@ -78,7 +78,7 @@ where C: RaftTypeConfig
 {
     /// Actual type of the network handling a single connection.
     type Network: RaftNetwork<C>;
-    type ConnectError: Display;
+    type ConnectError: Error;
 
     /// Create a new network instance sending RPCs to the target node.
     ///
