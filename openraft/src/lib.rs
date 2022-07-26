@@ -101,7 +101,7 @@ pub use crate::summary::MessageSummary;
 pub use crate::vote::LeaderId;
 pub use crate::vote::Vote;
 
-/// A trait defining application specific data.
+/// AppData: A trait defining application specific data.
 ///
 /// The intention of this trait is that applications which are using this crate will be able to
 /// use their own concrete data types throughout their application without having to serialize and
@@ -113,18 +113,8 @@ pub use crate::vote::Vote;
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-#[cfg(feature = "serde")]
-pub trait AppData: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
-#[cfg(feature = "serde")]
-impl<T> AppData for T where T: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
 
-#[cfg(not(feature = "serde"))]
-pub trait AppData: Clone + Send + Sync + 'static {}
-
-#[cfg(not(feature = "serde"))]
-impl<T> AppData for T where T: Clone + Send + Sync + 'static {}
-
-/// A trait defining application specific response data.
+/// AppDataResponse: A trait defining application specific response data.
 ///
 /// The intention of this trait is that applications which are using this crate will be able to
 /// use their own concrete data types for returning response data from the storage layer when an
@@ -141,14 +131,95 @@ impl<T> AppData for T where T: Clone + Send + Sync + 'static {}
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-#[cfg(feature = "serde")]
-pub trait AppDataResponse: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+
+#[cfg(all(feature = "serde", feature = "rkyv"))]
+mod data {
+
+    pub trait AppData:
+        serde::Serialize
+        + serde::de::DeserializeOwned
+        + rkyv::Archive
+        + rkyv::Serialize<rkyv::Infallible>
+        + rkyv::Deserialize<Self, rkyv::Infallible>
+        + Clone
+        + Send
+        + Sync
+        + 'static
+    {
+    }
+    impl<T> AppData for T where T: serde::Serialize
+            + serde::de::DeserializeOwned
+            + rkyv::Archive
+            + rkyv::Serialize<rkyv::Infallible>
+            + rkyv::Deserialize<T, rkyv::Infallible>
+            + Clone
+            + Send
+            + Sync
+            + 'static
+    {
+    }
+
+    pub trait AppDataResponse:
+        Clone
+        + Send
+        + Sync
+        + serde::Serialize
+        + serde::de::DeserializeOwned
+        + rkyv::Archive
+        + rkyv::Serialize<rkyv::Infallible>
+        + rkyv::Deserialize<Self, rkyv::Infallible>
+        + 'static
+    {
+    }
+    impl<T> AppDataResponse for T where T: Clone
+            + Send
+            + Sync
+            + serde::Serialize
+            + serde::de::DeserializeOwned
+            + rkyv::Archive
+            + rkyv::Serialize<rkyv::Infallible>
+            + rkyv::Deserialize<T, rkyv::Infallible>
+            + 'static
+    {
+    }
+}
 
 #[cfg(feature = "serde")]
-impl<T> AppDataResponse for T where T: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+#[cfg(not(feature = "rkyv"))]
+mod data {
+    pub trait AppData: serde::Serialize + serde::de::DeserializeOwned + Clone + Send + Sync + 'static {}
+    impl<T> AppData for T where T: serde::Serialize + serde::de::DeserializeOwned + Clone + Send + Sync + 'static {}
 
-#[cfg(not(feature = "serde"))]
-pub trait AppDataResponse: Clone + Send + Sync + 'static {}
+    pub trait AppDataResponse: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+    impl<T> AppDataResponse for T where T: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+}
 
+#[cfg(feature = "rkyv")]
 #[cfg(not(feature = "serde"))]
-impl<T> AppDataResponse for T where T: Clone + Send + Sync + 'static {}
+mod data {
+    pub trait AppData<T>:
+        rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<T, rkyv::Infallible> + Clone + Send + Sync + 'static
+    {
+    }
+    impl<T> AppData<T> for T where T: rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<T, rkyv::Infallible> + Clone + Send + Sync + 'static
+    {}
+
+    pub trait AppDataResponse:
+        Clone + Send + Sync + rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<T, rkyv::Infallible> + 'static
+    {
+    }
+    impl<T> AppDataResponse for T where T: Clone + Send + Sync + rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<T, rkyv::Infallible> + 'static
+    {}
+}
+
+#[cfg(not(any(feature = "serde", feature = "rkyv")))]
+mod data {
+    pub trait AppData<T>: Clone + Send + Sync + 'static {}
+    impl<T> AppData for T where T: Clone + Send + Sync + 'static {}
+
+    pub trait AppDataResponse: Clone + Send + Sync + 'static {}
+    impl<T> AppDataResponse for T where T: Clone + Send + Sync + 'static {}
+}
+
+pub use data::AppData;
+pub use data::AppDataResponse;

@@ -10,6 +10,7 @@ use crate::RaftTypeConfig;
 /// A term, node_id and an index identifies an log globally.
 #[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct LogId<NID: NodeId> {
     pub leader_id: LeaderId<NID>,
     pub index: u64,
@@ -131,6 +132,7 @@ pub type SnapshotId = String;
 /// The identity of a segment of a snapshot.
 #[derive(Debug, Default, Clone, PartialOrd, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct SnapshotSegmentId {
     pub id: SnapshotId,
     pub offset: u64,

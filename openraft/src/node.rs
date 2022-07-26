@@ -31,16 +31,51 @@ impl<T> NodeIdEssential for T where T: Sized
 /// A Raft node's ID.
 ///
 /// A `NodeId` uniquely identifies a node in the Raft cluster.
+#[cfg(all(feature = "rkyv", feature = "serde"))]
+pub trait NodeId:
+    NodeIdEssential
+    + serde::Serialize
+    + for<'a> serde::Deserialize<'a>
+    + rkyv::Archive
+    + rkyv::Serialize<rkyv::Infallible>
+    + rkyv::Deserialize<Self, rkyv::Infallible>
+{
+}
+
+#[cfg(all(feature = "rkyv", feature = "serde"))]
+impl<T> NodeId for T where T: NodeIdEssential
+        + serde::Serialize
+        + for<'a> serde::Deserialize<'a>
+        + rkyv::Archive
+        + rkyv::Serialize<rkyv::Infallible>
+        + rkyv::Deserialize<Self, rkyv::Infallible>
+{
+}
+
+#[cfg(feature = "rkyv")]
+#[cfg(not(feature = "serde"))]
+pub trait NodeId:
+    NodeIdEssential + rkyv::Archive + rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<Self, rkyv::Infallible>
+{
+}
+
+#[cfg(feature = "rkyv")]
+#[cfg(not(feature = "serde"))]
+impl<T> NodeId for T where T: NodeIdEssential + rkyv::Archive + rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<Self, rkyv::Infallible>
+{}
+
 #[cfg(feature = "serde")]
+#[cfg(not(feature = "rkyv"))]
 pub trait NodeId: NodeIdEssential + serde::Serialize + for<'a> serde::Deserialize<'a> {}
 
 #[cfg(feature = "serde")]
+#[cfg(not(feature = "rkyv"))]
 impl<T> NodeId for T where T: NodeIdEssential + serde::Serialize + for<'a> serde::Deserialize<'a> {}
 
-#[cfg(not(feature = "serde"))]
+#[cfg(not(any(feature = "serde", feature = "rkyv")))]
 pub trait NodeId: NodeIdEssential {}
 
-#[cfg(not(feature = "serde"))]
+#[cfg(not(any(feature = "serde", feature = "rkyv")))]
 impl<T> NodeId for T where T: NodeIdEssential {}
 
 /// Additional node information.
@@ -51,6 +86,7 @@ impl<T> NodeId for T where T: NodeIdEssential {}
 /// An application is also free not to use this storage and implements its own node-id to address mapping.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct Node {
     pub addr: String,
     /// Other User defined data.

@@ -4,6 +4,7 @@ use crate::NodeId;
 
 #[derive(PartialEq, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum ChangeMembers<NID: NodeId> {
     Add(BTreeSet<NID>),
     Remove(BTreeSet<NID>),

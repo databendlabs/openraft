@@ -32,6 +32,7 @@ thiserror = "1.0.29"
 tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1.29"
 tracing-futures = "0.2.4"
+rkyv = {version="0.7.39", optional=true}
 
 [dev-dependencies]
 anyhow = "1.0.32"
@@ -60,6 +61,10 @@ bt  = ["anyerror/backtrace", "anyhow/backtrace"]
 # Add serde::Serialize and serde:Deserialize bound to data types.
 # If you'd like to use `serde` to serialize messages.
 serde = ["dep:serde"]
+
+# Add rkyv::Serialize and rkyv:Deserialize bound to data types.
+# If you'd like to use `rkyv` to serialize messages.
+rkyv = ["dep:rkyv"]
 
 [package.metadata.docs.rs]
 features = ["docinclude"] # Activate `docinclude` during docs.rs build.

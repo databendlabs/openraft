@@ -22,6 +22,7 @@ pub trait RaftEntry<NID: NodeId>: RaftPayload<NID> + RaftLogId<NID> {}
 /// Log entry payload variants.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum EntryPayload<C: RaftTypeConfig> {
     /// An empty payload committed by a new cluster leader.
     Blank,
@@ -47,6 +48,7 @@ impl<C: RaftTypeConfig> MessageSummary<EntryPayload<C>> for EntryPayload<C> {
 /// A Raft log entry.
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct Entry<C: RaftTypeConfig> {
     pub log_id: LogId<C::NodeId>,
 
