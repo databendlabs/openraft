@@ -19,4 +19,5 @@ mod t30_commit_joint_config;
 mod t30_step_down;
 mod t40_removed_follower;
 mod t45_remove_unreachable_follower;
+mod t99_issue_471_adding_learner_uses_uninit_leader_id;
 mod t99_new_leader_auto_commit_uniform_config;

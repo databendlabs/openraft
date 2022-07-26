@@ -634,7 +634,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         unreachable!("it has to be a leader!!!");
                     };
 
-                    let distance = replication_lag(&matched, &last_log_id);
+                    let distance = replication_lag(&matched.map(|x| x.index), &last_log_id.map(|x| x.index));
 
                     if distance <= self.config.replication_lag_threshold {
                         continue;

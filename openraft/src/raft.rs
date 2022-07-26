@@ -436,8 +436,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
         let matched = target_metrics.matched();
 
-        let last_log_id = LogId::new(matched.leader_id, metrics.last_log_index.unwrap_or_default());
-        let distance = replication_lag(&Some(matched), &Some(last_log_id));
+        let distance = replication_lag(&Some(matched.index), &metrics.last_log_index);
 
         if distance <= self.inner.config.replication_lag_threshold {
             // replication became up to date.
