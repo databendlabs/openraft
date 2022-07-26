@@ -134,24 +134,27 @@ pub use crate::vote::Vote;
 
 #[cfg(all(feature = "serde", feature = "rkyv"))]
 mod data {
+    use rkyv::ser::serializers::AllocSerializer;
+
+    /// Number of bytes used as the base buffer for rkyv AllocSerializer
+    const ALLOC_SERILIZER_BASE: usize = 1024;
 
     pub trait AppData:
         serde::Serialize
         + serde::de::DeserializeOwned
         + rkyv::Archive
-        + rkyv::Serialize<rkyv::Infallible>
-        + rkyv::Deserialize<Self, rkyv::Infallible>
+        + rkyv::Serialize<AllocSerializer<ALLOC_SERILIZER_BASE>>
         + Clone
         + Send
         + Sync
         + 'static
     {
     }
+
     impl<T> AppData for T where T: serde::Serialize
             + serde::de::DeserializeOwned
             + rkyv::Archive
-            + rkyv::Serialize<rkyv::Infallible>
-            + rkyv::Deserialize<T, rkyv::Infallible>
+            + rkyv::Serialize<AllocSerializer<ALLOC_SERILIZER_BASE>>
             + Clone
             + Send
             + Sync
@@ -160,25 +163,24 @@ mod data {
     }
 
     pub trait AppDataResponse:
-        Clone
-        + Send
-        + Sync
-        + serde::Serialize
+        serde::Serialize
         + serde::de::DeserializeOwned
         + rkyv::Archive
-        + rkyv::Serialize<rkyv::Infallible>
-        + rkyv::Deserialize<Self, rkyv::Infallible>
+        + rkyv::Serialize<AllocSerializer<ALLOC_SERILIZER_BASE>>
+        + Clone
+        + Send
+        + Sync
         + 'static
     {
     }
-    impl<T> AppDataResponse for T where T: Clone
-            + Send
-            + Sync
-            + serde::Serialize
+
+    impl<T> AppDataResponse for T where T: serde::Serialize
             + serde::de::DeserializeOwned
             + rkyv::Archive
-            + rkyv::Serialize<rkyv::Infallible>
-            + rkyv::Deserialize<T, rkyv::Infallible>
+            + rkyv::Serialize<AllocSerializer<ALLOC_SERILIZER_BASE>>
+            + Clone
+            + Send
+            + Sync
             + 'static
     {
     }
@@ -197,18 +199,17 @@ mod data {
 #[cfg(feature = "rkyv")]
 #[cfg(not(feature = "serde"))]
 mod data {
-    pub trait AppData<T>:
-        rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<T, rkyv::Infallible> + Clone + Send + Sync + 'static
-    {
-    }
-    impl<T> AppData<T> for T where T: rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<T, rkyv::Infallible> + Clone + Send + Sync + 'static
+    use rkyv::ser::serializers::AllocSerializer;
+
+    /// Number of bytes used as the base buffer for rkyv AllocSerializer
+    const ALLOC_SERILIZER_BASE: usize = 1024;
+
+    pub trait AppData<T>: rkyv::Serialize<rkyv::Infallible> + Clone + Send + Sync + 'static {}
+    impl<T> AppData<T> for T where T: rkyv::Serialize<AllocSerializer<ALLOC_SERILIZER_BASE>> + rkyv::Archive + Clone + Send + Sync + 'static
     {}
 
-    pub trait AppDataResponse:
-        Clone + Send + Sync + rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<T, rkyv::Infallible> + 'static
-    {
-    }
-    impl<T> AppDataResponse for T where T: Clone + Send + Sync + rkyv::Serialize<rkyv::Infallible> + rkyv::Deserialize<T, rkyv::Infallible> + 'static
+    pub trait AppDataResponse: Clone + Send + Sync + rkyv::Serialize<rkyv::Infallible> + 'static {}
+    impl<T> AppDataResponse for T where T: Clone + Send + Sync + rkyv::Serialize<AllocSerializer<ALLOC_SERILIZER_BASE>> + rkyv::Archive + 'static
     {}
 }
 

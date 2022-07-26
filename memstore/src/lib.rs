@@ -36,6 +36,7 @@ use tokio::sync::RwLock;
 /// Conceptually, for demo purposes, this represents an update to a client's status info,
 /// returning the previously recorded status.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct ClientRequest {
     /// The ID of the client which has sent the request.
     pub client: String,
@@ -66,6 +67,7 @@ impl IntoMemClientRequest<ClientRequest> for ClientRequest {
 
 /// The application data response type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct ClientResponse(Option<String>);
 
 pub type MemNodeId = u64;
@@ -86,6 +88,7 @@ pub struct MemStoreSnapshot {
 
 /// The state machine of the `MemStore`.
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct MemStoreStateMachine {
     pub last_applied_log: Option<LogId<MemNodeId>>,
 

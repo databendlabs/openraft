@@ -16,19 +16,21 @@ repository = "https://github.com/datafuselabs/openraft"
 readme = "README.md"
 
 [dependencies]
-openraft = { version="0.6", path= "../openraft", features=["serde"] }
+openraft = { version="0.6", path= "../openraft", features=["serde", "rkyv"] }
 async-trait = "0.1.36"
 serde = { version="1.0.114", features=["derive"]}
 serde_json = "1.0.57"
 tokio = { version="1.0", default-features=false, features=["sync"] }
 tracing = "0.1.29"
 tracing-futures = "0.2.4"
+rkyv = {version="0.7.39", optional=true}
 
 [dev-dependencies]
 maplit = "1.0.2"
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
+rkyv = ["dep:rkyv"]
 
 [package.metadata.docs.rs]
 features = ["docinclude"] # Activate `docinclude` during docs.rs build.

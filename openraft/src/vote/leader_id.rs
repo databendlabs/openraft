@@ -13,6 +13,7 @@ use crate::NodeId;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 // Clear the bound so that serde will generate required bounds.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct LeaderId<NID>
 where NID: NodeId
 {

@@ -52,6 +52,7 @@ openraft::declare_raft_types!(
  * You will want to add any request that can write data in all nodes here.
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub enum RocksRequest {
     Set { key: String, value: String },
 }
@@ -65,11 +66,13 @@ pub enum RocksRequest {
  *
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct RocksResponse {
     pub value: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct RocksSnapshot {
     pub meta: SnapshotMeta<RocksNodeId>,
 
@@ -84,6 +87,7 @@ pub struct RocksSnapshot {
  * value as String, but you could set any type of value that has the serialization impl.
  */
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct SerializableRocksStateMachine {
     pub last_applied_log: Option<LogId<RocksNodeId>>,
 

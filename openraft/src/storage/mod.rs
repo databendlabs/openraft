@@ -23,6 +23,7 @@ use crate::Vote;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct SnapshotMeta<NID: NodeId> {
     // Log entries upto which this snapshot includes, inclusive.
     pub last_log_id: LogId<NID>,

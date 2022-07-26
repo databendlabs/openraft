@@ -49,6 +49,7 @@ impl<NID: NodeId> IntoOptionNodes<NID> for BTreeMap<NID, Option<Node>> {
 /// every config.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct Membership<NID: NodeId> {
     /// Multi configs of members.
     ///

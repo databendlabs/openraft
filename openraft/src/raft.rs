@@ -101,6 +101,7 @@ macro_rules! declare_raft_types {
         $(#[$outer])*
         #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd)]
         #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+        #[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
         $visibility struct $id {}
 
         impl $crate::RaftTypeConfig for $id {
@@ -702,6 +703,7 @@ pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct AddLearnerResponse<NID: NodeId> {
     /// The log id of the membership that contains the added learner.
     pub membership_log_id: Option<LogId<NID>>,
@@ -918,6 +920,7 @@ where
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
 
@@ -1127,6 +1130,7 @@ impl<C: RaftTypeConfig> ClientWriteRequest<C> {
     derive(serde::Deserialize, serde::Serialize),
     serde(bound = "C::R: AppDataResponse")
 )]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize))]
 pub struct ClientWriteResponse<C: RaftTypeConfig> {
     /// The id of the log that is applied.
     pub log_id: LogId<C::NodeId>,

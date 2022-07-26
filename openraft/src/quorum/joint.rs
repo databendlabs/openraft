@@ -22,7 +22,8 @@ where
 #[derive(Clone, Debug, Default)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub(crate) struct Joint<ID, QS, D>
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
+pub struct Joint<ID, QS, D>
 where
     ID: 'static,
     QS: QuorumSet<ID>,
