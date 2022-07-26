@@ -973,6 +973,7 @@ impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntrie
 #[derive(Debug)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub enum AppendEntriesResponse<NID: NodeId> {
     Success,
     Conflict,
@@ -1002,6 +1003,7 @@ impl<NID: NodeId> MessageSummary<AppendEntriesResponse<NID>> for AppendEntriesRe
 /// An RPC sent by candidates to gather votes (§5.2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct VoteRequest<NID: NodeId> {
     pub vote: Vote<NID>,
     pub last_log_id: Option<LogId<NID>>,
@@ -1022,6 +1024,7 @@ impl<NID: NodeId> VoteRequest<NID> {
 /// The response to a `VoteRequest`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct VoteResponse<NID: NodeId> {
     /// vote after a node handling vote-reqest.
     /// Thus `resp.vote >= req.vote` always holds.
@@ -1048,6 +1051,7 @@ impl<NID: NodeId> MessageSummary<VoteResponse<NID>> for VoteResponse<NID> {
 /// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
 
@@ -1079,6 +1083,7 @@ impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSna
 /// The response to an `InstallSnapshotRequest`.
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
 }
@@ -1090,6 +1095,7 @@ pub struct InstallSnapshotResponse<NID: NodeId> {
 /// The entry of this payload will be appended to the Raft log and then applied to the Raft state
 /// machine according to the Raft protocol.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "rkyv", derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize))]
 pub struct ClientWriteRequest<C: RaftTypeConfig> {
     /// The application specific contents of this client request.
     pub(crate) payload: EntryPayload<C>,
