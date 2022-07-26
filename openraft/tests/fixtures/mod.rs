@@ -913,6 +913,7 @@ where
     S: Default + Clone,
 {
     type Network = RaftRouterNetwork<C, S>;
+    type ConnectError = NetworkError;
 
     async fn connect(&mut self, target: C::NodeId, _node: Option<&Node>) -> Result<Self::Network, NetworkError> {
         Ok(RaftRouterNetwork {

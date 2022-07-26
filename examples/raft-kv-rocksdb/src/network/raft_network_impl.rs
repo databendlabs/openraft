@@ -63,8 +63,9 @@ impl ExampleNetwork {
 #[async_trait]
 impl RaftNetworkFactory<ExampleTypeConfig> for ExampleNetwork {
     type Network = ExampleNetworkConnection;
+    type ConnectError = NetworkError;
 
-    async fn connect(&mut self, target: ExampleNodeId, node: Option<&Node>) -> Result<Self::Network,NetworkError> {
+    async fn connect(&mut self, target: ExampleNodeId, node: Option<&Node>) -> Result<Self::Network, Self::ConnectError> {
         dbg!(&node);
         let addr = node.map(|x| format!("ws://{}", x.addr)).unwrap();
         let client = Client::dial_websocket(&addr).await.ok();

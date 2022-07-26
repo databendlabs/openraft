@@ -1,12 +1,12 @@
 //! The Raft network interface.
 
+use std::fmt::Display;
 use std::fmt::Formatter;
 
 use async_trait::async_trait;
 
 use crate::error::AppendEntriesError;
 use crate::error::InstallSnapshotError;
-use crate::error::NetworkError;
 use crate::error::RPCError;
 use crate::error::VoteError;
 use crate::raft::AppendEntriesRequest;
@@ -78,6 +78,7 @@ where C: RaftTypeConfig
 {
     /// Actual type of the network handling a single connection.
     type Network: RaftNetwork<C>;
+    type ConnectError: Display;
 
     /// Create a new network instance sending RPCs to the target node.
     ///
@@ -86,5 +87,5 @@ where C: RaftTypeConfig
     ///
     /// The method is intentionally async to give the implementation a chance to use asynchronous
     /// sync primitives to serialize access to the common internal object, if needed.
-    async fn connect(&mut self, target: C::NodeId, node: Option<&Node>) -> Result<Self::Network, NetworkError>;
+    async fn connect(&mut self, target: C::NodeId, node: Option<&Node>) -> Result<Self::Network, Self::ConnectError>;
 }

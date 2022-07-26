@@ -369,7 +369,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let my_id = self.id;
             let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = self.network.connect(target, target_node.as_ref()).await.unwrap();
+            let mut network = match self.network.connect(target, target_node.as_ref()).await {
+                Ok(n) => n,
+                Err(e) => {
+                    tracing::error!(target = display(target), "{}", e);
+                    continue;
+                }
+            };
 
             let ttl = Duration::from_millis(self.config.heartbeat_interval);
 
@@ -1070,21 +1076,30 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self))]
     #[allow(clippy::type_complexity)]
-    pub(crate) async fn spawn_replication_stream(&mut self, target: C::NodeId) -> ReplicationStream<C::NodeId> {
+    pub(crate) async fn spawn_replication_stream(&mut self, target: C::NodeId) -> Option<ReplicationStream<C::NodeId>> {
         let target_node = self.engine.state.membership_state.effective.get_node(&target);
+        let network = match self.network.connect(target, target_node).await {
+            Ok(n) => n,
+            Err(e) => {
+                if tracing::enabled!(Level::ERROR) {
+                    tracing::error!({target=%target}, "failed to connect: {}", e);
+                }
+                return None;
+            }
+        };
 
-        ReplicationCore::<C, N, S>::spawn(
+        Some(ReplicationCore::<C, N, S>::spawn(
             target,
             target_node.cloned(),
             self.engine.state.vote,
             self.config.clone(),
             self.engine.state.last_log_id(),
             self.engine.state.committed,
-            self.network.connect(target, target_node).await.unwrap(),
+            network,
             self.storage.get_log_reader().await,
             self.tx_api.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
-        )
+        ))
     }
 
     /// Remove a replication if the membership that does not include it has committed.
@@ -1195,7 +1210,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         for target in targets {
             let state = self.spawn_replication_stream(target).await;
             if let Some(l) = &mut self.leader_data {
-                l.nodes.insert(target, state);
+                if let Some(s) = state {
+                    l.nodes.insert(target, s);
+                }
             } else {
                 unreachable!("it has to be a leader!!!");
             }
@@ -1259,7 +1276,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let req = vote_req.clone();
             let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = self.network.connect(target, target_node.as_ref()).await.unwrap();
+            let mut network = match self.network.connect(target, target_node.as_ref()).await {
+                Ok(n) => n,
+                Err(err) => {
+                    tracing::error!({error=%err, target=display(target)}, "while requesting vote");
+                    continue;
+                }
+            };
+
             let tx = self.tx_api.clone();
 
             let _ = tokio::spawn(
@@ -1696,7 +1720,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 for (node_id, _matched) in add.iter() {
                     let state = self.spawn_replication_stream(*node_id).await;
                     if let Some(l) = &mut self.leader_data {
-                        l.nodes.insert(*node_id, state);
+                        if let Some(state) = state {
+                            l.nodes.insert(*node_id, state);
+                        }
                     } else {
                         unreachable!("it has to be a leader!!!");
                     }
