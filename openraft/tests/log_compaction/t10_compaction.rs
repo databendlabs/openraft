@@ -138,6 +138,7 @@ async fn compaction() -> Result<()> {
         let res = router
             .connect(1, None)
             .await
+            .unwrap()
             .send_append_entries(AppendEntriesRequest {
                 vote: Vote::new_committed(1, 0),
                 prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 2)),

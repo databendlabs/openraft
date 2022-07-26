@@ -369,7 +369,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let my_id = self.id;
             let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = self.network.connect(target, target_node.as_ref()).await;
+            let mut network = self.network.connect(target, target_node.as_ref()).await.unwrap();
 
             let ttl = Duration::from_millis(self.config.heartbeat_interval);
 
@@ -1080,7 +1080,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.config.clone(),
             self.engine.state.last_log_id(),
             self.engine.state.committed,
-            self.network.connect(target, target_node).await,
+            self.network.connect(target, target_node).await.unwrap(),
             self.storage.get_log_reader().await,
             self.tx_api.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
@@ -1259,7 +1259,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let req = vote_req.clone();
             let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = self.network.connect(target, target_node.as_ref()).await;
+            let mut network = self.network.connect(target, target_node.as_ref()).await.unwrap();
             let tx = self.tx_api.clone();
 
             let _ = tokio::spawn(

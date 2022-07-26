@@ -51,7 +51,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.connect(0, None).await.send_append_entries(rpc).await?;
+    let resp = router.connect(0, None).await.unwrap().send_append_entries(rpc).await?;
     assert!(!resp.is_success());
     assert!(resp.is_conflict());
 
@@ -71,7 +71,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.connect(0, None).await.send_append_entries(rpc).await?;
+    let resp = router.connect(0, None).await.unwrap().send_append_entries(rpc).await?;
     assert!(resp.is_success());
     assert!(!resp.is_conflict());
 
@@ -84,7 +84,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.connect(0, None).await.send_append_entries(rpc).await?;
+    let resp = router.connect(0, None).await.unwrap().send_append_entries(rpc).await?;
     assert!(!resp.is_success());
     assert!(resp.is_conflict());
 

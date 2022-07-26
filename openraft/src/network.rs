@@ -6,6 +6,7 @@ use async_trait::async_trait;
 
 use crate::error::AppendEntriesError;
 use crate::error::InstallSnapshotError;
+use crate::error::NetworkError;
 use crate::error::RPCError;
 use crate::error::VoteError;
 use crate::raft::AppendEntriesRequest;
@@ -85,5 +86,5 @@ where C: RaftTypeConfig
     ///
     /// The method is intentionally async to give the implementation a chance to use asynchronous
     /// sync primitives to serialize access to the common internal object, if needed.
-    async fn connect(&mut self, target: C::NodeId, node: Option<&Node>) -> Self::Network;
+    async fn connect(&mut self, target: C::NodeId, node: Option<&Node>) -> Result<Self::Network, NetworkError>;
 }
