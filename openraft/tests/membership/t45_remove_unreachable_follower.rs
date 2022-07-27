@@ -25,7 +25,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
 
     tracing::info!("--- isolate node 4");
     {
-        router.isolate_node(4, true);
+        router.isolate_node(4);
     }
 
     // logs on node 4 will stop here:

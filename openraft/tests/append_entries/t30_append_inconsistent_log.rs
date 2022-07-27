@@ -83,7 +83,7 @@ async fn append_inconsistent_log() -> Result<()> {
     tracing::info!("--- restart node 1 and isolate. To let node-2 to become leader, node-1 should not vote for node-0");
     {
         router.new_raft_node_with_sto(1, sto1.clone());
-        router.isolate_node(1, true);
+        router.isolate_node(1);
     }
 
     tracing::info!("--- restart node 0 and 2");

@@ -50,8 +50,8 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 
     tracing::info!("--- isolate node 1,2, so that membership [0,1,2] wont commit");
 
-    router.isolate_node(1, true);
-    router.isolate_node(2, true);
+    router.isolate_node(1);
+    router.isolate_node(2);
 
     tracing::info!("--- changing cluster config, should timeout");
 
@@ -95,8 +95,8 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
 
     tracing::info!("--- isolate 3,4");
 
-    router.isolate_node(3, true);
-    router.isolate_node(4, true);
+    router.isolate_node(3);
+    router.isolate_node(4);
 
     tracing::info!("--- changing config to 0,1,2");
     let node = router.get_raft_handle(&0)?;

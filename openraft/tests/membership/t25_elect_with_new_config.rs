@@ -79,7 +79,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
 
     // Isolate old leader and assert that a new leader takes over.
     tracing::info!("--- isolating master node 0");
-    router.isolate_node(0, true);
+    router.isolate_node(0);
     router
         .wait_for_metrics(
             &1,

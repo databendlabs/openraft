@@ -246,7 +246,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
 
     tracing::info!("--- isolate n2, make it unreachable for router");
     {
-        router.isolate_node(2, false);
+        router.unplug_node(2);
     }
 
     tracing::info!("--- assert if router is aware of n2's network failure");
