@@ -229,6 +229,30 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
     Ok(())
 }
 
+// TODO(ClSlaid): Finish this test?
+/// What does this test do?
+///   this test is ought to test the cluster's functionality, when there is a network unreachable node
+///
+/// - initialize 1 node as leader and 2 nodes as follower
+/// - suspend a follower, making it network unreachable
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn initialize_with_broken_network() -> anyhow::Result<()> {
+    let config = Arc::new(Config::default().validate()?);
+    let mut router = RaftRouter::new(config.clone());
+    let log_index = router.new_nodes_from_single(btreeset! {0, 1, 2}, btreeset! {}).await?;
+
+    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "cluster of 3").await?;
+
+    tracing::info!("--- make node 2 network unreachable");
+    {
+        router.add_unreachable(btreeset! {2});
+    }
+
+    tracing::info!("--- renew replicate stream");
+
+    Ok(())
+}
+
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(1000))
 }

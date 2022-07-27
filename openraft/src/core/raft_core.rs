@@ -48,6 +48,7 @@ use crate::error::InProgress;
 use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
+use crate::error::NetworkError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
@@ -1076,19 +1077,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self))]
     #[allow(clippy::type_complexity)]
-    pub(crate) async fn spawn_replication_stream(&mut self, target: C::NodeId) -> Option<ReplicationStream<C::NodeId>> {
+    pub(crate) async fn spawn_replication_stream(
+        &mut self,
+        target: C::NodeId,
+    ) -> Result<ReplicationStream<C::NodeId>, NetworkError> {
         let target_node = self.engine.state.membership_state.effective.get_node(&target);
-        let network = match self.network.connect(target, target_node).await {
-            Ok(n) => n,
-            Err(e) => {
-                if tracing::enabled!(Level::ERROR) {
-                    tracing::error!({target=%target}, "failed to connect: {}", e);
-                }
-                return None;
-            }
-        };
+        let network = self.network.connect(target, target_node).await.map_err(|err| NetworkError::new(&err))?;
 
-        Some(ReplicationCore::<C, N, S>::spawn(
+        Ok(ReplicationCore::<C, N, S>::spawn(
             target,
             target_node.cloned(),
             self.engine.state.vote,
@@ -1210,8 +1206,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         for target in targets {
             let state = self.spawn_replication_stream(target).await;
             if let Some(l) = &mut self.leader_data {
-                if let Some(s) = state {
-                    l.nodes.insert(target, s);
+                match state {
+                    Ok(s) => {
+                        l.nodes.insert(target, s);
+                    }
+                    Err(e) => {
+                        tracing::error!({target = % target}, "cannot connect {:?}", e);
+                    }
                 }
             } else {
                 unreachable!("it has to be a leader!!!");
@@ -1720,8 +1721,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 for (node_id, _matched) in add.iter() {
                     let state = self.spawn_replication_stream(*node_id).await;
                     if let Some(l) = &mut self.leader_data {
-                        if let Some(state) = state {
-                            l.nodes.insert(*node_id, state);
+                        match state {
+                            Ok(state) => {
+                                l.nodes.insert(*node_id, state);
+                            }
+                            Err(e) => {
+                                tracing::error!({node = % node_id}, "cannot connect {:?}", e);
+                            }
                         }
                     } else {
                         unreachable!("it has to be a leader!!!");

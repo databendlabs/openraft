@@ -146,6 +146,9 @@ where
     /// Nodes which are isolated can neither send nor receive frames.
     isolated_nodes: Arc<Mutex<HashSet<C::NodeId>>>,
 
+    /// Emulate nodes that are network unreachable
+    unreachable_nodes: Arc<Mutex<BTreeSet<C::NodeId>>>,
+
     /// To emulate network delay for sending, in milliseconds.
     /// 0 means no delay.
     send_delay: Arc<AtomicU64>,
@@ -176,6 +179,7 @@ where
             config: self.config,
             routing_table: Default::default(),
             isolated_nodes: Default::default(),
+            unreachable_nodes: Default::default(),
             send_delay: Arc::new(AtomicU64::new(self.send_delay)),
         }
     }
@@ -192,6 +196,7 @@ where
             config: self.config.clone(),
             routing_table: self.routing_table.clone(),
             isolated_nodes: self.isolated_nodes.clone(),
+            unreachable_nodes: self.unreachable_nodes.clone(),
             send_delay: self.send_delay.clone(),
         }
     }
@@ -218,6 +223,29 @@ where
 
     pub fn network_send_delay(&mut self, ms: u64) {
         self.send_delay.store(ms, Ordering::Relaxed);
+    }
+
+    /// add network unreachable nodes for router
+    pub fn add_unreachable(&mut self, targets: BTreeSet<C::NodeId>) {
+        let mut guard = self.unreachable_nodes.lock().unwrap();
+        for target in targets {
+            guard.insert(target);
+        }
+    }
+
+    /// set network unreachable nodes to targets
+    pub fn set_unreachable(&mut self, targets: BTreeSet<C::NodeId>) {
+        let mut guard = self.unreachable_nodes.lock().unwrap();
+        *guard = targets;
+    }
+
+    /// Set target nodes to be network reachable
+    /// it's ok if the target does not contain those unreachable nodes
+    pub fn recover_unreachable(&mut self, targets: BTreeSet<C::NodeId>) {
+        let mut guard = self.unreachable_nodes.lock().unwrap();
+        for target in targets {
+            guard.remove(&target);
+        }
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -916,6 +944,13 @@ where
     type ConnectError = NetworkError;
 
     async fn connect(&mut self, target: C::NodeId, _node: Option<&Node>) -> Result<Self::Network, NetworkError> {
+        let e = NetworkError::new(&AnyError::error(format!("isolated: {}", target)));
+        {
+            let guard = self.isolated_nodes.lock().unwrap();
+            if guard.contains(&target) {
+                return Err(e);
+            }
+        }
         Ok(RaftRouterNetwork {
             target,
             owner: self.clone(),
