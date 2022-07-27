@@ -10,6 +10,7 @@ use std::env;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::panic::PanicInfo;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -146,8 +147,8 @@ where
     /// Nodes which are isolated can neither send nor receive frames.
     isolated_nodes: Arc<Mutex<HashSet<C::NodeId>>>,
 
-    /// Emulate nodes that are network unreachable
-    unreachable_nodes: Arc<Mutex<BTreeSet<C::NodeId>>>,
+    /// emulate network unreachable
+    network_failed: Arc<AtomicBool>,
 
     /// To emulate network delay for sending, in milliseconds.
     /// 0 means no delay.
@@ -179,7 +180,7 @@ where
             config: self.config,
             routing_table: Default::default(),
             isolated_nodes: Default::default(),
-            unreachable_nodes: Default::default(),
+            network_failed: Default::default(), // default is false
             send_delay: Arc::new(AtomicU64::new(self.send_delay)),
         }
     }
@@ -196,7 +197,7 @@ where
             config: self.config.clone(),
             routing_table: self.routing_table.clone(),
             isolated_nodes: self.isolated_nodes.clone(),
-            unreachable_nodes: self.unreachable_nodes.clone(),
+            network_failed: self.network_failed.clone(),
             send_delay: self.send_delay.clone(),
         }
     }
@@ -225,27 +226,12 @@ where
         self.send_delay.store(ms, Ordering::Relaxed);
     }
 
-    /// add network unreachable nodes for router
-    pub fn add_unreachable(&mut self, targets: BTreeSet<C::NodeId>) {
-        let mut guard = self.unreachable_nodes.lock().unwrap();
-        for target in targets {
-            guard.insert(target);
-        }
+    pub fn set_network_failure(&mut self) {
+        self.network_failed.store(true, Ordering::Relaxed);
     }
 
-    /// set network unreachable nodes to targets
-    pub fn set_unreachable(&mut self, targets: BTreeSet<C::NodeId>) {
-        let mut guard = self.unreachable_nodes.lock().unwrap();
-        *guard = targets;
-    }
-
-    /// Set target nodes to be network reachable
-    /// it's ok if the target does not contain those unreachable nodes
-    pub fn recover_unreachable(&mut self, targets: BTreeSet<C::NodeId>) {
-        let mut guard = self.unreachable_nodes.lock().unwrap();
-        for target in targets {
-            guard.remove(&target);
-        }
+    pub fn recover_network_failure(&mut self) {
+        self.network_failed.store(false, Ordering::Relaxed);
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -944,17 +930,15 @@ where
     type ConnectError = NetworkError;
 
     async fn connect(&mut self, target: C::NodeId, _node: Option<&Node>) -> Result<Self::Network, NetworkError> {
-        let e = NetworkError::new(&AnyError::error(format!("isolated: {}", target)));
-        {
-            let guard = self.isolated_nodes.lock().unwrap();
-            if guard.contains(&target) {
-                return Err(e);
-            }
+        let e = NetworkError::new(&AnyError::error(format!("failed to connect: {}", target)));
+        if self.network_failed.load(Ordering::Relaxed) {
+            Err(e)
+        } else {
+            Ok(RaftRouterNetwork {
+                target,
+                owner: self.clone(),
+            })
         }
-        Ok(RaftRouterNetwork {
-            target,
-            owner: self.clone(),
-        })
     }
 }
 

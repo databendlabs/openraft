@@ -12,6 +12,7 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
+use openraft::RaftNetworkFactory;
 use openraft::RaftStorage;
 use openraft::ServerState;
 use openraft::Vote;
@@ -229,26 +230,40 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
     Ok(())
 }
 
-// TODO(ClSlaid): Finish this test?
 /// What does this test do?
-///   this test is ought to test the cluster's functionality, when there is a network unreachable node
+///   this test is ought to test if the router is aware of network failures
 ///
 /// - initialize 1 node as leader and 2 nodes as follower
-/// - suspend a follower, making it network unreachable
+/// - set the router to be network failed
+/// - let the router connect to other nodes, assert errors
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn initialize_with_broken_network() -> anyhow::Result<()> {
+async fn router_network_failure_aware() -> anyhow::Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    let log_index = router.new_nodes_from_single(btreeset! {0, 1, 2}, btreeset! {}).await?;
+    let nodes = btreeset! {0, 1, 2};
+    router.new_nodes_from_single(nodes.clone(), btreeset! {}).await?;
 
-    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), timeout(), "cluster of 3").await?;
-
-    tracing::info!("--- make node 2 network unreachable");
+    tracing::info!("--- fail router's network");
     {
-        router.add_unreachable(btreeset! {2});
+        router.set_network_failure();
     }
 
-    tracing::info!("--- renew replicate stream");
+    tracing::info!("--- assert if router is aware of network failure");
+    {
+        for node in nodes.into_iter() {
+            let resp = router.connect(node, None).await;
+            match resp {
+                Ok(_) => assert!(resp.is_err()), // make test fail
+                Err(err) => {
+                    let want = openraft::error::NetworkError::new(&anyerror::AnyError::error(format!(
+                        "failed to connect: {}",
+                        node
+                    )));
+                    assert_eq!(err, want);
+                }
+            };
+        }
+    }
 
     Ok(())
 }
