@@ -54,7 +54,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     tracing::info!("--- stop replication to node 1");
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
-        router.isolate_node(1);
+        router.isolate_node(1, true);
 
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
 

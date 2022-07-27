@@ -1204,16 +1204,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // TODO(xp): make this Engine::Command driven.
         for target in targets {
-            let state = self.spawn_replication_stream(target).await;
-            if let Some(l) = &mut self.leader_data {
-                match state {
-                    Ok(s) => {
-                        l.nodes.insert(target, s);
-                    }
-                    Err(e) => {
-                        tracing::error!({target = % target}, "cannot connect {:?}", e);
-                    }
+            let state = match self.spawn_replication_stream(target).await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!({target = % target}, "cannot connect {:?}", e);
+                    continue;
                 }
+            };
+
+            if let Some(l) = &mut self.leader_data {
+                l.nodes.insert(target, state);
             } else {
                 unreachable!("it has to be a leader!!!");
             }
@@ -1719,16 +1719,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     self.remove_replication(*node_id).await;
                 }
                 for (node_id, _matched) in add.iter() {
-                    let state = self.spawn_replication_stream(*node_id).await;
-                    if let Some(l) = &mut self.leader_data {
-                        match state {
-                            Ok(state) => {
-                                l.nodes.insert(*node_id, state);
-                            }
-                            Err(e) => {
-                                tracing::error!({node = % node_id}, "cannot connect {:?}", e);
-                            }
+                    let state = match self.spawn_replication_stream(*node_id).await {
+                        Ok(state) => state,
+                        Err(e) => {
+                            tracing::error!({node = % node_id}, "cannot connect {:?}", e);
+                            continue;
                         }
+                    };
+
+                    if let Some(l) = &mut self.leader_data {
+                        l.nodes.insert(*node_id, state);
                     } else {
                         unreachable!("it has to be a leader!!!");
                     }

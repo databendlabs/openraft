@@ -234,35 +234,41 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 ///   this test is ought to test if the router is aware of network failures
 ///
 /// - initialize 1 node as leader and 2 nodes as follower
-/// - set the router to be network failed
-/// - let the router connect to other nodes, assert errors
+/// - set one follower's network to be unreachable
+/// - check if router's connecting to unreachable follower returning an `Err`
+/// - assert whether the cluster still works properly
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn router_network_failure_aware() -> anyhow::Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
     let nodes = btreeset! {0, 1, 2};
-    router.new_nodes_from_single(nodes.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(nodes.clone(), btreeset! {}).await?;
 
-    tracing::info!("--- fail router's network");
+    tracing::info!("--- isolate n2, make it unreachable for router");
     {
-        router.set_network_failure();
+        router.isolate_node(2, false);
     }
 
-    tracing::info!("--- assert if router is aware of network failure");
+    tracing::info!("--- assert if router is aware of n2's network failure");
     {
-        for node in nodes.into_iter() {
-            let resp = router.connect(node, None).await;
-            match resp {
-                Ok(_) => assert!(resp.is_err()), // make test fail
-                Err(err) => {
-                    let want = openraft::error::NetworkError::new(&anyerror::AnyError::error(format!(
-                        "failed to connect: {}",
-                        node
-                    )));
-                    assert_eq!(err, want);
-                }
-            };
-        }
+        let resp = router.connect(2, None).await;
+        match resp {
+            Ok(_) => assert!(resp.is_err()), // resp should be Err()
+
+            Err(err) => {
+                let want =
+                    openraft::error::NetworkError::new(&anyerror::AnyError::error(format!("failed to connect: {}", 2)));
+                assert_eq!(err, want);
+            }
+        };
+    }
+
+    tracing::info!("--- write 100 logs");
+    {
+        router.client_request_many(0, "client", 100).await?;
+        log_index += 100;
+        // the cluster should still works properly regardless of the unreachable network of n2.
+        router.wait_for_log(&btreeset! {0, 1}, Some(log_index), timeout(), "write 100 logs").await?;
     }
 
     Ok(())

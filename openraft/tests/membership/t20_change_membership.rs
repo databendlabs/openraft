@@ -151,7 +151,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
 
     tracing::info!("--- stop replication by isolating node 1");
     {
-        router.isolate_node(1);
+        router.isolate_node(1, true);
     }
 
     tracing::info!("--- write up to 500 logs");
