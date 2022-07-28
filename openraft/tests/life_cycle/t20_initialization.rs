@@ -12,7 +12,6 @@ use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
-use openraft::RaftNetworkFactory;
 use openraft::RaftStorage;
 use openraft::ServerState;
 use openraft::Vote;
@@ -242,33 +241,44 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
     let nodes = btreeset! {0, 1, 2};
-    let mut log_index = router.new_nodes_from_single(nodes.clone(), btreeset! {}).await?;
+    router.new_nodes_from_single(nodes.clone(), btreeset! {}).await?;
 
-    tracing::info!("--- isolate n2, make it unreachable for router");
+    tracing::info!("--- unplug leader, make it unreachable for router");
     {
-        router.unplug_node(2);
+        router.detach_node(0);
     }
 
-    tracing::info!("--- assert if router is aware of n2's network failure");
+    tracing::info!("--- wait until the cluster stable");
     {
-        let resp = router.connect(2, None).await;
-        match resp {
-            Ok(_) => assert!(resp.is_err()), // resp should be Err()
-
-            Err(err) => {
-                let want =
-                    openraft::error::NetworkError::new(&anyerror::AnyError::error(format!("failed to connect: {}", 2)));
-                assert_eq!(err, want);
-            }
-        };
+        router
+            .wait_for_metrics(
+                &1,
+                |x| x.current_leader.is_some() && x.current_leader != Some(0),
+                timeout(),
+                "wait for election complete",
+            )
+            .await?;
     }
 
     tracing::info!("--- write 100 logs");
     {
-        router.client_request_many(0, "client", 100).await?;
+        let leader = router.leader().unwrap();
+        let mut log_index = router.get_metrics(&leader)?.last_log_index.unwrap();
+        router.client_request_many(leader, "client", 100).await?;
         log_index += 100;
-        // the cluster should still works properly regardless of the unreachable network of n2.
-        router.wait_for_log(&btreeset! {0, 1}, Some(log_index), timeout(), "write 100 logs").await?;
+        router.wait_for_log(&btreeset! {leader}, Some(log_index), timeout(), "write 100 logs").await?;
+    }
+
+    tracing::info!("--- detach n1, make it unreachable for router");
+    {
+        router.detach_node(1);
+    }
+
+    tracing::info!("--- cluster should unable to commit logs now");
+    {
+        let write_req = router.client_request(0, "client", 0);
+        let timeout = tokio::time::timeout(Duration::from_millis(1000), write_req).await;
+        assert!(timeout.is_err());
     }
 
     Ok(())

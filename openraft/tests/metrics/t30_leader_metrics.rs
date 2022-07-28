@@ -165,8 +165,7 @@ async fn leader_metrics() -> Result<()> {
     {
         router
             .connect(leader, None)
-            .await
-            .unwrap()
+            .await?
             .send_vote(VoteRequest {
                 vote: Vote::new(100, 100),
                 last_log_id: Some(LogId::new(LeaderId::new(10, 0), 100)),
