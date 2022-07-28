@@ -12,6 +12,7 @@ use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
+use crate::BasicNode;
 use crate::EntryPayload;
 use crate::LeaderId;
 use crate::LogId;
@@ -21,14 +22,14 @@ use crate::Vote;
 
 #[test]
 fn test_initialize_single_node() -> anyhow::Result<()> {
-    let eng = Engine::<u64>::default;
+    let eng = Engine::<u64, BasicNode>::default;
 
     let log_id0 = LogId {
         leader_id: LeaderId::new(0, 0),
         index: 0,
     };
 
-    let m1 = || Membership::<u64>::new(vec![btreeset! {1}], None);
+    let m1 = || Membership::<u64, BasicNode>::new(vec![btreeset! {1}], None);
     let payload = EntryPayload::<Config>::Membership(m1());
     let mut entries = [EntryRef::new(&payload)];
 
@@ -94,7 +95,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 
 #[test]
 fn test_initialize() -> anyhow::Result<()> {
-    let eng = Engine::<u64>::default;
+    let eng = Engine::<u64, BasicNode>::default;
 
     let log_id0 = LogId {
         leader_id: LeaderId::new(0, 0),
@@ -102,7 +103,7 @@ fn test_initialize() -> anyhow::Result<()> {
     };
     let vote0 = Vote::new(0, 0);
 
-    let m12 = || Membership::<u64>::new(vec![btreeset! {1,2}], None);
+    let m12 = || Membership::<u64, BasicNode>::new(vec![btreeset! {1,2}], None);
     let payload = EntryPayload::<Config>::Membership(m12());
     let mut entries = [EntryRef::new(&payload)];
 

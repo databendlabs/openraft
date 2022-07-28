@@ -7,7 +7,7 @@ use actix_web::web;
 use actix_web::web::Data;
 use actix_web::Responder;
 use openraft::error::Infallible;
-use openraft::Node;
+use openraft::BasicNode;
 use openraft::RaftMetrics;
 use web::Json;
 
@@ -27,10 +27,7 @@ pub async fn add_learner(
     req: Json<(ExampleNodeId, String)>,
 ) -> actix_web::Result<impl Responder> {
     let node_id = req.0 .0;
-    let node = Node {
-        addr: req.0 .1.clone(),
-        ..Default::default()
-    };
+    let node = BasicNode { addr: req.0 .1.clone() };
     let res = app.raft.add_learner(node_id, Some(node), true).await;
     Ok(Json(res))
 }
@@ -49,10 +46,7 @@ pub async fn change_membership(
 #[post("/init")]
 pub async fn init(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
     let mut nodes = BTreeMap::new();
-    nodes.insert(app.id, Node {
-        addr: app.addr.clone(),
-        data: Default::default(),
-    });
+    nodes.insert(app.id, BasicNode { addr: app.addr.clone() });
     let res = app.raft.initialize(nodes).await;
     Ok(Json(res))
 }
@@ -62,6 +56,6 @@ pub async fn init(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
 pub async fn metrics(app: Data<ExampleApp>) -> actix_web::Result<impl Responder> {
     let metrics = app.raft.metrics().borrow().clone();
 
-    let res: Result<RaftMetrics<ExampleNodeId>, Infallible> = Ok(metrics);
+    let res: Result<RaftMetrics<ExampleNodeId, BasicNode>, Infallible> = Ok(metrics);
     Ok(Json(res))
 }

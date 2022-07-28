@@ -12,6 +12,7 @@ use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::membership::NodeRole;
+use crate::node::Node;
 use crate::progress::Progress;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::VoteRequest;
@@ -63,7 +64,11 @@ impl Default for EngineConfig {
 /// TODO: make the fields private
 #[derive(Debug, Clone, Default)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct Engine<NID: NodeId> {
+pub(crate) struct Engine<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
     /// TODO:
     #[allow(dead_code)]
     pub(crate) id: NID,
@@ -76,17 +81,21 @@ pub(crate) struct Engine<NID: NodeId> {
     pub(crate) snapshot_last_log_id: Option<LogId<NID>>,
 
     /// The state of this raft node.
-    pub(crate) state: RaftState<NID>,
+    pub(crate) state: RaftState<NID, N>,
 
     /// Tracks what kind of metrics changed
     pub(crate) metrics_flags: MetricsChangeFlags,
 
     /// Command queue that need to be executed by `RaftRuntime`.
-    pub(crate) commands: Vec<Command<NID>>,
+    pub(crate) commands: Vec<Command<NID, N>>,
 }
 
-impl<NID: NodeId> Engine<NID> {
-    pub(crate) fn new(id: NID, init_state: &RaftState<NID>, config: EngineConfig) -> Self {
+impl<NID, N> Engine<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
+    pub(crate) fn new(id: NID, init_state: &RaftState<NID, N>, config: EngineConfig) -> Self {
         Self {
             id,
             config,
@@ -105,7 +114,10 @@ impl<NID: NodeId> Engine<NID> {
     /// Appending the very first log is slightly different from appending log by a leader or follower.
     /// This step is not confined by the consensus protocol and has to be dealt with differently.
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn initialize<Ent: RaftEntry<NID>>(&mut self, entries: &mut [Ent]) -> Result<(), InitializeError<NID>> {
+    pub(crate) fn initialize<Ent: RaftEntry<NID, N>>(
+        &mut self,
+        entries: &mut [Ent],
+    ) -> Result<(), InitializeError<NID, N>> {
         let l = entries.len();
         debug_assert_eq!(1, l);
 
@@ -281,7 +293,7 @@ impl<NID: NodeId> Engine<NID> {
     /// TODO(xp): metrics flag needs to be dealt with.
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn leader_append_entries<'a, Ent: RaftEntry<NID> + 'a>(&mut self, entries: &mut [Ent]) {
+    pub(crate) fn leader_append_entries<'a, Ent: RaftEntry<NID, N> + 'a>(&mut self, entries: &mut [Ent]) {
         let l = entries.len();
         if l == 0 {
             return;
@@ -352,7 +364,7 @@ impl<NID: NodeId> Engine<NID> {
         leader_committed: Option<LogId<NID>>,
     ) -> AppendEntriesResponse<NID>
     where
-        Ent: RaftEntry<NID> + MessageSummary<Ent> + 'a,
+        Ent: RaftEntry<NID, N> + MessageSummary<Ent> + 'a,
     {
         tracing::debug!(
             vote = display(vote),
@@ -409,7 +421,7 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn follower_commit_entries<'a, Ent: RaftEntry<NID> + 'a>(
+    pub(crate) fn follower_commit_entries<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
         leader_committed: Option<LogId<NID>>,
         prev_log_id: Option<LogId<NID>>,
@@ -445,7 +457,11 @@ impl<NID: NodeId> Engine<NID> {
     ///
     /// Membership config changes are also detected and applied here.
     #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn follower_do_append_entries<'a, Ent: RaftEntry<NID> + 'a>(&mut self, entries: &[Ent], since: usize) {
+    pub(crate) fn follower_do_append_entries<'a, Ent: RaftEntry<NID, N> + 'a>(
+        &mut self,
+        entries: &[Ent],
+        since: usize,
+    ) {
         let l = entries.len();
         if since == l {
             return;
@@ -617,7 +633,7 @@ impl<NID: NodeId> Engine<NID> {
 
     /// Update membership state with a committed membership config
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_committed_membership(&mut self, membership: EffectiveMembership<NID>) {
+    pub(crate) fn update_committed_membership(&mut self, membership: EffectiveMembership<NID, N>) {
         tracing::debug!("update committed membership: {}", membership.summary());
 
         let server_state = self.calc_server_state();
@@ -653,7 +669,7 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_effective_membership(&mut self, log_id: &LogId<NID>, m: &Membership<NID>) {
+    pub(crate) fn update_effective_membership(&mut self, log_id: &LogId<NID>, m: &Membership<NID, N>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
 
         self.metrics_flags.set_cluster_changed();
@@ -780,7 +796,11 @@ impl<NID: NodeId> Engine<NID> {
 }
 
 /// Supporting util
-impl<NID: NodeId> Engine<NID> {
+impl<NID, N> Engine<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
     /// Enter leading or following state by checking `vote`.
     ///
     /// `vote.node_id == self.id`: Leading state;
@@ -841,7 +861,7 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     /// Update effective membership config if encountering a membership config log entry.
-    fn try_update_membership<Ent: RaftEntry<NID>>(&mut self, entry: &Ent) {
+    fn try_update_membership<Ent: RaftEntry<NID, N>>(&mut self, entry: &Ent) {
         if let Some(m) = entry.get_membership() {
             self.update_effective_membership(entry.get_log_id(), m);
         }
@@ -849,7 +869,7 @@ impl<NID: NodeId> Engine<NID> {
 
     /// Update membership state if membership config entries are found.
     #[allow(dead_code)]
-    fn follower_update_membership<'a, Ent: RaftEntry<NID> + 'a>(
+    fn follower_update_membership<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
         entries: impl DoubleEndedIterator<Item = &'a Ent>,
     ) {
@@ -883,9 +903,9 @@ impl<NID: NodeId> Engine<NID> {
     /// when conflicting logs are found.
     ///
     /// See: [Effective-membership](https://datafuselabs.github.io/openraft/effective-membership.html)
-    fn last_two_memberships<'a, Ent: RaftEntry<NID> + 'a>(
+    fn last_two_memberships<'a, Ent: RaftEntry<NID, N> + 'a>(
         entries: impl DoubleEndedIterator<Item = &'a Ent>,
-    ) -> Vec<EffectiveMembership<NID>> {
+    ) -> Vec<EffectiveMembership<NID, N>> {
         let mut memberships = vec![];
 
         // Find the last 2 membership config entries: the committed and the effective.
@@ -904,7 +924,7 @@ impl<NID: NodeId> Engine<NID> {
     /// Update membership state with the last 2 membership configs found in new log entries
     ///
     /// Return if new membership config is found
-    fn update_membership_state(&mut self, memberships: Vec<EffectiveMembership<NID>>) {
+    fn update_membership_state(&mut self, memberships: Vec<EffectiveMembership<NID, N>>) {
         debug_assert!(self.state.membership_state.effective.log_id < memberships[0].log_id);
 
         let new_mem_state = if memberships.len() == 1 {
@@ -973,7 +993,7 @@ impl<NID: NodeId> Engine<NID> {
     }
 
     /// When initialize, the node that accept initialize request has to be a member of the initial config.
-    fn check_members_contain_me(&self, m: &Membership<NID>) -> Result<(), NotInMembers<NID>> {
+    fn check_members_contain_me(&self, m: &Membership<NID, N>) -> Result<(), NotInMembers<NID, N>> {
         if !m.is_voter(&self.id) {
             let e = NotInMembers {
                 node_id: self.id,
@@ -1009,7 +1029,7 @@ impl<NID: NodeId> Engine<NID> {
         l
     }
 
-    fn assign_log_ids<'a, Ent: RaftEntry<NID> + 'a>(&mut self, entries: impl Iterator<Item = &'a mut Ent>) {
+    fn assign_log_ids<'a, Ent: RaftEntry<NID, N> + 'a>(&mut self, entries: impl Iterator<Item = &'a mut Ent>) {
         let mut log_id = LogId::new(self.state.vote.leader_id(), self.state.last_log_id().next_index());
         for entry in entries {
             entry.set_log_id(&log_id);
@@ -1082,7 +1102,7 @@ impl<NID: NodeId> Engine<NID> {
         self.state.vote.node_id == self.id && self.state.vote.committed
     }
 
-    fn push_command(&mut self, cmd: Command<NID>) {
+    fn push_command(&mut self, cmd: Command<NID, N>) {
         cmd.update_metrics_flags(&mut self.metrics_flags);
         self.commands.push(cmd)
     }

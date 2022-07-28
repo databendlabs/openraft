@@ -36,6 +36,7 @@ use crate::error::VoteError;
 use crate::membership::IntoOptionNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
+use crate::node::Node;
 use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -45,7 +46,6 @@ use crate::EntryPayload;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
-use crate::Node;
 use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftState;
@@ -83,6 +83,9 @@ pub trait RaftTypeConfig:
 
     /// A Raft node's ID.
     type NodeId: NodeId;
+
+    /// Raft application level node data
+    type Node: Node;
 }
 
 /// Define types for a Raft type configuration.
@@ -118,7 +121,9 @@ macro_rules! declare_raft_types {
 }
 
 /// The running state of RaftCore
-enum CoreState<NID: NodeId> {
+enum CoreState<NID>
+where NID: NodeId
+{
     /// The RaftCore task is still running.
     Running(JoinHandle<Result<(), Fatal<NID>>>),
 
@@ -132,7 +137,7 @@ struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>>
     runtime_config: Arc<RuntimeConfig>,
     tick_handle: TickHandle,
     tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
-    rx_metrics: watch::Receiver<RaftMetrics<C::NodeId>>,
+    rx_metrics: watch::Receiver<RaftMetrics<C::NodeId, C::Node>>,
     // TODO(xp): it does not need to be a async mutex.
     #[allow(clippy::type_complexity)]
     tx_shutdown: Mutex<Option<oneshot::Sender<()>>>,
@@ -302,7 +307,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// The actual read operation itself is up to the application, this method just ensures that
     /// the read will not be stale.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn is_leader(&self) -> Result<(), CheckIsLeaderError<C::NodeId>> {
+    pub async fn is_leader(&self) -> Result<(), CheckIsLeaderError<C::NodeId, C::Node>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::CheckIsLeaderRequest { tx }, rx).await
     }
@@ -324,8 +329,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn client_write(&self, app_data: C::D) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
+    #[tracing::instrument(level = "debug", skip(self, app_data))]
+    pub async fn client_write(
+        &self,
+        app_data: C::D,
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>> {
         let (tx, rx) = oneshot::channel();
         self.call_core(
             RaftMsg::ClientWriteRequest {
@@ -358,8 +366,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// More than one node performing `initialize()` with the same config is safe,
     /// with different config will result in split brain condition.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn initialize<T>(&self, members: T) -> Result<(), InitializeError<C::NodeId>>
-    where T: IntoOptionNodes<C::NodeId> + Debug {
+    pub async fn initialize<T>(&self, members: T) -> Result<(), InitializeError<C::NodeId, C::Node>>
+    where T: IntoOptionNodes<C::NodeId, C::Node> + Debug {
         let (tx, rx) = oneshot::channel();
         self.call_core(
             RaftMsg::Initialize {
@@ -391,9 +399,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn add_learner(
         &self,
         id: C::NodeId,
-        node: Option<Node>,
+        node: Option<C::Node>,
         blocking: bool,
-    ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>> {
+    ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId, C::Node>> {
         let (tx, rx) = oneshot::channel();
         let resp = self.call_core(RaftMsg::AddLearner { id, node, tx }, rx).await?;
 
@@ -443,7 +451,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// Returns Err() if it should keep waiting.
     fn check_replication_upto_date(
         &self,
-        metrics: &RaftMetrics<C::NodeId>,
+        metrics: &RaftMetrics<C::NodeId, C::Node>,
         node_id: C::NodeId,
         membership_log_id: Option<LogId<C::NodeId>>,
     ) -> Result<Option<LogId<C::NodeId>>, ()> {
@@ -516,7 +524,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         members: impl Into<ChangeMembers<C::NodeId>>,
         allow_lagging: bool,
         turn_to_learner: bool,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>> {
         let changes: ChangeMembers<C::NodeId> = members.into();
 
         tracing::info!(
@@ -675,12 +683,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// If the API channel is already closed (Raft is in shutdown), then the request functor is
     /// destroyed right away and not called at all.
-    pub fn external_request<F: FnOnce(&RaftState<C::NodeId>, &mut S, &mut N) + Send + 'static>(&self, req: F) {
+    pub fn external_request<F: FnOnce(&RaftState<C::NodeId, C::Node>, &mut S, &mut N) + Send + 'static>(&self, req: F) {
         let _ignore_error = self.inner.tx_api.send(RaftMsg::ExternalRequest { req: Box::new(req) });
     }
 
     /// Get a handle to the metrics channel.
-    pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C::NodeId>> {
+    pub fn metrics(&self) -> watch::Receiver<RaftMetrics<C::NodeId, C::Node>> {
         self.inner.rx_metrics.clone()
     }
 
@@ -701,7 +709,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// // wait for raft state to become a follower
     /// r.wait(None).state(State::Follower, "state").await?;
     /// ```
-    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C::NodeId> {
+    pub fn wait(&self, timeout: Option<Duration>) -> Wait<C::NodeId, C::Node> {
         let timeout = match timeout {
             Some(t) => t,
             None => Duration::from_millis(500),
@@ -749,15 +757,30 @@ pub struct AddLearnerResponse<NID: NodeId> {
     pub matched: Option<LogId<NID>>,
 }
 
+/// TX for Add Learner Respose
+pub(crate) type RaftAddLearnerTx<NID, N> = RaftRespTx<AddLearnerResponse<NID>, AddLearnerError<NID, N>>;
+
+/// TX for Install Snapshot Response
+pub(crate) type InstallSnapshotTx<NID> = RaftRespTx<InstallSnapshotResponse<NID>, InstallSnapshotError<NID>>;
+
+/// TX for Vote Response
+pub(crate) type VoteTx<NID> = RaftRespTx<VoteResponse<NID>, VoteError<NID>>;
+
+/// TX for Append Entries Response
+pub(crate) type AppendEntriesTx<NID> = RaftRespTx<AppendEntriesResponse<NID>, AppendEntriesError<NID>>;
+
+/// TX for Client Write Response
+pub(crate) type ClientWriteTx<C, NID, N> = RaftRespTx<ClientWriteResponse<C>, ClientWriteError<NID, N>>;
+
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     AppendEntries {
         rpc: AppendEntriesRequest<C>,
-        tx: RaftRespTx<AppendEntriesResponse<C::NodeId>, AppendEntriesError<C::NodeId>>,
+        tx: AppendEntriesTx<C::NodeId>,
     },
     RequestVote {
         rpc: VoteRequest<C::NodeId>,
-        tx: RaftRespTx<VoteResponse<C::NodeId>, VoteError<C::NodeId>>,
+        tx: VoteTx<C::NodeId>,
     },
     VoteResponse {
         target: C::NodeId,
@@ -768,7 +791,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
     InstallSnapshot {
         rpc: InstallSnapshotRequest<C>,
-        tx: RaftRespTx<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>>,
+        tx: InstallSnapshotTx<C::NodeId>,
     },
 
     SnapshotUpdate {
@@ -777,24 +800,24 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
 
     ClientWriteRequest {
         payload: EntryPayload<C>,
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
+        tx: ClientWriteTx<C, C::NodeId, C::Node>,
     },
     CheckIsLeaderRequest {
-        tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId>>,
+        tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId, C::Node>>,
     },
 
     Initialize {
-        members: BTreeMap<C::NodeId, Option<Node>>,
-        tx: RaftRespTx<(), InitializeError<C::NodeId>>,
+        members: BTreeMap<C::NodeId, Option<C::Node>>,
+        tx: RaftRespTx<(), InitializeError<C::NodeId, C::Node>>,
     },
     /// Request raft core to setup a new replication to a learner.
     AddLearner {
         id: C::NodeId,
 
-        node: Option<Node>,
+        node: Option<C::Node>,
 
         /// Send the log id when the replication becomes line-rate.
-        tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
+        tx: RaftAddLearnerTx<C::NodeId, C::Node>,
     },
     ChangeMembership {
         changes: ChangeMembers<C::NodeId>,
@@ -807,12 +830,12 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         /// will be turned into learners, otherwise they will be removed.
         turn_to_learner: bool,
 
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     },
 
     ExternalRequest {
         #[allow(clippy::type_complexity)]
-        req: Box<dyn FnOnce(&RaftState<C::NodeId>, &mut S, &mut N) + Send + 'static>,
+        req: Box<dyn FnOnce(&RaftState<C::NodeId, C::Node>, &mut S, &mut N) + Send + 'static>,
     },
 
     /// A tick event to wake up RaftCore to check timeout etc.
@@ -858,7 +881,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         must_include: Option<LogId<C::NodeId>>,
 
         /// The response channel for delivering the snapshot data.
-        tx: oneshot::Sender<Snapshot<C::NodeId, S::SnapshotData>>,
+        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotData>>,
 
         /// Which ServerState sent this message
         vote: Vote<C::NodeId>,
@@ -1091,7 +1114,7 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
 
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
-    pub meta: SnapshotMeta<C::NodeId>,
+    pub meta: SnapshotMeta<C::NodeId, C::Node>,
 
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,
@@ -1136,7 +1159,7 @@ pub struct ClientWriteResponse<C: RaftTypeConfig> {
     pub data: C::R,
 
     /// If the log entry is a change-membership entry.
-    pub membership: Option<Membership<C::NodeId>>,
+    pub membership: Option<Membership<C::NodeId, C::Node>>,
 }
 
 impl<C: RaftTypeConfig> Debug for ClientWriteResponse<C>

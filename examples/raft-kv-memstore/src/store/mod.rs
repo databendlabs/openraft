@@ -9,6 +9,7 @@ use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
+use openraft::BasicNode;
 use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -56,7 +57,7 @@ pub struct ExampleResponse {
 
 #[derive(Debug)]
 pub struct ExampleSnapshot {
-    pub meta: SnapshotMeta<ExampleNodeId>,
+    pub meta: SnapshotMeta<ExampleNodeId, BasicNode>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -73,7 +74,7 @@ pub struct ExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
     // TODO: it should not be Option.
-    pub last_membership: EffectiveMembership<ExampleNodeId>,
+    pub last_membership: EffectiveMembership<ExampleNodeId, BasicNode>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -131,7 +132,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
-    ) -> Result<Snapshot<ExampleNodeId, Cursor<Vec<u8>>>, StorageError<ExampleNodeId>> {
+    ) -> Result<Snapshot<ExampleNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<ExampleNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -256,7 +257,13 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<ExampleNodeId>>, EffectiveMembership<ExampleNodeId>), StorageError<ExampleNodeId>> {
+    ) -> Result<
+        (
+            Option<LogId<ExampleNodeId>>,
+            EffectiveMembership<ExampleNodeId, BasicNode>,
+        ),
+        StorageError<ExampleNodeId>,
+    > {
         let state_machine = self.state_machine.read().await;
         Ok((state_machine.last_applied_log, state_machine.last_membership.clone()))
     }
@@ -302,7 +309,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<ExampleNodeId>,
+        meta: &SnapshotMeta<ExampleNodeId, BasicNode>,
         snapshot: Box<Self::SnapshotData>,
     ) -> Result<StateMachineChanges<ExampleTypeConfig>, StorageError<ExampleNodeId>> {
         tracing::info!(
@@ -341,7 +348,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<ExampleNodeId, Self::SnapshotData>>, StorageError<ExampleNodeId>> {
+    ) -> Result<Option<Snapshot<ExampleNodeId, BasicNode, Self::SnapshotData>>, StorageError<ExampleNodeId>> {
         match &*self.current_snapshot.read().await {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

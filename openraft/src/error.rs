@@ -7,11 +7,11 @@ use std::time::Duration;
 
 use anyerror::AnyError;
 
+use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_types::SnapshotSegmentId;
 use crate::LogId;
 use crate::Membership;
-use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::StorageError;
@@ -20,7 +20,9 @@ use crate::Vote;
 /// Fatal is unrecoverable and shuts down raft at once.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum Fatal<NID: NodeId> {
+pub enum Fatal<NID>
+where NID: NodeId
+{
     #[error(transparent)]
     StorageError(#[from] StorageError<NID>),
 
@@ -35,14 +37,18 @@ pub enum Fatal<NID: NodeId> {
 ///
 /// Fatal will shutdown the raft and needs to be dealt separately,
 /// such as StorageError.
-pub trait ExtractFatal<NID: NodeId>
-where Self: Sized
+pub trait ExtractFatal<NID>
+where
+    Self: Sized,
+    NID: NodeId,
 {
     fn extract_fatal(self) -> Result<Self, Fatal<NID>>;
 }
 
-impl<NID: NodeId, T, E> ExtractFatal<NID> for Result<T, E>
-where E: TryInto<Fatal<NID>> + Clone
+impl<NID, T, E> ExtractFatal<NID> for Result<T, E>
+where
+    NID: NodeId,
+    E: TryInto<Fatal<NID>> + Clone,
 {
     fn extract_fatal(self) -> Result<Self, Fatal<NID>> {
         if let Err(e) = &self {
@@ -58,7 +64,9 @@ where E: TryInto<Fatal<NID>> + Clone
 // TODO: not used, remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AppendEntriesError<NID: NodeId> {
+pub enum AppendEntriesError<NID>
+where NID: NodeId
+{
     #[error(transparent)]
     Fatal(#[from] Fatal<NID>),
 }
@@ -66,7 +74,9 @@ pub enum AppendEntriesError<NID: NodeId> {
 // TODO: not used, remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum VoteError<NID: NodeId> {
+pub enum VoteError<NID>
+where NID: NodeId
+{
     #[error(transparent)]
     Fatal(#[from] Fatal<NID>),
 }
@@ -74,7 +84,9 @@ pub enum VoteError<NID: NodeId> {
 // TODO: remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum InstallSnapshotError<NID: NodeId> {
+pub enum InstallSnapshotError<NID>
+where NID: NodeId
+{
     #[error(transparent)]
     SnapshotMismatch(#[from] SnapshotMismatch),
 
@@ -85,9 +97,13 @@ pub enum InstallSnapshotError<NID: NodeId> {
 /// An error related to a is_leader request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum CheckIsLeaderError<NID: NodeId> {
+pub enum CheckIsLeaderError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<NID>),
+    ForwardToLeader(#[from] ForwardToLeader<NID, N>),
 
     #[error(transparent)]
     QuorumNotEnough(#[from] QuorumNotEnough<NID>),
@@ -100,9 +116,13 @@ pub enum CheckIsLeaderError<NID: NodeId> {
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ClientWriteError<NID: NodeId> {
+pub enum ClientWriteError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<NID>),
+    ForwardToLeader(#[from] ForwardToLeader<NID, N>),
 
     /// When writing a change-membership entry.
     #[error(transparent)]
@@ -134,9 +154,13 @@ pub enum ChangeMembershipError<NID: NodeId> {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AddLearnerError<NID: NodeId> {
+pub enum AddLearnerError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<NID>),
+    ForwardToLeader(#[from] ForwardToLeader<NID, N>),
 
     #[error(transparent)]
     MissingNodeInfo(#[from] MissingNodeInfo<NID>),
@@ -148,10 +172,14 @@ pub enum AddLearnerError<NID: NodeId> {
     Fatal(#[from] Fatal<NID>),
 }
 
-impl<NID: NodeId> TryFrom<AddLearnerError<NID>> for ForwardToLeader<NID> {
-    type Error = AddLearnerError<NID>;
+impl<NID, N> TryFrom<AddLearnerError<NID, N>> for ForwardToLeader<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    type Error = AddLearnerError<NID, N>;
 
-    fn try_from(value: AddLearnerError<NID>) -> Result<Self, Self::Error> {
+    fn try_from(value: AddLearnerError<NID, N>) -> Result<Self, Self::Error> {
         if let AddLearnerError::ForwardToLeader(e) = value {
             return Ok(e);
         }
@@ -162,12 +190,16 @@ impl<NID: NodeId> TryFrom<AddLearnerError<NID>> for ForwardToLeader<NID> {
 /// The set of errors which may take place when initializing a pristine Raft node.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum InitializeError<NID: NodeId> {
+pub enum InitializeError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     #[error(transparent)]
     NotAllowed(#[from] NotAllowed<NID>),
 
     #[error(transparent)]
-    NotInMembers(#[from] NotInMembers<NID>),
+    NotInMembers(#[from] NotInMembers<NID, N>),
 
     #[error(transparent)]
     NotAMembershipEntry(#[from] NotAMembershipEntry),
@@ -179,37 +211,55 @@ pub enum InitializeError<NID: NodeId> {
     Fatal(#[from] Fatal<NID>),
 }
 
-impl<NID: NodeId> From<StorageError<NID>> for AppendEntriesError<NID> {
+impl<NID> From<StorageError<NID>> for AppendEntriesError<NID>
+where NID: NodeId
+{
     fn from(s: StorageError<NID>) -> Self {
         let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<NID: NodeId> From<StorageError<NID>> for VoteError<NID> {
+impl<NID> From<StorageError<NID>> for VoteError<NID>
+where NID: NodeId
+{
     fn from(s: StorageError<NID>) -> Self {
         let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<NID: NodeId> From<StorageError<NID>> for InstallSnapshotError<NID> {
+impl<NID> From<StorageError<NID>> for InstallSnapshotError<NID>
+where NID: NodeId
+{
     fn from(s: StorageError<NID>) -> Self {
         let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<NID: NodeId> From<StorageError<NID>> for CheckIsLeaderError<NID> {
+impl<NID, N> From<StorageError<NID>> for CheckIsLeaderError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     fn from(s: StorageError<NID>) -> Self {
         let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<NID: NodeId> From<StorageError<NID>> for InitializeError<NID> {
+impl<NID, N> From<StorageError<NID>> for InitializeError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     fn from(s: StorageError<NID>) -> Self {
         let f: Fatal<NID> = s.into();
         f.into()
     }
 }
-impl<NID: NodeId> From<StorageError<NID>> for AddLearnerError<NID> {
+impl<NID, N> From<StorageError<NID>> for AddLearnerError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     fn from(s: StorageError<NID>) -> Self {
         let f: Fatal<NID> = s.into();
         f.into()
@@ -219,7 +269,11 @@ impl<NID: NodeId> From<StorageError<NID>> for AddLearnerError<NID> {
 /// Error variants related to the Replication.
 #[derive(Debug, thiserror::Error)]
 #[allow(clippy::large_enum_variant)]
-pub enum ReplicationError<NID: NodeId> {
+pub enum ReplicationError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     #[error(transparent)]
     HigherVote(#[from] HigherVote<NID>),
 
@@ -247,7 +301,7 @@ pub enum ReplicationError<NID: NodeId> {
     Network(#[from] NetworkError),
 
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<NID, AppendEntriesError<NID>>),
+    RemoteError(#[from] RemoteError<NID, N, AppendEntriesError<NID>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -256,7 +310,7 @@ pub enum ReplicationError<NID: NodeId> {
     derive(serde::Deserialize, serde::Serialize),
     serde(bound = "T:serde::Serialize + for <'d> serde::Deserialize<'d>")
 )]
-pub enum RPCError<NID: NodeId, T: Error> {
+pub enum RPCError<NID: NodeId, N: Node, T: Error> {
     #[error(transparent)]
     NodeNotFound(#[from] NodeNotFound<NID>),
 
@@ -267,21 +321,22 @@ pub enum RPCError<NID: NodeId, T: Error> {
     Network(#[from] NetworkError),
 
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<NID, T>),
+    RemoteError(#[from] RemoteError<NID, N, T>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("error occur on remote peer {target}: {source}")]
-pub struct RemoteError<NID: NodeId, T: std::error::Error> {
+pub struct RemoteError<NID: NodeId, N: Node, T: std::error::Error> {
     // #[serde(bound = "")]
     #[cfg_attr(feature = "serde", serde(bound = ""))]
     pub target: NID,
-    pub target_node: Option<Node>,
+    #[cfg_attr(feature = "serde", serde(bound = ""))]
+    pub target_node: Option<N>,
     pub source: T,
 }
 
-impl<NID: NodeId, T: std::error::Error> RemoteError<NID, T> {
+impl<NID: NodeId, N: Node, T: std::error::Error> RemoteError<NID, N, T> {
     pub fn new(target: NID, e: T) -> Self {
         Self {
             target,
@@ -289,7 +344,7 @@ impl<NID: NodeId, T: std::error::Error> RemoteError<NID, T> {
             source: e,
         }
     }
-    pub fn new_with_node(target: NID, node: Node, e: T) -> Self {
+    pub fn new_with_node(target: NID, node: N, e: T) -> Self {
         Self {
             target,
             target_node: Some(node),
@@ -351,9 +406,13 @@ pub struct LackEntry<NID: NodeId> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("has to forward request to: {leader_id:?}, {leader_node:?}")]
-pub struct ForwardToLeader<NID: NodeId> {
+pub struct ForwardToLeader<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     pub leader_id: Option<NID>,
-    pub leader_node: Option<Node>,
+    pub leader_node: Option<N>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -415,9 +474,13 @@ pub struct MissingNodeInfo<NID: NodeId> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("node {node_id} has to be a member. membership:{membership:?}")]
-pub struct NotInMembers<NID: NodeId> {
+pub struct NotInMembers<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     pub node_id: NID,
-    pub membership: Membership<NID>,
+    pub membership: Membership<NID, N>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

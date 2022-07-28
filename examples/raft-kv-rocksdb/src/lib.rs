@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -21,9 +22,25 @@ pub mod store;
 
 pub type ExampleNodeId = u64;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Default)]
+pub struct ExampleNode {
+    pub rpc_addr: String,
+    pub api_addr: String,
+}
+
+impl Display for ExampleNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ExampleNode {{ rpc_addr: {}, api_addr: {} }}",
+            self.rpc_addr, self.api_addr
+        )
+    }
+}
+
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId
+    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = ExampleNode
 );
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;

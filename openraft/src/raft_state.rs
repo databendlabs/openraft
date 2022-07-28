@@ -1,6 +1,7 @@
 use crate::engine::LogIdList;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leader;
+use crate::node::Node;
 use crate::raft_types::RaftLogId;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -11,7 +12,11 @@ use crate::Vote;
 
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct RaftState<NID: NodeId> {
+pub struct RaftState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     /// The vote state of this node.
     pub vote: Vote<NID>,
 
@@ -22,13 +27,13 @@ pub struct RaftState<NID: NodeId> {
     pub log_ids: LogIdList<NID>,
 
     /// The latest cluster membership configuration found, in log or in state machine.
-    pub membership_state: MembershipState<NID>,
+    pub membership_state: MembershipState<NID, N>,
 
     // --
     // -- volatile fields: they are not persisted.
     // --
     /// The internal server state used by Engine.
-    pub(crate) internal_server_state: InternalServerState<NID>,
+    pub(crate) internal_server_state: InternalServerState<NID, N>,
 
     /// The log id of the last known committed entry.
     ///
@@ -42,8 +47,10 @@ pub struct RaftState<NID: NodeId> {
     pub server_state: ServerState,
 }
 
-impl<NID> RaftState<NID>
-where NID: NodeId
+impl<NID, N> RaftState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
 {
     /// Append a list of `log_id`.
     ///
