@@ -239,9 +239,35 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn router_network_failure_aware() -> anyhow::Result<()> {
     let config = Arc::new(Config::default().validate()?);
+    let nodes = btreeset!{0, 1, 2};
     let mut router = RaftRouter::new(config.clone());
-    let nodes = btreeset! {0, 1, 2};
-    router.new_nodes_from_single(nodes.clone(), btreeset! {}).await?;
+
+    // making cluster by hand
+    tracing::info!("--- init single node");
+    {
+        router.new_raft_node(0);
+        router.initialize_from_single_node(0).await?;
+    }
+
+    tracing::info!("--- add voters to single node cluster");
+    {
+        for n in [1, 2].iter() {
+            router.new_raft_node(*n);
+            router.add_learner(0, *n).await?;
+        }
+        let leader = 0;
+
+        let h = router.get_raft_handle(&leader)?;
+        h.change_membership(nodes.clone(), true, false).await?;
+    }
+
+    tracing::info!("--- finish making cluster");
+    {
+        let log_index = 5;
+        router.wait_for_log(&nodes, Some(log_index), timeout(), "complete building cluster").await?;
+        router.assert_stable_cluster(Some(1), Some(log_index));
+        router.wait_for_metrics(&0, |x| x.current_leader.is_some() || x.current_leader == Some(0), timeout(), "check cluster's leader").await?;
+    }
 
     tracing::info!("--- unplug leader, make it unreachable for router");
     {
