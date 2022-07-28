@@ -3,9 +3,8 @@
 #![allow(dead_code)]
 
 #[cfg(feature = "bt")] use std::backtrace::Backtrace;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::env;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -145,7 +144,10 @@ where
     routing_table: Arc<Mutex<BTreeMap<C::NodeId, (MemRaft<C, S>, StoreWithDefensive<C, S>)>>>,
 
     /// Nodes which are isolated can neither send nor receive frames.
-    isolated_nodes: Arc<Mutex<HashMap<C::NodeId, bool>>>,
+    isolated_nodes: Arc<Mutex<HashSet<C::NodeId>>>,
+
+    /// Nodes which could not be connected via network
+    unreachable_nodes: Arc<Mutex<HashSet<C::NodeId>>>,
 
     /// To emulate network delay for sending, in milliseconds.
     /// 0 means no delay.
@@ -177,6 +179,7 @@ where
             config: self.config,
             routing_table: Default::default(),
             isolated_nodes: Default::default(),
+            unreachable_nodes: Default::default(),
             send_delay: Arc::new(AtomicU64::new(self.send_delay)),
         }
     }
@@ -193,6 +196,7 @@ where
             config: self.config.clone(),
             routing_table: self.routing_table.clone(),
             isolated_nodes: self.isolated_nodes.clone(),
+            unreachable_nodes: self.unreachable_nodes.clone(),
             send_delay: self.send_delay.clone(),
         }
     }
@@ -363,6 +367,11 @@ where
             isolated.remove(&id);
         }
 
+        {
+            let mut unreachable = self.unreachable_nodes.lock().unwrap();
+            unreachable.remove(&id);
+        }
+
         opt_handles
     }
 
@@ -382,13 +391,13 @@ where
     /// Isolate the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
     pub fn isolate_node(&self, id: C::NodeId) {
-        self.isolated_nodes.lock().unwrap().insert(id, true);
+        self.isolated_nodes.lock().unwrap().insert(id);
     }
 
     /// Make the network of the specified node unreachable.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn detach_node(&self, id: C::NodeId) {
-        self.isolated_nodes.lock().unwrap().insert(id, false);
+    pub fn block_node(&self, id: C::NodeId) {
+        self.unreachable_nodes.lock().unwrap().insert(id);
     }
 
     /// Get a payload of the latest metrics from each node in the cluster.
@@ -524,7 +533,7 @@ where
 
         self.latest_metrics().into_iter().find_map(|node| {
             if node.current_leader == Some(node.id) {
-                if isolated.contains_key(&node.id) {
+                if isolated.contains(&node.id) {
                     None
                 } else {
                     Some(node.id)
@@ -539,6 +548,13 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     pub fn restore_node(&self, id: C::NodeId) {
         let mut nodes = self.isolated_nodes.lock().unwrap();
+        nodes.remove(&id);
+    }
+
+    /// Unblock the network of the specified node.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub fn unblock_node(&self, id: C::NodeId) {
+        let mut nodes = self.unreachable_nodes.lock().unwrap();
         nodes.remove(&id);
     }
 
@@ -713,15 +729,15 @@ where
         };
         let nodes = self.latest_metrics();
 
-        let non_isolated_nodes: Vec<_> = nodes.iter().filter(|node| !isolated.contains_key(&node.id)).collect();
+        let non_isolated_nodes: Vec<_> = nodes.iter().filter(|node| !isolated.contains(&node.id)).collect();
         let leader = nodes
             .iter()
-            .filter(|node| !isolated.contains_key(&node.id))
+            .filter(|node| !isolated.contains(&node.id))
             .find(|node| node.state == ServerState::Leader)
             .expect("expected to find a cluster leader");
         let followers: Vec<_> = nodes
             .iter()
-            .filter(|node| !isolated.contains_key(&node.id))
+            .filter(|node| !isolated.contains(&node.id))
             .filter(|node| node.state == ServerState::Follower)
             .collect();
 
@@ -903,7 +919,7 @@ where
     pub fn check_reachable(&self, id: C::NodeId, target: C::NodeId) -> std::result::Result<(), NetworkError> {
         let isolated = self.isolated_nodes.lock().unwrap();
 
-        if isolated.contains_key(&target) || isolated.contains_key(&id) {
+        if isolated.contains(&target) || isolated.contains(&id) {
             let network_err = NetworkError::new(&AnyError::error(format!("isolated:{} -> {}", id, target)));
             return Err(network_err);
         }
@@ -924,8 +940,8 @@ where
 
     async fn connect(&mut self, target: C::NodeId, _node: Option<&Node>) -> Result<Self::Network, NetworkError> {
         {
-            let unreachable = self.isolated_nodes.lock().unwrap();
-            if let Some(false) = unreachable.get(&target) {
+            let unreachable = self.unreachable_nodes.lock().unwrap();
+            if unreachable.contains(&target) {
                 let e = NetworkError::new(&AnyError::error(format!("failed to connect: {}", target)));
                 return Err(e);
             }

@@ -245,7 +245,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
 
     tracing::info!("--- unplug leader, make it unreachable for router");
     {
-        router.detach_node(0);
+        router.block_node(0);
     }
 
     tracing::info!("--- wait until the cluster stable");
@@ -271,7 +271,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
 
     tracing::info!("--- detach n1, make it unreachable for router");
     {
-        router.detach_node(1);
+        router.block_node(1);
     }
 
     tracing::info!("--- cluster should unable to commit logs now");
