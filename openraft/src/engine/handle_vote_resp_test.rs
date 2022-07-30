@@ -63,7 +63,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(0, eng.commands.len());
     }
 
-    tracing::info!("--- recv a smaller vote. vote_granted==false always revert this node to follower");
+    tracing::info!("--- recv a smaller vote. vote_granted==false always; keep trying in candidate state");
     {
         let mut eng = eng();
         eng.id = 1;
@@ -80,29 +80,24 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
-        assert!(eng.state.internal_server_state.is_following());
+        assert!(eng.state.internal_server_state.is_leading());
 
-        assert_eq!(ServerState::Follower, eng.state.server_state);
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
                 leader: false,
-                other_metrics: true
+                other_metrics: false
             },
             eng.metrics_flags
         );
 
         assert_eq!(
-            vec![
-                Command::InstallElectionTimer { can_be_leader: false },
-                Command::UpdateServerState {
-                    server_state: ServerState::Follower
-                },
-            ],
+            vec![Command::InstallElectionTimer { can_be_leader: false },],
             eng.commands
         );
     }
 
-    tracing::info!("--- seen a higher vote. revert to follower");
+    tracing::info!("--- seen a higher vote. keep trying in candidate state");
     {
         let mut eng = eng();
         eng.id = 1;
@@ -120,9 +115,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 2), eng.state.vote);
-        assert!(eng.state.internal_server_state.is_following());
+        assert!(eng.state.internal_server_state.is_leading());
 
-        assert_eq!(ServerState::Follower, eng.state.server_state);
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
                 leader: false,
@@ -135,15 +130,12 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             vec![
                 Command::SaveVote { vote: Vote::new(2, 2) },
                 Command::InstallElectionTimer { can_be_leader: true },
-                Command::UpdateServerState {
-                    server_state: ServerState::Follower
-                },
             ],
             eng.commands
         );
     }
 
-    tracing::info!("--- equal vote, rejected by higher last_log_id. revert to follower");
+    tracing::info!("--- equal vote, rejected by higher last_log_id. keep trying in candidate state");
     {
         let mut eng = eng();
         eng.id = 1;
@@ -160,24 +152,19 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
-        assert!(eng.state.internal_server_state.is_following());
+        assert!(eng.state.internal_server_state.is_leading());
 
-        assert_eq!(ServerState::Follower, eng.state.server_state);
+        assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
                 leader: false,
-                other_metrics: true
+                other_metrics: false
             },
             eng.metrics_flags
         );
 
         assert_eq!(
-            vec![
-                Command::InstallElectionTimer { can_be_leader: false },
-                Command::UpdateServerState {
-                    server_state: ServerState::Follower
-                },
-            ],
+            vec![Command::InstallElectionTimer { can_be_leader: false },],
             eng.commands
         );
     }
