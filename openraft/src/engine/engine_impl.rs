@@ -256,7 +256,6 @@ impl<NID: NodeId> Engine<NID> {
 
         // Seen a higher log.
         if resp.last_log_id > self.state.last_log_id() {
-            // TODO: if my log is greater, install a smaller election timeout.
             self.push_command(Command::InstallElectionTimer { can_be_leader: false });
         } else {
             self.push_command(Command::InstallElectionTimer { can_be_leader: true });
@@ -264,17 +263,10 @@ impl<NID: NodeId> Engine<NID> {
 
         debug_assert!(self.is_voter());
 
-        if self.state.internal_server_state.is_following() {
-            return;
-        }
-
-        // TODO:  use enter_following()
-        // self.enter_following();
-        {
-            self.state.internal_server_state = InternalServerState::Following;
-
-            self.set_server_state(ServerState::Follower);
-        }
+        // When vote is rejected, it does not need to leave candidate state.
+        // Candidate loop, follower loop and learner loop are totally the same.
+        //
+        // The only thing that needs to do is update election timer.
     }
 
     /// Append new log entries by a leader.
@@ -787,7 +779,19 @@ impl<NID: NodeId> Engine<NID> {
 
 /// Supporting util
 impl<NID: NodeId> Engine<NID> {
-    /// Enter leader state.
+    /// Enter leading or following state by checking `vote`.
+    ///
+    /// `vote.node_id == self.id`: Leading state;
+    /// `vote.node_id != self.id`: Following state;
+    pub(crate) fn switch_internal_server_state(&mut self) {
+        if self.state.vote.node_id == self.id {
+            self.enter_leading();
+        } else {
+            self.enter_following();
+        }
+    }
+
+    /// Enter leading state(vote.node_id == self.id) .
     ///
     /// Leader state has two phase: election phase and replication phase, similar to paxos phase-1 and phase-2
     pub(crate) fn enter_leading(&mut self) {
@@ -797,7 +801,7 @@ impl<NID: NodeId> Engine<NID> {
         // TODO: install heartbeat timer
     }
 
-    /// Leave leader state.
+    /// Leave leading state and enter following state(vote.node_id != self.id).
     ///
     /// This node then becomes raft-follower or raft-learner.
     pub(crate) fn enter_following(&mut self) {
@@ -1039,11 +1043,7 @@ impl<NID: NodeId> Engine<NID> {
             self.push_command(Command::SaveVote { vote: *vote });
         }
 
-        if self.state.vote.node_id == self.id {
-            self.enter_leading();
-        } else {
-            self.enter_following();
-        }
+        self.switch_internal_server_state();
 
         Ok(())
     }
