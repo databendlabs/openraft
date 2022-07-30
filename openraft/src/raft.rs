@@ -12,7 +12,9 @@ use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tokio::task::JoinHandle;
+use tracing::Instrument;
 use tracing::Level;
+use tracing::Span;
 
 use crate::config::Config;
 use crate::core::replication_lag;
@@ -20,6 +22,7 @@ use crate::core::Expectation;
 use crate::core::RaftCore;
 use crate::core::SnapshotUpdate;
 use crate::core::Tick;
+use crate::core::TickHandle;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
 use crate::error::CheckIsLeaderError;
@@ -124,6 +127,7 @@ enum CoreState<NID: NodeId> {
 struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     id: C::NodeId,
     config: Arc<Config>,
+    tick_handle: TickHandle,
     tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
     rx_metrics: watch::Receiver<RaftMetrics<C::NodeId>>,
     // TODO(xp): it does not need to be a async mutex.
@@ -184,7 +188,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
 
-        let _tick_handle = Tick::spawn(Duration::from_millis(config.heartbeat_interval * 3 / 2), tx_api.clone());
+        let tick = Tick::new(
+            Duration::from_millis(config.heartbeat_interval * 3 / 2),
+            tx_api.clone(),
+            true,
+        );
+
+        let tick_handle = tick.get_handle();
+        let _tick_join_handle =
+            tokio::spawn(tick.tick_loop().instrument(tracing::span!(parent: &Span::current(), Level::DEBUG, "tick")));
 
         let core_handle = RaftCore::spawn(
             id,
@@ -200,6 +212,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let inner = RaftInner {
             id,
             config,
+            tick_handle,
             tx_api,
             rx_metrics,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
@@ -208,6 +221,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             core_state: Mutex::new(CoreState::Running(core_handle)),
         };
         Self { inner: Arc::new(inner) }
+    }
+
+    /// Enable or disable raft internal ticker.
+    ///
+    /// The internal ticker triggers all timeout based event, e.g. election event or heartbeat event.
+    /// By disabling the ticker, a follower will not enter candidate again, a leader will not send heartbeat.
+    pub fn enable_tick(&self, enabled: bool) {
+        self.inner.tick_handle.enable(enabled);
     }
 
     /// Submit an AppendEntries RPC to this Raft node.

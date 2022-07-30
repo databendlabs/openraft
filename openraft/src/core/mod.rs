@@ -20,4 +20,5 @@ pub use server_state::ServerState;
 pub(crate) use snapshot_state::SnapshotState;
 pub(crate) use snapshot_state::SnapshotUpdate;
 pub(crate) use tick::Tick;
+pub(crate) use tick::TickHandle;
 pub(crate) use tick::VoteWiseTime;

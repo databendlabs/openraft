@@ -1,14 +1,13 @@
 //! tick emitter emits a `RaftMsg::Tick` event at a certain interval.
 
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 use tokio::time::sleep_until;
 use tokio::time::Instant;
-use tracing::Level;
-use tracing::Span;
-use tracing_futures::Instrument;
 
 use crate::raft::RaftMsg;
 use crate::NodeId;
@@ -44,6 +43,7 @@ impl<NID: NodeId> VoteWiseTime<NID> {
     }
 }
 
+/// Emit RaftMsg::Tick event at regular `interval`.
 pub(crate) struct Tick<C, N, S>
 where
     C: RaftTypeConfig,
@@ -53,6 +53,13 @@ where
     interval: Duration,
 
     tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
+
+    /// Emit event or not
+    running: Arc<AtomicBool>,
+}
+
+pub(crate) struct TickHandle {
+    running: Arc<AtomicBool>,
 }
 
 impl<C, N, S> Tick<C, N, S>
@@ -61,27 +68,46 @@ where
     N: RaftNetworkFactory<C>,
     S: RaftStorage<C>,
 {
-    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>) -> JoinHandle<()> {
-        let t = Tick { interval, tx };
+    pub(crate) fn new(interval: Duration, tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>, enabled: bool) -> Self {
+        Tick {
+            interval,
+            running: Arc::new(AtomicBool::from(enabled)),
+            tx,
+        }
+    }
 
-        tokio::spawn(
-            async move {
-                let mut i = 0;
-                loop {
-                    i += 1;
+    pub(crate) async fn tick_loop(self) {
+        let mut i = 0;
+        loop {
+            i += 1;
 
-                    let at = Instant::now() + t.interval;
-                    sleep_until(at).await;
+            let at = Instant::now() + self.interval;
+            sleep_until(at).await;
 
-                    let send_res = t.tx.send(RaftMsg::Tick { i });
-                    if let Err(_e) = send_res {
-                        tracing::info!("Tick fails to send, receiving end quit.");
-                    } else {
-                        tracing::debug!("Tick sent: {}", i)
-                    }
-                }
+            if !self.running.load(Ordering::Relaxed) {
+                i -= 1;
+                continue;
             }
-            .instrument(tracing::span!(parent: &Span::current(), Level::DEBUG, "tick")),
-        )
+
+            let send_res = self.tx.send(RaftMsg::Tick { i });
+            if let Err(_e) = send_res {
+                tracing::info!("Tick fails to send, receiving end quit.");
+            } else {
+                tracing::debug!("Tick sent: {}", i)
+            }
+        }
+    }
+
+    /// Return a handle to control the ticker.
+    pub(crate) fn get_handle(&self) -> TickHandle {
+        TickHandle {
+            running: self.running.clone(),
+        }
+    }
+}
+
+impl TickHandle {
+    pub(crate) fn enable(&self, enabled: bool) {
+        self.running.store(enabled, Ordering::Relaxed);
     }
 }
