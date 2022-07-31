@@ -40,6 +40,7 @@ async fn compaction() -> Result<()> {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
             max_applied_log_to_keep: 2,
             purge_batch_size: 1,
+            enable_tick: false,
             ..Default::default()
         }
         .validate()?,

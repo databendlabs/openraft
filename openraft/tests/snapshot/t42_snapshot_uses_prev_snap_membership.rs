@@ -38,6 +38,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             // because ent-0 is removed.
             max_applied_log_to_keep: 3,
             purge_batch_size: 1,
+            enable_tick: false,
             ..Default::default()
         }
         .validate()?,

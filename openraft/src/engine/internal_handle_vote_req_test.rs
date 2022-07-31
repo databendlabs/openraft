@@ -87,7 +87,6 @@ fn test_handle_vote_change_committed_vote() -> anyhow::Result<()> {
                 vote: Vote::new_committed(3, 2)
             },
             Command::InstallElectionTimer { can_be_leader: false },
-            Command::RejectElection {},
             Command::UpdateServerState {
                 server_state: ServerState::Follower
             }

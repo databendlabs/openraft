@@ -17,9 +17,18 @@ use crate::fixtures::RaftRouter;
 /// - call the is_leader interface on the followers, and assert failure.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn client_reads() -> Result<()> {
-    // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
+    // This test is sensitive to network delay.
+    router.network_send_delay(0);
+
     router.new_raft_node(0);
     router.new_raft_node(1);
     router.new_raft_node(2);

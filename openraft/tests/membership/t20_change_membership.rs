@@ -17,7 +17,13 @@ use crate::fixtures::RaftRouter;
 /// When a change-membership log is committed, the membership_state should be updated.
 #[async_entry::test(worker_threads = 3, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn update_membership_state() -> anyhow::Result<()> {
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {3,4}).await?;
@@ -52,6 +58,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {
             replication_lag_threshold: lag_threshold,
+            enable_tick: false,
             ..Default::default()
         }
         .validate()?,
@@ -141,6 +148,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {
             replication_lag_threshold: lag_threshold,
+            enable_heartbeat: false,
             ..Default::default()
         }
         .validate()?,
@@ -192,7 +200,13 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
 async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
     // Add a member without adding it as learner, in blocking mode it should finish successfully.
 
-    let config = Arc::new(Config { ..Default::default() }.validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
     let timeout = Some(Duration::from_millis(1000));
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;

@@ -30,6 +30,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
             max_applied_log_to_keep: 6,
             purge_batch_size: 1,
+            enable_heartbeat: false,
             ..Default::default()
         }
         .validate()?,

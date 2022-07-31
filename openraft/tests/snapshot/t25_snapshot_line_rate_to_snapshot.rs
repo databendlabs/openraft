@@ -28,6 +28,7 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
+            enable_heartbeat: false,
             ..Default::default()
         }
         .validate()?,
@@ -81,6 +82,8 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     tracing::info!("--- restore node 1 and replication");
     {
         router.restore_node(1);
+        let leader = router.get_raft_handle(&0)?;
+        leader.enable_heartbeat(true);
 
         router.wait_for_log(&btreeset![1], Some(log_index), timeout(), "replicate by snapshot").await?;
         router
@@ -97,5 +100,5 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5000))
+    Some(Duration::from_millis(2_000))
 }
