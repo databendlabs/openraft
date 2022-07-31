@@ -4,7 +4,7 @@ defensive_test:
 	OPENRAFT_STORE_DEFENSIVE=on cargo test
 
 send_delay_test:
-	OPENRAFT_NETWORK_SEND_DELAY=60 cargo test
+	OPENRAFT_NETWORK_SEND_DELAY=30 cargo test
 
 test: lint fmt
 	cargo test

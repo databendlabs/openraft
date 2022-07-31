@@ -48,7 +48,14 @@ async fn shutdown() -> Result<()> {
 /// A panicked RaftCore should also return a proper error the next time accessing the `Raft`.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn return_error_after_panic() -> Result<()> {
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster");
@@ -75,7 +82,14 @@ async fn return_error_after_panic() -> Result<()> {
 /// After shutdown(), access to Raft should return a Fatal::Stopped error.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn return_error_after_shutdown() -> Result<()> {
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster");

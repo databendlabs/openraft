@@ -24,8 +24,14 @@ use crate::fixtures::RaftRouter;
 /// membership changing
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn new_leader_auto_commit_uniform_config() -> Result<()> {
-    // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;

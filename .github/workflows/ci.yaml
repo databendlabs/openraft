@@ -11,7 +11,7 @@ jobs:
           - "off"
         send_delay:
           - "0"
-          - "60"
+          - "30"
 
     steps:
       - name: Setup | Checkout
