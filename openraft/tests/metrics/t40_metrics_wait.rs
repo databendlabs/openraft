@@ -20,7 +20,13 @@ use crate::fixtures::RaftRouter;
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn metrics_wait() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
 
     let cluster = btreeset![0];

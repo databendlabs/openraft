@@ -44,7 +44,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         self.set_next_election_time(false);
-        self.reject_election_for_a_while();
 
         if req.vote > self.engine.state.vote {
             self.engine.state.vote = req.vote;

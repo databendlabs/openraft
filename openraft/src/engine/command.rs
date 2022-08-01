@@ -71,13 +71,6 @@ pub(crate) enum Command<NID: NodeId> {
         can_be_leader: bool,
     },
 
-    /// Reject election by other candidate for a while.
-    /// The interval is decided by the runtime.
-    ///
-    /// When a leader is established and has not yet timeout,
-    /// A candidate should not take the leadership.
-    RejectElection {},
-
     /// Purge log from the beginning to `upto`, inclusive.
     PurgeLog { upto: LogId<NID> },
 
@@ -108,7 +101,6 @@ impl<NID: NodeId> Command<NID> {
             Command::SaveVote { .. } => flags.set_data_changed(),
             Command::SendVote { .. } => {}
             Command::InstallElectionTimer { .. } => {}
-            Command::RejectElection { .. } => {}
             Command::PurgeLog { .. } => flags.set_data_changed(),
             Command::DeleteConflictLog { .. } => flags.set_data_changed(),
             Command::BuildSnapshot { .. } => flags.set_data_changed(),

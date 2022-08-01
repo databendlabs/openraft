@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::mem::swap;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use futures::future::AbortHandle;
@@ -24,6 +25,7 @@ use tracing::Level;
 use tracing::Span;
 
 use crate::config::Config;
+use crate::config::RuntimeConfig;
 use crate::config::SnapshotPolicy;
 use crate::core::replication::snapshot_is_within_half_of_threshold;
 use crate::core::replication_lag;
@@ -107,6 +109,9 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
 
     /// The metrics of all replication streams
     pub(crate) replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
+
+    /// The time to send next heartbeat.
+    pub(crate) next_heartbeat: Instant,
 }
 
 impl<C: RaftTypeConfig> LeaderData<C> {
@@ -115,6 +120,7 @@ impl<C: RaftTypeConfig> LeaderData<C> {
             client_resp_channels: Default::default(),
             nodes: BTreeMap::new(),
             replication_metrics: Versioned::new(ReplicationMetrics::default()),
+            next_heartbeat: Instant::now(),
         }
     }
 }
@@ -126,6 +132,8 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     /// This node's runtime config.
     pub(crate) config: Arc<Config>,
+
+    pub(crate) runtime_config: Arc<RuntimeConfig>,
 
     /// The `RaftNetworkFactory` implementation.
     pub(crate) network: N,
@@ -139,9 +147,6 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     /// The node's current snapshot state.
     pub(crate) snapshot_state: Option<SnapshotState<S::SnapshotData>>,
-
-    /// The last time a heartbeat was received.
-    pub(crate) last_heartbeat: Option<Instant>,
 
     /// The time to elect if a follower does not receive any append-entry message.
     pub(crate) next_election_time: VoteWiseTime<C::NodeId>,
@@ -160,6 +165,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) fn spawn(
         id: C::NodeId,
         config: Arc<Config>,
+        runtime_config: Arc<RuntimeConfig>,
         network: N,
         storage: S,
         tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
@@ -178,6 +184,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let this = Self {
             id,
             config,
+            runtime_config,
             network,
             storage,
 
@@ -185,7 +192,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             leader_data: None,
 
             snapshot_state: None,
-            last_heartbeat: None,
             next_election_time: VoteWiseTime::new(Vote::default(), Instant::now() + Duration::from_secs(86400)),
 
             tx_api,
@@ -825,12 +831,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.next_election_time = VoteWiseTime::new(self.engine.state.vote, now + t);
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn reject_election_for_a_while(&mut self) {
-        let now = Instant::now();
-        self.last_heartbeat = Some(now);
-    }
-
     /// Update the system's snapshot state based on the given data.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) fn update_snapshot_state(&mut self, update: SnapshotUpdate<C::NodeId>) {
@@ -1043,30 +1043,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
-    /// Begin replicating upto the given log id.
-    ///
-    /// It does not block until the entry is committed or actually sent out.
-    /// It merely broadcasts a signal to inform the replication threads.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn replicate_entry(&mut self, log_id: LogId<C::NodeId>) {
-        if let Some(l) = &self.leader_data {
-            if tracing::enabled!(Level::DEBUG) {
-                for node_id in l.nodes.keys() {
-                    tracing::debug!(node_id = display(node_id), log_id = display(log_id), "replicate_entry");
-                }
-            }
-
-            for node in l.nodes.values() {
-                let _ = node.repl_tx.send(UpdateReplication {
-                    last_log_id: Some(log_id),
-                    committed: self.engine.state.committed,
-                });
-            }
-        } else {
-            unreachable!("it has to be a leader!!!");
-        }
-    }
-
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self))]
     #[allow(clippy::type_complexity)]
@@ -1178,8 +1154,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id), raft_state="leader"))]
     pub(crate) async fn leader_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
-        // Setup state as leader.
-        self.last_heartbeat = None;
         debug_assert!(self.engine.state.vote.committed);
 
         // Spawn replication streams for followers and learners.
@@ -1289,27 +1263,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
         tracing::debug!(req = display(req.summary()), "handle_vote_request");
 
-        // TODO(xp): Checking last_heartbeat can be removed,
-        //           if we have finished using blank log for heartbeat:
-        //           https://github.com/datafuselabs/openraft/issues/151
-        // Do not respond to the request if we've received a heartbeat within the election timeout minimum.
-        if let Some(inst) = &self.last_heartbeat {
-            let now = Instant::now();
-            let delta = now.duration_since(*inst);
-            if self.config.election_timeout_min >= (delta.as_millis() as u64) {
-                tracing::debug!(
-                    %req.vote,
-                    ?delta,
-                    "rejecting vote request received within election timeout minimum"
-                );
-                return Ok(VoteResponse {
-                    vote: self.engine.state.vote,
-                    vote_granted: false,
-                    last_log_id: self.engine.state.last_log_id(),
-                });
-            }
-        }
-
         let resp = self.engine.handle_vote_req(req);
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
@@ -1406,21 +1359,45 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             RaftMsg::Tick { i } => {
                 // check every timer
 
-                tracing::debug!("received tick: {}", i);
+                let now = Instant::now();
+                tracing::debug!("received tick: {}, now: {:?}", i, now);
 
                 let current_vote = &self.engine.state.vote;
 
                 // Follower/Candidate timer: next election
                 if let Some(t) = self.next_election_time.get_time(current_vote) {
                     #[allow(clippy::collapsible_else_if)]
-                    if Instant::now() < t {
+                    if now < t {
                         // timeout has not expired.
                     } else {
-                        if self.engine.state.membership_state.effective.is_voter(&self.id) {
-                            self.engine.elect();
-                            self.run_engine_commands::<Entry<C>>(&[]).await?;
-                        } else {
-                            // Node is switched to learner after setting up next election time.
+                        #[allow(clippy::collapsible_else_if)]
+                        if self.runtime_config.enable_elect.load(Ordering::Relaxed) {
+                            if self.engine.state.membership_state.effective.is_voter(&self.id) {
+                                self.engine.elect();
+                                self.run_engine_commands::<Entry<C>>(&[]).await?;
+                            } else {
+                                // Node is switched to learner after setting up next election time.
+                            }
+                        }
+                    }
+                }
+
+                // TODO: test: with heartbeat log, election is automatically rejected.
+                // TODO: test: fixture: make isolated_nodes a single-way isolating.
+
+                // Leader send heartbeat
+                let heartbeat_at = self.leader_data.as_ref().map(|x| x.next_heartbeat);
+                if let Some(t) = heartbeat_at {
+                    if now >= t {
+                        if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
+                            // heartbeat by sending a blank log
+                            let log_id = self.write_entry(EntryPayload::Blank, None).await?;
+                            tracing::debug!(log_id = display(&log_id), "sent heartbeat log");
+                        }
+
+                        // Install next heartbeat
+                        if let Some(l) = &mut self.leader_data {
+                            l.next_heartbeat = Instant::now() + Duration::from_millis(self.config.heartbeat_interval);
                         }
                     }
                 }
@@ -1653,9 +1630,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::InstallElectionTimer { can_be_leader } => {
                 self.set_next_election_time(*can_be_leader);
             }
-            Command::RejectElection {} => {
-                self.reject_election_for_a_while();
-            }
             Command::PurgeLog { upto } => self.storage.purge_logs_upto(*upto).await?,
             Command::DeleteConflictLog { since } => {
                 self.storage.delete_conflict_logs_since(*since).await?;
@@ -1686,7 +1660,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             }
             Command::ReplicateInputEntries { range } => {
                 if let Some(last) = range.clone().last() {
-                    self.replicate_entry(*input_ref_entries[last].get_log_id());
+                    let last_log_id = *input_ref_entries[last].get_log_id();
+
+                    if let Some(l) = &self.leader_data {
+                        for node in l.nodes.values() {
+                            let _ = node.repl_tx.send(UpdateReplication {
+                                last_log_id: Some(last_log_id),
+                                committed: self.engine.state.committed,
+                            });
+                        }
+                    } else {
+                        unreachable!("it has to be a leader!!!");
+                    }
                 }
             }
             Command::UpdateReplicationStreams { remove, add } => {

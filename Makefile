@@ -1,7 +1,10 @@
-all: test lint fmt defensive_test doc
+all: test lint fmt defensive_test send_delay_test doc
 
 defensive_test:
-	RAFT_STORE_DEFENSIVE=on cargo test
+	OPENRAFT_STORE_DEFENSIVE=on cargo test
+
+send_delay_test:
+	OPENRAFT_NETWORK_SEND_DELAY=30 cargo test
 
 test: lint fmt
 	cargo test

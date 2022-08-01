@@ -24,8 +24,14 @@ use crate::fixtures::RaftRouter;
 /// - Bring up the cluster and only node 0 can become leader.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn elect_compare_last_log() -> Result<()> {
-    // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
 
     let mut sto0 = router.new_store();

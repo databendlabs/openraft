@@ -21,7 +21,13 @@ async fn add_remove_voter() -> Result<()> {
     let c01234 = btreeset![0, 1, 2, 3, 4];
     let c0123 = btreeset![0, 1, 2, 3];
 
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(c01234.clone(), btreeset! {}).await?;

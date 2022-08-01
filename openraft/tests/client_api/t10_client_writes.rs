@@ -6,7 +6,6 @@ use maplit::btreeset;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
-use openraft::ServerState;
 use openraft::SnapshotPolicy;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -21,39 +20,22 @@ use crate::fixtures::RaftRouter;
 /// - assert that the cluster stayed stable and has all of the expected data.
 #[async_entry::test(worker_threads = 4, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn client_writes() -> Result<()> {
-    // Setup test dependencies.
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(500),
             // The write load is heavy in this test, need a relatively long timeout.
             election_timeout_min: 500,
             election_timeout_max: 1000,
+            enable_tick: false,
             ..Default::default()
         }
         .validate()?,
     );
+
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
-    router.new_raft_node(1);
-    router.new_raft_node(2);
 
-    let mut log_index = 0;
-
-    // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1, 2], None, None, "empty").await?;
-    router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, None, "empty").await?;
-    router.assert_pristine_cluster();
-
-    // Initialize the cluster, then assert that a stable cluster was formed & held.
     tracing::info!("--- initializing cluster");
-    router.initialize_from_single_node(0).await?;
-    log_index += 1;
-
-    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "leader init log").await?;
-    router.wait_for_state(&btreeset![0], ServerState::Leader, None, "cluster leader").await?;
-    router.wait_for_state(&btreeset![1, 2], ServerState::Follower, None, "cluster follower").await?;
-
-    router.assert_stable_cluster(Some(1), Some(log_index));
+    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 
     // Write a bunch of data and assert that the cluster stayes stable.
     let leader = router.leader().expect("leader not found");

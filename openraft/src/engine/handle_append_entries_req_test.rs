@@ -146,7 +146,6 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
                 vote: Vote::new_committed(2, 1)
             },
             Command::InstallElectionTimer { can_be_leader: false },
-            Command::RejectElection {},
             Command::DeleteConflictLog { since: log_id(1, 2) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
@@ -206,7 +205,6 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
                 vote: Vote::new_committed(2, 1)
             },
             Command::InstallElectionTimer { can_be_leader: false },
-            Command::RejectElection {},
             Command::DeleteConflictLog { since: log_id(1, 2) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
@@ -274,7 +272,6 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
                 vote: Vote::new_committed(2, 1)
             },
             Command::InstallElectionTimer { can_be_leader: false },
-            Command::RejectElection {},
             Command::UpdateServerState {
                 server_state: ServerState::Follower
             },
@@ -338,7 +335,6 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
                 vote: Vote::new_committed(2, 1)
             },
             Command::InstallElectionTimer { can_be_leader: false },
-            Command::RejectElection {},
             Command::DeleteConflictLog { since: log_id(2, 3) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))

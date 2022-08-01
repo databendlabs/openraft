@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -7,7 +6,6 @@ use maplit::btreeset;
 use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
 use openraft::Config;
-use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -20,28 +18,17 @@ use crate::fixtures::RaftRouter;
 /// - after the cluster has been initialize, it performs a shutdown routine on each node, asserting that the shutdown
 ///   routine succeeded.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn initialization() -> Result<()> {
-    // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+async fn shutdown() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
-    router.new_raft_node(1);
-    router.new_raft_node(2);
-
-    let mut log_index = 0;
-
-    // Assert all nodes are in learner state & have no entries.
-    router.wait_for_log(&btreeset![0, 1, 2], None, timeout(), "empty").await?;
-    router.wait_for_state(&btreeset![0, 1, 2], ServerState::Learner, timeout(), "empty").await?;
-    router.assert_pristine_cluster();
-
-    // Initialize the cluster, then assert that a stable cluster was formed & held.
-    tracing::info!("--- initializing cluster");
-    router.initialize_from_single_node(0).await?;
-    log_index += 1;
-
-    router.wait_for_log(&btreeset![0, 1, 2], Some(log_index), None, "init").await?;
-    router.assert_stable_cluster(Some(1), Some(1));
+    let _log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!("--- performing node shutdowns");
     {
@@ -58,14 +45,17 @@ async fn initialization() -> Result<()> {
     Ok(())
 }
 
-fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
-}
-
 /// A panicked RaftCore should also return a proper error the next time accessing the `Raft`.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn return_error_after_panic() -> Result<()> {
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster");
@@ -92,7 +82,14 @@ async fn return_error_after_panic() -> Result<()> {
 /// After shutdown(), access to Raft should return a Fatal::Stopped error.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn return_error_after_shutdown() -> Result<()> {
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster");

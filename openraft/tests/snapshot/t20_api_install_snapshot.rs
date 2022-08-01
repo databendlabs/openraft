@@ -22,7 +22,14 @@ use crate::fixtures::RaftRouter;
 /// - send install_snapshot request with matched/mismatched id and offset
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn snapshot_arguments() -> Result<()> {
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = 0;

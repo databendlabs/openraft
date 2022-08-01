@@ -14,6 +14,7 @@
 - [Internal](./internal.md)
     - [Architecture](./architecture.md)
     - [Threads](./threading.md)
+    - [Heartbeat](./heartbeat.md)
     - [Vote](./vote.md)
     - [Replication](./replication.md)
       - [Delete-conflicting-logs](./delete_log.md)

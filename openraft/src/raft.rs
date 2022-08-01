@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,6 +18,7 @@ use tracing::Level;
 use tracing::Span;
 
 use crate::config::Config;
+use crate::config::RuntimeConfig;
 use crate::core::replication_lag;
 use crate::core::Expectation;
 use crate::core::RaftCore;
@@ -127,6 +129,7 @@ enum CoreState<NID: NodeId> {
 struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     id: C::NodeId,
     config: Arc<Config>,
+    runtime_config: Arc<RuntimeConfig>,
     tick_handle: TickHandle,
     tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
     rx_metrics: watch::Receiver<RaftMetrics<C::NodeId>>,
@@ -191,16 +194,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let tick = Tick::new(
             Duration::from_millis(config.heartbeat_interval * 3 / 2),
             tx_api.clone(),
-            true,
+            config.enable_tick,
         );
 
         let tick_handle = tick.get_handle();
         let _tick_join_handle =
             tokio::spawn(tick.tick_loop().instrument(tracing::span!(parent: &Span::current(), Level::DEBUG, "tick")));
 
+        let runtime_config = Arc::new(RuntimeConfig::new(&config));
+
         let core_handle = RaftCore::spawn(
             id,
             config.clone(),
+            runtime_config.clone(),
             network,
             storage,
             tx_api.clone(),
@@ -212,6 +218,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let inner = RaftInner {
             id,
             config,
+            runtime_config,
             tick_handle,
             tx_api,
             rx_metrics,
@@ -229,6 +236,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// By disabling the ticker, a follower will not enter candidate again, a leader will not send heartbeat.
     pub fn enable_tick(&self, enabled: bool) {
         self.inner.tick_handle.enable(enabled);
+    }
+
+    pub fn enable_heartbeat(&self, enabled: bool) {
+        self.inner.runtime_config.enable_heartbeat.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn enable_elect(&self, enabled: bool) {
+        self.inner.runtime_config.enable_elect.store(enabled, Ordering::Relaxed);
     }
 
     /// Submit an AppendEntries RPC to this Raft node.

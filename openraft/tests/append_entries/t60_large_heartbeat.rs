@@ -27,10 +27,10 @@ async fn large_heartbeat() -> Result<()> {
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 
-    router.client_request_many(0, "foo", 100).await?;
-    log_index += 100;
+    router.client_request_many(0, "foo", 10).await?;
+    log_index += 10;
 
-    router.wait(&1, Some(Duration::from_millis(1000))).log(Some(log_index), "").await?;
+    router.wait(&1, Some(Duration::from_millis(3_000))).log(Some(log_index), "").await?;
 
     Ok(())
 }

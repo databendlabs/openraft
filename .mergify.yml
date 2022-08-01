@@ -4,7 +4,7 @@ queue_rules:
       # - '#check-pending=0'
       - '#check-success>=2'
       - check-success=check-subject
-      - check-success=unittest (on)
+      - check-success=unittest (on, 0)
       - check-success~=unittest
 
 pull_request_rules:
@@ -14,7 +14,7 @@ pull_request_rules:
       - "#approved-reviews-by>=1"
       - "#changes-requested-reviews-by=0"
       - check-success=check-subject
-      - check-success=unittest (on)
+      - check-success=unittest (on, 0)
     actions:
       queue:
         name: feature_queue

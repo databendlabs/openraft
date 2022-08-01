@@ -819,9 +819,6 @@ impl<NID: NodeId> Engine<NID> {
             // Do not elect for a longer while.
             // TODO: Installing a timer should not be part of the Engine's job.
             self.push_command(Command::InstallElectionTimer { can_be_leader: false });
-            // There is an active leader, reject election for a while.
-            // TODO: remove this when heartbeat log is ready.
-            self.push_command(Command::RejectElection {});
         } else {
             // There is an active candidate.
             // Do not elect for a short while.

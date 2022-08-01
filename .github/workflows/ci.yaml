@@ -9,6 +9,9 @@ jobs:
         store_defensive:
           - "on"
           - "off"
+        send_delay:
+          - "0"
+          - "30"
 
     steps:
       - name: Setup | Checkout
@@ -31,7 +34,8 @@ jobs:
           RUST_TEST_THREADS: 2
           RUST_LOG: debug
           RUST_BACKTRACE: full
-          RAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
+          OPENRAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
+          OPENRAFT_NETWORK_SEND_DELAY: ${{ matrix.send_delay }}
 
 
       - name: Build | Release Mode

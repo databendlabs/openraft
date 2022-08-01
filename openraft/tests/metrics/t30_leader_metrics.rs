@@ -36,7 +36,13 @@ async fn leader_metrics() -> Result<()> {
     let c0123 = btreeset![0, 1, 2, 3];
 
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0);
 

@@ -27,6 +27,7 @@ async fn snapshot_chunk_size() -> Result<()> {
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
             snapshot_max_chunk_size: 10,
+            enable_heartbeat: false,
             ..Default::default()
         }
         .validate()?,

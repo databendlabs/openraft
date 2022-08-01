@@ -22,6 +22,7 @@ async fn step_down() -> Result<()> {
         Config {
             election_timeout_min: 800,
             election_timeout_max: 1000,
+            enable_heartbeat: false,
             ..Default::default()
         }
         .validate()?,
