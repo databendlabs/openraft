@@ -283,7 +283,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
                 &btreeset! {0, 1, 2},
                 Some(log_index),
                 timeout(),
-                "no logs commit in the cluster",
+                "add learner fail, no logs",
             )
             .await?;
     }
@@ -291,20 +291,9 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
     tracing::info!("change membership");
     {
         assert!(router.leader().is_some());
+        let leader = router.leader().unwrap();
 
-        let leader = 0;
         let h = router.get_raft_handle(&leader)?;
-
-        // add n3 should fail
-        assert!(h.change_membership(btreeset! {0, 1, 2, 3}, true, false).await.is_err());
-        router
-            .wait_for_log(
-                &btreeset! {0},
-                Some(log_index),
-                timeout(),
-                "change membership fail, no log",
-            )
-            .await?;
 
         h.change_membership(btreeset! {0, 1, 2}, true, false).await?;
         log_index += 2;
