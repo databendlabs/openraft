@@ -40,7 +40,6 @@ use openraft::metrics::Wait;
 use openraft::raft::AddLearnerResponse;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
-use openraft::raft::ClientWriteRequest;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
@@ -651,9 +650,7 @@ where
                 .clone()
         };
 
-        let payload = EntryPayload::<C>::Normal(req);
-
-        node.0.client_write(ClientWriteRequest::<C>::new(payload)).await.map(|res| res.data)
+        node.0.client_write(req).await.map(|res| res.data)
     }
 
     /// Assert that the cluster is in a pristine state, with all nodes as learners.

@@ -324,13 +324,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
-    #[tracing::instrument(level = "debug", skip(self, rpc))]
-    pub async fn client_write(
-        &self,
-        rpc: ClientWriteRequest<C>,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn client_write(&self, app_data: C::D) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::ClientWriteRequest { rpc, tx }, rx).await
+        self.call_core(
+            RaftMsg::ClientWriteRequest {
+                payload: EntryPayload::Normal(app_data),
+                tx,
+            },
+            rx,
+        )
+        .await
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -772,7 +776,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     ClientWriteRequest {
-        rpc: ClientWriteRequest<C>,
+        payload: EntryPayload<C>,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     },
     CheckIsLeaderRequest {
@@ -888,7 +892,7 @@ where
             RaftMsg::SnapshotUpdate { update } => {
                 format!("SnapshotUpdate: {:?}", update)
             }
-            RaftMsg::ClientWriteRequest { rpc, .. } => {
+            RaftMsg::ClientWriteRequest { payload: rpc, .. } => {
                 format!("ClientWriteRequest: {}", rpc.summary())
             }
             RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),
@@ -1118,39 +1122,7 @@ pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// An application specific client request to update the state of the system (§5.1).
-///
-/// The entry of this payload will be appended to the Raft log and then applied to the Raft state
-/// machine according to the Raft protocol.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct ClientWriteRequest<C: RaftTypeConfig> {
-    /// The application specific contents of this client request.
-    pub(crate) payload: EntryPayload<C>,
-}
-
-impl<C: RaftTypeConfig> Debug for ClientWriteRequest<C>
-where C::D: Debug
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClientWriteRequest").field("payload", &self.payload).finish()
-    }
-}
-
-impl<C: RaftTypeConfig> MessageSummary<ClientWriteRequest<C>> for ClientWriteRequest<C> {
-    fn summary(&self) -> String {
-        self.payload.summary()
-    }
-}
-
-impl<C: RaftTypeConfig> ClientWriteRequest<C> {
-    pub fn new(entry: EntryPayload<C>) -> Self {
-        Self { payload: entry }
-    }
-}
-
-/// The response to a `ClientRequest`.
+/// The response to a client-request.
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),

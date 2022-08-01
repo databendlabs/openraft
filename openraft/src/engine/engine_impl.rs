@@ -255,6 +255,8 @@ impl<NID: NodeId> Engine<NID> {
         }
 
         // Seen a higher log.
+        // TODO: if already installed a timer with can_be_leader==false, it should not install a timer with
+        //       can_be_leader==true.
         if resp.last_log_id > self.state.last_log_id() {
             self.push_command(Command::InstallElectionTimer { can_be_leader: false });
         } else {
