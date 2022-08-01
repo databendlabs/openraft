@@ -404,12 +404,6 @@ where
         self.isolated_nodes.lock().unwrap().insert(id);
     }
 
-    /// Make the network of the specified node unreachable.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub fn block_connect(&self, id: C::NodeId) {
-        self.unconnectable.lock().unwrap().insert(id);
-    }
-
     /// Get a payload of the latest metrics from each node in the cluster.
     pub fn latest_metrics(&self) -> Vec<RaftMetrics<C::NodeId>> {
         let rt = self.routing_table.lock().unwrap();
@@ -563,9 +557,13 @@ where
 
     /// Unblock the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn enable_connect(&self, id: C::NodeId) {
+    pub fn enable_connect(&self, id: C::NodeId, enable: bool) {
         let mut nodes = self.unconnectable.lock().unwrap();
-        nodes.remove(&id);
+        if !enable {
+            nodes.insert(id);
+        } else {
+            nodes.remove(&id);
+        }
     }
 
     /// Bring up a new learner and add it to the leader's membership.

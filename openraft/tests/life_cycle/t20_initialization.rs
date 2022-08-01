@@ -253,7 +253,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
     tracing::info!("--- add unreachable learner to cluster");
     {
         router.new_raft_node(3);
-        router.block_connect(3);
+        router.enable_connect(3, false);
         assert!(router.add_learner(0, 3).await.is_err());
 
         router
@@ -285,7 +285,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
 
     tracing::info!("--- block n2, make it unreachable for router");
     {
-        router.block_connect(2);
+        router.enable_connect(2, false);
     }
 
     tracing::info!("--- isolate leader, force an election");
