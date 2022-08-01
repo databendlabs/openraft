@@ -148,7 +148,7 @@ where
     isolated_nodes: Arc<Mutex<HashSet<C::NodeId>>>,
 
     /// Nodes which could not be connected via network
-    unreachable_nodes: Arc<Mutex<HashSet<C::NodeId>>>,
+    unconnectable: Arc<Mutex<HashSet<C::NodeId>>>,
 
     /// To emulate network delay for sending, in milliseconds.
     /// 0 means no delay.
@@ -180,7 +180,7 @@ where
             config: self.config,
             routing_table: Default::default(),
             isolated_nodes: Default::default(),
-            unreachable_nodes: Default::default(),
+            unconnectable: Default::default(),
             send_delay: Arc::new(AtomicU64::new(self.send_delay)),
         }
     }
@@ -197,7 +197,7 @@ where
             config: self.config.clone(),
             routing_table: self.routing_table.clone(),
             isolated_nodes: self.isolated_nodes.clone(),
-            unreachable_nodes: self.unreachable_nodes.clone(),
+            unconnectable: self.unconnectable.clone(),
             send_delay: self.send_delay.clone(),
         }
     }
@@ -369,7 +369,7 @@ where
         }
 
         {
-            let mut unreachable = self.unreachable_nodes.lock().unwrap();
+            let mut unreachable = self.unconnectable.lock().unwrap();
             unreachable.remove(&id);
         }
 
@@ -397,8 +397,8 @@ where
 
     /// Make the network of the specified node unreachable.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn block_node(&self, id: C::NodeId) {
-        self.unreachable_nodes.lock().unwrap().insert(id);
+    pub fn block_connect(&self, id: C::NodeId) {
+        self.unconnectable.lock().unwrap().insert(id);
     }
 
     /// Get a payload of the latest metrics from each node in the cluster.
@@ -554,8 +554,8 @@ where
 
     /// Unblock the network of the specified node.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn unblock_node(&self, id: C::NodeId) {
-        let mut nodes = self.unreachable_nodes.lock().unwrap();
+    pub fn enable_connect(&self, id: C::NodeId) {
+        let mut nodes = self.unconnectable.lock().unwrap();
         nodes.remove(&id);
     }
 
@@ -941,7 +941,7 @@ where
 
     async fn connect(&mut self, target: C::NodeId, _node: Option<&Node>) -> Result<Self::Network, NetworkError> {
         {
-            let unreachable = self.unreachable_nodes.lock().unwrap();
+            let unreachable = self.unconnectable.lock().unwrap();
             if unreachable.contains(&target) {
                 let e = NetworkError::new(&AnyError::error(format!("failed to connect: {}", target)));
                 return Err(e);

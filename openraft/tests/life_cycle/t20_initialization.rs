@@ -247,7 +247,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
     tracing::info!("--- add unreachable learner to cluster");
     {
         router.new_raft_node(3);
-        router.block_node(3);
+        router.block_connect(3);
         assert!(router.add_learner(0, 3).await.is_err());
 
         router
@@ -272,16 +272,16 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
             .await?;
     }
 
-    tracing::info!("--- write 100 logs");
+    tracing::info!("--- write 10 logs");
     {
-        router.client_request_many(0, "client", 100).await?;
-        log_index += 100;
+        router.client_request_many(0, "client", 10).await?;
+        log_index += 10;
         router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "write should complete").await?;
     }
 
     tracing::info!("--- block n2, make it unreachable for router");
     {
-        router.block_node(2);
+        router.block_connect(2);
     }
 
     tracing::info!("--- isolate leader, force an election");
