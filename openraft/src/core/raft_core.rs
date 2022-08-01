@@ -1324,9 +1324,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     self.reject_with_forward_to_leader(tx);
                 }
             }
-            RaftMsg::ClientWriteRequest { rpc, tx } => {
+            RaftMsg::ClientWriteRequest { payload: rpc, tx } => {
                 if is_leader() {
-                    self.write_entry(rpc.payload, Some(tx)).await?;
+                    self.write_entry(rpc, Some(tx)).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }
@@ -1454,30 +1454,22 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         target: C::NodeId,
         result: Result<LogId<C::NodeId>, String>,
     ) -> Result<(), StorageError<C::NodeId>> {
-        // Update target's match index & check if it is awaiting removal.
-
         tracing::debug!(
             target = display(target),
             result = debug(&result),
             "handle_update_matched"
         );
 
-        // TODO(xp): a leader has to refuse a message from a previous leader.
-        if let Some(l) = &self.leader_data {
-            if !l.nodes.contains_key(&target) {
-                return Ok(());
-            };
-        } else {
-            // no longer a leader.
-            tracing::warn!(
-                target = display(target),
-                result = debug(&result),
-                "received replication update but no longer a leader"
-            );
-            return Ok(());
+        if tracing::enabled!(Level::DEBUG) {
+            if let Some(l) = &self.leader_data {
+                if !l.nodes.contains_key(&target) {
+                    tracing::warn!("leader has removed target: {}", target);
+                    return Ok(());
+                };
+            } else {
+                unreachable!("no longer a leader, received message from previous leader");
+            }
         }
-
-        tracing::debug!("update matched: {:?}", result);
 
         let matched = match result {
             Ok(matched) => matched,
