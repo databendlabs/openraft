@@ -1269,9 +1269,26 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let tx = self.tx_api.clone();
 
+            let ttl = Duration::from_millis(self.config.heartbeat_interval);
+            let id = self.id;
+
             let _ = tokio::spawn(
                 async move {
-                    let res = network.send_vote(req).await;
+                    let tm_res = timeout(ttl, network.send_vote(req)).await;
+                    let res = match tm_res {
+                        Ok(res) => res,
+
+                        Err(_timeout) => {
+                            let timeout_err = Timeout {
+                                action: RPCTypes::Vote,
+                                id,
+                                target,
+                                timeout: ttl,
+                            };
+                            tracing::error!({error = %timeout_err, target = display(target)}, "timeout");
+                            return;
+                        }
+                    };
 
                     match res {
                         Ok(resp) => {
