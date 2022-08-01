@@ -3,8 +3,9 @@
 #![allow(dead_code)]
 
 #[cfg(feature = "bt")] use std::backtrace::Backtrace;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::env;
 use std::fmt::Debug;
 use std::marker::PhantomData;

@@ -48,6 +48,7 @@ use crate::error::InProgress;
 use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
+use crate::error::MissingNodeInfo;
 use crate::error::NetworkError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
@@ -481,8 +482,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             unreachable!("it has to be a leader!!!");
         }
 
-        // Ensure the node doesn't already exist in the current
-        // config, in the set of new nodes already being synced, or in the nodes being removed.
+        // Ensure the node doesn't already exist in the current config,
+        // in the set of new nodes already being synced, or in the nodes being removed.
 
         let curr = &self.engine.state.membership_state.effective;
         if curr.contains(&target) {
@@ -505,6 +506,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
+        // Ensure the node is connectable
+        if self.network.connect(target, node.clone().as_ref()).await.is_err() {
+            let e = MissingNodeInfo {
+                node_id: target,
+                reason: format!("cannot connect to: {}", target),
+            };
+            let _ = tx.send(Err(AddLearnerError::MissingNodeInfo(e)));
+            return Ok(());
+        }
+
         let curr = &self.engine.state.membership_state.effective.membership;
         let res = curr.add_learner(target, node);
         let new_membership = match res {
@@ -517,6 +528,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         tracing::debug!(?new_membership, "new_membership with added learner: {}", target);
 
+        // TODO: handle connect error in self.write_entry, connection error could happen at anytime
         let log_id = self.write_entry(EntryPayload::Membership(new_membership), None).await?;
 
         tracing::debug!(
@@ -1722,7 +1734,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     let state = match self.spawn_replication_stream(*node_id).await {
                         Ok(state) => state,
                         Err(e) => {
-                            tracing::error!({node = % node_id}, "cannot connect {:?}", e);
+                            tracing::error!({node = % node_id}, "cannot connect to {:?}", e);
+                            // cannot return Err, or raft fail completely
                             continue;
                         }
                     };

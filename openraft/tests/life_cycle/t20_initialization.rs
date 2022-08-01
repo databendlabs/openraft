@@ -239,39 +239,100 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn router_network_failure_aware() -> anyhow::Result<()> {
     let config = Arc::new(Config::default().validate()?);
-    let nodes = btreeset!{0, 1, 2};
+    let nodes = btreeset! {0, 1, 2};
     let mut router = RaftRouter::new(config.clone());
+    let mut log_index = 0;
 
     // making cluster by hand
     tracing::info!("--- init single node");
     {
         router.new_raft_node(0);
         router.initialize_from_single_node(0).await?;
+        log_index += 1;
+        router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "init single node cluster").await?;
     }
 
-    tracing::info!("--- add voters to single node cluster");
+    tracing::info!("--- add reachable learners to cluster");
     {
-        for n in [1, 2].iter() {
-            router.new_raft_node(*n);
-            router.add_learner(0, *n).await?;
-        }
-        let leader = 0;
+        router.new_raft_node(1);
+        router.add_learner(0, 1).await?;
+        log_index += 1;
 
+        router.new_raft_node(2);
+        router.add_learner(0, 2).await?;
+        log_index += 1;
+
+        router
+            .wait_for_log(
+                &btreeset! {0},
+                Some(log_index),
+                timeout(),
+                "should add 2 learner the cluster",
+            )
+            .await?;
+    }
+
+    tracing::info!("--- add unreachable learner to cluster");
+    {
+        router.new_raft_node(3);
+        router.block_node(3);
+        assert!(router.add_learner(0, 3).await.is_err());
+
+        router
+            .wait_for_log(
+                &btreeset! {0, 1, 2},
+                Some(log_index),
+                timeout(),
+                "no logs commit in the cluster",
+            )
+            .await?;
+    }
+
+    tracing::info!("change membership");
+    {
+        assert!(router.leader().is_some());
+
+        let leader = 0;
         let h = router.get_raft_handle(&leader)?;
-        h.change_membership(nodes.clone(), true, false).await?;
+
+        // add n3 should fail
+        assert!(h.change_membership(btreeset! {0, 1, 2, 3}, true, false).await.is_err());
+        router
+            .wait_for_log(
+                &btreeset! {0},
+                Some(log_index),
+                timeout(),
+                "change membership fail, no log",
+            )
+            .await?;
+
+        h.change_membership(btreeset! {0, 1, 2}, true, false).await?;
+        log_index += 2;
+
+        router
+            .wait(&0, Some(Duration::from_secs(5)))
+            .metrics(|x| x.current_leader == Some(0), "wait for cluster to have a leader")
+            .await?;
+        router
+            .wait_for_log(
+                &btreeset! {0},
+                Some(log_index),
+                timeout(),
+                "change membership, commit one log",
+            )
+            .await?;
     }
 
     tracing::info!("--- finish making cluster");
     {
-        let log_index = 5;
-        router.wait_for_log(&nodes, Some(log_index), timeout(), "complete building cluster").await?;
-        router.assert_stable_cluster(Some(1), Some(log_index));
-        router.wait_for_metrics(&0, |x| x.current_leader.is_some() || x.current_leader == Some(0), timeout(), "check cluster's leader").await?;
-    }
-
-    tracing::info!("--- unplug leader, make it unreachable for router");
-    {
-        router.block_node(0);
+        router
+            .wait_for_members(
+                &btreeset! {0},
+                nodes.clone(),
+                timeout(),
+                format!("cluster should be: {:?}", nodes.clone()).as_str(),
+            )
+            .await?;
     }
 
     tracing::info!("--- wait until the cluster stable");
@@ -279,7 +340,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
         router
             .wait_for_metrics(
                 &1,
-                |x| x.current_leader.is_some() && x.current_leader != Some(0),
+                |x| x.current_leader == Some(0),
                 timeout(),
                 "wait for election complete",
             )
@@ -288,23 +349,26 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
 
     tracing::info!("--- write 100 logs");
     {
-        let leader = router.leader().unwrap();
-        let mut log_index = router.get_metrics(&leader)?.last_log_index.unwrap();
-        router.client_request_many(leader, "client", 100).await?;
+        router.client_request_many(0, "client", 100).await?;
         log_index += 100;
-        router.wait_for_log(&btreeset! {leader}, Some(log_index), timeout(), "write 100 logs").await?;
+        router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "write should complete").await?;
     }
 
-    tracing::info!("--- detach n1, make it unreachable for router");
+    tracing::info!("--- unplug n2, make it unreachable for router");
     {
-        router.block_node(1);
+        router.block_node(2);
+    }
+
+    tracing::info!("--- isolate leader, force an election");
+    {
+        router.isolate_node(0);
     }
 
     tracing::info!("--- cluster should unable to commit logs now");
     {
-        let write_req = router.client_request(0, "client", 0);
+        let write_req = router.client_request(1, "client", 0);
         let timeout = tokio::time::timeout(Duration::from_millis(1000), write_req).await;
-        assert!(timeout.is_err());
+        assert!(timeout.is_err(), "now cluster should fail");
     }
 
     Ok(())
