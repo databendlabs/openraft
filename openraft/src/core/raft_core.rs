@@ -1302,8 +1302,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     "send_vote_req",
                     target = display(target)
                 )),
-            )
-            .map_err(move |e| (target, e));
+            );
         }
     }
 
