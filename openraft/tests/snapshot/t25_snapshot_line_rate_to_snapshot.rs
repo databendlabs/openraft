@@ -58,7 +58,6 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
         router.isolate_node(1);
 
         router.client_request_many(0, "0", (snapshot_threshold - 1 - log_index) as usize).await?;
-
         log_index = snapshot_threshold - 1;
 
         router
@@ -82,8 +81,6 @@ async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     tracing::info!("--- restore node 1 and replication");
     {
         router.restore_node(1);
-        let leader = router.get_raft_handle(&0)?;
-        leader.enable_heartbeat(true);
 
         router.wait_for_log(&btreeset![1], Some(log_index), timeout(), "replicate by snapshot").await?;
         router
