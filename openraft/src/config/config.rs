@@ -1,5 +1,7 @@
 //! Raft runtime configuration.
 
+use std::sync::atomic::AtomicBool;
+
 use clap::Parser;
 use rand::thread_rng;
 use rand::Rng;
@@ -154,6 +156,53 @@ pub struct Config {
     /// The minimal number of applied logs to purge in a batch.
     #[clap(long, default_value = "1")]
     pub purge_batch_size: u64,
+
+    /// Enable or disable tick.
+    ///
+    /// If ticking is disabled, timeout based events are all disabled:
+    /// a follower won't wake up to enter candidate state,
+    /// and a leader won't send heartbeat.
+    ///
+    /// This flag is mainly used for test, or to build a consensus system that does not depend on wall clock.
+    /// The value of this config is evaluated as follow:
+    /// - being absent: true
+    /// - `--enable-tick`: true
+    /// - `--enable-tick=true`: true
+    /// - `--enable-tick=false`: false
+    #[clap(long,
+           default_value_t = true,
+           action = clap::ArgAction::Set,
+           default_missing_value = "true")]
+    pub enable_tick: bool,
+
+    /// Whether a leader sends heartbeat log to following nodes, i.e., followers and learners.
+    #[clap(long,
+           default_value_t = true,
+           action = clap::ArgAction::Set,
+           default_missing_value = "true")]
+    pub enable_heartbeat: bool,
+
+    /// Whether a follower will enter candidate state if it does not receive message from the leader for a while.
+    #[clap(long,
+           default_value_t = true,
+           action = clap::ArgAction::Set,
+           default_missing_value = "true")]
+    pub enable_elect: bool,
+}
+
+/// Updatable config for a raft runtime.
+pub(crate) struct RuntimeConfig {
+    pub(crate) enable_heartbeat: AtomicBool,
+    pub(crate) enable_elect: AtomicBool,
+}
+
+impl RuntimeConfig {
+    pub(crate) fn new(config: &Config) -> Self {
+        Self {
+            enable_heartbeat: AtomicBool::from(config.enable_heartbeat),
+            enable_elect: AtomicBool::from(config.enable_elect),
+        }
+    }
 }
 
 impl Default for Config {

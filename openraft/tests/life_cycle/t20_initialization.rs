@@ -32,8 +32,14 @@ use crate::fixtures::RaftRouter;
 ///   successfully replicated the payload.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn initialization() -> anyhow::Result<()> {
-    // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0);
     router.new_raft_node(1);
@@ -242,7 +248,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
     let nodes = btreeset! {0, 1, 2};
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(nodes.clone(), btreeset!()).await?;
+    let log_index = router.new_nodes_from_single(nodes.clone(), btreeset!()).await?;
 
     tracing::info!("--- add unreachable learner to cluster");
     {
@@ -275,8 +281,6 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
     tracing::info!("--- write 10 logs");
     {
         router.client_request_many(0, "client", 10).await?;
-        log_index += 10;
-        router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "write should complete").await?;
     }
 
     tracing::info!("--- block n2, make it unreachable for router");

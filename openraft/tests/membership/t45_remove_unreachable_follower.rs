@@ -12,16 +12,18 @@ use crate::fixtures::RaftRouter;
 /// Replication should stop after a **unreachable** follower is removed from membership.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn stop_replication_to_removed_unreachable_follower_network_failure() -> Result<()> {
-    // If the uniform membership is committed and replication to a node encountered 2 network failure, just remove it.
-    // let config = Arc::new(Config::build(&["foo", "--remove-replication=max_network_failures:2"])?);
-    let config = Arc::new(Config::build(&["foo"])?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
 
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0);
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
-
-    router.wait_for_log(&btreeset![0, 1, 2, 3, 4], Some(log_index), timeout(), "cluster of 5").await?;
 
     tracing::info!("--- isolate node 4");
     {

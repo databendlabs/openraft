@@ -19,7 +19,13 @@ use crate::fixtures::RaftRouter;
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn append_entries_with_bigger_term() -> Result<()> {
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
     let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
 

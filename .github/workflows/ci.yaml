@@ -1,6 +1,51 @@
 on: [push, pull_request]
 name: ci
 jobs:
+  build:
+    name: Build with default rust 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+      # use rust-toolchain file
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+
+      - name: Build | Release Mode
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+
+  build-stable-rust:
+    name: Build with stable rust 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "stable"
+          override: true
+
+      - name: Build | Release Mode | No features
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+
+      - name: Build | Release Mode | All features
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-features
+        env:
+          # Enable unstable feature on stalbe rust.
+          RUSTC_BOOTSTRAP: 1
+
   ut:
     name: unittest
     runs-on: ubuntu-latest
@@ -9,6 +54,9 @@ jobs:
         store_defensive:
           - "on"
           - "off"
+        send_delay:
+          - "0"
+          - "30"
 
     steps:
       - name: Setup | Checkout
@@ -31,15 +79,8 @@ jobs:
           RUST_TEST_THREADS: 2
           RUST_LOG: debug
           RUST_BACKTRACE: full
-          RAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
-
-
-      - name: Build | Release Mode
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --all-features
-
+          OPENRAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
+          OPENRAFT_NETWORK_SEND_DELAY: ${{ matrix.send_delay }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2
@@ -104,21 +145,6 @@ jobs:
           RUST_BACKTRACE: full
 
 
-      - name: Build | Release Mode | No features
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
-
-
-      - name: Build | Release Mode | No features
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --all-features
-        env:
-          # Enable unstable feature on stalbe rust.
-          RUSTC_BOOTSTRAP: 1
 
 
       - name: Upload artifact

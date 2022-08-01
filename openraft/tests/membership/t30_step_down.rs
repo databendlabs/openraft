@@ -22,22 +22,18 @@ async fn step_down() -> Result<()> {
         Config {
             election_timeout_min: 800,
             election_timeout_max: 1000,
+            enable_heartbeat: false,
             ..Default::default()
         }
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {}).await?;
+    let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {2,3}).await?;
 
     // Submit a config change which adds two new nodes and removes the current leader.
     let orig_leader = router.leader().expect("expected the cluster to have a leader");
     assert_eq!(0, orig_leader, "expected original leader to be node 0");
-    router.new_raft_node(2);
-    router.new_raft_node(3);
-    router.add_learner(0, 2).await?;
-    router.add_learner(0, 3).await?;
-    log_index += 2;
     router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
 
     let node = router.get_raft_handle(&orig_leader)?;

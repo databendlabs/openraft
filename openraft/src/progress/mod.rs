@@ -434,7 +434,6 @@ mod t {
         assert_eq!(&5, p012_345.granted());
 
         let p345 = p012_345.upgrade_quorum_set(qs345, &[1]);
-        println!("{:?}", p345.vector);
 
         assert_eq!(&8, p345.granted(), "shrink quorum set, greater value becomes committed");
         assert_eq!(&6, p345.get(&1), "inherit voter progress");

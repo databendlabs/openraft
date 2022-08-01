@@ -2,8 +2,6 @@ use std::sync::Arc;
 
 use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
-use openraft::raft::ClientWriteRequest;
-use openraft::EntryPayload;
 use tide::Body;
 use tide::Request;
 use tide::Response;
@@ -30,8 +28,7 @@ pub fn rest(app: &mut Server) {
  */
 async fn write(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
     let body = req.body_json().await?;
-    let request = ClientWriteRequest::new(EntryPayload::Normal(body));
-    let res = req.state().raft.client_write(request).await;
+    let res = req.state().raft.client_write(body).await;
     Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
 }
 

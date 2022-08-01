@@ -19,8 +19,14 @@ use crate::fixtures::RaftRouter;
 /// - asserts that when metrics.last_applied is upto date, the state machine should be upto date too.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn metrics_state_machine_consistency() -> Result<()> {
-    // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = 0;

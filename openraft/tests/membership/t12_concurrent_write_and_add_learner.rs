@@ -40,7 +40,13 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     let candidates = btreeset![0, 1, 2];
 
     // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
 
     router.new_raft_node(0);

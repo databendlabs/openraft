@@ -12,8 +12,13 @@ use crate::fixtures::RaftRouter;
 /// Replication should stop after a follower is removed from membership.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn stop_replication_to_removed_follower() -> Result<()> {
-    // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0);
 

@@ -79,12 +79,63 @@ fn test_build() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_config_build_() -> anyhow::Result<()> {
+fn test_config_keep_unsnapshoted_log() -> anyhow::Result<()> {
     let config = Config::build(&["foo", "--keep-unsnapshoted-log"])?;
     assert_eq!(true, config.keep_unsnapshoted_log);
 
     let config = Config::build(&["foo"])?;
     assert_eq!(false, config.keep_unsnapshoted_log);
+
+    Ok(())
+}
+
+#[test]
+fn test_config_enable_tick() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--enable-tick=false"])?;
+    assert_eq!(false, config.enable_tick);
+
+    let config = Config::build(&["foo", "--enable-tick=true"])?;
+    assert_eq!(true, config.enable_tick);
+
+    let config = Config::build(&["foo", "--enable-tick"])?;
+    assert_eq!(true, config.enable_tick);
+
+    let config = Config::build(&["foo"])?;
+    assert_eq!(true, config.enable_tick);
+
+    Ok(())
+}
+
+#[test]
+fn test_config_enable_heartbeat() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--enable-heartbeat=false"])?;
+    assert_eq!(false, config.enable_heartbeat);
+
+    let config = Config::build(&["foo", "--enable-heartbeat=true"])?;
+    assert_eq!(true, config.enable_heartbeat);
+
+    let config = Config::build(&["foo", "--enable-heartbeat"])?;
+    assert_eq!(true, config.enable_heartbeat);
+
+    let config = Config::build(&["foo"])?;
+    assert_eq!(true, config.enable_heartbeat);
+
+    Ok(())
+}
+
+#[test]
+fn test_config_enable_elect() -> anyhow::Result<()> {
+    let config = Config::build(&["foo", "--enable-elect=false"])?;
+    assert_eq!(false, config.enable_elect);
+
+    let config = Config::build(&["foo", "--enable-elect=true"])?;
+    assert_eq!(true, config.enable_elect);
+
+    let config = Config::build(&["foo", "--enable-elect"])?;
+    assert_eq!(true, config.enable_elect);
+
+    let config = Config::build(&["foo"])?;
+    assert_eq!(true, config.enable_elect);
 
     Ok(())
 }

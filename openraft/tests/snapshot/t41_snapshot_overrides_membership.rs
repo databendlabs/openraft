@@ -38,6 +38,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
             max_applied_log_to_keep: 0,
             purge_batch_size: 1,
+            enable_heartbeat: false,
             ..Default::default()
         }
         .validate()?,
@@ -103,7 +104,6 @@ async fn snapshot_overrides_membership() -> Result<()> {
             {
                 let m = StorageHelper::new(&mut sto).get_membership().await?;
 
-                println!("{:?}", m);
                 assert_eq!(&EffectiveMembership::default(), m.committed.as_ref());
                 assert_eq!(Membership::new(vec![btreeset! {2,3}], None), m.effective.membership);
             }

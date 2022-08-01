@@ -4,8 +4,6 @@ use actix_web::web::Data;
 use actix_web::Responder;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
-use openraft::raft::ClientWriteRequest;
-use openraft::EntryPayload;
 use web::Json;
 
 use crate::app::ExampleApp;
@@ -23,8 +21,7 @@ use crate::ExampleNodeId;
  */
 #[post("/write")]
 pub async fn write(app: Data<ExampleApp>, req: Json<ExampleRequest>) -> actix_web::Result<impl Responder> {
-    let request = ClientWriteRequest::new(EntryPayload::Normal(req.0));
-    let response = app.raft.client_write(request).await;
+    let response = app.raft.client_write(req.0).await;
     Ok(Json(response))
 }
 

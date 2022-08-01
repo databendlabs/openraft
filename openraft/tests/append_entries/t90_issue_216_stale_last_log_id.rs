@@ -20,12 +20,12 @@ async fn stale_last_log_id() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(
         Config {
-            heartbeat_interval: 50,
             election_timeout_min: 500,
             election_timeout_max: 1000,
             max_payload_entries: 1,
             max_applied_log_to_keep: 0,
             purge_batch_size: 1,
+            enable_heartbeat: false,
             ..Default::default()
         }
         .validate()?,

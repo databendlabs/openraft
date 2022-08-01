@@ -24,8 +24,14 @@ use crate::fixtures::RaftRouter;
 /// - bring up a learner and send to it append_entries request. Check the membership updated.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn append_updates_membership() -> Result<()> {
-    // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0);
 

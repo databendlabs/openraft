@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,14 +13,18 @@ use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tokio::task::JoinHandle;
+use tracing::Instrument;
 use tracing::Level;
+use tracing::Span;
 
 use crate::config::Config;
+use crate::config::RuntimeConfig;
 use crate::core::replication_lag;
 use crate::core::Expectation;
 use crate::core::RaftCore;
 use crate::core::SnapshotUpdate;
 use crate::core::Tick;
+use crate::core::TickHandle;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
 use crate::error::CheckIsLeaderError;
@@ -124,6 +129,8 @@ enum CoreState<NID: NodeId> {
 struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     id: C::NodeId,
     config: Arc<Config>,
+    runtime_config: Arc<RuntimeConfig>,
+    tick_handle: TickHandle,
     tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
     rx_metrics: watch::Receiver<RaftMetrics<C::NodeId>>,
     // TODO(xp): it does not need to be a async mutex.
@@ -184,11 +191,22 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
 
-        let _tick_handle = Tick::spawn(Duration::from_millis(config.heartbeat_interval * 3 / 2), tx_api.clone());
+        let tick = Tick::new(
+            Duration::from_millis(config.heartbeat_interval * 3 / 2),
+            tx_api.clone(),
+            config.enable_tick,
+        );
+
+        let tick_handle = tick.get_handle();
+        let _tick_join_handle =
+            tokio::spawn(tick.tick_loop().instrument(tracing::span!(parent: &Span::current(), Level::DEBUG, "tick")));
+
+        let runtime_config = Arc::new(RuntimeConfig::new(&config));
 
         let core_handle = RaftCore::spawn(
             id,
             config.clone(),
+            runtime_config.clone(),
             network,
             storage,
             tx_api.clone(),
@@ -200,6 +218,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let inner = RaftInner {
             id,
             config,
+            runtime_config,
+            tick_handle,
             tx_api,
             rx_metrics,
             tx_shutdown: Mutex::new(Some(tx_shutdown)),
@@ -208,6 +228,22 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             core_state: Mutex::new(CoreState::Running(core_handle)),
         };
         Self { inner: Arc::new(inner) }
+    }
+
+    /// Enable or disable raft internal ticker.
+    ///
+    /// The internal ticker triggers all timeout based event, e.g. election event or heartbeat event.
+    /// By disabling the ticker, a follower will not enter candidate again, a leader will not send heartbeat.
+    pub fn enable_tick(&self, enabled: bool) {
+        self.inner.tick_handle.enable(enabled);
+    }
+
+    pub fn enable_heartbeat(&self, enabled: bool) {
+        self.inner.runtime_config.enable_heartbeat.store(enabled, Ordering::Relaxed);
+    }
+
+    pub fn enable_elect(&self, enabled: bool) {
+        self.inner.runtime_config.enable_elect.store(enabled, Ordering::Relaxed);
     }
 
     /// Submit an AppendEntries RPC to this Raft node.
@@ -288,13 +324,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
-    #[tracing::instrument(level = "debug", skip(self, rpc))]
-    pub async fn client_write(
-        &self,
-        rpc: ClientWriteRequest<C>,
-    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn client_write(&self, app_data: C::D) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId>> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::ClientWriteRequest { rpc, tx }, rx).await
+        self.call_core(
+            RaftMsg::ClientWriteRequest {
+                payload: EntryPayload::Normal(app_data),
+                tx,
+            },
+            rx,
+        )
+        .await
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -436,8 +476,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
         let matched = target_metrics.matched();
 
-        let last_log_id = LogId::new(matched.leader_id, metrics.last_log_index.unwrap_or_default());
-        let distance = replication_lag(&Some(matched), &Some(last_log_id));
+        let distance = replication_lag(&Some(matched.index), &metrics.last_log_index);
 
         if distance <= self.inner.config.replication_lag_threshold {
             // replication became up to date.
@@ -737,7 +776,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     ClientWriteRequest {
-        rpc: ClientWriteRequest<C>,
+        payload: EntryPayload<C>,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
     },
     CheckIsLeaderRequest {
@@ -853,7 +892,7 @@ where
             RaftMsg::SnapshotUpdate { update } => {
                 format!("SnapshotUpdate: {:?}", update)
             }
-            RaftMsg::ClientWriteRequest { rpc, .. } => {
+            RaftMsg::ClientWriteRequest { payload: rpc, .. } => {
                 format!("ClientWriteRequest: {}", rpc.summary())
             }
             RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),
@@ -1083,39 +1122,7 @@ pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
-/// An application specific client request to update the state of the system (§5.1).
-///
-/// The entry of this payload will be appended to the Raft log and then applied to the Raft state
-/// machine according to the Raft protocol.
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct ClientWriteRequest<C: RaftTypeConfig> {
-    /// The application specific contents of this client request.
-    pub(crate) payload: EntryPayload<C>,
-}
-
-impl<C: RaftTypeConfig> Debug for ClientWriteRequest<C>
-where C::D: Debug
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClientWriteRequest").field("payload", &self.payload).finish()
-    }
-}
-
-impl<C: RaftTypeConfig> MessageSummary<ClientWriteRequest<C>> for ClientWriteRequest<C> {
-    fn summary(&self) -> String {
-        self.payload.summary()
-    }
-}
-
-impl<C: RaftTypeConfig> ClientWriteRequest<C> {
-    pub fn new(entry: EntryPayload<C>) -> Self {
-        Self { payload: entry }
-    }
-}
-
-/// The response to a `ClientRequest`.
+/// The response to a client-request.
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),

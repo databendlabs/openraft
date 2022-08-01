@@ -40,7 +40,6 @@ use openraft::metrics::Wait;
 use openraft::raft::AddLearnerResponse;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
-use openraft::raft::ClientWriteRequest;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
@@ -176,12 +175,22 @@ where
     }
 
     pub fn build(self) -> TypedRaftRouter<C, S> {
+        let send_delay = {
+            let send_delay = env::var("OPENRAFT_NETWORK_SEND_DELAY").ok();
+
+            if let Some(d) = send_delay {
+                tracing::info!("OPENRAFT_NETWORK_SEND_DELAY set send-delay to {} ms", d);
+                d.parse::<u64>().unwrap()
+            } else {
+                self.send_delay
+            }
+        };
         TypedRaftRouter {
             config: self.config,
             routing_table: Default::default(),
             isolated_nodes: Default::default(),
             unconnectable: Default::default(),
-            send_delay: Arc::new(AtomicU64::new(self.send_delay)),
+            send_delay: Arc::new(AtomicU64::new(send_delay)),
         }
     }
 }
@@ -324,19 +333,19 @@ where
     }
 
     pub fn new_store(&mut self) -> StoreWithDefensive<C, S> {
-        let defensive = env::var("RAFT_STORE_DEFENSIVE").ok();
+        let defensive = env::var("OPENRAFT_STORE_DEFENSIVE").ok();
 
         let sto = StoreExt::<C, S>::new(S::default());
 
         if let Some(d) = defensive {
-            tracing::info!("RAFT_STORE_DEFENSIVE set store defensive to {}", d);
+            tracing::info!("OPENRAFT_STORE_DEFENSIVE set store defensive to {}", d);
 
             let want = if d == "on" {
                 true
             } else if d == "off" {
                 false
             } else {
-                tracing::warn!("unknown value of RAFT_STORE_DEFENSIVE: {}", d);
+                tracing::warn!("unknown value of OPENRAFT_STORE_DEFENSIVE: {}", d);
                 return sto;
             };
 
@@ -665,9 +674,7 @@ where
                 .clone()
         };
 
-        let payload = EntryPayload::<C>::Normal(req);
-
-        node.0.client_write(ClientWriteRequest::<C>::new(payload)).await.map(|res| res.data)
+        node.0.client_write(req).await.map(|res| res.data)
     }
 
     /// Assert that the cluster is in a pristine state, with all nodes as learners.

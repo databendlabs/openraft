@@ -9,10 +9,8 @@ use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::interval;
 use tokio::time::timeout;
 use tokio::time::Duration;
-use tokio::time::Interval;
 use tracing_futures::Instrument;
 
 use crate::config::Config;
@@ -100,11 +98,8 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     /// replication proceeds.
     matched: Option<LogId<C::NodeId>>,
 
-    // The last possible matching entry on a follower.
+    /// The last possible matching entry on a follower.
     max_possible_matched_index: Option<u64>,
-
-    /// The heartbeat interval for ensuring that heartbeats are always delivered in a timely fashion.
-    heartbeat: Interval,
 
     /// The timeout for sending snapshot segment.
     install_snapshot_timeout: Duration,
@@ -132,7 +127,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     ) -> ReplicationStream<C::NodeId> {
         // other component to ReplicationStream
         let (repl_tx, repl_rx) = mpsc::unbounded_channel();
-        let heartbeat_timeout = Duration::from_millis(config.heartbeat_interval);
         let install_snapshot_timeout = Duration::from_millis(config.install_snapshot_timeout);
 
         let this = Self {
@@ -147,7 +141,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             max_possible_matched_index: last_log.index(),
             raft_core_tx,
             repl_rx,
-            heartbeat: interval(heartbeat_timeout),
             install_snapshot_timeout,
             need_to_replicate: true,
         };
@@ -299,8 +292,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             break (prev_log_id, logs, end < last_log_index);
         };
 
-        // set the need_to_replicate flag if there is more
-        self.need_to_replicate = has_more_logs;
         let conflict = prev_log_id;
         let matched = if logs.is_empty() {
             prev_log_id
@@ -377,6 +368,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         match append_resp {
             AppendEntriesResponse::Success => {
                 self.update_matched(matched);
+
+                // Set the need_to_replicate flag if there is more log to send.
+                // Otherwise leave it as is.
+                self.need_to_replicate = has_more_logs;
                 Ok(())
             }
             AppendEntriesResponse::HigherVote(vote) => {
@@ -595,28 +590,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
             // Check raft channel to ensure we are staying up-to-date
             self.try_drain_raft_rx().await?;
+            tracing::debug!(
+                target = display(self.target),
+                need = display(self.need_to_replicate),
+                "need_to_replicate"
+            );
             if self.need_to_replicate {
                 // if there is more log, continue to send_append_entries
                 continue;
             }
 
-            tokio::select! {
-                _ = self.heartbeat.tick() => {
-                    tracing::debug!("heartbeat triggered");
-                    // continue
+            let event_or_none = self.repl_rx.recv().await;
+            match event_or_none {
+                Some(event) => {
+                    self.process_raft_event(event);
+                    self.try_drain_raft_rx().await?;
                 }
-
-                event_span = self.repl_rx.recv() => {
-                    match event_span {
-                        Some(event) => {
-                            self.process_raft_event(event);
-                            self.try_drain_raft_rx().await?;
-                        },
-                        None => {
-                            tracing::debug!("received: RaftEvent::Terminate: closed");
-                            return Err(ReplicationError::Closed);
-                        },
-                    }
+                None => {
+                    tracing::debug!("received: RaftEvent::Terminate: closed");
+                    return Err(ReplicationError::Closed);
                 }
             }
         }
@@ -666,20 +658,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             //           heartbeat, new-log, or snapshot is ready.
             while waiting_for_snapshot {
                 tokio::select! {
-                    _ = self.heartbeat.tick() => {
-                        // TODO(xp): just heartbeat:
-                        let res = self.send_append_entries().await;
-                        match res {
-                            Ok(_) => {
-                                //
-                            },
-                            Err(err) => {
-                                if let ReplicationError::StorageError(_) = err {
-                                    return Err(err);
-                                }
-                            }
-                        }
-                    },
 
                     event_opt = self.repl_rx.recv() =>  {
                         match event_opt {

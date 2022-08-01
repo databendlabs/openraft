@@ -106,7 +106,13 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
     let only_in_old = old.difference(&new);
     let only_in_new = new.difference(&old);
 
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(old.clone(), btreeset! {}).await?;
@@ -234,7 +240,13 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
     let new = change.clone().apply_to(&old);
     let only_in_new = new.difference(&old);
 
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(old.clone(), btreeset! {}).await?;
@@ -296,7 +308,13 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
     let new = change.clone().apply_to(&old);
     let only_in_old = old.difference(&new);
 
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
     let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(old.clone(), btreeset! {}).await?;

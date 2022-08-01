@@ -15,8 +15,14 @@ use crate::fixtures::RaftRouter;
 /// - call the current_leader interface on the all nodes, and assert success.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn current_leader() -> Result<()> {
-    // Setup test dependencies.
-    let config = Arc::new(Config::default().validate()?);
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+
     let mut router = RaftRouter::new(config.clone());
 
     let _log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
