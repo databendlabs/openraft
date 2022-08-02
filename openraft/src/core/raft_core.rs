@@ -50,6 +50,7 @@ use crate::error::InProgress;
 use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
+use crate::error::NetworkError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
@@ -375,7 +376,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let my_id = self.id;
             let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = self.network.connect(target, target_node.as_ref()).await;
+            let mut network = match self.network.connect(target, target_node.as_ref()).await {
+                Ok(n) => n,
+                Err(e) => {
+                    tracing::error!(target = display(target), "{}", e);
+                    continue;
+                }
+            };
 
             let ttl = Duration::from_millis(self.config.heartbeat_interval);
 
@@ -480,8 +487,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             unreachable!("it has to be a leader!!!");
         }
 
-        // Ensure the node doesn't already exist in the current
-        // config, in the set of new nodes already being synced, or in the nodes being removed.
+        // Ensure the node doesn't already exist in the current config,
+        // in the set of new nodes already being synced, or in the nodes being removed.
 
         let curr = &self.engine.state.membership_state.effective;
         if curr.contains(&target) {
@@ -501,6 +508,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 membership_log_id: self.engine.state.membership_state.effective.log_id,
                 matched,
             }));
+            return Ok(());
+        }
+
+        // Ensure the node is connectable
+        let conn_res = self.network.connect(target, node.clone().as_ref()).await;
+        if let Err(e) = conn_res {
+            let net_err = NetworkError::new(&anyerror::AnyError::new(&e));
+            let _ = tx.send(Err(AddLearnerError::NetworkError(net_err)));
             return Ok(());
         }
 
@@ -1046,21 +1061,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Spawn a new replication stream returning its replication state handle.
     #[tracing::instrument(level = "debug", skip(self))]
     #[allow(clippy::type_complexity)]
-    pub(crate) async fn spawn_replication_stream(&mut self, target: C::NodeId) -> ReplicationStream<C::NodeId> {
+    pub(crate) async fn spawn_replication_stream(
+        &mut self,
+        target: C::NodeId,
+    ) -> Result<ReplicationStream<C::NodeId>, N::ConnectionError> {
         let target_node = self.engine.state.membership_state.effective.get_node(&target);
+        let network = self.network.connect(target, target_node).await?;
 
-        ReplicationCore::<C, N, S>::spawn(
+        Ok(ReplicationCore::<C, N, S>::spawn(
             target,
             target_node.cloned(),
             self.engine.state.vote,
             self.config.clone(),
             self.engine.state.last_log_id(),
             self.engine.state.committed,
-            self.network.connect(target, target_node).await,
+            network,
             self.storage.get_log_reader().await,
             self.tx_api.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
-        )
+        ))
     }
 
     /// Remove a replication if the membership that does not include it has committed.
@@ -1167,7 +1186,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // TODO(xp): make this Engine::Command driven.
         for target in targets {
-            let state = self.spawn_replication_stream(target).await;
+            let state = match self.spawn_replication_stream(target).await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!({target = % target}, "cannot connect {:?}", e);
+                    continue;
+                }
+            };
+
             if let Some(l) = &mut self.leader_data {
                 l.nodes.insert(target, state);
             } else {
@@ -1233,7 +1259,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let req = vote_req.clone();
             let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = self.network.connect(target, target_node.as_ref()).await;
+            let mut network = match self.network.connect(target, target_node.as_ref()).await {
+                Ok(n) => n,
+                Err(err) => {
+                    tracing::error!({error=%err, target=display(target)}, "while requesting vote");
+                    continue;
+                }
+            };
+
             let tx = self.tx_api.clone();
 
             let _ = tokio::spawn(
@@ -1464,7 +1497,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             if let Some(l) = &self.leader_data {
                 if !l.nodes.contains_key(&target) {
                     tracing::warn!("leader has removed target: {}", target);
-                    return Ok(());
                 };
             } else {
                 unreachable!("no longer a leader, received message from previous leader");
@@ -1671,7 +1703,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     self.remove_replication(*node_id).await;
                 }
                 for (node_id, _matched) in add.iter() {
-                    let state = self.spawn_replication_stream(*node_id).await;
+                    let state = match self.spawn_replication_stream(*node_id).await {
+                        Ok(state) => state,
+                        Err(e) => {
+                            tracing::error!({node = % node_id}, "cannot connect to {:?}", e);
+                            // cannot return Err, or raft fail completely
+                            continue;
+                        }
+                    };
+
                     if let Some(l) = &mut self.leader_data {
                         l.nodes.insert(*node_id, state);
                     } else {
