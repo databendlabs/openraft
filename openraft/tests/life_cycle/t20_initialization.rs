@@ -2,7 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
+use openraft::error::AddLearnerError;
 use openraft::error::InitializeError;
+use openraft::error::NetworkError;
 use openraft::error::NotAllowed;
 use openraft::error::NotInMembers;
 use openraft::Config;
@@ -239,8 +241,10 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 ///   this test is ought to test if the router is aware of network failures
 ///
 /// - initialize 1 node as leader and 2 nodes as follower
+/// - add a network unreachable node to the cluster -> should fail
 /// - set one follower's network to be unreachable
-/// - check if router's connecting to unreachable follower returning an `Err`
+/// - isolate leader to force an election -> election should cannot be completed
+/// - restore leader -> election should be able to complete
 /// - assert whether the cluster still works properly
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn router_network_failure_aware() -> anyhow::Result<()> {
@@ -254,7 +258,9 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
     {
         router.new_raft_node(3);
         router.enable_connect(3, false);
-        assert!(router.add_learner(0, 3).await.is_err());
+        let e = NetworkError::new(&anyerror::AnyError::error(format!("cannot connect to target: {}", 3)));
+        let err = AddLearnerError::NodeUnreachable(e);
+        assert_eq!(router.add_learner(0, 3).await, Err(err));
 
         router
             .wait_for_log(
@@ -278,7 +284,7 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
             .await?;
     }
 
-    tracing::info!("--- write 10 logs");
+    tracing::info!("--- write 10 logs, cluster works properly");
     {
         router.client_request_many(0, "client", 10).await?;
     }
@@ -286,6 +292,18 @@ async fn router_network_failure_aware() -> anyhow::Result<()> {
     tracing::info!("--- block n2, make it unreachable for router");
     {
         router.enable_connect(2, false);
+    }
+
+    tracing::info!("--- check cluster's functionality with minority of nodes' network failed");
+    {
+        let current_leader = router.current_leader(0).await;
+        let leader = current_leader.unwrap();
+        let ttl = Duration::from_millis(5000);
+        let tm_result = tokio::time::timeout(ttl, router.client_request_many(leader, "client", 1)).await;
+        assert!(
+            tm_result.is_ok(),
+            "cluster must work properly with minority of its nodes failed"
+        );
     }
 
     tracing::info!("--- isolate leader, force an election");

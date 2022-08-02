@@ -142,6 +142,9 @@ pub enum AddLearnerError<NID: NodeId> {
     MissingNodeInfo(#[from] MissingNodeInfo<NID>),
 
     #[error(transparent)]
+    NodeUnreachable(#[from] NetworkError),
+
+    #[error(transparent)]
     Fatal(#[from] Fatal<NID>),
 }
 

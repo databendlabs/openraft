@@ -50,7 +50,6 @@ use crate::error::InProgress;
 use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
-use crate::error::MissingNodeInfo;
 use crate::error::NetworkError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
@@ -514,11 +513,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // Ensure the node is connectable
         if self.network.connect(target, node.clone().as_ref()).await.is_err() {
-            let e = MissingNodeInfo {
-                node_id: target,
-                reason: format!("cannot connect to: {}", target),
-            };
-            let _ = tx.send(Err(AddLearnerError::MissingNodeInfo(e)));
+            let e = NetworkError::new(&anyerror::AnyError::error(format!(
+                "cannot connect to target: {}",
+                target
+            )));
+            let _ = tx.send(Err(AddLearnerError::NodeUnreachable(e)));
             return Ok(());
         }
 
