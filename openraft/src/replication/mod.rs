@@ -696,7 +696,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         &mut self,
         mut snapshot: Snapshot<C::NodeId, S::SnapshotData>,
     ) -> Result<(), ReplicationError<C::NodeId>> {
-        let err_x = || (ErrorSubject::Snapshot(snapshot.meta.clone()), ErrorVerb::Read);
+        let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
 
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
 

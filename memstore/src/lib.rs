@@ -386,7 +386,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
         {
             let new_sm: MemStoreStateMachine = serde_json::from_slice(&new_snapshot.data).map_err(|e| {
                 StorageIOError::new(
-                    ErrorSubject::Snapshot(new_snapshot.meta.clone()),
+                    ErrorSubject::Snapshot(new_snapshot.meta.signature()),
                     ErrorVerb::Read,
                     AnyError::new(&e),
                 )

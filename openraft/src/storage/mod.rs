@@ -1,11 +1,13 @@
 //! The Raft storage interface and data types.
 
 mod helper;
+mod snapshot_signature;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
 
 use async_trait::async_trait;
 pub use helper::StorageHelper;
+pub use snapshot_signature::SnapshotSignature;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
@@ -24,15 +26,25 @@ use crate::Vote;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct SnapshotMeta<NID: NodeId> {
-    // Log entries upto which this snapshot includes, inclusive.
+    /// Log entries upto which this snapshot includes, inclusive.
     pub last_log_id: LogId<NID>,
 
-    // The last applied membership config.
+    /// The last applied membership config.
     pub last_membership: EffectiveMembership<NID>,
 
     /// To identify a snapshot when transferring.
     /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be different in bytes.
     pub snapshot_id: SnapshotId,
+}
+
+impl<NID: NodeId> SnapshotMeta<NID> {
+    pub fn signature(&self) -> SnapshotSignature<NID> {
+        SnapshotSignature {
+            last_log_id: Some(self.last_log_id),
+            last_membership_log_id: self.last_membership.log_id,
+            snapshot_id: self.snapshot_id.clone(),
+        }
+    }
 }
 
 /// The data associated with the current snapshot.

@@ -300,7 +300,11 @@ impl RocksStore {
         self.db
             .put_cf(self.store(), b"snapshot", serde_json::to_vec(&snap).unwrap().as_slice())
             .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(ErrorSubject::Snapshot(snap.meta), ErrorVerb::Write, AnyError::new(&e)),
+                source: StorageIOError::new(
+                    ErrorSubject::Snapshot(snap.meta.signature()),
+                    ErrorVerb::Write,
+                    AnyError::new(&e),
+                ),
             })?;
         Ok(())
     }
@@ -534,7 +538,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
             let updated_state_machine: SerializableRocksStateMachine = serde_json::from_slice(&new_snapshot.data)
                 .map_err(|e| {
                     StorageIOError::new(
-                        ErrorSubject::Snapshot(new_snapshot.meta.clone()),
+                        ErrorSubject::Snapshot(new_snapshot.meta.signature()),
                         ErrorVerb::Read,
                         AnyError::new(&e),
                     )
