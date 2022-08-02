@@ -3,9 +3,9 @@ use std::ops::Bound;
 
 use anyerror::AnyError;
 
+use crate::storage::SnapshotSignature;
 use crate::LogId;
 use crate::NodeId;
-use crate::SnapshotMeta;
 use crate::Vote;
 
 /// Convert error to StorageError::IO();
@@ -86,7 +86,7 @@ pub enum ErrorSubject<NID: NodeId> {
     StateMachine,
 
     /// Error happened when operating snapshot.
-    Snapshot(SnapshotMeta<NID>),
+    Snapshot(SnapshotSignature<NID>),
 
     None,
 }

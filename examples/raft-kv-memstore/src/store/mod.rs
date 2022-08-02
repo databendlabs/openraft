@@ -320,7 +320,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
             let updated_state_machine: ExampleStateMachine =
                 serde_json::from_slice(&new_snapshot.data).map_err(|e| {
                     StorageIOError::new(
-                        ErrorSubject::Snapshot(new_snapshot.meta.clone()),
+                        ErrorSubject::Snapshot(new_snapshot.meta.signature()),
                         ErrorVerb::Read,
                         AnyError::new(&e),
                     )
