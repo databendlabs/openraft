@@ -1269,7 +1269,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let tx = self.tx_api.clone();
 
-            let ttl = Duration::from_millis(self.config.heartbeat_interval);
+            let ttl = Duration::from_millis(self.config.election_timeout_min);
             let id = self.id;
 
             let _ = tokio::spawn(
