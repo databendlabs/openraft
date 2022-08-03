@@ -36,6 +36,7 @@ use rocksdb::DB;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::ExampleNode;
 use crate::ExampleNodeId;
 use crate::ExampleTypeConfig;
 
@@ -65,7 +66,7 @@ pub struct ExampleResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ExampleSnapshot {
-    pub meta: SnapshotMeta<ExampleNodeId>,
+    pub meta: SnapshotMeta<ExampleNodeId, ExampleNode>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -82,7 +83,7 @@ pub struct SerializableExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
     // TODO: it should not be Option.
-    pub last_membership: EffectiveMembership<ExampleNodeId>,
+    pub last_membership: EffectiveMembership<ExampleNodeId, ExampleNode>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -113,7 +114,7 @@ impl From<&ExampleStateMachine> for SerializableExampleStateMachine {
 #[derive(Debug, Clone)]
 pub struct ExampleStateMachine {
     // TODO: it should not be Option.
-    // pub last_membership: EffectiveMembership<ExampleNodeId>,
+    // pub last_membership: EffectiveMembership<ExampleNodeId, NodeData>,
     /// Application data.
     pub db: Arc<rocksdb::DB>,
 }
@@ -126,7 +127,7 @@ fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
 }
 
 impl ExampleStateMachine {
-    fn get_last_membership(&self) -> StorageResult<EffectiveMembership<ExampleNodeId>> {
+    fn get_last_membership(&self) -> StorageResult<EffectiveMembership<ExampleNodeId, ExampleNode>> {
         self.db
             .get_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -139,7 +140,7 @@ impl ExampleStateMachine {
                     .unwrap_or_else(|| Ok(EffectiveMembership::default()))
             })
     }
-    fn set_last_membership(&self, membership: EffectiveMembership<ExampleNodeId>) -> StorageResult<()> {
+    fn set_last_membership(&self, membership: EffectiveMembership<ExampleNodeId, ExampleNode>) -> StorageResult<()> {
         self.db
             .put_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -364,7 +365,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
-    ) -> Result<Snapshot<ExampleNodeId, Cursor<Vec<u8>>>, StorageError<ExampleNodeId>> {
+    ) -> Result<Snapshot<ExampleNodeId, ExampleNode, Cursor<Vec<u8>>>, StorageError<ExampleNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -472,7 +473,13 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<ExampleNodeId>>, EffectiveMembership<ExampleNodeId>), StorageError<ExampleNodeId>> {
+    ) -> Result<
+        (
+            Option<LogId<ExampleNodeId>>,
+            EffectiveMembership<ExampleNodeId, ExampleNode>,
+        ),
+        StorageError<ExampleNodeId>,
+    > {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.get_last_applied_log()?,
@@ -524,7 +531,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<ExampleNodeId>,
+        meta: &SnapshotMeta<ExampleNodeId, ExampleNode>,
         snapshot: Box<Self::SnapshotData>,
     ) -> Result<StateMachineChanges<ExampleTypeConfig>, StorageError<ExampleNodeId>> {
         tracing::info!(
@@ -561,7 +568,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<ExampleNodeId, Self::SnapshotData>>, StorageError<ExampleNodeId>> {
+    ) -> Result<Option<Snapshot<ExampleNodeId, ExampleNode, Self::SnapshotData>>, StorageError<ExampleNodeId>> {
         match ExampleStore::get_current_snapshot_(self)? {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

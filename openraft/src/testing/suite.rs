@@ -1810,8 +1810,11 @@ where C::NodeId: From<u64> {
 
 /// Block until a future is finished.
 /// The future will be running in a clean tokio runtime, to prevent an unfinished task affecting the test.
-pub fn run_fut<NID: NodeId, F>(f: F) -> Result<(), StorageError<NID>>
-where F: Future<Output = Result<(), StorageError<NID>>> {
+pub fn run_fut<NID, F>(f: F) -> Result<(), StorageError<NID>>
+where
+    NID: NodeId,
+    F: Future<Output = Result<(), StorageError<NID>>>,
+{
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(f)?;
     Ok(())

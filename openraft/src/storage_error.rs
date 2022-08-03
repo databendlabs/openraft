@@ -9,7 +9,9 @@ use crate::NodeId;
 use crate::Vote;
 
 /// Convert error to StorageError::IO();
-pub trait ToStorageResult<NID: NodeId, T> {
+pub trait ToStorageResult<NID, T>
+where NID: NodeId
+{
     /// Convert Result<T, E> to Result<T, StorageError::IO(StorageIOError)>
     ///
     /// `f` provides error context for building the StorageIOError.
@@ -17,7 +19,9 @@ pub trait ToStorageResult<NID: NodeId, T> {
     where F: FnOnce() -> (ErrorSubject<NID>, ErrorVerb);
 }
 
-impl<NID: NodeId, T> ToStorageResult<NID, T> for Result<T, std::io::Error> {
+impl<NID, T> ToStorageResult<NID, T> for Result<T, std::io::Error>
+where NID: NodeId
+{
     fn sto_res<F>(self, f: F) -> Result<T, StorageError<NID>>
     where F: FnOnce() -> (ErrorSubject<NID>, ErrorVerb) {
         match self {
@@ -35,7 +39,9 @@ impl<NID: NodeId, T> ToStorageResult<NID, T> for Result<T, std::io::Error> {
 /// E.g. re-applying an log entry is a violation that may be a potential bug.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct DefensiveError<NID: NodeId> {
+pub struct DefensiveError<NID>
+where NID: NodeId
+{
     /// The subject that violates store defensive check, e.g. hard-state, log or state machine.
     pub subject: ErrorSubject<NID>,
 
@@ -45,7 +51,9 @@ pub struct DefensiveError<NID: NodeId> {
     pub backtrace: Option<String>,
 }
 
-impl<NID: NodeId> DefensiveError<NID> {
+impl<NID> DefensiveError<NID>
+where NID: NodeId
+{
     pub fn new(subject: ErrorSubject<NID>, violation: Violation<NID>) -> Self {
         Self {
             subject,
@@ -55,7 +63,9 @@ impl<NID: NodeId> DefensiveError<NID> {
     }
 }
 
-impl<NID: NodeId> std::fmt::Display for DefensiveError<NID> {
+impl<NID> std::fmt::Display for DefensiveError<NID>
+where NID: NodeId
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "'{:?}' violates: '{}'", self.subject, self.violation)
     }
@@ -63,7 +73,9 @@ impl<NID: NodeId> std::fmt::Display for DefensiveError<NID> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum ErrorSubject<NID: NodeId> {
+pub enum ErrorSubject<NID>
+where NID: NodeId
+{
     /// A general storage error
     Store,
 
@@ -155,7 +167,9 @@ pub enum Violation<NID: NodeId> {
 /// A storage error could be either a defensive check error or an error occurred when doing the actual io operation.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum StorageError<NID: NodeId> {
+pub enum StorageError<NID>
+where NID: NodeId
+{
     /// An error raised by defensive check.
     #[error(transparent)]
     Defensive {
@@ -173,7 +187,9 @@ pub enum StorageError<NID: NodeId> {
     },
 }
 
-impl<NID: NodeId> StorageError<NID> {
+impl<NID> StorageError<NID>
+where NID: NodeId
+{
     pub fn into_defensive(self) -> Option<DefensiveError<NID>> {
         match self {
             StorageError::Defensive { source } => Some(source),
@@ -197,20 +213,26 @@ impl<NID: NodeId> StorageError<NID> {
 /// Error that occurs when operating the store.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct StorageIOError<NID: NodeId> {
+pub struct StorageIOError<NID>
+where NID: NodeId
+{
     subject: ErrorSubject<NID>,
     verb: ErrorVerb,
     source: AnyError,
     backtrace: Option<String>,
 }
 
-impl<NID: NodeId> std::fmt::Display for StorageIOError<NID> {
+impl<NID> std::fmt::Display for StorageIOError<NID>
+where NID: NodeId
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "when {:?} {:?}: {}", self.verb, self.subject, self.source)
     }
 }
 
-impl<NID: NodeId> StorageIOError<NID> {
+impl<NID> StorageIOError<NID>
+where NID: NodeId
+{
     pub fn new(subject: ErrorSubject<NID>, verb: ErrorVerb, source: AnyError) -> Self {
         Self {
             subject,

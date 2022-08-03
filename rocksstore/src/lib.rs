@@ -16,6 +16,7 @@ use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
+use openraft::BasicNode;
 use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -42,7 +43,7 @@ pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId
+    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode
 );
 
 /**
@@ -71,7 +72,7 @@ pub struct RocksResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RocksSnapshot {
-    pub meta: SnapshotMeta<RocksNodeId>,
+    pub meta: SnapshotMeta<RocksNodeId, BasicNode>,
 
     /// The data of the state machine at the time of this snapshot.
     pub data: Vec<u8>,
@@ -88,7 +89,7 @@ pub struct SerializableRocksStateMachine {
     pub last_applied_log: Option<LogId<RocksNodeId>>,
 
     // TODO: it should not be Option.
-    pub last_membership: EffectiveMembership<RocksNodeId>,
+    pub last_membership: EffectiveMembership<RocksNodeId, BasicNode>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -130,7 +131,7 @@ fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<RocksNodeId> {
 }
 
 impl RocksStateMachine {
-    fn get_last_membership(&self) -> StorageResult<EffectiveMembership<RocksNodeId>> {
+    fn get_last_membership(&self) -> StorageResult<EffectiveMembership<RocksNodeId, BasicNode>> {
         self.db
             .get_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -143,7 +144,7 @@ impl RocksStateMachine {
                     .unwrap_or_else(|| Ok(EffectiveMembership::default()))
             })
     }
-    fn set_last_membership(&self, membership: EffectiveMembership<RocksNodeId>) -> StorageResult<()> {
+    fn set_last_membership(&self, membership: EffectiveMembership<RocksNodeId, BasicNode>) -> StorageResult<()> {
         self.db
             .put_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -360,7 +361,9 @@ impl RaftLogReader<Config> for Arc<RocksStore> {
 #[async_trait]
 impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn build_snapshot(&mut self) -> Result<Snapshot<RocksNodeId, Cursor<Vec<u8>>>, StorageError<RocksNodeId>> {
+    async fn build_snapshot(
+        &mut self,
+    ) -> Result<Snapshot<RocksNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<RocksNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -468,7 +471,8 @@ impl RaftStorage<Config> for Arc<RocksStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<RocksNodeId>>, EffectiveMembership<RocksNodeId>), StorageError<RocksNodeId>> {
+    ) -> Result<(Option<LogId<RocksNodeId>>, EffectiveMembership<RocksNodeId, BasicNode>), StorageError<RocksNodeId>>
+    {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.get_last_applied_log()?,
@@ -520,7 +524,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<RocksNodeId>,
+        meta: &SnapshotMeta<RocksNodeId, BasicNode>,
         snapshot: Box<Self::SnapshotData>,
     ) -> Result<StateMachineChanges<Config>, StorageError<RocksNodeId>> {
         tracing::info!(
@@ -557,7 +561,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<RocksNodeId, Self::SnapshotData>>, StorageError<RocksNodeId>> {
+    ) -> Result<Option<Snapshot<RocksNodeId, BasicNode, Self::SnapshotData>>, StorageError<RocksNodeId>> {
         match RocksStore::get_current_snapshot_(self)? {
             Some(snapshot) => {
                 let data = snapshot.data.clone();

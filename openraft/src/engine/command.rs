@@ -5,13 +5,18 @@ use crate::raft::VoteRequest;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::MetricsChangeFlags;
+use crate::Node;
 use crate::NodeId;
 use crate::ServerState;
 use crate::Vote;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Command<NID: NodeId> {
+pub(crate) enum Command<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
     /// Update server state, e.g., Leader, Follower etc.
     /// TODO: consider removing this variant. A runtime does not need to know about this. It is only meant for metrics
     ///       report.
@@ -42,7 +47,7 @@ pub(crate) enum Command<NID: NodeId> {
     /// Membership config changed, need to update replication streams.
     UpdateMembership {
         // TODO: not used yet.
-        membership: Arc<EffectiveMembership<NID>>,
+        membership: Arc<EffectiveMembership<NID, N>>,
     },
 
     /// Membership config changed, need to update replication streams.
@@ -85,7 +90,11 @@ pub(crate) enum Command<NID: NodeId> {
     BuildSnapshot {},
 }
 
-impl<NID: NodeId> Command<NID> {
+impl<NID, N> Command<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
     /// Update the flag of the metrics that needs to be updated when this command is executed.
     pub(crate) fn update_metrics_flags(&self, flags: &mut MetricsChangeFlags) {
         match &self {

@@ -65,6 +65,8 @@ use crate::raft::AddLearnerResponse;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
+use crate::raft::ClientWriteTx;
+use crate::raft::RaftAddLearnerTx;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
@@ -86,7 +88,6 @@ use crate::EntryPayload;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
-use crate::Node;
 use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
@@ -101,7 +102,7 @@ use crate::Vote;
 /// It is created when RaftCore enters leader state, and will be dropped when it quits leader state.
 pub(crate) struct LeaderData<C: RaftTypeConfig> {
     /// Channels to send result back to client when logs are committed.
-    pub(crate) client_resp_channels: BTreeMap<u64, RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
+    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C, C::NodeId, C::Node>>,
 
     /// A mapping of node IDs the replication state of the target node.
     // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
@@ -142,7 +143,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// The `RaftStorage` implementation.
     pub(crate) storage: S,
 
-    pub(crate) engine: Engine<C::NodeId>,
+    pub(crate) engine: Engine<C::NodeId, C::Node>,
 
     pub(crate) leader_data: Option<LeaderData<C>>,
 
@@ -155,13 +156,14 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
     pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, S>>,
 
-    tx_metrics: watch::Sender<RaftMetrics<C::NodeId>>,
+    tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
 
     pub(crate) rx_shutdown: oneshot::Receiver<()>,
 
     pub(crate) span: Span,
 }
 
+pub(crate) type RaftSpawnHandle<NID> = JoinHandle<Result<(), Fatal<NID>>>;
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     pub(crate) fn spawn(
         id: C::NodeId,
@@ -171,9 +173,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         storage: S,
         tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
         rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, S>>,
-        tx_metrics: watch::Sender<RaftMetrics<C::NodeId>>,
+        tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
         rx_shutdown: oneshot::Receiver<()>,
-    ) -> JoinHandle<Result<(), Fatal<C::NodeId>>> {
+    ) -> RaftSpawnHandle<C::NodeId> {
         let span = tracing::span!(
             parent: tracing::Span::current(),
             Level::DEBUG,
@@ -338,7 +340,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// handles this by having the leader exchange heartbeat messages with a majority of the
     /// cluster before responding to read-only requests.
     #[tracing::instrument(level = "trace", skip(self, tx))]
-    pub(super) async fn handle_check_is_leader_request(&mut self, tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId>>) {
+    pub(super) async fn handle_check_is_leader_request(
+        &mut self,
+        tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId, C::Node>>,
+    ) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let em = &self.engine.state.membership_state.effective;
@@ -474,8 +479,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn add_learner(
         &mut self,
         target: C::NodeId,
-        node: Option<Node>,
-        tx: RaftRespTx<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId>>,
+        node: Option<C::Node>,
+        tx: RaftAddLearnerTx<C::NodeId, C::Node>,
     ) -> Result<(), Fatal<C::NodeId>> {
         if let Some(l) = &self.leader_data {
             tracing::debug!(
@@ -556,7 +561,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         changes: ChangeMembers<C::NodeId>,
         expectation: Option<Expectation>,
         turn_to_learner: bool,
-        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>,
+        tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     ) -> Result<(), Fatal<C::NodeId>> {
         let last = self.engine.state.membership_state.effective.membership.get_joint_config().last().unwrap();
         let members = changes.apply_to(last);
@@ -686,7 +691,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub async fn write_entry(
         &mut self,
         payload: EntryPayload<C>,
-        resp_tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
+        resp_tx: Option<ClientWriteTx<C, C::NodeId, C::Node>>,
     ) -> Result<LogId<C::NodeId>, Fatal<C::NodeId>> {
         tracing::debug!(payload = display(payload.summary()), "write_entry");
 
@@ -775,8 +780,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn handle_initialize(
         &mut self,
-        member_nodes: BTreeMap<C::NodeId, Option<Node>>,
-    ) -> Result<(), InitializeError<C::NodeId>> {
+        member_nodes: BTreeMap<C::NodeId, Option<C::Node>>,
+    ) -> Result<(), InitializeError<C::NodeId, C::Node>> {
         let membership = Membership::try_from(member_nodes)?;
         let payload = EntryPayload::<C>::Membership(membership);
 
@@ -932,7 +937,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Reject a request due to the Raft node being in a state which prohibits the request.
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(crate) fn reject_with_forward_to_leader<T, E>(&self, tx: RaftRespTx<T, E>)
-    where E: From<ForwardToLeader<C::NodeId>> {
+    where E: From<ForwardToLeader<C::NodeId, C::Node>> {
         let l = self.current_leader();
         let err = ForwardToLeader {
             leader_id: l,
@@ -961,7 +966,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
-    pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<Node> {
+    pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<C::Node> {
         match leader_id {
             None => None,
             Some(id) => self.engine.state.membership_state.effective.get_node(&id).cloned(),
@@ -1017,11 +1022,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) async fn send_response(
-        entry: &Entry<C>,
-        resp: C::R,
-        tx: Option<RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId>>>,
-    ) {
+    pub(super) async fn send_response(entry: &Entry<C>, resp: C::R, tx: Option<ClientWriteTx<C, C::NodeId, C::Node>>) {
         tracing::debug!(entry = display(entry.summary()), "send_response");
 
         let tx = match tx {
@@ -1570,7 +1571,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     async fn handle_needs_snapshot(
         &mut self,
         must_include: Option<LogId<C::NodeId>>,
-        tx: oneshot::Sender<Snapshot<C::NodeId, S::SnapshotData>>,
+        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotData>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.config.snapshot_policy {
@@ -1638,7 +1639,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
         &mut self,
         input_ref_entries: &'e [Ent],
         cur: &mut usize,
-        cmd: &Command<C::NodeId>,
+        cmd: &Command<C::NodeId, C::Node>,
     ) -> Result<(), StorageError<C::NodeId>>
     where
         Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,

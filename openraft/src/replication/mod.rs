@@ -34,7 +34,6 @@ use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LogId;
 use crate::MessageSummary;
-use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
@@ -115,7 +114,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
         target: C::NodeId,
-        target_node: Option<Node>,
+        target_node: Option<C::Node>,
         vote: Vote<C::NodeId>,
         config: Arc<Config>,
         last_log: Option<LogId<C::NodeId>>,
@@ -225,7 +224,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     /// This request will timeout if no response is received within the
     /// configured heartbeat interval.
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn send_append_entries(&mut self) -> Result<(), ReplicationError<C::NodeId>> {
+    async fn send_append_entries(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         // find the mid position aligning to 8
         let diff = self.max_possible_matched_index.next_index() - self.matched.next_index();
         let offset = diff / 16 * 8;
@@ -467,7 +466,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError<C::NodeId>> {
+    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         tracing::debug!("try_drain_raft_rx");
 
         for _i in 0..self.config.max_payload_entries {
@@ -546,7 +545,7 @@ impl<NID: NodeId> MessageSummary<UpdateReplication<NID>> for UpdateReplication<N
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError<C::NodeId>> {
+    pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         loop {
             loop {
                 tracing::debug!(
@@ -618,7 +617,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     pub async fn replicate_snapshot(
         &mut self,
         snapshot_must_include: Option<LogId<C::NodeId>>,
-    ) -> Result<(), ReplicationError<C::NodeId>> {
+    ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         let snapshot = self.wait_for_snapshot(snapshot_must_include).await?;
         self.stream_snapshot(snapshot).await?;
 
@@ -633,7 +632,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     async fn wait_for_snapshot(
         &mut self,
         snapshot_must_include: Option<LogId<C::NodeId>>,
-    ) -> Result<Snapshot<C::NodeId, S::SnapshotData>, ReplicationError<C::NodeId>> {
+    ) -> Result<Snapshot<C::NodeId, C::Node, S::SnapshotData>, ReplicationError<C::NodeId, C::Node>> {
         // Ask raft core for a snapshot.
         // - If raft core has a ready snapshot, it sends back through tx.
         // - Otherwise raft core starts a new task taking snapshot, and **close** `tx` when finished. Thus there has to
@@ -694,8 +693,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(
         &mut self,
-        mut snapshot: Snapshot<C::NodeId, S::SnapshotData>,
-    ) -> Result<(), ReplicationError<C::NodeId>> {
+        mut snapshot: Snapshot<C::NodeId, C::Node, S::SnapshotData>,
+    ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
 
         let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;

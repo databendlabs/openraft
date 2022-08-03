@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use crate::node::Node;
 use crate::raft_types::RaftLogId;
 use crate::LogId;
 use crate::Membership;
@@ -8,16 +9,25 @@ use crate::NodeId;
 use crate::RaftTypeConfig;
 
 /// Defines operations on an entry payload.
-pub trait RaftPayload<NID: NodeId> {
+pub trait RaftPayload<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
     /// Return `Some(())` if the entry payload is blank.
     fn is_blank(&self) -> bool;
 
     /// Return `Some(&Membership)` if the entry payload is a membership payload.
-    fn get_membership(&self) -> Option<&Membership<NID>>;
+    fn get_membership(&self) -> Option<&Membership<NID, N>>;
 }
 
 /// Defines operations on an entry.
-pub trait RaftEntry<NID: NodeId>: RaftPayload<NID> + RaftLogId<NID> {}
+pub trait RaftEntry<NID, N>: RaftPayload<NID, N> + RaftLogId<NID>
+where
+    N: Node,
+    NID: NodeId,
+{
+}
 
 /// Log entry payload variants.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,7 +39,7 @@ pub enum EntryPayload<C: RaftTypeConfig> {
     Normal(C::D),
 
     /// A change-membership log entry.
-    Membership(Membership<C::NodeId>),
+    Membership(Membership<C::NodeId, C::Node>),
 }
 
 impl<C: RaftTypeConfig> MessageSummary<EntryPayload<C>> for EntryPayload<C> {
@@ -135,12 +145,12 @@ impl<'p, C: RaftTypeConfig> EntryRef<'p, C> {
 
 // impl traits for EntryPayload
 
-impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for EntryPayload<C> {
+impl<C: RaftTypeConfig> RaftPayload<C::NodeId, C::Node> for EntryPayload<C> {
     fn is_blank(&self) -> bool {
         matches!(self, EntryPayload::Blank)
     }
 
-    fn get_membership(&self) -> Option<&Membership<C::NodeId>> {
+    fn get_membership(&self) -> Option<&Membership<C::NodeId, C::Node>> {
         if let EntryPayload::Membership(m) = self {
             Some(m)
         } else {
@@ -151,12 +161,12 @@ impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for EntryPayload<C> {
 
 // impl traits for Entry
 
-impl<C: RaftTypeConfig> RaftPayload<C::NodeId> for Entry<C> {
+impl<C: RaftTypeConfig> RaftPayload<C::NodeId, C::Node> for Entry<C> {
     fn is_blank(&self) -> bool {
         self.payload.is_blank()
     }
 
-    fn get_membership(&self) -> Option<&Membership<C::NodeId>> {
+    fn get_membership(&self) -> Option<&Membership<C::NodeId, C::Node>> {
         self.payload.get_membership()
     }
 }
@@ -171,16 +181,16 @@ impl<C: RaftTypeConfig> RaftLogId<C::NodeId> for Entry<C> {
     }
 }
 
-impl<C: RaftTypeConfig> RaftEntry<C::NodeId> for Entry<C> {}
+impl<C: RaftTypeConfig> RaftEntry<C::NodeId, C::Node> for Entry<C> {}
 
 // impl traits for RefEntry
 
-impl<'p, C: RaftTypeConfig> RaftPayload<C::NodeId> for EntryRef<'p, C> {
+impl<'p, C: RaftTypeConfig> RaftPayload<C::NodeId, C::Node> for EntryRef<'p, C> {
     fn is_blank(&self) -> bool {
         self.payload.is_blank()
     }
 
-    fn get_membership(&self) -> Option<&Membership<C::NodeId>> {
+    fn get_membership(&self) -> Option<&Membership<C::NodeId, C::Node>> {
         self.payload.get_membership()
     }
 }
@@ -195,4 +205,4 @@ impl<'p, C: RaftTypeConfig> RaftLogId<C::NodeId> for EntryRef<'p, C> {
     }
 }
 
-impl<'p, C: RaftTypeConfig> RaftEntry<C::NodeId> for EntryRef<'p, C> {}
+impl<'p, C: RaftTypeConfig> RaftEntry<C::NodeId, C::Node> for EntryRef<'p, C> {}

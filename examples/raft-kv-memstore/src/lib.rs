@@ -5,6 +5,7 @@ use actix_web::middleware::Logger;
 use actix_web::web::Data;
 use actix_web::App;
 use actix_web::HttpServer;
+use openraft::BasicNode;
 use openraft::Config;
 use openraft::Raft;
 
@@ -26,7 +27,7 @@ pub type ExampleNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId
+    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode
 );
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;

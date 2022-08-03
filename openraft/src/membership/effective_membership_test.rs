@@ -1,13 +1,14 @@
 use maplit::btreeset;
 
 use crate::quorum::QuorumSet;
+use crate::BasicNode;
 use crate::EffectiveMembership;
 use crate::Membership;
 
 #[test]
 fn test_effective_membership_majority() -> anyhow::Result<()> {
     {
-        let m12345 = Membership::<u64>::new(vec![btreeset! {1,2,3,4,5 }], None);
+        let m12345 = Membership::<u64, BasicNode>::new(vec![btreeset! {1,2,3,4,5 }], None);
         let m = EffectiveMembership::new(None, m12345);
 
         assert!(!m.is_quorum([0].iter()));
@@ -19,7 +20,7 @@ fn test_effective_membership_majority() -> anyhow::Result<()> {
     }
 
     {
-        let m12345_678 = Membership::<u64>::new(vec![btreeset! {1,2,3,4,5 }, btreeset! {6,7,8}], None);
+        let m12345_678 = Membership::<u64, BasicNode>::new(vec![btreeset! {1,2,3,4,5 }, btreeset! {6,7,8}], None);
         let m = EffectiveMembership::new(None, m12345_678);
 
         assert!(!m.is_quorum([0].iter()));

@@ -8,6 +8,7 @@ use tide::Response;
 use tide::StatusCode;
 
 use crate::app::ExampleApp;
+use crate::ExampleNode;
 use crate::ExampleNodeId;
 use crate::Server;
 
@@ -51,7 +52,7 @@ async fn consistent_read(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
 
             let value = state_machine.get(&key)?;
 
-            let res: Result<String, CheckIsLeaderError<ExampleNodeId>> = Ok(value.unwrap_or_default());
+            let res: Result<String, CheckIsLeaderError<ExampleNodeId, ExampleNode>> = Ok(value.unwrap_or_default());
             Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
         }
         e => Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&e)?).build()),

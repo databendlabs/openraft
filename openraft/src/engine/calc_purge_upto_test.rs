@@ -1,5 +1,6 @@
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::BasicNode;
 use crate::LeaderId;
 use crate::LogId;
 
@@ -10,8 +11,8 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
     }
 }
 
-fn eng() -> Engine<u64> {
-    let mut eng = Engine::<u64>::default();
+fn eng() -> Engine<u64, BasicNode> {
+    let mut eng = Engine::<u64, BasicNode>::default();
     eng.state.log_ids = LogIdList::new(vec![
         //
         log_id(0, 0),

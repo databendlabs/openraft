@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::leader::Leader;
+use crate::node::Node;
 use crate::EffectiveMembership;
 use crate::NodeId;
 
@@ -16,11 +17,15 @@ use crate::NodeId;
 ///   become leader. A following state that is not a member is just a learner.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) enum InternalServerState<NID: NodeId> {
+pub(crate) enum InternalServerState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     /// Leader or candidate.
     ///
     /// `vote.committed==true` means it is a leader.
-    Leading(Leader<NID, Arc<EffectiveMembership<NID>>>),
+    Leading(Leader<NID, Arc<EffectiveMembership<NID, N>>>),
 
     /// Follower or learner.
     ///
@@ -28,21 +33,29 @@ pub(crate) enum InternalServerState<NID: NodeId> {
     Following,
 }
 
-impl<NID: NodeId> Default for InternalServerState<NID> {
+impl<NID, N> Default for InternalServerState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
     fn default() -> Self {
         Self::Following
     }
 }
 
-impl<NID: NodeId> InternalServerState<NID> {
-    pub(crate) fn leading(&self) -> Option<&Leader<NID, Arc<EffectiveMembership<NID>>>> {
+impl<NID, N> InternalServerState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    pub(crate) fn leading(&self) -> Option<&Leader<NID, Arc<EffectiveMembership<NID, N>>>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,
         }
     }
 
-    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leader<NID, Arc<EffectiveMembership<NID>>>> {
+    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leader<NID, Arc<EffectiveMembership<NID, N>>>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,
