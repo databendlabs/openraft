@@ -151,12 +151,12 @@ where
     }
 
     /// Get a the node(either voter or learner) by node id.
-    pub fn get_node(&self, node_id: &NID) -> Option<&N> {
+    pub fn get_node(&self, node_id: &NID) -> &N {
         self.membership.get_node(node_id)
     }
 
     /// Returns an Iterator of all nodes(voters and learners).
-    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &Option<N>)> {
+    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
         self.membership.nodes()
     }
 

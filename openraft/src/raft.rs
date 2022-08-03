@@ -399,7 +399,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn add_learner(
         &self,
         id: C::NodeId,
-        node: Option<C::Node>,
+        node: C::Node,
         blocking: bool,
     ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId, C::Node>> {
         let (tx, rx) = oneshot::channel();
@@ -807,14 +807,14 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     Initialize {
-        members: BTreeMap<C::NodeId, Option<C::Node>>,
+        members: BTreeMap<C::NodeId, C::Node>,
         tx: RaftRespTx<(), InitializeError<C::NodeId, C::Node>>,
     },
     /// Request raft core to setup a new replication to a learner.
     AddLearner {
         id: C::NodeId,
 
-        node: Option<C::Node>,
+        node: C::Node,
 
         /// Send the log id when the replication becomes line-rate.
         tx: RaftAddLearnerTx<C::NodeId, C::Node>,

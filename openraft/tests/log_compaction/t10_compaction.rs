@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
+use openraft::BasicNode;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -137,7 +138,7 @@ async fn compaction() -> Result<()> {
     );
     {
         let res = router
-            .connect(1, None)
+            .connect(1, &BasicNode::default())
             .await?
             .send_append_entries(AppendEntriesRequest {
                 vote: Vote::new_committed(1, 0),

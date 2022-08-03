@@ -90,9 +90,9 @@ async fn test_cluster() -> anyhow::Result<()> {
         x.membership_config.nodes().map(|(nid, node)| (*nid, node.clone())).collect::<BTreeMap<_, _>>();
     assert_eq!(
         btreemap! {
-            1 => Some(BasicNode::new("127.0.0.1:21001")),
-            2 => Some(BasicNode::new("127.0.0.1:21002")),
-            3 => Some(BasicNode::new("127.0.0.1:21003")),
+            1 => BasicNode::new("127.0.0.1:21001"),
+            2 => BasicNode::new("127.0.0.1:21002"),
+            3 => BasicNode::new("127.0.0.1:21003"),
         },
         nodes_in_cluster
     );

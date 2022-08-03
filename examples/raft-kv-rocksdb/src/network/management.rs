@@ -32,7 +32,7 @@ pub fn rest(app: &mut Server) {
 async fn add_learner(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
     let (node_id, api_addr, rpc_addr): (ExampleNodeId, String, String) = req.body_json().await?;
     let node = ExampleNode { rpc_addr, api_addr };
-    let res = req.state().raft.add_learner(node_id, Some(node), true).await;
+    let res = req.state().raft.add_learner(node_id, node, true).await;
     Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
 }
 

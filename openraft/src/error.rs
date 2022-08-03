@@ -466,6 +466,7 @@ pub struct NotAllowed<NID: NodeId> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("node {node_id} {reason}")]
+// TODO: remove it
 pub struct MissingNodeInfo<NID: NodeId> {
     pub node_id: NID,
     pub reason: String,

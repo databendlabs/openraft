@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
+use openraft::BasicNode;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
@@ -42,7 +43,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), log_index)),
     };
 
-    let resp = router.connect(0, None).await?.send_append_entries(req).await?;
+    let resp = router.connect(0, &BasicNode::default()).await?.send_append_entries(req).await?;
     assert!(resp.is_success());
 
     // after append entries, check hard state in term 2 and vote for node 1

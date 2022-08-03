@@ -114,7 +114,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
         target: C::NodeId,
-        target_node: Option<C::Node>,
+        target_node: C::Node,
         vote: Vote<C::NodeId>,
         config: Arc<Config>,
         last_log: Option<LogId<C::NodeId>>,

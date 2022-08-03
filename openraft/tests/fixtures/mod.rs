@@ -572,7 +572,7 @@ where
         target: C::NodeId,
     ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId, C::Node>> {
         let node = self.get_raft_handle(&leader).unwrap();
-        node.add_learner(target, None, true).await
+        node.add_learner(target, C::Node::default(), true).await
     }
 
     /// Send a is_leader request to the target node.
@@ -943,7 +943,7 @@ where
     type Network = RaftRouterNetwork<C, S>;
     type ConnectionError = NetworkError;
 
-    async fn connect(&mut self, target: C::NodeId, _node: Option<&C::Node>) -> Result<Self::Network, NetworkError> {
+    async fn connect(&mut self, target: C::NodeId, _node: &C::Node) -> Result<Self::Network, NetworkError> {
         {
             let unreachable = self.unconnectable.lock().unwrap();
             if unreachable.contains(&target) {

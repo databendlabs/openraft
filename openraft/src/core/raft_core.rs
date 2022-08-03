@@ -380,8 +380,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             };
 
             let my_id = self.id;
-            let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = match self.network.connect(target, target_node.as_ref()).await {
+            let target_node = self.engine.state.membership_state.effective.get_node(&target).clone();
+            let mut network = match self.network.connect(target, &target_node).await {
                 Ok(n) => n,
                 Err(e) => {
                     tracing::error!(target = display(target), "{}", e);
@@ -479,7 +479,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn add_learner(
         &mut self,
         target: C::NodeId,
-        node: Option<C::Node>,
+        node: C::Node,
         tx: RaftAddLearnerTx<C::NodeId, C::Node>,
     ) -> Result<(), Fatal<C::NodeId>> {
         if let Some(l) = &self.leader_data {
@@ -517,7 +517,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         // Ensure the node is connectable
-        let conn_res = self.network.connect(target, node.clone().as_ref()).await;
+        let conn_res = self.network.connect(target, &node).await;
         if let Err(e) = conn_res {
             let net_err = NetworkError::new(&anyerror::AnyError::new(&e));
             let _ = tx.send(Err(AddLearnerError::NetworkError(net_err)));
@@ -780,9 +780,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn handle_initialize(
         &mut self,
-        member_nodes: BTreeMap<C::NodeId, Option<C::Node>>,
+        member_nodes: BTreeMap<C::NodeId, C::Node>,
     ) -> Result<(), InitializeError<C::NodeId, C::Node>> {
-        let membership = Membership::try_from(member_nodes)?;
+        let membership = Membership::from(member_nodes);
         let payload = EntryPayload::<C>::Membership(membership);
 
         let mut entry_refs = [EntryRef::new(&payload)];
@@ -967,10 +967,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<C::Node> {
-        match leader_id {
-            None => None,
-            Some(id) => self.engine.state.membership_state.effective.get_node(&id).cloned(),
-        }
+        leader_id.map(|id| self.engine.state.membership_state.effective.get_node(&id).clone())
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -1071,7 +1068,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         Ok(ReplicationCore::<C, N, S>::spawn(
             target,
-            target_node.cloned(),
+            target_node.clone(),
             self.engine.state.vote,
             self.config.clone(),
             self.engine.state.last_log_id(),
@@ -1259,8 +1256,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
 
             let req = vote_req.clone();
-            let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = match self.network.connect(target, target_node.as_ref()).await {
+            let target_node = self.engine.state.membership_state.effective.get_node(&target).clone();
+            let mut network = match self.network.connect(target, &target_node).await {
                 Ok(n) => n,
                 Err(err) => {
                     tracing::error!({error=%err, target=display(target)}, "while requesting vote");
