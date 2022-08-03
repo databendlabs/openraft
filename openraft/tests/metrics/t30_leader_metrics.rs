@@ -6,14 +6,10 @@ use futures::stream::StreamExt;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::metrics::ReplicationTargetMetrics;
-use openraft::raft::VoteRequest;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
-use openraft::RaftNetwork;
-use openraft::RaftNetworkFactory;
 use openraft::ServerState;
-use openraft::Vote;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
 #[allow(unused_imports)] use pretty_assertions::assert_ne;
 
@@ -39,6 +35,7 @@ async fn leader_metrics() -> Result<()> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
+            enable_elect: false,
             ..Default::default()
         }
         .validate()?,
@@ -98,7 +95,7 @@ async fn leader_metrics() -> Result<()> {
     log_index += 4; // 4 add_learner log
     router.wait_for_log(&c01234, Some(log_index), timeout(), "add learner 1,2,3,4").await?;
 
-    tracing::info!("--- changing cluster config to 012");
+    tracing::info!("--- changing cluster config to 01234");
 
     let node = router.get_raft_handle(&0)?;
     node.change_membership(c01234.clone(), true, false).await?;
@@ -165,53 +162,19 @@ async fn leader_metrics() -> Result<()> {
             .await?;
     }
 
-    let leader = router.current_leader(0).await.unwrap();
+    let n0 = router.get_raft_handle(&0)?;
+    let n1 = router.get_raft_handle(&1)?;
 
-    tracing::info!("--- take leadership of node {}", leader);
+    tracing::info!("--- let node-1 to elect to take leadership from node-0");
     {
-        router
-            .connect(leader, None)
-            .await
-            .send_vote(VoteRequest {
-                vote: Vote::new(100, 100),
-                last_log_id: Some(LogId::new(LeaderId::new(10, 0), 100)),
-            })
+        n1.enable_elect(true);
+        n1.wait(timeout()).state(ServerState::Leader, "node-1 becomes leader").await?;
+        n1.wait(timeout()).metrics(|x| x.replication.is_some(), "node-1 starts replication").await?;
+        n0.wait(timeout()).metrics(|x| x.replication.is_none(), "node-0 stopped replication").await?;
+        n0.wait(timeout())
+            .metrics(|x| x.current_leader == Some(1), "node-0 receives leader-1 message")
             .await?;
-
-        router
-            .wait_for_metrics(
-                &leader,
-                |x| x.replication.is_none(),
-                timeout(),
-                "node 0 should close all replication",
-            )
-            .await?;
-
-        // The next election may have finished before waiting.
-        router
-            .wait_for_metrics(
-                &leader,
-                |x| x.state != ServerState::Leader || (x.state == ServerState::Leader && x.current_term > 100),
-                timeout(),
-                &format!("node {} becomes candidate or becomes a new leader", leader,),
-            )
-            .await?;
-
-        router.wait(&leader, timeout()).metrics(|x| x.current_leader.is_some(), "elect new leader").await?;
     }
-
-    tracing::info!("--- check leader metrics after leadership transferred.");
-    let leader = router.current_leader(0).await.unwrap();
-    tracing::info!("--- new leader is {}", leader);
-
-    router
-        .wait_for_metrics(
-            &leader,
-            |x| x.replication.is_some(),
-            timeout(),
-            "new leader spawns replication",
-        )
-        .await?;
 
     Ok(())
 }

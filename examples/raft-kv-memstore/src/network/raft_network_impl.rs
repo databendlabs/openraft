@@ -52,13 +52,18 @@ impl ExampleNetwork {
 #[async_trait]
 impl RaftNetworkFactory<ExampleTypeConfig> for ExampleNetwork {
     type Network = ExampleNetworkConnection;
+    type ConnectionError = NetworkError;
 
-    async fn connect(&mut self, target: ExampleNodeId, node: Option<&Node>) -> Self::Network {
-        ExampleNetworkConnection {
+    async fn connect(
+        &mut self,
+        target: ExampleNodeId,
+        node: Option<&Node>,
+    ) -> Result<Self::Network, Self::ConnectionError> {
+        Ok(ExampleNetworkConnection {
             owner: ExampleNetwork {},
             target,
             target_node: node.cloned(),
-        }
+        })
     }
 }
 

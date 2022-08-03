@@ -142,8 +142,12 @@ where
     /// The table of all nodes currently known to this router instance.
     #[allow(clippy::type_complexity)]
     routing_table: Arc<Mutex<BTreeMap<C::NodeId, (MemRaft<C, S>, StoreWithDefensive<C, S>)>>>,
+
     /// Nodes which are isolated can neither send nor receive frames.
     isolated_nodes: Arc<Mutex<HashSet<C::NodeId>>>,
+
+    /// Nodes which could not be connected via RaftNetworkFactory::connect
+    unconnectable: Arc<Mutex<HashSet<C::NodeId>>>,
 
     /// To emulate network delay for sending, in milliseconds.
     /// 0 means no delay.
@@ -186,6 +190,7 @@ where
             routing_table: Default::default(),
             isolated_nodes: Default::default(),
             send_delay: Arc::new(AtomicU64::new(send_delay)),
+            unconnectable: Default::default(),
         }
     }
 }
@@ -201,6 +206,7 @@ where
             config: self.config.clone(),
             routing_table: self.routing_table.clone(),
             isolated_nodes: self.isolated_nodes.clone(),
+            unconnectable: self.unconnectable.clone(),
             send_delay: self.send_delay.clone(),
         }
     }
@@ -369,6 +375,11 @@ where
         {
             let mut isolated = self.isolated_nodes.lock().unwrap();
             isolated.remove(&id);
+        }
+
+        {
+            let mut unreachable = self.unconnectable.lock().unwrap();
+            unreachable.remove(&id);
         }
 
         opt_handles
@@ -542,6 +553,17 @@ where
     pub fn restore_node(&self, id: C::NodeId) {
         let mut nodes = self.isolated_nodes.lock().unwrap();
         nodes.remove(&id);
+    }
+
+    /// Unblock the network of the specified node.
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub fn set_connectable(&self, id: C::NodeId, enable: bool) {
+        let mut nodes = self.unconnectable.lock().unwrap();
+        if !enable {
+            nodes.insert(id);
+        } else {
+            nodes.remove(&id);
+        }
     }
 
     /// Bring up a new learner and add it to the leader's membership.
@@ -920,12 +942,20 @@ where
     S: Default + Clone,
 {
     type Network = RaftRouterNetwork<C, S>;
+    type ConnectionError = NetworkError;
 
-    async fn connect(&mut self, target: C::NodeId, _node: Option<&Node>) -> Self::Network {
-        RaftRouterNetwork {
+    async fn connect(&mut self, target: C::NodeId, _node: Option<&Node>) -> Result<Self::Network, NetworkError> {
+        {
+            let unreachable = self.unconnectable.lock().unwrap();
+            if unreachable.contains(&target) {
+                let e = NetworkError::new(&AnyError::error(format!("failed to connect: {}", target)));
+                return Err(e);
+            }
+        }
+        Ok(RaftRouterNetwork {
             target,
             owner: self.clone(),
-        }
+        })
     }
 }
 
