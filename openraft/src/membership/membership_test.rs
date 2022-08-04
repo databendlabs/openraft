@@ -31,18 +31,16 @@ impl Display for TestNode {
 }
 #[test]
 fn test_membership_summary() -> anyhow::Result<()> {
-    let node = |addr: &str, k: &str| {
-        Some(TestNode {
-            addr: addr.to_string(),
-            data: btreemap! {k.to_string() => k.to_string()},
-        })
+    let node = |addr: &str, k: &str| TestNode {
+        addr: addr.to_string(),
+        data: btreemap! {k.to_string() => k.to_string()},
     };
 
     let m = Membership::<u64, BasicNode>::new(vec![btreeset! {1,2}, btreeset! {3}], None);
-    assert_eq!("members:[{1,2},{3}],learners:[]", m.summary());
+    assert_eq!("members:[{1:{},2:{}},{3:{}}],learners:[]", m.summary());
 
     let m = Membership::<u64, BasicNode>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
-    assert_eq!("members:[{1,2},{3}],learners:[4]", m.summary());
+    assert_eq!("members:[{1:{},2:{}},{3:{}}],learners:[4:{}]", m.summary());
 
     let m = Membership::<u64, TestNode>::with_nodes(vec![btreeset! {1,2}, btreeset! {3}], btreemap! {
         1=>node("127.0.0.1", "k1"),
@@ -93,7 +91,7 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
     // test multi membership with learners
     {
         let m1_2 = Membership::<u64, BasicNode>::new(vec![btreeset! {1}], Some(btreeset! {2}));
-        let m1_23 = m1_2.add_learner(3, None)?;
+        let m1_23 = m1_2.add_learner(3, BasicNode::default())?;
 
         // test learner and membership
         assert_eq!(vec![1], m1_2.voter_ids().collect::<Vec<_>>());
@@ -104,12 +102,12 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
 
         // Adding a member as learner has no effect:
 
-        let m = m1_23.add_learner(1, None)?;
+        let m = m1_23.add_learner(1, BasicNode::default())?;
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
 
         // Adding a existent learner has no effect:
 
-        let m = m1_23.add_learner(3, None)?;
+        let m = m1_23.add_learner(3, BasicNode::default())?;
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
         assert_eq!(btreeset! {2,3}, m.learner_ids().collect());
     }
@@ -134,50 +132,24 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
     let m_1_2 = Membership::<u64, TestNode>::with_nodes(
         vec![btreeset! {1}, btreeset! {2}],
-        btreemap! {1=>Some(node("1")), 2=>Some(node("2"))},
+        btreemap! {1=>node("1"), 2=>node("2")},
     )?;
 
     // Add learner that presents in old cluster has no effect.
 
-    let res = m_1_2.add_learner(1, Some(node("3")))?;
+    let res = m_1_2.add_learner(1, node("3"))?;
     assert_eq!(m_1_2, res);
 
     // Success to add a learner
 
-    let m_1_2_3 = m_1_2.add_learner(3, Some(node("3")))?;
+    let m_1_2_3 = m_1_2.add_learner(3, node("3"))?;
     assert_eq!(
         Membership::<u64, TestNode>::with_nodes(
             vec![btreeset! {1}, btreeset! {2}],
-            btreemap! {1=>Some(node("1")), 2=>Some(node("2")), 3=>Some(node("3"))}
+            btreemap! {1=>node("1"), 2=>node("2"), 3=>node("3")}
         )?,
         m_1_2_3
     );
-
-    // Illegal to add node id without node info into cluster with node info.
-    {
-        let res = m_1_2.add_learner(3, None);
-        assert_eq!(
-            Err(MissingNodeInfo {
-                node_id: 3,
-                reason: "is None".to_string(),
-            }),
-            res
-        );
-    }
-
-    // Illegal to add node id with node info into cluster without node info.
-    {
-        let m_1_2 = Membership::<u64, TestNode>::new(vec![btreeset! {1}, btreeset! {2}], None);
-
-        let res = m_1_2.add_learner(3, Some(node("3")));
-        assert_eq!(
-            Err(MissingNodeInfo {
-                node_id: 1,
-                reason: "is None".to_string(),
-            }),
-            res
-        );
-    }
 
     Ok(())
 }
@@ -192,27 +164,14 @@ fn test_membership_extend_nodes() -> anyhow::Result<()> {
     let ext = |a, b| Membership::<u64, TestNode>::extend_nodes(a, &b);
 
     assert_eq!(
-        btreemap! {1=>None},
-        ext(btreemap! {1=>None}, btreemap! {1=>Some(node("1"))}),
-        "existent node will not change"
-    );
-    assert_eq!(
-        btreemap! {1=>Some(node("1"))},
-        ext(btreemap! {1=>Some(node("1"))}, btreemap! {1=>None}),
-        "existent node will not change"
-    );
-    assert_eq!(
-        btreemap! {1=>Some(node("1"))},
-        ext(btreemap! {1=>Some(node("1"))}, btreemap! {1=>Some(node("2"))}),
+        btreemap! {1=>node("1")},
+        ext(btreemap! {1=>node("1")}, btreemap! {1=>node("2")}),
         "existent node will not change"
     );
 
     assert_eq!(
-        btreemap! {1=>Some(node("1")), 2=>Some(node("2"))},
-        ext(
-            btreemap! {1=>Some(node("1"))},
-            btreemap! {1=>Some(node("2")), 2=>Some(node("2"))}
-        ),
+        btreemap! {1=>node("1"), 2=>node("2")},
+        ext(btreemap! {1=>node("1")}, btreemap! {1=>node("2"), 2=>node("2")}),
     );
 
     Ok(())
@@ -221,51 +180,27 @@ fn test_membership_extend_nodes() -> anyhow::Result<()> {
 // TODO: rename
 #[test]
 fn test_membership_with_nodes() -> anyhow::Result<()> {
-    let node = || Some(TestNode::default());
-    let m = |nodes| Membership::<u64, TestNode>::with_nodes(vec![btreeset! {1}, btreeset! {2}], nodes);
+    let node = TestNode::default;
+    let with_nodes = |nodes| Membership::<u64, TestNode>::with_nodes(vec![btreeset! {1}, btreeset! {2}], nodes);
 
-    let ns_12 = || btreemap! {1=>node(), 2=>node()};
-    let ns_123 = || btreemap! {1=>node(), 2=>node(), 3=>node()};
-
-    let res = m(btreemap! {1=>None, 2=>None})?;
+    let res = with_nodes(btreemap! {1=>node(), 2=>node()})?;
     assert_eq!(
-        btreemap! {1=>None, 2=>None},
+        btreemap! {1=>node(), 2=>node()},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
     );
 
-    let res = m(btreemap! {1=>None, 2=>None,3=>None})?;
+    let res = with_nodes(btreemap! {1=>node(), 2=>node(),3=>node()})?;
     assert_eq!(
-        btreemap! {1=>None, 2=>None, 3=>None},
-        res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
-    );
-
-    let res = m(ns_12())?;
-    assert_eq!(
-        ns_12(),
-        res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
-    );
-
-    let res = m(ns_123())?;
-    assert_eq!(
-        ns_123(),
+        btreemap! {1=>node(), 2=>node(), 3=>node()},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
     );
 
     // errors:
-    let res = m(btreemap! {1=>None});
+    let res = with_nodes(btreemap! {1=>node()});
     assert_eq!(
         Err(MissingNodeInfo {
             node_id: 2,
             reason: "is not in cluster: [1]".to_string(),
-        }),
-        res
-    );
-
-    let res = m(btreemap! {1=>None,2=>node()});
-    assert_eq!(
-        Err(MissingNodeInfo {
-            node_id: 1,
-            reason: "is None".to_string(),
         }),
         res
     );
@@ -311,70 +246,24 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
     let c1 = || btreeset! {1};
     let c2 = || btreeset! {2};
 
-    // change from a Membership without nodes
-    {
-        let without_nodes = Membership::<u64, TestNode>::new(vec![c1(), c2()], None);
+    let initial = Membership::<u64, TestNode>::with_nodes(vec![c1(), c2()], btreemap! {1=>node("1"), 2=>node("2")})?;
 
-        // next_safe() can not change node info type from None to Some
+    // joint [{2}, {1,2}]
 
-        let res = without_nodes.next_safe(btreemap! {1=>node("1"), 2=>node("2")}, false)?;
-        assert_eq!(
-            btreemap! {1=>None, 2=>None},
-            res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
-        );
+    let res = initial.next_safe(btreeset! {1,2}, false)?;
+    assert_eq!(
+        btreemap! {1=>node("1"), 2=>node("2")},
+        res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+    );
 
-        // joint [{2}, {1,3}] requires node info for 2
+    // Removed to learner
 
-        let res = without_nodes.next_safe(btreemap! {1=>node("1"), 3=>node("3")}, false);
-        assert_eq!(
-            Err(MissingNodeInfo {
-                node_id: 1,
-                reason: "is None".to_string(),
-            }),
-            res
-        );
-
-        // Changing to Membership without nodes is always OK
-
-        let res = without_nodes.next_safe(btreeset! {5,6}, false)?;
-        assert_eq!(&vec![btreeset! {2}, btreeset! {5,6}], res.get_joint_config());
-    }
-
-    // change from a Membership with nodes
-    {
-        let with_node_infos = Membership::<u64, TestNode>::with_nodes(
-            vec![c1(), c2()],
-            btreemap! {1=>Some(node("1")), 2=>Some(node("2"))},
-        )?;
-
-        // joint [{2}, {1,2}]
-
-        let res = with_node_infos.next_safe(btreeset! {1,2}, false)?;
-        assert_eq!(
-            btreemap! {1=>Some(node("1")), 2=>Some(node("2"))},
-            res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
-        );
-
-        // joint [{2}, {1,3}]
-
-        let res = with_node_infos.next_safe(btreeset! {1,3}, false);
-        assert_eq!(
-            Err(MissingNodeInfo {
-                node_id: 3,
-                reason: "is None".to_string(),
-            }),
-            res
-        );
-
-        // Removed to learner
-
-        let res = with_node_infos.next_safe(btreeset! {1}, true)?;
-        assert_eq!(
-            btreemap! {1=>Some(node("1")), 2=>Some(node("2"))},
-            res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
-        );
-        assert_eq!(&vec![btreeset! {1}], res.get_joint_config());
-    }
+    let res = initial.next_safe(btreeset! {1}, true)?;
+    assert_eq!(
+        btreemap! {1=>node("1"), 2=>node("2")},
+        res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
+    );
+    assert_eq!(&vec![btreeset! {1}], res.get_joint_config());
 
     Ok(())
 }

@@ -14,15 +14,13 @@ use crate::quorum::QuorumSet;
 use crate::MessageSummary;
 use crate::NodeId;
 
-/// BTreeMap for mapping node-id the node.
-pub type NodeMap<NID, N> = BTreeMap<NID, Option<N>>;
 /// Convert other types into the internal data structure for node infos
 pub trait IntoOptionNodes<NID, N>
 where
     N: Node,
     NID: NodeId,
 {
-    fn into_option_nodes(self) -> NodeMap<NID, N>;
+    fn into_option_nodes(self) -> BTreeMap<NID, N>;
 }
 
 impl<NID, N> IntoOptionNodes<NID, N> for ()
@@ -30,7 +28,7 @@ where
     N: Node,
     NID: NodeId,
 {
-    fn into_option_nodes(self) -> NodeMap<NID, N> {
+    fn into_option_nodes(self) -> BTreeMap<NID, N> {
         btreemap! {}
     }
 }
@@ -40,8 +38,8 @@ where
     N: Node,
     NID: NodeId,
 {
-    fn into_option_nodes(self) -> NodeMap<NID, N> {
-        self.into_iter().map(|node_id| (node_id, None)).collect()
+    fn into_option_nodes(self) -> BTreeMap<NID, N> {
+        self.into_iter().map(|node_id| (node_id, N::default())).collect()
     }
 }
 
@@ -50,17 +48,7 @@ where
     N: Node,
     NID: NodeId,
 {
-    fn into_option_nodes(self) -> NodeMap<NID, N> {
-        self.into_iter().map(|(node_id, n)| (node_id, Some(n))).collect()
-    }
-}
-
-impl<NID, N> IntoOptionNodes<NID, N> for NodeMap<NID, N>
-where
-    N: Node,
-    NID: NodeId,
-{
-    fn into_option_nodes(self) -> NodeMap<NID, N> {
+    fn into_option_nodes(self) -> BTreeMap<NID, N> {
         self
     }
 }
@@ -84,22 +72,19 @@ where
     /// Additional info of all nodes, e.g., the connecting host and port.
     ///
     /// A node-id key that is in `nodes` but is not in `configs` is a **learner**.
-    /// The values in this map must all be `Some` or `None`.
-    nodes: BTreeMap<NID, Option<N>>,
+    nodes: BTreeMap<NID, N>,
 }
 
-impl<NID, N> TryFrom<BTreeMap<NID, Option<N>>> for Membership<NID, N>
+impl<NID, N> From<BTreeMap<NID, N>> for Membership<NID, N>
 where
     N: Node,
     NID: NodeId,
 {
-    type Error = MissingNodeInfo<NID>;
-
-    fn try_from(b: BTreeMap<NID, Option<N>>) -> Result<Self, Self::Error> {
+    fn from(b: BTreeMap<NID, N>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
 
-        let membership = Membership::with_nodes(vec![member_ids], b)?;
-        Ok(membership)
+        // Safe unwrap: every node-id in `member_ids` present in `b`.
+        Membership::with_nodes(vec![member_ids], b).unwrap()
     }
 }
 
@@ -122,9 +107,8 @@ where
                 }
                 res.push(format!("{}", node_id));
 
-                if let Some(n) = self.get_node(node_id) {
-                    res.push(format!(":{{{}}}", n));
-                }
+                let n = self.get_node(node_id);
+                res.push(format!(":{{{}}}", n));
             }
             res.push("}".to_string());
         }
@@ -141,9 +125,8 @@ where
 
             res.push(format!("{}", learner_id));
 
-            if let Some(n) = self.get_node(learner_id) {
-                res.push(format!(":{{{}}}", n));
-            }
+            let n = self.get_node(learner_id);
+            res.push(format!(":{{{}}}", n));
         }
         res.push("]".to_string());
         res.join("")
@@ -194,17 +177,6 @@ where
             }
         }
 
-        let has_some = nodes.values().any(|x| x.is_some());
-        if has_some {
-            let first_none = nodes.iter().find(|(_node_id, v)| v.is_none());
-            if let Some(first_none) = first_none {
-                return Err(MissingNodeInfo {
-                    node_id: *first_none.0,
-                    reason: "is None".to_string(),
-                });
-            }
-        }
-
         Ok(Membership { configs, nodes })
     }
 
@@ -212,10 +184,7 @@ where
     ///
     /// Node that present in `old` will **NOT** be replaced because changing the address of a node potentially breaks
     /// consensus guarantee.
-    pub(crate) fn extend_nodes(
-        old: BTreeMap<NID, Option<N>>,
-        new: &BTreeMap<NID, Option<N>>,
-    ) -> BTreeMap<NID, Option<N>> {
+    pub(crate) fn extend_nodes(old: BTreeMap<NID, N>, new: &BTreeMap<NID, N>) -> BTreeMap<NID, N> {
         let mut res = old;
 
         for (k, v) in new.iter() {
@@ -233,7 +202,7 @@ where
         self.configs.len() > 1
     }
 
-    pub(crate) fn add_learner(&self, node_id: NID, node: Option<N>) -> Result<Self, MissingNodeInfo<NID>> {
+    pub(crate) fn add_learner(&self, node_id: NID, node: N) -> Result<Self, MissingNodeInfo<NID>> {
         let configs = self.configs.clone();
 
         let nodes = Self::extend_nodes(self.nodes.clone(), &btreemap! {node_id=>node});
@@ -289,13 +258,12 @@ where
     }
 
     /// Get a the node(either voter or learner) by node id.
-    pub(crate) fn get_node(&self, node_id: &NID) -> Option<&N> {
-        let x = self.nodes.get(node_id)?;
-        x.as_ref()
+    pub(crate) fn get_node(&self, node_id: &NID) -> &N {
+        &self.nodes[node_id]
     }
 
     /// Returns an Iterator of all nodes(voters and learners).
-    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &Option<N>)> {
+    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
         self.nodes.iter()
     }
 

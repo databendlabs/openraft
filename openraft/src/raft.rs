@@ -399,7 +399,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn add_learner(
         &self,
         id: C::NodeId,
-        node: Option<C::Node>,
+        node: C::Node,
         blocking: bool,
     ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId, C::Node>> {
         let (tx, rx) = oneshot::channel();
@@ -807,14 +807,14 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     Initialize {
-        members: BTreeMap<C::NodeId, Option<C::Node>>,
+        members: BTreeMap<C::NodeId, C::Node>,
         tx: RaftRespTx<(), InitializeError<C::NodeId, C::Node>>,
     },
     /// Request raft core to setup a new replication to a learner.
     AddLearner {
         id: C::NodeId,
 
-        node: Option<C::Node>,
+        node: C::Node,
 
         /// Send the log id when the replication becomes line-rate.
         tx: RaftAddLearnerTx<C::NodeId, C::Node>,
@@ -856,6 +856,9 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
 
         /// Which ServerState sent this message
         vote: Vote<C::NodeId>,
+
+        /// The cluster this replication works for.
+        membership_log_id: Option<LogId<C::NodeId>>,
     },
 
     /// An event indicating that the Raft node needs to revert to follower state.
@@ -870,6 +873,9 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
 
         /// Which ServerState sent this message
         vote: Vote<C::NodeId>,
+        // TODO: need this?
+        // /// The cluster this replication works for.
+        // membership_log_id: Option<LogId<C::NodeId>>,
     },
 
     /// An event from a replication stream requesting snapshot info.
@@ -944,10 +950,14 @@ where
                 ref target,
                 ref result,
                 ref vote,
+                ref membership_log_id,
             } => {
                 format!(
-                    "UpdateMatchIndex: target: {}, result: {:?}, server_state_vote: {}",
-                    target, result, vote
+                    "UpdateMatchIndex: target: {}, result: {:?}, server_state_vote: {}, membership_log_id: {}",
+                    target,
+                    result,
+                    vote,
+                    membership_log_id.summary()
                 )
             }
             RaftMsg::RevertToFollower {

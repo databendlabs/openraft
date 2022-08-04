@@ -64,6 +64,27 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     /// The vote of the leader.
     vote: Vote<C::NodeId>,
 
+    /// The log id of the membership log this replication works for.
+    ///
+    /// Replication state belongs to a specific membership config.
+    /// E.g. given 3 membership log:
+    /// - `log_id=1, members={a,b,c}`
+    /// - `log_id=5, members={a,b}`
+    /// - `log_id=10, members={a,b,c}`
+    ///
+    /// When log_id=1 is appended, openraft spawns a replication to node `c`.
+    /// Then log_id=1 is replicated to node `c`.
+    /// Then a replication state update message `{target=c, matched=log_id-1}` is piped in message queue(`tx_api`),
+    /// waiting the raft core to process.
+    ///
+    /// Then log_id=5 is appended, replication to node `c` is dropped.
+    ///
+    /// Then log_id=10 is appended, another replication to node `c` is spawned.
+    /// Now node `c` is a new empty node, no log is replicated to it.
+    /// But the delayed message `{target=c, matched=log_id-1}` may be process by raft core and make raft core believe
+    /// node `c` already has `log_id=1`, and commit it.
+    membership_log_id: Option<LogId<C::NodeId>>,
+
     /// A channel for sending events to the Raft node.
     #[allow(clippy::type_complexity)]
     raft_core_tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
@@ -114,8 +135,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
         target: C::NodeId,
-        target_node: Option<C::Node>,
+        target_node: C::Node,
         vote: Vote<C::NodeId>,
+        membership_log_id: Option<LogId<C::NodeId>>,
         config: Arc<Config>,
         last_log: Option<LogId<C::NodeId>>,
         committed: Option<LogId<C::NodeId>>,
@@ -131,6 +153,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         let this = Self {
             target,
             vote,
+            membership_log_id,
             network,
             log_reader,
             config,
@@ -328,6 +351,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                                 target: self.target,
                                 result: Err(e.to_string()),
                                 vote: self.vote,
+                                membership_log_id: self.membership_log_id,
                             });
                             ReplicationError::Timeout(e)
                         }
@@ -336,6 +360,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                                 target: self.target,
                                 result: Err(e.to_string()),
                                 vote: self.vote,
+                                membership_log_id: self.membership_log_id,
                             });
                             ReplicationError::Network(e)
                         }
@@ -351,6 +376,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     target: self.target,
                     result: Err(timeout_err.to_string()),
                     vote: self.vote,
+                    membership_log_id: self.membership_log_id,
                 });
 
                 return Err(ReplicationError::Timeout(Timeout {
@@ -444,6 +470,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 // Thus unwrap is safe.
                 result: Ok(self.matched.unwrap()),
                 vote: self.vote,
+                membership_log_id: self.membership_log_id,
             });
         }
     }

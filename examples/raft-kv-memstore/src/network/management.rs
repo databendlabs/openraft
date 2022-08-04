@@ -28,7 +28,7 @@ pub async fn add_learner(
 ) -> actix_web::Result<impl Responder> {
     let node_id = req.0 .0;
     let node = BasicNode { addr: req.0 .1.clone() };
-    let res = app.raft.add_learner(node_id, Some(node), true).await;
+    let res = app.raft.add_learner(node_id, node, true).await;
     Ok(Json(res))
 }
 

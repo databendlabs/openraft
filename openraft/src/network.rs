@@ -89,9 +89,5 @@ where C: RaftTypeConfig
     ///
     /// The method is intentionally async to give the implementation a chance to use asynchronous
     /// sync primitives to serialize access to the common internal object, if needed.
-    async fn connect(
-        &mut self,
-        target: C::NodeId,
-        node: Option<&C::Node>,
-    ) -> Result<Self::Network, Self::ConnectionError>;
+    async fn connect(&mut self, target: C::NodeId, node: &C::Node) -> Result<Self::Network, Self::ConnectionError>;
 }

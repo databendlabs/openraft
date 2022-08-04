@@ -56,7 +56,6 @@ use crate::error::RPCError;
 use crate::error::Timeout;
 use crate::error::VoteError;
 use crate::metrics::RaftMetrics;
-use crate::metrics::RemoveTarget;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::UpdateMatchedLogId;
 use crate::progress::Progress;
@@ -380,8 +379,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             };
 
             let my_id = self.id;
-            let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = match self.network.connect(target, target_node.as_ref()).await {
+            let target_node = self.engine.state.membership_state.effective.get_node(&target).clone();
+            let mut network = match self.network.connect(target, &target_node).await {
                 Ok(n) => n,
                 Err(e) => {
                     tracing::error!(target = display(target), "{}", e);
@@ -479,7 +478,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn add_learner(
         &mut self,
         target: C::NodeId,
-        node: Option<C::Node>,
+        node: C::Node,
         tx: RaftAddLearnerTx<C::NodeId, C::Node>,
     ) -> Result<(), Fatal<C::NodeId>> {
         if let Some(l) = &self.leader_data {
@@ -517,7 +516,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         // Ensure the node is connectable
-        let conn_res = self.network.connect(target, node.clone().as_ref()).await;
+        let conn_res = self.network.connect(target, &node).await;
         if let Err(e) = conn_res {
             let net_err = NetworkError::new(&anyerror::AnyError::new(&e));
             let _ = tx.send(Err(AddLearnerError::NetworkError(net_err)));
@@ -780,9 +779,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn handle_initialize(
         &mut self,
-        member_nodes: BTreeMap<C::NodeId, Option<C::Node>>,
+        member_nodes: BTreeMap<C::NodeId, C::Node>,
     ) -> Result<(), InitializeError<C::NodeId, C::Node>> {
-        let membership = Membership::try_from(member_nodes)?;
+        let membership = Membership::from(member_nodes);
         let payload = EntryPayload::<C>::Membership(membership);
 
         let mut entry_refs = [EntryRef::new(&payload)];
@@ -967,10 +966,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<C::Node> {
-        match leader_id {
-            None => None,
-            Some(id) => self.engine.state.membership_state.effective.get_node(&id).cloned(),
-        }
+        leader_id.map(|id| self.engine.state.membership_state.effective.get_node(&id).clone())
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -1067,12 +1063,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         target: C::NodeId,
     ) -> Result<ReplicationStream<C::NodeId>, N::ConnectionError> {
         let target_node = self.engine.state.membership_state.effective.get_node(&target);
+        let membership_log_id = self.engine.state.membership_state.effective.log_id;
         let network = self.network.connect(target, target_node).await?;
 
         Ok(ReplicationCore::<C, N, S>::spawn(
             target,
-            target_node.cloned(),
+            target_node.clone(),
             self.engine.state.vote,
+            membership_log_id,
             self.config.clone(),
             self.engine.state.last_log_id(),
             self.engine.state.committed,
@@ -1083,43 +1081,34 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         ))
     }
 
-    /// Remove a replication if the membership that does not include it has committed.
-    ///
-    /// Return true if removed.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn remove_replication(&mut self, target: C::NodeId) -> bool {
-        tracing::info!("removed_replication to: {}", target);
+    /// Remove all replication.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn remove_all_replication(&mut self) {
+        tracing::info!("remove all replication");
 
-        let repl_state = if let Some(l) = &mut self.leader_data {
-            l.nodes.remove(&target)
+        if let Some(l) = &mut self.leader_data {
+            let nodes = std::mem::take(&mut l.nodes);
+
+            tracing::debug!(
+                targets = debug(nodes.iter().map(|x| *x.0).collect::<Vec<_>>()),
+                "remove all targets from replication_metrics"
+            );
+
+            for (target, s) in nodes {
+                let handle = s.handle;
+
+                // Drop sender to notify the task to shutdown
+                drop(s.repl_tx);
+
+                tracing::debug!("joining removed replication: {}", target);
+                let _x = handle.await;
+                tracing::info!("Done joining removed replication : {}", target);
+            }
+
+            l.replication_metrics = Versioned::new(ReplicationMetrics::default());
         } else {
             unreachable!("it has to be a leader!!!");
         };
-
-        if let Some(s) = repl_state {
-            let handle = s.handle;
-
-            // Drop sender to notify the task to shutdown
-            drop(s.repl_tx);
-
-            tracing::debug!("joining removed replication: {}", target);
-            let _x = handle.await;
-            tracing::info!("Done joining removed replication : {}", target);
-        } else {
-            unreachable!("try to nonexistent replication to {}", target);
-        }
-
-        if let Some(l) = &mut self.leader_data {
-            l.replication_metrics.update(RemoveTarget { target });
-        } else {
-            unreachable!("It has to be a leader!!!");
-        }
-
-        // TODO(xp): set_replication_metrics_changed() can be removed.
-        //           Use self.replication_metrics.version to detect changes.
-        self.engine.metrics_flags.set_replication_changed();
-
-        true
     }
 
     /// Leader will keep working until the effective membership that removes it committed.
@@ -1259,8 +1248,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
 
             let req = vote_req.clone();
-            let target_node = self.engine.state.membership_state.effective.get_node(&target).cloned();
-            let mut network = match self.network.connect(target, target_node.as_ref()).await {
+            let target_node = self.engine.state.membership_state.effective.get_node(&target).clone();
+            let mut network = match self.network.connect(target, &target_node).await {
                 Ok(n) => n,
                 Err(err) => {
                     tracing::error!({error=%err, target=display(target)}, "while requesting vote");
@@ -1460,9 +1449,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
 
-            RaftMsg::UpdateReplicationMatched { target, result, vote } => {
+            RaftMsg::UpdateReplicationMatched {
+                target,
+                result,
+                vote,
+                membership_log_id,
+            } => {
                 if self.does_vote_match(vote, "UpdateReplicationMatched") {
-                    self.handle_update_matched(target, result).await?;
+                    // If membership changes, ignore the message.
+                    // There is chance delayed message reports a wrong state.
+                    if membership_log_id == self.engine.state.membership_state.effective.log_id {
+                        self.handle_update_matched(target, result).await?;
+                    }
                 }
             }
 
@@ -1536,11 +1534,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     fn update_replication_metrics(&mut self, target: C::NodeId, matched: LogId<C::NodeId>) {
         tracing::debug!(%target, ?matched, "update_leader_metrics");
 
         if let Some(l) = &mut self.leader_data {
+            tracing::debug!(
+                target = display(target),
+                matched = debug(&matched),
+                "update replication_metrics"
+            );
             l.replication_metrics.update(UpdateMatchedLogId { target, matched });
         } else {
             unreachable!("it has to be a leader!!!");
@@ -1716,11 +1719,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     }
                 }
             }
-            Command::UpdateReplicationStreams { remove, add } => {
-                for (node_id, _matched) in remove.iter() {
-                    self.remove_replication(*node_id).await;
-                }
-                for (node_id, _matched) in add.iter() {
+            Command::UpdateReplicationStreams { targets } => {
+                self.remove_all_replication().await;
+
+                // TODO: use _matched to initialize replication
+                for (node_id, _matched) in targets.iter() {
                     let state = match self.spawn_replication_stream(*node_id).await {
                         Ok(state) => state,
                         Err(e) => {

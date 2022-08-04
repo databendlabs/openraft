@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::core::ServerState;
@@ -688,33 +687,21 @@ where
         if let Some(leader) = &mut self.state.internal_server_state.leading_mut() {
             let old_progress = leader.progress.clone();
 
-            let old_repls = old_progress.iter().copied().collect::<BTreeMap<_, _>>();
-
             let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
             leader.progress = old_progress.upgrade_quorum_set(em, &learner_ids);
 
-            // If it is leader, update replication to reflect membership change.
+            // Update replication to reflect membership change.
 
-            let new_repls = leader.progress.iter().copied().collect::<BTreeMap<_, _>>();
-
-            // TODO: test
-            let mut add = vec![];
-            let mut remove = vec![];
-            for (node_id, matched) in new_repls.iter() {
-                if !old_repls.contains_key(node_id) {
-                    add.push((*node_id, *matched));
-                }
-            }
-
-            for (node_id, matched) in old_repls.iter() {
+            let mut targets = vec![];
+            for (node_id, matched) in leader.progress.iter() {
                 // A leader that is removed will be shut down when this membership log is committed.
-                if !new_repls.contains_key(node_id) && node_id != &self.id {
-                    remove.push((*node_id, *matched));
+                if node_id != &self.id {
+                    targets.push((*node_id, *matched));
                 }
             }
 
-            self.push_command(Command::UpdateReplicationStreams { remove, add });
+            self.push_command(Command::UpdateReplicationStreams { targets });
         }
 
         // Leader should not quit at once.

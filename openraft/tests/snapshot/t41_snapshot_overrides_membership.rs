@@ -6,6 +6,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::StorageHelper;
+use openraft::BasicNode;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::Entry;
@@ -98,7 +99,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 }],
                 leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
             };
-            router.connect(1, None).await?.send_append_entries(req).await?;
+            router.connect(1, &BasicNode::default()).await?.send_append_entries(req).await?;
 
             tracing::info!("--- check that learner membership is affected");
             {
