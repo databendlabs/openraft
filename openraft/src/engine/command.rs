@@ -51,11 +51,12 @@ where
     },
 
     /// Membership config changed, need to update replication streams.
+    /// The Runtime has to close all old replications and start new ones.
+    /// Because a replication stream should only report state for one membership config.
+    /// When membership config changes, the membership log id stored in ReplicationCore has to be updated.
     UpdateReplicationStreams {
-        /// Replication to remove.
-        remove: Vec<(NID, Option<LogId<NID>>)>,
-        /// Replication to add.
-        add: Vec<(NID, Option<LogId<NID>>)>,
+        /// Targets to replicate to.
+        targets: Vec<(NID, Option<LogId<NID>>)>,
     },
 
     /// Move the cursor pointing to an entry in the input buffer.

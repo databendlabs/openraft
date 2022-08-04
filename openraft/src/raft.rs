@@ -856,6 +856,9 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
 
         /// Which ServerState sent this message
         vote: Vote<C::NodeId>,
+
+        /// The cluster this replication works for.
+        membership_log_id: Option<LogId<C::NodeId>>,
     },
 
     /// An event indicating that the Raft node needs to revert to follower state.
@@ -870,6 +873,9 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
 
         /// Which ServerState sent this message
         vote: Vote<C::NodeId>,
+        // TODO: need this?
+        // /// The cluster this replication works for.
+        // membership_log_id: Option<LogId<C::NodeId>>,
     },
 
     /// An event from a replication stream requesting snapshot info.
@@ -944,10 +950,14 @@ where
                 ref target,
                 ref result,
                 ref vote,
+                ref membership_log_id,
             } => {
                 format!(
-                    "UpdateMatchIndex: target: {}, result: {:?}, server_state_vote: {}",
-                    target, result, vote
+                    "UpdateMatchIndex: target: {}, result: {:?}, server_state_vote: {}, membership_log_id: {}",
+                    target,
+                    result,
+                    vote,
+                    membership_log_id.summary()
                 )
             }
             RaftMsg::RevertToFollower {

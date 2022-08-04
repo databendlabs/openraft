@@ -15,7 +15,6 @@ mod wait;
 #[cfg(test)] mod wait_test;
 
 pub use raft_metrics::RaftMetrics;
-pub(crate) use replication_metrics::RemoveTarget;
 pub use replication_metrics::ReplicationMetrics;
 pub use replication_metrics::ReplicationTargetMetrics;
 pub(crate) use replication_metrics::UpdateMatchedLogId;
