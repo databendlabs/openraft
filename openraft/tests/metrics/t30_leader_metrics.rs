@@ -170,6 +170,7 @@ async fn leader_metrics() -> Result<()> {
         n1.enable_elect(true);
         n1.wait(timeout()).state(ServerState::Leader, "node-1 becomes leader").await?;
         n1.wait(timeout()).metrics(|x| x.replication.is_some(), "node-1 starts replication").await?;
+
         n0.wait(timeout()).metrics(|x| x.replication.is_none(), "node-0 stopped replication").await?;
         n0.wait(timeout())
             .metrics(|x| x.current_leader == Some(1), "node-0 receives leader-1 message")

@@ -29,6 +29,11 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         index: 0,
     };
 
+    let log_id = |term, index| LogId {
+        leader_id: LeaderId::new(term, 1),
+        index,
+    };
+
     let m1 = || Membership::<u64, BasicNode>::new(vec![btreeset! {1}], None);
     let payload = EntryPayload::<Config>::Membership(m1());
     let mut entries = [EntryRef::new(&payload)];
@@ -42,8 +47,8 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
         eng.initialize(&mut entries)?;
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
-        assert_eq!(None, eng.state.get_log_id(1));
-        assert_eq!(Some(log_id0), eng.state.last_log_id());
+        assert_eq!(Some(log_id(1, 1)), eng.state.get_log_id(1));
+        assert_eq!(Some(log_id(1, 1)), eng.state.last_log_id());
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(
@@ -89,6 +94,31 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                     server_state: ServerState::Leader
                 },
                 Command::UpdateReplicationStreams { targets: vec![] },
+                Command::AppendBlankLog {
+                    log_id: LogId {
+                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        index: 1,
+                    },
+                },
+                Command::ReplicateCommitted {
+                    committed: Some(LogId {
+                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        index: 1,
+                    },),
+                },
+                Command::LeaderCommit {
+                    since: None,
+                    upto: LogId {
+                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        index: 1,
+                    },
+                },
+                Command::ReplicateEntries {
+                    upto: Some(LogId {
+                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        index: 1,
+                    },),
+                }
             ],
             eng.commands
         );

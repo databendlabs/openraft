@@ -297,26 +297,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         tracing::debug!("id={} target_state: {:?}", self.id, self.engine.state.server_state);
 
-        // This is central loop of the system. The Raft core assumes a few different roles based
-        // on cluster state. The Raft core will delegate control to the different state
-        // controllers and simply awaits the delegated loop to return, which will only take place
-        // if some error has been encountered, or if a state change is required.
-        loop {
-            match &self.engine.state.server_state {
-                ServerState::Leader => {
-                    self.leader_loop().await?;
-                }
-                ServerState::Candidate | ServerState::Follower | ServerState::Learner => {
-                    // report the new metrics for last metrics change.
-                    self.report_metrics(Update::Update(None));
-                    self.runtime_loop(self.engine.state.server_state).await?
-                }
-                ServerState::Shutdown => {
-                    tracing::info!("node has shutdown");
-                    return Ok(());
-                }
-            }
-        }
+        // Initialize metrics.
+        self.report_metrics(Update::Update(None));
+
+        self.runtime_loop().await
     }
 
     /// Handle `is_leader` requests.
@@ -705,7 +689,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
     /// Then clear flags about the cached changes, to avoid unnecessary metrics report.
-    #[tracing::instrument(level = "trace", skip_all)]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
         if !self.engine.metrics_flags.changed() {
             return;
@@ -715,7 +699,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             let replication_metrics = self.leader_data.as_ref().map(|x| x.replication_metrics.clone());
             Update::Update(replication_metrics)
         } else {
-            Update::AsIs
+            #[allow(clippy::collapsible_else_if)]
+            if self.leader_data.is_some() {
+                Update::AsIs
+            } else {
+                Update::Update(None)
+            }
         };
 
         self.report_metrics(leader_metrics);
@@ -723,7 +712,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Report a metrics payload on the current state of the Raft node.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn report_metrics(&self, replication: Update<Option<Versioned<ReplicationMetrics<C::NodeId>>>>) {
         let replication = match replication {
             Update::Update(v) => v,
@@ -1001,7 +990,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 let entry = &entries[i as usize];
                 let apply_res = results.next().unwrap();
 
-                Self::send_response(entry, apply_res, tx).await;
+                Self::send_response(entry, apply_res, tx);
             }
         }
 
@@ -1011,7 +1000,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) async fn send_response(entry: &Entry<C>, resp: C::R, tx: Option<ClientWriteTx<C, C::NodeId, C::Node>>) {
+    pub(super) fn send_response(entry: &Entry<C>, resp: C::R, tx: Option<ClientWriteTx<C, C::NodeId, C::Node>>) {
         tracing::debug!(entry = display(entry.summary()), "send_response");
 
         let tx = match tx {
@@ -1154,21 +1143,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
-    #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id), raft_state="leader"))]
-    pub(crate) async fn leader_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
-        debug_assert!(self.engine.state.vote.committed);
-
-        // Commit the initial entry when new leader established.
-        self.write_entry(EntryPayload::Blank, None).await?;
-
-        self.runtime_loop(ServerState::Leader).await
-    }
-
-    /// Run an event handling loop until server state changes
+    /// Run an event handling loop
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id)))]
-    async fn runtime_loop(&mut self, server_state: ServerState) -> Result<(), Fatal<C::NodeId>> {
+    async fn runtime_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
         loop {
-            if self.engine.state.server_state != server_state {
+            // TODO: Since the rx_shutdown is watched, this condition check can be removed.
+            if self.engine.state.server_state == ServerState::Shutdown {
                 tracing::info!(
                     "id={} server_state becomes: {:?}",
                     self.id,
@@ -1626,6 +1606,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 // Build a slice of references.
                 let entry_refs = entries.iter().collect::<Vec<_>>();
 
+                self.storage.append_to_log(&entry_refs).await?
+            }
+            Command::AppendBlankLog { log_id } => {
+                let ent = Entry {
+                    log_id: *log_id,
+                    payload: EntryPayload::Blank,
+                };
+                let entry_refs = vec![&ent];
                 self.storage.append_to_log(&entry_refs).await?
             }
             Command::MoveInputCursorBy { n } => *cur += n,

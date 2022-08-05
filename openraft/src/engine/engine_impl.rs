@@ -840,6 +840,20 @@ where
 
         self.set_server_state(ServerState::Leader);
         self.update_replications();
+
+        // Only when a log with current `vote` is replicated to a quorum, the logs are considered committed.
+        self.append_blank_log();
+    }
+
+    fn append_blank_log(&mut self) {
+        let log_id = LogId {
+            leader_id: self.state.vote.leader_id(),
+            index: self.state.last_log_id().next_index(),
+        };
+        self.state.log_ids.append(log_id);
+        self.push_command(Command::AppendBlankLog { log_id });
+        self.update_progress(self.id, Some(log_id));
+        self.push_command(Command::ReplicateEntries { upto: Some(log_id) });
     }
 
     /// update replication streams to reflect replication progress change.

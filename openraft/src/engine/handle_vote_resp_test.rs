@@ -245,7 +245,19 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 },
                 Command::UpdateReplicationStreams {
                     targets: vec![(2, None)]
-                }
+                },
+                Command::AppendBlankLog {
+                    log_id: LogId {
+                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        index: 0,
+                    },
+                },
+                Command::ReplicateEntries {
+                    upto: Some(LogId {
+                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        index: 0,
+                    },),
+                },
             ],
             eng.commands
         );
