@@ -150,7 +150,9 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendInputEntries { range: 0..3 },
-            Command::ReplicateInputEntries { range: 0..3 },
+            Command::ReplicateEntries {
+                upto: Some(log_id(3, 6))
+            },
             Command::MoveInputCursorBy { n: 3 },
         ],
         eng.commands
@@ -209,7 +211,9 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
                 since: None,
                 upto: LogId::new(LeaderId::new(3, 1), 6)
             },
-            Command::ReplicateInputEntries { range: 0..3 },
+            Command::ReplicateEntries {
+                upto: Some(log_id(3, 6))
+            },
             Command::MoveInputCursorBy { n: 3 },
         ],
         eng.commands
@@ -287,7 +291,9 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
             Command::UpdateReplicationStreams {
                 targets: vec![(3, None), (4, None)]
             },
-            Command::ReplicateInputEntries { range: 0..3 },
+            Command::ReplicateEntries {
+                upto: Some(log_id(3, 6))
+            },
             Command::MoveInputCursorBy { n: 3 },
         ],
         eng.commands
@@ -374,7 +380,9 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                 since: Some(LogId::new(LeaderId::new(3, 1), 4)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
             },
-            Command::ReplicateInputEntries { range: 0..3 },
+            Command::ReplicateEntries {
+                upto: Some(log_id(3, 6))
+            },
             Command::MoveInputCursorBy { n: 3 },
         ],
         eng.commands
@@ -455,7 +463,9 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
                 since: None,
                 upto: LogId::new(LeaderId::new(3, 1), 6)
             },
-            Command::ReplicateInputEntries { range: 0..3 },
+            Command::ReplicateEntries {
+                upto: Some(log_id(3, 6))
+            },
             Command::MoveInputCursorBy { n: 3 },
         ],
         eng.commands
