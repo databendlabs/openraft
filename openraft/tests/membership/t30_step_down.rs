@@ -61,6 +61,7 @@ async fn step_down() -> Result<()> {
     {
         // leader commit a new log.
         log_index += 1;
+        tracing::debug!("--- expect log_index:{}", log_index);
 
         for id in [2, 3] {
             router

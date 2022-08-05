@@ -156,11 +156,7 @@ where
         // Fast-path: if there is only one node in the cluster.
 
         if quorum_granted {
-            self.state.vote.commit();
-            self.push_command(Command::SaveVote { vote: self.state.vote });
-
-            // TODO: For compatibility. remove it. The runtime does not need to know about server state.
-            self.set_server_state(ServerState::Leader);
+            self.establish_leader();
             return;
         }
 
@@ -239,15 +235,7 @@ where
             let quorum_granted = leader.is_vote_granted();
             if quorum_granted {
                 tracing::debug!("quorum granted vote");
-
-                self.state.vote.commit();
-                // Saving the vote that is granted by a quorum, AKA committed vote, is not necessary by original raft.
-                // Openraft insists doing this because:
-                // - Voting is not in the hot path, thus no performance penalty.
-                // - Leadership won't be lost if a leader restarted quick enough.
-                self.push_command(Command::SaveVote { vote: self.state.vote });
-
-                self.set_server_state(ServerState::Leader);
+                self.establish_leader();
             }
             return;
         }
@@ -690,18 +678,11 @@ where
             let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
             leader.progress = old_progress.upgrade_quorum_set(em, &learner_ids);
+        }
 
-            // Update replication to reflect membership change.
-
-            let mut targets = vec![];
-            for (node_id, matched) in leader.progress.iter() {
-                // A leader that is removed will be shut down when this membership log is committed.
-                if node_id != &self.id {
-                    targets.push((*node_id, *matched));
-                }
-            }
-
-            self.push_command(Command::UpdateReplicationStreams { targets });
+        // A leader that is removed will be shut down when this membership log is committed.
+        if self.state.internal_server_state.is_leading() {
+            self.update_replications()
         }
 
         // Leader should not quit at once.
@@ -807,7 +788,6 @@ where
         debug_assert_eq!(self.state.vote.node_id, self.id);
 
         self.state.new_leader();
-        // TODO: install heartbeat timer
     }
 
     /// Leave leading state and enter following state(vote.node_id != self.id).
@@ -844,6 +824,32 @@ where
             self.set_server_state(ServerState::Follower);
         } else {
             self.set_server_state(ServerState::Learner);
+        }
+    }
+
+    /// Vote is granted by a quorum, leader established.
+    fn establish_leader(&mut self) {
+        self.state.vote.commit();
+        // Saving the vote that is granted by a quorum, AKA committed vote, is not necessary by original raft.
+        // Openraft insists doing this because:
+        // - Voting is not in the hot path, thus no performance penalty.
+        // - Leadership won't be lost if a leader restarted quick enough.
+        self.push_command(Command::SaveVote { vote: self.state.vote });
+
+        self.set_server_state(ServerState::Leader);
+        self.update_replications();
+    }
+
+    /// update replication streams to reflect replication progress change.
+    fn update_replications(&mut self) {
+        if let Some(leader) = self.state.internal_server_state.leading() {
+            let mut targets = vec![];
+            for (node_id, matched) in leader.progress.iter() {
+                if node_id != &self.id {
+                    targets.push((*node_id, *matched));
+                }
+            }
+            self.push_command(Command::UpdateReplicationStreams { targets });
         }
     }
 
@@ -945,6 +951,11 @@ where
     fn set_server_state(&mut self, server_state: ServerState) {
         tracing::debug!(id = display(self.id), ?server_state, "set_server_state");
 
+        // TODO: remove this: the caller should know when to switch server state.
+        if self.state.server_state == server_state {
+            return;
+        }
+
         // TODO: the caller should be very sure about what server-state to set.
         //       The following condition check is copied from old code,
         //       and should be removed.
@@ -1040,7 +1051,7 @@ where
             return Err(RejectVoteRequest::ByVote(self.state.vote));
         }
 
-        tracing::debug!(%vote, "grant vote" );
+        tracing::debug!(%vote, "vote is changing to" );
 
         // Grant the vote
 
