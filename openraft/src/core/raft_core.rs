@@ -1161,16 +1161,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Commit the initial entry when new leader established.
         self.write_entry(EntryPayload::Blank, None).await?;
 
-        // report the leader metrics every time there came to a new leader
-        // if not `report_metrics` before the leader loop, the leader metrics may not be updated cause no coming event.
-
-        let replication_metrics = if let Some(l) = &self.leader_data {
-            l.replication_metrics.clone()
-        } else {
-            unreachable!("it has to be a leader!!!");
-        };
-        self.report_metrics(Update::Update(Some(replication_metrics)));
-
         self.runtime_loop(ServerState::Leader).await
     }
 
