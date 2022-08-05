@@ -1663,20 +1663,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::FollowerCommit { upto, .. } => {
                 self.apply_to_state_machine(upto.index).await?;
             }
-            Command::ReplicateInputEntries { range } => {
-                if let Some(last) = range.clone().last() {
-                    let last_log_id = *input_ref_entries[last].get_log_id();
-
-                    if let Some(l) = &self.leader_data {
-                        for node in l.nodes.values() {
-                            let _ = node.repl_tx.send(UpdateReplication {
-                                last_log_id: Some(last_log_id),
-                                committed: self.engine.state.committed,
-                            });
-                        }
-                    } else {
-                        unreachable!("it has to be a leader!!!");
+            Command::ReplicateEntries { upto } => {
+                if let Some(l) = &self.leader_data {
+                    for node in l.nodes.values() {
+                        let _ = node.repl_tx.send(UpdateReplication {
+                            last_log_id: *upto,
+                            committed: self.engine.state.committed,
+                        });
                     }
+                } else {
+                    unreachable!("it has to be a leader!!!");
                 }
             }
             Command::UpdateReplicationStreams { targets } => {

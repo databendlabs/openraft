@@ -41,8 +41,8 @@ where
         upto: LogId<NID>,
     },
 
-    /// Replicate a `range` of entries in the input buffer.
-    ReplicateInputEntries { range: Range<usize> },
+    /// Replicate entries upto log id `upto`, inclusive.
+    ReplicateEntries { upto: Option<LogId<NID>> },
 
     /// Membership config changed, need to update replication streams.
     UpdateMembership {
@@ -104,7 +104,7 @@ where
             Command::ReplicateCommitted { .. } => {}
             Command::LeaderCommit { .. } => flags.set_data_changed(),
             Command::FollowerCommit { .. } => flags.set_data_changed(),
-            Command::ReplicateInputEntries { .. } => {}
+            Command::ReplicateEntries { .. } => {}
             Command::UpdateMembership { .. } => flags.set_cluster_changed(),
             Command::UpdateReplicationStreams { .. } => flags.set_replication_changed(),
             Command::MoveInputCursorBy { .. } => {}

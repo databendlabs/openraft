@@ -335,7 +335,9 @@ where
         }
 
         // Still need to replicate to learners, even when it is fast-committed.
-        self.push_command(Command::ReplicateInputEntries { range: 0..l });
+        self.push_command(Command::ReplicateEntries {
+            upto: Some(*entries.last().unwrap().get_log_id()),
+        });
         self.push_command(Command::MoveInputCursorBy { n: l });
     }
 
