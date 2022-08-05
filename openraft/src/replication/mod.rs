@@ -182,7 +182,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     let must = *must_include;
                     self.replicate_snapshot(must).await
                 }
-                TargetReplState::Shutdown => return,
             };
 
             let err = match res {
@@ -197,7 +196,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
             match err {
                 ReplicationError::Closed => {
-                    self.set_target_repl_state(TargetReplState::Shutdown);
+                    return;
                 }
                 ReplicationError::HigherVote(h) => {
                     let _ = self.raft_core_tx.send(RaftMsg::RevertToFollower {
@@ -216,7 +215,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     self.set_target_repl_state(TargetReplState::Snapshotting { must_include: None });
                 }
                 ReplicationError::StorageError(_err) => {
-                    self.set_target_repl_state(TargetReplState::Shutdown);
+                    // TODO: report this error
                     let _ = self.raft_core_tx.send(RaftMsg::ReplicationFatal);
                     return;
                 }
@@ -344,6 +343,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 Ok(res) => res,
                 Err(err) => {
                     tracing::warn!(error=%err, "error sending AppendEntries RPC to target");
+
                     let repl_err = match err {
                         RPCError::NodeNotFound(e) => ReplicationError::NodeNotFound(e),
                         RPCError::Timeout(e) => {
@@ -545,9 +545,6 @@ enum TargetReplState<NID: NodeId> {
 
     /// The replication stream is streaming a snapshot over to the target node.
     Snapshotting { must_include: Option<LogId<NID>> },
-
-    /// The replication stream is shutting down.
-    Shutdown,
 }
 
 /// An event from the RaftCore in leader state to replication stream.

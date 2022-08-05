@@ -1585,7 +1585,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
         Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
         &'e Ent: Into<Entry<C>>,
     {
-        // Run non-role-specific command.
         match cmd {
             Command::UpdateServerState { server_state } => {
                 if server_state == &ServerState::Leader {

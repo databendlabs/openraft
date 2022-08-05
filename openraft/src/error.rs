@@ -269,7 +269,7 @@ where
 /// Error variants related to the Replication.
 #[derive(Debug, thiserror::Error)]
 #[allow(clippy::large_enum_variant)]
-pub enum ReplicationError<NID, N>
+pub(crate) enum ReplicationError<NID, N>
 where
     NID: NodeId,
     N: Node,
