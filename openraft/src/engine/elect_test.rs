@@ -70,6 +70,31 @@ fn test_elect() -> anyhow::Result<()> {
                     server_state: ServerState::Leader
                 },
                 Command::UpdateReplicationStreams { targets: vec![] },
+                Command::AppendBlankLog {
+                    log_id: LogId {
+                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        index: 0,
+                    },
+                },
+                Command::ReplicateCommitted {
+                    committed: Some(LogId {
+                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        index: 0,
+                    },),
+                },
+                Command::LeaderCommit {
+                    since: None,
+                    upto: LogId {
+                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        index: 0,
+                    },
+                },
+                Command::ReplicateEntries {
+                    upto: Some(LogId {
+                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        index: 0,
+                    },),
+                },
             ],
             eng.commands
         );
@@ -113,6 +138,31 @@ fn test_elect() -> anyhow::Result<()> {
                     server_state: ServerState::Leader
                 },
                 Command::UpdateReplicationStreams { targets: vec![] },
+                Command::AppendBlankLog {
+                    log_id: LogId {
+                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        index: 0,
+                    },
+                },
+                Command::ReplicateCommitted {
+                    committed: Some(LogId {
+                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        index: 0,
+                    },),
+                },
+                Command::LeaderCommit {
+                    since: None,
+                    upto: LogId {
+                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        index: 0,
+                    },
+                },
+                Command::ReplicateEntries {
+                    upto: Some(LogId {
+                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        index: 0,
+                    },),
+                },
             ],
             eng.commands
         );

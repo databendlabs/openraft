@@ -25,6 +25,11 @@ where
     /// Append a `range` of entries in the input buffer.
     AppendInputEntries { range: Range<usize> },
 
+    /// Append a blank log.
+    ///
+    /// One of the usage is when a leader is established, a blank log is written to commit the state.
+    AppendBlankLog { log_id: LogId<NID> },
+
     /// Replicate the committed log id to other nodes
     ReplicateCommitted { committed: Option<LogId<NID>> },
 
@@ -101,6 +106,7 @@ where
         match &self {
             Command::UpdateServerState { .. } => flags.set_cluster_changed(),
             Command::AppendInputEntries { .. } => flags.set_data_changed(),
+            Command::AppendBlankLog { .. } => flags.set_data_changed(),
             Command::ReplicateCommitted { .. } => {}
             Command::LeaderCommit { .. } => flags.set_data_changed(),
             Command::FollowerCommit { .. } => flags.set_data_changed(),
