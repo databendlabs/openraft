@@ -247,10 +247,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.engine.state.last_applied = state.last_applied;
 
-        // NOTE: The commit index must be determined by a leader after
-        // successfully committing a new log to the cluster.
-        self.engine.state.committed = None;
-
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
             self.engine.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
@@ -306,11 +302,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // controllers and simply awaits the delegated loop to return, which will only take place
         // if some error has been encountered, or if a state change is required.
         loop {
-            self.leader_data = None;
-
             match &self.engine.state.server_state {
                 ServerState::Leader => {
-                    self.leader_data = Some(LeaderData::new());
                     self.leader_loop().await?;
                 }
                 ServerState::Candidate | ServerState::Follower | ServerState::Learner => {
@@ -1165,32 +1158,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) async fn leader_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
         debug_assert!(self.engine.state.vote.committed);
 
-        // Spawn replication streams for followers and learners.
-
-        let targets = {
-            let mem = &self.engine.state.membership_state.effective;
-
-            let node_ids = mem.nodes().map(|(&nid, _)| nid);
-            node_ids.filter(|elem| elem != &self.id).collect::<Vec<_>>()
-        };
-
-        // TODO(xp): make this Engine::Command driven.
-        for target in targets {
-            let state = match self.spawn_replication_stream(target).await {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::error!({target = % target}, "cannot connect {:?}", e);
-                    continue;
-                }
-            };
-
-            if let Some(l) = &mut self.leader_data {
-                l.nodes.insert(target, state);
-            } else {
-                unreachable!("it has to be a leader!!!");
-            }
-        }
-
         // Commit the initial entry when new leader established.
         self.write_entry(EntryPayload::Blank, None).await?;
 
@@ -1650,10 +1617,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
     {
         // Run non-role-specific command.
         match cmd {
-            Command::UpdateServerState { .. } => {
-                // TODO: This is not used. server state is already set by the engine.
-                // This only used for notifying that metrics changed and probably will be removed when Engine is
-                // finished.
+            Command::UpdateServerState { server_state } => {
+                if server_state == &ServerState::Leader {
+                    debug_assert!(self.leader_data.is_none(), "can not become leader twice");
+                    self.leader_data = Some(LeaderData::new());
+                } else {
+                    self.leader_data = None;
+                }
             }
             Command::AppendInputEntries { range } => {
                 let entry_refs = &input_ref_entries[range.clone()];

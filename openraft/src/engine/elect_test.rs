@@ -54,7 +54,7 @@ fn test_elect() -> anyhow::Result<()> {
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: false,
+                leader: true,
                 other_metrics: true
             },
             eng.metrics_flags
@@ -68,7 +68,8 @@ fn test_elect() -> anyhow::Result<()> {
                 },
                 Command::UpdateServerState {
                     server_state: ServerState::Leader
-                }
+                },
+                Command::UpdateReplicationStreams { targets: vec![] },
             ],
             eng.commands
         );
@@ -96,7 +97,7 @@ fn test_elect() -> anyhow::Result<()> {
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: false,
+                leader: true,
                 other_metrics: true
             },
             eng.metrics_flags
@@ -110,7 +111,8 @@ fn test_elect() -> anyhow::Result<()> {
                 },
                 Command::UpdateServerState {
                     server_state: ServerState::Leader
-                }
+                },
+                Command::UpdateReplicationStreams { targets: vec![] },
             ],
             eng.commands
         );
