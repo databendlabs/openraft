@@ -55,8 +55,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(ServerState::Follower, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: false,
-                other_metrics: false
+                replication: false,
+                local_data: false,
+                cluster: false,
             },
             eng.metrics_flags
         );
@@ -86,8 +87,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: false,
-                other_metrics: false
+                replication: false,
+                local_data: false,
+                cluster: false,
             },
             eng.metrics_flags
         );
@@ -121,8 +123,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: false,
-                other_metrics: true
+                replication: false,
+                local_data: true,
+                cluster: false,
             },
             eng.metrics_flags
         );
@@ -158,8 +161,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: false,
-                other_metrics: false
+                replication: false,
+                local_data: false,
+                cluster: false,
             },
             eng.metrics_flags
         );
@@ -195,8 +199,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: false,
-                other_metrics: false
+                replication: false,
+                local_data: false,
+                cluster: false,
             },
             eng.metrics_flags
         );
@@ -229,8 +234,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: true,
-                other_metrics: true
+                replication: true,
+                local_data: true,
+                cluster: true,
             },
             eng.metrics_flags
         );

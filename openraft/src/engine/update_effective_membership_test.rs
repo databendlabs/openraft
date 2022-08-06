@@ -74,8 +74,9 @@ fn test_update_effective_membership_at_index_0_is_allowed() -> anyhow::Result<()
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: false,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -120,8 +121,9 @@ fn test_update_effective_membership_for_leader() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: true,
-            other_metrics: true
+            replication: true,
+            local_data: false,
+            cluster: true,
         },
         eng.metrics_flags
     );

@@ -161,34 +161,40 @@ pub enum Update<T> {
 /// Describes the need to update some aspect of the metrics.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct MetricsChangeFlags {
-    pub leader: bool,
-    // TODO: split other_metrics into data metrics and cluster metrics
-    pub other_metrics: bool,
+    /// Replication state changes. E.g., adding/removing replication, progress update.
+    pub(crate) replication: bool,
+
+    /// Local data changes. Such as vote, log, snapshot.
+    pub(crate) local_data: bool,
+
+    /// State related to cluster: server state, leader, membership etc.
+    pub(crate) cluster: bool,
 }
 
 impl MetricsChangeFlags {
     pub(crate) fn changed(&self) -> bool {
-        self.leader || self.other_metrics
+        self.replication || self.local_data || self.cluster
     }
 
     pub(crate) fn reset(&mut self) {
-        self.leader = false;
-        self.other_metrics = false;
+        self.replication = false;
+        self.local_data = false;
+        self.cluster = false;
     }
 
     /// Includes state of replication to other nodes.
     pub(crate) fn set_replication_changed(&mut self) {
-        self.leader = true
+        self.replication = true
     }
 
     /// Includes raft log, snapshot, state machine etc.
     pub(crate) fn set_data_changed(&mut self) {
-        self.other_metrics = true
+        self.local_data = true
     }
 
     /// Includes node role, membership config, leader node etc.
     pub(crate) fn set_cluster_changed(&mut self) {
-        self.other_metrics = true
+        self.cluster = true
     }
 }
 

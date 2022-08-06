@@ -54,8 +54,9 @@ fn test_elect() -> anyhow::Result<()> {
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: true,
-                other_metrics: true
+                replication: true,
+                local_data: true,
+                cluster: true,
             },
             eng.metrics_flags
         );
@@ -122,8 +123,9 @@ fn test_elect() -> anyhow::Result<()> {
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: true,
-                other_metrics: true
+                replication: true,
+                local_data: true,
+                cluster: true,
             },
             eng.metrics_flags
         );
@@ -186,8 +188,9 @@ fn test_elect() -> anyhow::Result<()> {
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: false,
-                other_metrics: true
+                replication: false,
+                local_data: true,
+                cluster: true,
             },
             eng.metrics_flags
         );

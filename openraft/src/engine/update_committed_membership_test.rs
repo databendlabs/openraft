@@ -64,8 +64,9 @@ fn test_update_committed_membership_at_index_0() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -92,8 +93,9 @@ fn test_update_committed_membership_at_index_2() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -121,8 +123,9 @@ fn test_update_committed_membership_at_index_3() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: false,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -160,8 +163,9 @@ fn test_update_committed_membership_at_index_4() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: false,
+            cluster: true,
         },
         eng.metrics_flags
     );

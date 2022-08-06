@@ -89,8 +89,9 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -132,8 +133,9 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -196,8 +198,9 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -277,8 +280,9 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );

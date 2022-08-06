@@ -661,8 +661,6 @@ where
     pub(crate) fn update_effective_membership(&mut self, log_id: &LogId<NID>, m: &Membership<NID, N>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
 
-        self.metrics_flags.set_cluster_changed();
-
         let server_state = self.calc_server_state();
 
         let em = Arc::new(EffectiveMembership::new(Some(*log_id), m.clone()));
