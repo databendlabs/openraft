@@ -692,7 +692,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return;
         }
 
-        let leader_metrics = if self.engine.metrics_flags.leader {
+        let leader_metrics = if self.engine.metrics_flags.replication {
             let replication_metrics = self.leader_data.as_ref().map(|x| x.replication_metrics.clone());
             Update::Update(replication_metrics)
         } else {

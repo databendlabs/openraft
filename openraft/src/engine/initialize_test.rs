@@ -55,8 +55,9 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
             MetricsChangeFlags {
                 // Command::UpdateReplicationStreams will set this flag.
                 // Although there is no replication to create.
-                leader: true,
-                other_metrics: true
+                replication: true,
+                local_data: true,
+                cluster: true,
             },
             eng.metrics_flags
         );
@@ -155,8 +156,9 @@ fn test_initialize() -> anyhow::Result<()> {
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
-                leader: false,
-                other_metrics: true
+                replication: false,
+                local_data: true,
+                cluster: true,
             },
             eng.metrics_flags
         );

@@ -49,8 +49,9 @@ fn test_handle_vote_change_reject_smaller_vote() -> anyhow::Result<()> {
     assert_eq!(ServerState::Candidate, eng.state.server_state);
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -75,8 +76,9 @@ fn test_handle_vote_change_committed_vote() -> anyhow::Result<()> {
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -115,8 +117,9 @@ fn test_handle_vote_change_granted_equal_vote() -> anyhow::Result<()> {
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: false,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -151,8 +154,9 @@ fn test_handle_vote_change_granted_greater_vote() -> anyhow::Result<()> {
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );

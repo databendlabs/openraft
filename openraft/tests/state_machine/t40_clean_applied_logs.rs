@@ -5,7 +5,6 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::RaftLogReader;
-use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -16,7 +15,6 @@ use crate::fixtures::RaftRouter;
 /// - assert logs are deleted on replication target after installing a snapshot.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn clean_applied_logs() -> Result<()> {
-    // Setup test dependencies.
     let config = Arc::new(
         Config {
             max_applied_log_to_keep: 2,
@@ -26,6 +24,7 @@ async fn clean_applied_logs() -> Result<()> {
         }
         .validate()?,
     );
+
     let mut router = RaftRouter::new(config.clone());
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
@@ -33,14 +32,20 @@ async fn clean_applied_logs() -> Result<()> {
     let count = (10 - log_index) as usize;
     for idx in 0..count {
         router.client_request(0, "0", idx as u64).await?;
+        log_index += 1;
+
         // raft commit at once with a single leader cluster.
         // If we send too fast, logs are removed before forwarding to learner.
         // Then it triggers snapshot replication, which is not expected.
-        sleep(Duration::from_millis(50)).await;
+        router
+            .wait_for_log(
+                &btreeset! {0,1},
+                Some(log_index),
+                timeout(),
+                "client write repliated to all nodes",
+            )
+            .await?;
     }
-    log_index = 10;
-
-    router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "write upto 10 logs").await?;
 
     tracing::info!("--- logs before max_applied_log_to_keep should be cleaned");
     {

@@ -99,8 +99,9 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -141,8 +142,9 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -195,8 +197,9 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -266,8 +269,9 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: true,
-            other_metrics: true
+            replication: true,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -346,8 +350,9 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: true,
-            other_metrics: true
+            replication: true,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -437,8 +442,9 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: true,
-            other_metrics: true
+            replication: true,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );

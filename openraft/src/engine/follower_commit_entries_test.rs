@@ -66,8 +66,9 @@ fn test_follower_commit_entries_empty() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -94,8 +95,9 @@ fn test_follower_commit_entries_no_update() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -122,8 +124,9 @@ fn test_follower_commit_entries_lt_last_entry() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -156,8 +159,9 @@ fn test_follower_commit_entries_gt_last_entry() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: false,
         },
         eng.metrics_flags
     );

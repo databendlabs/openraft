@@ -59,8 +59,9 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
     assert_eq!(&[log_id(2, 2)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true,
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -100,8 +101,9 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
     assert_eq!(&[log_id(2, 2), log_id(2, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true,
+            replication: false,
+            local_data: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -129,8 +131,9 @@ fn test_truncate_logs_since_5() -> anyhow::Result<()> {
     assert_eq!(&[log_id(2, 2), log_id(4, 4)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true,
+            replication: false,
+            local_data: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -153,8 +156,9 @@ fn test_truncate_logs_since_6() -> anyhow::Result<()> {
     );
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true,
+            replication: false,
+            local_data: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -177,8 +181,9 @@ fn test_truncate_logs_since_7() -> anyhow::Result<()> {
     );
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false,
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -201,8 +206,9 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
     );
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false,
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -226,8 +232,9 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
     assert_eq!(&[log_id(2, 2), log_id(2, 3)], eng.state.log_ids.key_log_ids());
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true,
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );

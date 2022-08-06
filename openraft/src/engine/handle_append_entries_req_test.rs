@@ -92,8 +92,9 @@ fn test_handle_append_entries_req_vote_is_rejected() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: false
+            replication: false,
+            local_data: false,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -135,8 +136,9 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -194,8 +196,9 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -261,8 +264,9 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );
@@ -324,8 +328,9 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
 
     assert_eq!(
         MetricsChangeFlags {
-            leader: false,
-            other_metrics: true
+            replication: false,
+            local_data: true,
+            cluster: true,
         },
         eng.metrics_flags
     );
