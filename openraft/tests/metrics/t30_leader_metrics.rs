@@ -167,7 +167,7 @@ async fn leader_metrics() -> Result<()> {
 
     tracing::info!("--- let node-1 to elect to take leadership from node-0");
     {
-        n1.enable_elect(true);
+        n1.trigger_elect().await?;
         n1.wait(timeout()).state(ServerState::Leader, "node-1 becomes leader").await?;
         n1.wait(timeout()).metrics(|x| x.replication.is_some(), "node-1 starts replication").await?;
 

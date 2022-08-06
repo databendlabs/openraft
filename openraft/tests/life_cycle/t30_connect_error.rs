@@ -56,7 +56,7 @@ async fn network_connection_error() -> anyhow::Result<()> {
 
     tracing::info!("--- since there are no heartbeat is sent, let node-1 to elect");
     {
-        n1.enable_elect(true);
+        n1.trigger_elect().await?;
         n1.wait(timeout()).state(ServerState::Leader, "node-1 become leader").await?;
 
         tracing::info!("--- cluster should work with only a node-2 un-connectable");
@@ -66,8 +66,7 @@ async fn network_connection_error() -> anyhow::Result<()> {
     tracing::info!("--- set node-1 un-connectable too. let node-2 to elect. It should fail");
     {
         router.set_connectable(1, false);
-        n1.enable_elect(false);
-        n2.enable_elect(true);
+        n2.trigger_elect().await?;
 
         let res = n2.wait(timeout()).state(ServerState::Leader, "node-2 can not be leader").await;
         assert!(res.is_err());
