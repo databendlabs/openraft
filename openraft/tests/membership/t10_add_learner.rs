@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::BasicNode;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
@@ -111,7 +110,7 @@ async fn add_learner_non_blocking() -> Result<()> {
 
         router.new_raft_node(1);
         let raft = router.get_raft_handle(&0)?;
-        let res = raft.add_learner(1, BasicNode::default(), false).await?;
+        let res = raft.add_learner(1, (), false).await?;
 
         assert_eq!(None, res.matched);
     }

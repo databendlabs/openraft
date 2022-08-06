@@ -6,7 +6,6 @@ use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::Progress;
-use crate::BasicNode;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;
@@ -16,7 +15,7 @@ use crate::MetricsChangeFlags;
 use crate::Vote;
 
 crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=BasicNode
+    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=()
 );
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
@@ -26,28 +25,28 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
     }
 }
 
-fn m01() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {0,1}], None)
+fn m01() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
 }
 
-fn m23() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {2,3}], None)
+fn m23() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new(vec![btreeset! {2,3}], None)
 }
 
-fn m23_45() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {2,3}], Some(btreeset! {4,5}))
+fn m23_45() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new(vec![btreeset! {2,3}], Some(btreeset! {4,5}))
 }
 
-fn m34() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {3,4}], None)
+fn m34() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new(vec![btreeset! {3,4}], None)
 }
 
-fn m4_356() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {4}], Some(btreeset! {3,5,6}))
+fn m4_356() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new(vec![btreeset! {4}], Some(btreeset! {3,5,6}))
 }
 
-fn eng() -> Engine<u64, BasicNode> {
-    let mut eng = Engine::<u64, BasicNode> {
+fn eng() -> Engine<u64, ()> {
+    let mut eng = Engine::<u64, ()> {
         id: 2, // make it a member
         ..Default::default()
     };

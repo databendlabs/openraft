@@ -8,7 +8,6 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft::VoteRequest;
-use crate::BasicNode;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;
@@ -23,16 +22,16 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
     }
 }
 
-fn m1() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {1}], None)
+fn m1() -> Membership<u64, ()> {
+    Membership::new(vec![btreeset! {1}], None)
 }
 
-fn m12() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {1,2}], None)
+fn m12() -> Membership<u64, ()> {
+    Membership::new(vec![btreeset! {1,2}], None)
 }
 
-fn eng() -> Engine<u64, BasicNode> {
-    Engine::<u64, BasicNode>::default()
+fn eng() -> Engine<u64, ()> {
+    Engine::default()
 }
 
 #[test]

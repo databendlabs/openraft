@@ -3,7 +3,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use memstore::ClientRequest;
 use openraft::raft::AppendEntriesRequest;
-use openraft::BasicNode;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -58,7 +57,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.connect(0, &BasicNode::default()).await?.send_append_entries(rpc).await?;
+    let resp = router.connect(0, &()).await?.send_append_entries(rpc).await?;
     assert!(!resp.is_success());
     assert!(resp.is_conflict());
 
@@ -78,7 +77,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.connect(0, &BasicNode::default()).await?.send_append_entries(rpc).await?;
+    let resp = router.connect(0, &()).await?.send_append_entries(rpc).await?;
     assert!(resp.is_success());
     assert!(!resp.is_conflict());
 
@@ -91,7 +90,7 @@ async fn conflict_with_empty_entries() -> Result<()> {
         leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
     };
 
-    let resp = router.connect(0, &BasicNode::default()).await?.send_append_entries(rpc).await?;
+    let resp = router.connect(0, &()).await?.send_append_entries(rpc).await?;
     assert!(!resp.is_success());
     assert!(resp.is_conflict());
 

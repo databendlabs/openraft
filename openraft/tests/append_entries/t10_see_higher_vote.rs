@@ -5,7 +5,6 @@ use anyhow::Result;
 use maplit::btreeset;
 use memstore::ClientRequest;
 use openraft::raft::VoteRequest;
-use openraft::BasicNode;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
@@ -36,7 +35,7 @@ async fn append_sees_higher_vote() -> Result<()> {
     tracing::info!("--- upgrade vote on node-1");
     {
         router
-            .connect(1, &BasicNode::default())
+            .connect(1, &())
             .await?
             .send_vote(VoteRequest {
                 vote: Vote::new(10, 1),
