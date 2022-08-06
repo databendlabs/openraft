@@ -752,16 +752,10 @@ where
 
     // --- Draft API ---
 
-    // // --- app API ---
-    //
-    // /// Write a new log entry.
-    // pub(crate) fn write(&mut self) -> Result<Vec<AlgoCmd<NID>>, ForwardToLeader<NID>> {}
-    //
     // // --- raft protocol API ---
     //
     // pub(crate) fn handle_install_snapshot() {}
     //
-    // pub(crate) fn handle_append_entries_resp() {}
     // pub(crate) fn handle_install_snapshot_resp() {}
 }
 
@@ -788,6 +782,10 @@ where
     /// Leader state has two phase: election phase and replication phase, similar to paxos phase-1 and phase-2
     pub(crate) fn enter_leading(&mut self) {
         debug_assert_eq!(self.state.vote.node_id, self.id);
+        // debug_assert!(
+        //     self.state.internal_server_state.is_following(),
+        //     "can not enter leading twice"
+        // );
 
         self.state.new_leader();
     }
@@ -802,6 +800,11 @@ where
         //       It should just sleep in leading state(candidate state for an application).
         //       This way it holds that 'vote.node_id != self.id <=> following state`.
         // debug_assert_ne!(self.state.vote.node_id, self.id);
+
+        // debug_assert!(
+        //     self.state.internal_server_state.is_leading(),
+        //     "can not enter following twice"
+        // );
 
         let vote = &self.state.vote;
 
@@ -1108,7 +1111,6 @@ where
 
     /// The node is candidate or leader
     fn is_becoming_leader(&self) -> bool {
-        // self.state.vote.node_id == self.id
         self.state.internal_server_state.is_leading()
     }
 

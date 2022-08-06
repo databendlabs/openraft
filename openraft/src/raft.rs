@@ -591,7 +591,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
     #[tracing::instrument(level = "debug", skip(self, mes, rx))]
     pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<C, N, S>, rx: RaftRespRx<T, E>) -> Result<T, E>
-    where E: From<Fatal<C::NodeId>> {
+    where E: From<Fatal<C::NodeId>> + Debug {
         let sum = if tracing::enabled!(Level::DEBUG) {
             None
         } else {
@@ -606,11 +606,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         }
 
         let recv_res = rx.await;
+        tracing::debug!("call_core receives result is error: {:?}", recv_res.is_err());
 
         match recv_res {
             Ok(x) => x,
             Err(_) => {
                 let fatal = self.get_core_stopped_error("receiving rx from RaftCore", sum).await;
+                tracing::error!(error = debug(&fatal), "core_call fatal error");
                 Err(fatal.into())
             }
         }
@@ -645,6 +647,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     }
 
     /// Wait for RaftCore task to finish and record the returned value from the task.
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn join_core_task(&self) {
         let mut state = self.inner.core_state.lock().await;
         match &mut *state {
@@ -861,15 +864,14 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         membership_log_id: Option<LogId<C::NodeId>>,
     },
 
-    /// An event indicating that the Raft node needs to revert to follower state.
+    /// ReplicationCore has seen a higher `vote`.
     /// Sent by a replication task `ReplicationCore`.
-    // TODO: rename it
-    RevertToFollower {
+    HigherVote {
         /// The ID of the target node from which the new term was observed.
         target: C::NodeId,
 
-        /// The new vote observed.
-        new_vote: Vote<C::NodeId>,
+        /// The higher vote observed.
+        higher: Vote<C::NodeId>,
 
         /// Which ServerState sent this message
         vote: Vote<C::NodeId>,
@@ -960,9 +962,9 @@ where
                     membership_log_id.summary()
                 )
             }
-            RaftMsg::RevertToFollower {
+            RaftMsg::HigherVote {
                 ref target,
-                ref new_vote,
+                higher: ref new_vote,
                 ref vote,
             } => {
                 format!(

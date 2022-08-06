@@ -266,6 +266,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         const IS_VOTER: bool = true;
         const IS_LEARNER: bool = false;
 
+        // TODO: these part can be removed. the loop does not depend on server state
         self.engine.state.server_state = match (has_log, single, is_voter) {
             // A restarted raft that already received some logs but was not yet added to a cluster.
             // It should remain in Learner state, not Follower.
@@ -288,12 +289,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             (NO_LOG, MULTI, IS_VOTER) => ServerState::Follower, // impossible: no logs but there are other members.
         };
 
-        if self.engine.state.server_state == ServerState::Follower
-            || self.engine.state.server_state == ServerState::Candidate
-        {
-            // To ensure that restarted nodes don't disrupt a stable cluster.
-            self.set_next_election_time(false);
-        }
+        // To ensure that restarted nodes don't disrupt a stable cluster.
+        self.set_next_election_time(false);
 
         tracing::debug!("id={} target_state: {:?}", self.id, self.engine.state.server_state);
 
@@ -1380,9 +1377,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
 
-            RaftMsg::RevertToFollower { target, new_vote, vote } => {
-                if self.does_vote_match(vote, "RevertToFollower") {
-                    self.handle_revert_to_follower(target, new_vote).await?;
+            RaftMsg::HigherVote {
+                target: _,
+                higher,
+                vote,
+            } => {
+                if self.does_vote_match(vote, "HigherVote") {
+                    // Rejected vote change is ok.
+                    let _ = self.engine.handle_vote_change(&higher);
+                    self.run_engine_commands::<Entry<C>>(&[]).await?;
                 }
             }
 
@@ -1415,22 +1418,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.set_target_state(ServerState::Shutdown);
             }
         };
-        Ok(())
-    }
-
-    /// Handle events from replication streams for when this node needs to revert to follower state.
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn handle_revert_to_follower(
-        &mut self,
-        _target: C::NodeId,
-        vote: Vote<C::NodeId>,
-    ) -> Result<(), StorageError<C::NodeId>> {
-        if vote > self.engine.state.vote {
-            self.engine.state.vote = vote;
-            self.save_vote().await?;
-            // TODO: when switching to Follower, the next election time has to be set.
-            self.set_target_state(ServerState::Follower);
-        }
         Ok(())
     }
 
@@ -1591,6 +1578,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     debug_assert!(self.leader_data.is_none(), "can not become leader twice");
                     self.leader_data = Some(LeaderData::new());
                 } else {
+                    if let Some(l) = &mut self.leader_data {
+                        // Leadership lost, inform waiting clients
+                        let chans = std::mem::take(&mut l.client_resp_channels);
+                        for (_, tx) in chans.into_iter() {
+                            let _ = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                                leader_id: None,
+                                leader_node: None,
+                            })));
+                        }
+                    }
                     self.leader_data = None;
                 }
             }

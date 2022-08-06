@@ -199,9 +199,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     return;
                 }
                 ReplicationError::HigherVote(h) => {
-                    let _ = self.raft_core_tx.send(RaftMsg::RevertToFollower {
+                    let _ = self.raft_core_tx.send(RaftMsg::HigherVote {
                         target: self.target,
-                        new_vote: h.higher,
+                        higher: h.higher,
                         vote: self.vote,
                     });
                     return;
