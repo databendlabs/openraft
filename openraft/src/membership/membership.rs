@@ -108,7 +108,7 @@ where
                 res.push(format!("{}", node_id));
 
                 let n = self.get_node(node_id);
-                res.push(format!(":{{{}}}", n));
+                res.push(format!(":{{{:?}}}", n));
             }
             res.push("}".to_string());
         }
@@ -126,7 +126,7 @@ where
             res.push(format!("{}", learner_id));
 
             let n = self.get_node(learner_id);
-            res.push(format!(":{{{}}}", n));
+            res.push(format!(":{{{:?}}}", n));
         }
         res.push("]".to_string());
         res.join("")

@@ -6,7 +6,6 @@ use maplit::btreemap;
 use maplit::btreeset;
 
 use crate::error::MissingNodeInfo;
-use crate::BasicNode;
 use crate::Membership;
 use crate::MessageSummary;
 
@@ -36,11 +35,11 @@ fn test_membership_summary() -> anyhow::Result<()> {
         data: btreemap! {k.to_string() => k.to_string()},
     };
 
-    let m = Membership::<u64, BasicNode>::new(vec![btreeset! {1,2}, btreeset! {3}], None);
-    assert_eq!("members:[{1:{},2:{}},{3:{}}],learners:[]", m.summary());
+    let m = Membership::<u64, ()>::new(vec![btreeset! {1,2}, btreeset! {3}], None);
+    assert_eq!("members:[{1:{()},2:{()}},{3:{()}}],learners:[]", m.summary());
 
-    let m = Membership::<u64, BasicNode>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
-    assert_eq!("members:[{1:{},2:{}},{3:{}}],learners:[4:{}]", m.summary());
+    let m = Membership::<u64, ()>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
+    assert_eq!("members:[{1:{()},2:{()}},{3:{()}}],learners:[4:{()}]", m.summary());
 
     let m = Membership::<u64, TestNode>::with_nodes(vec![btreeset! {1,2}, btreeset! {3}], btreemap! {
         1=>node("127.0.0.1", "k1"),
@@ -50,7 +49,7 @@ fn test_membership_summary() -> anyhow::Result<()> {
 
     })?;
     assert_eq!(
-        "members:[{1:{127.0.0.1; k1:k1},2:{127.0.0.2; k2:k2}},{3:{127.0.0.3; k3:k3}}],learners:[4:{127.0.0.4; k4:k4}]",
+        "members:[{1:{TestNode { addr: \"127.0.0.1\", data: {\"k1\": \"k1\"} }},2:{TestNode { addr: \"127.0.0.2\", data: {\"k2\": \"k2\"} }}},{3:{TestNode { addr: \"127.0.0.3\", data: {\"k3\": \"k3\"} }}}],learners:[4:{TestNode { addr: \"127.0.0.4\", data: {\"k4\": \"k4\"} }}]",
         m.summary()
     );
 
@@ -59,9 +58,9 @@ fn test_membership_summary() -> anyhow::Result<()> {
 
 #[test]
 fn test_membership() -> anyhow::Result<()> {
-    let m1 = Membership::<u64, BasicNode>::new(vec![btreeset! {1}], None);
-    let m123 = Membership::<u64, BasicNode>::new(vec![btreeset! {1,2,3}], None);
-    let m123_345 = Membership::<u64, BasicNode>::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None);
+    let m1 = Membership::<u64, ()>::new(vec![btreeset! {1}], None);
+    let m123 = Membership::<u64, ()>::new(vec![btreeset! {1,2,3}], None);
+    let m123_345 = Membership::<u64, ()>::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None);
 
     assert_eq!(Some(btreeset! {1}), m1.get_joint_config().get(0).cloned());
     assert_eq!(Some(btreeset! {1,2,3}), m123.get_joint_config().get(0).cloned());
@@ -90,8 +89,8 @@ fn test_membership() -> anyhow::Result<()> {
 fn test_membership_with_learners() -> anyhow::Result<()> {
     // test multi membership with learners
     {
-        let m1_2 = Membership::<u64, BasicNode>::new(vec![btreeset! {1}], Some(btreeset! {2}));
-        let m1_23 = m1_2.add_learner(3, BasicNode::default())?;
+        let m1_2 = Membership::<u64, ()>::new(vec![btreeset! {1}], Some(btreeset! {2}));
+        let m1_23 = m1_2.add_learner(3, ())?;
 
         // test learner and membership
         assert_eq!(vec![1], m1_2.voter_ids().collect::<Vec<_>>());
@@ -102,20 +101,19 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
 
         // Adding a member as learner has no effect:
 
-        let m = m1_23.add_learner(1, BasicNode::default())?;
+        let m = m1_23.add_learner(1, ())?;
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
 
         // Adding a existent learner has no effect:
 
-        let m = m1_23.add_learner(3, BasicNode::default())?;
+        let m = m1_23.add_learner(3, ())?;
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
         assert_eq!(btreeset! {2,3}, m.learner_ids().collect());
     }
 
     // overlapping members and learners
     {
-        let s1_2 =
-            Membership::<u64, BasicNode>::new(vec![btreeset! {1,2,3}, btreeset! {5,6,7}], Some(btreeset! {3,4,5}));
+        let s1_2 = Membership::<u64, ()>::new(vec![btreeset! {1,2,3}, btreeset! {5,6,7}], Some(btreeset! {3,4,5}));
         let x = s1_2.learner_ids().collect();
         assert_eq!(btreeset! {4}, x);
     }
@@ -214,10 +212,10 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
     let c2 = || btreeset! {3,4,5};
     let c3 = || btreeset! {7,8,9};
 
-    let m1 = Membership::<u64, BasicNode>::new(vec![c1()], None);
-    let m2 = Membership::<u64, BasicNode>::new(vec![c2()], None);
-    let m12 = Membership::<u64, BasicNode>::new(vec![c1(), c2()], None);
-    let m23 = Membership::<u64, BasicNode>::new(vec![c2(), c3()], None);
+    let m1 = Membership::<u64, ()>::new(vec![c1()], None);
+    let m2 = Membership::<u64, ()>::new(vec![c2()], None);
+    let m12 = Membership::<u64, ()>::new(vec![c1(), c2()], None);
+    let m23 = Membership::<u64, ()>::new(vec![c2(), c3()], None);
 
     assert_eq!(m1, m1.next_safe(c1(), false)?);
     assert_eq!(m12, m1.next_safe(c2(), false)?);
@@ -229,8 +227,8 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
 
     let old_learners = || btreeset! {1, 2};
     let learners = || btreeset! {1, 2, 3, 4, 5};
-    let m23_with_learners_old = Membership::<u64, BasicNode>::new(vec![c2(), c3()], Some(old_learners()));
-    let m23_with_learners_new = Membership::<u64, BasicNode>::new(vec![c3()], Some(learners()));
+    let m23_with_learners_old = Membership::<u64, ()>::new(vec![c2(), c3()], Some(old_learners()));
+    let m23_with_learners_new = Membership::<u64, ()>::new(vec![c3()], Some(learners()));
     assert_eq!(m23_with_learners_new, m23_with_learners_old.next_safe(c3(), true)?);
 
     Ok(())

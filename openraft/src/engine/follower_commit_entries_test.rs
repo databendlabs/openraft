@@ -5,7 +5,6 @@ use maplit::btreeset;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
-use crate::BasicNode;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
@@ -16,7 +15,7 @@ use crate::MembershipState;
 use crate::MetricsChangeFlags;
 
 crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node = BasicNode
+    pub(crate) Foo: D=(), R=(), NodeId=u64, Node = ()
 );
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
@@ -33,16 +32,16 @@ fn blank(term: u64, index: u64) -> Entry<Foo> {
     }
 }
 
-fn m01() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {0,1}], None)
+fn m01() -> Membership<u64, ()> {
+    Membership::new(vec![btreeset! {0,1}], None)
 }
 
-fn m23() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {2,3}], None)
+fn m23() -> Membership<u64, ()> {
+    Membership::new(vec![btreeset! {2,3}], None)
 }
 
-fn eng() -> Engine<u64, BasicNode> {
-    let mut eng = Engine::<u64, BasicNode>::default();
+fn eng() -> Engine<u64, ()> {
+    let mut eng = Engine::default();
     eng.state.committed = Some(log_id(1, 1));
     eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));

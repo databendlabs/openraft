@@ -43,8 +43,8 @@ pub trait NodeId: NodeIdEssential {}
 impl<T> NodeId for T where T: NodeIdEssential {}
 
 /// Essential trait bound for application level node-data, except serde.
-pub trait NodeEssential: Sized + Send + Sync + Eq + PartialEq + Debug + Display + Clone + Default + 'static {}
-impl<T> NodeEssential for T where T: Sized + Send + Sync + Eq + PartialEq + Debug + Display + Clone + Default + 'static {}
+pub trait NodeEssential: Sized + Send + Sync + Eq + PartialEq + Debug + Clone + Default + 'static {}
+impl<T> NodeEssential for T where T: Sized + Send + Sync + Eq + PartialEq + Debug + Clone + Default + 'static {}
 
 /// A Raft `Node`, this trait holds all relevant node information.
 ///

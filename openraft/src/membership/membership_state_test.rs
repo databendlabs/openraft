@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
-use crate::BasicNode;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;
@@ -16,12 +15,12 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
     }
 }
 
-fn m1() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {1}], None)
+fn m1() -> Membership<u64, ()> {
+    Membership::new(vec![btreeset! {1}], None)
 }
 
-fn m123_345() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None)
+fn m123_345() -> Membership<u64, ()> {
+    Membership::new(vec![btreeset! {1,2,3}, btreeset! {3,4,5}], None)
 }
 
 #[test]

@@ -5,7 +5,6 @@ use maplit::btreeset;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
-use crate::BasicNode;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;
@@ -19,16 +18,16 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
     }
 }
 
-fn m01() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {0,1}], None)
+fn m01() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
 }
 
-fn m123() -> Membership<u64, BasicNode> {
-    Membership::<u64, BasicNode>::new(vec![btreeset! {1,2,3}], None)
+fn m123() -> Membership<u64, ()> {
+    Membership::<u64, ()>::new(vec![btreeset! {1,2,3}], None)
 }
 
-fn eng() -> Engine<u64, BasicNode> {
-    let mut eng = Engine::<u64, BasicNode> {
+fn eng() -> Engine<u64, ()> {
+    let mut eng = Engine::<u64, ()> {
         id: 2, // make it a member
         ..Default::default()
     };
