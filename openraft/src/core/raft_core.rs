@@ -65,6 +65,7 @@ use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteTx;
+use crate::raft::ExternalCommand;
 use crate::raft::RaftAddLearnerTx;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
@@ -1330,6 +1331,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             RaftMsg::ExternalRequest { req } => {
                 req(&self.engine.state, &mut self.storage, &mut self.network);
             }
+            RaftMsg::ExternalCommand { cmd } => {
+                match cmd {
+                    ExternalCommand::Elect => {
+                        if self.engine.state.membership_state.effective.is_voter(&self.id) {
+                            // TODO: reject if it is already a leader?
+                            self.engine.elect();
+                            self.run_engine_commands::<Entry<C>>(&[]).await?;
+                            tracing::debug!("ExternalCommand: triggered election");
+                        } else {
+                            // Node is switched to learner after setting up next election time.
+                        }
+                    }
+                    ExternalCommand::Heartbeat => {
+                        // TODO: reject if it is not leader?
+                        let log_id = self.write_entry(EntryPayload::Blank, None).await?;
+                        tracing::debug!(log_id = display(&log_id), "ExternalCommand: sent heartbeat log");
+                    }
+                }
+            }
             RaftMsg::Tick { i } => {
                 // check every timer
 
@@ -1365,6 +1385,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     if now >= t {
                         if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
                             // heartbeat by sending a blank log
+                            // TODO: use Engine::append_blank_log
                             let log_id = self.write_entry(EntryPayload::Blank, None).await?;
                             tracing::debug!(log_id = display(&log_id), "sent heartbeat log");
                         }

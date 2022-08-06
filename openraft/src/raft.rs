@@ -251,6 +251,36 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         self.inner.runtime_config.enable_elect.store(enabled, Ordering::Relaxed);
     }
 
+    /// Trigger election at once and return at once.
+    ///
+    /// Returns error when RaftCore has Fatal error, e.g. shut down or having storage error.
+    /// It is not affected by `Raft::enable_elect(false)`.
+    pub async fn trigger_elect(&self) -> Result<(), Fatal<C::NodeId>> {
+        self.send_external_command(ExternalCommand::Elect, "trigger_elect").await
+    }
+
+    /// Trigger a heartbeat at once and return at once.
+    ///
+    /// Returns error when RaftCore has Fatal error, e.g. shut down or having storage error.
+    /// It is not affected by `Raft::enable_heartbeat(false)`.
+    pub async fn trigger_heartbeat(&self) -> Result<(), Fatal<C::NodeId>> {
+        self.send_external_command(ExternalCommand::Heartbeat, "trigger_heartbeat").await
+    }
+
+    async fn send_external_command(
+        &self,
+        cmd: ExternalCommand,
+        cmd_desc: impl Display + Default,
+    ) -> Result<(), Fatal<C::NodeId>> {
+        let send_res = self.inner.tx_api.send(RaftMsg::ExternalCommand { cmd });
+
+        if send_res.is_err() {
+            let fatal = self.get_core_stopped_error("sending external command to RaftCore", Some(cmd_desc)).await;
+            return Err(fatal);
+        }
+        Ok(())
+    }
+
     /// Submit an AppendEntries RPC to this Raft node.
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
@@ -618,7 +648,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         }
     }
 
-    async fn get_core_stopped_error(&self, when: impl Display, message_summary: Option<String>) -> Fatal<C::NodeId> {
+    async fn get_core_stopped_error(
+        &self,
+        when: impl Display,
+        message_summary: Option<impl Display + Default>,
+    ) -> Fatal<C::NodeId> {
         // Wait for the core task to finish.
         self.join_core_task().await;
 
@@ -634,9 +668,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
         tracing::error!(
             core_result = debug(&core_res),
-            "failure {}; message: {:?}",
+            "failure {}; message: {}",
             when,
-            message_summary
+            message_summary.unwrap_or_default()
         );
 
         match core_res {
@@ -841,6 +875,10 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         req: Box<dyn FnOnce(&RaftState<C::NodeId, C::Node>, &mut S, &mut N) + Send + 'static>,
     },
 
+    ExternalCommand {
+        cmd: ExternalCommand,
+    },
+
     /// A tick event to wake up RaftCore to check timeout etc.
     Tick {
         /// ith tick
@@ -945,6 +983,9 @@ where
                 )
             }
             RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
+            RaftMsg::ExternalCommand { cmd } => {
+                format!("ExternalCommand: {:?}", cmd)
+            }
             RaftMsg::Tick { i } => {
                 format!("Tick {}", i)
             }
@@ -988,7 +1029,14 @@ where
     }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
+/// Commands send by user
+#[derive(Debug, Clone)]
+pub(crate) enum ExternalCommand {
+    /// Trigger an election at once.
+    Elect,
+    /// Emit a heartbeat message, only if the node is leader.
+    Heartbeat,
+}
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
