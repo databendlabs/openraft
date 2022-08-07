@@ -267,6 +267,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         self.send_external_command(ExternalCommand::Heartbeat, "trigger_heartbeat").await
     }
 
+    /// Trigger to build a snapshot at once and return at once.
+    ///
+    /// Returns error when RaftCore has Fatal error, e.g. shut down or having storage error.
+    pub async fn trigger_snapshot(&self) -> Result<(), Fatal<C::NodeId>> {
+        self.send_external_command(ExternalCommand::Snapshot, "trigger_snapshot").await
+    }
+
     async fn send_external_command(
         &self,
         cmd: ExternalCommand,
@@ -1036,6 +1043,8 @@ pub(crate) enum ExternalCommand {
     Elect,
     /// Emit a heartbeat message, only if the node is leader.
     Heartbeat,
+    /// Trigger to build a snapshot
+    Snapshot,
 }
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).

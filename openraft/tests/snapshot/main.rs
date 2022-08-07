@@ -5,6 +5,7 @@
 mod fixtures;
 
 mod t20_api_install_snapshot;
+mod t20_trigger_snapshot;
 mod t23_snapshot_chunk_size;
 mod t24_snapshot_ge_half_threshold;
 mod t25_snapshot_line_rate_to_snapshot;
