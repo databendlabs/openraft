@@ -845,7 +845,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Trigger a log compaction (snapshot) job if needed.
     /// If force is True, it will skip the threshold check and start creating snapshot as demanded.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn trigger_log_compaction_if_needed(&mut self, force: bool) {
         if self.snapshot_state.is_some() {
             return;
@@ -1348,6 +1348,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         let log_id = self.write_entry(EntryPayload::Blank, None).await?;
                         tracing::debug!(log_id = display(&log_id), "ExternalCommand: sent heartbeat log");
                     }
+                    ExternalCommand::Snapshot => self.trigger_log_compaction_if_needed(true).await,
                 }
             }
             RaftMsg::Tick { i } => {
