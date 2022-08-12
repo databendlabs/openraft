@@ -8,7 +8,7 @@ mod fixtures;
 // The later tests may depend on the earlier ones.
 
 mod t00_learner_restart;
-mod t01_singlenode;
+mod t01_single_node;
 mod t10_add_learner;
 mod t12_concurrent_write_and_add_learner;
 mod t15_add_remove_follower;
