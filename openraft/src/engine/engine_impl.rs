@@ -806,6 +806,7 @@ where
 
         let vote = &self.state.vote;
 
+        // TODO: installing election timer should be driven by change of last-log-id
         if vote.committed {
             // There is an active leader.
             // Do not elect for a longer while.
@@ -971,19 +972,6 @@ where
         // TODO: remove this: the caller should know when to switch server state.
         if self.state.server_state == server_state {
             return;
-        }
-
-        // TODO: the caller should be very sure about what server-state to set.
-        //       The following condition check is copied from old code,
-        //       and should be removed.
-        //       And currently just use a panic to indicate the new code in Engine should not reach this point.
-        // if server_state == State::Follower && !self.state.membership_state.effective.membership.is_member(&self.id) {
-        //     self.state.target_state = State::Learner;
-        // } else {
-        //     self.state.target_state = server_state;
-        // }
-        if server_state == ServerState::Follower && !self.state.membership_state.effective.is_voter(&self.id) {
-            unreachable!("caller does not know what to do?")
         }
 
         self.state.server_state = server_state;

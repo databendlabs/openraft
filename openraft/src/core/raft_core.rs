@@ -214,6 +214,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     async fn main(mut self) -> Result<(), Fatal<C::NodeId>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main().instrument(span).await;
+
+        self.engine.state.server_state = ServerState::Shutdown;
+        self.report_metrics(Update::AsIs);
+
         match res {
             Ok(_) => Ok(()),
             Err(err) => {
@@ -1145,16 +1149,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id)))]
     async fn runtime_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
         loop {
-            // TODO: Since the rx_shutdown is watched, this condition check can be removed.
-            if self.engine.state.server_state == ServerState::Shutdown {
-                tracing::info!(
-                    "id={} server_state becomes: {:?}",
-                    self.id,
-                    self.engine.state.server_state
-                );
-                return Ok(());
-            }
-
             self.flush_metrics();
 
             tokio::select! {
@@ -1164,7 +1158,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
                 Ok(_) = &mut self.rx_shutdown => {
                     tracing::info!("recv rx_shutdown");
-                    self.set_target_state(ServerState::Shutdown);
+                    // TODO: return Fatal::Stopped?
+                    return Ok(());
                 }
             }
         }
@@ -1437,7 +1432,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
             RaftMsg::ReplicationFatal => {
-                self.set_target_state(ServerState::Shutdown);
+                return Err(Fatal::Stopped);
             }
         };
         Ok(())

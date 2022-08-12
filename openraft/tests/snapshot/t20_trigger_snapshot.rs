@@ -11,7 +11,7 @@ use crate::fixtures::RaftRouter;
 
 /// Manually trigger a snapshot with `Raft::trigger_snapshot()` on Leader and Follower.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn snapshot_chunk_size() -> anyhow::Result<()> {
+async fn trigger_snapshot() -> anyhow::Result<()> {
     let config = Arc::new(
         Config {
             enable_heartbeat: false,

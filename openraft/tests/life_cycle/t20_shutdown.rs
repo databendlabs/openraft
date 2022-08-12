@@ -1,22 +1,16 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
 use openraft::Config;
+use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-/// Cluster shutdown test.
-///
-/// What does this test do?
-///
-/// - this test builds upon the `initialization` test.
-/// - after the cluster has been initialize, it performs a shutdown routine on each node, asserting that the shutdown
-///   routine succeeded.
+/// Shutdown raft node and check the metrics change.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn shutdown() -> Result<()> {
     let config = Arc::new(
@@ -32,14 +26,12 @@ async fn shutdown() -> Result<()> {
 
     tracing::info!("--- performing node shutdowns");
     {
-        let (node0, _) = router.remove_node(0).ok_or_else(|| anyhow!("failed to find node 0 in router"))?;
-        node0.shutdown().await?;
-
-        let (node1, _) = router.remove_node(1).ok_or_else(|| anyhow!("failed to find node 1 in router"))?;
-        node1.shutdown().await?;
-
-        let (node2, _) = router.remove_node(2).ok_or_else(|| anyhow!("failed to find node 2 in router"))?;
-        node2.shutdown().await?;
+        for i in [0, 1, 2] {
+            let (node, _) = router.remove_node(i).unwrap();
+            node.shutdown().await?;
+            let m = node.metrics();
+            assert_eq!(ServerState::Shutdown, m.borrow().state, "shutdown node-{}", i);
+        }
     }
 
     Ok(())
