@@ -1,3 +1,9 @@
+## v0.6.8
+
+### Fixed:
+
+-   Fixed: [485dbe9a](https://github.com/datafuselabs/openraft/commit/485dbe9a783de05437c665eca27541a5acd4d36b) when handling append-entries, if prev_log_id is purged, it should not delete any logs.; by 张炎泼; 2022-08-14
+
 ## v0.6.7
 
 ### Added:
