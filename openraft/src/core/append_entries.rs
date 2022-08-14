@@ -108,7 +108,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //           - keep track of last_log_id, first_log_id,
         //           RaftStorage should only provides the least basic APIs.
 
-        self.storage.delete_conflict_logs_since(start).await?;
+        let res = self.storage.delete_conflict_logs_since(start).await;
+        tracing::debug!("delete_conflict_logs_since res: {:?}", res);
+
+        res?;
 
         self.last_log_id = self.storage.get_log_state().await?.last_log_id;
 
@@ -278,7 +281,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         for i in 0..l {
             let log_id = entries[i].log_id;
 
-            if Some(log_id) <= self.committed {
+            if Some(log_id) <= self.last_applied {
                 continue;
             }
 
@@ -312,7 +315,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         };
 
         // Committed entries are always safe and are consistent to a valid leader.
-        if remote_log_id <= self.committed {
+        if remote_log_id <= self.last_applied {
             return Ok(None);
         }
 

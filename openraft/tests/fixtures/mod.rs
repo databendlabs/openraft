@@ -270,6 +270,11 @@ impl RaftRouter {
         rt.insert(id, (node, sto));
     }
 
+    pub async fn add_raft_node(self: &Arc<Self>, id: NodeId, node: MemRaft, sto: Arc<StoreWithDefensive>) {
+        let mut rt = self.routing_table.write().await;
+        rt.insert(id, (node, sto));
+    }
+
     /// Remove the target node from the routing table & isolation.
     pub async fn remove_node(&self, id: NodeId) -> Option<(MemRaft, Arc<StoreWithDefensive>)> {
         let mut rt = self.routing_table.write().await;
