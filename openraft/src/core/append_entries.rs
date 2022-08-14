@@ -308,7 +308,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             let log_id = entries[i].log_id;
             let index = log_id.index;
 
-            if index <= self.committed.index {
+            if index <= self.last_applied.index {
                 continue;
             }
 
@@ -335,7 +335,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let index = remote_log_id.index;
 
         // Committed entries are always safe and are consistent to a valid leader.
-        if index <= self.committed.index {
+        if index <= self.last_applied.index {
             return Ok(true);
         }
 
