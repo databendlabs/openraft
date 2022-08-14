@@ -8,6 +8,7 @@ mod fixtures;
 mod t10_conflict_with_empty_entries;
 mod t20_append_conflicts;
 mod t30_append_inconsistent_log;
+mod t31_append_prev_is_purged;
 mod t40_append_updates_membership;
 mod t50_append_entries_with_bigger_term;
 mod t60_large_heartbeat;

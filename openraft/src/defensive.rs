@@ -191,6 +191,10 @@ where
     }
 
     async fn defensive_delete_conflict_gt_last_applied(&self, since: LogId) -> Result<(), StorageError> {
+        if !self.is_defensive() {
+            return Ok(());
+        }
+
         let (last_applied, _) = self.inner().last_applied_state().await?;
         if Some(since.index) <= last_applied.index() {
             return Err(
