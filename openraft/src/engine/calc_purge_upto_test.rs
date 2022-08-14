@@ -24,7 +24,7 @@ fn eng() -> Engine<u64, ()> {
 
 #[test]
 fn test_calc_purge_upto() -> anyhow::Result<()> {
-    // last_purged_log_id, last_applied, max_keep, want
+    // last_purged_log_id, committed, max_keep, want
     let cases = vec![
         //
         (None, None, 0, None),

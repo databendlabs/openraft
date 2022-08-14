@@ -365,7 +365,7 @@ where
         tracing::debug!(
             my_vote = display(self.state.vote),
             my_last_log_id = display(self.state.last_log_id().summary()),
-            my_last_applied = display(self.state.last_applied.summary()),
+            my_committed = display(self.state.committed.summary()),
             "local state"
         );
 
@@ -431,7 +431,7 @@ where
         if let Some(prev_committed) = self.state.update_committed(&committed) {
             self.push_command(Command::FollowerCommit {
                 // TODO(xp): when restart, commit is reset to None. Use last_applied instead.
-                since: prev_committed,
+                already_committed: prev_committed,
                 upto: committed.unwrap(),
             });
             self.purge_applied_log();
@@ -741,7 +741,7 @@ where
                 committed: self.state.committed,
             });
             self.push_command(Command::LeaderCommit {
-                since: prev_committed,
+                already_committed: prev_committed,
                 upto: self.state.committed.unwrap(),
             });
             self.purge_applied_log();

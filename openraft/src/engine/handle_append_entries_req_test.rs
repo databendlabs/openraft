@@ -52,7 +52,6 @@ fn eng() -> Engine<u64, ()> {
         id: 2, // make it a member
         ..Default::default()
     };
-    eng.state.last_applied = Some(log_id(0, 0));
     eng.state.vote = Vote::new(2, 1);
     eng.state.server_state = ServerState::Candidate;
     eng.state.log_ids.append(log_id(1, 1));
@@ -99,6 +98,65 @@ fn test_handle_append_entries_req_vote_is_rejected() -> anyhow::Result<()> {
     );
 
     assert_eq!(0, eng.commands.len());
+
+    Ok(())
+}
+
+#[test]
+fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()> {
+    // An applied log id has to be committed thus
+    let mut eng = eng();
+    eng.state.vote = Vote::new(1, 2);
+    eng.enter_leading();
+
+    let resp = eng.handle_append_entries_req(
+        &Vote::new_committed(2, 1),
+        Some(log_id(0, 0)),
+        &Vec::<Entry<Foo>>::new(),
+        None,
+    );
+
+    assert_eq!(AppendEntriesResponse::Success, resp);
+    assert_eq!(
+        &[
+            log_id(1, 1), //
+            log_id(2, 3), //
+        ],
+        eng.state.log_ids.key_log_ids()
+    );
+    assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
+    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id());
+    assert_eq!(Some(log_id(0, 0)), eng.state.committed);
+    assert_eq!(
+        MembershipState {
+            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
+        },
+        eng.state.membership_state
+    );
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+
+    assert_eq!(
+        MetricsChangeFlags {
+            replication: false,
+            local_data: true,
+            cluster: true,
+        },
+        eng.metrics_flags
+    );
+
+    assert_eq!(
+        vec![
+            Command::SaveVote {
+                vote: Vote::new_committed(2, 1)
+            },
+            Command::InstallElectionTimer { can_be_leader: false },
+            Command::UpdateServerState {
+                server_state: ServerState::Follower
+            },
+        ],
+        eng.commands
+    );
 
     Ok(())
 }
@@ -218,7 +276,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
             Command::AppendInputEntries { range: 1..2 },
             Command::MoveInputCursorBy { n: 2 },
             Command::FollowerCommit {
-                since: Some(log_id(0, 0)),
+                already_committed: Some(log_id(0, 0)),
                 upto: log_id(1, 1)
             },
         ],
@@ -353,7 +411,7 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
             },
             Command::MoveInputCursorBy { n: 2 },
             Command::FollowerCommit {
-                since: Some(log_id(0, 0)),
+                already_committed: Some(log_id(0, 0)),
                 upto: log_id(3, 3)
             },
         ],

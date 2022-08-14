@@ -250,8 +250,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             keep_unsnapshoted_log: self.config.keep_unsnapshoted_log,
         });
 
-        self.engine.state.last_applied = state.last_applied;
-
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
             self.engine.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
@@ -728,7 +726,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             // --- data ---
             current_term: self.engine.state.vote.term,
             last_log_index: self.engine.state.last_log_id().map(|id| id.index),
-            last_applied: self.engine.state.last_applied,
+            last_applied: self.engine.state.committed,
             snapshot: self.engine.snapshot_last_log_id,
 
             // --- cluster ---
@@ -856,7 +854,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
         let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
 
-        let last_applied = match self.engine.state.last_applied {
+        let last_applied = match self.engine.state.committed {
             None => {
                 return;
             }
@@ -870,8 +868,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
-            if self.engine.state.last_applied.next_index() - self.engine.snapshot_last_log_id.next_index() < *threshold
-            {
+            if self.engine.state.committed.next_index() - self.engine.snapshot_last_log_id.next_index() < *threshold {
                 return;
             }
         }
@@ -954,10 +951,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn apply_to_state_machine(&mut self, upto_index: u64) -> Result<(), StorageError<C::NodeId>> {
+    pub(crate) async fn apply_to_state_machine(
+        &mut self,
+        since: u64,
+        upto_index: u64,
+    ) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(upto_index = display(upto_index), "apply_to_state_machine");
 
-        let since = self.engine.state.last_applied.next_index();
         let end = upto_index + 1;
 
         debug_assert!(
@@ -978,8 +978,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let apply_results = self.storage.apply_to_state_machine(&entry_refs).await?;
 
         let last_applied = entries[entries.len() - 1].log_id;
-        self.engine.state.last_applied = Some(last_applied);
-
         tracing::debug!(last_applied = display(last_applied), "update last_applied");
 
         if let Some(l) = &mut self.leader_data {
@@ -1027,16 +1025,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             "send client response through tx, send_res is error: {}",
             send_res.is_err()
         );
-    }
-
-    /// Handle the post-commit logic for a client request.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) async fn leader_commit(&mut self, log_index: u64) -> Result<(), StorageError<C::NodeId>> {
-        self.leader_step_down();
-
-        self.apply_to_state_machine(log_index).await?;
-
-        Ok(())
     }
 
     /// Spawn a new replication stream returning its replication state handle.
@@ -1656,13 +1644,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     unreachable!("it has to be a leader!!!");
                 }
             }
-            Command::LeaderCommit { ref upto, .. } => {
-                for i in self.engine.state.last_applied.next_index()..(upto.index + 1) {
-                    self.leader_commit(i).await?;
-                }
+            Command::LeaderCommit {
+                already_committed: ref committed,
+                ref upto,
+            } => {
+                self.apply_to_state_machine(committed.next_index(), upto.index).await?;
+                // Stepping down should be controlled by Engine.
+                self.leader_step_down();
             }
-            Command::FollowerCommit { upto, .. } => {
-                self.apply_to_state_machine(upto.index).await?;
+            Command::FollowerCommit {
+                already_committed: ref committed,
+                ref upto,
+            } => {
+                self.apply_to_state_machine(committed.next_index(), upto.index).await?;
             }
             Command::ReplicateEntries { upto } => {
                 if let Some(l) = &self.leader_data {

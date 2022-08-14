@@ -83,7 +83,7 @@ fn test_elect() -> anyhow::Result<()> {
                     },),
                 },
                 Command::LeaderCommit {
-                    since: None,
+                    already_committed: None,
                     upto: LogId {
                         leader_id: LeaderId { term: 1, node_id: 1 },
                         index: 0,
@@ -152,7 +152,7 @@ fn test_elect() -> anyhow::Result<()> {
                     },),
                 },
                 Command::LeaderCommit {
-                    since: None,
+                    already_committed: None,
                     upto: LogId {
                         leader_id: LeaderId { term: 2, node_id: 1 },
                         index: 0,

@@ -65,7 +65,7 @@ fn eng() -> Engine<u64, ()> {
         id: 1, // make it a member
         ..Default::default()
     };
-    eng.state.last_applied = Some(log_id(0, 0));
+    eng.state.committed = Some(log_id(0, 0));
     eng.state.vote = Vote::new_committed(3, 1);
     eng.state.log_ids.append(log_id(1, 1));
     eng.state.log_ids.append(log_id(2, 3));
@@ -210,7 +210,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
                 committed: Some(log_id(3, 6))
             },
             Command::LeaderCommit {
-                since: None,
+                already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
             },
             Command::ReplicateEntries {
@@ -282,7 +282,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
                 committed: Some(log_id(3, 4))
             },
             Command::LeaderCommit {
-                since: None,
+                already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(LeaderId::new(3, 1), 4)
             },
             Command::UpdateMembership {
@@ -364,7 +364,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                 committed: Some(log_id(3, 4))
             },
             Command::LeaderCommit {
-                since: None,
+                already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(LeaderId::new(3, 1), 4)
             },
             Command::UpdateMembership {
@@ -381,7 +381,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                 committed: Some(log_id(3, 6))
             },
             Command::LeaderCommit {
-                since: Some(LogId::new(LeaderId::new(3, 1), 4)),
+                already_committed: Some(LogId::new(LeaderId::new(3, 1), 4)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
             },
             Command::ReplicateEntries {
@@ -465,7 +465,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
                 committed: Some(log_id(3, 6))
             },
             Command::LeaderCommit {
-                since: None,
+                already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
             },
             Command::ReplicateEntries {
