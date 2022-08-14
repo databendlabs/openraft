@@ -57,7 +57,7 @@ where
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self).await?;
 
         Ok(RaftState {
-            last_applied,
+            committed: last_applied,
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
             vote: vote.unwrap_or_default(),
@@ -66,7 +66,6 @@ where
 
             // -- volatile fields: they are not persisted.
             internal_server_state: InternalServerState::default(),
-            committed: None,
             server_state: Default::default(),
         })
     }

@@ -254,9 +254,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         if st.committed < Some(last_applied) {
             st.committed = Some(last_applied);
         }
-        if st.last_applied < Some(last_applied) {
-            st.last_applied = Some(last_applied);
-        }
 
         debug_assert!(st.last_purged_log_id() <= Some(last_applied));
 

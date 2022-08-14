@@ -435,7 +435,7 @@ where
             "state machine has higher log"
         );
         assert_eq!(
-            initial.last_applied,
+            initial.committed,
             Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
             "unexpected value for last applied log"
         );

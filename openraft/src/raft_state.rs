@@ -20,8 +20,12 @@ where
     /// The vote state of this node.
     pub vote: Vote<NID>,
 
-    /// The LogId of the last log applied to the state machine.
-    pub last_applied: Option<LogId<NID>>,
+    /// The LogId of the last log committed(AKA applied) to the state machine.
+    ///
+    /// - Committed means: a log that is replicated to a quorum of the cluster and it is of the term of the leader.
+    ///
+    /// - A quorum could be a uniform quorum or joint quorum.
+    pub committed: Option<LogId<NID>>,
 
     /// All log ids this node has.
     pub log_ids: LogIdList<NID>,
@@ -34,15 +38,6 @@ where
     // --
     /// The internal server state used by Engine.
     pub(crate) internal_server_state: InternalServerState<NID, N>,
-
-    /// The log id of the last known committed entry.
-    ///
-    /// - Committed means: a log that is replicated to a quorum of the cluster and it is of the term of the leader.
-    ///
-    /// - A quorum could be a uniform quorum or joint quorum.
-    ///
-    /// - `committed` in raft is volatile and will not be persisted.
-    pub committed: Option<LogId<NID>>,
 
     pub server_state: ServerState,
 }

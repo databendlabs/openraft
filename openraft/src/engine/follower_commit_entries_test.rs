@@ -132,7 +132,7 @@ fn test_follower_commit_entries_lt_last_entry() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![Command::FollowerCommit {
-            since: Some(log_id(1, 1)),
+            already_committed: Some(log_id(1, 1)),
             upto: log_id(2, 3)
         }],
         eng.commands
@@ -167,7 +167,7 @@ fn test_follower_commit_entries_gt_last_entry() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![Command::FollowerCommit {
-            since: Some(log_id(1, 1)),
+            already_committed: Some(log_id(1, 1)),
             upto: log_id(2, 3)
         }],
         eng.commands
@@ -191,7 +191,7 @@ fn test_follower_commit_entries_purge_to_committed() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::FollowerCommit {
-                since: Some(log_id(1, 1)),
+                already_committed: Some(log_id(1, 1)),
                 upto: log_id(2, 3)
             },
             Command::PurgeLog { upto: log_id(2, 3) },
@@ -217,7 +217,7 @@ fn test_follower_commit_entries_purge_to_committed_minus_1() -> anyhow::Result<(
     assert_eq!(
         vec![
             Command::FollowerCommit {
-                since: Some(log_id(1, 1)),
+                already_committed: Some(log_id(1, 1)),
                 upto: log_id(2, 3)
             },
             Command::PurgeLog { upto: log_id(1, 2) },

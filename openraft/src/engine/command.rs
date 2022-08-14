@@ -36,13 +36,15 @@ where
     /// Commit entries that are already in the store, upto `upto`, inclusive.
     /// And send applied result to the client that proposed the entry.
     LeaderCommit {
-        since: Option<LogId<NID>>,
+        // TODO: pass the log id list?
+        // TODO: merge LeaderCommit and FollowerCommit
+        already_committed: Option<LogId<NID>>,
         upto: LogId<NID>,
     },
 
     /// Commit entries that are already in the store, upto `upto`, inclusive.
     FollowerCommit {
-        since: Option<LogId<NID>>,
+        already_committed: Option<LogId<NID>>,
         upto: LogId<NID>,
     },
 
