@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::ops::RangeBounds;
 use std::sync::RwLock;
 
@@ -29,6 +30,14 @@ pub struct StoreExt<D, R, T> {
     defensive: RwLock<bool>,
     inner: T,
     p: PhantomData<(D, R)>,
+}
+
+impl<D, R, T> Deref for StoreExt<D, R, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 impl<D, R, T> StoreExt<D, R, T> {
