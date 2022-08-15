@@ -135,7 +135,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_hard_state(&self, hs: &HardState) -> Result<(), StorageError> {
-        tracing::debug!(?hs, "save_hard_state");
+        tracing::info!(?hs, "save_hard_state");
         let mut h = self.hs.write().await;
 
         *h = Some(hs.clone());
@@ -182,7 +182,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
     #[tracing::instrument(level = "debug", skip(self))]
     async fn delete_conflict_logs_since(&self, log_id: LogId) -> Result<(), StorageError> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+        tracing::info!("delete_conflict_logs_since: [{:?}, +oo)", log_id);
 
         {
             let mut log = self.log.write().await;
@@ -198,7 +198,7 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
 
     #[tracing::instrument(level = "debug", skip(self))]
     async fn purge_logs_upto(&self, log_id: LogId) -> Result<(), StorageError> {
-        tracing::debug!("delete_log: [{:?}, +oo)", log_id);
+        tracing::info!("purge_logs_upto: [{:?}, +oo)", log_id);
 
         {
             let mut ld = self.last_purged_log_id.write().await;
@@ -330,22 +330,12 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
         meta: &SnapshotMeta,
         snapshot: Box<Self::SnapshotData>,
     ) -> Result<StateMachineChanges, StorageError> {
-        tracing::info!(
-            { snapshot_size = snapshot.get_ref().len() },
-            "decoding snapshot for installation"
-        );
+        tracing::info!("install_snapshot:{:?}", meta);
 
         let new_snapshot = MemStoreSnapshot {
             meta: meta.clone(),
             data: snapshot.into_inner(),
         };
-
-        {
-            let t = &new_snapshot.data;
-            let y = std::str::from_utf8(t).unwrap();
-            tracing::debug!("SNAP META:{:?}", meta);
-            tracing::debug!("JSON SNAP DATA:{}", y);
-        }
 
         // Update the state machine.
         {

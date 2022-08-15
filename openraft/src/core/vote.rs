@@ -22,12 +22,23 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
     #[tracing::instrument(level = "debug", skip(self, msg), fields(msg=%msg.summary()))]
     pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> Result<VoteResponse, VoteError> {
-        tracing::debug!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "start handle_vote_request");
+        tracing::info!(
+            "handle_vote_request: candidate: {}, rpc_term: {} my_term: {}",
+            msg.candidate_id,
+            msg.term,
+            self.current_term
+        );
+
         let last_log_id = self.last_log_id;
 
         // If candidate's current term is less than this nodes current term, reject.
         if msg.term < self.current_term {
-            tracing::debug!({candidate=msg.candidate_id, self.current_term, rpc_term=msg.term}, "RequestVote RPC term is less than current term");
+            tracing::info!(
+                "RequestVote RPC term is less than current term: candidate: {}, rpc_term: {} my_term: {}",
+                msg.candidate_id,
+                msg.term,
+                self.current_term
+            );
             return Ok(VoteResponse {
                 term: self.current_term,
                 vote_granted: false,
@@ -40,9 +51,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             let now = Instant::now();
             let delta = now.duration_since(*inst);
             if self.config.election_timeout_min >= (delta.as_millis() as u64) {
-                tracing::debug!(
-                    { candidate = msg.candidate_id },
-                    "rejecting vote request received within election timeout minimum"
+                tracing::info!(
+                    "rejecting vote request received within election timeout minimum, candidate_id: {}",
+                    msg.candidate_id
                 );
                 return Ok(VoteResponse {
                     term: self.current_term,
@@ -65,9 +76,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // Check if candidate's log is at least as up-to-date as this node's.
         // If candidate's log is not at least as up-to-date as this node, then reject.
         if msg.last_log_id < last_log_id {
-            tracing::debug!(
-                { candidate = msg.candidate_id },
-                "rejecting vote request as candidate's log is not up-to-date"
+            tracing::info!(
+                "RequestVote RPC term is less than current term: candidate: {}, rpc_term: {} my_term: {}, my_last_log: {:?}, rpc_last_log: {:?}",
+                msg.candidate_id,
+                msg.term,
+                self.current_term,
+                last_log_id,
+                msg.last_log_id,
             );
             return Ok(VoteResponse {
                 term: self.current_term,
@@ -99,7 +114,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 self.set_target_state(State::Follower);
                 self.update_next_election_timeout(false);
                 self.save_hard_state().await?;
-                tracing::debug!({candidate=msg.candidate_id, msg.term}, "voted for candidate");
+                tracing::info!({candidate=msg.candidate_id, msg.term}, "voted for candidate");
                 Ok(VoteResponse {
                     term: self.current_term,
                     vote_granted: true,
@@ -129,9 +144,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             //           election.
             if self.core.last_log_id < res.last_log_id {
                 self.core.set_target_state(State::Follower);
-                tracing::debug!("reverting to follower state due to greater term observed in RequestVote RPC response");
+                tracing::info!("reverting to follower state due to greater term observed in RequestVote RPC response");
             } else {
-                tracing::debug!(
+                tracing::info!(
                     id = %self.core.id,
                     self_term=%self.core.current_term,
                     res_term=%res.term,
@@ -147,7 +162,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             self.granted.insert(target);
 
             if self.core.effective_membership.membership.is_majority(&self.granted) {
-                tracing::debug!("transitioning to leader state as minimum number of votes have been received");
+                tracing::info!("transitioning to leader state as minimum number of votes have been received");
                 self.core.set_target_state(State::Leader);
                 return Ok(());
             }

@@ -316,8 +316,8 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(res);
         }
 
-        tracing::debug!("committed a joint config: {} {:?}", log_id, joint);
-        tracing::debug!("the second step is to change to uniform config: {:?}", members);
+        tracing::info!("committed a joint config: {} {:?}", log_id, joint);
+        tracing::info!("the second step is to change to uniform config: {:?}", members);
 
         let (tx, rx) = oneshot::channel();
         let res = self.call_core(RaftMsg::ChangeMembership { members, blocking, tx }, rx).await?;

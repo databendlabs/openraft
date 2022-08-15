@@ -82,10 +82,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         tx: RaftRespTx<AddLearnerResponse, AddLearnerError>,
         blocking: bool,
     ) {
+        tracing::info!("add_learner: target: {}", target);
+
         // Ensure the node doesn't already exist in the current
         // config, in the set of new nodes already being synced, or in the nodes being removed.
         if target == self.core.id {
-            tracing::debug!("target node is this node");
+            tracing::info!("target node is this node");
             let _ = tx.send(Ok(AddLearnerResponse {
                 matched: self.core.last_log_id,
             }));
@@ -93,7 +95,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         if let Some(t) = self.nodes.get(&target) {
-            tracing::debug!("target node is already a cluster member or is being synced");
+            tracing::info!("target node is already a cluster member or is being synced");
             let _ = tx.send(Ok(AddLearnerResponse { matched: t.matched }));
             return;
         }
@@ -117,6 +119,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         blocking: bool,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) -> Result<(), StorageError> {
+        tracing::info!("change_membership: members: {:?}", members);
+
         // Ensure cluster will have at least one node.
         if members.is_empty() {
             let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
@@ -140,7 +144,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
         let new_config = curr.next_safe(members.clone());
 
-        tracing::debug!(?new_config, "new_config");
+        tracing::info!("change_membership: new_config: {:?}", new_config);
 
         // Check the proposed config for any new nodes. If ALL new nodes already have replication
         // streams AND are ready to join, then we can immediately proceed with entering joint
@@ -215,11 +219,12 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// This is ony called by leader.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(super) fn handle_uniform_consensus_committed(&mut self, log_id: &LogId) {
+        tracing::info!("handle_uniform_consensus_committed at log id: {}", log_id);
         let index = log_id.index;
 
         // Step down if needed.
         if !self.core.effective_membership.membership.contains(&self.core.id) {
-            tracing::debug!("raft node is stepping down");
+            tracing::info!("raft node is stepping down, id: {}", self.core.id);
 
             // TODO(xp): transfer leadership
             self.core.set_target_state(State::Learner);
@@ -257,7 +262,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// Return true if removed.
     #[tracing::instrument(level = "trace", skip(self))]
     pub fn try_remove_replication(&mut self, target: u64) -> bool {
-        tracing::debug!(target, "try_remove_replication");
+        tracing::debug!("try_remove_replication: target: {}", target);
 
         {
             let n = self.nodes.get(&target);

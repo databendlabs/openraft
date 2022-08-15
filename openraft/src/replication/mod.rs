@@ -391,10 +391,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             });
         }
 
-        tracing::debug!(
-            ?conflict,
+        tracing::info!(
+            "append entries failed, handling conflict opt: conflict: {:?}, resp_term: {}",
+            conflict,
             append_resp.term,
-            "append entries failed, handling conflict opt"
         );
 
         assert!(conflict.is_some(), "prev_log_id=None never conflict");
@@ -427,7 +427,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
     #[tracing::instrument(level = "trace", skip(self))]
     fn set_target_repl_state(&mut self, state: TargetReplState) {
-        tracing::debug!(?state, "set_target_repl_state");
+        tracing::info!("set_target_repl_state: {:?}", state);
         self.target_repl_state = state;
     }
 
@@ -702,7 +702,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                             self.try_drain_raft_rx().await?;
                         },
                         None => {
-                            tracing::debug!("received: RaftEvent::Terminate: closed");
+                            tracing::info!("received: RaftEvent::Terminate: closed");
                             return Err(ReplicationError::Closed);
                         },
                     }
@@ -835,7 +835,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             buf.clear();
 
             // Send the RPC over to the target.
-            tracing::debug!(
+            tracing::info!(
                 snapshot_size = req.data.len(),
                 req.offset,
                 end,
@@ -873,7 +873,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
 
             // If we just sent the final chunk of the snapshot, then transition to lagging state.
             if done {
-                tracing::debug!(
+                tracing::info!(
                     "done install snapshot: snapshot last_log_id: {}, matched: {:?}",
                     snapshot.meta.last_log_id,
                     self.matched,

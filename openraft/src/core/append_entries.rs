@@ -27,13 +27,22 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         &mut self,
         msg: AppendEntriesRequest<D>,
     ) -> Result<AppendEntriesResponse, AppendEntriesError> {
-        tracing::debug!(last_log_id=?self.last_log_id, ?self.last_applied, msg=%msg.summary(), "handle_append_entries_request");
+        tracing::debug!(
+            "handle_append_entries_request: my_last_log_id: {:?}, my_last_applied: {:?}, msg: {}",
+            self.last_log_id,
+            self.last_applied,
+            msg.summary()
+        );
 
         let msg_entries = msg.entries.as_slice();
 
         // If message's term is less than most recent term, then we do not honor the request.
         if msg.term < self.current_term {
-            tracing::debug!({self.current_term, rpc_term=msg.term}, "AppendEntries RPC term is less than current term");
+            tracing::info!(
+                "AppendEntries RPC term {} is less than current term {}",
+                msg.term,
+                self.current_term
+            );
             return Ok(AppendEntriesResponse {
                 term: self.current_term,
                 success: false,
@@ -108,10 +117,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //           - keep track of last_log_id, first_log_id,
         //           RaftStorage should only provides the least basic APIs.
 
-        let res = self.storage.delete_conflict_logs_since(start).await;
-        tracing::debug!("delete_conflict_logs_since res: {:?}", res);
-
-        res?;
+        self.storage.delete_conflict_logs_since(start).await?;
 
         self.last_log_id = self.storage.get_log_state().await?.last_log_id;
 
@@ -175,7 +181,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     async fn find_and_delete_conflict_logs(&mut self, msg_entries: &[Entry<D>]) -> Result<(), StorageError> {
         // all msg_entries are inconsistent logs
 
-        tracing::debug!(msg_entries=%msg_entries.summary(), "try to delete_inconsistent_log");
+        tracing::debug!("find_and_delete_conflict_logs: entries: {}", msg_entries.summary());
 
         let l = msg_entries.len();
         if l == 0 {
@@ -223,7 +229,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             // prev_log_id mismatches, the logs [prev_log_id.index, +oo) are all inconsistent and should be removed
             if let Some(last_log_id) = self.last_log_id {
                 if mismatched_log_id.index <= last_log_id.index {
-                    tracing::debug!(%mismatched_log_id, "delete inconsistent log since prev_log_id");
+                    tracing::info!("delete inconsistent log since prev_log_id: {}", mismatched_log_id);
                     self.delete_conflict_logs_since(mismatched_log_id).await?;
                 }
             }
@@ -328,11 +334,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             log_id
         );
 
-        if let Some(local) = log {
+        if let Some(local) = &log {
             if local.log_id == log_id {
                 return Ok(None);
             }
         }
+
+        tracing::info!(
+            "found mismatched log_id: local: {:?} remote: {}",
+            log.as_ref().map(|x| x.log_id),
+            log_id
+        );
 
         Ok(Some(log_id))
     }
@@ -364,7 +376,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //           and `skip_matching_entries()`, for it does not re-append existent log entries.
         //           This task should be done by StorageAdaptor.
         if let Some(conf) = last_conf_change {
-            tracing::debug!({membership=?conf}, "applying new membership config received from leader");
+            tracing::info!("applying new membership config received from leader: {:?}", conf);
             self.update_membership(conf);
         };
 

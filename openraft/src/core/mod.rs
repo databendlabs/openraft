@@ -222,7 +222,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
     #[tracing::instrument(level="trace", skip(self), fields(id=self.id, cluster=%self.config.cluster_name))]
     async fn do_main(&mut self) -> Result<(), Fatal> {
-        tracing::debug!("raft node is initializing");
+        tracing::info!("raft node is initializing");
 
         let state = StorageHelper::new(&self.storage).get_initial_state().await?;
 
@@ -298,7 +298,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.next_election_timeout = Some(inst);
         }
 
-        tracing::debug!("id={} target_state: {:?}", self.id, self.target_state);
+        tracing::info!("id={} target_state: {:?}", self.id, self.target_state);
 
         // This is central loop of the system. The Raft core assumes a few different roles based
         // on cluster state. The Raft core will delegate control to the different state
@@ -361,7 +361,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Update core's target state, ensuring all invariants are upheld.
     #[tracing::instrument(level = "trace", skip(self), fields(id=self.id))]
     fn set_target_state(&mut self, target_state: State) {
-        tracing::debug!(id = self.id, ?target_state, "set_target_state");
+        tracing::info!("set_target_state: id: {}, target_state: {:?}", self.id, target_state);
 
         if target_state == State::Follower && !self.effective_membership.membership.contains(&self.id) {
             self.target_state = State::Learner;
@@ -977,7 +977,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             tokio::select! {
                 // If an election timeout is hit, then we need to transition to candidate.
                 _ = election_timeout => {
-                    tracing::debug!("timeout to recv a event, change to CandidateState");
+                    tracing::info!("timeout to recv a event, change to CandidateState");
                     self.core.set_target_state(State::Candidate)
                 },
 

@@ -228,7 +228,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         let changes = self.storage.install_snapshot(&req.meta, snapshot).await?;
 
-        tracing::debug!("update after apply or install-snapshot: {:?}", changes);
+        tracing::info!("update after install-snapshot: {:?}", changes);
 
         // After installing snapshot, no inconsistent log is removed.
         // This does not affect raft consistency.
@@ -251,7 +251,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // There could be unknown membership in the snapshot.
         let membership = StorageHelper::new(&self.storage).get_membership().await?;
-        tracing::debug!("storage membership: {:?}", membership);
+        tracing::info!("refetch membership from store: {:?}", membership);
 
         assert!(membership.is_some());
 
