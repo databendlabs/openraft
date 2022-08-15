@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::ops::RangeBounds;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -42,6 +43,14 @@ impl<C: RaftTypeConfig, T: RaftStorage<C> + Clone> Clone for StoreExt<C, T> {
             inner: self.inner.clone(),
             c: PhantomData,
         }
+    }
+}
+
+impl<C: RaftTypeConfig, T: RaftStorage<C>> Deref for StoreExt<C, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
