@@ -4,8 +4,8 @@ use std::fmt::Formatter;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::types::v065::LogId;
-use crate::types::v065::SnapshotSegmentId;
+use crate::LogId;
+use crate::SnapshotSegmentId;
 
 impl From<(u64, u64)> for LogId {
     fn from(v: (u64, u64)) -> Self {

@@ -10,11 +10,11 @@ use crate::error::RaftResult;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::summary::MessageSummary;
-use crate::types::v065::AppData;
-use crate::types::v065::AppDataResponse;
-use crate::types::v065::NodeId;
-use crate::types::v065::RaftNetwork;
-use crate::types::v065::RaftStorage;
+use crate::AppData;
+use crate::AppDataResponse;
+use crate::NodeId;
+use crate::RaftNetwork;
+use crate::RaftStorage;
 
 impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> RaftCore<D, R, N, S> {
     /// An RPC invoked by candidates to gather votes (§5.2).

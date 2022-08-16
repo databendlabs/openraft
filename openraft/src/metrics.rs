@@ -18,11 +18,11 @@ use tokio::time::Duration;
 use tokio::time::Instant;
 
 use crate::core::State;
-use crate::types::v065::EffectiveMembership;
-use crate::types::v065::LogId;
-use crate::types::v065::Membership;
-use crate::types::v065::NodeId;
+use crate::EffectiveMembership;
+use crate::LogId;
+use crate::Membership;
 use crate::MessageSummary;
+use crate::NodeId;
 use crate::RaftError;
 use crate::ReplicationMetrics;
 

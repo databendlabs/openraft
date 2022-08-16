@@ -23,17 +23,17 @@ use crate::config::Config;
 use crate::config::SnapshotPolicy;
 use crate::error::LackEntry;
 use crate::raft::InstallSnapshotRequest;
-use crate::types::v065::AppData;
-use crate::types::v065::AppDataResponse;
-use crate::types::v065::AppendEntriesRequest;
-use crate::types::v065::Entry;
-use crate::types::v065::LogId;
-use crate::types::v065::NodeId;
-use crate::types::v065::RaftNetwork;
-use crate::types::v065::RaftStorage;
-use crate::types::v065::Snapshot;
+use crate::AppData;
+use crate::AppDataResponse;
+use crate::AppendEntriesRequest;
+use crate::Entry;
+use crate::LogId;
 use crate::MessageSummary;
+use crate::NodeId;
+use crate::RaftNetwork;
+use crate::RaftStorage;
 use crate::ReplicationError;
+use crate::Snapshot;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReplicationMetrics {

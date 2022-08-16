@@ -1,11 +1,11 @@
-use crate::types::v065::EffectiveMembership;
-pub use crate::types::v065::HardState;
-pub use crate::types::v065::InitialState;
-use crate::types::v065::LogId;
-use crate::types::v065::Membership;
-use crate::types::v065::NodeId;
-pub use crate::types::v065::RaftStorage;
-pub use crate::types::v065::Snapshot;
+use crate::EffectiveMembership;
+pub use crate::HardState;
+pub use crate::InitialState;
+use crate::LogId;
+use crate::Membership;
+use crate::NodeId;
+pub use crate::RaftStorage;
+pub use crate::Snapshot;
 
 impl InitialState {
     /// Create a new instance for a pristine Raft node.

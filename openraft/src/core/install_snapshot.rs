@@ -11,12 +11,12 @@ use crate::core::UpdateCurrentLeader;
 use crate::error::RaftResult;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
-use crate::types::v065::AppData;
-use crate::types::v065::AppDataResponse;
-use crate::types::v065::RaftNetwork;
-use crate::types::v065::RaftStorage;
+use crate::AppData;
+use crate::AppDataResponse;
 use crate::MessageSummary;
 use crate::RaftError;
+use crate::RaftNetwork;
+use crate::RaftStorage;
 use crate::SnapshotSegmentId;
 use crate::Update;
 

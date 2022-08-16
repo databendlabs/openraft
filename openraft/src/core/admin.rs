@@ -15,14 +15,14 @@ use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
 use crate::raft::RaftRespTx;
-use crate::types::v065::AppData;
-use crate::types::v065::AppDataResponse;
-use crate::types::v065::Membership;
-use crate::types::v065::NodeId;
-use crate::types::v065::RaftNetwork;
-use crate::types::v065::RaftStorage;
+use crate::AppData;
+use crate::AppDataResponse;
 use crate::LogId;
+use crate::Membership;
+use crate::NodeId;
 use crate::RaftError;
+use crate::RaftNetwork;
+use crate::RaftStorage;
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LearnerState<'a, D, R, N, S> {
     /// Handle the admin `init_with_config` command.

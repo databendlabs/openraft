@@ -4,7 +4,7 @@ use maplit::btreemap;
 use maplit::btreeset;
 
 use crate::raft::Membership;
-use crate::types::v065::NodeId;
+use crate::NodeId;
 
 #[test]
 fn test_membership() -> anyhow::Result<()> {

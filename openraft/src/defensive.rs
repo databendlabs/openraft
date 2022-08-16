@@ -4,14 +4,14 @@ use std::ops::RangeBounds;
 
 use async_trait::async_trait;
 
-use crate::types::v065::AppData;
-use crate::types::v065::AppDataResponse;
-use crate::types::v065::Entry;
-use crate::types::v065::HardState;
-use crate::types::v065::LogId;
-use crate::types::v065::RaftStorage;
+use crate::AppData;
+use crate::AppDataResponse;
 use crate::DefensiveError;
+use crate::Entry;
 use crate::ErrorSubject;
+use crate::HardState;
+use crate::LogId;
+use crate::RaftStorage;
 use crate::StorageError;
 use crate::Violation;
 use crate::Wrapper;

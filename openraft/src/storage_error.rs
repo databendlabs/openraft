@@ -2,12 +2,12 @@ use std::fmt::Formatter;
 
 use anyerror::AnyError;
 
-use crate::types::v065::DefensiveError;
-use crate::types::v065::ErrorSubject;
-use crate::types::v065::Violation;
+use crate::DefensiveError;
+use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::StorageError;
 use crate::StorageIOError;
+use crate::Violation;
 
 impl DefensiveError {
     pub fn new(subject: ErrorSubject, violation: Violation) -> DefensiveError {

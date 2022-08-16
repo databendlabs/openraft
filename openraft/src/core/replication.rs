@@ -17,14 +17,14 @@ use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::summary::MessageSummary;
-use crate::types::v065::AppData;
-use crate::types::v065::AppDataResponse;
-use crate::types::v065::LogId;
-use crate::types::v065::NodeId;
-use crate::types::v065::RaftNetwork;
-use crate::types::v065::RaftStorage;
-use crate::types::v065::Snapshot;
+use crate::AppData;
+use crate::AppDataResponse;
+use crate::LogId;
+use crate::NodeId;
+use crate::RaftNetwork;
+use crate::RaftStorage;
 use crate::ReplicationMetrics;
+use crate::Snapshot;
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> LeaderState<'a, D, R, N, S> {
     /// Spawn a new replication stream returning its replication state handle.
