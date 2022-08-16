@@ -795,7 +795,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ClientReadRequest { tx } => {
                 self.handle_client_read_request(tx).await;
             }
-            RaftMsg::ClientWriteRequest { rpc, tx } => {
+            RaftMsg::ClientWriteRequest { payload: rpc, tx } => {
                 self.handle_client_write_request(rpc, tx).await?;
             }
             RaftMsg::Initialize { tx, .. } => {
@@ -933,7 +933,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ClientReadRequest { tx } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
-            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+            RaftMsg::ClientWriteRequest { payload: _, tx } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::Initialize { tx, .. } => {
@@ -1009,7 +1009,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ClientReadRequest { tx } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
-            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+            RaftMsg::ClientWriteRequest { payload: _, tx } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::Initialize { tx, .. } => {
@@ -1080,7 +1080,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ClientReadRequest { tx } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
-            RaftMsg::ClientWriteRequest { rpc: _, tx } => {
+            RaftMsg::ClientWriteRequest { payload: _, tx } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::Initialize { members, tx } => {

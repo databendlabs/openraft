@@ -28,7 +28,6 @@ pub use network::RaftNetwork;
 pub use rpc::AddLearnerResponse;
 pub use rpc::AppendEntriesRequest;
 pub use rpc::AppendEntriesResponse;
-pub use rpc::ClientWriteRequest;
 pub use rpc::ClientWriteResponse;
 pub use rpc::InstallSnapshotRequest;
 pub use rpc::InstallSnapshotResponse;
