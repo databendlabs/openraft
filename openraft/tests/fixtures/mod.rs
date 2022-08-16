@@ -24,7 +24,6 @@ use openraft::metrics::Wait;
 use openraft::raft::AddLearnerResponse;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
-use openraft::raft::ClientWriteRequest;
 use openraft::raft::ClientWriteResponse;
 use openraft::raft::Entry;
 use openraft::raft::EntryPayload;
@@ -513,9 +512,7 @@ impl RaftRouter {
         let rt = self.routing_table.read().await;
         let node = rt.get(&target).unwrap_or_else(|| panic!("node '{}' does not exist in routing table", target));
 
-        let payload = EntryPayload::Normal(req);
-
-        node.0.client_write(ClientWriteRequest::new(payload)).await.map(|res| res.data)
+        node.0.client_write(req).await.map(|res| res.data)
     }
 
     /// Assert that the cluster is in a pristine state, with all nodes as learners.

@@ -16,7 +16,6 @@ use crate::error::ClientReadError;
 use crate::error::ClientWriteError;
 use crate::error::QuorumNotEnough;
 use crate::raft::AppendEntriesRequest;
-use crate::raft::ClientWriteRequest;
 use crate::raft::ClientWriteResponse;
 use crate::raft::Entry;
 use crate::raft::EntryPayload;
@@ -167,13 +166,13 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Handle client write requests.
-    #[tracing::instrument(level = "trace", skip(self, tx), fields(rpc=%rpc.summary()))]
+    #[tracing::instrument(level = "trace", skip_all, fields(payload=%payload.summary()))]
     pub(super) async fn handle_client_write_request(
         &mut self,
-        rpc: ClientWriteRequest<D>,
+        payload: EntryPayload<D>,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) -> Result<(), StorageError> {
-        let entry = self.core.append_payload_to_log(rpc.payload).await?;
+        let entry = self.core.append_payload_to_log(payload).await?;
         let entry = ClientRequestEntry {
             entry: Arc::new(entry),
             tx: Some(tx),

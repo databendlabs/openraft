@@ -4,7 +4,6 @@ use serde::Serialize;
 use super::AppData;
 use super::AppDataResponse;
 use super::Entry;
-use super::EntryPayload;
 use super::LogId;
 use super::Membership;
 use super::SnapshotMeta;
@@ -90,17 +89,6 @@ pub struct InstallSnapshotRequest {
 pub struct InstallSnapshotResponse {
     /// The receiving node's current term, for leader to update itself.
     pub term: u64,
-}
-
-/// An application specific client request to update the state of the system (§5.1).
-///
-/// The entry of this payload will be appended to the Raft log and then applied to the Raft state
-/// machine according to the Raft protocol.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ClientWriteRequest<D: AppData> {
-    /// The application specific contents of this client request.
-    #[serde(bound = "D: AppData")]
-    pub(crate) payload: EntryPayload<D>,
 }
 
 /// The response to a `ClientRequest`.

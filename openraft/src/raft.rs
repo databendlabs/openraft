@@ -28,7 +28,6 @@ use crate::types::v070::AppData;
 use crate::types::v070::AppDataResponse;
 pub use crate::types::v070::AppendEntriesRequest;
 pub use crate::types::v070::AppendEntriesResponse;
-pub use crate::types::v070::ClientWriteRequest;
 pub use crate::types::v070::ClientWriteResponse;
 pub use crate::types::v070::Entry;
 pub use crate::types::v070::EntryPayload;
@@ -187,10 +186,11 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These are application specific requirements, and must be implemented by the application which is
     /// being built on top of Raft.
-    #[tracing::instrument(level = "debug", skip(self, rpc))]
-    pub async fn client_write(&self, rpc: ClientWriteRequest<D>) -> Result<ClientWriteResponse<R>, ClientWriteError> {
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn client_write(&self, app_data: D) -> Result<ClientWriteResponse<R>, ClientWriteError> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(RaftMsg::ClientWriteRequest { rpc, tx }, rx).await
+        let payload = EntryPayload::Normal(app_data);
+        self.call_core(RaftMsg::ClientWriteRequest { payload, tx }, rx).await
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -444,7 +444,7 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         tx: RaftRespTx<InstallSnapshotResponse, InstallSnapshotError>,
     },
     ClientWriteRequest {
-        rpc: ClientWriteRequest<D>,
+        payload: EntryPayload<D>,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     },
     ClientReadRequest {
@@ -492,8 +492,8 @@ where
             RaftMsg::InstallSnapshot { rpc, .. } => {
                 format!("InstallSnapshot: {}", rpc.summary())
             }
-            RaftMsg::ClientWriteRequest { rpc, .. } => {
-                format!("ClientWriteRequest: {}", rpc.summary())
+            RaftMsg::ClientWriteRequest { payload, .. } => {
+                format!("ClientWriteRequest: {}", payload.summary())
             }
             RaftMsg::ClientReadRequest { .. } => "ClientReadRequest".to_string(),
             RaftMsg::Initialize { members, .. } => {
@@ -613,18 +613,6 @@ impl MessageSummary for InstallSnapshotRequest {
             self.data.len(),
             self.done
         )
-    }
-}
-
-impl<D: AppData> MessageSummary for ClientWriteRequest<D> {
-    fn summary(&self) -> String {
-        self.payload.summary()
-    }
-}
-
-impl<D: AppData> ClientWriteRequest<D> {
-    pub fn new(entry: EntryPayload<D>) -> Self {
-        Self { payload: entry }
     }
 }
 
