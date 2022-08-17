@@ -279,13 +279,6 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             last_applied_log = sm.last_applied_log;
         }
 
-        let last_applied_log = match last_applied_log {
-            None => {
-                panic!("can not compact empty state machine");
-            }
-            Some(x) => x,
-        };
-
         let snapshot_size = data.len();
 
         let snapshot_idx = {
@@ -294,7 +287,11 @@ impl RaftStorage<ClientRequest, ClientResponse> for MemStore {
             *l
         };
 
-        let snapshot_id = format!("{}-{}-{}", last_applied_log.term, last_applied_log.index, snapshot_idx);
+        let snapshot_id = if let Some(last) = last_applied_log {
+            format!("{}-{}-{}", last.term, last.index, snapshot_idx)
+        } else {
+            format!("--{}", snapshot_idx)
+        };
 
         let meta = SnapshotMeta {
             last_log_id: last_applied_log,

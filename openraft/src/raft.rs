@@ -140,7 +140,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node up-to-speed
     /// with the leader (§7).
-    #[tracing::instrument(level = "debug", skip(self, rpc), fields(snapshot_id=%rpc.meta.last_log_id))]
+    #[tracing::instrument(level = "debug", skip_all, fields(snapshot_last_log_id=?rpc.meta.last_log_id))]
     pub async fn install_snapshot(
         &self,
         rpc: InstallSnapshotRequest,

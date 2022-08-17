@@ -241,7 +241,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
-            self.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
+            self.snapshot_last_log_id = snapshot.meta.last_log_id;
             self.report_metrics(Update::AsIs);
         }
 
@@ -436,7 +436,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     #[tracing::instrument(level = "trace", skip(self))]
     fn update_snapshot_state(&mut self, update: SnapshotUpdate) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
-            self.snapshot_last_log_id = Some(log_id);
+            self.snapshot_last_log_id = log_id;
             self.report_metrics(Update::AsIs);
         }
         // If snapshot state is anything other than streaming, then drop it.
@@ -491,7 +491,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                     Ok(res) => match res {
                         Ok(snapshot) => {
                             let _ = tx_compaction.try_send(SnapshotUpdate::SnapshotComplete(snapshot.meta.last_log_id));
-                            let _ = chan_tx.send(snapshot.meta.last_log_id.index); // This will always succeed.
+                            let _ = chan_tx.send(snapshot.meta.last_log_id); // This will always succeed.
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");
@@ -611,8 +611,8 @@ pub(self) enum SnapshotState<S> {
     Snapshotting {
         /// A handle to abort the compaction process early if needed.
         handle: AbortHandle,
-        /// A sender for notifiying any other tasks of the completion of this compaction.
-        sender: broadcast::Sender<u64>,
+        /// A sender for notifying any other tasks of the completion of this compaction.
+        sender: broadcast::Sender<Option<LogId>>,
     },
     /// The Raft node is streaming in a snapshot from the leader.
     Streaming {
@@ -629,7 +629,7 @@ pub(self) enum SnapshotState<S> {
 #[derive(Debug)]
 pub(self) enum SnapshotUpdate {
     /// Snapshot creation has finished successfully and covers the given index.
-    SnapshotComplete(LogId),
+    SnapshotComplete(Option<LogId>),
     /// Snapshot creation failed.
     SnapshotFailed,
 }
