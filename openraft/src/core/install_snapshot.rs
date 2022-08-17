@@ -228,19 +228,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Unlike normal append-entries RPC, if conflicting logs are found, it is not **necessary** to delete them.
         // See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
         {
-            let local = self.storage.try_get_log_entry(snap_last_log_id.index).await?;
+            if let Some(last) = snap_last_log_id {
+                let local = self.storage.try_get_log_entry(last.index).await?;
 
-            if let Some(local_log) = local {
-                if local_log.log_id != snap_last_log_id {
-                    tracing::info!(
-                        local_log_id = display(&local_log.log_id),
-                        snap_last_log_id = display(&snap_last_log_id),
-                        "found conflict log id, when installing snapshot"
-                    );
+                if let Some(local_log) = local {
+                    if local_log.log_id != last {
+                        tracing::info!(
+                            local_log_id = display(&local_log.log_id),
+                            snap_last_log_id = display(&last),
+                            "found conflict log id, when installing snapshot"
+                        );
+                    }
+
+                    self.engine.truncate_logs(last.index);
+                    self.run_engine_commands::<Entry<C>>(&[]).await?;
                 }
-
-                self.engine.truncate_logs(snap_last_log_id.index);
-                self.run_engine_commands::<Entry<C>>(&[]).await?;
             }
         }
 
@@ -251,17 +253,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let last_applied = changes.last_applied;
 
-        if st.committed < Some(last_applied) {
-            st.committed = Some(last_applied);
+        if st.committed < last_applied {
+            st.committed = last_applied;
         }
 
-        debug_assert!(st.last_purged_log_id() <= Some(last_applied));
+        debug_assert!(st.last_purged_log_id() <= last_applied);
 
         // A local log that is <= last_applied may be inconsistent with the leader.
         // It has to purge all of them to prevent these log form being replicated, when this node becomes leader.
-        self.engine.snapshot_last_log_id = Some(last_applied); // update and make last applied log removable
-        self.engine.purge_log(last_applied);
-        self.run_engine_commands::<Entry<C>>(&[]).await?;
+        self.engine.snapshot_last_log_id = last_applied; // update and make last applied log removable
+        if let Some(last) = last_applied {
+            self.engine.purge_log(last);
+            self.run_engine_commands::<Entry<C>>(&[]).await?;
+        }
 
         self.engine.update_committed_membership(req.meta.last_membership);
         self.run_engine_commands::<Entry<C>>(&[]).await?;

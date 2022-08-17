@@ -779,12 +779,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             // If we just sent the final chunk of the snapshot, then transition to lagging state.
             if done {
                 tracing::debug!(
-                    "done install snapshot: snapshot last_log_id: {}, matched: {:?}",
+                    "done install snapshot: snapshot last_log_id: {:?}, matched: {:?}",
                     snapshot.meta.last_log_id,
                     self.matched,
                 );
 
-                self.update_matched(Some(snapshot.meta.last_log_id));
+                self.update_matched(snapshot.meta.last_log_id);
 
                 return Ok(());
             }

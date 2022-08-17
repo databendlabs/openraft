@@ -32,7 +32,7 @@ where
     N: Node,
 {
     /// Log entries upto which this snapshot includes, inclusive.
-    pub last_log_id: LogId<NID>,
+    pub last_log_id: Option<LogId<NID>>,
 
     /// The last applied membership config.
     pub last_membership: EffectiveMembership<NID, N>,
@@ -49,7 +49,7 @@ where
 {
     pub fn signature(&self) -> SnapshotSignature<NID> {
         SnapshotSignature {
-            last_log_id: Some(self.last_log_id),
+            last_log_id: self.last_log_id,
             last_membership_log_id: self.last_membership.log_id,
             snapshot_id: self.snapshot_id.clone(),
         }

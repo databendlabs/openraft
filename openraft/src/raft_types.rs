@@ -202,6 +202,6 @@ impl MetricsChangeFlags {
 /// E.g. when applying a log to state machine, or installing a state machine from snapshot.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateMachineChanges<C: RaftTypeConfig> {
-    pub last_applied: LogId<C::NodeId>,
+    pub last_applied: Option<LogId<C::NodeId>>,
     pub is_snapshot: bool,
 }
