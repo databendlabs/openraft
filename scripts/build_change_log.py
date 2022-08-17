@@ -198,10 +198,12 @@ def norm_changes(changes):
 
     return rst
 
-def build_ver_changelog(new_ver, commit="HEAD"):
+def build_ver_changelog(new_ver, commit="HEAD", since=None):
     '''
     Build change log for ``new_ver`` at ``commit``.
     It will find out all commit since the last tag that is less than ``new_ver``
+
+    If ``since`` is specified, build change log since ``since`` upto ``commit``.
     '''
 
     fn = 'change-log/v{new_ver}.md'.format(new_ver=new_ver)
@@ -210,13 +212,16 @@ def build_ver_changelog(new_ver, commit="HEAD"):
         print("--- To rebuild it, delete {fn} and re-run".format(fn=fn))
         return
 
-    tags = list_tags()
-    tags.sort()
+    if since is None:
+        tags = list_tags()
+        tags.sort()
 
-    new_ver = new_ver.lstrip('v')
-    new_ver = semantic_version.Version(new_ver)
-    tags = [t for t in tags if t < new_ver]
-    latest = tags[-1]
+        new_ver = new_ver.lstrip('v')
+        new_ver = semantic_version.Version(new_ver)
+        tags = [t for t in tags if t < new_ver]
+        latest = tags[-1]
+    else:
+        latest = since
 
     chs = changes('v' + str(latest), commit)
     chs = norm_changes(chs)
@@ -288,6 +293,11 @@ if __name__ == "__main__":
 
     new_ver = load_cargo_version()
 
-    build_ver_changelog(new_ver)
+    if len(sys.argv) == 2:
+        since = sys.argv[1]
+    else:
+        since = None
+
+    build_ver_changelog(new_ver, since=since)
     build_changelog()
 
