@@ -1,3 +1,3 @@
 [workspace]
-members = ["openraft", "memstore", "rocksstore"]
+members = ["openraft", "memstore", "rocksstore", "sledstore"]
 exclude = ["examples/raft-kv-memstore", "examples/raft-kv-rocksdb"]
