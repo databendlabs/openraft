@@ -1,5 +1,3 @@
-use std::fmt::Formatter;
-
 use anyerror::AnyError;
 
 use crate::DefensiveError;
@@ -19,12 +17,6 @@ impl DefensiveError {
     }
 }
 
-impl std::fmt::Display for DefensiveError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "'{:?}' violates: '{}'", self.subject, self.violation)
-    }
-}
-
 impl StorageError {
     pub fn into_defensive(self) -> Option<DefensiveError> {
         match self {
@@ -38,12 +30,6 @@ impl StorageError {
             StorageError::IO { source } => Some(source),
             _ => None,
         }
-    }
-}
-
-impl std::fmt::Display for StorageIOError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "when {:?} {:?}: {}", self.verb, self.subject, self.source)
     }
 }
 

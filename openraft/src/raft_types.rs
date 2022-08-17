@@ -13,12 +13,6 @@ impl From<(u64, u64)> for LogId {
     }
 }
 
-impl Display for LogId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}-{}", self.term, self.index)
-    }
-}
-
 impl LogId {
     pub fn new(term: u64, index: u64) -> Self {
         if term == 0 || index == 0 {

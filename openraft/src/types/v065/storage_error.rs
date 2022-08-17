@@ -1,3 +1,4 @@
+use std::fmt::Formatter;
 use std::ops::Bound;
 
 use anyerror::AnyError;
@@ -19,6 +20,12 @@ pub struct DefensiveError {
     pub violation: Violation,
 
     pub backtrace: Option<String>,
+}
+
+impl std::fmt::Display for DefensiveError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "'{:?}' violates: '{}'", self.subject, self.violation)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,4 +130,10 @@ pub struct StorageIOError {
     pub(crate) verb: ErrorVerb,
     pub(crate) source: AnyError,
     pub(crate) backtrace: Option<String>,
+}
+
+impl std::fmt::Display for StorageIOError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "when {:?} {:?}: {}", self.verb, self.subject, self.source)
+    }
 }
