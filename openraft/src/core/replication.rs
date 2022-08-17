@@ -235,8 +235,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let current_snapshot_opt = self.core.storage.get_current_snapshot().await?;
 
         if let Some(snapshot) = current_snapshot_opt {
-            if let Some(must_inc) = must_include {
-                if snapshot.meta.last_log_id >= must_inc {
+            if must_include.is_some() {
+                if snapshot.meta.last_log_id >= must_include {
                     let _ = tx.send(snapshot);
                     return Ok(());
                 }
@@ -244,7 +244,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 // If snapshot exists, ensure its distance from the leader's last log index is <= half
                 // of the configured snapshot threshold, else create a new snapshot.
                 if snapshot_is_within_half_of_threshold(
-                    &snapshot.meta.last_log_id.index,
+                    &snapshot.meta.last_log_id.unwrap_or_default().index,
                     &self.core.last_log_id.unwrap_or_default().index,
                     &threshold,
                 ) {

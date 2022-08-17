@@ -18,7 +18,7 @@ pub struct SnapshotSegmentId {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotMeta {
     // Log entries upto which this snapshot includes, inclusive.
-    pub last_log_id: LogId,
+    pub last_log_id: Option<LogId>,
 
     /// To identify a snapshot when transferring.
     /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be different in bytes.

@@ -49,7 +49,7 @@ async fn snapshot_ge_half_threshold() -> Result<()> {
         leader_id: 0,
         meta: SnapshotMeta {
             snapshot_id: "ss1".into(),
-            last_log_id: LogId { term: 1, index: 0 },
+            last_log_id: Some(LogId { term: 1, index: 0 }),
         },
         offset: 0,
         data: vec![1, 2, 3],

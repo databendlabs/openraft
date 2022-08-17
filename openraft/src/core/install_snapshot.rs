@@ -237,10 +237,12 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         let last_applied = changes.last_applied;
 
         // Applied logs are not needed.
-        purge_applied_logs(self.storage.clone(), &last_applied, self.config.max_applied_log_to_keep).await?;
+        if let Some(last) = &last_applied {
+            purge_applied_logs(self.storage.clone(), last, self.config.max_applied_log_to_keep).await?;
+        }
 
         // snapshot is installed
-        self.last_applied = Some(last_applied);
+        self.last_applied = last_applied;
 
         if self.committed < self.last_applied {
             self.committed = self.last_applied;

@@ -698,23 +698,31 @@ impl RaftRouter {
 
             match index_test {
                 ValueTest::Exact(index) => assert_eq!(
-                    &snap.meta.last_log_id.index, index,
-                    "expected node {} to have snapshot with index {}, got {}",
-                    id, index, snap.meta.last_log_id.index
-                ),
-                ValueTest::Range(range) => assert!(
-                    range.contains(&snap.meta.last_log_id.index),
-                    "expected node {} to have snapshot within range {:?}, got {}",
+                    snap.meta.last_log_id.index(),
+                    Some(*index),
+                    "expected node {} to have snapshot with index {}, got {:?}",
                     id,
-                    range,
-                    snap.meta.last_log_id.index
+                    index,
+                    snap.meta.last_log_id
                 ),
+                ValueTest::Range(range) => {
+                    assert!(
+                        range.contains(&snap.meta.last_log_id.index().unwrap_or_default()),
+                        "expected node {} to have snapshot within range {:?}, got {:?}",
+                        id,
+                        range,
+                        snap.meta.last_log_id
+                    )
+                }
             }
 
             assert_eq!(
-                &snap.meta.last_log_id.term, term,
-                "expected node {} to have snapshot with term {}, got {}",
-                id, term, snap.meta.last_log_id.term
+                &snap.meta.last_log_id.unwrap_or_default().term,
+                term,
+                "expected node {} to have snapshot with term {}, got {:?}",
+                id,
+                term,
+                snap.meta.last_log_id
             );
         }
 
