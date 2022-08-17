@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">2.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">4.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">4.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html" class="active"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">2.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">4.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">4.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html" class="active"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">5.1.</strong> Upgrade from 0.6 to 0.6</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -150,70 +150,9 @@ If storage related data structure changed too, a data migration tool is required
 <p>Fix: bug fix. No modification is required.</p>
 </li>
 </ul>
-<h2 id="upgrade-from-v066-to-v070"><a class="header" href="#upgrade-from-v066-to-v070">Upgrade from <a href="https://github.com/datafuselabs/openraft/tree/v0.6.6">v0.6.6</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.7.0">v0.7.0</a>:</a></h2>
+<h2 id="upgrade-from-v068-to-v070"><a class="header" href="#upgrade-from-v068-to-v070">Upgrade from <a href="https://github.com/datafuselabs/openraft/tree/v0.6.8">v0.6.8</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.7.0">v0.7.0</a>:</a></h2>
 <p><a href="https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v070">Change log v0.7.0</a></p>
-<p>To upgrade:</p>
-<ol>
-<li>
-<p>Update the application to adopt <code>v0.7.*</code> openraft.
-<a href="https://github.com/datafuselabs/openraft/blob/release-0.7/memstore/src/lib.rs"><code>memstore</code></a> is a good example about how to implement the openraft API.
-Also, the new implementation of <code>v0.7.*</code> has to pass <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/memstore/src/test.rs#L26-L29"><code>RaftStorage</code> test suite</a>.</p>
-</li>
-<li>
-<p>Then shutdown all <code>v0.6.*</code> nodes and then bring up <code>v0.7.*</code> nodes.</p>
-</li>
-</ol>
-<p><code>v0.6.*</code> and <code>v0.7.*</code> should <strong>NEVER</strong> run in a same cluster, due to the data structure changes. 
-Exchanging data between <code>v0.6.*</code> and <code>v0.7.*</code> nodes may lead to data damage.</p>
-<h3 id="api-changes"><a class="header" href="#api-changes">API changes:</a></h3>
-<ul>
-<li>
-<p>Removed methods:</p>
-<ul>
-<li><code>RaftStorage::get_membership_config()</code> is removed. It is provided with a default implementation in <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/storage_helper.rs#L70"><code>StorageHelper::get_membership()</code></a></li>
-<li><code>RaftStorage::get_initial_state()</code> is removed too and is moved to <code>StorageHelper</code>.</li>
-<li><code>RaftStorage::get_log_entries()</code> is removed too and is moved to <code>StorageHelper</code>.</li>
-<li><code>RaftStorage::try_get_log_entry()</code> is removed too and is moved to <code>StorageHelper</code>.</li>
-<li><code>RaftStorage::first_id_in_log()</code> and <code>RaftStorage::last_id_in_log()</code> are removed. They are replaced with a single method: <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/types/v070/storage.rs#L47-L52"><code>get_log_state()</code></a>, which returns both the first and the last log id in a <code>LogState</code> struct.</li>
-<li><code>RaftStorage::first_known_log_id()</code> is removed.</li>
-</ul>
-</li>
-<li>
-<p>Refactored methods:</p>
-<ul>
-<li><code>RaftStorage::last_applied_state()</code> return value changes from <code>(LogId, ...)</code> to <code>(Option&lt;LogId&gt;,...)</code>: i.e., <code>None</code> should be returned if the state machine has not yet applied any log.</li>
-<li><code>RaftStorage::delete_logs_from()</code> is split into two methods: <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/types/v070/storage.rs#L71"><code>delete_conflict_logs_since(log_id)</code></a> to delete logs that conflict with the leader on a <strong>follower</strong>, and <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/types/v070/storage.rs#L74"><code>purge_logs_upto(log_id)</code></a> to delete already applied logs. </li>
-</ul>
-</li>
-<li>
-<p>Renamed methods: </p>
-<ul>
-<li><code>RaftStorage::do_log_compaction()</code> is renamed to <code>build_snapstho()</code>, without any change.</li>
-<li><code>RaftStorage::finalize_snapshot_installation()</code> is renamed to <code>install_snapshot()</code>, without any change.</li>
-</ul>
-</li>
-</ul>
-<h3 id="data-changes"><a class="header" href="#data-changes">Data changes:</a></h3>
-<p>Some log id fields are changed from <code>LogId</code> to <code>Option&lt;LogId&gt;</code>,
-in order to correctly describe the initial states.
-Now the <code>RaftStorage</code> implementation can just return <code>None</code> if the data to access is absent.
-No need to build a valid default value any more.</p>
-<ul>
-<li><code>InitialState.last_log_id: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
-<li><code>InitialState.last_applied: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
-<li><code>InitialState.last_membership: EffectiveMembership</code> changes to <code>Option&lt;EffectiveMembership&gt;</code>.</li>
-<li><code>VoetRequest.last_log_id: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
-<li><code>VoetResponse.last_log_id: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
-<li><code>AppendEntriesRequest.last_log_id: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
-<li><code>AppendEntriesRequest.leader_commit: LogId</code> changes to <code>Option&lt;LogId&gt;</code>.</li>
-<li><code>AddLearnerResponse.matched: LogId</code> changes to <code>Option&lt;LogId&gt;</code></li>
-</ul>
-<p>Other changes:</p>
-<ul>
-<li><code>AppendEntriesResponse</code> now only needs to return <code>success: bool</code> and <code>conflict: bool</code>, no need to return the last log that matches, previously <code>AppendEntriesResponse.matched</code> or the log id that conflicts with the leader, previously <code>AppendEntriesResponse.conflig</code>.</li>
-<li><code>ClientWriteRequest.entry</code> is renamed to <code>payload</code>.</li>
-<li>Add a new struct <code>LogState</code> as a return value of <a href="https://github.com/datafuselabs/openraft/blob/0355a6050e7cf6ecba83fe7c0f00abeeec3e3b15/openraft/src/types/v070/storage.rs#L47-L52"><code>get_log_state()</code></a>.</li>
-</ul>
+<p><a href="./upgrade-v06-v07.html">Guide for upgrading v0.6 to v0.7</a></p>
 <h2 id="upgrade-from-v065-to-v066"><a class="header" href="#upgrade-from-v065-to-v066">Upgrade from <a href="https://github.com/datafuselabs/openraft/tree/v0.6.5">v0.6.5</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.6.6">v0.6.6</a>:</a></h2>
 <p><a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md#v066">Change log v0.6.6</a></p>
 <p>just modify application code to pass compile.</p>
@@ -229,6 +168,9 @@ No need to build a valid default value any more.</p>
                             <a rel="prev" href="effective-membership.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
+                            <a rel="next" href="upgrade-v06-v07.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
                         <div style="clear: both"></div>
                     </nav>
                 </div>
@@ -237,6 +179,9 @@ No need to build a valid default value any more.</p>
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
                     <a rel="prev" href="effective-membership.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
+                    </a>
+                    <a rel="next" href="upgrade-v06-v07.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
 
