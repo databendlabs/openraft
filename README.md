@@ -35,10 +35,15 @@ Currently openraft is the consensus engine of meta-service cluster in [databend]
   - `Feature:` if it introduces compatible non-breaking new features.
   - `Fix:` if it just fixes a bug.
 
-- **Branch [release-0.6](https://github.com/datafuselabs/openraft/tree/release-0.6)**: In this release branch, [v0.6.5](https://github.com/datafuselabs/openraft/tree/v0.6.5) is the latest
-    published version. `release-0.6` won't accept new features but only bug fixes.
+- **Branch [release-0.6](https://github.com/datafuselabs/openraft/tree/release-0.6)**:
+  In this release branch, [v0.6.8](https://github.com/datafuselabs/openraft/tree/v0.6.8) is the latest version.
+  `release-0.6` won't accept new features but only bug fixes.
 
-- **Branch [release-0.7](https://github.com/datafuselabs/openraft/tree/release-0.7)**: In this release branch, [v0.7.0-alpha.1](https://github.com/datafuselabs/openraft/tree/v0.7.0-alpha.1) is the latest version. `release-0.7` won't be published until the backward compatibility with `release-0.6` is ready.
+- **Branch [release-0.7](https://github.com/datafuselabs/openraft/tree/release-0.7)**:
+  In this release branch, [v0.7.0](https://github.com/datafuselabs/openraft/tree/v0.7.0) is the latest version.
+  [Upgrade guide from 0.6 to 0.7](https://datafuselabs.github.io/openraft/upgrade-v06-v07.html)
+
+  `release-0.7` won't accept new features but only bug fixes.
 
 - **Branch main** has been under active development.
 
