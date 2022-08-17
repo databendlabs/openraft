@@ -36,6 +36,7 @@ categories = {
         'Add:':          typs['new-feature'],
         'add:':          typs['new-feature'],
         'feature:':      typs['new-feature'],
+        'Feature:':      typs['new-feature'],
         'features:':     typs['new-feature'],
         'new-features:': typs['new-feature'],
         'docs:':         typs['doc'],

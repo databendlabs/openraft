@@ -18,7 +18,7 @@ pub struct DefensiveError {
     /// The description of the violation.
     pub violation: Violation,
 
-    pub backtrace: String,
+    pub backtrace: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,7 +116,7 @@ pub enum StorageError {
     #[error(transparent)]
     Defensive {
         #[from]
-        #[backtrace]
+        #[cfg_attr(feature = "bt", backtrace)]
         source: DefensiveError,
     },
 
@@ -124,7 +124,7 @@ pub enum StorageError {
     #[error(transparent)]
     IO {
         #[from]
-        #[backtrace]
+        #[cfg_attr(feature = "bt", backtrace)]
         source: StorageIOError,
     },
 }
@@ -135,5 +135,5 @@ pub struct StorageIOError {
     pub(crate) subject: ErrorSubject,
     pub(crate) verb: ErrorVerb,
     pub(crate) source: AnyError,
-    pub(crate) backtrace: String,
+    pub(crate) backtrace: Option<String>,
 }
