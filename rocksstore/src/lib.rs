@@ -378,21 +378,15 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<RocksStore> {
             last_membership = state_machine.last_membership;
         }
 
-        let last_applied_log = match last_applied_log {
-            None => {
-                panic!("can not compact empty state machine");
-            }
-            Some(x) => x,
-        };
-
         // TODO: we probably want thius to be atomic.
         let snapshot_idx: u64 = self.get_snapshot_index_()? + 1;
         self.set_snapshot_indesx_(snapshot_idx)?;
 
-        let snapshot_id = format!(
-            "{}-{}-{}",
-            last_applied_log.leader_id, last_applied_log.index, snapshot_idx
-        );
+        let snapshot_id = if let Some(last) = last_applied_log {
+            format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
+        } else {
+            format!("--{}", snapshot_idx)
+        };
 
         let meta = SnapshotMeta {
             last_log_id: last_applied_log,

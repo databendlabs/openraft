@@ -1054,7 +1054,7 @@ where
             let mut b = store.get_snapshot_builder().await;
             let snap = b.build_snapshot().await?;
             let meta = snap.meta;
-            assert_eq!(log_id(0, 0), meta.last_log_id);
+            assert_eq!(Some(log_id(0, 0)), meta.last_log_id);
             assert_eq!(Some(log_id(0, 0)), meta.last_membership.log_id);
             assert_eq!(
                 Membership::new(vec![btreeset! {1,2}], None),
@@ -1078,7 +1078,7 @@ where
             let mut b = store.get_snapshot_builder().await;
             let snap = b.build_snapshot().await?;
             let meta = snap.meta;
-            assert_eq!(log_id(2, 2), meta.last_log_id);
+            assert_eq!(Some(log_id(2, 2)), meta.last_log_id);
             assert_eq!(Some(log_id(2, 2)), meta.last_membership.log_id);
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4}], None),

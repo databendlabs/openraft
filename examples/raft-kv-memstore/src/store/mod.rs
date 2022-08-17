@@ -147,23 +147,17 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
             last_membership = state_machine.last_membership.clone();
         }
 
-        let last_applied_log = match last_applied_log {
-            None => {
-                panic!("can not compact empty state machine");
-            }
-            Some(x) => x,
-        };
-
         let snapshot_idx = {
             let mut l = self.snapshot_idx.lock().unwrap();
             *l += 1;
             *l
         };
 
-        let snapshot_id = format!(
-            "{}-{}-{}",
-            last_applied_log.leader_id, last_applied_log.index, snapshot_idx
-        );
+        let snapshot_id = if let Some(last) = last_applied_log {
+            format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
+        } else {
+            format!("--{}", snapshot_idx)
+        };
 
         let meta = SnapshotMeta {
             last_log_id: last_applied_log,

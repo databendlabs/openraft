@@ -148,7 +148,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) leader_data: Option<LeaderData<C>>,
 
     /// The node's current snapshot state.
-    pub(crate) snapshot_state: Option<SnapshotState<S::SnapshotData>>,
+    pub(crate) snapshot_state: Option<SnapshotState<C, S::SnapshotData>>,
 
     /// The time to elect if a follower does not receive any append-entry message.
     pub(crate) next_election_time: VoteWiseTime<C::NodeId>,
@@ -252,7 +252,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
-            self.engine.snapshot_last_log_id = Some(snapshot.meta.last_log_id);
+            self.engine.snapshot_last_log_id = snapshot.meta.last_log_id;
             self.engine.metrics_flags.set_data_changed();
         }
 
@@ -836,7 +836,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) fn update_snapshot_state(&mut self, update: SnapshotUpdate<C::NodeId>) {
         if let SnapshotUpdate::SnapshotComplete(log_id) = update {
-            self.engine.snapshot_last_log_id = Some(log_id);
+            self.engine.snapshot_last_log_id = log_id;
             self.engine.metrics_flags.set_data_changed();
         }
         // If snapshot state is anything other than streaming, then drop it.
@@ -894,7 +894,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                                 update: SnapshotUpdate::SnapshotComplete(snapshot.meta.last_log_id),
                             });
                             // This will always succeed.
-                            let _ = chan_tx.send(snapshot.meta.last_log_id.index);
+                            let _ = chan_tx.send(snapshot.meta.last_log_id);
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");
@@ -1514,8 +1514,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let current_snapshot_opt = self.storage.get_current_snapshot().await?;
 
         if let Some(snapshot) = current_snapshot_opt {
-            if let Some(must_inc) = must_include {
-                if snapshot.meta.last_log_id >= must_inc {
+            if must_include.is_some() {
+                if snapshot.meta.last_log_id >= must_include {
                     let _ = tx.send(snapshot);
                     return Ok(());
                 }
@@ -1523,7 +1523,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 // If snapshot exists, ensure its distance from the leader's last log index is <= half
                 // of the configured snapshot threshold, else create a new snapshot.
                 if snapshot_is_within_half_of_threshold(
-                    &snapshot.meta.last_log_id.index,
+                    &snapshot.meta.last_log_id.unwrap_or_default().index,
                     &self.engine.state.last_log_id().unwrap_or_default().index,
                     &threshold,
                 ) {

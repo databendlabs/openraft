@@ -53,10 +53,10 @@ async fn snapshot_arguments() -> Result<()> {
         vote: Vote::new_committed(1, 0),
         meta: SnapshotMeta {
             snapshot_id: "ss1".into(),
-            last_log_id: LogId {
+            last_log_id: Some(LogId {
                 leader_id: LeaderId::new(1, 0),
                 index: 0,
-            },
+            }),
             last_membership: Default::default(),
         },
         offset: 0,
