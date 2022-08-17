@@ -1,3 +1,30 @@
+## v0.7.0-alpha.5
+
+
+
+## v0.7.0-alpha.4
+
+
+
+## v0.7.0-alpha.3
+
+### Changed:
+
+-   Changed: [f99ade30](https://github.com/datafuselabs/openraft/commit/f99ade30a7f806f18ed19ace12e226cd62fd43ec) API: move default impl methods in RaftStorage to StorageHelper; by 张炎泼; 2022-07-04
+
+### Fixed:
+
+-   Fixed: [44381b0c](https://github.com/datafuselabs/openraft/commit/44381b0c776cfbb7dfc7789de27346110776b7f6) when handling append-entries, if prev_log_id is purged, it should not delete any logs.; by 张炎泼; 2022-08-14
+
+    When handling append-entries, if the local log at `prev_log_id.index` is
+    purged, a follower should not believe it is a **conflict** and should
+    not delete all logs. It will get committed log lost.
+
+    To fix this issue, use `last_applied` instead of `committed`:
+    `last_applied` is always the committed log id, while `committed` is not
+    persisted and may be smaller than the actually applied, when a follower
+    is restarted.
+
 ## v0.7.0-alpha.2
 
 ### Fixed:
