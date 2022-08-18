@@ -43,7 +43,7 @@ Currently openraft is the consensus engine of meta-service cluster in [databend]
   In this release branch, [v0.7.0](https://github.com/datafuselabs/openraft/tree/v0.7.0) is the latest version.
   [Upgrade guide from 0.6 to 0.7](https://datafuselabs.github.io/openraft/upgrade-v06-v07.html)
 
-  `release-0.7` won't accept new features but only bug fixes.
+  <!-- `release-0.7` won't accept new features but only bug fixes. -->
 
 - **Branch main** has been under active development.
 
