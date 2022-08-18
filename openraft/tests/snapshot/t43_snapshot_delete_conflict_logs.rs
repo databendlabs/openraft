@@ -115,7 +115,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
             ],
             leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
         };
-        router.connect(1, &()).await?.send_append_entries(req).await?;
+        router.new_client(1, &()).await?.send_append_entries(req).await?;
 
         tracing::info!("--- check that learner membership is affected");
         {
@@ -146,7 +146,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
             done: true,
         };
 
-        router.connect(1, &()).await?.send_install_snapshot(req).await?;
+        router.new_client(1, &()).await?.send_install_snapshot(req).await?;
 
         tracing::info!("--- DONE installing snapshot");
 

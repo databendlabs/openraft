@@ -35,7 +35,7 @@ async fn append_sees_higher_vote() -> Result<()> {
     tracing::info!("--- upgrade vote on node-1");
     {
         router
-            .connect(1, &())
+            .new_client(1, &())
             .await?
             .send_vote(VoteRequest {
                 vote: Vote::new(10, 1),

@@ -54,7 +54,7 @@ impl RaftNetworkFactory<ExampleTypeConfig> for ExampleNetwork {
     type Network = ExampleNetworkConnection;
     type ConnectionError = NetworkError;
 
-    async fn connect(
+    async fn new_client(
         &mut self,
         target: ExampleNodeId,
         node: &BasicNode,
