@@ -222,6 +222,68 @@ fn bin_to_id(buf: &[u8]) -> u64 {
     (&buf[0..8]).read_u64::<BigEndian>().unwrap()
 }
 
+/// Meta data of a raft-store.
+///
+/// In raft, except logs and state machine, the store also has to store several piece of metadata.
+/// This sub mod defines the key-value pairs of these metadata.
+mod meta {
+    use openraft::ErrorSubject;
+    use openraft::LogId;
+
+    use crate::RocksNodeId;
+    use crate::RocksSnapshot;
+
+    /// Defines metadata key and value
+    pub(crate) trait StoreMeta {
+        /// The key used to store in rocksdb
+        const KEY: &'static str;
+
+        /// The type of the value to store
+        type Value: serde::Serialize + serde::de::DeserializeOwned;
+
+        /// The subject this meta belongs to, and will be embedded into the returned storage error.
+        fn subject(v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId>;
+    }
+
+    pub(crate) struct LastPurged {}
+    pub(crate) struct SnapshotIndex {}
+    pub(crate) struct Vote {}
+    pub(crate) struct Snapshot {}
+
+    impl StoreMeta for LastPurged {
+        const KEY: &'static str = "last_purged_log_id";
+        type Value = LogId<u64>;
+
+        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
+            ErrorSubject::Store
+        }
+    }
+    impl StoreMeta for SnapshotIndex {
+        const KEY: &'static str = "snapshot_index";
+        type Value = u64;
+
+        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
+            ErrorSubject::Store
+        }
+    }
+    impl StoreMeta for Vote {
+        const KEY: &'static str = "vote";
+        type Value = openraft::Vote<RocksNodeId>;
+
+        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
+            ErrorSubject::Vote
+        }
+    }
+    impl StoreMeta for Snapshot {
+        const KEY: &'static str = "snapshot";
+        type Value = RocksSnapshot;
+
+        fn subject(v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
+            ErrorSubject::Snapshot(v.unwrap().meta.signature())
+        }
+    }
+}
+
 impl RocksStore {
     fn store(&self) -> &ColumnFamily {
         self.db.cf_handle("store").unwrap()
@@ -229,84 +291,35 @@ impl RocksStore {
     fn logs(&self) -> &ColumnFamily {
         self.db.cf_handle("logs").unwrap()
     }
-    fn get_last_purged_(&self) -> StorageResult<Option<LogId<u64>>> {
-        Ok(self
+
+    /// Get a store metadata.
+    ///
+    /// It returns `None` if the store does not have such a metadata stored.
+    fn get_meta<M: meta::StoreMeta>(&self) -> Result<Option<M::Value>, StorageError<RocksNodeId>> {
+        let v = self
             .db
-            .get_cf(self.store(), b"last_purged_log_id")
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)))?
-            .and_then(|v| serde_json::from_slice(&v).ok()))
+            .get_cf(self.store(), M::KEY)
+            .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?;
+
+        let t = match v {
+            None => None,
+            Some(bytes) => Some(
+                serde_json::from_slice(&bytes)
+                    .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?,
+            ),
+        };
+        Ok(t)
     }
 
-    fn set_last_purged_(&self, log_id: LogId<u64>) -> StorageResult<()> {
+    /// Save a store metadata.
+    fn put_meta<M: meta::StoreMeta>(&self, value: &M::Value) -> Result<(), StorageError<RocksNodeId>> {
+        let json_value = serde_json::to_vec(value)
+            .map_err(|e| StorageIOError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
+
         self.db
-            .put_cf(
-                self.store(),
-                b"last_purged_log_id",
-                serde_json::to_vec(&log_id).unwrap().as_slice(),
-            )
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into())
-    }
+            .put_cf(self.store(), M::KEY, &json_value)
+            .map_err(|e| StorageIOError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
 
-    fn get_snapshot_index_(&self) -> StorageResult<u64> {
-        Ok(self
-            .db
-            .get_cf(self.store(), b"snapshot_index")
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)))?
-            .and_then(|v| serde_json::from_slice(&v).ok())
-            .unwrap_or(0))
-    }
-
-    fn set_snapshot_indesx_(&self, snapshot_index: u64) -> StorageResult<()> {
-        self.db
-            .put_cf(
-                self.store(),
-                b"snapshot_index",
-                serde_json::to_vec(&snapshot_index).unwrap().as_slice(),
-            )
-            .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)),
-            })?;
-        Ok(())
-    }
-
-    fn set_vote_(&self, vote: &Vote<RocksNodeId>) -> StorageResult<()> {
-        self.db
-            .put_cf(self.store(), b"vote", serde_json::to_vec(vote).unwrap())
-            .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Write, AnyError::new(&e)),
-            })
-    }
-
-    fn get_vote_(&self) -> StorageResult<Option<Vote<RocksNodeId>>> {
-        Ok(self
-            .db
-            .get_cf(self.store(), b"vote")
-            .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Write, AnyError::new(&e)),
-            })?
-            .and_then(|v| serde_json::from_slice(&v).ok()))
-    }
-
-    fn get_current_snapshot_(&self) -> StorageResult<Option<RocksSnapshot>> {
-        Ok(self
-            .db
-            .get_cf(self.store(), b"snapshot")
-            .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)),
-            })?
-            .and_then(|v| serde_json::from_slice(&v).ok()))
-    }
-
-    fn set_current_snapshot_(&self, snap: RocksSnapshot) -> StorageResult<()> {
-        self.db
-            .put_cf(self.store(), b"snapshot", serde_json::to_vec(&snap).unwrap().as_slice())
-            .map_err(|e| StorageError::IO {
-                source: StorageIOError::new(
-                    ErrorSubject::Snapshot(snap.meta.signature()),
-                    ErrorVerb::Write,
-                    AnyError::new(&e),
-                ),
-            })?;
         Ok(())
     }
 }
@@ -320,7 +333,7 @@ impl RaftLogReader<Config> for Arc<RocksStore> {
             .next()
             .and_then(|(_, ent)| Some(serde_json::from_slice::<Entry<Config>>(&ent).ok()?.log_id));
 
-        let last_purged_log_id = self.get_last_purged_()?;
+        let last_purged_log_id = self.get_meta::<meta::LastPurged>()?;
 
         let last_log_id = match last {
             None => last_purged_log_id,
@@ -378,9 +391,9 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<RocksStore> {
             last_membership = state_machine.last_membership;
         }
 
-        // TODO: we probably want thius to be atomic.
-        let snapshot_idx: u64 = self.get_snapshot_index_()? + 1;
-        self.set_snapshot_indesx_(snapshot_idx)?;
+        // TODO: we probably want this to be atomic.
+        let snapshot_idx: u64 = self.get_meta::<meta::SnapshotIndex>()?.unwrap_or_default() + 1;
+        self.put_meta::<meta::SnapshotIndex>(&snapshot_idx)?;
 
         let snapshot_id = if let Some(last) = last_applied_log {
             format!("{}-{}-{}", last.leader_id, last.index, snapshot_idx)
@@ -399,7 +412,7 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<RocksStore> {
             data: data.clone(),
         };
 
-        self.set_current_snapshot_(snapshot)?;
+        self.put_meta::<meta::Snapshot>(&snapshot)?;
 
         Ok(Snapshot {
             meta,
@@ -416,11 +429,11 @@ impl RaftStorage<Config> for Arc<RocksStore> {
 
     #[tracing::instrument(level = "trace", skip(self))]
     async fn save_vote(&mut self, vote: &Vote<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
-        self.set_vote_(vote)
+        self.put_meta::<meta::Vote>(vote)
     }
 
     async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<RocksNodeId>> {
-        self.get_vote_()
+        self.get_meta::<meta::Vote>()
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
@@ -455,7 +468,8 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     async fn purge_logs_upto(&mut self, log_id: LogId<RocksNodeId>) -> Result<(), StorageError<RocksNodeId>> {
         tracing::debug!("delete_log: [0, {:?}]", log_id);
 
-        self.set_last_purged_(log_id)?;
+        self.put_meta::<meta::LastPurged>(&log_id)?;
+
         let from = id_to_bin(0);
         let to = id_to_bin(log_id.index + 1);
         self.db
@@ -545,7 +559,8 @@ impl RaftStorage<Config> for Arc<RocksStore> {
             *state_machine = RocksStateMachine::from_serializable(updated_state_machine, self.db.clone())?;
         }
 
-        self.set_current_snapshot_(new_snapshot)?;
+        self.put_meta::<meta::Snapshot>(&new_snapshot)?;
+
         Ok(StateMachineChanges {
             last_applied: meta.last_log_id,
             is_snapshot: true,
@@ -556,7 +571,9 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     async fn get_current_snapshot(
         &mut self,
     ) -> Result<Option<Snapshot<RocksNodeId, BasicNode, Self::SnapshotData>>, StorageError<RocksNodeId>> {
-        match RocksStore::get_current_snapshot_(self)? {
+        let curr_snap = self.get_meta::<meta::Snapshot>()?;
+
+        match curr_snap {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
