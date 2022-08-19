@@ -118,11 +118,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
     /// used as heartbeats (§5.2).
-    #[tracing::instrument(level = "trace", skip(self, rpc), fields(rpc=%rpc.summary()))]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub async fn append_entries(
         &self,
         rpc: AppendEntriesRequest<D>,
     ) -> Result<AppendEntriesResponse, AppendEntriesError> {
+        tracing::debug!("append_entries: {}", rpc.summary());
+
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AppendEntries { rpc, tx }, rx).await
     }
@@ -130,8 +132,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.
     ///
     /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
-    #[tracing::instrument(level = "debug", skip(self, rpc), fields(rpc=%rpc.summary()))]
+    #[tracing::instrument(level = "info", skip(self, rpc), fields(rpc=%rpc.summary()))]
     pub async fn vote(&self, rpc: VoteRequest) -> Result<VoteResponse, VoteError> {
+        tracing::info!("vote: {}", rpc.summary());
+
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::RequestVote { rpc, tx }, rx).await
     }
@@ -140,11 +144,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node up-to-speed
     /// with the leader (§7).
-    #[tracing::instrument(level = "debug", skip_all, fields(snapshot_last_log_id=?rpc.meta.last_log_id))]
+    #[tracing::instrument(level = "info", skip_all, fields(snapshot_last_log_id=?rpc.meta.last_log_id))]
     pub async fn install_snapshot(
         &self,
         rpc: InstallSnapshotRequest,
     ) -> Result<InstallSnapshotResponse, InstallSnapshotError> {
+        tracing::info!("install_snapshot: {}", rpc.summary());
+
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::InstallSnapshot { rpc, tx }, rx).await
     }
@@ -154,7 +160,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// This method is based on the Raft metrics system which does a good job at staying
     /// up-to-date; however, the `client_read` method must still be used to guard against stale
     /// reads. This method is perfect for making decisions on where to route client requests.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn current_leader(&self) -> Option<NodeId> {
         self.metrics().borrow().current_leader
     }
@@ -163,7 +169,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// The actual read operation itself is up to the application, this method just ensures that
     /// the read will not be stale.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn client_read(&self) -> Result<(), ClientReadError> {
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::ClientReadRequest { tx }, rx).await
@@ -221,8 +227,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Every member of the cluster should perform these actions. This routine is race-condition
     /// free, and Raft guarantees that the first node to become the cluster leader will propagate
     /// only its own config.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn initialize(&self, members: BTreeSet<NodeId>) -> Result<(), InitializeError> {
+        tracing::info!("initialize; members: {:?}", members);
+
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::Initialize { members, tx }, rx).await
     }
@@ -239,8 +247,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// If blocking is false, this function returns at once as successfully setting up the replication.
     ///
     /// If the node to add is already a voter or learner, it returns `RaftResponse::NoChange` at once.
-    #[tracing::instrument(level = "debug", skip(self, id), fields(target=id))]
+    #[tracing::instrument(level = "info", skip_all, fields(target=id))]
     pub async fn add_learner(&self, id: NodeId, blocking: bool) -> Result<AddLearnerResponse, AddLearnerError> {
+        tracing::info!("add_learner: target: {}, blocking: {}", id, blocking);
+
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AddLearner { id, blocking, tx }, rx).await
     }
@@ -259,13 +269,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// If it lost leadership or crashed before committing the second **uniform** config log, the cluster is left in the
     /// **joint** config.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
         members: BTreeSet<NodeId>,
         blocking: bool,
     ) -> Result<ClientWriteResponse<R>, ClientWriteError> {
-        tracing::info!(?members, "change_membership: add every member as learner");
+        tracing::info!("change_membership: members: {:?}, blocking: {}", members, blocking);
 
         for id in members.iter() {
             let res = self.add_learner(*id, blocking).await;
@@ -328,10 +338,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     /// Invoke RaftCore by sending a RaftMsg and blocks waiting for response.
-    #[tracing::instrument(level = "debug", skip(self, mes, rx))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn call_core<T, E>(&self, mes: RaftMsg<D, R>, rx: RaftRespRx<T, E>) -> Result<T, E>
     where E: From<Fatal> {
-        let span = tracing::Span::current();
+        let span = Span::current();
 
         let sum = mes.summary();
 

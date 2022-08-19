@@ -88,7 +88,7 @@ where
     ///
     /// This method should returns membership with the greatest log index which is `>=since_index`.
     /// If no such membership log is found, it returns `None`, e.g., when logs are cleaned after being applied.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn last_membership_in_log(&self, since_index: u64) -> Result<Option<EffectiveMembership>, StorageError> {
         let st = self.sto.as_ref().get_log_state().await?;
 

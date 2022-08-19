@@ -191,7 +191,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(id=self.id, target=self.target, cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="debug", skip_all, fields(id=self.id, target=self.target, cluster=%self.config.cluster_name))]
     async fn main(mut self) {
         loop {
             // If it returns Ok(), always go back to LineRate state.
@@ -411,7 +411,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
     }
 
     /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
-    #[tracing::instrument(level = "trace", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
+    #[tracing::instrument(level = "debug", skip(self), fields(max_possible_matched_index=self.max_possible_matched_index))]
     fn check_consecutive(&self, last_purged: Option<LogId>) -> Result<(), ReplicationError> {
         tracing::debug!(?last_purged, ?self.max_possible_matched_index, "check_consecutive");
 
@@ -512,9 +512,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self), fields(event=%event.summary()))]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn process_raft_event(&mut self, event: RaftEvent) -> Result<(), ReplicationError> {
-        tracing::debug!(event=%event.summary(), "process_raft_event");
+        tracing::debug!("process_raft_event: {}", event.summary());
 
         match event {
             RaftEvent::UpdateCommittedLogId { committed } => {
@@ -711,7 +711,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         }
     }
 
-    #[tracing::instrument(level = "debug", skip(self), fields(state = "snapshotting"))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn replicate_snapshot(&mut self, snapshot_must_include: Option<LogId>) -> Result<(), ReplicationError> {
         let snapshot = self.wait_for_snapshot(snapshot_must_include).await?;
         self.stream_snapshot(snapshot).await?;

@@ -94,6 +94,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
 
     #[tracing::instrument(level = "debug", skip(self))]
     async fn handle_update_matched(&mut self, target: NodeId, matched: Option<LogId>) -> Result<(), StorageError> {
+        tracing::debug!("handle_update_matched: target: {}, matched: {:?}", target, matched);
+
         // Update target's match index & check if it is awaiting removal.
 
         if let Some(state) = self.nodes.get_mut(&target) {
@@ -220,12 +222,14 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     /// A replication streams requesting for snapshot info.
     ///
     /// The snapshot has to include `must_include`.
-    #[tracing::instrument(level = "debug", skip(self, tx))]
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn handle_needs_snapshot(
         &mut self,
         must_include: Option<LogId>,
         tx: oneshot::Sender<Snapshot<S::SnapshotData>>,
     ) -> Result<(), StorageError> {
+        tracing::debug!("handle_needs_snapshot: must_include: {:?}", must_include);
+
         // Ensure snapshotting is configured, else do nothing.
         let threshold = match &self.core.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => *threshold,

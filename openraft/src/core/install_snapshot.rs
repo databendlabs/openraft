@@ -196,12 +196,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Finalize the installation of a new snapshot.
     ///
     /// Any errors which come up from this routine will cause the Raft node to go into shutdown.
-    #[tracing::instrument(level = "debug", skip(self, req, snapshot), fields(req=%req.summary()))]
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn finalize_snapshot_installation(
         &mut self,
         req: InstallSnapshotRequest,
         mut snapshot: Box<S::SnapshotData>,
     ) -> Result<(), StorageError> {
+        tracing::info!("finalize_snapshot_installation: req: {:?}", req);
+
         snapshot.as_mut().shutdown().await.map_err(|e| StorageError::IO {
             source: StorageIOError::new(
                 ErrorSubject::Snapshot(req.meta.clone()),

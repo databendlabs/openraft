@@ -8,7 +8,6 @@ use crate::core::State;
 use crate::error::VoteError;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::summary::MessageSummary;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::NodeId;
@@ -20,7 +19,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// An RPC invoked by candidates to gather votes (§5.2).
     ///
     /// See `receiver implementation: RequestVote RPC` in raft-essentials.md in this repo.
-    #[tracing::instrument(level = "debug", skip(self, msg), fields(msg=%msg.summary()))]
+    #[tracing::instrument(level = "info", skip_all)]
     pub(super) async fn handle_vote_request(&mut self, msg: VoteRequest) -> Result<VoteResponse, VoteError> {
         tracing::info!(
             "handle_vote_request: candidate: {}, rpc_term: {} my_term: {}",
@@ -127,8 +126,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
 impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> CandidateState<'a, D, R, N, S> {
     /// Handle response from a vote request sent to a peer.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(super) async fn handle_vote_response(&mut self, res: VoteResponse, target: NodeId) -> Result<(), StorageError> {
+        tracing::debug!("handle_vote_response: target: {}, resp: {:?}", target, res);
+
         // TODO(xp): change membership from 123 to 4 may hangs I guess. Because this function will not be called.
         // If peer's term is greater than current term, revert to follower state.
 
@@ -173,7 +174,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     }
 
     /// Spawn parallel vote requests to all cluster members.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn spawn_parallel_vote_requests(&self) -> mpsc::Receiver<(VoteResponse, NodeId)> {
         let all_nodes = self.core.effective_membership.membership.all_nodes().clone();
         let (tx, rx) = mpsc::channel(all_nodes.len());
