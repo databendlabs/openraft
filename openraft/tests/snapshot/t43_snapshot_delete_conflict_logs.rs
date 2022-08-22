@@ -171,10 +171,15 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         assert_eq!(
             Membership::new(vec![btreeset! {0}], None),
             m.effective.membership,
-            "membership should be overridden by the snapshot"
+            "conflicting effective membership does not have to be clear"
         );
 
         let log_st = sto1.get_log_state().await?;
+        assert_eq!(
+            Some(LogId::new(LeaderId::new(5, 0), snapshot_threshold - 1)),
+            log_st.last_purged_log_id,
+            "purge up to last log id in snapshot"
+        );
         assert_eq!(
             Some(LogId::new(LeaderId::new(5, 0), snapshot_threshold - 1)),
             log_st.last_log_id,

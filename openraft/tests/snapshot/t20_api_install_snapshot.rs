@@ -88,7 +88,7 @@ async fn snapshot_arguments() -> Result<()> {
         req.meta.snapshot_id = "ss2".into();
         let res = n.0.install_snapshot(req).await;
         assert_eq!(
-            "snapshot segment id mismatch, expect: ss1+3, got: ss2+3",
+            "snapshot segment id mismatch, expect: ss2+0, got: ss2+3",
             res.unwrap_err().to_string()
         );
     }
