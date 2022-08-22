@@ -62,7 +62,6 @@ where
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
-    #[allow(dead_code)]
     pub(crate) fn get_log_id(&self, index: u64) -> Option<LogId<NID>> {
         self.log_ids.get(index)
     }

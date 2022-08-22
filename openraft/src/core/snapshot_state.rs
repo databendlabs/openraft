@@ -1,36 +1,44 @@
 use futures::future::AbortHandle;
 use tokio::sync::broadcast;
 
+use crate::core::streaming_state::StreamingState;
 use crate::LogId;
+use crate::Node;
 use crate::NodeId;
 use crate::RaftTypeConfig;
+use crate::SnapshotMeta;
+use crate::StorageError;
 
 /// The current snapshot state of the Raft node.
 pub(crate) enum SnapshotState<C: RaftTypeConfig, SD> {
+    None,
+
     /// The Raft node is compacting itself.
     Snapshotting {
         /// A handle to abort the compaction process early if needed.
-        handle: AbortHandle,
+        abort_handle: AbortHandle,
         /// A sender for notifying any other tasks of the completion of this compaction.
         sender: broadcast::Sender<Option<LogId<C::NodeId>>>,
     },
     /// The Raft node is streaming in a snapshot from the leader.
-    Streaming {
-        /// The offset of the last byte written to the snapshot.
-        offset: u64,
-        /// The ID of the snapshot being written.
-        id: String,
-        /// A handle to the snapshot writer.
-        snapshot: Box<SD>,
-    },
+    Streaming(StreamingState<C, SD>),
 }
 
-/// An update on a snapshot creation process.
-#[derive(Debug, Clone)]
-pub(crate) enum SnapshotUpdate<NID: NodeId> {
-    /// Snapshot creation has finished successfully and covers the given index.
-    SnapshotComplete(Option<LogId<NID>>),
+impl<C: RaftTypeConfig, SD> Default for SnapshotState<C, SD> {
+    fn default() -> Self {
+        SnapshotState::None
+    }
+}
 
-    /// Snapshot creation failed.
-    SnapshotFailed,
+/// Result of building a snapshot.
+#[derive(Debug, Clone)]
+pub(crate) enum SnapshotResult<NID: NodeId, N: Node> {
+    /// Building snapshot has finished successfully.
+    Ok(SnapshotMeta<NID, N>),
+
+    /// Building snapshot encountered StorageError.
+    StorageError(StorageError<NID>),
+
+    /// Building snapshot is aborted by RaftCore.
+    Aborted,
 }

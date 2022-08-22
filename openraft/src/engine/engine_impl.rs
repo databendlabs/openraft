@@ -25,6 +25,7 @@ use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
 use crate::NodeId;
+use crate::SnapshotMeta;
 use crate::Vote;
 
 /// Config for Engine
@@ -74,10 +75,8 @@ where
 
     pub(crate) config: EngineConfig,
 
-    /// The log id upto which the current snapshot includes, inclusive, if a snapshot exists.
-    ///
-    /// This is primarily used in making a determination on when a compaction job needs to be triggered.
-    pub(crate) snapshot_last_log_id: Option<LogId<NID>>,
+    /// The metadata of the last snapshot.
+    pub(crate) snapshot_meta: SnapshotMeta<NID, N>,
 
     /// The state of this raft node.
     pub(crate) state: RaftState<NID, N>,
@@ -98,7 +97,7 @@ where
         Self {
             id,
             config,
-            snapshot_last_log_id: None,
+            snapshot_meta: Default::default(),
             state: init_state.clone(),
             metrics_flags: MetricsChangeFlags::default(),
             commands: vec![],
@@ -570,7 +569,7 @@ where
         let mut purge_end = last_applied.next_index().saturating_sub(max_keep);
 
         if self.config.keep_unsnapshoted_log {
-            let idx = self.snapshot_last_log_id.next_index();
+            let idx = self.snapshot_meta.last_log_id.next_index();
             tracing::debug!("the very last log included in snapshots: {}", idx);
             purge_end = idx.min(purge_end);
         }
@@ -748,13 +747,81 @@ where
         }
     }
 
-    // --- Draft API ---
+    /// Follower/Learner handles install-snapshot.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn install_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
+        tracing::info!("install_snapshot: meta:{:?}", meta);
 
-    // // --- raft protocol API ---
-    //
-    // pub(crate) fn handle_install_snapshot() {}
-    //
-    // pub(crate) fn handle_install_snapshot_resp() {}
+        let snap_last_log_id = meta.last_log_id;
+
+        if snap_last_log_id <= self.state.committed {
+            tracing::info!(
+                "No need to install snapshot; snapshot last_log_id({}) <= committed({})",
+                snap_last_log_id.summary(),
+                self.state.committed.summary()
+            );
+            self.push_command(Command::CancelSnapshot { snapshot_meta: meta });
+            return;
+        }
+
+        // snapshot_last_log_id can not be None
+        let snap_last_log_id = snap_last_log_id.unwrap();
+
+        let updated = self.update_snapshot(meta.clone());
+        if !updated {
+            return;
+        }
+
+        // Do install:
+        // 1. Truncate conflicting logs.
+        //    Unlike normal append-entries RPC, if conflicting logs are found, it is not **necessary** to delete them.
+        //    But cleaning them make the assumption of incremental-log-id always hold, which makes it easier to debug.
+        //    See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
+        // 2. Install snapshot.
+        // 3. purge maybe conflicting logs upto snapshot.last_log_id.
+
+        let local = self.state.get_log_id(snap_last_log_id.index);
+        if let Some(local) = local {
+            if local != snap_last_log_id {
+                self.truncate_logs(snap_last_log_id.index);
+            }
+        }
+
+        self.state.committed = Some(snap_last_log_id);
+        self.update_committed_membership(meta.last_membership.clone());
+
+        // TODO: There should be two separate commands for installing snapshot:
+        //       - Replace state machine with snapshot and replace the `current_snapshot` in the store.
+        //       - Do not install, just replace the `current_snapshot` with a newer one. This command can be used for
+        //         leader to synchronize its snapshot data.
+        self.push_command(Command::InstallSnapshot { snapshot_meta: meta });
+
+        // A local log that is <= snap_last_log_id may conflict with the leader.
+        // It has to purge all of them to prevent these log form being replicated, when this node becomes leader.
+        self.purge_log(snap_last_log_id)
+    }
+
+    /// Update engine state when a new snapshot is built or installed.
+    ///
+    /// Engine records only the metadata of a snapshot. Snapshot data is stored by RaftStorage implementation.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<NID, N>) -> bool {
+        tracing::info!("update_snapshot: {:?}", meta);
+
+        if meta.last_log_id <= self.snapshot_meta.last_log_id {
+            tracing::info!(
+                "No need to install a smaller snapshot: current snapshot last_log_id({}), new snapshot last_log_id({})",
+                self.snapshot_meta.last_log_id.summary(),
+                meta.last_log_id.summary()
+            );
+            return false;
+        }
+
+        self.snapshot_meta = meta;
+        self.metrics_flags.set_data_changed();
+
+        true
+    }
 }
 
 /// Supporting util

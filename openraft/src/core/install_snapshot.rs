@@ -1,9 +1,7 @@
-use std::io::SeekFrom;
-
 use anyerror::AnyError;
-use tokio::io::AsyncSeekExt;
 use tokio::io::AsyncWriteExt;
 
+use crate::core::streaming_state::StreamingState;
 use crate::core::RaftCore;
 use crate::core::ServerState;
 use crate::core::SnapshotState;
@@ -18,6 +16,7 @@ use crate::MessageSummary;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
+use crate::SnapshotMeta;
 use crate::SnapshotSegmentId;
 use crate::StorageError;
 use crate::StorageIOError;
@@ -57,45 +56,54 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.engine.metrics_flags.set_data_changed();
         }
 
-        // Compare current snapshot state with received RPC and handle as needed.
-        // - Init a new state if it is empty or building a snapshot locally.
-        // - Mismatched id with offset=0 indicates a new stream has been sent, the old one should be dropped and start
-        //   to receive the new snapshot,
-        // - Mismatched id with offset greater than 0 is an out of order message that should be rejected.
-        match self.snapshot_state.take() {
-            None => {
-                return self.begin_installing_snapshot(req).await;
-            }
-            Some(SnapshotState::Snapshotting { handle, .. }) => {
-                handle.abort(); // Abort the current compaction in favor of installation from leader.
-                return self.begin_installing_snapshot(req).await;
-            }
-            Some(SnapshotState::Streaming { snapshot, id, offset }) => {
-                if req.meta.snapshot_id == id {
-                    return self.continue_installing_snapshot(req, offset, snapshot).await;
-                }
-
-                if req.offset == 0 {
-                    return self.begin_installing_snapshot(req).await;
-                }
-
-                Err(SnapshotMismatch {
-                    expect: SnapshotSegmentId { id: id.clone(), offset },
-                    got: SnapshotSegmentId {
-                        id: req.meta.snapshot_id.clone(),
-                        offset: req.offset,
-                    },
-                }
-                .into())
-            }
+        // Clear the state to None if it is building a snapshot locally.
+        if let SnapshotState::Snapshotting { abort_handle, .. } = &mut self.snapshot_state {
+            abort_handle.abort(); // Abort the current compaction in favor of installation from leader.
+            self.snapshot_state = SnapshotState::None;
         }
+
+        // Init a new streaming state if it is None.
+        if let SnapshotState::None = self.snapshot_state {
+            self.begin_installing_snapshot(&req).await?;
+        }
+
+        // It's Streaming.
+
+        let done = req.done;
+        let req_meta = req.meta.clone();
+
+        // Changed to another stream. re-init snapshot state.
+        let stream_changed = if let SnapshotState::Streaming(streaming) = &self.snapshot_state {
+            req_meta.snapshot_id != streaming.snapshot_id
+        } else {
+            unreachable!("It has to be Streaming")
+        };
+        if stream_changed {
+            self.begin_installing_snapshot(&req).await?;
+        }
+
+        // Receive the data.
+        if let SnapshotState::Streaming(streaming) = &mut self.snapshot_state {
+            debug_assert_eq!(req_meta.snapshot_id, streaming.snapshot_id);
+            streaming.receive(req).await?;
+        } else {
+            unreachable!("")
+        }
+
+        if done {
+            self.finalize_snapshot_installation(req_meta).await?;
+        }
+
+        Ok(InstallSnapshotResponse {
+            vote: self.engine.state.vote,
+        })
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     async fn begin_installing_snapshot(
         &mut self,
-        req: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
+        req: &InstallSnapshotRequest<C>,
+    ) -> Result<(), InstallSnapshotError<C::NodeId>> {
         tracing::debug!(req = display(req.summary()));
 
         let id = req.meta.snapshot_id.clone();
@@ -111,81 +119,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             .into());
         }
 
-        // Create a new snapshot and begin writing its contents.
-        let mut snapshot = self.storage.begin_receiving_snapshot().await?;
-        snapshot.as_mut().write_all(&req.data).await.map_err(|e| StorageError::IO {
-            source: StorageIOError::new(
-                ErrorSubject::Snapshot(req.meta.signature()),
-                ErrorVerb::Write,
-                AnyError::new(&e),
-            ),
-        })?;
+        let snapshot_data = self.storage.begin_receiving_snapshot().await?;
+        self.snapshot_state = SnapshotState::Streaming(StreamingState::new(id, snapshot_data));
 
-        // If this was a small snapshot, and it is already done, then finish up.
-        if req.done {
-            self.finalize_snapshot_installation(req, snapshot).await?;
-            return Ok(InstallSnapshotResponse {
-                vote: self.engine.state.vote,
-            });
-        }
-
-        // Else, retain snapshot components for later segments & respond.
-        self.snapshot_state = Some(SnapshotState::Streaming {
-            offset: req.data.len() as u64,
-            id,
-            snapshot,
-        });
-        Ok(InstallSnapshotResponse {
-            vote: self.engine.state.vote,
-        })
-    }
-
-    #[tracing::instrument(level = "debug", skip_all)]
-    async fn continue_installing_snapshot(
-        &mut self,
-        req: InstallSnapshotRequest<C>,
-        mut offset: u64,
-        mut snapshot: Box<S::SnapshotData>,
-    ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
-        tracing::debug!(req = display(req.summary()));
-
-        let id = req.meta.snapshot_id.clone();
-
-        // Always seek to the target offset if not an exact match.
-        if req.offset != offset {
-            if let Err(err) = snapshot.as_mut().seek(SeekFrom::Start(req.offset)).await {
-                self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
-                return Err(StorageError::from_io_error(
-                    ErrorSubject::Snapshot(req.meta.signature()),
-                    ErrorVerb::Seek,
-                    err,
-                )
-                .into());
-            }
-            offset = req.offset;
-        }
-
-        // Write the next segment & update offset.
-        if let Err(err) = snapshot.as_mut().write_all(&req.data).await {
-            self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
-            return Err(StorageError::from_io_error(
-                ErrorSubject::Snapshot(req.meta.signature()),
-                ErrorVerb::Write,
-                err,
-            )
-            .into());
-        }
-        offset += req.data.len() as u64;
-
-        // If the snapshot stream is done, then finalize.
-        if req.done {
-            self.finalize_snapshot_installation(req, snapshot).await?;
-        } else {
-            self.snapshot_state = Some(SnapshotState::Streaming { offset, id, snapshot });
-        }
-        Ok(InstallSnapshotResponse {
-            vote: self.engine.state.vote,
-        })
+        Ok(())
     }
 
     /// Finalize the installation of a new snapshot.
@@ -194,83 +131,32 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip_all)]
     async fn finalize_snapshot_installation(
         &mut self,
-        req: InstallSnapshotRequest<C>,
-        mut snapshot: Box<S::SnapshotData>,
+        meta: SnapshotMeta<C::NodeId, C::Node>,
     ) -> Result<(), StorageError<C::NodeId>> {
-        tracing::debug!(req = display(req.summary()));
+        tracing::debug!(meta = display(meta.summary()));
 
-        snapshot.as_mut().shutdown().await.map_err(|e| StorageError::IO {
+        let state = std::mem::take(&mut self.snapshot_state);
+        let streaming = if let SnapshotState::Streaming(streaming) = state {
+            streaming
+        } else {
+            unreachable!("snapshot_state has to be Streaming")
+        };
+
+        let mut snapshot_data = streaming.snapshot_data;
+
+        snapshot_data.as_mut().shutdown().await.map_err(|e| StorageError::IO {
             source: StorageIOError::new(
-                ErrorSubject::Snapshot(req.meta.signature()),
+                ErrorSubject::Snapshot(meta.signature()),
                 ErrorVerb::Write,
                 AnyError::new(&e),
             ),
         })?;
 
-        // Caveat: All changes to state machine has to be serialized.
-        //
-        // If `finalize_snapshot_installation` is run in RaftCore thread,
-        // there is chance the last_applied being reset to a previous value:
-        //
-        // ```
-        // RaftCore: -.    install-snapc,            .-> replicate_to_sm_handle.next(),
-        //            |    update last_applied=5     |   update last_applied=2
-        //            |                              |
-        //            v                              |
-        // task:      apply 2------------------------'
-        // --------------------------------------------------------------------> time
-        // ```
+        // Buffer the snapshot data, let Engine decide to install it or to cancel it.
+        self.received_snapshot.insert(meta.snapshot_id.clone(), snapshot_data);
 
-        // TODO(xp): do not install if self.engine.st.last_applied >= snapshot.meta.last_applied
-
-        let snap_last_log_id = req.meta.last_log_id;
-
-        // Unlike normal append-entries RPC, if conflicting logs are found, it is not **necessary** to delete them.
-        // See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
-        {
-            if let Some(last) = snap_last_log_id {
-                let local = self.storage.try_get_log_entry(last.index).await?;
-
-                if let Some(local_log) = local {
-                    if local_log.log_id != last {
-                        tracing::info!(
-                            local_log_id = display(&local_log.log_id),
-                            snap_last_log_id = display(&last),
-                            "found conflict log id, when installing snapshot"
-                        );
-                    }
-
-                    self.engine.truncate_logs(last.index);
-                    self.run_engine_commands::<Entry<C>>(&[]).await?;
-                }
-            }
-        }
-
-        let st = &mut self.engine.state;
-
-        let changes = self.storage.install_snapshot(&req.meta, snapshot).await?;
-        tracing::debug!("update after apply or install-snapshot: {:?}", changes);
-
-        let last_applied = changes.last_applied;
-
-        if st.committed < last_applied {
-            st.committed = last_applied;
-        }
-
-        debug_assert!(st.last_purged_log_id() <= last_applied);
-
-        // A local log that is <= last_applied may be inconsistent with the leader.
-        // It has to purge all of them to prevent these log form being replicated, when this node becomes leader.
-        self.engine.snapshot_last_log_id = last_applied; // update and make last applied log removable
-        if let Some(last) = last_applied {
-            self.engine.purge_log(last);
-            self.run_engine_commands::<Entry<C>>(&[]).await?;
-        }
-
-        self.engine.update_committed_membership(req.meta.last_membership);
+        self.engine.install_snapshot(meta);
         self.run_engine_commands::<Entry<C>>(&[]).await?;
-
-        self.engine.metrics_flags.set_data_changed();
 
         Ok(())
     }

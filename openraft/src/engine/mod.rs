@@ -38,6 +38,7 @@ mod log_id_list;
 #[cfg(test)] mod handle_vote_req_test;
 #[cfg(test)] mod handle_vote_resp_test;
 #[cfg(test)] mod initialize_test;
+#[cfg(test)] mod install_snapshot_test;
 #[cfg(test)] mod internal_handle_vote_req_test;
 #[cfg(test)] mod leader_append_entries_test;
 #[cfg(test)] mod log_id_list_test;
@@ -47,6 +48,7 @@ mod log_id_list;
 #[cfg(test)] mod update_committed_membership_test;
 #[cfg(test)] mod update_effective_membership_test;
 #[cfg(test)] mod update_progress_test;
+#[cfg(test)] mod update_snapshot_test;
 
 pub(crate) use command::Command;
 pub(crate) use engine_impl::Engine;

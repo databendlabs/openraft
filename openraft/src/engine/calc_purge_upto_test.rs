@@ -108,7 +108,7 @@ fn test_keep_unsnapshoted() -> anyhow::Result<()> {
             eng.state.log_ids.purge(&last_purged);
         }
         eng.state.committed = committed;
-        eng.snapshot_last_log_id = snapshot;
+        eng.snapshot_meta.last_log_id = snapshot;
 
         let got = eng.calc_purge_upto();
 

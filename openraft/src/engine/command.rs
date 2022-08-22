@@ -8,6 +8,7 @@ use crate::MetricsChangeFlags;
 use crate::Node;
 use crate::NodeId;
 use crate::ServerState;
+use crate::SnapshotMeta;
 use crate::Vote;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
@@ -90,6 +91,12 @@ where
     /// Delete logs that conflict with the leader from a follower/learner since log id `since`, inclusive.
     DeleteConflictLog { since: LogId<NID> },
 
+    /// Install a snapshot data file: e.g., replace state machine with snapshot, save snapshot data.
+    InstallSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
+
+    /// A received snapshot does not need to be installed, just drop buffered snapshot data.
+    CancelSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
+
     //
     // --- Draft unimplemented commands:
 
@@ -121,6 +128,8 @@ where
             Command::InstallElectionTimer { .. } => {}
             Command::PurgeLog { .. } => flags.set_data_changed(),
             Command::DeleteConflictLog { .. } => flags.set_data_changed(),
+            Command::InstallSnapshot { .. } => flags.set_data_changed(),
+            Command::CancelSnapshot { .. } => {}
             Command::BuildSnapshot { .. } => flags.set_data_changed(),
         }
     }

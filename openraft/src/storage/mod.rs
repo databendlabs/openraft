@@ -19,12 +19,13 @@ use crate::raft_types::SnapshotId;
 use crate::raft_types::StateMachineChanges;
 use crate::Entry;
 use crate::LogId;
+use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
 use crate::Vote;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct SnapshotMeta<NID, N>
 where
@@ -40,6 +41,21 @@ where
     /// To identify a snapshot when transferring.
     /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be different in bytes.
     pub snapshot_id: SnapshotId,
+}
+
+impl<NID, N> MessageSummary<SnapshotMeta<NID, N>> for SnapshotMeta<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn summary(&self) -> String {
+        format!(
+            "{{snapshot_id: {}, last_membership: {}, last_log_id: {}}}",
+            self.snapshot_id,
+            self.last_log_id.summary(),
+            self.last_membership.summary()
+        )
+    }
 }
 
 impl<NID, N> SnapshotMeta<NID, N>

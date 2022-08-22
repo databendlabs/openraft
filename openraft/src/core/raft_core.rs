@@ -31,8 +31,8 @@ use crate::core::replication::snapshot_is_within_half_of_threshold;
 use crate::core::replication_lag;
 use crate::core::Expectation;
 use crate::core::ServerState;
+use crate::core::SnapshotResult;
 use crate::core::SnapshotState;
-use crate::core::SnapshotUpdate;
 use crate::core::VoteWiseTime;
 use crate::engine::Command;
 use crate::engine::Engine;
@@ -93,6 +93,7 @@ use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
+use crate::SnapshotId;
 use crate::StorageError;
 use crate::Update;
 use crate::Vote;
@@ -148,7 +149,10 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) leader_data: Option<LeaderData<C>>,
 
     /// The node's current snapshot state.
-    pub(crate) snapshot_state: Option<SnapshotState<C, S::SnapshotData>>,
+    pub(crate) snapshot_state: SnapshotState<C, S::SnapshotData>,
+
+    /// Received snapshot that are ready to install.
+    pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<S::SnapshotData>>,
 
     /// The time to elect if a follower does not receive any append-entry message.
     pub(crate) next_election_time: VoteWiseTime<C::NodeId>,
@@ -194,7 +198,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             engine: Engine::default(),
             leader_data: None,
 
-            snapshot_state: None,
+            snapshot_state: SnapshotState::None,
+            received_snapshot: BTreeMap::new(),
             next_election_time: VoteWiseTime::new(Vote::default(), Instant::now() + Duration::from_secs(86400)),
 
             tx_api,
@@ -252,7 +257,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // Fetch the most recent snapshot in the system.
         if let Some(snapshot) = self.storage.get_current_snapshot().await? {
-            self.engine.snapshot_last_log_id = snapshot.meta.last_log_id;
+            self.engine.snapshot_meta = snapshot.meta;
             self.engine.metrics_flags.set_data_changed();
         }
 
@@ -727,7 +732,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             current_term: self.engine.state.vote.term,
             last_log_index: self.engine.state.last_log_id().map(|id| id.index),
             last_applied: self.engine.state.committed,
-            snapshot: self.engine.snapshot_last_log_id,
+            snapshot: self.engine.snapshot_meta.last_log_id,
 
             // --- cluster ---
             state: self.engine.state.server_state,
@@ -832,26 +837,45 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.next_election_time = VoteWiseTime::new(self.engine.state.vote, now + t);
     }
 
-    /// Update the system's snapshot state based on the given data.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn update_snapshot_state(&mut self, update: SnapshotUpdate<C::NodeId>) {
-        if let SnapshotUpdate::SnapshotComplete(log_id) = update {
-            self.engine.snapshot_last_log_id = log_id;
-            self.engine.metrics_flags.set_data_changed();
+    pub(crate) async fn handle_building_snapshot_result(
+        &mut self,
+        result: SnapshotResult<C::NodeId, C::Node>,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        tracing::info!("handle_building_snapshot_result: {:?}", result);
+
+        if let SnapshotState::Streaming { .. } = &self.snapshot_state {
+            tracing::info!("snapshot is being streaming. Ignore building snapshot result");
+            return Ok(());
         }
-        // If snapshot state is anything other than streaming, then drop it.
-        if let Some(state @ SnapshotState::Streaming { .. }) = self.snapshot_state.take() {
-            self.snapshot_state = Some(state);
+
+        // TODO: add building-session id to identify different building
+        match result {
+            SnapshotResult::Ok(meta) => {
+                self.engine.update_snapshot(meta);
+                self.run_engine_commands::<Entry<C>>(&[]).await?;
+            }
+            SnapshotResult::StorageError(sto_err) => {
+                return Err(sto_err);
+            }
+            SnapshotResult::Aborted => {}
         }
+
+        self.snapshot_state = SnapshotState::None;
+
+        Ok(())
     }
 
     /// Trigger a log compaction (snapshot) job if needed.
     /// If force is True, it will skip the threshold check and start creating snapshot as demanded.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn trigger_log_compaction_if_needed(&mut self, force: bool) {
-        if self.snapshot_state.is_some() {
+        if let SnapshotState::None = self.snapshot_state {
+            // Continue.
+        } else {
+            // Snapshot building or streaming is in progress.
             return;
         }
+
         let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
 
         let last_applied = match self.engine.state.committed {
@@ -862,26 +886,28 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         };
 
         // Check to ensure we have actual entries for compaction.
-        if Some(last_applied.index) < self.engine.snapshot_last_log_id.index() {
+        if Some(last_applied.index) < self.engine.snapshot_meta.last_log_id.index() {
             return;
         }
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
-            if self.engine.state.committed.next_index() - self.engine.snapshot_last_log_id.next_index() < *threshold {
+            if self.engine.state.committed.next_index() - self.engine.snapshot_meta.last_log_id.next_index()
+                < *threshold
+            {
                 return;
             }
         }
 
         // At this point, we are clear to begin a new compaction process.
         let mut builder = self.storage.get_snapshot_builder().await;
-        let (handle, reg) = AbortHandle::new_pair();
+        let (abort_handle, reg) = AbortHandle::new_pair();
         let (chan_tx, _) = broadcast::channel(1);
         let tx_api = self.tx_api.clone();
-        self.snapshot_state = Some(SnapshotState::Snapshotting {
-            handle,
+        self.snapshot_state = SnapshotState::Snapshotting {
+            abort_handle,
             sender: chan_tx.clone(),
-        });
+        };
 
         tokio::spawn(
             async move {
@@ -890,22 +916,22 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 match res {
                     Ok(res) => match res {
                         Ok(snapshot) => {
-                            let _ = tx_api.send(RaftMsg::SnapshotUpdate {
-                                update: SnapshotUpdate::SnapshotComplete(snapshot.meta.last_log_id),
+                            let _ = tx_api.send(RaftMsg::BuildingSnapshotResult {
+                                result: SnapshotResult::Ok(snapshot.meta.clone()),
                             });
                             // This will always succeed.
                             let _ = chan_tx.send(snapshot.meta.last_log_id);
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");
-                            let _ = tx_api.send(RaftMsg::SnapshotUpdate {
-                                update: SnapshotUpdate::SnapshotFailed,
+                            let _ = tx_api.send(RaftMsg::BuildingSnapshotResult {
+                                result: SnapshotResult::StorageError(err),
                             });
                         }
                     },
                     Err(_aborted) => {
-                        let _ = tx_api.send(RaftMsg::SnapshotUpdate {
-                            update: SnapshotUpdate::SnapshotFailed,
+                        let _ = tx_api.send(RaftMsg::BuildingSnapshotResult {
+                            result: SnapshotResult::Aborted,
                         });
                     }
                 }
@@ -1272,8 +1298,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             RaftMsg::InstallSnapshot { rpc, tx } => {
                 let _ = tx.send(self.handle_install_snapshot_request(rpc).await.extract_fatal()?);
             }
-            RaftMsg::SnapshotUpdate { update } => {
-                self.update_snapshot_state(update);
+            RaftMsg::BuildingSnapshotResult { result } => {
+                self.handle_building_snapshot_result(result).await?;
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if is_leader() {
@@ -1537,7 +1563,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // completion (or cancellation), and respond to the replication stream. The repl stream
         // will wait for the completion and will then send another request to fetch the finished snapshot.
         // Else we just drop any other state and continue. Leaders never enter `Streaming` state.
-        if let Some(SnapshotState::Snapshotting { handle, sender }) = self.snapshot_state.take() {
+        if let SnapshotState::Snapshotting { sender, .. } = &self.snapshot_state {
             let mut chan = sender.subscribe();
             tokio::spawn(
                 async move {
@@ -1547,7 +1573,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
                 .instrument(tracing::debug_span!("spawn-recv-and-drop")),
             );
-            self.snapshot_state = Some(SnapshotState::Snapshotting { handle, sender });
             return Ok(());
         }
 
@@ -1693,6 +1718,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             }
             Command::UpdateMembership { .. } => {
                 // TODO: not used
+            }
+            Command::CancelSnapshot { snapshot_meta } => {
+                let got = self.received_snapshot.remove(&snapshot_meta.snapshot_id);
+                debug_assert!(got.is_some(), "there has to be a buffered snapshot data");
+            }
+            Command::InstallSnapshot { snapshot_meta } => {
+                let snapshot_data = self.received_snapshot.remove(&snapshot_meta.snapshot_id);
+
+                if let Some(data) = snapshot_data {
+                    // TODO: `changes` is not used
+                    let changes = self.storage.install_snapshot(snapshot_meta, data).await?;
+                    tracing::debug!("update after install-snapshot: {:?}", changes);
+                } else {
+                    unreachable!("buffered snapshot not found: snapshot meta: {:?}", snapshot_meta)
+                }
             }
         }
 
