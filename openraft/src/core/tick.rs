@@ -90,8 +90,8 @@ where
             }
 
             let send_res = self.tx.send(RaftMsg::Tick { i });
-            if let Err(_e) = send_res {
-                tracing::info!("Tick fails to send, receiving end quit.");
+            if let Err(e) = send_res {
+                tracing::info!("Tick fails to send, receiving end quit: {e}");
             } else {
                 tracing::debug!("Tick sent: {}", i)
             }

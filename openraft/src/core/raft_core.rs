@@ -362,10 +362,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let my_id = self.id;
             let target_node = self.engine.state.membership_state.effective.get_node(&target).clone();
-            let mut network = match self.network.connect(target, &target_node).await {
+            let mut client = match self.network.new_client(target, &target_node).await {
                 Ok(n) => n,
                 Err(e) => {
-                    tracing::error!(target = display(target), "{}", e);
+                    tracing::error!(target = display(target), "Failed to create client, this is a non recoverable error, the node will be permanently ignored! {}", e);
                     continue;
                 }
             };
@@ -374,7 +374,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let task = tokio::spawn(
                 async move {
-                    let outer_res = timeout(ttl, network.send_append_entries(rpc)).await;
+                    let outer_res = timeout(ttl, client.send_append_entries(rpc)).await;
                     match outer_res {
                         Ok(append_res) => match append_res {
                             Ok(x) => Ok((target, x)),
@@ -497,9 +497,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
-        // Ensure the node is connectable
-        let conn_res = self.network.connect(target, &node).await;
-        if let Err(e) = conn_res {
+        // Ensure the a client can successfully be created
+        if let Err(e) = self.network.new_client(target, &node).await {
             let net_err = NetworkError::new(&anyerror::AnyError::new(&e));
             let _ = tx.send(Err(AddLearnerError::NetworkError(net_err)));
             return Ok(());
@@ -1062,7 +1061,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> Result<ReplicationStream<C::NodeId>, N::ConnectionError> {
         let target_node = self.engine.state.membership_state.effective.get_node(&target);
         let membership_log_id = self.engine.state.membership_state.effective.log_id;
-        let network = self.network.connect(target, target_node).await?;
+        let network = self.network.new_client(target, target_node).await?;
 
         Ok(ReplicationCore::<C, N, S>::spawn(
             target,
@@ -1193,7 +1192,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let req = vote_req.clone();
             let target_node = self.engine.state.membership_state.effective.get_node(&target).clone();
-            let mut network = match self.network.connect(target, &target_node).await {
+            let mut client = match self.network.new_client(target, &target_node).await {
                 Ok(n) => n,
                 Err(err) => {
                     tracing::error!({error=%err, target=display(target)}, "while requesting vote");
@@ -1208,7 +1207,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let _ = tokio::spawn(
                 async move {
-                    let tm_res = timeout(ttl, network.send_vote(req)).await;
+                    let tm_res = timeout(ttl, client.send_vote(req)).await;
                     let res = match tm_res {
                         Ok(res) => res,
 
@@ -1700,20 +1699,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
 
                 // TODO: use _matched to initialize replication
                 for (node_id, _matched) in targets.iter() {
-                    let state = match self.spawn_replication_stream(*node_id).await {
-                        Ok(state) => state,
+                    match self.spawn_replication_stream(*node_id).await {
+                        Ok(state) => {
+                            if let Some(l) = &mut self.leader_data {
+                                l.nodes.insert(*node_id, state);
+                            } else {
+                                unreachable!("it has to be a leader!!!");
+                            }
+                        }
                         Err(e) => {
                             tracing::error!({node = % node_id}, "cannot connect to {:?}", e);
                             // cannot return Err, or raft fail completely
-                            continue;
                         }
                     };
-
-                    if let Some(l) = &mut self.leader_data {
-                        l.nodes.insert(*node_id, state);
-                    } else {
-                        unreachable!("it has to be a leader!!!");
-                    }
                 }
             }
             Command::UpdateMembership { .. } => {

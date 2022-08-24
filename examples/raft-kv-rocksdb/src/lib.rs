@@ -55,7 +55,11 @@ where
     P: AsRef<Path>,
 {
     // Create a configuration for the raft instance.
-    let config = Arc::new(Config::default().validate().unwrap());
+    let mut config = Config::default();
+    config.heartbeat_interval = 250;
+    config.election_timeout_min = 299;
+
+    let config = Arc::new(config.validate().unwrap());
 
     // Create a instance of where the Raft data will be stored.
     let store = ExampleStore::new(&dir).await;

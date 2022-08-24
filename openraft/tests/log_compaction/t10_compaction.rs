@@ -137,7 +137,7 @@ async fn compaction() -> Result<()> {
     );
     {
         let res = router
-            .connect(1, &())
+            .new_client(1, &())
             .await?
             .send_append_entries(AppendEntriesRequest {
                 vote: Vote::new_committed(1, 0),

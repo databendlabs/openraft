@@ -949,7 +949,7 @@ where
     type Network = RaftRouterNetwork<C, S>;
     type ConnectionError = NetworkError;
 
-    async fn connect(&mut self, target: C::NodeId, _node: &C::Node) -> Result<Self::Network, NetworkError> {
+    async fn new_client(&mut self, target: C::NodeId, _node: &C::Node) -> Result<Self::Network, NetworkError> {
         {
             let unreachable = self.unconnectable.lock().unwrap();
             if unreachable.contains(&target) {

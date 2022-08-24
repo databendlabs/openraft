@@ -84,10 +84,16 @@ where C: RaftTypeConfig
 
     /// Create a new network instance sending RPCs to the target node.
     ///
-    /// This doesn't have to be a "real" connection, the network instance is just configured to send
-    /// RPCs to the specified target node.
+    /// This function should **not** create a connection but rather a client that will connect when
+    /// required
     ///
     /// The method is intentionally async to give the implementation a chance to use asynchronous
     /// sync primitives to serialize access to the common internal object, if needed.
-    async fn connect(&mut self, target: C::NodeId, node: &C::Node) -> Result<Self::Network, Self::ConnectionError>;
+    ///
+    /// # Errors
+    /// When this function errors, it indicates a non-recoverable error in the network, no retries
+    /// will be attempted, and the corresponding node will be constantly unavailable.
+    /// Any recoverable error (such as unreachable host) should be returned as `Ok` with a client
+    /// that will perform the reconnect
+    async fn new_client(&mut self, target: C::NodeId, node: &C::Node) -> Result<Self::Network, Self::ConnectionError>;
 }

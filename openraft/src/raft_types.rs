@@ -42,7 +42,7 @@ impl<NID: NodeId> MessageSummary<LogId<NID>> for Option<LogId<NID>> {
         match self {
             None => "None".to_string(),
             Some(x) => {
-                format!("{}", x)
+                format!("{x}")
             }
         }
     }
