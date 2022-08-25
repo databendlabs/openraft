@@ -49,6 +49,7 @@ use crate::raft::EntryPayload;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft_types::LogIdOptionExt;
+use crate::replication::RaftEvent;
 use crate::replication::ReplicaEvent;
 use crate::replication::ReplicationStream;
 use crate::types::v070::AppData;
@@ -808,6 +809,17 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ChangeMembership { members, blocking, tx } => {
                 self.change_membership(members, blocking, tx).await?;
             }
+            RaftMsg::ForceSnapshotting { tx } => {
+                for node in self.nodes.values() {
+                    let _ = node.repl_stream.repl_tx.send((
+                        RaftEvent::ForceSnapshotting {
+                            include: self.core.last_applied,
+                        },
+                        tracing::debug_span!("CH"),
+                    ));
+                }
+                let _ = tx.send(Ok(()));
+            }
         };
 
         Ok(())
@@ -946,6 +958,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
+            RaftMsg::ForceSnapshotting { tx: _ } => {
+                tracing::info!("ignore: ForceSnapshotting, state: {:?}", self.core.target_state);
+            }
         };
         Ok(())
     }
@@ -1022,6 +1037,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
+            RaftMsg::ForceSnapshotting { tx: _ } => {
+                tracing::info!("ignore: ForceSnapshotting, state: {:?}", self.core.target_state);
+            }
         };
         Ok(())
     }
@@ -1092,6 +1110,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             }
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::ForceSnapshotting { tx: _ } => {
+                tracing::info!("ignore: ForceSnapshotting, state: {:?}", self.core.target_state);
             }
         };
         Ok(())

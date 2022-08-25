@@ -238,6 +238,9 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
                         must_include: lack_ent.last_purged_log_id,
                     });
                 }
+                ReplicationError::ForceSnapshotting { include } => {
+                    self.set_target_repl_state(TargetReplState::Snapshotting { must_include: include });
+                }
                 ReplicationError::CommittedAdvanceTooMany { .. } => {
                     self.set_target_repl_state(TargetReplState::Snapshotting { must_include: None });
                 }
@@ -517,6 +520,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
         tracing::debug!("process_raft_event: {}", event.summary());
 
         match event {
+            RaftEvent::ForceSnapshotting { include } => {
+                return Err(ReplicationError::ForceSnapshotting { include });
+            }
+
             RaftEvent::UpdateCommittedLogId { committed } => {
                 self.committed = committed;
             }
@@ -566,6 +573,9 @@ pub(crate) enum RaftEvent {
         /// The index of the highest log entry which is known to be committed in the cluster.
         committed: Option<LogId>,
     },
+
+    /// Force snapshot replication.
+    ForceSnapshotting { include: Option<LogId> },
 }
 
 impl MessageSummary for RaftEvent {
@@ -578,6 +588,9 @@ impl MessageSummary for RaftEvent {
                 committed: commit_index,
             } => {
                 format!("UpdateCommitIndex: commit_index: {:?}", commit_index)
+            }
+            RaftEvent::ForceSnapshotting { include } => {
+                format!("ForceSnapshotting: include: {:?}", include)
             }
         }
     }

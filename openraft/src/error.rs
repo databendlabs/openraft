@@ -83,8 +83,6 @@ pub enum ClientReadError {
 /// An error related to a client write request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 pub enum ClientWriteError {
-    // #[error("{0}")]
-    // RaftError(#[from] RaftError),
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
 
@@ -187,6 +185,9 @@ pub enum ReplicationError {
 
     #[error("{0}")]
     LackEntry(#[from] LackEntry),
+
+    #[error("Force to switch to replicate a snapshot containing at least {include:?}")]
+    ForceSnapshotting { include: Option<LogId> },
 
     #[error("leader committed index {committed_index} advances target log index {target_index} too many")]
     CommittedAdvanceTooMany { committed_index: u64, target_index: u64 },

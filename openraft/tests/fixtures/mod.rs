@@ -332,6 +332,13 @@ impl RaftRouter {
         Ok(metrics)
     }
 
+    /// Get a raft node.
+    pub async fn get_raft_handle(&self, node_id: &NodeId) -> Result<MemRaft> {
+        let rt = self.routing_table.read().await;
+        let addr = rt.get(node_id).with_context(|| format!("could not find node {} in routing table", node_id))?;
+        Ok(addr.0.clone())
+    }
+
     /// Get a handle to the storage backend for the target node.
     pub async fn get_storage_handle(&self, node_id: &NodeId) -> Result<Arc<StoreWithDefensive>> {
         let rt = self.routing_table.read().await;
