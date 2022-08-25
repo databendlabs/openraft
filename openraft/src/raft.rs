@@ -114,6 +114,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         Self { inner: Arc::new(inner) }
     }
 
+    /// Trigger to build a snapshot at once and return at once.
+    ///
+    /// Returns error when RaftCore has Fatal error, e.g. shut down or having storage error.
+    /// If this node is not leader, this command will just be ignored.
+    pub async fn trigger_snapshot(&self) -> Result<(), Fatal> {
+        tracing::info!("trigger_snapshot");
+
+        let (tx, rx) = oneshot::channel();
+        self.call_core(RaftMsg::ForceSnapshotting { tx }, rx).await
+    }
+
     /// Submit an AppendEntries RPC to this Raft node.
     ///
     /// These RPCs are sent by the cluster leader to replicate log entries (§5.3), and are also
@@ -484,6 +495,10 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         blocking: bool,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     },
+    /// Force to switch to snapshot replication to every target.
+    ForceSnapshotting {
+        tx: RaftRespTx<(), Fatal>,
+    },
 }
 
 impl<D, R> MessageSummary for RaftMsg<D, R>
@@ -515,6 +530,7 @@ where
             RaftMsg::ChangeMembership { members, blocking, .. } => {
                 format!("ChangeMembership: members: {:?}, blocking: {}", members, blocking)
             }
+            RaftMsg::ForceSnapshotting { .. } => "ForceSnapshotting".to_string(),
         }
     }
 }
