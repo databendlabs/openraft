@@ -31,11 +31,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// Leaders always send chunks in order. It is important to note that, according to the Raft spec,
     /// a log may only have one snapshot at any time. As snapshot contents are application specific,
     /// the Raft log will only store a pointer to the snapshot file along with the index & term.
-    #[tracing::instrument(level = "debug", skip(self, req), fields(req=%req.summary()))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(super) async fn handle_install_snapshot_request(
         &mut self,
         req: InstallSnapshotRequest,
     ) -> Result<InstallSnapshotResponse, InstallSnapshotError> {
+        tracing::info!("handle_install_snapshot_request: req: {}", req.summary());
+
         // If message's term is less than most recent term, then we do not honor the request.
         if req.term < self.current_term {
             return Ok(InstallSnapshotResponse {
@@ -226,15 +228,17 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // --------------------------------------------------------------------> time
         // ```
 
-        // TODO(xp): do not install if self.last_applied >= snapshot.meta.last_applied
+        if req.meta.last_log_id <= self.last_applied {
+            tracing::info!(
+                "Skip install_snapshot because snapshot.last_log_id({:?}) <= last_applied({:?})",
+                req.meta.last_log_id,
+                self.last_applied
+            );
+            return Ok(());
+        }
 
         let changes = self.storage.install_snapshot(&req.meta, snapshot).await?;
-
         tracing::info!("update after install-snapshot: {:?}", changes);
-
-        // After installing snapshot, no inconsistent log is removed.
-        // This does not affect raft consistency.
-        // If you have any question about this, let me know: drdr.xp at gmail.com
 
         let last_applied = changes.last_applied;
 
