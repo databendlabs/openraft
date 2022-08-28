@@ -9,4 +9,3 @@ mod fixtures;
 
 mod t10_total_order_apply;
 mod t20_state_machine_apply_membership;
-mod t40_clean_applied_logs;

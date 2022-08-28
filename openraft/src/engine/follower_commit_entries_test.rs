@@ -4,7 +4,6 @@ use maplit::btreeset;
 
 use crate::engine::Command;
 use crate::engine::Engine;
-use crate::engine::LogIdList;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
@@ -170,58 +169,6 @@ fn test_follower_commit_entries_gt_last_entry() -> anyhow::Result<()> {
             already_committed: Some(log_id(1, 1)),
             upto: log_id(2, 3)
         }],
-        eng.commands
-    );
-
-    Ok(())
-}
-
-#[test]
-fn test_follower_commit_entries_purge_to_committed() -> anyhow::Result<()> {
-    let mut eng = eng();
-    eng.state.log_ids = LogIdList::new([log_id(2, 2), log_id(2, 3)]);
-    eng.config.max_applied_log_to_keep = 0;
-    eng.config.purge_batch_size = 1;
-
-    eng.follower_commit_entries(Some(log_id(3, 1)), None, &[blank(2, 3)]);
-
-    assert_eq!(Some(log_id(2, 3)), eng.state.committed);
-    assert_eq!(Some(log_id(2, 3)), eng.state.last_purged_log_id());
-
-    assert_eq!(
-        vec![
-            Command::FollowerCommit {
-                already_committed: Some(log_id(1, 1)),
-                upto: log_id(2, 3)
-            },
-            Command::PurgeLog { upto: log_id(2, 3) },
-        ],
-        eng.commands
-    );
-
-    Ok(())
-}
-
-#[test]
-fn test_follower_commit_entries_purge_to_committed_minus_1() -> anyhow::Result<()> {
-    let mut eng = eng();
-    eng.state.log_ids = LogIdList::new([log_id(1, 1), log_id(2, 3)]);
-    eng.config.max_applied_log_to_keep = 1;
-    eng.config.purge_batch_size = 1;
-
-    eng.follower_commit_entries(Some(log_id(3, 1)), None, &[blank(2, 3)]);
-
-    assert_eq!(Some(log_id(2, 3)), eng.state.committed);
-    assert_eq!(Some(log_id(1, 2)), eng.state.last_purged_log_id());
-
-    assert_eq!(
-        vec![
-            Command::FollowerCommit {
-                already_committed: Some(log_id(1, 1)),
-                upto: log_id(2, 3)
-            },
-            Command::PurgeLog { upto: log_id(1, 2) },
-        ],
         eng.commands
     );
 

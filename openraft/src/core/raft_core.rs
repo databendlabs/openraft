@@ -250,9 +250,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.storage.save_vote(&state.vote).await?;
 
         self.engine = Engine::new(self.id, &state, EngineConfig {
-            max_applied_log_to_keep: self.config.max_applied_log_to_keep,
+            max_in_snapshot_log_to_keep: self.config.max_in_snapshot_log_to_keep,
             purge_batch_size: self.config.purge_batch_size,
-            keep_unsnapshoted_log: self.config.keep_unsnapshoted_log,
         });
 
         // Fetch the most recent snapshot in the system.
@@ -850,7 +849,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // TODO: add building-session id to identify different building
         match result {
             SnapshotResult::Ok(meta) => {
-                self.engine.update_snapshot(meta);
+                self.engine.finish_building_snapshot(meta);
                 self.run_engine_commands::<Entry<C>>(&[]).await?;
             }
             SnapshotResult::StorageError(sto_err) => {
@@ -868,6 +867,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// If force is True, it will skip the threshold check and start creating snapshot as demanded.
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) async fn trigger_log_compaction_if_needed(&mut self, force: bool) {
+        tracing::debug!("trigger_log_compaction_if_needed: force: {}", force);
+
         if let SnapshotState::None = self.snapshot_state {
             // Continue.
         } else {
