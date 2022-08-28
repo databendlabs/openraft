@@ -39,7 +39,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            max_applied_log_to_keep: 0,
+            max_in_snapshot_log_to_keep: 0,
             purge_batch_size: 1,
             enable_heartbeat: false,
             ..Default::default()

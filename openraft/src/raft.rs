@@ -968,7 +968,7 @@ where
                 format!("InstallSnapshot: {}", rpc.summary())
             }
             RaftMsg::BuildingSnapshotResult { result: update } => {
-                format!("SnapshotUpdate: {:?}", update)
+                format!("BuildingSnapshotResult: {:?}", update)
             }
             RaftMsg::ClientWriteRequest { payload: rpc, .. } => {
                 format!("ClientWriteRequest: {}", rpc.summary())

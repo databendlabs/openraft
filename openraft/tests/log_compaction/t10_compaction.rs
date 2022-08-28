@@ -38,7 +38,7 @@ async fn compaction() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            max_applied_log_to_keep: 2,
+            max_in_snapshot_log_to_keep: 2,
             purge_batch_size: 1,
             enable_tick: false,
             ..Default::default()

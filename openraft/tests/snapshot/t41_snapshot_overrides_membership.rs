@@ -36,7 +36,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            max_applied_log_to_keep: 0,
+            max_in_snapshot_log_to_keep: 0,
             purge_batch_size: 1,
             enable_heartbeat: false,
             ..Default::default()
@@ -111,6 +111,8 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
         tracing::info!("--- add learner to the cluster to receive snapshot, which overrides the learner storage");
         {
+            let snapshot_index = log_index;
+
             router.add_learner(0, 1).await.expect("failed to add new node as learner");
             log_index += 1;
 
@@ -118,10 +120,15 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
             router
-                .wait_for_snapshot(&btreeset![1], LogId::new(LeaderId::new(1, 0), log_index), timeout(), "")
+                .wait_for_snapshot(
+                    &btreeset![1],
+                    LogId::new(LeaderId::new(1, 0), snapshot_index),
+                    timeout(),
+                    "",
+                )
                 .await?;
 
-            let expected_snap = Some((log_index.into(), 1));
+            let expected_snap = Some((snapshot_index.into(), 1));
 
             router
                 .assert_storage_state(
@@ -152,5 +159,5 @@ async fn snapshot_overrides_membership() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(5000))
+    Some(Duration::from_millis(1_000))
 }

@@ -4,6 +4,12 @@ pub(crate) fn snapshot_is_within_half_of_threshold(
     last_log_index: &u64,
     threshold: &u64,
 ) -> bool {
+    tracing::debug!(
+        "snapshot_last_indeix:{}, last_log_index:{}, threshold: {}",
+        snapshot_last_index,
+        last_log_index,
+        threshold
+    );
     // Calculate distance from actor's last log index.
     let distance_from_line = last_log_index.saturating_sub(*snapshot_last_index);
 

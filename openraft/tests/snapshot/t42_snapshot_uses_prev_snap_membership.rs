@@ -36,7 +36,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
             // Use 3, with 1 it triggers a compaction when replicating ent-1,
             // because ent-0 is removed.
-            max_applied_log_to_keep: 3,
+            max_in_snapshot_log_to_keep: 3,
             purge_batch_size: 1,
             enable_tick: false,
             ..Default::default()
@@ -67,7 +67,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
                 &btreeset![0],
                 LogId::new(LeaderId::new(1, 0), log_index),
                 timeout(),
-                "snapshot",
+                "1st snapshot",
             )
             .await?;
 
@@ -87,23 +87,6 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
             m.effective.membership,
             "membership "
         );
-
-        // TODO(xp): this assertion fails because when change-membership, a append-entries request does not update
-        //           voted_for and does not call save_vote.
-        //           Thus the storage layer does not know about the leader==Some(0).
-        //           Update voted_for whenever a new leader is seen would solve this issue.
-        // router
-        //     .assert_storage_state(
-        //         1,
-        //         want,
-        //         Some(0),
-        //         want,
-        //         Some((want.into(), 1, MembershipConfig {
-        //             members: btreeset![0, 1],
-        //             members_after_consensus: None,
-        //         })),
-        //     )
-        //     .await;
     }
 
     tracing::info!("--- send just enough logs to trigger the 2nd snapshot");
@@ -117,7 +100,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
                 &btreeset![0],
                 LogId::new(LeaderId::new(1, 0), log_index),
                 None,
-                "snapshot",
+                "2nd snapshot",
             )
             .await?;
     }

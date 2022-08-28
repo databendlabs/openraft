@@ -83,75 +83,56 @@ fn parse_snapshot_policy(src: &str) -> Result<SnapshotPolicy, ConfigError> {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Config {
     /// The application specific name of this Raft cluster
-    #[clap(long, env = "RAFT_CLUSTER_NAME", default_value = "foo")]
+    #[clap(long, default_value = "foo")]
     pub cluster_name: String,
 
     /// The minimum election timeout in milliseconds
-    #[clap(long, env = "RAFT_ELECTION_TIMEOUT_MIN", default_value = "150")]
+    #[clap(long, default_value = "150")]
     pub election_timeout_min: u64,
 
     /// The maximum election timeout in milliseconds
-    #[clap(long, env = "RAFT_ELECTION_TIMEOUT_MAX", default_value = "300")]
+    #[clap(long, default_value = "300")]
     pub election_timeout_max: u64,
 
     /// The heartbeat interval in milliseconds at which leaders will send heartbeats to followers
-    #[clap(long, env = "RAFT_HEARTBEAT_INTERVAL", default_value = "50")]
+    #[clap(long, default_value = "50")]
     pub heartbeat_interval: u64,
 
     /// The timeout for sending a snapshot segment, in millisecond
-    #[clap(long, env = "RAFT_INSTALL_SNAPSHOT_TIMEOUT", default_value = "200")]
+    #[clap(long, default_value = "200")]
     pub install_snapshot_timeout: u64,
 
     /// The maximum number of entries per payload allowed to be transmitted during replication
     ///
     /// If this is too low, it will take longer for the nodes to be brought up to
     /// consistency with the rest of the cluster.
-    #[clap(long, env = "RAFT_MAX_PAYLOAD_ENTRIES", default_value = "300")]
+    #[clap(long, default_value = "300")]
     pub max_payload_entries: u64,
 
     /// The distance behind in log replication a follower must fall before it is considered lagging
     ///
     /// Once a replication stream transition into line-rate state, the target node will be considered safe to join a
     /// cluster.
-    #[clap(long, env = "RAFT_REPLICATION_LAG_THRESHOLD", default_value = "1000")]
+    #[clap(long, default_value = "1000")]
     pub replication_lag_threshold: u64,
 
     /// The snapshot policy to use for a Raft node.
     #[clap(
         long,
-        env = "RAFT_SNAPSHOT_POLICY",
         default_value = "since_last:5000",
         parse(try_from_str=parse_snapshot_policy)
     )]
     pub snapshot_policy: SnapshotPolicy,
 
-    /// Whether to keep `applied_log`s that are not included by snapshots.
-    ///
-    /// If your application may rebuild it's state machine from snapshots,
-    /// please set this to true.
-    ///
-    /// By default, `OpenRaft` purges `applied_log`s from time to time regardless of snapshots, because it assumes once
-    /// logs are `applied` to the state machine, logs are persisted on disk.
-    ///
-    /// If an implementation does not persist data when `RaftStorage::apply_to_state_machine()` returns, and just
-    /// relies on `snapshot` to rebuild the state machine when the next time it restarts, the application must always
-    /// set `keep_unsnapshoted_log` to `true`, so that only logs that are already included in a snapshot will be
-    /// purged.
-    //
-    // This is another way to implement:
-    // #[clap(long, env = "RAFT_KEEP_UNSNAPSHOTED_LOG",
-    //        default_value_t = false,
-    //        value_parser=clap::value_parser!(bool))]
-    #[clap(long, env = "RAFT_KEEP_UNSNAPSHOTED_LOG")]
-    pub keep_unsnapshoted_log: bool,
-
     /// The maximum snapshot chunk size allowed when transmitting snapshots (in bytes)
-    #[clap(long, env = "RAFT_SNAPSHOT_MAX_CHUNK_SIZE", default_value = "3MiB", parse(try_from_str=parse_bytes_with_unit))]
+    #[clap(long, default_value = "3MiB", parse(try_from_str=parse_bytes_with_unit))]
     pub snapshot_max_chunk_size: u64,
 
-    /// The maximum number of applied logs to keep before purging
-    #[clap(long, env = "RAFT_MAX_APPLIED_LOG_TO_KEEP", default_value = "1000")]
-    pub max_applied_log_to_keep: u64,
+    /// The maximum number of logs to keep that are already included in **snapshot**.
+    ///
+    /// Logs that are not in snapshot will never be purged.
+    #[clap(long, default_value = "1000")]
+    pub max_in_snapshot_log_to_keep: u64,
 
     /// The minimal number of applied logs to purge in a batch.
     #[clap(long, default_value = "1")]

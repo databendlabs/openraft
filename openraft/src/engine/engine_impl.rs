@@ -33,22 +33,17 @@ use crate::Vote;
 #[derive(PartialEq, Eq)]
 pub(crate) struct EngineConfig {
     /// The maximum number of applied logs to keep before purging.
-    pub(crate) max_applied_log_to_keep: u64,
+    pub(crate) max_in_snapshot_log_to_keep: u64,
 
     /// The minimal number of applied logs to purge in a batch.
     pub(crate) purge_batch_size: u64,
-
-    /// whether to keep applied log that are not included in snapshots.
-    /// false by default
-    pub(crate) keep_unsnapshoted_log: bool,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
         Self {
-            max_applied_log_to_keep: 1000,
+            max_in_snapshot_log_to_keep: 1000,
             purge_batch_size: 256,
-            keep_unsnapshoted_log: false,
         }
     }
 }
@@ -433,7 +428,6 @@ where
                 already_committed: prev_committed,
                 upto: committed.unwrap(),
             });
-            self.purge_applied_log();
         }
     }
 
@@ -540,13 +534,13 @@ where
         }
     }
 
-    /// Purge applied log if needed.
+    /// Purge logs that are already in snapshot if needed.
     ///
-    /// `max_applied_log_to_keep` specifies the number of applied logs to keep.
-    /// `max_applied_log_to_keep==0` means every applied log can be purged.
+    /// `max_in_snapshot_log_to_keep` specifies the number of logs already included in snapshot to keep.
+    /// `max_in_snapshot_log_to_keep==0` means to purge every log stored in snapshot.
     // NOTE: simple method, not tested.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn purge_applied_log(&mut self) {
+    pub(crate) fn purge_in_snapshot_log(&mut self) {
         if let Some(purge_upto) = self.calc_purge_upto() {
             self.purge_log(purge_upto);
         }
@@ -562,20 +556,13 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn calc_purge_upto(&mut self) -> Option<LogId<NID>> {
         let st = &self.state;
-        let last_applied = &st.committed;
-        let max_keep = self.config.max_applied_log_to_keep;
+        let max_keep = self.config.max_in_snapshot_log_to_keep;
         let batch_size = self.config.purge_batch_size;
 
-        let mut purge_end = last_applied.next_index().saturating_sub(max_keep);
-
-        if self.config.keep_unsnapshoted_log {
-            let idx = self.snapshot_meta.last_log_id.next_index();
-            tracing::debug!("the very last log included in snapshots: {}", idx);
-            purge_end = idx.min(purge_end);
-        }
+        let purge_end = self.snapshot_meta.last_log_id.next_index().saturating_sub(max_keep);
 
         tracing::debug!(
-            last_applied = debug(last_applied),
+            snapshot_last_log_id = debug(self.snapshot_meta.last_log_id),
             max_keep,
             "try purge: (-oo, {})",
             purge_end
@@ -583,7 +570,7 @@ where
 
         if st.last_purged_log_id().next_index() + batch_size > purge_end {
             tracing::debug!(
-                last_applied = debug(last_applied),
+                snapshot_last_log_id = debug(self.snapshot_meta.last_log_id),
                 max_keep,
                 last_purged_log_id = display(st.last_purged_log_id().summary()),
                 batch_size,
@@ -640,6 +627,7 @@ where
         //   membership.log_id       = (10, 5);
         //   local_effective.log_id = (2, 10);
         if effective.log_id.index() <= m.log_id.index() {
+            // TODO: if effective membership changes, call `update_repliation()`
             effective = m;
         }
 
@@ -743,7 +731,6 @@ where
                 already_committed: prev_committed,
                 upto: self.state.committed.unwrap(),
             });
-            self.purge_applied_log();
         }
     }
 
@@ -799,6 +786,18 @@ where
         // A local log that is <= snap_last_log_id may conflict with the leader.
         // It has to purge all of them to prevent these log form being replicated, when this node becomes leader.
         self.purge_log(snap_last_log_id)
+    }
+
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
+        tracing::info!("finish_building_snapshot: {:?}", meta);
+
+        let updated = self.update_snapshot(meta);
+        if !updated {
+            return;
+        }
+
+        self.purge_in_snapshot_log();
     }
 
     /// Update engine state when a new snapshot is built or installed.
