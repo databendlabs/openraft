@@ -151,14 +151,14 @@
 <img src="https://img.shields.io/crates/dv/openraft.svg" alt="Crates.io" /></p>
 </div>
 <p>🪵🪵🪵 Raft is not yet good enough.
-This project intends to improve raft as the next generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
-<p>Currently openraft is the consensus engine of meta-service cluster in <a href="https://github.com/datafuselabs/databend">databend</a>.</p>
+This project intends to improve raft as the next-generation consensus protocol for distributed data storage systems (SQL, NoSQL, KV, Streaming, Graph ... or maybe something more exotic).</p>
+<p>Currently, openraft is the consensus engine of meta-service cluster in <a href="https://github.com/datafuselabs/databend">databend</a>.</p>
 <ul>
 <li><strong>Get started</strong>: <a href="https://datafuselabs.github.io/openraft">The guide</a> is the best place to get started,
 followed by <a href="https://docs.rs/openraft/latest/">the docs</a> for more in-depth details.</li>
 <li>Openraft is derived from <a href="https://docs.rs/crate/async-raft/latest">async-raft</a> with several bugs fixed: <a href="https://github.com/datafuselabs/openraft/blob/main/derived-from-async-raft.md">Fixed bugs</a>.</li>
 </ul>
-<h1 id="versions"><a class="header" href="#versions">Versions</a></h1>
+<h1 id="status"><a class="header" href="#status">Status</a></h1>
 <ul>
 <li>
 <p><strong>Openraft API is not stable yet</strong>. Before <code>1.0.0</code>, an upgrade may contain incompatible changes.
@@ -170,18 +170,25 @@ Check our <a href="https://github.com/datafuselabs/openraft/blob/main/change-log
 </ul>
 </li>
 <li>
-<p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.6">release-0.6</a></strong>:
-In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.6.8">v0.6.8</a> is the latest version.
-<code>release-0.6</code> won't accept new features but only bug fixes.</p>
+<p><strong>Branch main</strong> has been under active development.</p>
+<p>The main branch is for the 0.8 release. There won't be big API changes when 0.8 is released.
+Currently, the work is mainly on refactoring the internal structure.</p>
+<ul>
+<li>The features are almost complete for building an application.</li>
+<li>The performance isn't yet fully optimized. Currently, it's about 44,000 writes per second with a single writer.</li>
+<li>Unit test coverage is 88%.</li>
+<li>The chaos test is not yet done.</li>
+</ul>
 </li>
 <li>
 <p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.7">release-0.7</a></strong>:
-In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.7.0">v0.7.0</a> is the latest version.
-<a href="https://datafuselabs.github.io/openraft/upgrade-v06-v07.html">Upgrade guide from 0.6 to 0.7</a></p>
-<!-- `release-0.7` won't accept new features but only bug fixes. -->
+In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.7.1">v0.7.1</a> is the last published version: <a href="https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v071">Change log v0.7</a>.</p>
+<p><a href="https://datafuselabs.github.io/openraft/upgrade-v06-v07.html">Upgrade guide from 0.6 to 0.7</a></p>
 </li>
 <li>
-<p><strong>Branch main</strong> has been under active development.</p>
+<p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.6">release-0.6</a></strong>:
+In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.6.8">v0.6.8</a> is the last published version: <a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md">Change log v0.6</a>.</p>
+<p><code>release-0.6</code> won't accept new features but only bug fixes.</p>
 </li>
 </ul>
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
