@@ -20,7 +20,6 @@ use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
 use openraft::SnapshotMeta;
-use openraft::StateMachineChanges;
 use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::Vote;
@@ -305,7 +304,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
         &mut self,
         meta: &SnapshotMeta<ExampleNodeId, BasicNode>,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<StateMachineChanges<ExampleTypeConfig>, StorageError<ExampleNodeId>> {
+    ) -> Result<(), StorageError<ExampleNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -333,10 +332,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
         // Update current snapshot.
         let mut current_snapshot = self.current_snapshot.write().await;
         *current_snapshot = Some(new_snapshot);
-        Ok(StateMachineChanges {
-            last_applied: meta.last_log_id,
-            is_snapshot: true,
-        })
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

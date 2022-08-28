@@ -4,7 +4,6 @@ use std::fmt::Formatter;
 use crate::LeaderId;
 use crate::MessageSummary;
 use crate::NodeId;
-use crate::RaftTypeConfig;
 
 /// The identity of a raft log.
 /// A term, node_id and an index identifies an log globally.
@@ -196,12 +195,4 @@ impl MetricsChangeFlags {
     pub(crate) fn set_cluster_changed(&mut self) {
         self.cluster = true
     }
-}
-
-/// The changes of a state machine.
-/// E.g. when applying a log to state machine, or installing a state machine from snapshot.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StateMachineChanges<C: RaftTypeConfig> {
-    pub last_applied: Option<LogId<C::NodeId>>,
-    pub is_snapshot: bool,
 }
