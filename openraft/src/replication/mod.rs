@@ -101,10 +101,8 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     /// The Raft's runtime config.
     config: Arc<Config>,
 
-    //////////////////////////////////////////////////////////////////////////
-    // Dynamic Fields ////////////////////////////////////////////////////////
     /// The target state of this replication stream.
-    target_repl_state: TargetReplState<C::NodeId>,
+    target_repl_state: TargetReplState,
 
     /// The log id of the highest log entry which is known to be committed in the cluster.
     committed: Option<LogId<C::NodeId>>,
@@ -178,10 +176,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             // If it returns Ok(), always go back to LineRate state.
             let res = match &self.target_repl_state {
                 TargetReplState::LineRate => self.line_rate_loop().await,
-                TargetReplState::Snapshotting { must_include } => {
-                    let must = *must_include;
-                    self.replicate_snapshot(must).await
-                }
+                TargetReplState::Snapshotting => self.replicate_snapshot().await,
             };
 
             let err = match res {
@@ -206,13 +201,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     });
                     return;
                 }
-                ReplicationError::LackEntry(lack_ent) => {
-                    self.set_target_repl_state(TargetReplState::Snapshotting {
-                        must_include: lack_ent.last_purged_log_id,
-                    });
+                ReplicationError::LackEntry(_lack_ent) => {
+                    self.set_target_repl_state(TargetReplState::Snapshotting);
                 }
                 ReplicationError::CommittedAdvanceTooMany { .. } => {
-                    self.set_target_repl_state(TargetReplState::Snapshotting { must_include: None });
+                    self.set_target_repl_state(TargetReplState::Snapshotting);
                 }
                 ReplicationError::StorageError(_err) => {
                     // TODO: report this error
@@ -440,7 +433,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    fn set_target_repl_state(&mut self, state: TargetReplState<C::NodeId>) {
+    fn set_target_repl_state(&mut self, state: TargetReplState) {
         tracing::debug!(?state, "set_target_repl_state");
         self.target_repl_state = state;
     }
@@ -539,12 +532,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
 /// The state of the replication stream.
 #[derive(Debug, Eq, PartialEq)]
-enum TargetReplState<NID: NodeId> {
+enum TargetReplState {
     /// The replication stream is running at line rate.
     LineRate,
 
     /// The replication stream is streaming a snapshot over to the target node.
-    Snapshotting { must_include: Option<LogId<NID>> },
+    Snapshotting,
 }
 
 /// An event from the RaftCore in leader state to replication stream.
@@ -638,11 +631,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "debug", skip(self), fields(state = "snapshotting"))]
-    pub async fn replicate_snapshot(
-        &mut self,
-        snapshot_must_include: Option<LogId<C::NodeId>>,
-    ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
-        let snapshot = self.wait_for_snapshot(snapshot_must_include).await?;
+    pub async fn replicate_snapshot(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
+        let snapshot = self.wait_for_snapshot().await?;
         self.stream_snapshot(snapshot).await?;
 
         Ok(())
@@ -655,7 +645,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[tracing::instrument(level = "debug", skip(self))]
     async fn wait_for_snapshot(
         &mut self,
-        snapshot_must_include: Option<LogId<C::NodeId>>,
     ) -> Result<Snapshot<C::NodeId, C::Node, S::SnapshotData>, ReplicationError<C::NodeId, C::Node>> {
         // Ask raft core for a snapshot.
         // - If raft core has a ready snapshot, it sends back through tx.
@@ -670,7 +659,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             // ReplicationError::Closed.
             let _ = self.raft_core_tx.send(RaftMsg::NeedsSnapshot {
                 target: self.target,
-                must_include: snapshot_must_include,
                 tx,
                 vote: self.vote,
             });

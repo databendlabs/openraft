@@ -6,7 +6,6 @@
 
 mod install_snapshot;
 mod raft_core;
-pub(crate) mod replication;
 mod replication_expectation;
 mod replication_state;
 mod server_state;

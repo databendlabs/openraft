@@ -932,9 +932,6 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     NeedsSnapshot {
         target: C::NodeId,
 
-        /// The log id the caller requires the snapshot has to include.
-        must_include: Option<LogId<C::NodeId>>,
-
         /// The response channel for delivering the snapshot data.
         tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotData>>,
 
@@ -1023,15 +1020,9 @@ where
                 )
             }
             RaftMsg::NeedsSnapshot {
-                ref target,
-                ref must_include,
-                ref vote,
-                ..
+                ref target, ref vote, ..
             } => {
-                format!(
-                    "NeedsSnapshot: target: {}, must_include: {:?}, server_state_vote: {}",
-                    target, must_include, vote
-                )
+                format!("NeedsSnapshot: target: {}, server_state_vote: {}", target, vote)
             }
             RaftMsg::ReplicationFatal => "ReplicationFatal".to_string(),
         }
