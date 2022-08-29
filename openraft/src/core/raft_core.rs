@@ -27,7 +27,6 @@ use tracing::Span;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::config::SnapshotPolicy;
-use crate::core::replication::snapshot_is_within_half_of_threshold;
 use crate::core::replication_lag;
 use crate::core::Expectation;
 use crate::core::ServerState;
@@ -866,8 +865,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Trigger a log compaction (snapshot) job if needed.
     /// If force is True, it will skip the threshold check and start creating snapshot as demanded.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(crate) async fn trigger_log_compaction_if_needed(&mut self, force: bool) {
-        tracing::debug!("trigger_log_compaction_if_needed: force: {}", force);
+    pub(crate) async fn trigger_snapshot_if_needed(&mut self, force: bool) {
+        tracing::debug!("trigger_snapshot_if_needed: force: {}", force);
 
         if let SnapshotState::None = self.snapshot_state {
             // Continue.
@@ -877,18 +876,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         let SnapshotPolicy::LogsSinceLast(threshold) = &self.config.snapshot_policy;
-
-        let last_applied = match self.engine.state.committed {
-            None => {
-                return;
-            }
-            Some(x) => x,
-        };
-
-        // Check to ensure we have actual entries for compaction.
-        if Some(last_applied.index) < self.engine.snapshot_meta.last_log_id.index() {
-            return;
-        }
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
@@ -904,6 +891,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let (abort_handle, reg) = AbortHandle::new_pair();
         let (chan_tx, _) = broadcast::channel(1);
         let tx_api = self.tx_api.clone();
+
         self.snapshot_state = SnapshotState::Snapshotting {
             abort_handle,
             sender: chan_tx.clone(),
@@ -1020,7 +1008,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
         }
 
-        self.trigger_log_compaction_if_needed(false).await;
+        self.trigger_snapshot_if_needed(false).await;
         Ok(())
     }
 
@@ -1357,7 +1345,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         let log_id = self.write_entry(EntryPayload::Blank, None).await?;
                         tracing::debug!(log_id = display(&log_id), "ExternalCommand: sent heartbeat log");
                     }
-                    ExternalCommand::Snapshot => self.trigger_log_compaction_if_needed(true).await,
+                    ExternalCommand::Snapshot => self.trigger_snapshot_if_needed(true).await,
                 }
             }
             RaftMsg::Tick { i } => {
@@ -1435,14 +1423,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
 
-            RaftMsg::NeedsSnapshot {
-                target: _,
-                must_include,
-                tx,
-                vote,
-            } => {
+            RaftMsg::NeedsSnapshot { target: _, tx, vote } => {
                 if self.does_vote_match(vote, "NeedsSnapshot") {
-                    self.handle_needs_snapshot(must_include, tx).await?;
+                    self.handle_needs_snapshot(tx).await?;
                 }
             }
             RaftMsg::ReplicationFatal => {
@@ -1528,35 +1511,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self, tx))]
     async fn handle_needs_snapshot(
         &mut self,
-        must_include: Option<LogId<C::NodeId>>,
         tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotData>>,
     ) -> Result<(), StorageError<C::NodeId>> {
-        // Ensure snapshotting is configured, else do nothing.
-        let threshold = match &self.config.snapshot_policy {
-            SnapshotPolicy::LogsSinceLast(threshold) => *threshold,
-        };
-
         // Check for existence of current snapshot.
         let current_snapshot_opt = self.storage.get_current_snapshot().await?;
 
         if let Some(snapshot) = current_snapshot_opt {
-            if must_include.is_some() {
-                if snapshot.meta.last_log_id >= must_include {
-                    let _ = tx.send(snapshot);
-                    return Ok(());
-                }
-            } else {
-                // If snapshot exists, ensure its distance from the leader's last log index is <= half
-                // of the configured snapshot threshold, else create a new snapshot.
-                if snapshot_is_within_half_of_threshold(
-                    &snapshot.meta.last_log_id.unwrap_or_default().index,
-                    &self.engine.state.last_log_id().unwrap_or_default().index,
-                    &threshold,
-                ) {
-                    let _ = tx.send(snapshot);
-                    return Ok(());
-                }
-            }
+            let _ = tx.send(snapshot);
+            return Ok(());
         }
 
         // Check if snapshot creation is already in progress. If so, we spawn a task to await its
@@ -1582,10 +1544,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         //
         // If this block is executed, and a snapshot is needed, the repl stream will submit another
         // request here shortly, and will hit the above logic where it will await the snapshot completion.
-        //
-        // If snapshot is too old, i.e., the distance from last_log_index is greater than half of snapshot threshold,
-        // always force a snapshot creation.
-        self.trigger_log_compaction_if_needed(true).await;
+        self.trigger_snapshot_if_needed(false).await;
         Ok(())
     }
 }
