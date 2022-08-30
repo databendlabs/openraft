@@ -321,4 +321,13 @@ where
         let m = Membership::with_nodes(config, nodes)?;
         Ok(m)
     }
+
+    /// Build a QuorumSet from current joint config
+    pub(crate) fn to_quorum_set(&self) -> Joint<NID, Vec<NID>, Vec<Vec<NID>>> {
+        let mut qs = vec![];
+        for c in self.get_joint_config().iter() {
+            qs.push(c.iter().copied().collect::<Vec<_>>());
+        }
+        Joint::new(qs)
+    }
 }
