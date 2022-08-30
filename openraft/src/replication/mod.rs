@@ -9,6 +9,7 @@ use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tokio::time::sleep;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tracing_futures::Instrument;
@@ -747,11 +748,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     Ok(res) => res,
                     Err(err) => {
                         tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
+
+                        // Sleep a short time otherwise in test environment it is a dead-loop that never yields.
+                        // Because network implementation does not yield.
+                        sleep(Duration::from_millis(10)).await;
                         continue;
                     }
                 },
                 Err(err) => {
                     tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
+
+                    // Sleep a short time otherwise in test environment it is a dead-loop that never yields.
+                    // Because network implementation does not yield.
+                    sleep(Duration::from_millis(10)).await;
                     continue;
                 }
             };
