@@ -23,7 +23,6 @@ use openraft::LogId;
 use openraft::RaftStorage;
 use openraft::RaftStorageDebug;
 use openraft::SnapshotMeta;
-use openraft::StateMachineChanges;
 use openraft::StorageError;
 use openraft::StorageIOError;
 use openraft::Vote;
@@ -358,7 +357,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
         &mut self,
         meta: &SnapshotMeta<MemNodeId, ()>,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<StateMachineChanges<Config>, StorageError<MemNodeId>> {
+    ) -> Result<(), StorageError<MemNodeId>> {
         tracing::info!(
             { snapshot_size = snapshot.get_ref().len() },
             "decoding snapshot for installation"
@@ -392,10 +391,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
         // Update current snapshot.
         let mut current_snapshot = self.current_snapshot.write().await;
         *current_snapshot = Some(new_snapshot);
-        Ok(StateMachineChanges {
-            last_applied: meta.last_log_id,
-            is_snapshot: true,
-        })
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

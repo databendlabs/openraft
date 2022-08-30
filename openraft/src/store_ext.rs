@@ -21,7 +21,6 @@ use crate::RaftStorage;
 use crate::RaftStorageDebug;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
-use crate::StateMachineChanges;
 use crate::StorageError;
 use crate::Vote;
 use crate::Wrapper;
@@ -178,7 +177,7 @@ where
         &mut self,
         meta: &SnapshotMeta<C::NodeId, C::Node>,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<StateMachineChanges<C>, StorageError<C::NodeId>> {
+    ) -> Result<(), StorageError<C::NodeId>> {
         self.inner().install_snapshot(meta, snapshot).await
     }
 

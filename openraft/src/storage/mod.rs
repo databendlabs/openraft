@@ -16,7 +16,6 @@ use crate::defensive::check_range_matches_entries;
 use crate::membership::EffectiveMembership;
 use crate::node::Node;
 use crate::raft_types::SnapshotId;
-use crate::raft_types::StateMachineChanges;
 use crate::Entry;
 use crate::LogId;
 use crate::MessageSummary;
@@ -283,7 +282,7 @@ where C: RaftTypeConfig
     /// for details on log compaction / snapshotting.
     async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<C::NodeId>>;
 
-    /// Install a snapshot which has finished streaming from the cluster leader.
+    /// Install a snapshot which has finished streaming from the leader.
     ///
     /// All other snapshots should be deleted at this point.
     ///
@@ -293,7 +292,7 @@ where C: RaftTypeConfig
         &mut self,
         meta: &SnapshotMeta<C::NodeId, C::Node>,
         snapshot: Box<Self::SnapshotData>,
-    ) -> Result<StateMachineChanges<C>, StorageError<C::NodeId>>;
+    ) -> Result<(), StorageError<C::NodeId>>;
 
     /// Get a readable handle to the current snapshot, along with its metadata.
     ///

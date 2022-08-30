@@ -81,7 +81,6 @@ pub use crate::raft_types::LogIdOptionExt;
 pub(crate) use crate::raft_types::MetricsChangeFlags;
 pub use crate::raft_types::SnapshotId;
 pub use crate::raft_types::SnapshotSegmentId;
-pub use crate::raft_types::StateMachineChanges;
 pub use crate::raft_types::Update;
 pub use crate::storage::RaftLogReader;
 pub use crate::storage::RaftSnapshotBuilder;

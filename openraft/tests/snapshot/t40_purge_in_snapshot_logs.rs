@@ -7,6 +7,7 @@ use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftLogReader;
+use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -46,7 +47,7 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         assert_eq!(max_keep as usize, logs.len());
     }
 
-    // Leader:  .......15..20
+    // Leader:  -------15..20
     // Learner: 0..10
     tracing::info!("--- block replication, build another snapshot");
     {
@@ -61,6 +62,10 @@ async fn purge_in_snapshot_logs() -> Result<()> {
             .snapshot(LogId::new(LeaderId::new(1, 0), log_index), "building 2nd snapshot")
             .await?;
     }
+
+    // There may be a cached append-entries request that already loads log 10..15 from the store, just before building
+    // snapshot.
+    sleep(Duration::from_millis(500)).await;
 
     tracing::info!("--- restore replication, install the 2nd snapshot on learner");
     {

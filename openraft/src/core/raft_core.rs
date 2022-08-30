@@ -1685,9 +1685,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 let snapshot_data = self.received_snapshot.remove(&snapshot_meta.snapshot_id);
 
                 if let Some(data) = snapshot_data {
-                    // TODO: `changes` is not used
-                    let changes = self.storage.install_snapshot(snapshot_meta, data).await?;
-                    tracing::debug!("update after install-snapshot: {:?}", changes);
+                    self.storage.install_snapshot(snapshot_meta, data).await?;
+                    tracing::debug!("Done install_snapshot, meta: {:?}", snapshot_meta);
                 } else {
                     unreachable!("buffered snapshot not found: snapshot meta: {:?}", snapshot_meta)
                 }
