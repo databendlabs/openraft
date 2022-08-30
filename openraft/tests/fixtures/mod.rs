@@ -990,9 +990,8 @@ where
         RPCError<C::NodeId, C::Node, AppendEntriesError<C::NodeId>>,
     > {
         tracing::debug!("append_entries to id={} {:?}", self.target, rpc);
-        self.owner.rand_send_delay().await;
-
         self.owner.check_reachable(rpc.vote.node_id, self.target)?;
+        self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
@@ -1011,9 +1010,8 @@ where
         InstallSnapshotResponse<C::NodeId>,
         RPCError<C::NodeId, C::Node, InstallSnapshotError<C::NodeId>>,
     > {
-        self.owner.rand_send_delay().await;
-
         self.owner.check_reachable(rpc.vote.node_id, self.target)?;
+        self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
@@ -1027,9 +1025,8 @@ where
         &mut self,
         rpc: VoteRequest<C::NodeId>,
     ) -> std::result::Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, VoteError<C::NodeId>>> {
-        self.owner.rand_send_delay().await;
-
         self.owner.check_reachable(rpc.vote.node_id, self.target)?;
+        self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
 
