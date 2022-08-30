@@ -1,9 +1,9 @@
-use std::sync::Arc;
-
 use crate::leader::Leader;
-use crate::node::Node;
-use crate::EffectiveMembership;
+use crate::quorum::Joint;
 use crate::NodeId;
+
+/// The quorum set type used by `Leader`.
+pub(crate) type LeaderQuorumSet<NID> = Joint<NID, Vec<NID>, Vec<Vec<NID>>>;
 
 /// In openraft there are only two state for a server:
 /// Leading(raft leader or raft candidate) and following(raft follower or raft learner):
@@ -17,15 +17,13 @@ use crate::NodeId;
 ///   become leader. A following state that is not a member is just a learner.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) enum InternalServerState<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+pub(crate) enum InternalServerState<NID>
+where NID: NodeId
 {
     /// Leader or candidate.
     ///
     /// `vote.committed==true` means it is a leader.
-    Leading(Leader<NID, Arc<EffectiveMembership<NID, N>>>),
+    Leading(Leader<NID, LeaderQuorumSet<NID>>),
 
     /// Follower or learner.
     ///
@@ -33,29 +31,25 @@ where
     Following,
 }
 
-impl<NID, N> Default for InternalServerState<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<NID> Default for InternalServerState<NID>
+where NID: NodeId
 {
     fn default() -> Self {
         Self::Following
     }
 }
 
-impl<NID, N> InternalServerState<NID, N>
-where
-    NID: NodeId,
-    N: Node,
+impl<NID> InternalServerState<NID>
+where NID: NodeId
 {
-    pub(crate) fn leading(&self) -> Option<&Leader<NID, Arc<EffectiveMembership<NID, N>>>> {
+    pub(crate) fn leading(&self) -> Option<&Leader<NID, LeaderQuorumSet<NID>>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,
         }
     }
 
-    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leader<NID, Arc<EffectiveMembership<NID, N>>>> {
+    pub(crate) fn leading_mut(&mut self) -> Option<&mut Leader<NID, LeaderQuorumSet<NID>>> {
         match self {
             InternalServerState::Leading(l) => Some(l),
             InternalServerState::Following => None,

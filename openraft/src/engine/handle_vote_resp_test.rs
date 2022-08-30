@@ -81,7 +81,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
-        assert!(eng.state.internal_server_state.is_leading());
+        assert_eq!(
+            Some(btreeset! {1},),
+            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+        );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
@@ -155,7 +158,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
-        assert!(eng.state.internal_server_state.is_leading());
+        assert_eq!(
+            Some(btreeset! {1},),
+            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+        );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
