@@ -68,8 +68,8 @@ fn bench_with_config(bench_config: &BenchConfig) -> anyhow::Result<()> {
         .build()?;
 
     // Run client_write benchmark
-    let output = rt.block_on(do_bench(bench_config))?;
-    Ok(output)
+    rt.block_on(do_bench(bench_config))?;
+    Ok(())
 }
 
 /// Benchmark client_write.

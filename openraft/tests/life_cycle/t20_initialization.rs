@@ -201,7 +201,8 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0);
 
-    for node in [0] {
+    {
+        let node = 0;
         router.external_request(node, |s, _sto, _net| {
             assert_eq!(s.server_state, ServerState::Learner);
         });

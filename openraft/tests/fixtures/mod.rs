@@ -405,7 +405,10 @@ where
 
     /// Get a payload of the latest metrics from each node in the cluster.
     pub fn latest_metrics(&self) -> Vec<RaftMetrics<C::NodeId, C::Node>> {
-        let rt = self.routing_table.lock().unwrap();
+        // `watch::Receiver<RaftMetrics<T>>` holds another locks, so we should `clone` the map here
+        // to avoid `clippy::has_significant_drop`.
+        let rt = self.routing_table.lock().unwrap().clone();
+
         let mut metrics = vec![];
         for node in rt.values() {
             metrics.push(node.0.metrics().borrow().clone());

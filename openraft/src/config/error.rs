@@ -1,5 +1,5 @@
 /// Error variants related to configuration.
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ConfigError {
     #[error("election timeout: min({min}) must be < max({max})")]
     ElectionTimeout { min: u64, max: u64 },

@@ -174,7 +174,6 @@ where NID: NodeId
     #[error(transparent)]
     Defensive {
         #[from]
-        #[cfg_attr(feature = "bt", backtrace)]
         source: DefensiveError<NID>,
     },
 
@@ -182,7 +181,6 @@ where NID: NodeId
     #[error(transparent)]
     IO {
         #[from]
-        #[cfg_attr(feature = "bt", backtrace)]
         source: StorageIOError<NID>,
     },
 }

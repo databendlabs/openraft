@@ -797,6 +797,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Get the next election timeout, generating a new value if not set.
     /// TODO: get() should not have a side effect of updating the timer.
+    #[allow(dead_code)]
     #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) fn get_next_election_time(&mut self) -> Instant {
         let current_vote = &self.engine.state.vote;

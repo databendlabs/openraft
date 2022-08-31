@@ -28,7 +28,7 @@ maplit = "1.0.2"
 rand = "0.8"
 serde = { version="1", features=["derive", "rc"], optional = true}
 clap = { version = "~3.2", features = ["derive", "env"] }
-thiserror = "1.0.29"
+thiserror = "1.0.33"
 tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1.29"
 tracing-futures = "0.2.4"
@@ -55,7 +55,7 @@ bench = []
 
 # Enable backtrace when generating an error.
 # Stable rust does not support backtrace.
-bt  = ["anyerror/backtrace", "anyhow/backtrace"]
+bt  = ["anyhow/backtrace"]
 
 # Add serde::Serialize and serde:Deserialize bound to data types.
 # If you'd like to use `serde` to serialize messages.

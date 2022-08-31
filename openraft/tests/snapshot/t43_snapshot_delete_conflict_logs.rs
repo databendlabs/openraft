@@ -134,8 +134,8 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         let snap = {
             let mut b = sto0.get_snapshot_builder().await;
-            let snap = b.build_snapshot().await?;
-            snap
+
+            b.build_snapshot().await?
         };
 
         let req = InstallSnapshotRequest {

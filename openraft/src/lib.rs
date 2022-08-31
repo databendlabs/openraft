@@ -1,6 +1,4 @@
 #![doc = include_str!("../../README.md")]
-#![cfg_attr(feature = "bt", feature(backtrace))]
-#![cfg_attr(feature = "bench", feature(test))]
 
 //! # Feature flags
 //!
