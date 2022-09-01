@@ -8,8 +8,13 @@ send_delay_test:
 
 test: lint fmt
 	cargo test
+	cargo test --features bt
+	cargo test --features serde
 	cargo test --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
+
+bench:
+	cargo bench --features bench
 
 bench_cluster_of_1:
 	cargo test --package openraft --test benchmark --release bench_cluster_of_1 -- --ignored --nocapture
@@ -32,8 +37,10 @@ doc:
 lint:
 	cargo fmt
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml
+	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 	cargo clippy --all-targets -- -D warnings -A clippy::bool-assert-comparison
 	cargo clippy --manifest-path examples/raft-kv-memstore/Cargo.toml --all-targets -- -D warnings -A clippy::bool-assert-comparison
+	cargo clippy --manifest-path examples/raft-kv-rocksdb/Cargo.toml  --all-targets -- -D warnings -A clippy::bool-assert-comparison
 
 clean:
 	cargo clean

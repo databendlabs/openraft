@@ -1,3 +1,5 @@
+#![allow(clippy::single_element_loop)]
+
 use std::sync::Arc;
 use std::time::Duration;
 

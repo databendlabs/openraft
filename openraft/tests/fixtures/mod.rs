@@ -404,6 +404,7 @@ where
     }
 
     /// Get a payload of the latest metrics from each node in the cluster.
+    #[allow(clippy::significant_drop_in_scrutinee)]
     pub fn latest_metrics(&self) -> Vec<RaftMetrics<C::NodeId, C::Node>> {
         let rt = self.routing_table.lock().unwrap();
         let mut metrics = vec![];

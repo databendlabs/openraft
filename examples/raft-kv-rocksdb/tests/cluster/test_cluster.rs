@@ -19,22 +19,20 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     //     This is only used by the client. A raft node in this example stores node addresses in its store.
 
     fn get_addr(node_id: u32) -> String {
-        let addr = match node_id {
+        match node_id {
             1 => "127.0.0.1:21001".to_string(),
             2 => "127.0.0.1:21002".to_string(),
             3 => "127.0.0.1:21003".to_string(),
             _ => panic!("node not found"),
-        };
-        addr
+        }
     }
     fn get_rpc_addr(node_id: u32) -> String {
-        let addr = match node_id {
+        match node_id {
             1 => "127.0.0.1:22001".to_string(),
             2 => "127.0.0.1:22002".to_string(),
             3 => "127.0.0.1:22003".to_string(),
             _ => panic!("node not found"),
-        };
-        addr
+        }
     }
 
     // --- Start 3 raft node in 3 threads.

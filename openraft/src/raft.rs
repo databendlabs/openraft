@@ -63,7 +63,7 @@ use crate::Vote;
 /// Since Rust cannot automatically infer traits for various inner types using this config
 /// type as a parameter, this trait simply uses all the traits required for various types
 /// as its supertraits as a workaround. To ease the declaration, the macro
-/// [`declare_raft_types!`] is provided, which can be used to declare the type easily.
+/// `declare_raft_types` is provided, which can be used to declare the type easily.
 ///
 /// Example:
 /// ```ignore

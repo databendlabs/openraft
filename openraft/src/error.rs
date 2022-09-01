@@ -114,7 +114,7 @@ where
 
 /// An error related to a client write request.
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum ClientWriteError<NID, N>
 where

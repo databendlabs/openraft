@@ -1,5 +1,6 @@
 #![doc = include_str!("../../README.md")]
-#![cfg_attr(feature = "bt", feature(backtrace))]
+#![cfg_attr(feature = "bt", feature(error_generic_member_access))]
+#![cfg_attr(feature = "bt", feature(provide_any))]
 #![cfg_attr(feature = "bench", feature(test))]
 
 //! # Feature flags
@@ -8,9 +9,8 @@
 //!   not be used with stable rust. In order to run the benchmark with stable toolchain, the unstable features have to
 //!   be enabled explicitly with environment variable `RUSTC_BOOTSTRAP=1`.
 //!
-//! - `bt`: Enable backtrace: generate backtrace for errors. This requires a unstable feature `backtrace` thus it can
-//!   not be used with stable rust, unless explicitly allowing using unstable features in stable rust with
-//!   `RUSTC_BOOTSTRAP=1`.
+//! - `bt`: Enable backtrace: generate backtrace for errors. This requires unstable feature
+//! `error_generic_member_access` and `provide_any` thus it can not be used with stable rust.
 //!
 //! - `serde`: Add serde::Serialize and serde:Deserialize bound to data types. If you'd like to use `serde` to serialize
 //!   messages.

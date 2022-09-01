@@ -16,7 +16,7 @@ repository = "https://github.com/datafuselabs/openraft"
 readme = "../README.md"
 
 [dependencies]
-anyerror = { version = "0.1.6" }
+anyerror = { version = "0.1.7" }
 # Leave it for debug
 # anyerror = { git = "https://github.com/drmingdrmer/anyerror", branch = "ci",  features = ["anyhow"]}
 async-trait = "0.1.36"
@@ -28,13 +28,13 @@ maplit = "1.0.2"
 rand = "0.8"
 serde = { version="1", features=["derive", "rc"], optional = true}
 clap = { version = "~3.2", features = ["derive", "env"] }
-thiserror = "1.0.29"
+thiserror = "1.0.33"
 tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1.29"
 tracing-futures = "0.2.4"
 
 [dev-dependencies]
-anyhow = "1.0.32"
+anyhow = "1.0.63"
 async-entry = "0.3.1"
 lazy_static = "1.4.0"
 memstore = { version="0.2.0", path="../memstore" }

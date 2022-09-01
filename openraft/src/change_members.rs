@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 
 use crate::NodeId;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum ChangeMembers<NID: NodeId> {
     Add(BTreeSet<NID>),

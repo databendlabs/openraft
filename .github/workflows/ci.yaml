@@ -18,6 +18,12 @@ jobs:
           command: build
           args: --release --all-features
 
+      - name: Test build for benchmark
+        uses: actions-rs/cargo@v1
+        with:
+          command: bench
+          args: --features bench nothing-to-run
+
   build-stable-rust:
     name: Build with stable rust 
     runs-on: ubuntu-latest
@@ -41,7 +47,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --all-features
+          args: --release --features bench,serde
         env:
           # Enable unstable feature on stalbe rust.
           RUSTC_BOOTSTRAP: 1
@@ -89,9 +95,14 @@ jobs:
           path: |
             openraft/_log/
 
-  test-example:
-    name: test example
+  test-examples:
+    name: test examples
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example:
+          - "raft-kv-memstore"
+          - "raft-kv-rocksdb"
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1.0.6
@@ -99,11 +110,11 @@ jobs:
           components: rustfmt, clippy
 
 
-      - name: Test examples/raft-kv-memstore
+      - name: Test examples/${{ matrix.example }}
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --manifest-path examples/raft-kv-memstore/Cargo.toml
+          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml
 
 
       - name: Format
@@ -157,6 +168,11 @@ jobs:
   test-example-on-stable-rust:
     name: test example on stable rust
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example:
+          - "raft-kv-memstore"
+          - "raft-kv-rocksdb"
 
     steps:
       - uses: actions/checkout@v2
@@ -165,11 +181,11 @@ jobs:
           toolchain: "stable"
           override: true
 
-      - name: Test examples/raft-kv-memstore
+      - name: Test examples/${{ matrix.example }}
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --manifest-path examples/raft-kv-memstore/Cargo.toml
+          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml
 
   lint:
     name: lint

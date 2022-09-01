@@ -43,10 +43,12 @@ impl ExampleNetwork {
         Err: std::error::Error + DeserializeOwned,
         Resp: DeserializeOwned,
     {
-        let addr = target_node.map(|x| &x.rpc_addr).ok_or(RPCError::NodeNotFound(NodeNotFound {
-            node_id: target,
-            source: AnyError::default(),
-        }))?;
+        let addr = target_node.map(|x| &x.rpc_addr).ok_or_else(|| {
+            RPCError::NodeNotFound(NodeNotFound {
+                node_id: target,
+                source: AnyError::default(),
+            })
+        })?;
 
         let url = format!("http://{}/{}", addr, uri);
         let client = reqwest::Client::new();
@@ -88,7 +90,7 @@ impl ExampleNetworkConnection {
         if self.client.is_none() {
             self.client = Client::dial_websocket(&self.addr).await.ok();
         }
-        self.client.as_ref().ok_or(RPCError::Network(NetworkError::from(AnyError::default())))
+        self.client.as_ref().ok_or_else(|| RPCError::Network(NetworkError::from(AnyError::default())))
     }
 }
 

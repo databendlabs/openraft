@@ -55,9 +55,11 @@ where
     P: AsRef<Path>,
 {
     // Create a configuration for the raft instance.
-    let mut config = Config::default();
-    config.heartbeat_interval = 250;
-    config.election_timeout_min = 299;
+    let config = Config {
+        heartbeat_interval: 250,
+        election_timeout_min: 299,
+        ..Default::default()
+    };
 
     let config = Arc::new(config.validate().unwrap());
 

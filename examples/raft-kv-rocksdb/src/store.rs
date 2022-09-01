@@ -191,13 +191,7 @@ impl ExampleStateMachine {
         let key = key.as_bytes();
         self.db
             .get_cf(self.db.cf_handle("data").unwrap(), key)
-            .map(|value| {
-                if let Some(value) = value {
-                    Some(String::from_utf8(value.to_vec()).expect("invalid data"))
-                } else {
-                    None
-                }
-            })
+            .map(|value| value.map(|value| String::from_utf8(value.to_vec()).expect("invalid data")))
             .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into())
     }
 }
@@ -353,7 +347,7 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
                 assert_eq!(Ok(id), entry.as_ref().map(|e| e.log_id.index));
                 (id, entry)
             })
-            .take_while(|(id, _)| range.contains(&id))
+            .take_while(|(id, _)| range.contains(id))
             .map(|x| x.1)
             .collect()
     }
@@ -376,7 +370,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
                 .map_err(|e| StorageIOError::new(ErrorSubject::StateMachine, ErrorVerb::Read, AnyError::new(&e)))?;
 
             last_applied_log = state_machine.last_applied_log;
-            last_membership = state_machine.last_membership.clone();
+            last_membership = state_machine.last_membership;
         }
 
         // TODO: we probably want thius to be atomic.
@@ -563,7 +557,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
-                    meta: snapshot.meta.clone(),
+                    meta: snapshot.meta,
                     snapshot: Box::new(Cursor::new(data)),
                 }))
             }
