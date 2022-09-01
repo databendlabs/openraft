@@ -259,41 +259,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.engine.metrics_flags.set_data_changed();
         }
 
-        let has_log = self.engine.state.last_log_id().is_some();
-        let single = self.engine.state.membership_state.effective.voter_ids().count() <= 1;
-        let is_voter = self.engine.state.membership_state.effective.membership.is_voter(&self.id);
-
-        const HAS_LOG: bool = true;
-        const NO_LOG: bool = false;
-
-        const SINGLE: bool = true;
-        const MULTI: bool = false;
-
-        const IS_VOTER: bool = true;
-        const IS_LEARNER: bool = false;
-
-        // TODO: these part can be removed. the loop does not depend on server state
-        self.engine.state.server_state = match (has_log, single, is_voter) {
-            // A restarted raft that already received some logs but was not yet added to a cluster.
-            // It should remain in Learner state, not Follower.
-            (HAS_LOG, SINGLE, IS_LEARNER) => ServerState::Learner,
-            (HAS_LOG, MULTI, IS_LEARNER) => ServerState::Learner,
-
-            (NO_LOG, SINGLE, IS_LEARNER) => ServerState::Learner, // impossible: no logs but there are other members.
-            (NO_LOG, MULTI, IS_LEARNER) => ServerState::Learner,  // impossible: no logs but there are other members.
-
-            // If this is the only configured member and there is live state, then this is
-            // a single-node cluster. It should become the leader at once.
-            (HAS_LOG, SINGLE, IS_VOTER) => ServerState::Candidate,
-
-            // The initial state when a raft is created from empty store.
-            (NO_LOG, SINGLE, IS_VOTER) => ServerState::Learner,
-
-            // Otherwise it is Follower.
-            (HAS_LOG, MULTI, IS_VOTER) => ServerState::Follower,
-
-            (NO_LOG, MULTI, IS_VOTER) => ServerState::Follower, // impossible: no logs but there are other members.
-        };
+        self.engine.state.server_state = self.engine.calc_server_state();
 
         // To ensure that restarted nodes don't disrupt a stable cluster.
         self.set_next_election_time(false);

@@ -1137,7 +1137,7 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    fn calc_server_state(&self) -> ServerState {
+    pub(crate) fn calc_server_state(&self) -> ServerState {
         tracing::debug!(
             is_member = display(self.is_voter()),
             is_leader = display(self.is_leader()),
