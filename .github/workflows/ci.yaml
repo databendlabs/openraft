@@ -89,20 +89,13 @@ jobs:
 
 
       - name: Build | Release Mode | No features
+        # rust stable 1.63 and nightly 2022-08-11 is incompatible on
+        # std::error::Error.
+        # Can not enable feature `bt` on stable anymore.
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release
-
-
-      - name: Build | Release Mode | No features
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --all-features
-        env:
-          # Enable unstable feature on stalbe rust.
-          RUSTC_BOOTSTRAP: 1
 
 
       - name: Upload artifact
