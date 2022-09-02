@@ -14,7 +14,7 @@ use crate::error::ConfigError;
 /// would cause a leader to send an `InstallSnapshot` RPC to a follower based on replication lag.
 ///
 /// Additional policies may become available in the future.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SnapshotPolicy {
     /// A snapshot will be generated once the log has grown the specified number of logs since
     /// the last snapshot.

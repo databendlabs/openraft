@@ -123,7 +123,7 @@ pub enum ClientWriteError {
 }
 
 /// Error variants related to configuration.
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ConfigError {
     /// A configuration error indicating that the given values for election timeout min & max are invalid: max must be

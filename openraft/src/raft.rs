@@ -337,15 +337,13 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
 
         let recv_res = rx.await;
-        let res = match recv_res {
+        match recv_res {
             Ok(x) => x,
             Err(e) => {
                 tracing::error!(%e, mes=%sum, "error recv rx from RaftCore");
                 Err(RaftError::ShuttingDown.into())
             }
-        };
-
-        res
+        }
     }
 
     /// Get a handle to the metrics channel.
