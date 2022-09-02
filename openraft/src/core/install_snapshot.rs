@@ -70,12 +70,10 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //   to receive the new snapshot,
         // - Mismatched id with offset greater than 0 is an out of order message that should be rejected.
         match self.snapshot_state.take() {
-            None => {
-                return self.begin_installing_snapshot(req).await;
-            }
+            None => self.begin_installing_snapshot(req).await,
             Some(SnapshotState::Snapshotting { handle, .. }) => {
                 handle.abort(); // Abort the current compaction in favor of installation from leader.
-                return self.begin_installing_snapshot(req).await;
+                self.begin_installing_snapshot(req).await
             }
             Some(SnapshotState::Streaming { snapshot, id, offset }) => {
                 if req.meta.snapshot_id == id {

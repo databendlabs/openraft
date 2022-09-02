@@ -28,8 +28,7 @@ struct MemStoreBuilder {}
 #[async_trait]
 impl StoreBuilder<ClientRequest, ClientResponse, MemStore> for MemStoreBuilder {
     async fn build(&self, id: NodeId) -> MemStore {
-        let mem_sto = MemStore::new(id).await;
-        mem_sto
+        MemStore::new(id).await
     }
 }
 

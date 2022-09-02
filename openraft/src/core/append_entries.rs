@@ -94,7 +94,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         //              +----------------+------------------------+
         //              ` 0              ` last_applied           ` last_log_id
 
-        return self.append_apply_log_entries(&msg.prev_log_id, msg_entries, valid_committed).await;
+        self.append_apply_log_entries(&msg.prev_log_id, msg_entries, valid_committed).await
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -198,28 +198,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.delete_logs(msg_entries[0].log_id.index).await?;
 
         Ok(())
-    }
-
-    /// Walks at most 50 entries backward to get an entry as the `prev_log_id` for next append-entries request.
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn get_older_log_id(&mut self, prev_log_id: LogId) -> RaftResult<LogId> {
-        let start = prev_log_id.index.saturating_sub(50);
-
-        if start <= self.last_applied.index {
-            // The applied log is always consistent to any leader.
-            return Ok(self.last_applied);
-        }
-
-        if start == 0 {
-            // A simple way is to sync from the beginning.
-            return Ok(LogId { term: 0, index: 0 });
-        }
-
-        let entries = self.storage.get_log_entries(start..=start).await.map_err(|err| self.map_storage_error(err))?;
-
-        let log_id = entries.first().unwrap().log_id;
-
-        Ok(log_id)
     }
 
     /// Append logs only when the first entry(prev_log_id) matches local store

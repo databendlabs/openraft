@@ -86,16 +86,6 @@ jobs:
           args: --release
 
 
-      - name: Build | Release Mode | No features
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release --all-features
-        env:
-          # Enable unstable feature on stalbe rust.
-          RUSTC_BOOTSTRAP: 1
-
-
       - name: Upload artifact
         uses: actions/upload-artifact@v2
         if: failure()
