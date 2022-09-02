@@ -29,7 +29,6 @@ imports_granularity     = "Item"
 group_imports           = "StdExternalCrate"
 where_single_line       = true
 trailing_comma          = "Vertical"
-report_fixme            = "Unnumbered"
 overflow_delimited_expr = true
 wrap_comments           = true
 comment_width           = 120

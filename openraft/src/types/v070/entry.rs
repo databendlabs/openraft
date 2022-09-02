@@ -6,7 +6,7 @@ use super::LogId;
 use super::Membership;
 
 /// A Raft log entry.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry<D: AppData> {
     pub log_id: LogId,
 
@@ -16,7 +16,7 @@ pub struct Entry<D: AppData> {
 }
 
 /// Log entry payload variants.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EntryPayload<D: AppData> {
     /// An empty payload committed by a new cluster leader.
     Blank,
