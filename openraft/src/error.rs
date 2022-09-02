@@ -103,11 +103,9 @@ pub enum ChangeMembershipError {
     #[error(transparent)]
     EmptyMembership(#[from] EmptyMembership),
 
-    // TODO(xp): 111 test it
     #[error(transparent)]
     LearnerNotFound(#[from] LearnerNotFound),
 
-    // TODO(xp): 111 test it
     #[error(transparent)]
     LearnerIsLagging(#[from] LearnerIsLagging),
 }
@@ -119,6 +117,21 @@ pub enum AddLearnerError {
 
     #[error("node {0} is already a learner")]
     Exists(NodeId),
+
+    #[error(transparent)]
+    Fatal(#[from] Fatal),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
+pub enum RemoveLearnerError {
+    #[error(transparent)]
+    ForwardToLeader(#[from] ForwardToLeader),
+
+    #[error("node {0} is not a learner, but a voter")]
+    NotLearner(NodeId),
+
+    #[error("node {0} is not a learner or voter")]
+    NotExists(NodeId),
 
     #[error(transparent)]
     Fatal(#[from] Fatal),

@@ -123,5 +123,5 @@ async fn add_learner_non_blocking() -> Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_micros(500))
+    Some(Duration::from_millis(500))
 }
