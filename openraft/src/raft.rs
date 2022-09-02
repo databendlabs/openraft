@@ -20,6 +20,7 @@ use crate::error::ClientWriteError;
 use crate::error::Fatal;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
+use crate::error::RemoveLearnerError;
 use crate::error::VoteError;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
@@ -246,7 +247,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         self.call_core(RaftMsg::Initialize { members, tx }, rx).await
     }
 
-    /// Synchronize a new Raft node, optionally, blocking until up-to-speed (§6).
+    /// Add a new Raft node as learner(does not vote), optionally, blocking until up-to-speed (§6).
     ///
     /// - Add a node as learner into the cluster.
     /// - Setup replication from leader to it.
@@ -257,13 +258,25 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     ///
     /// If blocking is false, this function returns at once as successfully setting up the replication.
     ///
-    /// If the node to add is already a voter or learner, it returns `RaftResponse::NoChange` at once.
+    /// If the node to add is already a voter or learner, it returns `AddLearnerError::Exist` at once.
     #[tracing::instrument(level = "info", skip_all, fields(target=id))]
     pub async fn add_learner(&self, id: NodeId, blocking: bool) -> Result<AddLearnerResponse, AddLearnerError> {
         tracing::info!("add_learner: target: {}, blocking: {}", id, blocking);
 
         let (tx, rx) = oneshot::channel();
         self.call_core(RaftMsg::AddLearner { id, blocking, tx }, rx).await
+    }
+
+    /// Remove a learner Raft node.
+    ///
+    /// If the `target` node is not a learner(a voter), it returns `RemoveLearnerError::NotLearner` error.
+    /// If the `target` node does not exist, it returns `RemoveLearnerError::NotExists` error.
+    #[tracing::instrument(level = "info", skip_all, fields(target=id))]
+    pub async fn remove_learner(&self, id: NodeId) -> Result<(), RemoveLearnerError> {
+        tracing::info!("remove_learner: target: {}", id);
+
+        let (tx, rx) = oneshot::channel();
+        self.call_core(RaftMsg::RemoveLearner { id, tx }, rx).await
     }
 
     /// Propose a cluster configuration change.
@@ -475,7 +488,6 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
         members: BTreeSet<NodeId>,
         tx: RaftRespTx<(), InitializeError>,
     },
-    // TODO(xp): make tx a field of a struct
     /// Request raft core to setup a new replication to a learner.
     AddLearner {
         id: NodeId,
@@ -485,6 +497,10 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
 
         /// Send the log id when the replication becomes line-rate.
         tx: RaftRespTx<AddLearnerResponse, AddLearnerError>,
+    },
+    RemoveLearner {
+        id: NodeId,
+        tx: RaftRespTx<(), RemoveLearnerError>,
     },
     ChangeMembership {
         members: BTreeSet<NodeId>,
@@ -526,6 +542,9 @@ where
             }
             RaftMsg::AddLearner { id, blocking, .. } => {
                 format!("AddLearner: id: {}, blocking: {}", id, blocking)
+            }
+            RaftMsg::RemoveLearner { id, .. } => {
+                format!("RemoveLearner: id: {}", id)
             }
             RaftMsg::ChangeMembership { members, blocking, .. } => {
                 format!("ChangeMembership: members: {:?}, blocking: {}", members, blocking)

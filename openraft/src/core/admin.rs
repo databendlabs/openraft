@@ -13,6 +13,7 @@ use crate::error::InProgress;
 use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
+use crate::error::RemoveLearnerError;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
 use crate::raft::EntryPayload;
@@ -110,6 +111,33 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // non-blocking mode, do not know about the replication stat.
             let _ = tx.send(Ok(AddLearnerResponse { matched: None }));
         }
+    }
+
+    /// Remove a node from the cluster.
+    #[tracing::instrument(level = "debug", skip(self, tx))]
+    pub(super) fn remove_learner(&mut self, target: NodeId, tx: RaftRespTx<(), RemoveLearnerError>) {
+        tracing::info!("remove_learner: target: {}", target);
+
+        // Ensure the node doesn't already exist in the current
+        // config, in the set of new nodes already being synced, or in the nodes being removed.
+        if target == self.core.id {
+            tracing::info!("target node is this node");
+            let _ = tx.send(Err(RemoveLearnerError::NotLearner(target)));
+            return;
+        }
+
+        if self.core.effective_membership.membership.contains(&target) {
+            let _ = tx.send(Err(RemoveLearnerError::NotLearner(target)));
+            return;
+        }
+
+        let removed = self.nodes.remove(&target);
+        if removed.is_none() {
+            let _ = tx.send(Err(RemoveLearnerError::NotExists(target)));
+            return;
+        }
+
+        let _ = tx.send(Ok(()));
     }
 
     #[tracing::instrument(level = "debug", skip(self, tx))]

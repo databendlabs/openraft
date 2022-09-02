@@ -806,6 +806,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::AddLearner { id, tx, blocking } => {
                 self.add_learner(id, tx, blocking);
             }
+            RaftMsg::RemoveLearner { id, tx } => {
+                self.remove_learner(id, tx);
+            }
             RaftMsg::ChangeMembership { members, blocking, tx } => {
                 self.change_membership(members, blocking, tx).await?;
             }
@@ -955,6 +958,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::AddLearner { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
+            RaftMsg::RemoveLearner { tx, .. } => {
+                self.core.reject_with_forward_to_leader(tx);
+            }
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
@@ -1034,6 +1040,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::AddLearner { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
+            RaftMsg::RemoveLearner { tx, .. } => {
+                self.core.reject_with_forward_to_leader(tx);
+            }
             RaftMsg::ChangeMembership { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
@@ -1106,6 +1115,9 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
                 let _ = tx.send(self.handle_init_with_config(members).await);
             }
             RaftMsg::AddLearner { tx, .. } => {
+                self.core.reject_with_forward_to_leader(tx);
+            }
+            RaftMsg::RemoveLearner { tx, .. } => {
                 self.core.reject_with_forward_to_leader(tx);
             }
             RaftMsg::ChangeMembership { tx, .. } => {
