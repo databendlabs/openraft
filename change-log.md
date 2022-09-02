@@ -1,3 +1,9 @@
+## v0.7.2
+
+### Added:
+
+-   Added: [568ca470](https://github.com/datafuselabs/openraft/commit/568ca470524f77bc721edb104206e1774e1555cc) add Raft::remove_learner(); by 张炎泼; 2022-09-02
+
 ## v0.7.1
 
 ### Added:
