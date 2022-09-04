@@ -24,6 +24,9 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 - **Get started**: [The guide](https://datafuselabs.github.io/openraft) is the best place to get started,
   followed by [the docs](https://docs.rs/openraft/latest/) for more in-depth details.
+
+- 🙌 Questions? Join the [Discord channel](https://discord.com/channels/1015845055434588200/1015845055434588205) or start a [discussion](https://github.com/datafuselabs/openraft/discussions/new).
+
 - Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/datafuselabs/openraft/blob/main/derived-from-async-raft.md).
 
 # Status
