@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">2.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">2.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">2.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">2.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">3.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">4.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">4.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">4.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html" class="active"><strong aria-hidden="true">4.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">4.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">4.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">4.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">4.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">5.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">5.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html" class="active"><strong aria-hidden="true">5.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">5.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -145,7 +145,12 @@
 <h2 id="openraft-heartbeat-is-a-blank-log"><a class="header" href="#openraft-heartbeat-is-a-blank-log">Openraft heartbeat is a blank log</a></h2>
 <p>Such a heartbeat mechanism depends on clock time.
 But raft as a distributed consensus already has its own <strong>pseudo time</strong> defined very well.
-The <strong>pseudo time</strong> in openraft is a tuple <code>(vote, last_log_id)</code>, compared in dictionary order.</p>
+Raft, or other consensus protocol has its own <strong>pseudo time</strong> defined internally:</p>
+<ul>
+<li>In <a href="https://en.wikipedia.org/wiki/Paxos_(computer_science)">paxos</a> it is <code>round_number</code>(AKA ballot number in some paper).</li>
+<li>In the standard raft it is <code>(term, voted_for, last_log_index)</code>(because in standard raft there is only one leader in every term, <code>voted_for</code> can be removed: <code>(term, last_log_index)</code>).</li>
+</ul>
+<p>The <strong>pseudo time</strong> in openraft is a tuple <code>(vote, last_log_id)</code>, compared in dictionary order(<code>vote</code> is equivalent concept as round number in Paxos).</p>
 <h3 id="why-it-works"><a class="header" href="#why-it-works">Why it works</a></h3>
 <p>To refuse the election by a node that does not receive recent messages from the current leader,
 just let the active leader send a <strong>blank log</strong> to increase the <strong>pseudo time</strong> on a quorum.</p>
@@ -156,8 +161,20 @@ there is no need to add another timer for the active leader. </p>
 <p>Thus making heartbeat request a blank log is the simplest way.</p>
 <h2 id="why-blank-log-heartbeat"><a class="header" href="#why-blank-log-heartbeat">Why blank log heartbeat?</a></h2>
 <ul>
-<li>Simple, get rid of a timer.</li>
-<li>Easy to prove, and reduce code complexity.</li>
+<li>
+<p>Simple, get rid of a timer.</p>
+<p>Without heartbeat log(the way standard raft does), when handling a vote
+request, except <code>vote</code> itself, it has to examine two values to determine if
+the vote request is valid:</p>
+<ul>
+<li>Whether the last heartbeat has expired by clock time.</li>
+<li>Whether the <code>(last_term, last_log_index)</code> in the request is greater or equal to the local value. This is the pseudo time Raft defines.</li>
+</ul>
+<p>With heartbeat log(the way openraft does), when handling a vote request, it only needs to examine one value: the raft time: <code>(last_term, last_log_index)</code>. This makes the logic simpler and the test easier to write.</p>
+</li>
+<li>
+<p>Easy to prove, and reduce code complexity.</p>
+</li>
 </ul>
 <h2 id="other-concerns"><a class="header" href="#other-concerns">Other Concerns</a></h2>
 <ul>
