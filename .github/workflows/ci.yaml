@@ -178,6 +178,13 @@ jobs:
           args: --manifest-path examples/${{ matrix.example }}/Cargo.toml
 
 
+      - name: Test demo script of examples/${{ matrix.example }}
+        shell: bash
+        run: |
+          cd examples/${{ matrix.example }}
+          ./test-cluster.sh
+
+
   lint-examples:
     runs-on: ubuntu-latest
     strategy:
