@@ -4,6 +4,8 @@
 
 - [Getting Started](./getting-started.md)
 
+- [FAQ](./faq.md)
+
 - [Cluster Controls](./cluster-controls.md)
     - [Cluster Formation](./cluster-formation.md)
     - [Dynamic Membership](./dynamic-membership.md)
