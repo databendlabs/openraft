@@ -25,9 +25,9 @@ rpc() {
 
     {
         if [ ".$body" = "." ]; then
-            curl --silent "127.0.0.1:$uri"
+            time curl --silent "127.0.0.1:$uri"
         else
-            curl --silent "127.0.0.1:$uri" -H "Content-Type: application/json" -d "$body"
+            time curl --silent "127.0.0.1:$uri" -H "Content-Type: application/json" -d "$body"
         fi
     } | {
         if type jq > /dev/null 2>&1; then
@@ -41,7 +41,7 @@ rpc() {
     echo
 }
 
-export RUST_LOG=debug 
+export RUST_LOG=trace
 
 echo "Killing all running raft-key-value"
 
