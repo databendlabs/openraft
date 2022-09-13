@@ -483,7 +483,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let log_id = self.write_entry(EntryPayload::Membership(new_membership), None).await?;
 
         tracing::debug!(
-            "after add target node {} as learner {:?}",
+            "after add target node {} as learner; last_log_id: {:?}",
             target,
             self.engine.state.last_log_id()
         );
