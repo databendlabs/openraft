@@ -44,6 +44,19 @@ Thus making heartbeat request a blank log is the simplest way.
 - Easy to prove, and reduce code complexity.
 
 
-## Other Concerns
+## Concerns
 
-- More raft logs are generated.
+- **More raft logs are generated**.
+  This requires to *persist* the blank entry in the log (or at least the incremented index).
+  E.g., doing that every 50ms for 100 consensus domains on one machine will require 2000 IOPS alone for that.
+
+  **Why it is not a problem**:
+
+  1. Assume that most consensus domains are busy, and as a domain is busy, it is possible to merge multiple `append-entry` calls into one call to the storage layer.
+     Thus if a domain swallows `10` business log entries per `50 ms`, it's likely to merge these 10 entries into one or a few IO calls.
+     The IO amplification should be smaller as IOPS gets more.
+
+     Merging entries into one IO call is naturally done on followers(because the leader sends entries in a batch).
+     On the leader, it's not done yet(2022 Sep 13). It can be done when the Engine oriented refactoring is ready: (.
+
+  2. If a consensus domain swallows `1` business log entry per `50 ms`. It does not need another heartbeat. A normal append-entry can be considered a heartbeat.
