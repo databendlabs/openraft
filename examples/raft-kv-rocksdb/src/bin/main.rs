@@ -4,6 +4,7 @@ use raft_key_value_rocks::network::raft_network_impl::ExampleNetwork;
 use raft_key_value_rocks::start_example_raft_node;
 use raft_key_value_rocks::store::ExampleStore;
 use raft_key_value_rocks::ExampleTypeConfig;
+use tracing_subscriber::EnvFilter;
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, ExampleStore>;
 
@@ -23,7 +24,13 @@ pub struct Opt {
 #[async_std::main]
 async fn main() -> std::io::Result<()> {
     // Setup the logger
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .with_thread_ids(true)
+        .with_level(true)
+        .with_ansi(false)
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     // Parse the parameters passed by arguments.
     let options = Opt::parse();

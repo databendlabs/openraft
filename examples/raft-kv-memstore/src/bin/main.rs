@@ -1,10 +1,10 @@
 use clap::Parser;
-use env_logger::Env;
 use example_raft_key_value::network::raft_network_impl::ExampleNetwork;
 use example_raft_key_value::start_example_raft_node;
 use example_raft_key_value::store::ExampleStore;
 use example_raft_key_value::ExampleTypeConfig;
 use openraft::Raft;
+use tracing_subscriber::EnvFilter;
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, ExampleStore>;
 
@@ -21,7 +21,13 @@ pub struct Opt {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Setup the logger
-    env_logger::init_from_env(Env::default().default_filter_or("info"));
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .with_thread_ids(true)
+        .with_level(true)
+        .with_ansi(false)
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     // Parse the parameters passed by arguments.
     let options = Opt::parse();
