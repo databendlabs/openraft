@@ -25,6 +25,8 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 - **Get started**: [The guide](https://datafuselabs.github.io/openraft) is the best place to get started,
   followed by [the docs](https://docs.rs/openraft/latest/) for more in-depth details.
 
+- [Openraft FAQ](https://datafuselabs.github.io/openraft/faq) explains some common questions.
+
 - 🙌 Questions? Join the [Discord channel](https://discord.com/channels/1015845055434588200/1015845055434588205) or start a [discussion](https://github.com/datafuselabs/openraft/discussions/new).
 
 - Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/datafuselabs/openraft/blob/main/derived-from-async-raft.md).
@@ -51,7 +53,7 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 - **Branch [release-0.7](https://github.com/datafuselabs/openraft/tree/release-0.7)**:
   In this release branch, [v0.7.1](https://github.com/datafuselabs/openraft/tree/v0.7.1) is the last published version: [Change log v0.7](https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v071).
 
-  [Upgrade guide from 0.6 to 0.7](https://datafuselabs.github.io/openraft/upgrade-v06-v07.html)
+  [Upgrade guide from 0.6 to 0.7](https://datafuselabs.github.io/openraft/upgrade-v06-v07)
 
 
 - **Branch [release-0.6](https://github.com/datafuselabs/openraft/tree/release-0.6)**:
@@ -61,7 +63,7 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 # Roadmap
 
-- [x] [Extended joint membership](https://datafuselabs.github.io/openraft/dynamic-membership.html#the-safe-to-relation)
+- [x] [Extended joint membership](https://datafuselabs.github.io/openraft/dynamic-membership#extended-membership-change-algo)
 
 - [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/datafuselabs/openraft/discussions/15);
 
@@ -112,10 +114,10 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 - It fully supports dynamic cluster membership changes with joint config.
   The buggy single-step membership change algo is not considered.
-  See the [`dynamic membership`](https://datafuselabs.github.io/openraft/dynamic-membership.html) chapter in the guide.
+  See the [`dynamic membership`](https://datafuselabs.github.io/openraft/dynamic-membership) chapter in the guide.
 
 - Details on initial cluster formation, and how to effectively do so from an application's perspective,
-  are discussed in the [cluster formation](https://datafuselabs.github.io/openraft/cluster-formation.html) chapter in the guide.
+  are discussed in the [cluster formation](https://datafuselabs.github.io/openraft/cluster-formation) chapter in the guide.
 
 - Automatic log compaction with snapshots, as well as snapshot streaming from the leader node to follower nodes is fully supported and configurable.
 
