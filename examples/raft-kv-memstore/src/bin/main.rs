@@ -22,7 +22,7 @@ pub struct Opt {
 async fn main() -> std::io::Result<()> {
     // Setup the logger
     tracing_subscriber::fmt()
-        .with_target(false)
+        .with_target(true)
         .with_thread_ids(true)
         .with_level(true)
         .with_ansi(false)

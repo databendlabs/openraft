@@ -42,7 +42,7 @@ rpc() {
     echo
 }
 
-export RUST_LOG=debug 
+export RUST_LOG=trace
 bin=./target/debug/raft-key-value-rocks
 
 echo "Killing all running raft-key-value-rocks and cleaning up old data"
