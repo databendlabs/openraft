@@ -1094,9 +1094,26 @@ the vote request is valid:</p>
 <p>Easy to prove, and reduce code complexity.</p>
 </li>
 </ul>
-<h2 id="other-concerns"><a class="header" href="#other-concerns">Other Concerns</a></h2>
+<h2 id="concerns"><a class="header" href="#concerns">Concerns</a></h2>
 <ul>
-<li>More raft logs are generated.</li>
+<li>
+<p><strong>More raft logs are generated</strong>.
+This requires to <em>persist</em> the blank entry in the log (or at least the incremented index).
+E.g., doing that every 50ms for 100 consensus domains on one machine will require 2000 IOPS alone for that.</p>
+<p><strong>Why it is not a problem</strong>:</p>
+<ol>
+<li>
+<p>Assume that most consensus domains are busy, and as a domain is busy, it is possible to merge multiple <code>append-entry</code> calls into one call to the storage layer.
+Thus if a domain swallows <code>10</code> business log entries per <code>50 ms</code>, it's likely to merge these 10 entries into one or a few IO calls.
+The IO amplification should be smaller as IOPS gets more.</p>
+<p>Merging entries into one IO call is naturally done on followers(because the leader sends entries in a batch).
+On the leader, it's not done yet(2022 Sep 13). It can be done when the Engine oriented refactoring is ready: (.</p>
+</li>
+<li>
+<p>If a consensus domain swallows <code>1</code> business log entry per <code>50 ms</code>. It does not need another heartbeat. A normal append-entry can be considered a heartbeat.</p>
+</li>
+</ol>
+</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="vote"><a class="header" href="#vote">Vote</a></h1>
 <pre><pre class="playground"><code class="language-rust">
