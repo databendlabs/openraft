@@ -760,17 +760,31 @@ where
         }
 
         // Do install:
-        // 1. Truncate conflicting logs.
+        // 1. Truncate all logs if conflict
         //    Unlike normal append-entries RPC, if conflicting logs are found, it is not **necessary** to delete them.
         //    But cleaning them make the assumption of incremental-log-id always hold, which makes it easier to debug.
         //    See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
+        //
+        //    Truncate all:
+        //
+        //    It just truncate **ALL** logs here, because `snap_last_log_id` is committed, if the local log id conflicts
+        //    with `snap_last_log_id`, there must be a quorum that contains `snap_last_log_id`.
+        //    Thus it is safe to remove all logs on this node.
+        //
+        //    The logs before `snap_last_log_id` may conflicts with the leader too.
+        //    It's not safe to remove the conflicting logs that are less than `snap_last_log_id` after installing
+        //    snapshot.
+        //
+        //    If the node crashes, dirty logs may remain there. These logs may be forwarded to other nodes if this nodes
+        //    becomes a leader.
+        //
         // 2. Install snapshot.
-        // 3. purge maybe conflicting logs upto snapshot.last_log_id.
 
         let local = self.state.get_log_id(snap_last_log_id.index);
         if let Some(local) = local {
             if local != snap_last_log_id {
-                self.truncate_logs(snap_last_log_id.index);
+                // Delete non-committed logs.
+                self.truncate_logs(self.state.committed.next_index());
             }
         }
 
@@ -783,8 +797,8 @@ where
         //         leader to synchronize its snapshot data.
         self.push_command(Command::InstallSnapshot { snapshot_meta: meta });
 
-        // A local log that is <= snap_last_log_id may conflict with the leader.
-        // It has to purge all of them to prevent these log form being replicated, when this node becomes leader.
+        // A local log that is <= snap_last_log_id can not conflict with the leader.
+        // But there will be a hole in the logs. Thus it's better remove all logs.
         self.purge_log(snap_last_log_id)
     }
 

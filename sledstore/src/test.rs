@@ -46,7 +46,7 @@ impl StoreBuilder<ExampleTypeConfig, Arc<SledStore>> for SledBuilder {
             let test_res = t(store).await;
 
             if db_dir.exists() {
-                std::fs::remove_dir_all(&db_dir).expect("Could not clean up test directory");
+                std::fs::remove_dir_all(db_dir).expect("Could not clean up test directory");
             }
             test_res
         };
