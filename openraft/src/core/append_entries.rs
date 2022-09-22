@@ -110,7 +110,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn delete_conflict_logs_since(&mut self, start: LogId) -> Result<(), StorageError> {
+    pub(crate) async fn delete_conflict_logs_since(&mut self, start: LogId) -> Result<(), StorageError> {
         // TODO(xp): add a StorageAdapter to provide auxiliary APIs.
         //           e.g.:
         //           - extract and manage membership config.
