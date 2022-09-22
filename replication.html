@@ -165,8 +165,8 @@ R5 2 4 4
 </code></pre>
 <p>If log 5 is committed by R1, and log 3 is not removed, R5 in future could become a new leader and overrides log
 5 on R3.</p>
-<h3 id="caveat-deleting-all-entries-after-prev_log_id-get-committed-log-lost"><a class="header" href="#caveat-deleting-all-entries-after-prev_log_id-get-committed-log-lost">Caveat: deleting all entries after <code>prev_log_id</code> get committed log lost</a></h3>
-<p>One of the mistake is to delete all entries after <code>prev_log_id</code> when a matching <code>prev_log_id</code> is found, e.g.:</p>
+<h3 id="caveat-deleting-all-entries-after-prev_log_id-will-get-committed-log-lost"><a class="header" href="#caveat-deleting-all-entries-after-prev_log_id-will-get-committed-log-lost">Caveat: deleting all entries after <code>prev_log_id</code> will get committed log lost</a></h3>
+<p>One of the mistakes is to delete all entries after <code>prev_log_id</code> when a matching <code>prev_log_id</code> is found, e.g.:</p>
 <pre><code>fn handle_append_entries(req) {
     if store.has(req.prev_log_id) {
         store.delete_logs(req.prev_log_id.index..)
@@ -214,22 +214,32 @@ It replicates all <strong>committed</strong> logs since the index-0 upto some in
 Follower/Learner, nothing is done.</p>
 </li>
 <li>
-<p>(2) If the logs conflicts with the local logs, local conflicting logs will be
-deleted. And effective membership has to be reverted to some previous
-non-conflicting one.</p>
+<p>(2) If the logs conflicts with the local logs, <strong>ALL</strong> non-committed logs will be
+deleted, because we do not know which logs conflict.
+And effective membership has to be reverted to some previous non-conflicting one.</p>
 </li>
 </ul>
-<h3 id="necessity-to-delete-conflicting-logs"><a class="header" href="#necessity-to-delete-conflicting-logs">Necessity to delete conflicting logs</a></h3>
-<p><strong>The <code>(2)</code> mentioned above is not necessary to do to achieve correctness.
-It is done only for clarity</strong>.</p>
-<p>If the <code>last_applied</code>(<code>snapshot_meta.last_log_id</code>) conflict with the local log at <code>last_applied.index</code>,
-It does <strong>NOT</strong> need to delete the conflicting logs.</p>
+<h3 id="delete-conflicting-logs"><a class="header" href="#delete-conflicting-logs">Delete conflicting logs</a></h3>
+<p>If <code>snapshot_meta.last_log_id</code> conflicts with the local log,</p>
 <p>Because the node that has conflicting logs won't become a leader:
 If this node can become a leader, according to raft spec, it has to contain all committed logs.
 But the log entry at <code>last_applied.index</code> is not committed, thus it can never become a leader.</p>
-<p>But deleting conflicting logs make the state cleaner. :)
-This way method such as <code>get_initial_state()</code> does not need to deal with
-conditions such as that <code>last_log_id</code> can be smaller than <code>last_applied</code>.</p>
+<p>But, it could become a leader when more logs are received.
+At this time, the logs after <code>snapshot_meta.last_log_id</code> will all be cleaned.
+The logs before or equal <code>snapshot_meta.last_log_id</code> will not be cleaned.</p>
+<p>Then there is chance this node becomes leader and uses these log for replication.</p>
+<h4 id="delete-all-non-committed"><a class="header" href="#delete-all-non-committed">Delete all non-committed</a></h4>
+<p>It just truncates <strong>ALL</strong> non-committed logs here,
+because <code>snapshot_meta.last_log_id</code> is committed, if the local log id conflicts
+with <code>snapshot_meta.last_log_id</code>, there must be a quorum that contains <code>snapshot_meta.last_log_id</code>.
+Thus, it is <strong>safe to remove all logs</strong> on this node.</p>
+<p>But removing committed logs leads to some trouble with membership management.
+Thus, we just remove logs since <code>committed+1</code>.</p>
+<h4 id="not-safe-to-clean-conflicting-logs-after-installing-snapshot"><a class="header" href="#not-safe-to-clean-conflicting-logs-after-installing-snapshot">Not safe to clean conflicting logs after installing snapshot</a></h4>
+<p>It's not safe to remove the conflicting logs that are less than <code>snap_last_log_id</code> after installing
+snapshot.</p>
+<p>If the node crashes, dirty logs may remain there. These logs may be forwarded to other nodes if this nodes
+becomes a leader.</p>
 
                     </main>
 
