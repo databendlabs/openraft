@@ -33,9 +33,9 @@ R5 2 4 4
 If log 5 is committed by R1, and log 3 is not removed, R5 in future could become a new leader and overrides log
 5 on R3.
 
-### Caveat: deleting all entries after `prev_log_id` get committed log lost
+### Caveat: deleting all entries after `prev_log_id` will get committed log lost
 
-One of the mistake is to delete all entries after `prev_log_id` when a matching `prev_log_id` is found, e.g.:
+One of the mistakes is to delete all entries after `prev_log_id` when a matching `prev_log_id` is found, e.g.:
 ```
 fn handle_append_entries(req) {
     if store.has(req.prev_log_id) {
@@ -95,23 +95,39 @@ Similar to append-entry:
 - (1) If the logs contained in the snapshot matches logs that are stored on a
     Follower/Learner, nothing is done.
 
-- (2) If the logs conflicts with the local logs, local conflicting logs will be
-    deleted. And effective membership has to be reverted to some previous
-    non-conflicting one.
+- (2) If the logs conflicts with the local logs, **ALL** non-committed logs will be
+    deleted, because we do not know which logs conflict.
+    And effective membership has to be reverted to some previous non-conflicting one.
 
 
-### Necessity to delete conflicting logs
+### Delete conflicting logs
 
-**The `(2)` mentioned above is not necessary to do to achieve correctness.
-It is done only for clarity**.
-
-If the `last_applied`(`snapshot_meta.last_log_id`) conflict with the local log at `last_applied.index`,
-It does **NOT** need to delete the conflicting logs.
+If `snapshot_meta.last_log_id` conflicts with the local log,
 
 Because the node that has conflicting logs won't become a leader:
 If this node can become a leader, according to raft spec, it has to contain all committed logs.
 But the log entry at `last_applied.index` is not committed, thus it can never become a leader.
 
-But deleting conflicting logs make the state cleaner. :)
-This way method such as `get_initial_state()` does not need to deal with
-conditions such as that `last_log_id` can be smaller than `last_applied`.
+But, it could become a leader when more logs are received.
+At this time, the logs after `snapshot_meta.last_log_id` will all be cleaned.
+The logs before or equal `snapshot_meta.last_log_id` will not be cleaned.
+
+Then there is chance this node becomes leader and uses these log for replication.
+
+#### Delete all non-committed
+
+It just truncates **ALL** non-committed logs here,
+because `snapshot_meta.last_log_id` is committed, if the local log id conflicts
+with `snapshot_meta.last_log_id`, there must be a quorum that contains `snapshot_meta.last_log_id`.
+Thus, it is **safe to remove all logs** on this node.
+
+But removing committed logs leads to some trouble with membership management.
+Thus, we just remove logs since `committed+1`.
+
+#### Not safe to clean conflicting logs after installing snapshot
+
+It's not safe to remove the conflicting logs that are less than `snap_last_log_id` after installing
+snapshot.
+
+If the node crashes, dirty logs may remain there. These logs may be forwarded to other nodes if this nodes
+becomes a leader.

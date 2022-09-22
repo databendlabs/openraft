@@ -113,7 +113,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
                     payload: EntryPayload::Membership(Membership::new(vec![btreeset! {4,5}], None)),
                 },
             ],
-            leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
+            leader_commit: Some(LogId::new(LeaderId::new(1, 0), 2)),
         };
         router.new_client(1, &()).await?.send_append_entries(req).await?;
 

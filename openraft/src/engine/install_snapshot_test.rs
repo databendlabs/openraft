@@ -196,8 +196,29 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
 
 #[test]
 fn test_install_snapshot_conflict() -> anyhow::Result<()> {
-    // Snapshot will be installed and there are no conflicting logs.
-    let mut eng = eng();
+    // Snapshot will be installed, all non-committed log will be deleted.
+    // And there should be no conflicting logs left.
+    let mut eng = {
+        let mut eng = Engine::<u64, ()> {
+            snapshot_meta: SnapshotMeta {
+                last_log_id: Some(log_id(2, 2)),
+                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+                snapshot_id: "1-2-3-4".to_string(),
+            },
+            ..Default::default()
+        };
+
+        eng.state.committed = Some(log_id(2, 3));
+        eng.state.log_ids = LogIdList::new(vec![
+            //
+            log_id(2, 2),
+            log_id(3, 5),
+            log_id(4, 6),
+            log_id(4, 8),
+        ]);
+
+        eng
+    };
 
     eng.install_snapshot(SnapshotMeta {
         last_log_id: Some(log_id(5, 6)),
@@ -231,7 +252,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
 
     assert_eq!(
         vec![
-            Command::DeleteConflictLog { since: log_id(4, 6) },
+            Command::DeleteConflictLog { since: log_id(2, 4) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()))
             },
