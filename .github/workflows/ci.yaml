@@ -1,5 +1,10 @@
-on: [push, pull_request]
 name: ci
+
+on:
+  push:
+  pull_request:
+  schedule: [cron: "40 1 * * *"]
+
 jobs:
 
   build:
