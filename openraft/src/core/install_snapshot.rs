@@ -16,6 +16,7 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
+use crate::LogIdOptionExt;
 use crate::MessageSummary;
 use crate::RaftNetwork;
 use crate::RaftStorage;
@@ -237,6 +238,32 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             return Ok(());
         }
 
+        if let Some(last) = req.meta.last_log_id {
+            let idx = last.index;
+            let matches = {
+                let logs = self.storage.try_get_log_entries(idx..=idx).await?;
+                if let Some(ent) = logs.first() {
+                    Some(ent.log_id) == req.meta.last_log_id
+                } else {
+                    // no log entry, consider it unmatched.
+                    false
+                }
+            };
+
+            // The log entry at snapshot_meta.last_log_id.index conflicts with the leaders'
+            // We have to delete all conflicting logs before installing snapshot.
+            // See: [snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
+            if !matches {
+                // Delete all non-committed log entries.
+                // It is safe:
+                let x = StorageHelper::new(&self.storage).get_log_id(self.last_applied.next_index()).await;
+                if let Ok(log_id) = x {
+                    self.delete_conflict_logs_since(log_id).await?;
+                }
+                // else: no next log id, ignore
+            }
+        }
+
         let changes = self.storage.install_snapshot(&req.meta, snapshot).await?;
 
         tracing::info!("update after install-snapshot: {:?}", changes);
@@ -247,7 +274,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         let last_applied = changes.last_applied;
 
-        // Applied logs are not needed.
+        // Applied logs are not needed. Purge them or there may be a hole in the log.
         if let Some(last) = &last_applied {
             purge_applied_logs(self.storage.clone(), last, self.config.max_applied_log_to_keep).await?;
         }
