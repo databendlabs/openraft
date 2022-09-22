@@ -887,13 +887,20 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Re
             // If we just sent the final chunk of the snapshot, then transition to lagging state.
             if done {
                 tracing::info!(
-                    "done install snapshot: snapshot last_log_id: {:?}, matched: {:?}",
+                    "done install snapshot: snapshot last_log_id: {:?}, self.matched: {:?}, remote last_applied: {:?}",
                     snapshot.meta.last_log_id,
                     self.matched,
+                    res.last_applied,
                 );
 
-                self.update_matched(snapshot.meta.last_log_id);
+                // In previous version a node that does return `last_applied`.
+                let matched = if res.last_applied.is_some() {
+                    res.last_applied
+                } else {
+                    snapshot.meta.last_log_id
+                };
 
+                self.update_matched(matched);
                 return Ok(());
             }
 

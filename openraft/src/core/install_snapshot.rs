@@ -40,6 +40,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         if req.term < self.current_term {
             return Ok(InstallSnapshotResponse {
                 term: self.current_term,
+                last_applied: None,
             });
         }
 
@@ -134,6 +135,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             self.finalize_snapshot_installation(req, snapshot).await?;
             return Ok(InstallSnapshotResponse {
                 term: self.current_term,
+                last_applied: self.last_applied,
             });
         }
 
@@ -145,6 +147,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         });
         Ok(InstallSnapshotResponse {
             term: self.current_term,
+            last_applied: None,
         })
     }
 
@@ -188,6 +191,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         }
         Ok(InstallSnapshotResponse {
             term: self.current_term,
+            last_applied: self.last_applied,
         })
     }
 
@@ -224,7 +228,14 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         // --------------------------------------------------------------------> time
         // ```
 
-        // TODO(xp): do not install if self.last_applied >= snapshot.meta.last_applied
+        if req.meta.last_log_id < self.last_applied {
+            tracing::info!(
+                "skip installing snapshot because snapshot_meta.last_log_id({}) <= self.last_applied({})",
+                req.meta.last_log_id.summary(),
+                self.last_applied.summary(),
+            );
+            return Ok(());
+        }
 
         let changes = self.storage.install_snapshot(&req.meta, snapshot).await?;
 
@@ -253,7 +264,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
 
         // There could be unknown membership in the snapshot.
         let membership = StorageHelper::new(&self.storage).get_membership().await?;
-        tracing::info!("refetch membership from store: {:?}", membership);
+        tracing::info!("re-fetch membership from store: {:?}", membership);
 
         assert!(membership.is_some());
 

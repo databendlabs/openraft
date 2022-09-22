@@ -89,6 +89,12 @@ pub struct InstallSnapshotRequest {
 pub struct InstallSnapshotResponse {
     /// The receiving node's current term, for leader to update itself.
     pub term: u64,
+
+    /// The last applied log id after snapshot being installed.
+    ///
+    /// A node may choose not to install a snapshot if it already has a greater `last_applied`.
+    /// In this case, it just returns the `last_applied`.
+    pub last_applied: Option<LogId>,
 }
 
 /// The response to a `ClientRequest`.
