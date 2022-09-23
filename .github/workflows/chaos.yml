@@ -1,0 +1,54 @@
+name: chaos-test
+
+on: workflow_dispatch
+
+jobs:
+
+  chaos_test:
+    name: unittest
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - toolchain: "nightly"
+            store_defensive: "on"
+            send_delay: "30"
+          - toolchain: "nightly"
+            store_defensive: "on"
+            send_delay: "0"
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v2
+
+
+      - name: Setup | Toolchain
+        uses: actions-rs/toolchain@v1.0.6
+        with:
+          toolchain: "${{ matrix.toolchain }}"
+          override: true
+          components: rustfmt, clippy
+
+
+        # TODO: unit test should be replaced
+      - name: Unit Tests, with and without defensive store
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+        env:
+          # Parallel tests block each other and result in timeout.
+          RUST_TEST_THREADS: 2
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+          OPENRAFT_STORE_DEFENSIVE: ${{ matrix.store_defensive }}
+          OPENRAFT_NETWORK_SEND_DELAY: ${{ matrix.send_delay }}
+
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        if: failure()
+        with:
+          name: ut
+          path: |
+            openraft/_log/
