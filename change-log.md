@@ -1,3 +1,26 @@
+## v0.7.3
+
+### Changed:
+
+-   Changed: [25e94c36](https://github.com/datafuselabs/openraft/commit/25e94c36e5c8ae640044196070f9a067d5f105a3) InstallSnapshotResponse: replies the last applied log id; Do not install a smaller snapshot; by 张炎泼; 2022-09-22
+
+    A snapshot may not be installed by a follower if it already has a higher
+    `last_applied` log id locally.
+    In such a case, it just ignores the snapshot and respond with its local
+    `last_applied` log id.
+
+    This way the applied state(i.e., `last_applied`) will never revert back.
+
+### Fixed:
+
+-   Fixed: [21684bbd](https://github.com/datafuselabs/openraft/commit/21684bbdfdc54b18daa68f623afc2b0be6718c72) potential inconsistency when installing snapshot; by 张炎泼; 2022-09-22
+
+    The conflicting logs that are before `snapshot_meta.last_log_id` should
+    be deleted before installing a snapshot.
+
+    Otherwise there is chance the snapshot is installed but conflicting logs
+    are left in the store, when a node crashes.
+
 ## v0.7.2
 
 ### Added:
