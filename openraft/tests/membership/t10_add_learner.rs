@@ -121,7 +121,7 @@ async fn add_learner_non_blocking() -> Result<()> {
 /// add a learner, then shutdown the leader to make leader transferred,
 /// check after new leader come, the learner can receive new log.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn check_learner_after_leader_transfered() -> Result<()> {
+async fn check_learner_after_leader_transferred() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(
         Config {

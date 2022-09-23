@@ -409,7 +409,9 @@ where
         let rt = self.routing_table.lock().unwrap();
         let mut metrics = vec![];
         for node in rt.values() {
-            metrics.push(node.0.metrics().borrow().clone());
+            let m = node.0.metrics().borrow().clone();
+            tracing::debug!("router::latest_metrics: {:?}", m);
+            metrics.push(m);
         }
         metrics
     }
@@ -534,6 +536,8 @@ where
             let isolated = self.isolated_nodes.lock().unwrap();
             isolated.clone()
         };
+
+        tracing::debug!("router::leader: isolated: {:?}", isolated);
 
         self.latest_metrics().into_iter().find_map(|node| {
             if node.current_leader == Some(node.id) {
