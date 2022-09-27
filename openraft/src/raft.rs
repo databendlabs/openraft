@@ -13,9 +13,7 @@ use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tokio::task::JoinHandle;
-use tracing::Instrument;
 use tracing::Level;
-use tracing::Span;
 
 use crate::config::Config;
 use crate::config::RuntimeConfig;
@@ -196,15 +194,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
 
-        let tick = Tick::new(
+        let tick_handle = Tick::spawn(
             Duration::from_millis(config.heartbeat_interval * 3 / 2),
             tx_api.clone(),
             config.enable_tick,
         );
-
-        let tick_handle = tick.get_handle();
-        let _tick_join_handle =
-            tokio::spawn(tick.tick_loop().instrument(tracing::span!(parent: &Span::current(), Level::DEBUG, "tick")));
 
         let runtime_config = Arc::new(RuntimeConfig::new(&config));
 
@@ -771,8 +765,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             let send_res = tx.send(());
             tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
         }
-
         self.join_core_task().await;
+        self.inner.tick_handle.shutdown().await;
 
         // TODO(xp): API change: replace `JoinError` with `Fatal`,
         //           to let the caller know the return value of RaftCore task.

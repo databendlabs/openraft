@@ -6,8 +6,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio::time::sleep_until;
 use tokio::time::Instant;
+use tracing::Instrument;
+use tracing::Level;
+use tracing::Span;
 
 use crate::raft::RaftMsg;
 use crate::NodeId;
@@ -55,11 +59,12 @@ where
     tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
 
     /// Emit event or not
-    running: Arc<AtomicBool>,
+    enabled: Arc<AtomicBool>,
 }
 
 pub(crate) struct TickHandle {
-    running: Arc<AtomicBool>,
+    enabled: Arc<AtomicBool>,
+    join_handle: JoinHandle<()>,
 }
 
 impl<C, N, S> Tick<C, N, S>
@@ -68,12 +73,16 @@ where
     N: RaftNetworkFactory<C>,
     S: RaftStorage<C>,
 {
-    pub(crate) fn new(interval: Duration, tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>, enabled: bool) -> Self {
-        Tick {
+    pub(crate) fn spawn(interval: Duration, tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>, enabled: bool) -> TickHandle {
+        let enabled = Arc::new(AtomicBool::from(enabled));
+        let this = Self {
             interval,
-            running: Arc::new(AtomicBool::from(enabled)),
+            enabled: enabled.clone(),
             tx,
-        }
+        };
+        let join_handle =
+            tokio::spawn(this.tick_loop().instrument(tracing::span!(parent: &Span::current(), Level::DEBUG, "tick")));
+        TickHandle { enabled, join_handle }
     }
 
     pub(crate) async fn tick_loop(self) {
@@ -84,7 +93,7 @@ where
             let at = Instant::now() + self.interval;
             sleep_until(at).await;
 
-            if !self.running.load(Ordering::Relaxed) {
+            if !self.enabled.load(Ordering::Relaxed) {
                 i -= 1;
                 continue;
             }
@@ -97,17 +106,14 @@ where
             }
         }
     }
-
-    /// Return a handle to control the ticker.
-    pub(crate) fn get_handle(&self) -> TickHandle {
-        TickHandle {
-            running: self.running.clone(),
-        }
-    }
 }
 
 impl TickHandle {
     pub(crate) fn enable(&self, enabled: bool) {
-        self.running.store(enabled, Ordering::Relaxed);
+        self.enabled.store(enabled, Ordering::Relaxed);
+    }
+
+    pub(crate) async fn shutdown(&self) {
+        self.join_handle.abort();
     }
 }
