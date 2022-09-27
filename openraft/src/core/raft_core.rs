@@ -380,14 +380,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             // If we receive a response with a greater term, then revert to follower and abort this request.
             if let AppendEntriesResponse::HigherVote(vote) = data {
-                // TODO: there is no guarantee the response vote is greater than local. Because local vote may already
-                //       changed.
-                assert!(vote > self.engine.state.vote);
-                self.engine.state.vote = vote;
-                // TODO(xp): deal with storage error
-                self.save_vote().await.unwrap();
-                // TODO(xp): if receives error about a higher term, it should stop at once?
-                self.set_target_state(ServerState::Follower);
+                let res = self.engine.handle_vote_change(&vote);
+                if let Err(e) = self.run_engine_commands::<Entry<C>>(&[]).await.extract_fatal() {
+                    let _ = tx.send(Err(e.into()));
+                    return;
+                }
+                if let Err(e) = res {
+                    // simply ignore stale responses
+                    tracing::warn!(target = display(target), "vote {vote} rejected: {e}");
+                    continue;
+                }
+                // we are no longer leader so error out early
+                if !self.engine.state.server_state.is_leader() {
+                    self.reject_with_forward_to_leader(tx);
+                    return;
+                }
             }
 
             granted.insert(target);
@@ -739,12 +746,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.run_engine_commands(&entry_refs).await?;
 
         Ok(())
-    }
-
-    /// Save the Raft node's current hard state to disk.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) async fn save_vote(&mut self) -> Result<(), StorageError<C::NodeId>> {
-        self.storage.save_vote(&self.engine.state.vote).await
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
