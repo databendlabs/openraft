@@ -45,6 +45,7 @@ categories = {
 
         'test:':         typs['test'],
         'build(deps):':  typs['dep'],
+        'Build(deps):':  typs['dep'],
 
         'Update:':  typs['other'],
         'update:':  typs['other'],
