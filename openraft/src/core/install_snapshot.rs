@@ -3,7 +3,6 @@ use tokio::io::AsyncWriteExt;
 
 use crate::core::streaming_state::StreamingState;
 use crate::core::RaftCore;
-use crate::core::ServerState;
 use crate::core::SnapshotState;
 use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
@@ -34,27 +33,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
         tracing::debug!(req = display(req.summary()));
 
-        if req.vote < self.engine.state.vote {
-            tracing::debug!(?self.engine.state.vote, %req.vote, "InstallSnapshot RPC term is less than current term");
-
+        let res = self.engine.handle_vote_change(&req.vote);
+        self.run_engine_commands::<Entry<C>>(&[]).await?;
+        if res.is_err() {
+            tracing::info!(?self.engine.state.vote, %req.vote, "InstallSnapshot RPC term is less than current term, ignoring it.");
             return Ok(InstallSnapshotResponse {
                 vote: self.engine.state.vote,
             });
         }
 
         self.set_next_election_time(false);
-
-        if req.vote > self.engine.state.vote {
-            self.engine.state.vote = req.vote;
-            self.save_vote().await?;
-
-            // If not follower, become follower.
-            if !self.engine.state.server_state.is_follower() && !self.engine.state.server_state.is_learner() {
-                self.set_target_state(ServerState::Follower); // State update will emit metrics.
-            }
-
-            self.engine.metrics_flags.set_data_changed();
-        }
 
         // Clear the state to None if it is building a snapshot locally.
         if let SnapshotState::Snapshotting { abort_handle, .. } = &mut self.snapshot_state {
@@ -87,7 +75,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             debug_assert_eq!(req_meta.snapshot_id, streaming.snapshot_id);
             streaming.receive(req).await?;
         } else {
-            unreachable!("")
+            unreachable!("It has to be Streaming")
         }
 
         if done {

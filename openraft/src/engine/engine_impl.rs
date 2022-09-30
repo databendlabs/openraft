@@ -1135,7 +1135,6 @@ where
         } else {
             return Err(RejectVoteRequest::ByVote(self.state.vote));
         }
-
         tracing::debug!(%vote, "vote is changing to" );
 
         // Grant the vote

@@ -14,7 +14,7 @@ where
     N: Node,
     NID: NodeId,
 {
-    /// Return `Some(())` if the entry payload is blank.
+    /// Return `true` if the entry payload is blank.
     fn is_blank(&self) -> bool;
 
     /// Return `Some(&Membership)` if the entry payload is a membership payload.
