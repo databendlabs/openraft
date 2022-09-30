@@ -115,9 +115,6 @@ pub enum AddLearnerError {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader),
 
-    #[error("node {0} is already a learner")]
-    Exists(NodeId),
-
     #[error(transparent)]
     Fatal(#[from] Fatal),
 }

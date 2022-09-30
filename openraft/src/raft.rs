@@ -317,10 +317,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
                 AddLearnerError::ForwardToLeader(forward_err) => {
                     return Err(ClientWriteError::ForwardToLeader(forward_err))
                 }
-                AddLearnerError::Exists(node_id) => {
-                    tracing::info!(%node_id, "add learner: already exists");
-                    continue;
-                }
                 AddLearnerError::Fatal(f) => return Err(ClientWriteError::Fatal(f)),
             }
         }
