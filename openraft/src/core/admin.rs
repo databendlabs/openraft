@@ -246,7 +246,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     ///
     /// This is ony called by leader.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(super) fn handle_uniform_consensus_committed(&mut self, log_id: &LogId) {
+    pub(super) async fn handle_uniform_consensus_committed(&mut self, log_id: &LogId) -> Result<(), StorageError> {
         tracing::info!("handle_uniform_consensus_committed at log id: {}", log_id);
         let index = log_id.index;
 
@@ -257,24 +257,32 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             // TODO(xp): transfer leadership
             self.core.set_target_state(State::Learner);
             self.core.current_leader = None;
-            return;
+            return Ok(());
         }
 
         let membership = &self.core.effective_membership.membership;
 
-        for (id, state) in self.nodes.iter_mut() {
-            if membership.contains(id) {
-                continue;
+        let (_, committed_membership) = self.core.storage.last_applied_state().await?;
+
+        if let Some(prev) = committed_membership {
+            let prev_x = prev.membership.all_nodes().clone();
+            let curr = membership.all_nodes();
+
+            let removed = prev_x.difference(curr);
+            for id in removed {
+                if let Some(state) = self.nodes.get_mut(id) {
+                    tracing::info!(
+                        "set remove_after_commit for {} = {}, membership: {:?}",
+                        id,
+                        index,
+                        self.core.effective_membership
+                    );
+
+                    state.remove_since = Some(index)
+                } else {
+                    tracing::warn!("replication not found to target: {}", id)
+                }
             }
-
-            tracing::info!(
-                "set remove_after_commit for {} = {}, membership: {:?}",
-                id,
-                index,
-                self.core.effective_membership
-            );
-
-            state.remove_since = Some(index)
         }
 
         let targets = self.nodes.keys().cloned().collect::<Vec<_>>();
@@ -283,6 +291,7 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         }
 
         self.leader_report_metrics();
+        Ok(())
     }
 
     /// Remove a replication if the membership that does not include it has committed.

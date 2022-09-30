@@ -270,24 +270,26 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         );
     }
 
-    pub fn handle_special_log(&mut self, entry: &Entry<D>) {
+    pub async fn handle_special_log(&mut self, entry: &Entry<D>) -> Result<(), StorageError> {
         match &entry.payload {
             EntryPayload::Membership(ref m) => {
                 if m.is_in_joint_consensus() {
                     // nothing to do
                 } else {
-                    self.handle_uniform_consensus_committed(&entry.log_id);
+                    self.handle_uniform_consensus_committed(&entry.log_id).await?;
                 }
             }
             EntryPayload::Blank => {}
             EntryPayload::Normal(_) => {}
         }
+
+        Ok(())
     }
 
     /// Apply the given log entry to the state machine.
     #[tracing::instrument(level = "debug", skip(self, entry))]
     pub(super) async fn apply_entry_to_state_machine(&mut self, entry: &Entry<D>) -> Result<R, StorageError> {
-        self.handle_special_log(entry);
+        self.handle_special_log(entry).await?;
 
         // First, we just ensure that we apply any outstanding up to, but not including, the index
         // of the given entry. We need to be able to return the data response from applying this
