@@ -21,7 +21,7 @@ path = "src/bin/main.rs"
 [dependencies]
 actix-web = "4.0.0-rc.2"
 async-trait = "0.1.36"
-clap = { version = "3.0.13", features = ["derive", "env"] }
+clap = { version = "4.0.10", features = ["derive", "env"] }
 openraft = { version = "0.6", path = "../../openraft", features = ["serde"] }
 reqwest = { version = "0.11.9", features = ["json"] }
 serde = { version = "1.0.114", features = ["derive"] }
