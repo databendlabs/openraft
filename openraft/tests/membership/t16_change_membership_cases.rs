@@ -109,6 +109,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
+            enable_elect: false,
             ..Default::default()
         }
         .validate()?,
@@ -140,7 +141,14 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
         node.change_membership(new.clone(), true, false).await?;
         log_index += 1;
         if new != old {
-            log_index += 1; // two member-change logs
+            // Two member-change logs.
+            log_index += 1;
+        }
+
+        tracing::info!("--- let a node in the new cluster elect");
+        {
+            let n = router.get_raft_handle(new.iter().next().unwrap())?;
+            n.enable_elect(true);
         }
 
         tracing::info!("--- wait for old leader or new leader");
@@ -171,7 +179,10 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
                     .await?;
             }
         }
+    }
 
+    tracing::info!("--- removed nodes are left in non-leader state");
+    {
         for id in only_in_old.clone() {
             router
                 .wait(id, timeout())
@@ -311,6 +322,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
     let config = Arc::new(
         Config {
             enable_heartbeat: false,
+            enable_elect: false,
             ..Default::default()
         }
         .validate()?,
@@ -335,7 +347,14 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
         node.change_membership(change.clone(), true, false).await?;
         log_index += 1;
         if new != old {
-            log_index += 1; // two member-change logs
+            // Two member-change logs
+            log_index += 1;
+        }
+
+        tracing::info!("--- let a node in the new cluster elect");
+        {
+            let n = router.get_raft_handle(new.iter().next().unwrap())?;
+            n.enable_elect(true);
         }
 
         tracing::info!("--- wait for old leader or new leader");
@@ -366,7 +385,10 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
                     .await?;
             }
         }
+    }
 
+    tracing::info!("--- removed nodes are left in follower state");
+    {
         for id in only_in_old.clone() {
             // The removed node will be left in follower state, it can never elect itself successfully.
             router
