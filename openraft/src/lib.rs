@@ -2,6 +2,7 @@
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
 #![cfg_attr(feature = "bt", feature(provide_any))]
 #![cfg_attr(feature = "bench", feature(test))]
+#![allow(clippy::bool_assert_comparison, clippy::type_complexity)]
 
 //! # Feature flags
 //!

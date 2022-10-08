@@ -145,7 +145,7 @@ jobs:
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets -- -D warnings -A clippy::bool-assert-comparison
+          args: --all-targets -- -D warnings
 
 
       - name: Build-doc
@@ -222,5 +222,4 @@ jobs:
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml --all-targets -- -D warnings -A clippy::bool-assert-comparison
-
+          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml --all-targets -- -D warnings
