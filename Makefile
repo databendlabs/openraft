@@ -38,9 +38,9 @@ lint:
 	cargo fmt
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo fmt --manifest-path examples/raft-kv-rocksdb/Cargo.toml
-	cargo clippy --all-targets -- -D warnings -A clippy::bool-assert-comparison
-	cargo clippy --manifest-path examples/raft-kv-memstore/Cargo.toml --all-targets -- -D warnings -A clippy::bool-assert-comparison
-	cargo clippy --manifest-path examples/raft-kv-rocksdb/Cargo.toml  --all-targets -- -D warnings -A clippy::bool-assert-comparison
+	cargo clippy --all-targets -- -D warnings
+	cargo clippy --manifest-path examples/raft-kv-memstore/Cargo.toml --all-targets -- -D warnings
+	cargo clippy --manifest-path examples/raft-kv-rocksdb/Cargo.toml  --all-targets -- -D warnings
 
 clean:
 	cargo clean
