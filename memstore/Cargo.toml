@@ -16,15 +16,14 @@ repository    = { workspace = true }
 [dependencies]
 openraft = { path= "../openraft", features=["serde"] }
 
-async-trait     = { workspace = true }
 serde           = { workspace = true }
 serde_json      = { workspace = true }
 tokio           = { workspace = true }
 tracing         = { workspace = true }
-tracing-futures = { workspace = true }
 
 [dev-dependencies]
-maplit = { workspace = true }
+async-trait = { workspace = true }
+maplit      = { workspace = true }
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.
