@@ -1,46 +1,43 @@
 [package]
 name = "openraft"
-version = "0.6.4"
-edition = "2021"
-authors = [
-    "Databend Authors <opensource@datafuselabs.com>",
-    "Anthony Dodd <Dodd.AnthonyJosiah@gmail.com>"
-]
-categories = ["algorithms", "asynchronous", "data-structures"]
-description = "Advanced Raft consensus"
-documentation = "https://docs.rs/openraft"
-homepage = "https://github.com/datafuselabs/openraft"
-keywords = ["raft", "consensus"]
-license = "MIT/Apache-2.0"
-repository = "https://github.com/datafuselabs/openraft"
 readme = "../README.md"
 
+version       = { workspace = true }
+edition       = { workspace = true }
+authors       = { workspace = true }
+categories    = { workspace = true }
+description   = { workspace = true }
+documentation = { workspace = true }
+homepage      = { workspace = true }
+keywords      = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+
 [dependencies]
-anyerror = { version = "0.1.7" }
-# Leave it for debug
-# anyerror = { git = "https://github.com/drmingdrmer/anyerror", branch = "ci",  features = ["anyhow"]}
-async-trait = "0.1.36"
-byte-unit = "4.0.12"
-bytes = "1.0"
-derive_more = { version="0.99.9" }
-futures = "0.3"
-maplit = "1.0.2"
-rand = "0.8"
-serde = { version="1", features=["derive", "rc"], optional = true}
-clap = { version = "~3.2", features = ["derive", "env"] }
-thiserror = "1.0.33"
-tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
-tracing = "0.1.29"
-tracing-futures = "0.2.4"
+anyerror        = { workspace = true }
+async-trait     = { workspace = true }
+byte-unit       = { workspace = true }
+bytes           = { workspace = true }
+derive_more     = { workspace = true }
+futures         = { workspace = true }
+maplit          = { workspace = true }
+rand            = { workspace = true }
+serde           = { workspace = true, optional = true }
+clap            = { workspace = true }
+thiserror       = { workspace = true }
+tokio           = { workspace = true }
+tracing         = { workspace = true }
+tracing-futures = { workspace = true }
 
 [dev-dependencies]
-anyhow = "1.0.63"
-async-entry = "0.3.1"
-lazy_static = "1.4.0"
-memstore = { version="0.2.0", path="../memstore" }
-pretty_assertions = "1.0.0"
-tracing-appender = "0.2.0"
-tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
+memstore           = { path="../memstore" }
+
+anyhow             = { workspace = true }
+async-entry        = { workspace = true }
+lazy_static        = { workspace = true }
+pretty_assertions  = { workspace = true }
+tracing-appender   = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 
 [features]
