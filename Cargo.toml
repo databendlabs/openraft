@@ -1,3 +1,43 @@
+[workspace.package]
+version = "0.8.0"
+edition = "2021"
+authors = [
+    "Databend Authors <opensource@datafuselabs.com>",
+    "Anthony Dodd <Dodd.AnthonyJosiah@gmail.com>"
+]
+categories = ["algorithms", "asynchronous", "data-structures"]
+description = "Advanced Raft consensus"
+documentation = "https://docs.rs/openraft"
+homepage = "https://github.com/datafuselabs/openraft"
+keywords = ["raft", "consensus"]
+license = "MIT/Apache-2.0"
+repository = "https://github.com/datafuselabs/openraft"
+
+
+[workspace.dependencies]
+anyerror = { version = "0.1.7" }
+anyhow = "1.0.63"
+async-entry = "0.3.1"
+async-trait = "0.1.36"
+byte-unit = "4.0.12"
+bytes = "1.0"
+clap = { version = "~3.2", features = ["derive", "env"] }
+derive_more = { version="0.99.9" }
+futures = "0.3"
+lazy_static = "1.4.0"
+maplit = "1.0.2"
+pretty_assertions = "1.0.0"
+rand = "0.8"
+serde = { version="1.0.114", features=["derive", "rc"]}
+serde_json = "1.0.57"
+thiserror = "1.0.33"
+tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
+tracing = "0.1.29"
+tracing-appender = "0.2.0"
+tracing-futures = "0.2.4"
+tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
+
+
 [workspace]
 members = ["openraft", "memstore", "rocksstore", "sledstore"]
 exclude = ["examples/raft-kv-memstore", "examples/raft-kv-rocksdb"]

@@ -2,15 +2,15 @@ use std::collections::BTreeMap;
 use std::thread;
 use std::time::Duration;
 
-use example_raft_key_value::client::ExampleClient;
-use example_raft_key_value::start_example_raft_node;
-use example_raft_key_value::store::ExampleRequest;
-use example_raft_key_value::ExampleNodeId;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::error::NodeNotFound;
 use openraft::AnyError;
 use openraft::BasicNode;
+use raft_kv_memstore::client::ExampleClient;
+use raft_kv_memstore::start_example_raft_node;
+use raft_kv_memstore::store::ExampleRequest;
+use raft_kv_memstore::ExampleNodeId;
 use tokio::runtime::Runtime;
 
 /// Setup a cluster of 3 nodes.

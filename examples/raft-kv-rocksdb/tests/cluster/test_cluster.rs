@@ -5,10 +5,10 @@ use std::time::Duration;
 use async_std::task::block_on;
 use maplit::btreemap;
 use maplit::btreeset;
-use raft_key_value_rocks::client::ExampleClient;
-use raft_key_value_rocks::start_example_raft_node;
-use raft_key_value_rocks::store::ExampleRequest;
-use raft_key_value_rocks::ExampleNode;
+use raft_kv_rocksdb::client::ExampleClient;
+use raft_kv_rocksdb::start_example_raft_node;
+use raft_kv_rocksdb::store::ExampleRequest;
+use raft_kv_rocksdb::ExampleNode;
 
 /// Setup a cluster of 3 nodes.
 /// Write to it and read from it.
