@@ -50,7 +50,7 @@ pub(crate) struct ReplicationStream<NID: NodeId> {
     pub handle: JoinHandle<()>,
 
     /// The channel used for communicating with the replication task.
-    pub repl_tx: mpsc::UnboundedSender<UpdateReplication<NID>>,
+    pub repl_tx: mpsc::UnboundedSender<Replicate<NID>>,
 }
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
@@ -91,7 +91,7 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     raft_core_tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
 
     /// A channel for receiving events from the Raft node.
-    repl_rx: mpsc::UnboundedReceiver<UpdateReplication<C::NodeId>>,
+    repl_rx: mpsc::UnboundedReceiver<Replicate<C::NodeId>>,
 
     /// The `RaftNetwork` interface.
     network: N::Network,
@@ -515,16 +515,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn process_raft_event(&mut self, event: UpdateReplication<C::NodeId>) {
+    pub fn process_raft_event(&mut self, event: Replicate<C::NodeId>) {
         tracing::debug!(event=%event.summary(), "process_raft_event");
 
-        if event.committed > self.committed {
-            self.need_to_replicate = true;
-            self.committed = event.committed;
-        }
-
-        if event.last_log_id.index() > self.matched.index() {
-            self.need_to_replicate = true;
+        match event {
+            Replicate::Committed(c) => {
+                if c > self.committed {
+                    self.need_to_replicate = true;
+                    self.committed = c;
+                }
+            }
+            Replicate::Entries(last) => {
+                if last.index() > self.matched.index() {
+                    self.need_to_replicate = true;
+                }
+            }
         }
     }
 }
@@ -541,23 +546,27 @@ enum TargetReplState {
     Snapshotting,
 }
 
-/// An event from the RaftCore in leader state to replication stream.
-pub(crate) struct UpdateReplication<NID: NodeId> {
-    /// The new entry which needs to be replicated.
-    ///
-    /// The logId of the most recent entry to have been appended to the log.
-    pub(crate) last_log_id: Option<LogId<NID>>,
+/// An event from the RaftCore leader state to replication stream, to inform what to replicate.
+pub(crate) enum Replicate<NID: NodeId> {
+    /// Inform replication stream to forward the committed log id to followers/learners.
+    Committed(Option<LogId<NID>>),
 
-    /// The index of the highest log entry which is known to be committed in the cluster.
-    pub(crate) committed: Option<LogId<NID>>,
+    /// Inform replication stream to forward the log entries to followers/learners.
+    ///
+    /// This message contains the last log id on this leader
+    Entries(Option<LogId<NID>>),
 }
 
-impl<NID: NodeId> MessageSummary<UpdateReplication<NID>> for UpdateReplication<NID> {
+impl<NID: NodeId> MessageSummary<Replicate<NID>> for Replicate<NID> {
     fn summary(&self) -> String {
-        format!(
-            "UpdateReplication: last_log_id: {:?}, committed: {:?}",
-            self.last_log_id, self.committed
-        )
+        match self {
+            Replicate::Committed(c) => {
+                format!("Replciate::Committed: {:?}", c)
+            }
+            Replicate::Entries(last) => {
+                format!("Replciate::Entries: upto: {:?}", last)
+            }
+        }
     }
 }
 

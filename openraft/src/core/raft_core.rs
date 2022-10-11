@@ -72,9 +72,9 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
+use crate::replication::Replicate;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationStream;
-use crate::replication::UpdateReplication;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
 use crate::storage::Snapshot;
@@ -1565,10 +1565,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::ReplicateCommitted { committed } => {
                 if let Some(l) = &self.leader_data {
                     for node in l.nodes.values() {
-                        let _ = node.repl_tx.send(UpdateReplication {
-                            last_log_id: None,
-                            committed: *committed,
-                        });
+                        let _ = node.repl_tx.send(Replicate::Committed(*committed));
                     }
                 } else {
                     unreachable!("it has to be a leader!!!");
@@ -1591,10 +1588,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::ReplicateEntries { upto } => {
                 if let Some(l) = &self.leader_data {
                     for node in l.nodes.values() {
-                        let _ = node.repl_tx.send(UpdateReplication {
-                            last_log_id: *upto,
-                            committed: self.engine.state.committed,
-                        });
+                        let _ = node.repl_tx.send(Replicate::Entries(*upto));
                     }
                 } else {
                     unreachable!("it has to be a leader!!!");
