@@ -97,10 +97,15 @@ pub struct SerializableRocksStateMachine {
 impl From<&RocksStateMachine> for SerializableRocksStateMachine {
     fn from(state: &RocksStateMachine) -> Self {
         let mut data = BTreeMap::new();
-        for (key, value) in state.db.iterator_cf(
+
+        let it = state.db.iterator_cf(
             state.db.cf_handle("data").expect("cf_handle"),
             rocksdb::IteratorMode::Start,
-        ) {
+        );
+
+        for item in it {
+            let (key, value) = item.expect("invalid kv record");
+
             let key: &[u8] = &key;
             let value: &[u8] = &value;
             data.insert(
@@ -326,18 +331,24 @@ impl RocksStore {
 #[async_trait]
 impl RaftLogReader<Config> for Arc<RocksStore> {
     async fn get_log_state(&mut self) -> StorageResult<LogState<Config>> {
-        let last = self
-            .db
-            .iterator_cf(self.logs(), rocksdb::IteratorMode::End)
-            .next()
-            .and_then(|(_, ent)| Some(serde_json::from_slice::<Entry<Config>>(&ent).ok()?.log_id));
+        let last = self.db.iterator_cf(self.logs(), rocksdb::IteratorMode::End).next();
+
+        let last_log_id = match last {
+            None => None,
+            Some(res) => {
+                let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
+                let ent = serde_json::from_slice::<Entry<Config>>(&entry_bytes).map_err(read_logs_err)?;
+                Some(ent.log_id)
+            }
+        };
 
         let last_purged_log_id = self.get_meta::<meta::LastPurged>()?;
 
-        let last_log_id = match last {
+        let last_log_id = match last_log_id {
             None => last_purged_log_id,
             Some(x) => Some(x),
         };
+
         Ok(LogState {
             last_purged_log_id,
             last_log_id,
@@ -353,20 +364,25 @@ impl RaftLogReader<Config> for Arc<RocksStore> {
             std::ops::Bound::Excluded(x) => id_to_bin(*x + 1),
             std::ops::Bound::Unbounded => id_to_bin(0),
         };
-        self.db
-            .iterator_cf(self.logs(), rocksdb::IteratorMode::From(&start, Direction::Forward))
-            .map(|(id, val)| {
-                let entry: StorageResult<Entry<_>> = serde_json::from_slice(&val).map_err(|e| StorageError::IO {
-                    source: StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Read, AnyError::new(&e)),
-                });
-                let id = bin_to_id(&id);
 
-                assert_eq!(Ok(id), entry.as_ref().map(|e| e.log_id.index));
-                (id, entry)
-            })
-            .take_while(|(id, _)| range.contains(id))
-            .map(|x| x.1)
-            .collect()
+        let mut res = Vec::new();
+
+        let it = self.db.iterator_cf(self.logs(), rocksdb::IteratorMode::From(&start, Direction::Forward));
+        for item_res in it {
+            let (id, val) = item_res.map_err(read_logs_err)?;
+
+            let id = bin_to_id(&id);
+            if !range.contains(&id) {
+                break;
+            }
+
+            let entry: Entry<_> = serde_json::from_slice(&val).map_err(read_logs_err)?;
+
+            assert_eq!(id, entry.log_id.index);
+
+            res.push(entry);
+        }
+        Ok(res)
     }
 }
 
@@ -589,6 +605,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
         self.clone()
     }
 }
+
 impl RocksStore {
     pub async fn new<P: AsRef<Path>>(db_path: P) -> Arc<RocksStore> {
         let mut db_opts = Options::default();
@@ -605,5 +622,11 @@ impl RocksStore {
         let db = Arc::new(db);
         let state_machine = RwLock::new(RocksStateMachine::new(db.clone()));
         Arc::new(RocksStore { db, state_machine })
+    }
+}
+
+fn read_logs_err(e: impl Error + 'static) -> StorageError<RocksNodeId> {
+    StorageError::IO {
+        source: StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Read, AnyError::new(&e)),
     }
 }
