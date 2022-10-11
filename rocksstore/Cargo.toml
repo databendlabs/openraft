@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 openraft = { path = "../openraft", features = ["serde"] }
 
-rocksdb = "0.18.0"
+rocksdb = "0.19.0"
 byteorder = "1.4.3"
 serde = { version = "1.0.114", features = ["derive"] }
 serde_json = "1.0.57"
