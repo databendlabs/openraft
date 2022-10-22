@@ -809,8 +809,8 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
             RaftMsg::RemoveLearner { id, tx } => {
                 self.remove_learner(id, tx);
             }
-            RaftMsg::ChangeMembership { members, blocking, tx } => {
-                self.change_membership(members, blocking, tx).await?;
+            RaftMsg::ChangeMembership { members, tx } => {
+                self.change_membership(members, tx).await?;
             }
             RaftMsg::ForceSnapshotting { tx } => {
                 for node in self.nodes.values() {

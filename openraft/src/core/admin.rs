@@ -11,8 +11,6 @@ use crate::error::ClientWriteError;
 use crate::error::EmptyMembership;
 use crate::error::InProgress;
 use crate::error::InitializeError;
-use crate::error::LearnerIsLagging;
-use crate::error::LearnerNotFound;
 use crate::error::RemoveLearnerError;
 use crate::raft::AddLearnerResponse;
 use crate::raft::ClientWriteResponse;
@@ -144,7 +142,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
     pub(super) async fn change_membership(
         &mut self,
         members: BTreeSet<NodeId>,
-        blocking: bool,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     ) -> Result<(), StorageError> {
         tracing::info!("change_membership: members: {:?}", members);
@@ -173,48 +170,6 @@ impl<'a, D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>
         let new_config = curr.next_safe(members.clone());
 
         tracing::info!("change_membership: new_config: {:?}", new_config);
-
-        // Check the proposed config for any new nodes. If ALL new nodes already have replication
-        // streams AND are ready to join, then we can immediately proceed with entering joint
-        // consensus. Else, new nodes need to first be brought up-to-speed.
-        //
-        // Here, all we do is check to see which nodes still need to be synced, which determines
-        // if we can proceed.
-
-        // TODO(xp): test change membership without adding as learner.
-
-        // TODO(xp): 111 test adding a node that is not learner.
-        // TODO(xp): 111 test adding a node that is lagging.
-        for new_node in members.difference(curr.all_nodes()) {
-            match self.nodes.get(new_node) {
-                Some(node) => {
-                    if node.is_line_rate(&self.core.last_log_id, &self.core.config) {
-                        // Node is ready to join.
-                        continue;
-                    }
-
-                    if !blocking {
-                        // Node has repl stream, but is not yet ready to join.
-                        let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                            ChangeMembershipError::LearnerIsLagging(LearnerIsLagging {
-                                node_id: *new_node,
-                                matched: node.matched,
-                                distance: self.core.last_log_id.next_index().saturating_sub(node.matched.next_index()),
-                            }),
-                        )));
-                        return Ok(());
-                    }
-                }
-
-                // Node does not yet have a repl stream, spawn one.
-                None => {
-                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(
-                        ChangeMembershipError::LearnerNotFound(LearnerNotFound { node_id: *new_node }),
-                    )));
-                    return Ok(());
-                }
-            }
-        }
 
         self.append_membership_log(new_config, Some(tx)).await?;
         Ok(())

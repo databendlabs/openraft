@@ -102,12 +102,6 @@ pub enum ChangeMembershipError {
 
     #[error(transparent)]
     EmptyMembership(#[from] EmptyMembership),
-
-    #[error(transparent)]
-    LearnerNotFound(#[from] LearnerNotFound),
-
-    #[error(transparent)]
-    LearnerIsLagging(#[from] LearnerIsLagging),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -259,20 +253,6 @@ pub struct QuorumNotEnough {
 #[error("the cluster is already undergoing a configuration change at log {membership_log_id}")]
 pub struct InProgress {
     pub membership_log_id: LogId,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error("to add a member {node_id} first need to add it as learner")]
-pub struct LearnerNotFound {
-    pub node_id: NodeId,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
-#[error("replication to learner {node_id} is lagging {distance}, matched: {matched:?}, can not add as member")]
-pub struct LearnerIsLagging {
-    pub node_id: NodeId,
-    pub matched: Option<LogId>,
-    pub distance: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]

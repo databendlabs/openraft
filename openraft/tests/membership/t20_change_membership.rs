@@ -1,9 +1,7 @@
-use std::convert::TryInto;
 use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use openraft::error::ChangeMembershipError;
 use openraft::Config;
 use openraft::StorageHelper;
 
@@ -59,7 +57,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
-    // Add a learner into membership config, expect error NonVoterIsLagging.
+    // Add a learner into membership config.
 
     let (_log_guard, ut_span) = init_ut!();
     let _ent = ut_span.enter();
@@ -90,27 +88,36 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         router.wait(&0, timeout()).await?.log(Some(log_index), "received 500 logs").await?;
     }
 
-    tracing::info!("--- restore replication and change membership at once, expect NonVoterIsLagging");
+    tracing::info!(
+        "--- restore replication and change membership at once, it still blocks until logs are replicated to node-1"
+    );
     {
         router.restore_node(1).await;
         let res = router.change_membership_with_blocking(0, btreeset! {0,1}, false).await;
+        log_index += 2;
 
         tracing::info!("--- got res: {:?}", res);
+        assert!(res.is_ok());
+        router.wait(&1, timeout()).await?.log(Some(log_index), "received 500+2 logs").await?;
+    }
 
-        let err = res.unwrap_err();
-        let err: ChangeMembershipError = err.try_into().unwrap();
+    tracing::info!("--- add node-3, with blocking=false, won't block, because [0,1] is a quorum");
+    {
+        router.new_raft_node(2).await;
 
-        match err {
-            ChangeMembershipError::LearnerIsLagging(e) => {
-                tracing::info!(e.distance, "--- distance");
-                assert_eq!(1, e.node_id);
-                assert!(e.distance >= lag_threshold);
-                assert!(e.distance < 500);
-            }
-            _ => {
-                panic!("expect ChangeMembershipError::NonVoterNotFound");
-            }
-        }
+        router.change_membership_with_blocking(0, btreeset! {0,1,2}, false).await?;
+        log_index += 2;
+        let m = router.get_metrics(&2).await?;
+        assert!(m.last_log_index < Some(log_index));
+    }
+
+    tracing::info!("--- make sure replication to node-3 works as expected");
+    {
+        router
+            .wait(&2, timeout())
+            .await?
+            .log(Some(log_index), "received all logs, replication works")
+            .await?;
     }
 
     Ok(())

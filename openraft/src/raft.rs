@@ -284,14 +284,18 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
     /// If a node in the proposed config but is not yet a voter or learner, it first calls `add_learner` to setup
     /// replication to the new node.
     ///
-    /// Internal:
-    /// - It proposes a **joint** config.
-    /// - When the **joint** config is committed, it proposes a uniform config.
+    /// Internally it commits two logs to get this task done:
+    /// - Proposes a **joint** config, e.g. `[{1,2,3}, {4,5,6}]` if trying to change config from `{1,2,3}` to `{4,5,6}`.
+    /// - When the **joint** config is committed, then proposes a **uniform** config, e.g. `{4,5,6}`.
     ///
-    /// If blocking is true, it blocks until every learner becomes up to date.
-    /// Otherwise it returns error `ChangeMembershipError::LearnerIsLagging` if there is a lagging learner.
+    /// If `blocking` is true, it does not propose the membership log until replication to every learner becomes up to
+    /// date.
+    /// Otherwise it just proposes membership log at once. In this case, the change-membership log may be
+    /// committed very quickly: if the **old** cluster constitutes a quorum.
+    /// E.g., when changing from `[1,2,3,4]` to `[1,2,3,4,5]`, `[1,2,3]` is a quorum in both the old and the new
+    /// cluster. Then it will return before the replication to node-5 becomes up to date.
     ///
-    /// If it lost leadership or crashed before committing the second **uniform** config log, the cluster is left in the
+    /// If this node crashes before committing the second **uniform** config log, the cluster may be left in the
     /// **joint** config.
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
@@ -330,7 +334,6 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
             .call_core(
                 RaftMsg::ChangeMembership {
                     members: members.clone(),
-                    blocking,
                     tx,
                 },
                 rx,
@@ -350,7 +353,7 @@ impl<D: AppData, R: AppDataResponse, N: RaftNetwork<D>, S: RaftStorage<D, R>> Ra
         tracing::info!("the second step is to change to uniform config: {:?}", members);
 
         let (tx, rx) = oneshot::channel();
-        let res = self.call_core(RaftMsg::ChangeMembership { members, blocking, tx }, rx).await?;
+        let res = self.call_core(RaftMsg::ChangeMembership { members, tx }, rx).await?;
 
         tracing::info!("res of second change_membership: {}", res.summary());
 
@@ -500,11 +503,6 @@ pub(crate) enum RaftMsg<D: AppData, R: AppDataResponse> {
     },
     ChangeMembership {
         members: BTreeSet<NodeId>,
-        /// with blocking==false, respond to client a ChangeMembershipError::LearnerIsLagging error at once if a
-        /// non-member is lagging.
-        ///
-        /// Otherwise, wait for commit of the member change log.
-        blocking: bool,
         tx: RaftRespTx<ClientWriteResponse<R>, ClientWriteError>,
     },
     /// Force to switch to snapshot replication to every target.
@@ -542,8 +540,8 @@ where
             RaftMsg::RemoveLearner { id, .. } => {
                 format!("RemoveLearner: id: {}", id)
             }
-            RaftMsg::ChangeMembership { members, blocking, .. } => {
-                format!("ChangeMembership: members: {:?}, blocking: {}", members, blocking)
+            RaftMsg::ChangeMembership { members, .. } => {
+                format!("ChangeMembership: members: {:?}", members)
             }
             RaftMsg::ForceSnapshotting { .. } => "ForceSnapshotting".to_string(),
         }
