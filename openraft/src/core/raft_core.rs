@@ -2,15 +2,19 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::mem::swap;
+use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use futures::future::select;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
+use futures::future::Either;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use maplit::btreeset;
+use pin_utils::pin_mut;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -161,12 +165,11 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
 
-    pub(crate) rx_shutdown: oneshot::Receiver<()>,
-
     pub(crate) span: Span,
 }
 
 pub(crate) type RaftSpawnHandle<NID> = JoinHandle<Result<(), Fatal<NID>>>;
+
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     pub(crate) fn spawn(
         id: C::NodeId,
@@ -206,18 +209,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             tx_metrics,
 
-            rx_shutdown,
-
             span,
         };
 
-        tokio::spawn(this.main().instrument(trace_span!("spawn").or_current()))
+        tokio::spawn(this.main(rx_shutdown).instrument(trace_span!("spawn").or_current()))
     }
 
     /// The main loop of the Raft protocol.
-    async fn main(mut self) -> Result<(), Fatal<C::NodeId>> {
+    async fn main(mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
-        let res = self.do_main().instrument(span).await;
+        let res = self.do_main(rx_shutdown).instrument(span).await;
 
         self.engine.state.server_state = ServerState::Shutdown;
         self.report_metrics(Update::AsIs);
@@ -237,7 +238,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level="trace", skip(self), fields(id=display(self.id), cluster=%self.config.cluster_name))]
-    async fn do_main(&mut self) -> Result<(), Fatal<C::NodeId>> {
+    async fn do_main(&mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("raft node is initializing");
 
         let state = {
@@ -269,7 +270,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Initialize metrics.
         self.report_metrics(Update::Update(None));
 
-        self.runtime_loop().await
+        self.runtime_loop(rx_shutdown).await
     }
 
     /// Handle `is_leader` requests.
@@ -1095,18 +1096,31 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Run an event handling loop
     #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id)))]
-    async fn runtime_loop(&mut self) -> Result<(), Fatal<C::NodeId>> {
+    async fn runtime_loop(&mut self, mut rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         loop {
             self.flush_metrics();
 
-            tokio::select! {
-                Some(msg) = self.rx_api.recv() => {
-                    self.handle_api_msg(msg).await?;
-                },
+            let msg_res: Result<RaftMsg<C, N, S>, &str> = {
+                let recv = self.rx_api.recv();
+                pin_mut!(recv);
 
-                Ok(_) = &mut self.rx_shutdown => {
-                    tracing::info!("recv rx_shutdown");
-                    // TODO: return Fatal::Stopped?
+                let either = select(recv, Pin::new(&mut rx_shutdown)).await;
+
+                match either {
+                    Either::Left((recv_res, _shutdown)) => match recv_res {
+                        Some(msg) => Ok(msg),
+                        None => Err("all rx_api senders are dropped"),
+                    },
+                    Either::Right((_rx_shutdown_res, _recv)) => Err("recv from rx_shutdown"),
+                }
+            };
+
+            match msg_res {
+                Ok(msg) => self.handle_api_msg(msg).await?,
+                Err(reason) => {
+                    tracing::info!(reason);
+
+                    self.set_target_state(ServerState::Shutdown);
                     return Ok(());
                 }
             }
