@@ -994,6 +994,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) async fn spawn_replication_stream(
         &mut self,
         target: C::NodeId,
+        matched: Option<LogId<C::NodeId>>,
     ) -> Result<ReplicationStream<C::NodeId>, N::ConnectionError> {
         let target_node = self.engine.state.membership_state.effective.get_node(&target);
         let membership_log_id = self.engine.state.membership_state.effective.log_id;
@@ -1007,6 +1008,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.config.clone(),
             self.engine.state.last_log_id(),
             self.engine.state.committed,
+            matched,
             network,
             self.storage.get_log_reader().await,
             self.tx_api.clone(),
@@ -1611,9 +1613,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::UpdateReplicationStreams { targets } => {
                 self.remove_all_replication().await;
 
-                // TODO: use _matched to initialize replication
-                for (node_id, _matched) in targets.iter() {
-                    match self.spawn_replication_stream(*node_id).await {
+                for (node_id, matched) in targets.iter() {
+                    match self.spawn_replication_stream(*node_id, *matched).await {
                         Ok(state) => {
                             if let Some(l) = &mut self.leader_data {
                                 l.nodes.insert(*node_id, state);

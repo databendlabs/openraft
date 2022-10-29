@@ -1,3 +1,5 @@
+#![allow(clippy::uninlined_format_args)]
+
 use std::fmt::Display;
 use std::path::Path;
 use std::sync::Arc;
