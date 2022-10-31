@@ -155,7 +155,7 @@ leader. It will enter <code>Candidate</code> because it does not know it is remo
 </ul>
 <h2 id="remove-a-node-from-membership-config"><a class="header" href="#remove-a-node-from-membership-config">Remove a node from membership config</a></h2>
 <p>When membership changes, e.g., from a joint config <code>[(1,2,3), (3,4,5)]</code> to uniform config <code>[3,4,5]</code>(assuming the leader is <code>3</code>), the leader
-stops replication to <code>1,2</code> when <code>[3,4,5]</code> is seen(not committed).</p>
+stops replication to <code>1,2</code> when the uniform config <code>[3,4,5]</code> is seen(no need to be committed).</p>
 <p>It is correct because:</p>
 <ul>
 <li>

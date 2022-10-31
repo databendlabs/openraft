@@ -666,34 +666,68 @@ By not allowing to append a smaller log than <code>vote</code>, it will always b
 <p>Unlike the original raft, openraft treats all membership as a <strong>joint</strong> membership.
 A uniform config is just a special case of joint: the joint of only one config.</p>
 <p>Openraft offers these mechanisms for controlling member node lifecycle:</p>
-<h2 id="raftadd_learner"><a class="header" href="#raftadd_learner"><code>Raft::add_learner()</code></a></h2>
+<h2 id="membership-api"><a class="header" href="#membership-api">Membership API</a></h2>
+<h3 id="raftadd_learnernode_id-node-blocking"><a class="header" href="#raftadd_learnernode_id-node-blocking"><code>Raft::add_learner(node_id, node, blocking)</code></a></h3>
 <p>This method will add a learner to the cluster,
 and immediately begin syncing logs from the leader.</p>
 <ul>
 <li>A <strong>Learner</strong> won't vote for leadership.</li>
 </ul>
-<h2 id="raftchange_membershipnode_list-turn_to_learner"><a class="header" href="#raftchange_membershipnode_list-turn_to_learner"><code>Raft::change_membership(node_list, turn_to_learner)</code></a></h2>
-<p>This method will initiate a membership change and returns when the effective
-membership becomes <code>node_list</code> and committed.</p>
+<h3 id="raftchange_membershipmembers-allow_lagging-turn_to_learner"><a class="header" href="#raftchange_membershipmembers-allow_lagging-turn_to_learner"><code>Raft::change_membership(members, allow_lagging, turn_to_learner)</code></a></h3>
+<p>This method initiates a membership change and returns when the effective
+membership becomes <code>members</code> and is committed.</p>
 <p>If there are nodes in the given membership that is not a <code>Learner</code>, this method will fail.
-Thus the application should always call <code>Raft::add_learner</code> first.</p>
-<p>Once the new membership is committed, whether or not a <code>Voter</code> that is not in the new membership will
-revert to a <code>Learner</code> is base on the <code>turn_to_learner</code>.</p>
-<p>If <code>turn_to_learner</code> is true, then all the members which not exists in the new membership,
-will be turned into learners, otherwise will be removed.</p>
-<p>Example of <code>turn_to_learner</code> usage:
-If the original membership is {&quot;members&quot;:{1,2,3}, &quot;learners&quot;:{}}, and call <code>change_membership</code> 
-with <code>node_list</code> {3,4,5}, then:
-- If <code>turn_to_learner</code> is true, after commit the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}.
-- Otherwise if <code>turn_to_learner</code> is false, then the new membership is {&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}, 
-in which the members not exists in the new membership just be removed from the cluster.</p>
+Thus the application should always call <code>Raft::add_learner()</code> first.</p>
+<p>Once the new membership is committed, a <code>Voter</code> not in the new config is removed if <code>turn_to_learner=false</code>,
+and it is reverted to a <code>Learner</code> if <code>turn_to_learner=true</code>.</p>
+<h4 id="example-of-turn_to_learner"><a class="header" href="#example-of-turn_to_learner">Example of <code>turn_to_learner</code></a></h4>
+<p>Given the original membership to be <code>{&quot;members&quot;:{1,2,3}, &quot;learners&quot;:{}}</code>,
+call <code>change_membership</code> with <code>members={3,4,5}</code>, then:</p>
+<ul>
+<li>If <code>turn_to_learner=true</code>,  the new membership is <code>{&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{1,2}}</code>.</li>
+<li>If <code>turn_to_learner=false</code>, the new membership is <code>{&quot;members&quot;:{3,4,5}, &quot;learners&quot;:{}}</code>.</li>
+</ul>
+<h2 id="add-a-new-node-as-a-voter"><a class="header" href="#add-a-new-node-as-a-voter">Add a new node as a voter</a></h2>
+<p>To add a new node as a voter:</p>
+<ul>
+<li>First, add it as a <code>learner</code>(non-voter) with <code>Raft::add_learner()</code>.
+In this step, the leader sets up replication to the new node, but it can not vote yet.</li>
+<li>Then turn it into a <code>voter</code> with <code>Raft::change_membership()</code>.</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let client = ExampleClient::new(1, get_addr(1)?);
+
+client.add_learner((2, get_addr(2)?)).await?;
+client.add_learner((3, get_addr(3)?)).await?;
+client.change_membership(&amp;btreeset! {1,2,3}).await?;
+<span class="boring">}
+</span></code></pre></pre>
+<p>A complete snippet of adding voters can be found in <a href="https://github.com/datafuselabs/openraft/blob/d041202a9f30b704116c324a6adc4f2ec28029fa/examples/raft-kv-memstore/tests/cluster/test_cluster.rs#L75-L103">the example app</a>.</p>
+<h2 id="remove-a-voter-node"><a class="header" href="#remove-a-voter-node">Remove a voter node</a></h2>
+<ul>
+<li>
+<p>Call <code>Raft::change_membership()</code> on the leader to initiate a two-phase
+membership config change, e.g., the leader will propose two config logs:
+joint config log: <code>[{1, 2, 3}, {3, 4, 5}]</code> and then the uniform config log:
+<code>{3, 4, 5}</code>.</p>
+</li>
+<li>
+<p>As soon as the leader commits the second config log, the node to remove can
+be terminated safely.</p>
+</li>
+</ul>
+<p><strong>Note that</strong> An application does not have to wait for the config log to be
+replicated to the node to remove. Because a distributed consensus protocol
+tolerates a minority member crash.</p>
 <h2 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h2>
 <p>Openraft tries to commit one or more membership logs to finally change the
 membership to <code>node_list</code>.
 In every step, the log it tries to commit is:</p>
 <ul>
 <li>
-<p>the <code>node_list</code> itself, if it is safe to change from previous membership to
+<p>the <code>node_list</code> itself, if it is safe to change from the previous membership to
 <code>node_list</code> directly.</p>
 </li>
 <li>
@@ -834,7 +868,7 @@ leader. It will enter <code>Candidate</code> because it does not know it is remo
 </ul>
 <h2 id="remove-a-node-from-membership-config"><a class="header" href="#remove-a-node-from-membership-config">Remove a node from membership config</a></h2>
 <p>When membership changes, e.g., from a joint config <code>[(1,2,3), (3,4,5)]</code> to uniform config <code>[3,4,5]</code>(assuming the leader is <code>3</code>), the leader
-stops replication to <code>1,2</code> when <code>[3,4,5]</code> is seen(not committed).</p>
+stops replication to <code>1,2</code> when the uniform config <code>[3,4,5]</code> is seen(no need to be committed).</p>
 <p>It is correct because:</p>
 <ul>
 <li>
