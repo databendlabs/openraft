@@ -20,6 +20,7 @@
     - [Vote](./vote.md)
     - [Replication](./replication.md)
       - [Delete-conflicting-logs](./delete_log.md)
+    - [Extended-membership](./extended-membership.md)
     - [Effective Membership](./effective-membership.md)
 
 - [Upgrade Tips](./upgrade-tips.md)

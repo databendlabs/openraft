@@ -63,7 +63,7 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 # Roadmap
 
-- [x] [Extended joint membership](https://datafuselabs.github.io/openraft/dynamic-membership#extended-membership-change-algo)
+- [x] [Extended joint membership](https://datafuselabs.github.io/openraft/extended-membership)
 
 - [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/datafuselabs/openraft/discussions/15);
 

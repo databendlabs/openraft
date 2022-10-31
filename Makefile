@@ -37,7 +37,7 @@ doc:
 guide:
 	mdbook build
 	@echo "doc is built in:"
-	@echo "./guide/book/index.hmlt"
+	@echo "./guide/book/index.html"
 
 lint:
 	cargo fmt
