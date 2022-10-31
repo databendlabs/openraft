@@ -34,6 +34,11 @@ fix:
 doc:
 	cargo doc --all --no-deps
 
+guide:
+	mdbook build
+	@echo "doc is built in:"
+	@echo "./guide/book/index.hmlt"
+
 lint:
 	cargo fmt
 	cargo fmt --manifest-path examples/raft-kv-memstore/Cargo.toml
@@ -50,4 +55,4 @@ lint:
 clean:
 	cargo clean
 
-.PHONY: test fmt lint clean doc
+.PHONY: test fmt lint clean doc guide
