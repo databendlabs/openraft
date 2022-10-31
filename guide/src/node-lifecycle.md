@@ -18,7 +18,7 @@
 
 When membership changes, e.g., from a joint config `[(1,2,3),
 (3,4,5)]` to uniform config `[3,4,5]`(assuming the leader is `3`), the leader
-stops replication to `1,2` when `[3,4,5]` is seen(not committed).
+stops replication to `1,2` when the uniform config `[3,4,5]` is seen(no need to be committed).
 
 It is correct because:
 
