@@ -77,7 +77,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">5.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">5.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.6.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">5.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">5.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html"><strong aria-hidden="true">5.6.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.7.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -204,7 +204,7 @@ In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
 <ul>
 <li><input disabled="" type="checkbox" checked=""/>
-<p><a href="https://datafuselabs.github.io/openraft/dynamic-membership#extended-membership-change-algo">Extended joint membership</a></p>
+<p><a href="https://datafuselabs.github.io/openraft/extended-membership">Extended joint membership</a></p>
 </li>
 <li><input disabled="" type="checkbox"/>
 <p>Reduce the complexity of vote and pre-vote: <a href="https://github.com/datafuselabs/openraft/discussions/15">get rid of pre-vote RPC</a>;</p>
@@ -721,133 +721,7 @@ be terminated safely.</p>
 <p><strong>Note that</strong> An application does not have to wait for the config log to be
 replicated to the node to remove. Because a distributed consensus protocol
 tolerates a minority member crash.</p>
-<h2 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h2>
-<p>Openraft tries to commit one or more membership logs to finally change the
-membership to <code>node_list</code>.
-In every step, the log it tries to commit is:</p>
-<ul>
-<li>
-<p>the <code>node_list</code> itself, if it is safe to change from the previous membership to
-<code>node_list</code> directly.</p>
-</li>
-<li>
-<p>otherwise, a <strong>joint</strong> of the specified <code>node_list</code> and one config in the
-previous membership.</p>
-</li>
-</ul>
-<p>This algo that openraft uses is the so-called <strong>Extended membership change</strong>.</p>
-<blockquote>
-<p>It is a more generalized form of membership change.
-The original 2-step <strong>joint</strong> algo and 1-step algo in raft-paper are all specialized versions of this algo.</p>
-</blockquote>
-<p>This algo provides more flexible membership change than the original joint algo:</p>
-<ul>
-<li>
-<p>The original <strong>Joint</strong> algo:</p>
-<p>The original <strong>joint</strong> algo in raft-paper allows changing membership in an
-alternate pattern of joint membership and uniform membership.
-E.g.,  the membership entry in a log history could be:</p>
-<p><code>c1</code>  →  <code>c1c2</code>  →  <code>c2</code>  →  <code>c2c3</code>  →  <code>c3</code>  ...</p>
-<p>Where:</p>
-<ul>
-<li><code>cᵢ</code> is a uniform membership, such as <code>{a, b, c}</code>;</li>
-<li><code>cᵢcⱼ</code> is a joint of two node lists, such as <code>[{a, b, c}, {x, y, z}]</code>.</li>
-</ul>
-</li>
-<li>
-<p><strong>Extended</strong> algo:</p>
-<p>Extended membership change algo allows changing membership in the
-following way:</p>
-<p><code>c1</code>  →  <code>c1c2c3</code>  →  <code>c3c4</code>  →  <code>c4</code>.</p>
-<p>Or revert to a previous membership:</p>
-<p><code>c1c2c3</code>  →  <code>c1</code>.</p>
-</li>
-</ul>
-<h4 id="flexibility"><a class="header" href="#flexibility">Flexibility</a></h4>
-<p>Another example shows that it is always safe to change membership from one
-to another along the edges in the following diagram:</p>
-<pre><code class="language-text">          c3
-         /  \
-        /    \
-       /      \
-   c1c3 ------ c2c3
-    / \        / \
-   /   \      /   \
-  /     \    /     \
-c1 ----- c1c2 ----- c2
-</code></pre>
-<h4 id="disjoint-memberships"><a class="header" href="#disjoint-memberships">Disjoint memberships</a></h4>
-<p>A counter-intuitive conclusion is that:</p>
-<p><strong>Even when two leaders propose two memberships without intersection, consensus will
-still, be achieved</strong>.</p>
-<p>E.g., given the current membership to be <code>c1c2</code>, if
-<code>L1</code> proposed <code>c1c3</code>,
-<code>L2</code> proposed <code>c2c4</code>.</p>
-<p>There won't be a brain split problem.</p>
-<h4 id="spec-of-extended-membership-change-algo"><a class="header" href="#spec-of-extended-membership-change-algo">Spec of extended membership change algo</a></h4>
-<p>This algo requires four constraints to work correctly:</p>
-<ul>
-<li>
-<p>(0) <strong>use-at-once</strong>:
-The new membership that is appended to log will take effect at once, i.e., openraft
-uses the last seen membership config in the log, no matter it is committed or not.</p>
-</li>
-<li>
-<p>(1) <strong>propose-after-commit</strong>:
-A leader is allowed to propose new membership only when the previous one is
-committed.</p>
-</li>
-<li>
-<p>(2) <strong>old-new-intersect</strong>(safe transition):
-(This is the only constraint that is loosened from the original raft) Any
-quorum in new membership(<code>m'</code>) intersect with any quorum in the old
-committed membership(<code>m</code>):</p>
-<p><code>∀qᵢ ∈ m, ∀qⱼ ∈ m'</code>: <code>qᵢ ∩ qⱼ ≠ ø</code>.</p>
-</li>
-<li>
-<p>(3) <strong>initial-log</strong>:
-A leader has to replicate an initial blank log to a quorum in last seen
-membership to commit all previous logs.</p>
-</li>
-</ul>
-<p>In our implementation, (2) <strong>old-new-intersect</strong> is simplified to:
-The new membership has to contain a config entry that is the same as one in the last
-committed membership.</p>
-<p>E.g., given the last committed one is <code>[{a, b, c}]</code>, then a valid new membership may be:
-a joint membership: <code>[{a, b, c}, {x, y, z}]</code>.</p>
-<p>If the last committed one is <code>[{a, b, c}, {x, y, z}]</code>, a valid new membership
-may be: <code>[{a, b, c}]</code>, or <code>[{x, y, z}]</code>.</p>
-<h3 id="proof-of-correctness"><a class="header" href="#proof-of-correctness">Proof of correctness</a></h3>
-<p>Assumes there was a brain split problem occurred,
-then there are two leaders(<code>L1</code> and <code>L2</code>) proposing different membership(<code>m1</code> and <code>m2</code>(<code>mᵢ = cᵢcⱼ...</code>)):</p>
-<p><code>L1</code>: <code>m1</code>,
-<code>L2</code>: <code>m2</code></p>
-<p>Thus the <code>L1</code> log history and the <code>L2</code> log history diverged.
-Let <code>m0</code> be the last common membership in the log histories:</p>
-<pre><code class="language-text">L1       L2
-
-m1       m2
- \      /
-  \    o   term-2
-   \   |
-    `--o   term-1
-       |
-       m0
-</code></pre>
-<p>From (1) <strong>propose-after-commit</strong>,</p>
-<ul>
-<li><code>L1</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>  in <code>term_1</code>.</li>
-<li><code>L2</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>, in <code>term_2</code>.</li>
-</ul>
-<p>Assumes <code>term_1 &lt; term_2</code>.</p>
-<p>From (3) <strong>initial-log</strong>, <code>L2</code> has at least one log with <code>term_2</code> committed in a
-quorum in <code>m0</code>.</p>
-<p>∵ (2) <strong>old-new-intersect</strong> and <code>term_1 &lt; term_2</code></p>
-<p>∴ log entry <code>m1</code> can never be committed by <code>L1</code>, 
-because log replication or voting will always see a higher <code>term_2</code> on a node in a quorum in <code>m0</code>.</p>
-<p>For the same reason, a candidate with log entry <code>m1</code> can never become a leader.</p>
-<p>∴ It is impossible that there are two leaders that both can commit a log entry.</p>
-<p>QED.</p>
+<p>To read more about openraft's <a href="./extended-membership.html">extended membership algorithm</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="node-life-cycle"><a class="header" href="#node-life-cycle">Node life cycle</a></h1>
 <ul>
 <li>
@@ -1314,6 +1188,133 @@ Thus, the next leader may choose another node <code>B</code> that has higher log
 <h3 id="3-snapshot-replication-does-not-have-to-delete-conflicting-logs"><a class="header" href="#3-snapshot-replication-does-not-have-to-delete-conflicting-logs">3. Snapshot replication does not have to delete conflicting logs</a></h3>
 <p>See: <a href="https://datafuselabs.github.io/openraft/replication.html#necessity-to-delete-conflicting-logs">Deleting-conflicting-logs-when-installing-snapshot</a></p>
 <p>Deleting conflicting logs when installing snapshot is only for clarity.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h1>
+<p>Openraft tries to commit one or more membership logs to finally change the
+membership to <code>node_list</code>.
+In every step, the log it tries to commit is:</p>
+<ul>
+<li>
+<p>the <code>node_list</code> itself, if it is safe to change from the previous membership to
+<code>node_list</code> directly.</p>
+</li>
+<li>
+<p>otherwise, a <strong>joint</strong> of the specified <code>node_list</code> and one config in the
+previous membership.</p>
+</li>
+</ul>
+<p>This algo that openraft uses is the so-called <strong>Extended membership change</strong>.</p>
+<blockquote>
+<p>It is a more generalized form of membership change.
+The original 2-step <strong>joint</strong> algo and 1-step algo in raft-paper are all specialized versions of this algo.</p>
+</blockquote>
+<p>This algo provides more flexible membership change than the original joint algo:</p>
+<ul>
+<li>
+<p>The original <strong>Joint</strong> algo:</p>
+<p>The original <strong>joint</strong> algo in raft-paper allows changing membership in an
+alternate pattern of joint membership and uniform membership.
+E.g.,  the membership entry in a log history could be:</p>
+<p><code>c1</code>  →  <code>c1c2</code>  →  <code>c2</code>  →  <code>c2c3</code>  →  <code>c3</code>  ...</p>
+<p>Where:</p>
+<ul>
+<li><code>cᵢ</code> is a uniform membership, such as <code>{a, b, c}</code>;</li>
+<li><code>cᵢcⱼ</code> is a joint of two node lists, such as <code>[{a, b, c}, {x, y, z}]</code>.</li>
+</ul>
+</li>
+<li>
+<p><strong>Extended</strong> algo:</p>
+<p>Extended membership change algo allows changing membership in the
+following way:</p>
+<p><code>c1</code>  →  <code>c1c2c3</code>  →  <code>c3c4</code>  →  <code>c4</code>.</p>
+<p>Or revert to a previous membership:</p>
+<p><code>c1c2c3</code>  →  <code>c1</code>.</p>
+</li>
+</ul>
+<h2 id="flexibility"><a class="header" href="#flexibility">Flexibility</a></h2>
+<p>Another example shows that it is always safe to change membership from one
+to another along the edges in the following diagram:</p>
+<pre><code class="language-text">          c3
+         /  \
+        /    \
+       /      \
+   c1c3 ------ c2c3
+    / \        / \
+   /   \      /   \
+  /     \    /     \
+c1 ----- c1c2 ----- c2
+</code></pre>
+<h2 id="disjoint-memberships"><a class="header" href="#disjoint-memberships">Disjoint memberships</a></h2>
+<p>A counter-intuitive conclusion is that:</p>
+<p><strong>Even when two leaders propose two memberships without intersection, consensus will
+still, be achieved</strong>.</p>
+<p>E.g., given the current membership to be <code>c1c2</code>, if
+<code>L1</code> proposed <code>c1c3</code>,
+<code>L2</code> proposed <code>c2c4</code>.</p>
+<p>There won't be a brain split problem.</p>
+<h2 id="spec-of-extended-membership-change-algo"><a class="header" href="#spec-of-extended-membership-change-algo">Spec of extended membership change algo</a></h2>
+<p>This algo requires four constraints to work correctly:</p>
+<ul>
+<li>
+<p>(0) <strong>use-at-once</strong>:
+The new membership that is appended to log will take effect at once, i.e., openraft
+uses the last seen membership config in the log, no matter it is committed or not.</p>
+</li>
+<li>
+<p>(1) <strong>propose-after-commit</strong>:
+A leader is allowed to propose new membership only when the previous one is
+committed.</p>
+</li>
+<li>
+<p>(2) <strong>old-new-intersect</strong>(safe transition):
+(This is the only constraint that is loosened from the original raft) Any
+quorum in new membership(<code>m'</code>) intersect with any quorum in the old
+committed membership(<code>m</code>):</p>
+<p><code>∀qᵢ ∈ m, ∀qⱼ ∈ m'</code>: <code>qᵢ ∩ qⱼ ≠ ø</code>.</p>
+</li>
+<li>
+<p>(3) <strong>initial-log</strong>:
+A leader has to replicate an initial blank log to a quorum in last seen
+membership to commit all previous logs.</p>
+</li>
+</ul>
+<p>In our implementation, (2) <strong>old-new-intersect</strong> is simplified to:
+The new membership has to contain a config entry that is the same as one in the last
+committed membership.</p>
+<p>E.g., given the last committed one is <code>[{a, b, c}]</code>, then a valid new membership may be:
+a joint membership: <code>[{a, b, c}, {x, y, z}]</code>.</p>
+<p>If the last committed one is <code>[{a, b, c}, {x, y, z}]</code>, a valid new membership
+may be: <code>[{a, b, c}]</code>, or <code>[{x, y, z}]</code>.</p>
+<h2 id="proof-of-correctness"><a class="header" href="#proof-of-correctness">Proof of correctness</a></h2>
+<p>Assumes there was a brain split problem occurred,
+then there are two leaders(<code>L1</code> and <code>L2</code>) proposing different membership(<code>m1</code> and <code>m2</code>(<code>mᵢ = cᵢcⱼ...</code>)):</p>
+<p><code>L1</code>: <code>m1</code>,
+<code>L2</code>: <code>m2</code></p>
+<p>Thus the <code>L1</code> log history and the <code>L2</code> log history diverged.
+Let <code>m0</code> be the last common membership in the log histories:</p>
+<pre><code class="language-text">L1       L2
+
+m1       m2
+ \      /
+  \    o   term-2
+   \   |
+    `--o   term-1
+       |
+       m0
+</code></pre>
+<p>From (1) <strong>propose-after-commit</strong>,</p>
+<ul>
+<li><code>L1</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>  in <code>term_1</code>.</li>
+<li><code>L2</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>, in <code>term_2</code>.</li>
+</ul>
+<p>Assumes <code>term_1 &lt; term_2</code>.</p>
+<p>From (3) <strong>initial-log</strong>, <code>L2</code> has at least one log with <code>term_2</code> committed in a
+quorum in <code>m0</code>.</p>
+<p>∵ (2) <strong>old-new-intersect</strong> and <code>term_1 &lt; term_2</code></p>
+<p>∴ log entry <code>m1</code> can never be committed by <code>L1</code>, 
+because log replication or voting will always see a higher <code>term_2</code> on a node in a quorum in <code>m0</code>.</p>
+<p>For the same reason, a candidate with log entry <code>m1</code> can never become a leader.</p>
+<p>∴ It is impossible that there are two leaders that both can commit a log entry.</p>
+<p>QED.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="effective-membership"><a class="header" href="#effective-membership">Effective membership</a></h1>
 <p>In openraft a membership config log takes effect as soon as it is seen.</p>
 <p>Thus, the <strong>effective</strong> membership is always the last present one found in log.</p>

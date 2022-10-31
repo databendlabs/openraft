@@ -1,0 +1,304 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js light">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Extended-membership - openraft</title>
+        <!-- Custom HTML head -->
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+        <meta name="description" content="The openraft user guide.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="guide/src/custom.css">
+    </head>
+    <body>
+        <!-- Provide site root to javascript -->
+        <script type="text/javascript">
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script type="text/javascript">
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script type="text/javascript">
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script type="text/javascript">
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">5.3.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">5.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html" class="active"><strong aria-hidden="true">5.6.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.7.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">openraft</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script type="text/javascript">
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="extended-membership-change-algo"><a class="header" href="#extended-membership-change-algo">Extended membership change algo</a></h1>
+<p>Openraft tries to commit one or more membership logs to finally change the
+membership to <code>node_list</code>.
+In every step, the log it tries to commit is:</p>
+<ul>
+<li>
+<p>the <code>node_list</code> itself, if it is safe to change from the previous membership to
+<code>node_list</code> directly.</p>
+</li>
+<li>
+<p>otherwise, a <strong>joint</strong> of the specified <code>node_list</code> and one config in the
+previous membership.</p>
+</li>
+</ul>
+<p>This algo that openraft uses is the so-called <strong>Extended membership change</strong>.</p>
+<blockquote>
+<p>It is a more generalized form of membership change.
+The original 2-step <strong>joint</strong> algo and 1-step algo in raft-paper are all specialized versions of this algo.</p>
+</blockquote>
+<p>This algo provides more flexible membership change than the original joint algo:</p>
+<ul>
+<li>
+<p>The original <strong>Joint</strong> algo:</p>
+<p>The original <strong>joint</strong> algo in raft-paper allows changing membership in an
+alternate pattern of joint membership and uniform membership.
+E.g.,  the membership entry in a log history could be:</p>
+<p><code>c1</code>  →  <code>c1c2</code>  →  <code>c2</code>  →  <code>c2c3</code>  →  <code>c3</code>  ...</p>
+<p>Where:</p>
+<ul>
+<li><code>cᵢ</code> is a uniform membership, such as <code>{a, b, c}</code>;</li>
+<li><code>cᵢcⱼ</code> is a joint of two node lists, such as <code>[{a, b, c}, {x, y, z}]</code>.</li>
+</ul>
+</li>
+<li>
+<p><strong>Extended</strong> algo:</p>
+<p>Extended membership change algo allows changing membership in the
+following way:</p>
+<p><code>c1</code>  →  <code>c1c2c3</code>  →  <code>c3c4</code>  →  <code>c4</code>.</p>
+<p>Or revert to a previous membership:</p>
+<p><code>c1c2c3</code>  →  <code>c1</code>.</p>
+</li>
+</ul>
+<h2 id="flexibility"><a class="header" href="#flexibility">Flexibility</a></h2>
+<p>Another example shows that it is always safe to change membership from one
+to another along the edges in the following diagram:</p>
+<pre><code class="language-text">          c3
+         /  \
+        /    \
+       /      \
+   c1c3 ------ c2c3
+    / \        / \
+   /   \      /   \
+  /     \    /     \
+c1 ----- c1c2 ----- c2
+</code></pre>
+<h2 id="disjoint-memberships"><a class="header" href="#disjoint-memberships">Disjoint memberships</a></h2>
+<p>A counter-intuitive conclusion is that:</p>
+<p><strong>Even when two leaders propose two memberships without intersection, consensus will
+still, be achieved</strong>.</p>
+<p>E.g., given the current membership to be <code>c1c2</code>, if
+<code>L1</code> proposed <code>c1c3</code>,
+<code>L2</code> proposed <code>c2c4</code>.</p>
+<p>There won't be a brain split problem.</p>
+<h2 id="spec-of-extended-membership-change-algo"><a class="header" href="#spec-of-extended-membership-change-algo">Spec of extended membership change algo</a></h2>
+<p>This algo requires four constraints to work correctly:</p>
+<ul>
+<li>
+<p>(0) <strong>use-at-once</strong>:
+The new membership that is appended to log will take effect at once, i.e., openraft
+uses the last seen membership config in the log, no matter it is committed or not.</p>
+</li>
+<li>
+<p>(1) <strong>propose-after-commit</strong>:
+A leader is allowed to propose new membership only when the previous one is
+committed.</p>
+</li>
+<li>
+<p>(2) <strong>old-new-intersect</strong>(safe transition):
+(This is the only constraint that is loosened from the original raft) Any
+quorum in new membership(<code>m'</code>) intersect with any quorum in the old
+committed membership(<code>m</code>):</p>
+<p><code>∀qᵢ ∈ m, ∀qⱼ ∈ m'</code>: <code>qᵢ ∩ qⱼ ≠ ø</code>.</p>
+</li>
+<li>
+<p>(3) <strong>initial-log</strong>:
+A leader has to replicate an initial blank log to a quorum in last seen
+membership to commit all previous logs.</p>
+</li>
+</ul>
+<p>In our implementation, (2) <strong>old-new-intersect</strong> is simplified to:
+The new membership has to contain a config entry that is the same as one in the last
+committed membership.</p>
+<p>E.g., given the last committed one is <code>[{a, b, c}]</code>, then a valid new membership may be:
+a joint membership: <code>[{a, b, c}, {x, y, z}]</code>.</p>
+<p>If the last committed one is <code>[{a, b, c}, {x, y, z}]</code>, a valid new membership
+may be: <code>[{a, b, c}]</code>, or <code>[{x, y, z}]</code>.</p>
+<h2 id="proof-of-correctness"><a class="header" href="#proof-of-correctness">Proof of correctness</a></h2>
+<p>Assumes there was a brain split problem occurred,
+then there are two leaders(<code>L1</code> and <code>L2</code>) proposing different membership(<code>m1</code> and <code>m2</code>(<code>mᵢ = cᵢcⱼ...</code>)):</p>
+<p><code>L1</code>: <code>m1</code>,
+<code>L2</code>: <code>m2</code></p>
+<p>Thus the <code>L1</code> log history and the <code>L2</code> log history diverged.
+Let <code>m0</code> be the last common membership in the log histories:</p>
+<pre><code class="language-text">L1       L2
+
+m1       m2
+ \      /
+  \    o   term-2
+   \   |
+    `--o   term-1
+       |
+       m0
+</code></pre>
+<p>From (1) <strong>propose-after-commit</strong>,</p>
+<ul>
+<li><code>L1</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>  in <code>term_1</code>.</li>
+<li><code>L2</code> must have committed log entry <code>m0</code> to a quorum in <code>m0</code>, in <code>term_2</code>.</li>
+</ul>
+<p>Assumes <code>term_1 &lt; term_2</code>.</p>
+<p>From (3) <strong>initial-log</strong>, <code>L2</code> has at least one log with <code>term_2</code> committed in a
+quorum in <code>m0</code>.</p>
+<p>∵ (2) <strong>old-new-intersect</strong> and <code>term_1 &lt; term_2</code></p>
+<p>∴ log entry <code>m1</code> can never be committed by <code>L1</code>, 
+because log replication or voting will always see a higher <code>term_2</code> on a node in a quorum in <code>m0</code>.</p>
+<p>For the same reason, a candidate with log entry <code>m1</code> can never become a leader.</p>
+<p>∴ It is impossible that there are two leaders that both can commit a log entry.</p>
+<p>QED.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="delete_log.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+                            <a rel="next" href="effective-membership.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="delete_log.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+                    <a rel="next" href="effective-membership.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <script type="text/javascript">
+            window.playground_copyable = true;
+        </script>
+        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
+        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+
+        <!-- Custom JS scripts -->
+    </body>
+</html>
