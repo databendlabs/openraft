@@ -17,7 +17,7 @@ mod t16_change_membership_cases;
 mod t20_change_membership;
 mod t25_elect_with_new_config;
 mod t30_commit_joint_config;
-mod t30_step_down;
+mod t30_remove_leader;
 mod t40_removed_follower;
 mod t45_remove_unreachable_follower;
 mod t99_issue_471_adding_learner_uses_uninit_leader_id;

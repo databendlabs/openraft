@@ -863,11 +863,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "trace", skip(self, tx))]
     pub(crate) fn reject_with_forward_to_leader<T, E>(&self, tx: RaftRespTx<T, E>)
     where E: From<ForwardToLeader<C::NodeId, C::Node>> {
-        let l = self.current_leader();
-        let err = ForwardToLeader {
-            leader_id: l,
-            leader_node: self.get_leader_node(l),
-        };
+        let mut leader_id = self.current_leader();
+        let leader_node = self.get_leader_node(leader_id);
+
+        // Leader is no longer a node in the membership config.
+        if leader_node.is_none() {
+            leader_id = None;
+        }
+
+        let err = ForwardToLeader { leader_id, leader_node };
 
         let _ = tx.send(Err(err.into()));
     }
