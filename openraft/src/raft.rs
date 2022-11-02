@@ -31,7 +31,7 @@ use crate::error::Fatal;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::error::VoteError;
-use crate::membership::IntoOptionNodes;
+use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::node::Node;
@@ -398,11 +398,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// with different config will result in split brain condition.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn initialize<T>(&self, members: T) -> Result<(), InitializeError<C::NodeId, C::Node>>
-    where T: IntoOptionNodes<C::NodeId, C::Node> + Debug {
+    where T: IntoNodes<C::NodeId, C::Node> + Debug {
         let (tx, rx) = oneshot::channel();
         self.call_core(
             RaftMsg::Initialize {
-                members: members.into_option_nodes(),
+                members: members.into_nodes(),
                 tx,
             },
             rx,
