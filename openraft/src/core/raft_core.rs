@@ -326,7 +326,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             };
 
             let my_id = self.id;
-            let target_node = self.engine.state.membership_state.effective.get_node(&target).clone();
+            // Safe unwrap(): target is in membership
+            let target_node = self.engine.state.membership_state.effective.get_node(&target).unwrap().clone();
             let mut client = match self.network.new_client(target, &target_node).await {
                 Ok(n) => n,
                 Err(e) => {
@@ -891,7 +892,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     pub(crate) fn get_leader_node(&self, leader_id: Option<C::NodeId>) -> Option<C::Node> {
-        leader_id.map(|id| self.engine.state.membership_state.effective.get_node(&id).clone())
+        let leader_id = match leader_id {
+            None => return None,
+            Some(x) => x,
+        };
+
+        self.engine.state.membership_state.effective.get_node(&leader_id).cloned()
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -979,7 +985,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         target: C::NodeId,
         matched: Option<LogId<C::NodeId>>,
     ) -> Result<ReplicationStream<C::NodeId>, N::ConnectionError> {
-        let target_node = self.engine.state.membership_state.effective.get_node(&target);
+        // Safe unwrap(): target must be in membership
+        let target_node = self.engine.state.membership_state.effective.get_node(&target).unwrap();
+
         let membership_log_id = self.engine.state.membership_state.effective.log_id;
         let network = self.network.new_client(target, target_node).await?;
 
@@ -1125,7 +1133,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
 
             let req = vote_req.clone();
-            let target_node = self.engine.state.membership_state.effective.get_node(&target).clone();
+
+            // Safe unwrap(): target must be in membership
+            let target_node = self.engine.state.membership_state.effective.get_node(&target).unwrap().clone();
             let mut client = match self.network.new_client(target, &target_node).await {
                 Ok(n) => n,
                 Err(err) => {

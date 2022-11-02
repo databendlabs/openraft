@@ -151,7 +151,7 @@ where
     }
 
     /// Get a the node(either voter or learner) by node id.
-    pub fn get_node(&self, node_id: &NID) -> &N {
+    pub fn get_node(&self, node_id: &NID) -> Option<&N> {
         self.membership.get_node(node_id)
     }
 
