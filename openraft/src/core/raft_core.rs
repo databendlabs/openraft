@@ -477,14 +477,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         let curr = &self.engine.state.membership_state.effective.membership;
-        let res = curr.add_learner(target, node);
-        let new_membership = match res {
-            Ok(x) => x,
-            Err(e) => {
-                let _ = tx.send(Err(AddLearnerError::MissingNodeInfo(e)));
-                return Ok(());
-            }
-        };
+        let new_membership = curr.add_learner(target, node);
 
         tracing::debug!(?new_membership, "new_membership with added learner: {}", target);
 
@@ -538,17 +531,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let old_members = mem.voter_ids().collect::<BTreeSet<_>>();
         let only_in_new = members.difference(&old_members);
 
-        let new_config = {
-            let res = curr.next_safe(members.clone(), turn_to_learner);
-            match res {
-                Ok(x) => x,
-                Err(e) => {
-                    let change_err = ChangeMembershipError::MissingNodeInfo(e);
-                    let _ = tx.send(Err(ClientWriteError::ChangeMembershipError(change_err)));
-                    return Ok(());
-                }
-            }
-        };
+        let new_config = curr.next_safe(members.clone(), turn_to_learner);
 
         tracing::debug!(?new_config, "new_config");
 
