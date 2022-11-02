@@ -4,7 +4,6 @@ use std::collections::BTreeSet;
 
 use maplit::btreemap;
 
-use crate::error::MissingNodeInfo;
 use crate::membership::NodeRole;
 use crate::node::Node;
 use crate::quorum::AsJoint;
@@ -83,8 +82,7 @@ where
     fn from(b: BTreeMap<NID, N>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
 
-        // Safe unwrap: every node-id in `member_ids` present in `b`.
-        Membership::with_nodes(vec![member_ids], b).unwrap()
+        Membership::with_nodes(vec![member_ids], b)
     }
 }
 
@@ -159,25 +157,26 @@ where
     /// Create a new Membership of multiple configs and optional node infos.
     ///
     /// The node infos `nodes` can be:
-    /// - a simple `()`, if there are no non-member nodes and no node infos are provided,
-    /// - `BTreeSet<NodeId>` to specify additional learner node ids without node infos provided,
-    /// - `BTreeMap<NodeId, Node>` or `BTreeMap<NodeId, Option<Node>>` to specify learner nodes with node infos. Node
-    ///   ids not in `configs` are learner node ids. In this case, every node id in `configs` has to present in `nodes`
-    ///   or an error will be returned.
-    pub(crate) fn with_nodes<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Result<Self, MissingNodeInfo<NID>>
+    /// - a simple `()`, if there are no non-voter(learner) nodes,
+    /// - `BTreeSet<NodeId>` provides learner node ids whose `Node` data are `Node::default()`,
+    /// - `BTreeMap<NodeId, Node>` provides nodes for every node id. Node ids that are not in `configs` are learners.
+    ///
+    /// Every node id in `configs` has to present in `nodes`.
+    pub(crate) fn with_nodes<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
     where T: IntoOptionNodes<NID, N> {
         let nodes = nodes.into_option_nodes();
 
-        for voter_id in configs.as_joint().ids() {
-            if !nodes.contains_key(&voter_id) {
-                return Err(MissingNodeInfo {
-                    node_id: voter_id,
-                    reason: format!("is not in cluster: {:?}", nodes.keys().cloned().collect::<Vec<_>>()),
-                });
+        if cfg!(debug_assertions) {
+            for voter_id in configs.as_joint().ids() {
+                assert!(
+                    nodes.contains_key(&voter_id),
+                    "nodes has to contain voter id {}",
+                    voter_id
+                );
             }
         }
 
-        Ok(Membership { configs, nodes })
+        Membership { configs, nodes }
     }
 
     /// Extends nodes btreemap with another.
@@ -202,14 +201,12 @@ where
         self.configs.len() > 1
     }
 
-    pub(crate) fn add_learner(&self, node_id: NID, node: N) -> Result<Self, MissingNodeInfo<NID>> {
+    pub(crate) fn add_learner(&self, node_id: NID, node: N) -> Self {
         let configs = self.configs.clone();
 
         let nodes = Self::extend_nodes(self.nodes.clone(), &btreemap! {node_id=>node});
 
-        let m = Self::with_nodes(configs, nodes)?;
-
-        Ok(m)
+        Self::with_nodes(configs, nodes)
     }
 }
 
@@ -299,7 +296,7 @@ where
     ///     curr = next;
     /// }
     /// ```
-    pub(crate) fn next_safe<T>(&self, goal: T, turn_to_learner: bool) -> Result<Self, MissingNodeInfo<NID>>
+    pub(crate) fn next_safe<T>(&self, goal: T, turn_to_learner: bool) -> Self
     where T: IntoOptionNodes<NID, N> {
         let goal = goal.into_option_nodes();
 
@@ -318,8 +315,7 @@ where
             }
         };
 
-        let m = Membership::with_nodes(config, nodes)?;
-        Ok(m)
+        Membership::with_nodes(config, nodes)
     }
 
     /// Build a QuorumSet from current joint config

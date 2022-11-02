@@ -5,7 +5,6 @@ use std::fmt::Formatter;
 use maplit::btreemap;
 use maplit::btreeset;
 
-use crate::error::MissingNodeInfo;
 use crate::Membership;
 use crate::MessageSummary;
 
@@ -47,7 +46,7 @@ fn test_membership_summary() -> anyhow::Result<()> {
         3=>node("127.0.0.3", "k3"),
         4=>node("127.0.0.4", "k4"),
 
-    })?;
+    });
     assert_eq!(
         "members:[{1:{TestNode { addr: \"127.0.0.1\", data: {\"k1\": \"k1\"} }},2:{TestNode { addr: \"127.0.0.2\", data: {\"k2\": \"k2\"} }}},{3:{TestNode { addr: \"127.0.0.3\", data: {\"k3\": \"k3\"} }}}],learners:[4:{TestNode { addr: \"127.0.0.4\", data: {\"k4\": \"k4\"} }}]",
         m.summary()
@@ -90,7 +89,7 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
     // test multi membership with learners
     {
         let m1_2 = Membership::<u64, ()>::new(vec![btreeset! {1}], Some(btreeset! {2}));
-        let m1_23 = m1_2.add_learner(3, ())?;
+        let m1_23 = m1_2.add_learner(3, ());
 
         // test learner and membership
         assert_eq!(vec![1], m1_2.voter_ids().collect::<Vec<_>>());
@@ -101,12 +100,12 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
 
         // Adding a member as learner has no effect:
 
-        let m = m1_23.add_learner(1, ())?;
+        let m = m1_23.add_learner(1, ());
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
 
         // Adding a existent learner has no effect:
 
-        let m = m1_23.add_learner(3, ())?;
+        let m = m1_23.add_learner(3, ());
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
         assert_eq!(btreeset! {2,3}, m.learner_ids().collect());
     }
@@ -131,21 +130,21 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
     let m_1_2 = Membership::<u64, TestNode>::with_nodes(
         vec![btreeset! {1}, btreeset! {2}],
         btreemap! {1=>node("1"), 2=>node("2")},
-    )?;
+    );
 
     // Add learner that presents in old cluster has no effect.
 
-    let res = m_1_2.add_learner(1, node("3"))?;
+    let res = m_1_2.add_learner(1, node("3"));
     assert_eq!(m_1_2, res);
 
     // Success to add a learner
 
-    let m_1_2_3 = m_1_2.add_learner(3, node("3"))?;
+    let m_1_2_3 = m_1_2.add_learner(3, node("3"));
     assert_eq!(
         Membership::<u64, TestNode>::with_nodes(
             vec![btreeset! {1}, btreeset! {2}],
             btreemap! {1=>node("1"), 2=>node("2"), 3=>node("3")}
-        )?,
+        ),
         m_1_2_3
     );
 
@@ -181,29 +180,28 @@ fn test_membership_with_nodes() -> anyhow::Result<()> {
     let node = TestNode::default;
     let with_nodes = |nodes| Membership::<u64, TestNode>::with_nodes(vec![btreeset! {1}, btreeset! {2}], nodes);
 
-    let res = with_nodes(btreemap! {1=>node(), 2=>node()})?;
+    let res = with_nodes(btreemap! {1=>node(), 2=>node()});
     assert_eq!(
         btreemap! {1=>node(), 2=>node()},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
     );
 
-    let res = with_nodes(btreemap! {1=>node(), 2=>node(),3=>node()})?;
+    let res = with_nodes(btreemap! {1=>node(), 2=>node(),3=>node()});
     assert_eq!(
         btreemap! {1=>node(), 2=>node(), 3=>node()},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
     );
 
-    // errors:
-    let res = with_nodes(btreemap! {1=>node()});
-    assert_eq!(
-        Err(MissingNodeInfo {
-            node_id: 2,
-            reason: "is not in cluster: [1]".to_string(),
-        }),
-        res
-    );
-
     Ok(())
+}
+
+// TODO: rename
+#[test]
+#[should_panic]
+fn test_membership_with_nodes_panic() {
+    // Panic if debug_assertions is enabled:
+    // voter ids set is {1,2}, while the nodes set is {1}
+    Membership::<u64, TestNode>::with_nodes(vec![btreeset! {1}, btreeset! {2}], btreemap! {1=>TestNode::default()});
 }
 
 #[test]
@@ -217,11 +215,11 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
     let m12 = Membership::<u64, ()>::new(vec![c1(), c2()], None);
     let m23 = Membership::<u64, ()>::new(vec![c2(), c3()], None);
 
-    assert_eq!(m1, m1.next_safe(c1(), false)?);
-    assert_eq!(m12, m1.next_safe(c2(), false)?);
-    assert_eq!(m1, m12.next_safe(c1(), false)?);
-    assert_eq!(m2, m12.next_safe(c2(), false)?);
-    assert_eq!(m23, m12.next_safe(c3(), false)?);
+    assert_eq!(m1, m1.next_safe(c1(), false));
+    assert_eq!(m12, m1.next_safe(c2(), false));
+    assert_eq!(m1, m12.next_safe(c1(), false));
+    assert_eq!(m2, m12.next_safe(c2(), false));
+    assert_eq!(m23, m12.next_safe(c3(), false));
 
     // Turn removed members to learners
 
@@ -229,7 +227,7 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
     let learners = || btreeset! {1, 2, 3, 4, 5};
     let m23_with_learners_old = Membership::<u64, ()>::new(vec![c2(), c3()], Some(old_learners()));
     let m23_with_learners_new = Membership::<u64, ()>::new(vec![c3()], Some(learners()));
-    assert_eq!(m23_with_learners_new, m23_with_learners_old.next_safe(c3(), true)?);
+    assert_eq!(m23_with_learners_new, m23_with_learners_old.next_safe(c3(), true));
 
     Ok(())
 }
@@ -244,11 +242,11 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
     let c1 = || btreeset! {1};
     let c2 = || btreeset! {2};
 
-    let initial = Membership::<u64, TestNode>::with_nodes(vec![c1(), c2()], btreemap! {1=>node("1"), 2=>node("2")})?;
+    let initial = Membership::<u64, TestNode>::with_nodes(vec![c1(), c2()], btreemap! {1=>node("1"), 2=>node("2")});
 
     // joint [{2}, {1,2}]
 
-    let res = initial.next_safe(btreeset! {1,2}, false)?;
+    let res = initial.next_safe(btreeset! {1,2}, false);
     assert_eq!(
         btreemap! {1=>node("1"), 2=>node("2")},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
@@ -256,7 +254,7 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
 
     // Removed to learner
 
-    let res = initial.next_safe(btreeset! {1}, true)?;
+    let res = initial.next_safe(btreeset! {1}, true);
     assert_eq!(
         btreemap! {1=>node("1"), 2=>node("2")},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()

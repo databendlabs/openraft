@@ -147,9 +147,6 @@ pub enum ChangeMembershipError<NID: NodeId> {
 
     #[error(transparent)]
     LearnerIsLagging(#[from] LearnerIsLagging<NID>),
-
-    #[error(transparent)]
-    MissingNodeInfo(#[from] MissingNodeInfo<NID>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -162,9 +159,7 @@ where
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader<NID, N>),
 
-    #[error(transparent)]
-    MissingNodeInfo(#[from] MissingNodeInfo<NID>),
-
+    // TODO: do we really need this error? An app may check an target node if it wants to.
     #[error(transparent)]
     NetworkError(#[from] NetworkError),
 
@@ -203,9 +198,6 @@ where
 
     #[error(transparent)]
     NotAMembershipEntry(#[from] NotAMembershipEntry),
-
-    #[error(transparent)]
-    MissingNodeInfo(#[from] MissingNodeInfo<NID>),
 
     #[error(transparent)]
     Fatal(#[from] Fatal<NID>),
@@ -461,15 +453,6 @@ pub struct LearnerIsLagging<NID: NodeId> {
 pub struct NotAllowed<NID: NodeId> {
     pub last_log_id: Option<LogId<NID>>,
     pub vote: Vote<NID>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("node {node_id} {reason}")]
-// TODO: remove it
-pub struct MissingNodeInfo<NID: NodeId> {
-    pub node_id: NID,
-    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
