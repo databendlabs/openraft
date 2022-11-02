@@ -13,41 +13,54 @@ use crate::quorum::QuorumSet;
 use crate::MessageSummary;
 use crate::NodeId;
 
-/// Convert other types into the internal data structure for node infos
-pub trait IntoOptionNodes<NID, N>
+/// Convert types into a map of `Node`.
+pub trait IntoNodes<NID, N>
 where
     N: Node,
     NID: NodeId,
 {
-    fn into_option_nodes(self) -> BTreeMap<NID, N>;
+    fn into_nodes(self) -> BTreeMap<NID, N>;
 }
 
-impl<NID, N> IntoOptionNodes<NID, N> for ()
+impl<NID, N> IntoNodes<NID, N> for ()
 where
     N: Node,
     NID: NodeId,
 {
-    fn into_option_nodes(self) -> BTreeMap<NID, N> {
+    fn into_nodes(self) -> BTreeMap<NID, N> {
         btreemap! {}
     }
 }
 
-impl<NID, N> IntoOptionNodes<NID, N> for BTreeSet<NID>
+impl<NID, N> IntoNodes<NID, N> for BTreeSet<NID>
 where
     N: Node,
     NID: NodeId,
 {
-    fn into_option_nodes(self) -> BTreeMap<NID, N> {
+    fn into_nodes(self) -> BTreeMap<NID, N> {
         self.into_iter().map(|node_id| (node_id, N::default())).collect()
     }
 }
 
-impl<NID, N> IntoOptionNodes<NID, N> for BTreeMap<NID, N>
+impl<NID, N> IntoNodes<NID, N> for Option<BTreeSet<NID>>
 where
     N: Node,
     NID: NodeId,
 {
-    fn into_option_nodes(self) -> BTreeMap<NID, N> {
+    fn into_nodes(self) -> BTreeMap<NID, N> {
+        match self {
+            None => BTreeMap::new(),
+            Some(s) => s.into_iter().map(|node_id| (node_id, N::default())).collect(),
+        }
+    }
+}
+
+impl<NID, N> IntoNodes<NID, N> for BTreeMap<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
+    fn into_nodes(self) -> BTreeMap<NID, N> {
         self
     }
 }
@@ -81,7 +94,6 @@ where
 {
     fn from(b: BTreeMap<NID, N>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
-
         Membership::with_nodes(vec![member_ids], b)
     }
 }
@@ -138,18 +150,13 @@ where
 {
     /// Create a new Membership of multiple configs(joint) and optionally a set of learner node ids.
     ///
-    /// A node id that is in `node_ids` but is not in `configs` is a **learner**.
-    pub fn new(configs: Vec<BTreeSet<NID>>, node_ids: Option<BTreeSet<NID>>) -> Self {
+    /// A node id that is in `nodes` but is not in `configs` is a **learner**.
+    ///
+    /// An node id present in `configs` but not in `nodes` is filled with default value.
+    pub fn new<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
+    where T: IntoNodes<NID, N> {
         let voter_ids = configs.as_joint().ids().collect::<BTreeSet<_>>();
-
-        let nodes = match node_ids {
-            None => {
-                btreemap! {}
-            }
-            Some(x) => x.into_option_nodes(),
-        };
-
-        let nodes = Self::extend_nodes(nodes, &voter_ids.into_option_nodes());
+        let nodes = Self::extend_nodes(nodes.into_nodes(), &voter_ids.into_nodes());
 
         Membership { configs, nodes }
     }
@@ -161,10 +168,10 @@ where
     /// - `BTreeSet<NodeId>` provides learner node ids whose `Node` data are `Node::default()`,
     /// - `BTreeMap<NodeId, Node>` provides nodes for every node id. Node ids that are not in `configs` are learners.
     ///
-    /// Every node id in `configs` has to present in `nodes`.
+    /// Every node id in `configs` has to present in `nodes`. This is the only difference from [`Membership::new`].
     pub(crate) fn with_nodes<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
-    where T: IntoOptionNodes<NID, N> {
-        let nodes = nodes.into_option_nodes();
+    where T: IntoNodes<NID, N> {
+        let nodes = nodes.into_nodes();
 
         if cfg!(debug_assertions) {
             for voter_id in configs.as_joint().ids() {
@@ -297,8 +304,8 @@ where
     /// }
     /// ```
     pub(crate) fn next_safe<T>(&self, goal: T, turn_to_learner: bool) -> Self
-    where T: IntoOptionNodes<NID, N> {
-        let goal = goal.into_option_nodes();
+    where T: IntoNodes<NID, N> {
+        let goal = goal.into_nodes();
 
         let goal_ids = goal.keys().cloned().collect::<BTreeSet<_>>();
 

@@ -12,7 +12,7 @@ mod bench;
 #[cfg(test)] mod membership_test;
 
 pub use effective_membership::EffectiveMembership;
-pub use membership::IntoOptionNodes;
+pub use membership::IntoNodes;
 pub use membership::Membership;
 pub use membership_state::MembershipState;
 pub(crate) use node_type::NodeRole;
