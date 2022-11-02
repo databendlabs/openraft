@@ -1,4 +1,3 @@
-use core::option::Option;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
@@ -117,7 +116,7 @@ where
                 }
                 res.push(format!("{}", node_id));
 
-                let n = self.get_node(node_id);
+                let n = self.get_node(node_id).unwrap();
                 res.push(format!(":{{{:?}}}", n));
             }
             res.push("}".to_string());
@@ -135,7 +134,7 @@ where
 
             res.push(format!("{}", learner_id));
 
-            let n = self.get_node(learner_id);
+            let n = self.get_node(learner_id).unwrap();
             res.push(format!(":{{{:?}}}", n));
         }
         res.push("]".to_string());
@@ -262,8 +261,8 @@ where
     }
 
     /// Get a the node(either voter or learner) by node id.
-    pub(crate) fn get_node(&self, node_id: &NID) -> &N {
-        &self.nodes[node_id]
+    pub(crate) fn get_node(&self, node_id: &NID) -> Option<&N> {
+        self.nodes.get(node_id)
     }
 
     /// Returns an Iterator of all nodes(voters and learners).
