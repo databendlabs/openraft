@@ -321,7 +321,7 @@ impl RocksStore {
             .map_err(|e| StorageIOError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
 
         self.db
-            .put_cf(self.store(), M::KEY, &json_value)
+            .put_cf(self.store(), M::KEY, json_value)
             .map_err(|e| StorageIOError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
 
         Ok(())
