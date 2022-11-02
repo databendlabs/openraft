@@ -3,6 +3,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use memstore::ClientRequest;
+use memstore::IntoMemClientRequest;
+use openraft::error::ClientWriteError;
 use openraft::Config;
 use openraft::LeaderId;
 use openraft::LogId;
@@ -16,7 +19,7 @@ use crate::fixtures::RaftRouter;
 /// - Then the leader should step down after joint log is committed.
 /// - Check logs on other node.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn step_down() -> Result<()> {
+async fn remove_leader() -> Result<()> {
     // Setup test dependencies.
     let config = Arc::new(
         Config {
@@ -100,6 +103,79 @@ async fn step_down() -> Result<()> {
             1, 2, 3
         ]]);
         assert!(!cfg.is_in_joint_consensus());
+    }
+
+    Ok(())
+}
+
+/// Change membership from {0,1,2} to {2}. Access {2} at once.
+///
+/// It should not respond a ForwardToLeader error that pointing to the removed leader.
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn remove_leader_access_new_cluster() -> Result<()> {
+    // Setup test dependencies.
+    let config = Arc::new(
+        Config {
+            enable_heartbeat: false,
+            enable_elect: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
+
+    let orig_leader = 0;
+
+    tracing::info!("--- change membership 012 to 2");
+    {
+        let node = router.get_raft_handle(&orig_leader)?;
+        node.change_membership(btreeset![2], true, false).await?;
+        // 2 change_membership logs
+        log_index += 2;
+
+        router
+            .wait(&2, timeout())
+            .log(Some(log_index), "new leader node-2 commits 2 membership log")
+            .await?;
+    }
+
+    tracing::info!("--- old leader commits 2 membership log");
+    {
+        router
+            .wait(&orig_leader, timeout())
+            .log(Some(log_index), "old leader commits 2 membership log")
+            .await?;
+    }
+
+    let res = router.send_client_request(2, ClientRequest::make_request("foo", 1)).await;
+    match res {
+        Ok(_) => {
+            unreachable!("expect error");
+        }
+        Err(cli_err) => match cli_err {
+            ClientWriteError::ForwardToLeader(fwd) => {
+                assert!(fwd.leader_id.is_none());
+                assert!(fwd.leader_node.is_none());
+            }
+            _ => {
+                unreachable!("expect ForwardToLeader");
+            }
+        },
+    }
+
+    tracing::info!("--- elect node-2, handle write");
+    {
+        let n2 = router.get_raft_handle(&2)?;
+        n2.enable_elect(true);
+        n2.wait(timeout()).state(ServerState::Leader, "node-2 elect itself").await?;
+        log_index += 1;
+
+        router.send_client_request(2, ClientRequest::make_request("foo", 1)).await?;
+        log_index += 1;
+
+        n2.wait(timeout()).log(Some(log_index), "node-2 become leader and handle write request").await?;
     }
 
     Ok(())

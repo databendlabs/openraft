@@ -664,7 +664,7 @@ where
         Ok(count as u64)
     }
 
-    async fn send_client_request(
+    pub async fn send_client_request(
         &self,
         target: C::NodeId,
         req: C::D,
