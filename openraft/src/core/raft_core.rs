@@ -152,10 +152,10 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) leader_data: Option<LeaderData<C>>,
 
     /// The node's current snapshot state.
-    pub(crate) snapshot_state: SnapshotState<C, S::SnapshotData>,
+    pub(crate) snapshot_state: SnapshotState<C, S::SnapshotWriter>,
 
     /// Received snapshot that are ready to install.
-    pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<S::SnapshotData>>,
+    pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<S::SnapshotWriter>>,
 
     /// The time to elect if a follower does not receive any append-entry message.
     pub(crate) next_election_time: VoteWiseTime<C::NodeId>,
@@ -1470,7 +1470,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self, tx))]
     async fn handle_needs_snapshot(
         &mut self,
-        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotData>>,
+        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotReader>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         // Check for existence of current snapshot.
         let current_snapshot_opt = self.storage.get_current_snapshot().await?;

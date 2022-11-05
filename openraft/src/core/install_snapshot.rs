@@ -57,7 +57,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // It's Streaming.
 
-        let done = req.done;
+        let done = req.data.is_none();
         let req_meta = req.meta.clone();
 
         // Changed to another stream. re-init snapshot state.
@@ -132,13 +132,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let mut snapshot_data = streaming.snapshot_data;
 
-        snapshot_data.as_mut().shutdown().await.map_err(|e| StorageError::IO {
-            source: StorageIOError::new(
-                ErrorSubject::Snapshot(meta.signature()),
-                ErrorVerb::Write,
-                AnyError::new(&e),
-            ),
-        })?;
+        // snapshot_data.as_mut().shutdown().await.map_err(|e| StorageError::IO {
+        //     source: StorageIOError::new(
+        //         ErrorSubject::Snapshot(meta.signature()),
+        //         ErrorVerb::Write,
+        //         AnyError::new(&e),
+        //     ),
+        // })?;
 
         // Buffer the snapshot data, let Engine decide to install it or to cancel it.
         self.received_snapshot.insert(meta.snapshot_id.clone(), snapshot_data);

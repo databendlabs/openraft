@@ -79,6 +79,9 @@ pub trait RaftTypeConfig:
     /// Application-specific response data returned by the state machine.
     type R: AppDataResponse;
 
+    /// Application-specific snapshot data returned by the state machine.
+    type SD: AppData;
+
     /// A Raft node's ID.
     type NodeId: NodeId;
 
@@ -927,7 +930,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         target: C::NodeId,
 
         /// The response channel for delivering the snapshot data.
-        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotData>>,
+        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotReader>>,
 
         /// Which ServerState sent this message
         vote: Vote<C::NodeId>,
@@ -1174,22 +1177,19 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
 
     /// The byte offset where this chunk of data is positioned in the snapshot file.
     pub offset: u64,
-    /// The raw bytes of the snapshot chunk, starting at `offset`.
-    pub data: Vec<u8>,
 
-    /// Will be `true` if this is the last chunk in the snapshot.
-    pub done: bool,
+    /// The snapshot data chunk. If `None` then the snapshot has finished sending.
+    pub data: Option<C::SD>,
 }
 
 impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSnapshotRequest<C> {
     fn summary(&self) -> String {
         format!(
-            "vote={}, meta={:?}, offset={}, len={}, done={}",
+            "vote={}, meta={:?}, offset={}, done={}",
             self.vote,
             self.meta,
             self.offset,
-            self.data.len(),
-            self.done
+            self.data.is_none()
         )
     }
 }

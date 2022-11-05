@@ -112,7 +112,9 @@ where
     T: RaftStorage<C>,
     C: RaftTypeConfig,
 {
-    type SnapshotData = T::SnapshotData;
+    type SnapshotReader = T::SnapshotReader;
+
+    type SnapshotWriter = T::SnapshotWriter;
 
     type LogReader = LogReaderExt<C, T>;
 
@@ -168,7 +170,7 @@ where
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<C::NodeId>> {
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotWriter>, StorageError<C::NodeId>> {
         self.inner().begin_receiving_snapshot().await
     }
 
@@ -176,7 +178,7 @@ where
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<C::NodeId, C::Node>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<Self::SnapshotWriter>,
     ) -> Result<(), StorageError<C::NodeId>> {
         self.inner().install_snapshot(meta, snapshot).await
     }
@@ -184,7 +186,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<C::NodeId, C::Node, Self::SnapshotData>>, StorageError<C::NodeId>> {
+    ) -> Result<Option<Snapshot<C::NodeId, C::Node, Self::SnapshotReader>>, StorageError<C::NodeId>> {
         self.inner().get_current_snapshot().await
     }
 
@@ -227,11 +229,11 @@ pub struct SnapshotBuilderExt<C: RaftTypeConfig, T: RaftStorage<C>> {
 }
 
 #[async_trait]
-impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftSnapshotBuilder<C, T::SnapshotData> for SnapshotBuilderExt<C, T> {
+impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftSnapshotBuilder<C, T::SnapshotReader> for SnapshotBuilderExt<C, T> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
-    ) -> Result<Snapshot<C::NodeId, C::Node, T::SnapshotData>, StorageError<C::NodeId>> {
+    ) -> Result<Snapshot<C::NodeId, C::Node, T::SnapshotReader>, StorageError<C::NodeId>> {
         self.inner.build_snapshot().await
     }
 }

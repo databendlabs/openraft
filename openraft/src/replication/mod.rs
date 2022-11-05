@@ -1,11 +1,8 @@
 //! Replication stream.
-
-use std::io::SeekFrom;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncSeekExt;
+use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -31,8 +28,6 @@ use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::LogIndexOptionExt;
 use crate::storage::RaftLogReader;
 use crate::storage::Snapshot;
-use crate::ErrorSubject;
-use crate::ErrorVerb;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -41,7 +36,6 @@ use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
-use crate::ToStorageResult;
 use crate::Vote;
 
 /// The handle to a spawned replication stream.
@@ -656,7 +650,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[tracing::instrument(level = "debug", skip(self))]
     async fn wait_for_snapshot(
         &mut self,
-    ) -> Result<Snapshot<C::NodeId, C::Node, S::SnapshotData>, ReplicationError<C::NodeId, C::Node>> {
+    ) -> Result<Snapshot<C::NodeId, C::Node, S::SnapshotReader>, ReplicationError<C::NodeId, C::Node>> {
         // Ask raft core for a snapshot.
         // - If raft core has a ready snapshot, it sends back through tx.
         // - Otherwise raft core starts a new task taking snapshot, and **close** `tx` when finished. Thus there has to
@@ -716,40 +710,33 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(
         &mut self,
-        mut snapshot: Snapshot<C::NodeId, C::Node, S::SnapshotData>,
+        mut snapshot: Snapshot<C::NodeId, C::Node, S::SnapshotReader>,
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
-        let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
+        // let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
 
-        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
-
+        // offset is used to keep track of the number of requests sent
         let mut offset = 0;
 
-        let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
-
         loop {
-            // Build the RPC.
-            snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
-
-            let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
-
-            let done = (offset + n_read as u64) == end; // If bytes read == 0, then we're done.
-            let req = InstallSnapshotRequest {
-                vote: self.vote,
-                meta: snapshot.meta.clone(),
-                offset,
-                data: Vec::from(&buf[..n_read]),
-                done,
+            let req = match snapshot.snapshot.next().await {
+                Some(snapshot_part) => InstallSnapshotRequest {
+                    vote: self.vote,
+                    meta: snapshot.meta.clone(),
+                    offset,
+                    data: Some(snapshot_part),
+                },
+                None => InstallSnapshotRequest {
+                    vote: self.vote,
+                    meta: snapshot.meta.clone(),
+                    offset,
+                    data: None,
+                },
             };
-            buf.clear();
+
+            let done = req.data.is_some();
 
             // Send the RPC over to the target.
-            tracing::debug!(
-                snapshot_size = req.data.len(),
-                req.offset,
-                end,
-                req.done,
-                "sending snapshot chunk"
-            );
+            tracing::debug!(req.offset, done, "sending snapshot chunk");
 
             let res = timeout(self.install_snapshot_timeout, self.network.send_install_snapshot(req)).await;
 
@@ -797,7 +784,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             }
 
             // Everything is good, so update offset for sending the next chunk.
-            offset += n_read as u64;
+            offset += 1;
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
             self.try_drain_raft_rx().await?;

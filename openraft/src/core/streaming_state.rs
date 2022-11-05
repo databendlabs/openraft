@@ -1,8 +1,7 @@
-use std::io::SeekFrom;
 use std::marker::PhantomData;
 
-use tokio::io::AsyncSeek;
-use tokio::io::AsyncSeekExt;
+use futures::Sink;
+use futures::SinkExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
@@ -26,7 +25,7 @@ pub(crate) struct StreamingState<C: RaftTypeConfig, SD> {
 }
 
 impl<C: RaftTypeConfig, SD> StreamingState<C, SD>
-where SD: AsyncSeek + AsyncWrite + Unpin
+where SD: Sink<C::SD, Error = std::io::Error> + Unpin
 {
     pub(crate) fn new(snapshot_id: SnapshotId, snapshot_data: Box<SD>) -> Self {
         Self {
@@ -43,26 +42,28 @@ where SD: AsyncSeek + AsyncWrite + Unpin
 
         // Always seek to the target offset if not an exact match.
         if req.offset != self.offset {
-            if let Err(err) = self.snapshot_data.as_mut().seek(SeekFrom::Start(req.offset)).await {
-                return Err(StorageError::from_io_error(
-                    ErrorSubject::Snapshot(req.meta.signature()),
-                    ErrorVerb::Seek,
-                    err,
-                ));
-            }
-            self.offset = req.offset;
-        }
-
-        // Write the next segment & update offset.
-        let res = self.snapshot_data.as_mut().write_all(&req.data).await;
-        if let Err(err) = res {
             return Err(StorageError::from_io_error(
                 ErrorSubject::Snapshot(req.meta.signature()),
                 ErrorVerb::Write,
-                err,
+                std::io::ErrorKind::Other.into(),
             ));
         }
-        self.offset += req.data.len() as u64;
-        Ok(req.done)
+
+        let done = req.data.is_none();
+
+        // Write the next segment & update offset.
+        if let Some(data) = req.data {
+            let res = self.snapshot_data.feed(data).await;
+            if let Err(err) = res {
+                return Err(StorageError::from_io_error(
+                    ErrorSubject::Snapshot(req.meta.signature()),
+                    ErrorVerb::Write,
+                    err,
+                ));
+            }
+        }
+
+        self.offset += 1;
+        Ok(done)
     }
 }

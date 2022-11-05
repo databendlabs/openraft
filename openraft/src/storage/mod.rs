@@ -6,10 +6,10 @@ use std::fmt::Debug;
 use std::ops::RangeBounds;
 
 use async_trait::async_trait;
+use futures::Sink;
+use futures::Stream;
 pub use helper::StorageHelper;
 pub use snapshot_signature::SnapshotSignature;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
 use crate::defensive::check_range_matches_entries;
@@ -77,7 +77,7 @@ pub struct Snapshot<NID, N, S>
 where
     NID: NodeId,
     N: Node,
-    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+    S: Send + Unpin + 'static,
 {
     /// metadata of a snapshot
     pub meta: SnapshotMeta<NID, N>,
@@ -164,7 +164,7 @@ where C: RaftTypeConfig
 pub trait RaftSnapshotBuilder<C, SD>: Send + Sync + 'static
 where
     C: RaftTypeConfig,
-    SD: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static,
+    SD: Stream<Item = C::SD> + Send + Sync + Unpin + 'static,
 {
     /// Build snapshot
     ///
@@ -201,13 +201,15 @@ where C: RaftTypeConfig
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
+    type SnapshotReader: Stream<Item = C::SD> + Send + Sync + Unpin + 'static;
+
+    type SnapshotWriter: Sink<C::SD, Error = std::io::Error> + Send + Sync + Unpin + 'static;
 
     /// Log reader type.
     type LogReader: RaftLogReader<C>;
 
     /// Snapshot builder type.
-    type SnapshotBuilder: RaftSnapshotBuilder<C, Self::SnapshotData>;
+    type SnapshotBuilder: RaftSnapshotBuilder<C, Self::SnapshotReader>;
 
     // --- Vote
 
@@ -280,7 +282,7 @@ where C: RaftTypeConfig
     /// ### implementation guide
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
     /// for details on log compaction / snapshotting.
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<C::NodeId>>;
+    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotWriter>, StorageError<C::NodeId>>;
 
     /// Install a snapshot which has finished streaming from the leader.
     ///
@@ -291,7 +293,7 @@ where C: RaftTypeConfig
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<C::NodeId, C::Node>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Box<Self::SnapshotWriter>,
     ) -> Result<(), StorageError<C::NodeId>>;
 
     /// Get a readable handle to the current snapshot, along with its metadata.
@@ -307,7 +309,7 @@ where C: RaftTypeConfig
     /// of the snapshot, which should be decoded for creating this method's response data.
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<C::NodeId, C::Node, Self::SnapshotData>>, StorageError<C::NodeId>>;
+    ) -> Result<Option<Snapshot<C::NodeId, C::Node, Self::SnapshotReader>>, StorageError<C::NodeId>>;
 }
 
 /// APIs for debugging a store.
