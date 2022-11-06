@@ -734,6 +734,33 @@ where
         }
     }
 
+    /// Leader steps down(convert to learner) once the membership not containing it is committed.
+    ///
+    /// This is only called by leader.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn leader_step_down(&mut self) {
+        tracing::debug!("leader_step_down: node_id:{}", self.id);
+
+        // Step down:
+        // Keep acting as leader until a membership without this node is committed.
+        let em = &self.state.membership_state.effective;
+
+        tracing::debug!(
+            "membership: {}, committed: {}, is_leading: {}",
+            em.summary(),
+            self.state.committed.summary(),
+            self.is_leading(),
+        );
+
+        #[allow(clippy::collapsible_if)]
+        if em.log_id <= self.state.committed {
+            if !em.is_voter(&self.id) && self.is_leading() {
+                tracing::debug!("leader {} is stepping down", self.id);
+                self.enter_following();
+            }
+        }
+    }
+
     /// Follower/Learner handles install-snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn install_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
@@ -1154,13 +1181,13 @@ where
         tracing::debug!(
             is_member = display(self.is_voter()),
             is_leader = display(self.is_leader()),
-            is_becoming_leader = display(self.is_becoming_leader()),
+            is_leading = display(self.is_leading()),
             "states"
         );
         if self.is_voter() {
             if self.is_leader() {
                 ServerState::Leader
-            } else if self.is_becoming_leader() {
+            } else if self.is_leading() {
                 ServerState::Candidate
             } else {
                 ServerState::Follower
@@ -1175,7 +1202,7 @@ where
     }
 
     /// The node is candidate or leader
-    fn is_becoming_leader(&self) -> bool {
+    fn is_leading(&self) -> bool {
         self.state.internal_server_state.is_leading()
     }
 

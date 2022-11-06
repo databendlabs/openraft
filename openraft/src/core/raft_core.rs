@@ -237,7 +237,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
     }
 
-    #[tracing::instrument(level="trace", skip(self), fields(id=display(self.id), cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
     async fn do_main(&mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("raft node is initializing");
 
@@ -734,7 +734,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Update core's target state, ensuring all invariants are upheld.
-    #[tracing::instrument(level = "trace", skip(self), fields(id=display(self.id)))]
+    #[tracing::instrument(level = "debug", skip(self), fields(id=display(self.id)))]
     pub(crate) fn set_target_state(&mut self, target_state: ServerState) {
         tracing::debug!(id = display(self.id), ?target_state, "set_target_state");
 
@@ -762,6 +762,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             can_be_leader
         );
 
+        // TODO: election timer should be bound to `(vote, membership_log_id)`:
+        //       i.e., when membership is updated, the previous election timer should be invalidated.
+        //       e.g., in a same `vote`, a learner becomes voter and then becomes learner again.
+        //             election timer should be cleared for learner, set for voter and then cleared again.
         self.next_election_time = VoteWiseTime::new(self.engine.state.vote, now + t);
     }
 
@@ -1040,28 +1044,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             unreachable!("it has to be a leader!!!");
         };
     }
-
-    /// Leader will keep working until the effective membership that removes it committed.
-    ///
-    /// This is ony called by leader.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn leader_step_down(&mut self) {
-        let em = &self.engine.state.membership_state.effective;
-
-        if self.engine.state.committed < em.log_id {
-            return;
-        }
-
-        // TODO: Leader does not need to step down. It can keep working.
-        //       This requires to separate Leader(Proposer) and Acceptors.
-        if !em.is_voter(&self.id) {
-            tracing::debug!("leader is stepping down");
-
-            // TODO(xp): transfer leadership
-            self.set_target_state(ServerState::Learner);
-            self.engine.metrics_flags.set_cluster_changed();
-        }
-    }
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
@@ -1092,7 +1074,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Run an event handling loop
-    #[tracing::instrument(level="debug", skip(self), fields(id=display(self.id)))]
+    #[tracing::instrument(level="debug", skip_all, fields(id=display(self.id)))]
     async fn runtime_loop(&mut self, mut rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         loop {
             self.flush_metrics();
@@ -1125,7 +1107,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Spawn parallel vote requests to all cluster members.
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip_all, fields(vote=vote_req.summary()))]
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) {
         let members = self.engine.state.membership_state.effective.voter_ids();
 
@@ -1353,6 +1335,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         }
                     }
                 }
+
+                // When a membership that removes the leader is committed,
+                // the leader continue to work for a short while before reverting to a learner.
+                // This way, let the leader replicate the `membership-log-is-committed` message to followers.
+                // Otherwise, if the leader step down at once, the follower might have to re-commit the membership log
+                // again, electing itself.
+                self.engine.leader_step_down();
+                self.run_engine_commands::<Entry<C>>(&[]).await?;
             }
 
             RaftMsg::HigherVote {
@@ -1443,8 +1433,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             );
             l.replication_metrics.update(UpdateMatchedLogId { target, matched });
         } else {
-            unreachable!("it has to be a leader!!!");
+            // This method is only called after `update_progress()`.
+            // And this node may become a non-leader after `update_progress()`
         }
+
         self.engine.metrics_flags.set_replication_changed()
     }
 
@@ -1589,8 +1581,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 ref upto,
             } => {
                 self.apply_to_state_machine(committed.next_index(), upto.index).await?;
-                // Stepping down should be controlled by Engine.
-                self.leader_step_down();
             }
             Command::FollowerCommit {
                 already_committed: ref committed,
