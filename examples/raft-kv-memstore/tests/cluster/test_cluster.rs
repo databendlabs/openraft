@@ -195,5 +195,27 @@ async fn test_cluster() -> anyhow::Result<()> {
         Ok(_) => panic!("MUST return CheckIsLeaderError"),
     }
 
+    // --- Remove node 1,2 from the cluster.
+
+    println!("=== change-membership to 3, ");
+    let _x = client.change_membership(&btreeset! {3}).await?;
+
+    tokio::time::sleep(Duration::from_millis(1_000)).await;
+
+    println!("=== metrics after change-membership to {{3}}");
+    let x = client.metrics().await?;
+    assert_eq!(&vec![vec![3]], x.membership_config.get_joint_config());
+
+    println!("=== write `foo=zoo` to node-3");
+    let _x = client3
+        .write(&ExampleRequest::Set {
+            key: "foo".to_string(),
+            value: "zoo".to_string(),
+        })
+        .await?;
+
+    println!("=== read `foo=zoo` to node-3");
+    let got = client3.read(&"foo".to_string()).await?;
+    assert_eq!("zoo", got);
     Ok(())
 }

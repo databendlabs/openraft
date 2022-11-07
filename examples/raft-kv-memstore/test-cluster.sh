@@ -102,7 +102,7 @@ echo "Changing membership from [1] to 3 nodes cluster: [1, 2, 3]"
 echo
 rpc 21001/change-membership '[1, 2, 3]'
 sleep 1
-echo "Membership changed"
+echo 'Membership changed to [1, 2, 3]'
 sleep 1
 
 echo "Get metrics from the leader again"
@@ -131,10 +131,36 @@ echo "Read from node 3"
 echo
 rpc 21003/read  '"foo"'
 
-echo "Killing all nodes in 3s..."
+
+echo "Changing membership from [1,2,3] to [3]"
+echo
+rpc 21001/change-membership '[3]'
 sleep 1
-echo "Killing all nodes in 2s..."
+echo 'Membership changed to [3]'
 sleep 1
-echo "Killing all nodes in 1s..."
+
+echo "Get metrics from the node-3"
 sleep 1
+echo
+rpc 21003/metrics
+sleep 1
+
+
+echo "Write foo=zoo on node-3"
+sleep 1
+echo
+rpc 21003/write '{"Set":{"key":"foo","value":"zoo"}}'
+sleep 1
+echo "Data written"
+sleep 1
+
+echo "Read foo=zoo from node-3"
+sleep 1
+echo "Read from node 3"
+echo
+rpc 21003/read  '"foo"'
+echo
+
+
+echo "Killing all nodes..."
 kill
