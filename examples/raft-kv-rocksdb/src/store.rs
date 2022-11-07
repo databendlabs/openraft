@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::Debug;
-use std::io::Cursor;
 use std::ops::RangeBounds;
 use std::path::Path;
 use std::sync::Arc;
@@ -354,11 +353,11 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
 }
 
 #[async_trait]
-impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStore> {
+impl RaftSnapshotBuilder<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
-    ) -> Result<Snapshot<ExampleNodeId, ExampleNode, Cursor<Vec<u8>>>, StorageError<ExampleNodeId>> {
+    ) -> Result<Snapshot<ExampleNodeId, ExampleNode, Vec<u8>>, StorageError<ExampleNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -396,16 +395,12 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
 
         self.set_current_snapshot_(snapshot)?;
 
-        Ok(Snapshot {
-            meta,
-            snapshot: Box::new(Cursor::new(data)),
-        })
+        Ok(Snapshot { meta, snapshot: data })
     }
 }
 
 #[async_trait]
 impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
-    type SnapshotData = Cursor<Vec<u8>>;
     type LogReader = Self;
     type SnapshotBuilder = Self;
 
@@ -510,25 +505,17 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
         Ok(res)
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotData>, StorageError<ExampleNodeId>> {
-        Ok(Box::new(Cursor::new(Vec::new())))
-    }
-
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<ExampleNodeId, ExampleNode>,
-        snapshot: Box<Self::SnapshotData>,
+        snapshot: Vec<u8>,
     ) -> Result<(), StorageError<ExampleNodeId>> {
-        tracing::info!(
-            { snapshot_size = snapshot.get_ref().len() },
-            "decoding snapshot for installation"
-        );
+        tracing::info!({ snapshot_size = snapshot.len() }, "decoding snapshot for installation");
 
         let new_snapshot = ExampleSnapshot {
             meta: meta.clone(),
-            data: snapshot.into_inner(),
+            data: snapshot,
         };
 
         // Update the state machine.
@@ -552,13 +539,13 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<ExampleNodeId, ExampleNode, Self::SnapshotData>>, StorageError<ExampleNodeId>> {
+    ) -> Result<Option<Snapshot<ExampleNodeId, ExampleNode, Vec<u8>>>, StorageError<ExampleNodeId>> {
         match ExampleStore::get_current_snapshot_(self)? {
             Some(snapshot) => {
                 let data = snapshot.data.clone();
                 Ok(Some(Snapshot {
                     meta: snapshot.meta,
-                    snapshot: Box::new(Cursor::new(data)),
+                    snapshot: data,
                 }))
             }
             None => Ok(None),

@@ -6,11 +6,8 @@ use std::fmt::Debug;
 use std::ops::RangeBounds;
 
 use async_trait::async_trait;
-
-
 pub use helper::StorageHelper;
 pub use snapshot_signature::SnapshotSignature;
-
 
 use crate::defensive::check_range_matches_entries;
 use crate::membership::EffectiveMembership;
