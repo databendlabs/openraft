@@ -165,11 +165,6 @@ where
         self.inner().apply_to_state_machine(entries).await
     }
 
-    // #[tracing::instrument(level = "trace", skip(self))]
-    // async fn begin_receiving_snapshot(&mut self) -> Result<C::SD, StorageError<C::NodeId>> {
-    //     self.inner().begin_receiving_snapshot().await
-    // }
-
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,

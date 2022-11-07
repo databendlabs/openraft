@@ -140,9 +140,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         let req = InstallSnapshotRequest {
             vote: sto0.read_vote().await?.unwrap(),
             meta: snap.meta.clone(),
-            offset: 0,
-            data: snap.snapshot.into_inner(),
-            done: true,
+            data: snap.snapshot,
         };
 
         router.new_client(1, &()).await?.send_install_snapshot(req).await?;

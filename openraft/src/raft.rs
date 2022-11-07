@@ -1175,7 +1175,7 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
     pub meta: SnapshotMeta<C::NodeId, C::Node>,
 
-    /// The snapshot data chunk.
+    /// The snapshot data.
     pub data: C::SD,
 }
 

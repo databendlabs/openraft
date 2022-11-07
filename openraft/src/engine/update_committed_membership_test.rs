@@ -13,7 +13,7 @@ use crate::MembershipState;
 use crate::MetricsChangeFlags;
 
 crate::declare_raft_types!(
-    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=()
+    pub(crate) Foo: D=(), R=(), NodeId=u64, Node=(), SD = ()
 );
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {

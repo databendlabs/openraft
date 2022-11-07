@@ -10,7 +10,6 @@ mod replication_expectation;
 mod replication_state;
 mod server_state;
 mod snapshot_state;
-mod streaming_state;
 mod tick;
 
 pub use raft_core::RaftCore;
