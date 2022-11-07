@@ -6,11 +6,11 @@ use std::fmt::Debug;
 use std::ops::RangeBounds;
 
 use async_trait::async_trait;
-use futures::Sink;
-use futures::Stream;
+
+
 pub use helper::StorageHelper;
 pub use snapshot_signature::SnapshotSignature;
-use tokio::io::AsyncWrite;
+
 
 use crate::defensive::check_range_matches_entries;
 use crate::membership::EffectiveMembership;
@@ -77,13 +77,13 @@ pub struct Snapshot<NID, N, S>
 where
     NID: NodeId,
     N: Node,
-    S: Send + Unpin + 'static,
+    S: Send + 'static,
 {
     /// metadata of a snapshot
     pub meta: SnapshotMeta<NID, N>,
 
     /// A read handle to the associated snapshot.
-    pub snapshot: Box<S>,
+    pub snapshot: S,
 }
 
 /// The state about logs.
@@ -161,10 +161,8 @@ where C: RaftTypeConfig
 /// co-implemented with [`RaftStorage`] interface on the same cloneable object, if the underlying
 /// state machine is anyway synchronized.
 #[async_trait]
-pub trait RaftSnapshotBuilder<C, SD>: Send + Sync + 'static
-where
-    C: RaftTypeConfig,
-    SD: Stream<Item = C::SD> + Send + Sync + Unpin + 'static,
+pub trait RaftSnapshotBuilder<C>: Send + Sync + 'static
+where C: RaftTypeConfig
 {
     /// Build snapshot
     ///
@@ -173,7 +171,7 @@ where
     /// Building snapshot can be done by:
     /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a LSM-tree does,
     /// - or by fetching a snapshot from the state machine.
-    async fn build_snapshot(&mut self) -> Result<Snapshot<C::NodeId, C::Node, SD>, StorageError<C::NodeId>>;
+    async fn build_snapshot(&mut self) -> Result<Snapshot<C::NodeId, C::Node, C::SD>, StorageError<C::NodeId>>;
 
     // NOTES:
     // This interface is geared toward small file-based snapshots. However, not all snapshots can
@@ -197,19 +195,11 @@ where
 pub trait RaftStorage<C>: RaftLogReader<C> + Send + Sync + 'static
 where C: RaftTypeConfig
 {
-    /// The storage engine's associated type used for exposing a snapshot for reading & writing.
-    ///
-    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
-    /// for details on where and how this is used.
-    type SnapshotReader: Stream<Item = C::SD> + Send + Sync + Unpin + 'static;
-
-    type SnapshotWriter: Sink<C::SD, Error = std::io::Error> + Send + Sync + Unpin + 'static;
-
     /// Log reader type.
     type LogReader: RaftLogReader<C>;
 
     /// Snapshot builder type.
-    type SnapshotBuilder: RaftSnapshotBuilder<C, Self::SnapshotReader>;
+    type SnapshotBuilder: RaftSnapshotBuilder<C>;
 
     // --- Vote
 
@@ -275,15 +265,6 @@ where C: RaftTypeConfig
     /// sync primitives to serialize access to the common internal object, if needed.
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder;
 
-    /// Create a new blank snapshot, returning a writable handle to the snapshot object.
-    ///
-    /// Raft will use this handle to receive snapshot data.
-    ///
-    /// ### implementation guide
-    /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/storage.html)
-    /// for details on log compaction / snapshotting.
-    async fn begin_receiving_snapshot(&mut self) -> Result<Box<Self::SnapshotWriter>, StorageError<C::NodeId>>;
-
     /// Install a snapshot which has finished streaming from the leader.
     ///
     /// All other snapshots should be deleted at this point.
@@ -293,7 +274,7 @@ where C: RaftTypeConfig
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<C::NodeId, C::Node>,
-        snapshot: Box<Self::SnapshotWriter>,
+        snapshot: C::SD,
     ) -> Result<(), StorageError<C::NodeId>>;
 
     /// Get a readable handle to the current snapshot, along with its metadata.
@@ -309,7 +290,7 @@ where C: RaftTypeConfig
     /// of the snapshot, which should be decoded for creating this method's response data.
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<C::NodeId, C::Node, Self::SnapshotReader>>, StorageError<C::NodeId>>;
+    ) -> Result<Option<Snapshot<C::NodeId, C::Node, C::SD>>, StorageError<C::NodeId>>;
 }
 
 /// APIs for debugging a store.

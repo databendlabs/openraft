@@ -152,10 +152,10 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) leader_data: Option<LeaderData<C>>,
 
     /// The node's current snapshot state.
-    pub(crate) snapshot_state: SnapshotState<C, S::SnapshotWriter>,
+    pub(crate) snapshot_state: SnapshotState<C>,
 
     /// Received snapshot that are ready to install.
-    pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<S::SnapshotWriter>>,
+    pub(crate) received_snapshot: BTreeMap<SnapshotId, C::SD>,
 
     /// The time to elect if a follower does not receive any append-entry message.
     pub(crate) next_election_time: VoteWiseTime<C::NodeId>,
@@ -200,7 +200,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             engine: Engine::default(),
             leader_data: None,
 
-            snapshot_state: SnapshotState::None,
+            snapshot_state: SnapshotState::<C>::None,
             received_snapshot: BTreeMap::new(),
             next_election_time: VoteWiseTime::new(Vote::default(), Instant::now() + Duration::from_secs(86400)),
 
@@ -771,11 +771,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> Result<(), StorageError<C::NodeId>> {
         tracing::info!("handle_building_snapshot_result: {:?}", result);
 
-        if let SnapshotState::Streaming { .. } = &self.snapshot_state {
-            tracing::info!("snapshot is being streaming. Ignore building snapshot result");
-            return Ok(());
-        }
-
         // TODO: add building-session id to identify different building
         match result {
             SnapshotResult::Ok(meta) => {
@@ -788,7 +783,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             SnapshotResult::Aborted => {}
         }
 
-        self.snapshot_state = SnapshotState::None;
+        self.snapshot_state = SnapshotState::<C>::None;
 
         Ok(())
     }
@@ -799,7 +794,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) async fn trigger_snapshot_if_needed(&mut self, force: bool) {
         tracing::debug!("trigger_snapshot_if_needed: force: {}", force);
 
-        if let SnapshotState::None = self.snapshot_state {
+        if let SnapshotState::<C>::None = self.snapshot_state {
             // Continue.
         } else {
             // Snapshot building or streaming is in progress.
@@ -823,7 +818,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let (chan_tx, _) = broadcast::channel(1);
         let tx_api = self.tx_api.clone();
 
-        self.snapshot_state = SnapshotState::Snapshotting {
+        self.snapshot_state = SnapshotState::<C>::Snapshotting {
             abort_handle,
             sender: chan_tx.clone(),
         };
@@ -1470,7 +1465,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip(self, tx))]
     async fn handle_needs_snapshot(
         &mut self,
-        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotReader>>,
+        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, C::SD>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         // Check for existence of current snapshot.
         let current_snapshot_opt = self.storage.get_current_snapshot().await?;

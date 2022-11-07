@@ -930,7 +930,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         target: C::NodeId,
 
         /// The response channel for delivering the snapshot data.
-        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotReader>>,
+        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, C::SD>>,
 
         /// Which ServerState sent this message
         vote: Vote<C::NodeId>,
@@ -1166,7 +1166,7 @@ impl<NID: NodeId> MessageSummary<VoteResponse<NID>> for VoteResponse<NID> {
     }
 }
 
-/// An RPC sent by the Raft leader to send chunks of a snapshot to a follower (§7).
+/// An RPC sent by the Raft leader to send a snapshot to a follower (§7).
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
@@ -1175,22 +1175,13 @@ pub struct InstallSnapshotRequest<C: RaftTypeConfig> {
     /// Metadata of a snapshot: snapshot_id, last_log_ed membership etc.
     pub meta: SnapshotMeta<C::NodeId, C::Node>,
 
-    /// The byte offset where this chunk of data is positioned in the snapshot file.
-    pub offset: u64,
-
-    /// The snapshot data chunk. If `None` then the snapshot has finished sending.
-    pub data: Option<C::SD>,
+    /// The snapshot data chunk.
+    pub data: C::SD,
 }
 
 impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSnapshotRequest<C> {
     fn summary(&self) -> String {
-        format!(
-            "vote={}, meta={:?}, offset={}, done={}",
-            self.vote,
-            self.meta,
-            self.offset,
-            self.data.is_none()
-        )
+        format!("vote={}, meta={:?}", self.vote, self.meta,)
     }
 }
 

@@ -2,11 +2,9 @@
 use std::sync::Arc;
 
 use futures::future::FutureExt;
-use futures::StreamExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tracing_futures::Instrument;
@@ -650,7 +648,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[tracing::instrument(level = "debug", skip(self))]
     async fn wait_for_snapshot(
         &mut self,
-    ) -> Result<Snapshot<C::NodeId, C::Node, S::SnapshotReader>, ReplicationError<C::NodeId, C::Node>> {
+    ) -> Result<Snapshot<C::NodeId, C::Node, C::SD>, ReplicationError<C::NodeId, C::Node>> {
         // Ask raft core for a snapshot.
         // - If raft core has a ready snapshot, it sends back through tx.
         // - Otherwise raft core starts a new task taking snapshot, and **close** `tx` when finished. Thus there has to
@@ -707,87 +705,65 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         }
     }
 
-    #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(
         &mut self,
-        mut snapshot: Snapshot<C::NodeId, C::Node, S::SnapshotReader>,
+        snapshot: Snapshot<C::NodeId, C::Node, C::SD>,
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
-        // let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
+        let id = self.vote.node_id;
 
-        // offset is used to keep track of the number of requests sent
-        let mut offset = 0;
+        let req = InstallSnapshotRequest {
+            vote: self.vote,
+            meta: snapshot.meta.clone(),
+            data: snapshot.snapshot,
+        };
 
-        loop {
-            let req = match snapshot.snapshot.next().await {
-                Some(snapshot_part) => InstallSnapshotRequest {
-                    vote: self.vote,
-                    meta: snapshot.meta.clone(),
-                    offset,
-                    data: Some(snapshot_part),
-                },
-                None => InstallSnapshotRequest {
-                    vote: self.vote,
-                    meta: snapshot.meta.clone(),
-                    offset,
-                    data: None,
-                },
-            };
+        tracing::debug!("sending snapshot");
 
-            let done = req.data.is_some();
+        let res = timeout(self.install_snapshot_timeout, self.network.send_install_snapshot(req)).await;
 
-            // Send the RPC over to the target.
-            tracing::debug!(req.offset, done, "sending snapshot chunk");
-
-            let res = timeout(self.install_snapshot_timeout, self.network.send_install_snapshot(req)).await;
-
-            let res = match res {
-                Ok(outer_res) => match outer_res {
-                    Ok(res) => res,
-                    Err(err) => {
-                        tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
-
-                        // Sleep a short time otherwise in test environment it is a dead-loop that never yields.
-                        // Because network implementation does not yield.
-                        sleep(Duration::from_millis(10)).await;
-                        continue;
-                    }
-                },
+        let res = match res {
+            Ok(outer_res) => match outer_res {
+                Ok(res) => res,
                 Err(err) => {
-                    tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
+                    tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
+                    // return Err(err.into());
 
-                    // Sleep a short time otherwise in test environment it is a dead-loop that never yields.
-                    // Because network implementation does not yield.
-                    sleep(Duration::from_millis(10)).await;
-                    continue;
+                    return match err {
+                        RPCError::NodeNotFound(_e) => todo!(),
+                        RPCError::Timeout(e) => Err(ReplicationError::Timeout(e)),
+                        RPCError::Network(e) => Err(ReplicationError::Network(e)),
+                        RPCError::RemoteError(_e) => todo!(),
+                    };
                 }
-            };
+            },
+            Err(err) => {
+                tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
 
-            // Handle response conditions.
-            if res.vote > self.vote {
-                return Err(ReplicationError::HigherVote(HigherVote {
-                    higher: res.vote,
-                    mine: self.vote,
+                return Err(ReplicationError::Timeout(Timeout {
+                    action: RPCTypes::InstallSnapshot,
+                    id: id,
+                    target: id,
+                    timeout: self.install_snapshot_timeout,
                 }));
             }
+        };
 
-            // If we just sent the final chunk of the snapshot, then transition to lagging state.
-            if done {
-                tracing::debug!(
-                    "done install snapshot: snapshot last_log_id: {:?}, matched: {:?}",
-                    snapshot.meta.last_log_id,
-                    self.matched,
-                );
-
-                self.update_matched(snapshot.meta.last_log_id);
-
-                return Ok(());
-            }
-
-            // Everything is good, so update offset for sending the next chunk.
-            offset += 1;
-
-            // Check raft channel to ensure we are staying up-to-date, then loop.
-            self.try_drain_raft_rx().await?;
+        // Handle response conditions.
+        if res.vote > self.vote {
+            return Err(ReplicationError::HigherVote(HigherVote {
+                higher: res.vote,
+                mine: self.vote,
+            }));
         }
+
+        tracing::debug!(
+            "done install snapshot: snapshot last_log_id: {:?}, matched: {:?}",
+            snapshot.meta.last_log_id,
+            self.matched,
+        );
+
+        self.update_matched(snapshot.meta.last_log_id);
+
+        return Ok(());
     }
 }

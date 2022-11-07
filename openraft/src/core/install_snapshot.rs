@@ -1,24 +1,23 @@
-use anyerror::AnyError;
-use tokio::io::AsyncWriteExt;
 
-use crate::core::streaming_state::StreamingState;
+
+
 use crate::core::RaftCore;
 use crate::core::SnapshotState;
 use crate::error::InstallSnapshotError;
-use crate::error::SnapshotMismatch;
+
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
 use crate::Entry;
-use crate::ErrorSubject;
-use crate::ErrorVerb;
+
+
 use crate::MessageSummary;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
-use crate::SnapshotMeta;
-use crate::SnapshotSegmentId;
-use crate::StorageError;
-use crate::StorageIOError;
+
+
+
+
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     /// Invoked by leader to send chunks of a snapshot to a follower (§7).
@@ -50,102 +49,106 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.snapshot_state = SnapshotState::None;
         }
 
-        // Init a new streaming state if it is None.
-        if let SnapshotState::None = self.snapshot_state {
-            self.begin_installing_snapshot(&req).await?;
-        }
+        // // Init a new streaming state if it is None.
+        // if let SnapshotState::None = self.snapshot_state {
+        //     self.begin_installing_snapshot(&req).await?;
+        // }
 
         // It's Streaming.
-
-        let done = req.data.is_none();
         let req_meta = req.meta.clone();
 
-        // Changed to another stream. re-init snapshot state.
-        let stream_changed = if let SnapshotState::Streaming(streaming) = &self.snapshot_state {
-            req_meta.snapshot_id != streaming.snapshot_id
-        } else {
-            unreachable!("It has to be Streaming")
-        };
-        if stream_changed {
-            self.begin_installing_snapshot(&req).await?;
-        }
+        // // Changed to another stream. re-init snapshot state.
+        // let stream_changed = if let SnapshotState::Streaming(streaming) = &self.snapshot_state {
+        //     req_meta.snapshot_id != streaming.snapshot_id
+        // } else {
+        //     unreachable!("It has to be Streaming")
+        // };
+        // if stream_changed {
+        //     self.begin_installing_snapshot(&req).await?;
+        // }
 
         // Receive the data.
-        if let SnapshotState::Streaming(streaming) = &mut self.snapshot_state {
-            debug_assert_eq!(req_meta.snapshot_id, streaming.snapshot_id);
-            streaming.receive(req).await?;
-        } else {
-            unreachable!("It has to be Streaming")
-        }
+        // if let SnapshotState::Streaming(streaming) = &mut self.snapshot_state {
+        //     debug_assert_eq!(req_meta.snapshot_id, streaming.snapshot_id);
+        //     streaming.receive(req).await?;
+        // } else {
+        //     unreachable!("It has to be Streaming")
+        // }
 
-        if done {
-            self.finalize_snapshot_installation(req_meta).await?;
-        }
+        // if done {
+        // self.finalize_snapshot_installation(req_meta).await?;
+        // }
+
+        self.received_snapshot.insert(req_meta.snapshot_id.clone(), req.data);
+
+        self.engine.install_snapshot(req_meta);
+        self.run_engine_commands::<Entry<C>>(&[]).await?;
 
         Ok(InstallSnapshotResponse {
             vote: self.engine.state.vote,
         })
     }
 
-    #[tracing::instrument(level = "debug", skip_all)]
-    async fn begin_installing_snapshot(
-        &mut self,
-        req: &InstallSnapshotRequest<C>,
-    ) -> Result<(), InstallSnapshotError<C::NodeId>> {
-        tracing::debug!(req = display(req.summary()));
+    // #[tracing::instrument(level = "debug", skip_all)]
+    // async fn begin_installing_snapshot(
+    //     &mut self,
+    //     req: &InstallSnapshotRequest<C>,
+    // ) -> Result<(), InstallSnapshotError<C::NodeId>> {
+    //     tracing::debug!(req = display(req.summary()));
 
-        let id = req.meta.snapshot_id.clone();
+    //     let id = req.meta.snapshot_id.clone();
 
-        if req.offset > 0 {
-            return Err(SnapshotMismatch {
-                expect: SnapshotSegmentId {
-                    id: id.clone(),
-                    offset: 0,
-                },
-                got: SnapshotSegmentId { id, offset: req.offset },
-            }
-            .into());
-        }
+    //     if req.offset > 0 {
+    //         return Err(SnapshotMismatch {
+    //             expect: SnapshotSegmentId {
+    //                 id: id.clone(),
+    //                 offset: 0,
+    //             },
+    //             got: SnapshotSegmentId { id, offset: req.offset },
+    //         }
+    //         .into());
+    //     }
 
-        let snapshot_data = self.storage.begin_receiving_snapshot().await?;
-        self.snapshot_state = SnapshotState::Streaming(StreamingState::new(id, snapshot_data));
+    //     let snapshot_data = self.storage.begin_receiving_snapshot().await?;
+    //     self.snapshot_state = SnapshotState::Streaming(StreamingState::new(id, snapshot_data));
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    /// Finalize the installation of a new snapshot.
-    ///
-    /// Any errors which come up from this routine will cause the Raft node to go into shutdown.
-    #[tracing::instrument(level = "debug", skip_all)]
-    async fn finalize_snapshot_installation(
-        &mut self,
-        meta: SnapshotMeta<C::NodeId, C::Node>,
-    ) -> Result<(), StorageError<C::NodeId>> {
-        tracing::debug!(meta = display(meta.summary()));
+    // Finalize the installation of a new snapshot.
+    //
+    // Any errors which come up from this routine will cause the Raft node to go into shutdown.
 
-        let state = std::mem::take(&mut self.snapshot_state);
-        let streaming = if let SnapshotState::Streaming(streaming) = state {
-            streaming
-        } else {
-            unreachable!("snapshot_state has to be Streaming")
-        };
+    // #[tracing::instrument(level = "debug", skip_all)]
+    // async fn finalize_snapshot_installation(
+    //     &mut self,
+    //     meta: SnapshotMeta<C::NodeId, C::Node>,
+    // ) -> Result<(), StorageError<C::NodeId>> {
+    //     tracing::debug!(meta = display(meta.summary()));
 
-        let mut snapshot_data = streaming.snapshot_data;
+    //     // let state = std::mem::take(&mut self.snapshot_state);
+    //     // let streaming = if let SnapshotState::Streaming(streaming) = state {
+    //     //     streaming
+    //     // } else {
+    //     //     unreachable!("snapshot_state has to be Streaming")
+    //     // };
 
-        // snapshot_data.as_mut().shutdown().await.map_err(|e| StorageError::IO {
-        //     source: StorageIOError::new(
-        //         ErrorSubject::Snapshot(meta.signature()),
-        //         ErrorVerb::Write,
-        //         AnyError::new(&e),
-        //     ),
-        // })?;
+    //     let snapshot_data = streaming.snapshot_data;
 
-        // Buffer the snapshot data, let Engine decide to install it or to cancel it.
-        self.received_snapshot.insert(meta.snapshot_id.clone(), snapshot_data);
+    //     // snapshot_data.as_mut().shutdown().await.map_err(|e| StorageError::IO {
+    //     //     source: StorageIOError::new(
+    //     //         ErrorSubject::Snapshot(meta.signature()),
+    //     //         ErrorVerb::Write,
+    //     //         AnyError::new(&e),
+    //     //     ),
+    //     // })?;
 
-        self.engine.install_snapshot(meta);
-        self.run_engine_commands::<Entry<C>>(&[]).await?;
+    //     // Buffer the snapshot data, let Engine decide to install it or to cancel it.
+    //     self.received_snapshot.insert(meta.snapshot_id.clone(), snapshot_data);
 
-        Ok(())
-    }
+    //     self.engine.install_snapshot(meta);
+    //     self.run_engine_commands::<Entry<C>>(&[]).await?;
+
+    //     Ok(())
+    // }
 }
