@@ -42,7 +42,7 @@ where
     fn iter(&self) -> Iter<(ID, V)>;
 
     /// Build a new instance with the new quorum set, inheriting progress data from `self`.
-    fn upgrade_quorum_set(self, quorum_set: QS, learner_ids: &[ID]) -> Self;
+    fn upgrade_quorum_set(self, quorum_set: QS, learner_ids: &[ID], default_v: V) -> Self;
 
     /// Return if the given id is a voter.
     ///
@@ -97,19 +97,19 @@ pub(crate) struct Stat {
 impl<ID, V, QS> VecProgress<ID, V, QS>
 where
     ID: PartialEq + Copy + Debug + 'static,
-    V: PartialOrd + Ord + Default + 'static,
+    V: PartialOrd + Ord + Copy + 'static,
     QS: QuorumSet<ID>,
 {
-    pub(crate) fn new(quorum_set: QS, learner_ids: impl Iterator<Item = ID>) -> Self {
-        let mut vector = quorum_set.ids().map(|id| (id, V::default())).collect::<Vec<_>>();
+    pub(crate) fn new(quorum_set: QS, learner_ids: impl Iterator<Item = ID>, default_v: V) -> Self {
+        let mut vector = quorum_set.ids().map(|id| (id, default_v)).collect::<Vec<_>>();
 
         let voter_count = vector.len();
 
-        vector.extend(learner_ids.map(|id| (id, V::default())));
+        vector.extend(learner_ids.map(|id| (id, default_v)));
 
         Self {
             quorum_set,
-            granted: V::default(),
+            granted: default_v,
             voter_count,
             vector,
             stat: Default::default(),
@@ -152,7 +152,7 @@ where
 impl<ID, V, QS> Progress<ID, V, QS> for VecProgress<ID, V, QS>
 where
     ID: PartialEq + Debug + Copy + 'static,
-    V: PartialOrd + Ord + Copy + Default + 'static,
+    V: PartialOrd + Ord + Copy + 'static,
     QS: QuorumSet<ID> + 'static,
 {
     /// Update one of the scalar value and re-calculate the committed value.
@@ -256,8 +256,8 @@ where
         self.vector.as_slice().iter()
     }
 
-    fn upgrade_quorum_set(self, quorum_set: QS, leaner_ids: &[ID]) -> Self {
-        let mut new_prog = Self::new(quorum_set, leaner_ids.iter().copied());
+    fn upgrade_quorum_set(self, quorum_set: QS, leaner_ids: &[ID], default_v: V) -> Self {
+        let mut new_prog = Self::new(quorum_set, leaner_ids.iter().copied(), default_v);
 
         new_prog.stat = self.stat.clone();
 
@@ -282,7 +282,7 @@ mod t {
     #[test]
     fn vec_progress_new() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let progress = VecProgress::<u64, u64, _>::new(quorum_set, [6, 7].into_iter());
+        let progress = VecProgress::<u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
 
         assert_eq!(
             vec![
@@ -305,7 +305,7 @@ mod t {
     #[test]
     fn vec_progress_iter() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6, 7].into_iter());
+        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
 
         let _ = progress.update(&7, 7);
         let _ = progress.update(&3, 3);
@@ -332,7 +332,7 @@ mod t {
     #[test]
     fn vec_progress_move_up() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6].into_iter());
+        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
 
         // initial: 0-0, 1-0, 2-0, 3-0, 4-0
         let cases = vec![
@@ -364,7 +364,7 @@ mod t {
     #[test]
     fn vec_progress_update() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6].into_iter());
+        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
 
         // initial: 0,0,0,0,0
         let cases = vec![
@@ -390,7 +390,7 @@ mod t {
     #[test]
     fn vec_progress_update_does_not_move_learner_elt() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6].into_iter());
+        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
 
         assert_eq!(Some(5), progress.index(&6));
 
@@ -410,7 +410,7 @@ mod t {
 
         // Initially, committed is 5
 
-        let mut p012 = VecProgress::<u64, u64, _>::new(qs012, [5].into_iter());
+        let mut p012 = VecProgress::<u64, u64, _>::new(qs012, [5].into_iter(), 0);
 
         let _ = p012.update(&0, 5);
         let _ = p012.update(&1, 6);
@@ -419,7 +419,7 @@ mod t {
 
         // After upgrading to a bigger quorum set, committed fall back to 0
 
-        let mut p012_345 = p012.upgrade_quorum_set(qs012_345, &[6]);
+        let mut p012_345 = p012.upgrade_quorum_set(qs012_345, &[6], 0);
         assert_eq!(
             &0,
             p012_345.granted(),
@@ -433,7 +433,7 @@ mod t {
         let _ = p012_345.update(&4, 8);
         assert_eq!(&5, p012_345.granted());
 
-        let p345 = p012_345.upgrade_quorum_set(qs345, &[1]);
+        let p345 = p012_345.upgrade_quorum_set(qs345, &[1], 0);
 
         assert_eq!(&8, p345.granted(), "shrink quorum set, greater value becomes committed");
         assert_eq!(&6, p345.get(&1), "inherit voter progress");
@@ -444,7 +444,7 @@ mod t {
     #[test]
     fn vec_progress_is_voter() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let progress = VecProgress::<u64, u64, _>::new(quorum_set, [6, 7].into_iter());
+        let progress = VecProgress::<u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
 
         assert_eq!(Some(true), progress.is_voter(&1));
         assert_eq!(Some(true), progress.is_voter(&3));

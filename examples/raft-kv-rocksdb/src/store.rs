@@ -221,9 +221,11 @@ impl ExampleStore {
     fn store(&self) -> &ColumnFamily {
         self.db.cf_handle("store").unwrap()
     }
+
     fn logs(&self) -> &ColumnFamily {
         self.db.cf_handle("logs").unwrap()
     }
+
     fn get_last_purged_(&self) -> StorageResult<Option<LogId<u64>>> {
         Ok(self
             .db
