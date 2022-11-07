@@ -62,50 +62,12 @@ async fn snapshot_arguments() -> Result<()> {
         data: vec![1, 2, 3],
     };
 
-    tracing::info!("--- only allow to begin a new session when offset is 0");
-    {
-        let req = req0.clone();
-        let res = n.0.install_snapshot(req).await;
-        assert_eq!(
-            "snapshot segment id mismatch, expect: ss1+0, got: ss1+2",
-            res.unwrap_err().to_string()
-        );
-    }
-
     tracing::info!("--- install and write ss1:[0,3)");
     {
         let req = req0.clone();
         n.0.install_snapshot(req).await?;
     }
 
-    tracing::info!("-- continue write with different id");
-    {
-        let mut req = req0.clone();
-        req.meta.snapshot_id = "ss2".into();
-        let res = n.0.install_snapshot(req).await;
-        assert_eq!(
-            "snapshot segment id mismatch, expect: ss2+0, got: ss2+3",
-            res.unwrap_err().to_string()
-        );
-    }
-
-    tracing::info!("-- write from offset=0 with different id, create a new session");
-    {
-        let mut req = req0.clone();
-        req.meta.snapshot_id = "ss2".into();
-        n.0.install_snapshot(req).await?;
-
-        let mut req = req0.clone();
-        req.meta.snapshot_id = "ss2".into();
-        n.0.install_snapshot(req).await?;
-    }
-
-    tracing::info!("-- continue write with mismatched offset is allowed");
-    {
-        let mut req = req0.clone();
-        req.meta.snapshot_id = "ss2".into();
-        n.0.install_snapshot(req).await?;
-    }
     Ok(())
 }
 

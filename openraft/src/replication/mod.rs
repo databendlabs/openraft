@@ -16,6 +16,7 @@ use crate::error::CommittedAdvanceTooMany;
 use crate::error::HigherVote;
 use crate::error::LackEntry;
 use crate::error::RPCError;
+use crate::error::RemoteError;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
 use crate::raft::AppendEntriesRequest;
@@ -710,6 +711,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         snapshot: Snapshot<C::NodeId, C::Node, C::SD>,
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         let id = self.vote.node_id;
+        let target = self.target;
 
         let req = InstallSnapshotRequest {
             vote: self.vote,
@@ -726,13 +728,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 Ok(res) => res,
                 Err(err) => {
                     tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
-                    // return Err(err.into());
 
                     return match err {
-                        RPCError::NodeNotFound(_e) => todo!(),
+                        RPCError::NodeNotFound(e) => Err(ReplicationError::NodeNotFound(e)),
                         RPCError::Timeout(e) => Err(ReplicationError::Timeout(e)),
                         RPCError::Network(e) => Err(ReplicationError::Network(e)),
-                        RPCError::RemoteError(_e) => todo!(),
+                        RPCError::RemoteError(e) => Err(ReplicationError::RemoteError(RemoteError {
+                            target: e.target,
+                            target_node: e.target_node,
+                            source: AppendEntriesError::Fatal(crate::error::Fatal::Panicked),
+                        })),
                     };
                 }
             },
@@ -741,8 +746,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
                 return Err(ReplicationError::Timeout(Timeout {
                     action: RPCTypes::InstallSnapshot,
-                    id: id,
-                    target: id,
+                    id,
+                    target,
                     timeout: self.install_snapshot_timeout,
                 }));
             }
@@ -764,6 +769,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         self.update_matched(snapshot.meta.last_log_id);
 
-        return Ok(());
+        Ok(())
     }
 }
