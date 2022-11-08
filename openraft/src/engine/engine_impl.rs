@@ -664,7 +664,7 @@ where
 
             let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
-            leader.progress = old_progress.upgrade_quorum_set(em.membership.to_quorum_set(), &learner_ids);
+            leader.progress = old_progress.upgrade_quorum_set(em.membership.to_quorum_set(), &learner_ids, None);
         }
 
         // A leader that is removed will be shut down when this membership log is committed.
