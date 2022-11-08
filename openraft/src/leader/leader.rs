@@ -26,7 +26,7 @@ pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
     pub(crate) vote_granted_by: BTreeSet<NID>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<NID, Option<LogId<NID>>, QS>,
+    pub(crate) progress: VecProgress<NID, Option<LogId<NID>>, Option<LogId<NID>>, QS>,
 }
 
 impl<NID, QS> Leader<NID, QS>

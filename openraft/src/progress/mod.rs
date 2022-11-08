@@ -8,24 +8,32 @@
 #[cfg(test)]
 mod bench;
 
+use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::slice::Iter;
 
 use crate::quorum::QuorumSet;
 
 /// Track progress of several incremental values.
-/// It calculates the committed value through a `QuorumSet`, when one of the value is updated.
-pub(crate) trait Progress<ID, V, QS>
+///
+/// When one of the value is updated, it uses a `QuorumSet` to calculate the committed value.
+/// `ID` is the identifier of every progress value.
+/// `V` is type of a progress entry.
+/// `P` is the progress data of `V`, a progress entry `V` could contain other user data.
+/// `QS` is a quorum set implementation.
+pub(crate) trait Progress<ID, V, P, QS>
 where
     ID: 'static,
+    V: Borrow<P>,
     QS: QuorumSet<ID>,
 {
     /// Update one of the scalar value and re-calculate the committed value.
     ///
-    /// It returns Err(committed) if the id is not in this progress.
-    fn update(&mut self, id: &ID, value: V) -> Result<&V, &V>;
+    /// It returns Err(committed) if the `id` is not found.
+    fn update(&mut self, id: &ID, value: V) -> Result<&P, &P>;
 
     /// Get the value by `id`.
+    // TODO: is `get_mut()` required ?
     fn get(&self, id: &ID) -> &V;
 
     /// Get the greatest value that is granted by a quorum defined in [`quorum_set()`].
@@ -33,7 +41,7 @@ where
     /// In raft or other distributed consensus,
     /// To commit a value, the value has to be **granted by a quorum** and has to be the greatest value
     /// every proposed.
-    fn granted(&self) -> &V;
+    fn granted(&self) -> &P;
 
     /// Returns the reference to the quorum set
     fn quorum_set(&self) -> &QS;
@@ -58,7 +66,7 @@ where
 /// Suitable for small quorum set.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct VecProgress<ID, V, QS>
+pub(crate) struct VecProgress<ID, V, P, QS>
 where
     ID: 'static,
     QS: QuorumSet<ID>,
@@ -67,7 +75,7 @@ where
     quorum_set: QS,
 
     /// Currently already committed value.
-    granted: V,
+    granted: P,
 
     /// Number of voters
     voter_count: usize,
@@ -94,10 +102,12 @@ pub(crate) struct Stat {
     is_quorum_count: u64,
 }
 
-impl<ID, V, QS> VecProgress<ID, V, QS>
+impl<ID, V, P, QS> VecProgress<ID, V, P, QS>
 where
     ID: PartialEq + Copy + Debug + 'static,
-    V: PartialOrd + Ord + Copy + 'static,
+    V: Copy + 'static,
+    V: Borrow<P>,
+    P: PartialOrd + Ord + Copy + 'static,
     QS: QuorumSet<ID>,
 {
     pub(crate) fn new(quorum_set: QS, learner_ids: impl Iterator<Item = ID>, default_v: V) -> Self {
@@ -109,7 +119,7 @@ where
 
         Self {
             quorum_set,
-            granted: default_v,
+            granted: *default_v.borrow(),
             voter_count,
             vector,
             stat: Default::default(),
@@ -133,7 +143,7 @@ where
     fn move_up(&mut self, index: usize) -> usize {
         self.stat.move_count += 1;
         for i in (0..index).rev() {
-            if self.vector[i].1 < self.vector[i + 1].1 {
+            if self.vector[i].1.borrow() < self.vector[i + 1].1.borrow() {
                 self.vector.swap(i, i + 1);
             } else {
                 return i + 1;
@@ -149,10 +159,12 @@ where
     }
 }
 
-impl<ID, V, QS> Progress<ID, V, QS> for VecProgress<ID, V, QS>
+impl<ID, V, P, QS> Progress<ID, V, P, QS> for VecProgress<ID, V, P, QS>
 where
     ID: PartialEq + Debug + Copy + 'static,
-    V: PartialOrd + Ord + Copy + 'static,
+    V: Copy + 'static,
+    V: Borrow<P>,
+    P: PartialOrd + Ord + Copy + 'static,
     QS: QuorumSet<ID> + 'static,
 {
     /// Update one of the scalar value and re-calculate the committed value.
@@ -187,7 +199,7 @@ where
     /// ------------------------------
     ///      1   3   5
     /// ```
-    fn update(&mut self, id: &ID, value: V) -> Result<&V, &V> {
+    fn update(&mut self, id: &ID, value: V) -> Result<&P, &P> {
         self.stat.update_count += 1;
 
         let index = match self.index(id) {
@@ -200,12 +212,15 @@ where
         let elt = &mut self.vector[index];
         let prev = elt.1;
 
-        if prev == value {
+        let prev_progress = prev.borrow();
+        let new_progress = value.borrow();
+
+        if prev_progress == new_progress {
+            elt.1 = value; // no progress change, update the entire value.
             return Ok(&self.granted);
         }
 
-        debug_assert!(value > prev);
-
+        debug_assert!(new_progress > prev_progress);
         elt.1 = value;
 
         // Learner does not grant a value.
@@ -216,13 +231,15 @@ where
 
         // Sort and find the greatest value granted by a quorum set.
 
-        if prev <= self.granted && self.granted < value {
+        if prev_progress <= &self.granted && &self.granted < new_progress {
             let new_index = self.move_up(index);
 
             // From high to low, find the max value that has constituted a quorum.
             for i in new_index..self.voter_count {
+                let prog = self.vector[i].1.borrow();
+
                 // No need to re-calculate already committed value.
-                if self.vector[i].1 <= self.granted {
+                if prog <= &self.granted {
                     break;
                 }
 
@@ -232,7 +249,7 @@ where
                 self.stat.is_quorum_count += 1;
 
                 if self.quorum_set.is_quorum(it) {
-                    self.granted = self.vector[i].1;
+                    self.granted = *prog;
                     break;
                 }
             }
@@ -246,7 +263,7 @@ where
         &self.vector[index].1
     }
 
-    fn granted(&self) -> &V {
+    fn granted(&self) -> &P {
         &self.granted
     }
 
@@ -277,6 +294,8 @@ where
 
 #[cfg(test)]
 mod t {
+    use std::borrow::Borrow;
+
     use super::Progress;
     use super::VecProgress;
     use crate::quorum::Joint;
@@ -284,7 +303,7 @@ mod t {
     #[test]
     fn vec_progress_new() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let progress = VecProgress::<u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
+        let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
 
         assert_eq!(
             vec![
@@ -307,7 +326,7 @@ mod t {
     #[test]
     fn vec_progress_iter() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
 
         let _ = progress.update(&7, 7);
         let _ = progress.update(&3, 3);
@@ -334,7 +353,7 @@ mod t {
     #[test]
     fn vec_progress_move_up() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
 
         // initial: 0-0, 1-0, 2-0, 3-0, 4-0
         let cases = vec![
@@ -366,7 +385,7 @@ mod t {
     #[test]
     fn vec_progress_update() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
 
         // initial: 0,0,0,0,0
         let cases = vec![
@@ -389,10 +408,53 @@ mod t {
         Ok(())
     }
 
+    /// Progress entry for testing
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    struct ProgressEntry {
+        progress: u64,
+        user_data: &'static str,
+    }
+
+    impl Borrow<u64> for ProgressEntry {
+        fn borrow(&self) -> &u64 {
+            &self.progress
+        }
+    }
+
+    #[test]
+    fn vec_progress_update_struct_value() -> anyhow::Result<()> {
+        let pv = |p, user_data| ProgressEntry { progress: p, user_data };
+
+        let quorum_set: Vec<u64> = vec![0, 1, 2];
+        let mut progress = VecProgress::<u64, ProgressEntry, u64, _>::new(quorum_set, [3].into_iter(), pv(0, "foo"));
+
+        // initial: 0,0,0,0
+        let cases = vec![
+            (3, pv(9, "a"), Ok(&0)), // 0,0,0,9 // learner won't affect granted
+            (1, pv(2, "b"), Ok(&0)), // 0,2,0,9
+            (2, pv(3, "c"), Ok(&2)), // 0,2,3,9
+            (1, pv(2, "d"), Ok(&2)), // 0,2,3,9 // No new granted, just update user data.
+        ];
+
+        for (ith, (id, v, want_committed)) in cases.iter().enumerate() {
+            let got = progress.update(id, *v);
+            assert_eq!(want_committed.clone(), got, "{}-th case: id:{}, v:{:?}", ith, id, v);
+        }
+
+        // Check progress data
+
+        assert_eq!(pv(0, "foo"), *progress.get(&0),);
+        assert_eq!(pv(2, "d"), *progress.get(&1),);
+        assert_eq!(pv(3, "c"), *progress.get(&2),);
+        assert_eq!(pv(9, "a"), *progress.get(&3),);
+
+        Ok(())
+    }
+
     #[test]
     fn vec_progress_update_does_not_move_learner_elt() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let mut progress = VecProgress::<u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6].into_iter(), 0);
 
         assert_eq!(Some(5), progress.index(&6));
 
@@ -412,7 +474,7 @@ mod t {
 
         // Initially, committed is 5
 
-        let mut p012 = VecProgress::<u64, u64, _>::new(qs012, [5].into_iter(), 0);
+        let mut p012 = VecProgress::<u64, u64, u64, _>::new(qs012, [5].into_iter(), 0);
 
         let _ = p012.update(&0, 5);
         let _ = p012.update(&1, 6);
@@ -446,7 +508,7 @@ mod t {
     #[test]
     fn vec_progress_is_voter() -> anyhow::Result<()> {
         let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
-        let progress = VecProgress::<u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
+        let progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
 
         assert_eq!(Some(true), progress.is_voter(&1));
         assert_eq!(Some(true), progress.is_voter(&3));
