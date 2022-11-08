@@ -214,11 +214,13 @@ where
             return Ok(&self.granted);
         }
 
+        // Sort and find the greatest value granted by a quorum set.
+
         if prev <= self.granted && self.granted < value {
             let new_index = self.move_up(index);
 
             // From high to low, find the max value that has constituted a quorum.
-            for i in new_index..self.vector.len() {
+            for i in new_index..self.voter_count {
                 // No need to re-calculate already committed value.
                 if self.vector[i].1 <= self.granted {
                     break;
