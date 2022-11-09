@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 use crate::config::error::ConfigError;
 use crate::Config;
 use crate::SnapshotPolicy;
@@ -52,6 +54,7 @@ fn test_build() -> anyhow::Result<()> {
         "--election-timeout-min=10",
         "--election-timeout-max=20",
         "--heartbeat-interval=5",
+        "--send-snapshot-timeout=199",
         "--install-snapshot-timeout=200",
         "--max-payload-entries=201",
         "--replication-lag-threshold=202",
@@ -65,6 +68,7 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(10, config.election_timeout_min);
     assert_eq!(20, config.election_timeout_max);
     assert_eq!(5, config.heartbeat_interval);
+    assert_eq!(199, config.send_snapshot_timeout);
     assert_eq!(200, config.install_snapshot_timeout);
     assert_eq!(201, config.max_payload_entries);
     assert_eq!(202, config.replication_lag_threshold);
@@ -73,6 +77,19 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(205, config.max_in_snapshot_log_to_keep);
     assert_eq!(207, config.purge_batch_size);
 
+    // Test config methods
+    {
+        let mut c = config;
+        assert_eq!(Duration::from_millis(199), c.send_snapshot_timeout());
+        assert_eq!(Duration::from_millis(200), c.install_snapshot_timeout());
+
+        c.send_snapshot_timeout = 0;
+        assert_eq!(
+            Duration::from_millis(200),
+            c.send_snapshot_timeout(),
+            "by default send_snapshot_timeout is install_snapshot_timeout"
+        );
+    }
     Ok(())
 }
 

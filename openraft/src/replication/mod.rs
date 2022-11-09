@@ -121,9 +121,6 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     /// The last possible matching entry on a follower.
     max_possible_matched_index: Option<u64>,
 
-    /// The timeout for sending snapshot segment.
-    install_snapshot_timeout: Duration,
-
     /// if or not need to replicate log entries or states, e.g., `commit_index` etc.
     need_to_replicate: bool,
 }
@@ -147,7 +144,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     ) -> ReplicationStream<C::NodeId> {
         // other component to ReplicationStream
         let (repl_tx, repl_rx) = mpsc::unbounded_channel();
-        let install_snapshot_timeout = Duration::from_millis(config.install_snapshot_timeout);
 
         let this = Self {
             target,
@@ -162,7 +158,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             max_possible_matched_index: progress_entry.max_possible_matching(),
             raft_core_tx,
             repl_rx,
-            install_snapshot_timeout,
             need_to_replicate: true,
         };
 
@@ -750,7 +745,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 "sending snapshot chunk"
             );
 
-            let res = timeout(self.install_snapshot_timeout, self.network.send_install_snapshot(req)).await;
+            let snap_timeout = if done {
+                self.config.install_snapshot_timeout()
+            } else {
+                self.config.send_snapshot_timeout()
+            };
+
+            let res = timeout(snap_timeout, self.network.send_install_snapshot(req)).await;
 
             let res = match res {
                 Ok(outer_res) => match outer_res {

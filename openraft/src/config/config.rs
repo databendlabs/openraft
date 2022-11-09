@@ -1,6 +1,7 @@
 //! Raft runtime configuration.
 
 use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
 use clap::Parser;
 use rand::thread_rng;
@@ -99,9 +100,17 @@ pub struct Config {
     #[clap(long, default_value = "50")]
     pub heartbeat_interval: u64,
 
-    /// The timeout for sending a snapshot segment, in millisecond
+    /// The timeout for sending then installing the last snapshot segment,
+    /// in millisecond. It is also used as the timeout for sending a non-last segment, if `send_snapshot_timeout` is 0.
     #[clap(long, default_value = "200")]
     pub install_snapshot_timeout: u64,
+
+    /// The timeout for sending a **non-last** snapshot segment, in milliseconds.
+    ///
+    /// It is disabled by default, by setting it to `0`.
+    /// The timeout for sending every segment is `install_snapshot_timeout`.
+    #[clap(long, default_value = "0")]
+    pub send_snapshot_timeout: u64,
 
     /// The maximum number of entries per payload allowed to be transmitted during replication
     ///
@@ -197,6 +206,20 @@ impl Config {
     /// Generate a new random election timeout within the configured min & max.
     pub fn new_rand_election_timeout(&self) -> u64 {
         thread_rng().gen_range(self.election_timeout_min..self.election_timeout_max)
+    }
+
+    /// Get the timeout for sending and installing the last snapshot segment.
+    pub fn install_snapshot_timeout(&self) -> Duration {
+        Duration::from_millis(self.install_snapshot_timeout)
+    }
+
+    /// Get the timeout for sending a non-last snapshot segment.
+    pub fn send_snapshot_timeout(&self) -> Duration {
+        if self.send_snapshot_timeout > 0 {
+            Duration::from_millis(self.send_snapshot_timeout)
+        } else {
+            self.install_snapshot_timeout()
+        }
     }
 
     pub fn build(args: &[&str]) -> Result<Config, ConfigError> {

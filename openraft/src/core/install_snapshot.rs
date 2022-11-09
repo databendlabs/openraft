@@ -66,6 +66,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         } else {
             unreachable!("It has to be Streaming")
         };
+
         if stream_changed {
             self.begin_installing_snapshot(&req).await?;
         }
