@@ -103,6 +103,10 @@ pub struct Config {
     #[clap(long, default_value = "200")]
     pub install_snapshot_timeout: u64,
 
+    /// The timeout for sending the last snapshot segment, in seconds
+    #[clap(long, default_value = "300")]
+    pub finalize_snapshot_timeout: u64,
+
     /// The maximum number of entries per payload allowed to be transmitted during replication
     ///
     /// If this is too low, it will take longer for the nodes to be brought up to
