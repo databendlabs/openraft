@@ -5,6 +5,7 @@ use maplit::btreeset;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::EffectiveMembership;
 use crate::LeaderId;
@@ -134,14 +135,15 @@ fn test_update_effective_membership_for_leader() -> anyhow::Result<()> {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
             },
             Command::UpdateReplicationStreams {
-                targets: vec![(3, None), (4, None)], // node-2 is leader, won't be removed
+                targets: vec![(3, ProgressEntry::empty(0)), (4, ProgressEntry::empty(0))], /* node-2 is leader,
+                                                                                            * won't be removed */
             }
         ],
         eng.commands
     );
 
     assert!(
-        eng.state.internal_server_state.leading().unwrap().progress.get(&4).is_none(),
+        eng.state.internal_server_state.leading().unwrap().progress.get(&4).matching.is_none(),
         "exists, but it is a None"
     );
 
@@ -161,17 +163,20 @@ fn test_update_effective_membership_update_learner_process() -> anyhow::Result<(
     eng.state.new_leader();
 
     if let Some(l) = &mut eng.state.internal_server_state.leading_mut() {
-        assert_eq!(&None, l.progress.get(&4));
-        assert_eq!(&None, l.progress.get(&5));
+        assert_eq!(&ProgressEntry::empty(0), l.progress.get(&4));
+        assert_eq!(&ProgressEntry::empty(0), l.progress.get(&5));
 
-        let _ = l.progress.update(&4, Some(log_id(1, 4)));
-        assert_eq!(&Some(log_id(1, 4)), l.progress.get(&4));
+        let p = ProgressEntry::new(Some(log_id(1, 4)));
+        let _ = l.progress.update(&4, p);
+        assert_eq!(&p, l.progress.get(&4));
 
-        let _ = l.progress.update(&5, Some(log_id(1, 5)));
-        assert_eq!(&Some(log_id(1, 5)), l.progress.get(&5));
+        let p = ProgressEntry::new(Some(log_id(1, 5)));
+        let _ = l.progress.update(&5, p);
+        assert_eq!(&p, l.progress.get(&5));
 
-        let _ = l.progress.update(&3, Some(log_id(1, 3)));
-        assert_eq!(&Some(log_id(1, 3)), l.progress.get(&3));
+        let p = ProgressEntry::new(Some(log_id(1, 3)));
+        let _ = l.progress.update(&3, p);
+        assert_eq!(&p, l.progress.get(&3));
     } else {
         unreachable!("leader should not be None");
     }
@@ -188,18 +193,25 @@ fn test_update_effective_membership_update_learner_process() -> anyhow::Result<(
 
     if let Some(l) = &mut eng.state.internal_server_state.leading_mut() {
         assert_eq!(
-            &Some(log_id(1, 4)),
+            &ProgressEntry::new(Some(log_id(1, 4))),
             l.progress.get(&4),
             "learner-4 progress should be transferred to voter progress"
         );
         assert_eq!(
-            &Some(log_id(1, 3)),
+            &ProgressEntry::new(Some(log_id(1, 3))),
             l.progress.get(&3),
             "voter-3 progress should be transferred to learner progress"
         );
 
-        assert_eq!(&Some(log_id(1, 5)), l.progress.get(&5), "learner-5 has previous value");
-        assert_eq!(&None, l.progress.get(&6));
+        assert_eq!(
+            &ProgressEntry::new(Some(log_id(1, 5))),
+            l.progress.get(&5),
+            "learner-5 has previous value"
+        );
+        assert_eq!(
+            &ProgressEntry::empty(0), //
+            l.progress.get(&6)
+        );
     } else {
         unreachable!("leader should not be None");
     }

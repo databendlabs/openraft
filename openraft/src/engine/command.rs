@@ -1,6 +1,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
+use crate::progress::entry::ProgressEntry;
 use crate::raft::VoteRequest;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -64,7 +65,7 @@ where
     /// When membership config changes, the membership log id stored in ReplicationCore has to be updated.
     UpdateReplicationStreams {
         /// Targets to replicate to.
-        targets: Vec<(NID, Option<LogId<NID>>)>,
+        targets: Vec<(NID, ProgressEntry<NID>)>,
     },
 
     /// Move the cursor pointing to an entry in the input buffer.

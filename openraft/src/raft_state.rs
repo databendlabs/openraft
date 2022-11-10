@@ -103,8 +103,11 @@ where
     /// In openraft, Leader and Candidate shares the same state.
     pub(crate) fn new_leader(&mut self) {
         let em = &self.membership_state.effective;
-        self.internal_server_state =
-            InternalServerState::Leading(Leader::new(em.membership.to_quorum_set(), em.learner_ids()));
+        self.internal_server_state = InternalServerState::Leading(Leader::new(
+            em.membership.to_quorum_set(),
+            em.learner_ids(),
+            self.last_log_id().index(),
+        ));
     }
 
     /// Return true if the currently effective membership is committed.

@@ -1,8 +1,10 @@
 use std::collections::BTreeSet;
 
+use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
+use crate::raft_types::LogIndexOptionExt;
 use crate::LogId;
 use crate::NodeId;
 
@@ -26,7 +28,7 @@ pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
     pub(crate) vote_granted_by: BTreeSet<NID>,
 
     /// Tracks the replication progress and committed index
-    pub(crate) progress: VecProgress<NID, Option<LogId<NID>>, Option<LogId<NID>>, QS>,
+    pub(crate) progress: VecProgress<NID, ProgressEntry<NID>, Option<LogId<NID>>, QS>,
 }
 
 impl<NID, QS> Leader<NID, QS>
@@ -34,10 +36,14 @@ where
     NID: NodeId,
     QS: QuorumSet<NID> + 'static,
 {
-    pub(crate) fn new(quorum_set: QS, learner_ids: impl Iterator<Item = NID>) -> Self {
+    pub(crate) fn new(quorum_set: QS, learner_ids: impl Iterator<Item = NID>, last_log_index: Option<u64>) -> Self {
         Self {
             vote_granted_by: BTreeSet::new(),
-            progress: VecProgress::new(quorum_set, learner_ids, None),
+            progress: VecProgress::new(
+                quorum_set,
+                learner_ids,
+                ProgressEntry::empty(last_log_index.next_index()),
+            ),
         }
     }
 

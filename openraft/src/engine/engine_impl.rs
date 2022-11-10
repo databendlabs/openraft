@@ -12,6 +12,7 @@ use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::membership::NodeRole;
 use crate::node::Node;
+use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::VoteRequest;
@@ -658,13 +659,15 @@ where
             membership: self.state.membership_state.effective.clone(),
         });
 
+        let end = self.state.last_log_id().next_index();
+
         // If membership changes, the progress should be upgraded.
         if let Some(leader) = &mut self.state.internal_server_state.leading_mut() {
             let old_progress = leader.progress.clone();
-
             let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
-            leader.progress = old_progress.upgrade_quorum_set(em.membership.to_quorum_set(), &learner_ids, None);
+            leader.progress =
+                old_progress.upgrade_quorum_set(em.membership.to_quorum_set(), &learner_ids, ProgressEntry::empty(end));
         }
 
         // A leader that is removed will be shut down when this membership log is committed.
@@ -693,7 +696,15 @@ where
 
             tracing::debug!(progress = debug(&leader.progress), "leader progress");
 
-            let res = leader.progress.update(&node_id, log_id);
+            // TODO: merge this step into progress.update()
+            if leader.progress.index(&node_id).is_none() {
+                return;
+            }
+
+            let mut updated = *leader.progress.get(&node_id);
+            updated.update_matching(log_id);
+
+            let res = leader.progress.update(&node_id, updated);
             match res {
                 Ok(c) => *c,
                 Err(_) => {
