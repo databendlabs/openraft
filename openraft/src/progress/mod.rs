@@ -7,6 +7,7 @@
 #[cfg(feature = "bench")]
 #[cfg(test)]
 mod bench;
+pub(crate) mod entry;
 
 use std::borrow::Borrow;
 use std::fmt::Debug;
@@ -128,7 +129,7 @@ where
 
     /// Find the index in of the specified id.
     #[inline(always)]
-    fn index(&self, target: &ID) -> Option<usize> {
+    pub(crate) fn index(&self, target: &ID) -> Option<usize> {
         for (i, elt) in self.vector.iter().enumerate() {
             if elt.0 == *target {
                 return Some(i);

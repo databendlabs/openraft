@@ -7,6 +7,7 @@ use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::progress::entry::ProgressEntry;
 use crate::raft::VoteResponse;
 use crate::EffectiveMembership;
 use crate::LeaderId;
@@ -255,7 +256,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                     server_state: ServerState::Leader
                 },
                 Command::UpdateReplicationStreams {
-                    targets: vec![(2, None)]
+                    targets: vec![(2, ProgressEntry::empty(0))]
                 },
                 Command::AppendBlankLog {
                     log_id: LogId {

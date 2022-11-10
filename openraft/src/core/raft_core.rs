@@ -61,6 +61,7 @@ use crate::error::VoteError;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::UpdateMatchedLogId;
+use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::quorum::QuorumSet;
 use crate::raft::AddLearnerResponse;
@@ -313,14 +314,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             unreachable!("it has to be a leader!!!");
         };
 
-        for (target, matched) in voter_progresses {
+        for (target, progress) in voter_progresses {
             if target == self.id {
                 continue;
             }
 
             let rpc = AppendEntriesRequest {
                 vote: self.engine.state.vote,
-                prev_log_id: matched,
+                prev_log_id: progress.matching,
                 entries: vec![],
                 leader_commit: self.engine.state.committed,
             };
@@ -465,7 +466,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let _ = tx.send(Ok(AddLearnerResponse {
                 membership_log_id: self.engine.state.membership_state.effective.log_id,
-                matched,
+                matched: matched.matching,
             }));
             return Ok(());
         }
@@ -596,7 +597,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         unreachable!("it has to be a leader!!!");
                     };
 
-                    let distance = replication_lag(&matched.map(|x| x.index), &last_log_id.map(|x| x.index));
+                    let distance = replication_lag(&matched.matching.index(), &last_log_id.index());
 
                     if distance <= self.config.replication_lag_threshold {
                         continue;
@@ -604,7 +605,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
                     let lagging = LearnerIsLagging {
                         node_id: *node_id,
-                        matched,
+                        matched: matched.matching,
                         distance,
                     };
 
@@ -991,7 +992,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) async fn spawn_replication_stream(
         &mut self,
         target: C::NodeId,
-        matched: Option<LogId<C::NodeId>>,
+        progress_entry: ProgressEntry<C::NodeId>,
     ) -> Result<ReplicationStream<C::NodeId>, N::ConnectionError> {
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective.get_node(&target).unwrap();
@@ -1001,13 +1002,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         Ok(ReplicationCore::<C, N, S>::spawn(
             target,
-            target_node.clone(),
             self.engine.state.vote,
             membership_log_id,
             self.config.clone(),
-            self.engine.state.last_log_id(),
             self.engine.state.committed,
-            matched,
+            progress_entry,
             network,
             self.storage.get_log_reader().await,
             self.tx_api.clone(),

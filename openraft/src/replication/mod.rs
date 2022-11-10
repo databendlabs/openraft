@@ -23,6 +23,7 @@ use crate::error::LackEntry;
 use crate::error::RPCError;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
+use crate::progress::entry::ProgressEntry;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
@@ -134,13 +135,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
         target: C::NodeId,
-        target_node: C::Node,
         vote: Vote<C::NodeId>,
         membership_log_id: Option<LogId<C::NodeId>>,
         config: Arc<Config>,
-        last_log: Option<LogId<C::NodeId>>,
         committed: Option<LogId<C::NodeId>>,
-        matched: Option<LogId<C::NodeId>>,
+        progress_entry: ProgressEntry<C::NodeId>,
         network: N::Network,
         log_reader: S::LogReader,
         raft_core_tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
@@ -159,8 +158,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             config,
             target_repl_state: TargetReplState::LineRate,
             committed,
-            matched,
-            max_possible_matched_index: last_log.index(),
+            matched: progress_entry.matching,
+            max_possible_matched_index: progress_entry.max_possible_matching(),
             raft_core_tx,
             repl_rx,
             install_snapshot_timeout,
