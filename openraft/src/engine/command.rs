@@ -94,9 +94,6 @@ where
     /// Install a snapshot data file: e.g., replace state machine with snapshot, save snapshot data.
     InstallSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
 
-    /// A received snapshot does not need to be installed, just drop buffered snapshot data.
-    CancelSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
-
     //
     // --- Draft unimplemented commands:
 
@@ -129,7 +126,6 @@ where
             Command::PurgeLog { .. } => flags.set_data_changed(),
             Command::DeleteConflictLog { .. } => flags.set_data_changed(),
             Command::InstallSnapshot { .. } => flags.set_data_changed(),
-            Command::CancelSnapshot { .. } => {}
             Command::BuildSnapshot { .. } => flags.set_data_changed(),
         }
     }

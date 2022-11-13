@@ -79,17 +79,6 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
         eng.metrics_flags
     );
 
-    assert_eq!(
-        vec![Command::CancelSnapshot {
-            snapshot_meta: SnapshotMeta {
-                last_log_id: Some(log_id(2, 2)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
-                snapshot_id: "1-2-3-4".to_string(),
-            }
-        }],
-        eng.commands
-    );
-
     Ok(())
 }
 
@@ -122,17 +111,6 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
             cluster: false,
         },
         eng.metrics_flags
-    );
-
-    assert_eq!(
-        vec![Command::CancelSnapshot {
-            snapshot_meta: SnapshotMeta {
-                last_log_id: Some(log_id(4, 5)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
-                snapshot_id: "1-2-3-4".to_string(),
-            }
-        }],
-        eng.commands
     );
 
     Ok(())

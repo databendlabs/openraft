@@ -747,7 +747,6 @@ where
                 snap_last_log_id.summary(),
                 self.state.committed.summary()
             );
-            self.push_command(Command::CancelSnapshot { snapshot_meta: meta });
             return;
         }
 
