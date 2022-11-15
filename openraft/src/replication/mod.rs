@@ -1,11 +1,9 @@
 //! Replication stream.
 
-use std::io::SeekFrom;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -714,19 +712,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
 
-        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
-
         let mut offset = 0;
 
         let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
 
         loop {
             // Build the RPC.
-            snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
-
             let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
 
-            let done = (offset + n_read as u64) == end; // If bytes read == 0, then we're done.
+            let done = n_read == 0;
+
             let req = InstallSnapshotRequest {
                 vote: self.vote,
                 meta: snapshot.meta.clone(),
@@ -740,7 +735,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             tracing::debug!(
                 snapshot_size = req.data.len(),
                 req.offset,
-                end,
                 req.done,
                 "sending snapshot chunk"
             );
