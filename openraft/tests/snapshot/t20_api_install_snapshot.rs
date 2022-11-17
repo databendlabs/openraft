@@ -111,8 +111,13 @@ async fn snapshot_arguments() -> Result<()> {
         let mut req = req0.clone();
         req.offset = 8;
         req.meta.snapshot_id = "ss2".into();
-        n.0.install_snapshot(req).await?;
+        let res = n.0.install_snapshot(req).await;
+        assert_eq!(
+            r#"when Write Snapshot(SnapshotSignature { last_log_id: Some(LogId { leader_id: LeaderId { term: 1, node_id: 0 }, index: 0 }), last_membership_log_id: None, snapshot_id: "ss2" }): offsets do not match 6:8"#,
+            res.unwrap_err().to_string()
+        );
     }
+
     Ok(())
 }
 

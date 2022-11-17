@@ -1,15 +1,13 @@
 //! Replication stream.
 
-use std::io::SeekFrom;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
 use tokio::io::AsyncReadExt;
-use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
+#[cfg(test)] use tokio::time::sleep;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tracing_futures::Instrument;
@@ -44,7 +42,6 @@ use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::ToStorageResult;
 use crate::Vote;
-
 /// The handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<NID: NodeId> {
     /// The spawn handle the `ReplicationCore` task.
@@ -714,33 +711,29 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
 
-        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
-
         let mut offset = 0;
 
         let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
 
+        // Build the first RPC.
+        let mut n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
+
+        let mut done = n_read == 0;
+
+        let mut req = InstallSnapshotRequest {
+            vote: self.vote,
+            meta: snapshot.meta.clone(),
+            offset,
+            data: Vec::from(&buf[..n_read]),
+            done,
+        };
+        buf.clear();
+
         loop {
-            // Build the RPC.
-            snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
-
-            let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
-
-            let done = (offset + n_read as u64) == end; // If bytes read == 0, then we're done.
-            let req = InstallSnapshotRequest {
-                vote: self.vote,
-                meta: snapshot.meta.clone(),
-                offset,
-                data: Vec::from(&buf[..n_read]),
-                done,
-            };
-            buf.clear();
-
             // Send the RPC over to the target.
             tracing::debug!(
                 snapshot_size = req.data.len(),
                 req.offset,
-                end,
                 req.done,
                 "sending snapshot chunk"
             );
@@ -751,7 +744,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 self.config.send_snapshot_timeout()
             };
 
-            let res = timeout(snap_timeout, self.network.send_install_snapshot(req)).await;
+            // TODO should not clone the request. If possible we should return the failed request or better yet pass the
+            // req as a reference
+            let res = timeout(snap_timeout, self.network.send_install_snapshot(req.clone())).await;
 
             let res = match res {
                 Ok(outer_res) => match outer_res {
@@ -761,6 +756,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
                         // Sleep a short time otherwise in test environment it is a dead-loop that never yields.
                         // Because network implementation does not yield.
+                        #[cfg(test)]
                         sleep(Duration::from_millis(10)).await;
                         continue;
                     }
@@ -770,6 +766,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
                     // Sleep a short time otherwise in test environment it is a dead-loop that never yields.
                     // Because network implementation does not yield.
+                    #[cfg(test)]
                     sleep(Duration::from_millis(10)).await;
                     continue;
                 }
@@ -796,11 +793,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 return Ok(());
             }
 
-            // Everything is good, so update offset for sending the next chunk.
-            offset += n_read as u64;
-
             // Check raft channel to ensure we are staying up-to-date, then loop.
             self.try_drain_raft_rx().await?;
+
+            // Build the next RPC.
+            // update offset for sending the next chunk.
+            offset += n_read as u64;
+
+            n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
+
+            done = n_read == 0;
+
+            req = InstallSnapshotRequest {
+                vote: self.vote,
+                meta: snapshot.meta.clone(),
+                offset,
+                data: Vec::from(&buf[..n_read]),
+                done,
+            };
+            buf.clear();
         }
     }
 }

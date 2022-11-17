@@ -9,7 +9,6 @@ use async_trait::async_trait;
 pub use helper::StorageHelper;
 pub use snapshot_signature::SnapshotSignature;
 use tokio::io::AsyncRead;
-use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
 use crate::defensive::check_range_matches_entries;
@@ -77,7 +76,7 @@ pub struct Snapshot<NID, N, S>
 where
     NID: NodeId,
     N: Node,
-    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+    S: AsyncRead + Send + Unpin + 'static,
 {
     /// metadata of a snapshot
     pub meta: SnapshotMeta<NID, N>,
@@ -164,7 +163,7 @@ where C: RaftTypeConfig
 pub trait RaftSnapshotBuilder<C, SD>: Send + Sync + 'static
 where
     C: RaftTypeConfig,
-    SD: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static,
+    SD: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
 {
     /// Build snapshot
     ///
@@ -201,7 +200,7 @@ where C: RaftTypeConfig
     ///
     /// See the [storage chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#implement-raftstorage)
     /// for details on where and how this is used.
-    type SnapshotData: AsyncRead + AsyncWrite + AsyncSeek + Send + Sync + Unpin + 'static;
+    type SnapshotData: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static;
 
     /// Log reader type.
     type LogReader: RaftLogReader<C>;

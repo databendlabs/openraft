@@ -32,6 +32,7 @@ pub trait DefensiveCheckBase<C: RaftTypeConfig> {
         if !self.is_defensive() {
             return Ok(());
         }
+
         let start = match range.start_bound() {
             Bound::Included(i) => Some(*i),
             Bound::Excluded(i) => Some(*i + 1),

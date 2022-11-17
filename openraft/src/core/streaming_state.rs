@@ -1,8 +1,6 @@
-use std::io::SeekFrom;
 use std::marker::PhantomData;
 
-use tokio::io::AsyncSeek;
-use tokio::io::AsyncSeekExt;
+use anyerror::AnyError;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
@@ -12,6 +10,7 @@ use crate::ErrorVerb;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
 use crate::StorageError;
+use crate::StorageIOError;
 
 /// The Raft node is streaming in a snapshot from the leader.
 pub(crate) struct StreamingState<C: RaftTypeConfig, SD> {
@@ -26,7 +25,7 @@ pub(crate) struct StreamingState<C: RaftTypeConfig, SD> {
 }
 
 impl<C: RaftTypeConfig, SD> StreamingState<C, SD>
-where SD: AsyncSeek + AsyncWrite + Unpin
+where SD: AsyncWrite + Unpin
 {
     pub(crate) fn new(snapshot_id: SnapshotId, snapshot_data: Box<SD>) -> Self {
         Self {
@@ -41,16 +40,13 @@ where SD: AsyncSeek + AsyncWrite + Unpin
     pub(crate) async fn receive(&mut self, req: InstallSnapshotRequest<C>) -> Result<bool, StorageError<C::NodeId>> {
         // TODO: check id?
 
-        // Always seek to the target offset if not an exact match.
         if req.offset != self.offset {
-            if let Err(err) = self.snapshot_data.as_mut().seek(SeekFrom::Start(req.offset)).await {
-                return Err(StorageError::from_io_error(
-                    ErrorSubject::Snapshot(req.meta.signature()),
-                    ErrorVerb::Seek,
-                    err,
-                ));
-            }
-            self.offset = req.offset;
+            let sto_io_err = StorageIOError::new(
+                ErrorSubject::Snapshot(req.meta.signature()),
+                ErrorVerb::Write,
+                AnyError::error(format!("offsets do not match {}:{}", self.offset, req.offset)),
+            );
+            return Err(StorageError::IO { source: sto_io_err });
         }
 
         // Write the next segment & update offset.
