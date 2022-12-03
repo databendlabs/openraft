@@ -261,7 +261,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.engine.metrics_flags.set_data_changed();
         }
 
-        self.engine.state.server_state = self.engine.calc_server_state();
+        // On startup, do not assume a leader. Becoming a leader require initialization on several fields.
+        // TODO: enable starting up as a leader. After `server_state` is removed from Engine.
+        let server_state = self.engine.calc_server_state();
+        self.engine.state.server_state = if server_state == ServerState::Leader {
+            ServerState::Follower
+        } else {
+            server_state
+        };
 
         // To ensure that restarted nodes don't disrupt a stable cluster.
         self.set_next_election_time(false);
