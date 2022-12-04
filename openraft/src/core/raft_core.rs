@@ -19,11 +19,9 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
-use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tokio::time::Duration;
 use tokio::time::Instant;
-use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
 use tracing::Span;
@@ -164,60 +162,14 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
     pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, S>>,
 
-    tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
+    pub(crate) tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
 
     pub(crate) span: Span,
 }
 
-pub(crate) type RaftSpawnHandle<NID> = JoinHandle<Result<(), Fatal<NID>>>;
-
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
-    pub(crate) fn spawn(
-        id: C::NodeId,
-        config: Arc<Config>,
-        runtime_config: Arc<RuntimeConfig>,
-        network: N,
-        storage: S,
-        tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
-        rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, S>>,
-        tx_metrics: watch::Sender<RaftMetrics<C::NodeId, C::Node>>,
-        rx_shutdown: oneshot::Receiver<()>,
-    ) -> RaftSpawnHandle<C::NodeId> {
-        let span = tracing::span!(
-            parent: tracing::Span::current(),
-            Level::DEBUG,
-            "RaftCore",
-            id = display(id),
-            cluster = display(&config.cluster_name)
-        );
-
-        let this = Self {
-            id,
-            config,
-            runtime_config,
-            network,
-            storage,
-
-            engine: Engine::default(),
-            leader_data: None,
-
-            snapshot_state: SnapshotState::None,
-            received_snapshot: BTreeMap::new(),
-            next_election_time: VoteWiseTime::new(Vote::default(), Instant::now() + Duration::from_secs(86400)),
-
-            tx_api,
-            rx_api,
-
-            tx_metrics,
-
-            span,
-        };
-
-        tokio::spawn(this.main(rx_shutdown).instrument(trace_span!("spawn").or_current()))
-    }
-
     /// The main loop of the Raft protocol.
-    async fn main(mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
+    pub(crate) async fn main(mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
