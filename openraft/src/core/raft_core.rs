@@ -173,21 +173,23 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let span = tracing::span!(parent: &self.span, Level::DEBUG, "main");
         let res = self.do_main(rx_shutdown).instrument(span).await;
 
-        self.engine.state.server_state = ServerState::Shutdown;
+        // Flush buffered metrics
         self.report_metrics(Update::AsIs);
 
-        match res {
-            Ok(_) => Ok(()),
-            Err(err) => {
+        tracing::info!("update the metrics for shutdown");
+        {
+            let mut curr = self.tx_metrics.borrow().clone();
+            curr.state = ServerState::Shutdown;
+
+            if let Err(err) = &res {
                 tracing::error!(?err, "quit RaftCore::main on error");
-
-                let mut curr = self.tx_metrics.borrow().clone();
                 curr.running_state = Err(err.clone());
-                let _ = self.tx_metrics.send(curr);
-
-                Err(err)
             }
+
+            let _ = self.tx_metrics.send(curr);
         }
+
+        res
     }
 
     #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
@@ -213,19 +215,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.engine.metrics_flags.set_data_changed();
         }
 
-        // On startup, do not assume a leader. Becoming a leader require initialization on several fields.
-        // TODO: enable starting up as a leader. After `server_state` is removed from Engine.
-        let server_state = self.engine.calc_server_state();
-        self.engine.state.server_state = if server_state == ServerState::Leader {
-            ServerState::Follower
-        } else {
-            server_state
-        };
+        self.engine.startup();
+        // No output commands
 
         // To ensure that restarted nodes don't disrupt a stable cluster.
         self.set_next_election_time(false);
-
-        tracing::debug!("id={} target_state: {:?}", self.id, self.engine.state.server_state);
 
         // Initialize metrics.
         self.report_metrics(Update::Update(None));
@@ -353,7 +347,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     continue;
                 }
                 // we are no longer leader so error out early
-                if !self.engine.state.server_state.is_leader() {
+                if !self.engine.is_leader() {
                     self.reject_with_forward_to_leader(tx);
                     return;
                 }
@@ -650,7 +644,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             snapshot: self.engine.snapshot_meta.last_log_id,
 
             // --- cluster ---
-            state: self.engine.state.server_state,
+            state: self.engine.calc_server_state(),
             current_leader: self.current_leader(),
             membership_config: self.engine.state.membership_state.effective.clone(),
 
@@ -691,20 +685,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.run_engine_commands(&entry_refs).await?;
 
         Ok(())
-    }
-
-    /// Update core's target state, ensuring all invariants are upheld.
-    #[tracing::instrument(level = "debug", skip(self), fields(id=display(self.id)))]
-    pub(crate) fn set_target_state(&mut self, target_state: ServerState) {
-        tracing::debug!(id = display(self.id), ?target_state, "set_target_state");
-
-        if target_state == ServerState::Follower
-            && !self.engine.state.membership_state.effective.membership.is_voter(&self.id)
-        {
-            self.engine.state.server_state = ServerState::Learner;
-        } else {
-            self.engine.state.server_state = target_state;
-        }
     }
 
     /// Set a value for the next election timeout.
@@ -842,20 +822,25 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     #[tracing::instrument(level = "debug", skip(self))]
     pub fn current_leader(&self) -> Option<C::NodeId> {
+        tracing::debug!(
+            self_id = display(self.id),
+            vote = display(self.engine.state.vote.summary()),
+            "get current_leader"
+        );
+
         if !self.engine.state.vote.committed {
             return None;
         }
 
         let id = self.engine.state.vote.node_id;
 
-        if id == self.id {
-            if self.engine.state.server_state == ServerState::Leader {
-                Some(id)
-            } else {
-                None
-            }
-        } else {
+        // TODO: `is_voter()` is slow, maybe cache `current_leader`,
+        //       e.g., only update it when membership or vote changes
+        if self.engine.state.membership_state.effective.is_voter(&id) {
             Some(id)
+        } else {
+            tracing::debug!("id={} is not a voter", id);
+            None
         }
     }
 
@@ -1056,8 +1041,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 Ok(msg) => self.handle_api_msg(msg).await?,
                 Err(reason) => {
                     tracing::info!(reason);
-
-                    self.set_target_state(ServerState::Shutdown);
                     return Ok(());
                 }
             }
@@ -1165,8 +1148,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
-        let is_leader = || self.engine.state.server_state == ServerState::Leader;
-
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
                 let resp =
@@ -1189,14 +1170,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.handle_building_snapshot_result(result).await?;
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
-                if is_leader() {
+                if self.engine.is_leader() {
                     self.handle_check_is_leader_request(tx).await;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }
             }
             RaftMsg::ClientWriteRequest { payload: rpc, tx } => {
-                if is_leader() {
+                if self.engine.is_leader() {
                     self.write_entry(rpc, Some(tx)).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
@@ -1206,7 +1187,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 let _ = tx.send(self.handle_initialize(members).await.extract_fatal()?);
             }
             RaftMsg::AddLearner { id, node, tx } => {
-                if is_leader() {
+                if self.engine.is_leader() {
                     self.add_learner(id, node, tx).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
@@ -1218,7 +1199,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 turn_to_learner,
                 tx,
             } => {
-                if is_leader() {
+                if self.engine.is_leader() {
                     self.change_membership(changes, when, turn_to_learner, tx).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);

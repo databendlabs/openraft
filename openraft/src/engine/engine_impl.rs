@@ -100,6 +100,23 @@ where
         }
     }
 
+    // TODO: test it
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn startup(&mut self) {
+        // On startup, do not assume a leader. Becoming a leader require initialization on several fields.
+        // TODO: allows starting up as a leader. After `server_state` is removed from Engine.
+
+        let server_state = if self.state.membership_state.effective.is_voter(&self.id) {
+            ServerState::Follower
+        } else {
+            ServerState::Learner
+        };
+
+        tracing::debug!("startup: id={} target_state: {:?}", self.id, self.state.server_state);
+
+        self.state.server_state = server_state;
+    }
+
     /// Initialize a node by appending the first log.
     ///
     /// - The first log has to be membership config log.
@@ -1217,7 +1234,7 @@ where
         self.state.internal_server_state.is_leading()
     }
 
-    fn is_leader(&self) -> bool {
+    pub(crate) fn is_leader(&self) -> bool {
         self.state.vote.node_id == self.id && self.state.vote.committed
     }
 
