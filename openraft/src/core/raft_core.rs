@@ -1452,23 +1452,22 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
         &'e Ent: Into<Entry<C>>,
     {
         match cmd {
-            Command::UpdateServerState { server_state } => {
-                if server_state == &ServerState::Leader {
-                    debug_assert!(self.leader_data.is_none(), "can not become leader twice");
-                    self.leader_data = Some(LeaderData::new());
-                } else {
-                    if let Some(l) = &mut self.leader_data {
-                        // Leadership lost, inform waiting clients
-                        let chans = std::mem::take(&mut l.client_resp_channels);
-                        for (_, tx) in chans.into_iter() {
-                            let _ = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
-                                leader_id: None,
-                                leader_node: None,
-                            })));
-                        }
+            Command::BecomeLeader => {
+                debug_assert!(self.leader_data.is_none(), "can not become leader twice");
+                self.leader_data = Some(LeaderData::new());
+            }
+            Command::QuitLeader => {
+                if let Some(l) = &mut self.leader_data {
+                    // Leadership lost, inform waiting clients
+                    let chans = std::mem::take(&mut l.client_resp_channels);
+                    for (_, tx) in chans.into_iter() {
+                        let _ = tx.send(Err(ClientWriteError::ForwardToLeader(ForwardToLeader {
+                            leader_id: None,
+                            leader_node: None,
+                        })));
                     }
-                    self.leader_data = None;
                 }
+                self.leader_data = None;
             }
             Command::AppendInputEntries { range } => {
                 let entry_refs = &input_ref_entries[range.clone()];

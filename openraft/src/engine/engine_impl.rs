@@ -1097,7 +1097,13 @@ where
 
         if prev_server_state != server_state {
             self.state.server_state = server_state;
-            self.push_command(Command::UpdateServerState { server_state })
+
+            let cmd = if server_state == ServerState::Leader {
+                Command::BecomeLeader
+            } else {
+                Command::QuitLeader
+            };
+            self.push_command(cmd);
         }
     }
 
@@ -1110,7 +1116,12 @@ where
         }
 
         self.state.server_state = server_state;
-        self.push_command(Command::UpdateServerState { server_state });
+        let cmd = if server_state == ServerState::Leader {
+            Command::BecomeLeader
+        } else {
+            Command::QuitLeader
+        };
+        self.push_command(cmd);
     }
 
     /// Check if a raft node is in a state that allows to initialize.

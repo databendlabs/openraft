@@ -80,9 +80,7 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Learner
-            },
+            Command::QuitLeader,
         ],
         eng.commands
     );
@@ -245,9 +243,7 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01()))
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Learner
-            },
+            Command::QuitLeader,
         ],
         eng.commands
     );

@@ -66,9 +66,7 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::SaveVote {
                     vote: Vote::new_committed(1, 1)
                 },
-                Command::UpdateServerState {
-                    server_state: ServerState::Leader
-                },
+                Command::BecomeLeader,
                 Command::UpdateReplicationStreams { targets: vec![] },
                 Command::AppendBlankLog {
                     log_id: LogId {
@@ -135,9 +133,7 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::SaveVote {
                     vote: Vote::new_committed(2, 1)
                 },
-                Command::UpdateServerState {
-                    server_state: ServerState::Leader
-                },
+                Command::BecomeLeader,
                 Command::UpdateReplicationStreams { targets: vec![] },
                 Command::AppendBlankLog {
                     log_id: LogId {
@@ -200,9 +196,7 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::SendVote {
                     vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1)))
                 },
-                Command::UpdateServerState {
-                    server_state: ServerState::Candidate
-                },
+                Command::QuitLeader,
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.commands

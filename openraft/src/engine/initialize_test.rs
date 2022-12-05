@@ -70,9 +70,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output command.
-                Command::UpdateServerState {
-                    server_state: ServerState::Follower,
-                },
+                Command::QuitLeader,
                 Command::MoveInputCursorBy { n: 1 },
                 Command::SaveVote {
                     vote: Vote {
@@ -90,9 +88,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                         committed: true,
                     },
                 },
-                Command::UpdateServerState {
-                    server_state: ServerState::Leader
-                },
+                Command::BecomeLeader,
                 Command::UpdateReplicationStreams { targets: vec![] },
                 Command::AppendBlankLog {
                     log_id: LogId {
@@ -171,9 +167,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output command.
-                Command::UpdateServerState {
-                    server_state: ServerState::Follower,
-                },
+                Command::QuitLeader,
                 Command::MoveInputCursorBy { n: 1 },
                 Command::SaveVote {
                     vote: Vote {
@@ -195,9 +189,7 @@ fn test_initialize() -> anyhow::Result<()> {
                         },),
                     },
                 },
-                Command::UpdateServerState {
-                    server_state: ServerState::Candidate
-                },
+                Command::QuitLeader,
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.commands

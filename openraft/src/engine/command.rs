@@ -8,7 +8,6 @@ use crate::LogId;
 use crate::MetricsChangeFlags;
 use crate::Node;
 use crate::NodeId;
-use crate::ServerState;
 use crate::SnapshotMeta;
 use crate::Vote;
 
@@ -19,10 +18,12 @@ where
     N: Node,
     NID: NodeId,
 {
-    /// Update server state, e.g., Leader, Follower etc.
-    /// TODO: consider removing this variant. A runtime does not need to know about this. It is only meant for metrics
-    ///       report.
-    UpdateServerState { server_state: ServerState },
+    /// Becomes a leader, i.e., its `vote` is granted by a quorum.
+    /// The runtime initializes leader data when receives this command.
+    BecomeLeader,
+
+    /// No longer a leader. Clean up leader's data.
+    QuitLeader,
 
     /// Append a `range` of entries in the input buffer.
     AppendInputEntries { range: Range<usize> },
@@ -114,7 +115,8 @@ where
     /// Update the flag of the metrics that needs to be updated when this command is executed.
     pub(crate) fn update_metrics_flags(&self, flags: &mut MetricsChangeFlags) {
         match &self {
-            Command::UpdateServerState { .. } => flags.set_cluster_changed(),
+            Command::BecomeLeader { .. } => flags.set_cluster_changed(),
+            Command::QuitLeader => flags.set_cluster_changed(),
             Command::AppendInputEntries { .. } => flags.set_data_changed(),
             Command::AppendBlankLog { .. } => flags.set_data_changed(),
             Command::ReplicateCommitted { .. } => {}
