@@ -210,9 +210,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34())),
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Learner
-            },
+            Command::QuitLeader,
             Command::MoveInputCursorBy { n: 5 }
         ],
         eng.commands
@@ -292,9 +290,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(4, 7)), m45())),
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Follower
-            },
+            Command::QuitLeader,
             Command::MoveInputCursorBy { n: 5 }
         ],
         eng.commands

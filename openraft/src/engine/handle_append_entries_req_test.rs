@@ -151,9 +151,7 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
                 vote: Vote::new_committed(2, 1)
             },
             Command::InstallElectionTimer { can_be_leader: false },
-            Command::UpdateServerState {
-                server_state: ServerState::Follower
-            },
+            Command::QuitLeader,
         ],
         eng.commands
     );
@@ -210,9 +208,7 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Learner
-            },
+            Command::QuitLeader,
         ],
         eng.commands
     );
@@ -270,9 +266,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Learner
-            },
+            Command::QuitLeader,
             Command::AppendInputEntries { range: 1..2 },
             Command::MoveInputCursorBy { n: 2 },
             Command::FollowerCommit {
@@ -334,9 +328,7 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
                 vote: Vote::new_committed(2, 1)
             },
             Command::InstallElectionTimer { can_be_leader: false },
-            Command::UpdateServerState {
-                server_state: ServerState::Follower
-            },
+            Command::QuitLeader,
         ],
         eng.commands
     );
@@ -402,9 +394,7 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Learner
-            },
+            Command::QuitLeader,
             Command::AppendInputEntries { range: 1..2 },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34()))

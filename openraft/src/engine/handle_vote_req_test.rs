@@ -145,9 +145,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
         vec![
             //
             Command::InstallElectionTimer { can_be_leader: true },
-            Command::UpdateServerState {
-                server_state: ServerState::Follower
-            }
+            Command::QuitLeader,
         ],
         eng.commands
     );
@@ -193,9 +191,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
         vec![
             Command::SaveVote { vote: Vote::new(3, 1) },
             Command::InstallElectionTimer { can_be_leader: true },
-            Command::UpdateServerState {
-                server_state: ServerState::Follower
-            }
+            Command::QuitLeader,
         ],
         eng.commands
     );

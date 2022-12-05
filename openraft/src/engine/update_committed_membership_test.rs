@@ -134,9 +134,7 @@ fn test_update_committed_membership_at_index_3() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34())),
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Learner
-            },
+            Command::QuitLeader,
         ],
         eng.commands
     );
@@ -174,9 +172,7 @@ fn test_update_committed_membership_at_index_4() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Learner
-            },
+            Command::QuitLeader,
         ],
         eng.commands
     );

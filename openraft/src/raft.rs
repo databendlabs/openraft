@@ -13,6 +13,9 @@ use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
+use tracing::trace_span;
+use tracing::Instrument;
 use tracing::Level;
 
 use crate::config::Config;
@@ -21,8 +24,11 @@ use crate::core::replication_lag;
 use crate::core::Expectation;
 use crate::core::RaftCore;
 use crate::core::SnapshotResult;
+use crate::core::SnapshotState;
 use crate::core::Tick;
 use crate::core::TickHandle;
+use crate::core::VoteWiseTime;
+use crate::engine::Engine;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
 use crate::error::CheckIsLeaderError;
@@ -202,17 +208,38 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
         let runtime_config = Arc::new(RuntimeConfig::new(&config));
 
-        let core_handle = RaftCore::spawn(
+        let core_span = tracing::span!(
+            parent: tracing::Span::current(),
+            Level::DEBUG,
+            "RaftCore",
+            id = display(id),
+            cluster = display(&config.cluster_name)
+        );
+
+        let core = RaftCore {
             id,
-            config.clone(),
-            runtime_config.clone(),
+            config: config.clone(),
+            runtime_config: runtime_config.clone(),
             network,
             storage,
-            tx_api.clone(),
+
+            engine: Engine::default(),
+            leader_data: None,
+
+            snapshot_state: SnapshotState::None,
+            received_snapshot: BTreeMap::new(),
+
+            next_election_time: VoteWiseTime::new(Vote::default(), Instant::now() + Duration::from_secs(86400)),
+
+            tx_api: tx_api.clone(),
             rx_api,
+
             tx_metrics,
-            rx_shutdown,
-        );
+
+            span: core_span,
+        };
+
+        let core_handle = tokio::spawn(core.main(rx_shutdown).instrument(trace_span!("spawn").or_current()));
 
         let inner = RaftInner {
             id,
@@ -226,6 +253,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             marker_s: std::marker::PhantomData,
             core_state: Mutex::new(CoreState::Running(core_handle)),
         };
+
         Self { inner: Arc::new(inner) }
     }
 

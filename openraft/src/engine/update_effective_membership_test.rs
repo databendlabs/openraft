@@ -86,9 +86,7 @@ fn test_update_effective_membership_at_index_0_is_allowed() -> anyhow::Result<()
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(0, 0)), m34())),
             },
-            Command::UpdateServerState {
-                server_state: ServerState::Learner
-            },
+            Command::QuitLeader,
         ],
         eng.commands
     );

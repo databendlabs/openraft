@@ -252,9 +252,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 Command::SaveVote {
                     vote: Vote::new_committed(2, 1)
                 },
-                Command::UpdateServerState {
-                    server_state: ServerState::Leader
-                },
+                Command::BecomeLeader,
                 Command::UpdateReplicationStreams {
                     targets: vec![(2, ProgressEntry::empty(0))]
                 },
