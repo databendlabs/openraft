@@ -41,6 +41,7 @@ use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::node::Node;
+use crate::replication::ReplicationSessionId;
 use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
@@ -926,11 +927,9 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         /// or an error in string.
         result: Result<LogId<C::NodeId>, String>,
 
-        /// Which ServerState sent this message
-        vote: Vote<C::NodeId>,
-
-        /// The cluster this replication works for.
-        membership_log_id: Option<LogId<C::NodeId>>,
+        /// In which session this message is sent.
+        /// A replication session(vote,membership_log_id) should ignore message from other session.
+        session_id: ReplicationSessionId<C::NodeId>,
     },
 
     /// ReplicationCore has seen a higher `vote`.
@@ -1020,15 +1019,14 @@ where
             RaftMsg::UpdateReplicationMatched {
                 ref target,
                 ref result,
-                ref vote,
-                ref membership_log_id,
+                ref session_id,
             } => {
                 format!(
                     "UpdateMatchIndex: target: {}, result: {:?}, server_state_vote: {}, membership_log_id: {}",
                     target,
                     result,
-                    vote,
-                    membership_log_id.summary()
+                    session_id.vote,
+                    session_id.membership_log_id.summary()
                 )
             }
             RaftMsg::HigherVote {
