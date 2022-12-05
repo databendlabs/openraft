@@ -644,7 +644,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             snapshot: self.engine.snapshot_meta.last_log_id,
 
             // --- cluster ---
-            state: self.engine.calc_server_state(),
+            state: self.engine.state.server_state,
             current_leader: self.current_leader(),
             membership_config: self.engine.state.membership_state.effective.clone(),
 

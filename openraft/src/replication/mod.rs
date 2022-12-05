@@ -556,10 +556,10 @@ impl<NID: NodeId> MessageSummary<Replicate<NID>> for Replicate<NID> {
     fn summary(&self) -> String {
         match self {
             Replicate::Committed(c) => {
-                format!("Replciate::Committed: {:?}", c)
+                format!("Replicate::Committed: {:?}", c)
             }
             Replicate::Entries(last) => {
-                format!("Replciate::Entries: upto: {:?}", last)
+                format!("Replicate::Entries: upto: {:?}", last)
             }
         }
     }
