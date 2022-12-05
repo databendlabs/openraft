@@ -77,7 +77,7 @@ fn test_handle_vote_change_committed_vote() -> anyhow::Result<()> {
         MetricsChangeFlags {
             replication: false,
             local_data: true,
-            cluster: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -89,7 +89,6 @@ fn test_handle_vote_change_committed_vote() -> anyhow::Result<()> {
                 vote: Vote::new_committed(3, 2)
             },
             Command::InstallElectionTimer { can_be_leader: false },
-            Command::QuitLeader,
         ],
         eng.commands
     );
@@ -116,7 +115,7 @@ fn test_handle_vote_change_granted_equal_vote() -> anyhow::Result<()> {
         MetricsChangeFlags {
             replication: false,
             local_data: false,
-            cluster: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -125,7 +124,6 @@ fn test_handle_vote_change_granted_equal_vote() -> anyhow::Result<()> {
         vec![
             //
             Command::InstallElectionTimer { can_be_leader: true },
-            Command::QuitLeader,
         ],
         eng.commands
     );
@@ -151,7 +149,7 @@ fn test_handle_vote_change_granted_greater_vote() -> anyhow::Result<()> {
         MetricsChangeFlags {
             replication: false,
             local_data: true,
-            cluster: true,
+            cluster: false,
         },
         eng.metrics_flags
     );
@@ -160,7 +158,6 @@ fn test_handle_vote_change_granted_greater_vote() -> anyhow::Result<()> {
         vec![
             Command::SaveVote { vote: Vote::new(3, 1) },
             Command::InstallElectionTimer { can_be_leader: true },
-            Command::QuitLeader,
         ],
         eng.commands
     );

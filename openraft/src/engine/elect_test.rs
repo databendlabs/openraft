@@ -185,7 +185,7 @@ fn test_elect() -> anyhow::Result<()> {
             MetricsChangeFlags {
                 replication: false,
                 local_data: true,
-                cluster: true,
+                cluster: false,
             },
             eng.metrics_flags
         );
@@ -196,7 +196,6 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::SendVote {
                     vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1)))
                 },
-                Command::QuitLeader,
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.commands

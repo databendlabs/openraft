@@ -179,7 +179,7 @@ where
         });
 
         // TODO: For compatibility. remove it. The runtime does not need to know about server state.
-        self.set_server_state(ServerState::Candidate);
+        self.update_server_state_if_changed();
         self.push_command(Command::InstallElectionTimer { can_be_leader: true });
     }
 
@@ -521,8 +521,6 @@ where
 
         let effective = self.state.membership_state.effective.clone();
         if Some(since) <= effective.log_id.index() {
-            let server_state = self.calc_server_state();
-
             let committed = self.state.membership_state.committed.clone();
 
             tracing::debug!(
@@ -548,7 +546,7 @@ where
 
             tracing::debug!(effective = debug(&effective), "Done reverting membership");
 
-            self.update_server_state_if_changed(server_state);
+            self.update_server_state_if_changed();
         }
     }
 
@@ -629,8 +627,6 @@ where
     pub(crate) fn update_committed_membership(&mut self, membership: EffectiveMembership<NID, N>) {
         tracing::debug!("update committed membership: {}", membership.summary());
 
-        let server_state = self.calc_server_state();
-
         let m = Arc::new(membership);
 
         let mut committed = self.state.membership_state.committed.clone();
@@ -659,14 +655,12 @@ where
 
         self.state.membership_state = mem_state;
 
-        self.update_server_state_if_changed(server_state);
+        self.update_server_state_if_changed();
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_effective_membership(&mut self, log_id: &LogId<NID>, m: &Membership<NID, N>) {
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
-
-        let server_state = self.calc_server_state();
 
         let em = Arc::new(EffectiveMembership::new(Some(*log_id), m.clone()));
 
@@ -694,8 +688,8 @@ where
 
         // Leader should not quit at once.
         // A leader should always keep replicating logs.
-        if server_state != ServerState::Leader {
-            self.update_server_state_if_changed(server_state);
+        if self.state.server_state != ServerState::Leader {
+            self.update_server_state_if_changed();
         }
     }
 
@@ -959,11 +953,7 @@ where
 
         self.state.internal_server_state = InternalServerState::Following;
 
-        if self.is_voter() {
-            self.set_server_state(ServerState::Follower);
-        } else {
-            self.set_server_state(ServerState::Learner);
-        }
+        self.update_server_state_if_changed();
     }
 
     /// Vote is granted by a quorum, leader established.
@@ -975,7 +965,7 @@ where
         // - Leadership won't be lost if a leader restarted quick enough.
         self.push_command(Command::SaveVote { vote: self.state.vote });
 
-        self.set_server_state(ServerState::Leader);
+        self.update_server_state_if_changed();
         self.update_replications();
 
         // Only when a log with current `vote` is replicated to a quorum, the logs are considered committed.
@@ -1019,8 +1009,6 @@ where
         &mut self,
         entries: impl DoubleEndedIterator<Item = &'a Ent>,
     ) {
-        let server_state = self.calc_server_state();
-
         let memberships = Self::last_two_memberships(entries);
         if memberships.is_empty() {
             return;
@@ -1040,7 +1028,7 @@ where
             membership: self.state.membership_state.effective.clone(),
         });
 
-        self.update_server_state_if_changed(server_state);
+        self.update_server_state_if_changed();
     }
 
     /// Find the last 2 membership entries in a list of entries.
@@ -1092,36 +1080,32 @@ where
         );
     }
 
-    fn update_server_state_if_changed(&mut self, prev_server_state: ServerState) {
+    fn update_server_state_if_changed(&mut self) {
         let server_state = self.calc_server_state();
 
-        if prev_server_state != server_state {
-            self.state.server_state = server_state;
+        tracing::debug!(
+            id = display(self.id),
+            prev_server_state = debug(self.state.server_state),
+            server_state = debug(server_state),
+            "update_server_state_if_changed"
+        );
 
-            let cmd = if server_state == ServerState::Leader {
-                Command::BecomeLeader
-            } else {
-                Command::QuitLeader
-            };
-            self.push_command(cmd);
-        }
-    }
-
-    fn set_server_state(&mut self, server_state: ServerState) {
-        tracing::debug!(id = display(self.id), ?server_state, "set_server_state");
-
-        // TODO: remove this: the caller should know when to switch server state.
         if self.state.server_state == server_state {
             return;
         }
 
-        self.state.server_state = server_state;
-        let cmd = if server_state == ServerState::Leader {
-            Command::BecomeLeader
+        let was_leader = self.state.server_state == ServerState::Leader;
+        let is_leader = server_state == ServerState::Leader;
+
+        if !was_leader && is_leader {
+            self.push_command(Command::BecomeLeader);
+        } else if was_leader && !is_leader {
+            self.push_command(Command::QuitLeader);
         } else {
-            Command::QuitLeader
-        };
-        self.push_command(cmd);
+            // nothing to do
+        }
+
+        self.state.server_state = server_state;
     }
 
     /// Check if a raft node is in a state that allows to initialize.

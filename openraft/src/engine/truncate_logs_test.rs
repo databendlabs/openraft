@@ -37,7 +37,6 @@ fn eng() -> Engine<u64, ()> {
         id: 2,
         ..Default::default()
     };
-    eng.state.server_state = ServerState::Follower;
     eng.state.log_ids = LogIdList::new(vec![
         log_id(2, 2), //
         log_id(4, 4),
@@ -45,12 +44,14 @@ fn eng() -> Engine<u64, ()> {
     ]);
     eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state.server_state = ServerState::Follower;
     eng
 }
 
 #[test]
 fn test_truncate_logs_since_3() -> anyhow::Result<()> {
     let mut eng = eng();
+    eng.state.server_state = eng.calc_server_state();
 
     eng.truncate_logs(3);
 
@@ -80,7 +81,6 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
-            Command::QuitLeader,
         ],
         eng.commands
     );
@@ -222,6 +222,7 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
         committed: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01())),
         effective: Arc::new(EffectiveMembership::new(Some(log_id(4, 4)), m12())),
     };
+    eng.state.server_state = eng.calc_server_state();
 
     eng.truncate_logs(4);
 
@@ -243,7 +244,6 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01()))
             },
-            Command::QuitLeader,
         ],
         eng.commands
     );

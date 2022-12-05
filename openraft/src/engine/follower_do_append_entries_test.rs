@@ -53,11 +53,11 @@ fn eng() -> Engine<u64, ()> {
         id: 2, // make it a member
         ..Default::default()
     };
-    eng.state.server_state = ServerState::Candidate;
     eng.state.log_ids.append(log_id(1, 1));
     eng.state.log_ids.append(log_id(2, 3));
     eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state.server_state = eng.calc_server_state();
     eng
 }
 
@@ -84,7 +84,7 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
         },
         eng.state.membership_state
     );
-    assert_eq!(ServerState::Candidate, eng.state.server_state);
+    assert_eq!(ServerState::Follower, eng.state.server_state);
 
     assert_eq!(
         MetricsChangeFlags {
@@ -128,7 +128,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
         },
         eng.state.membership_state
     );
-    assert_eq!(ServerState::Candidate, eng.state.server_state);
+    assert_eq!(ServerState::Follower, eng.state.server_state);
 
     assert_eq!(
         MetricsChangeFlags {
@@ -210,7 +210,6 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34())),
             },
-            Command::QuitLeader,
             Command::MoveInputCursorBy { n: 5 }
         ],
         eng.commands
@@ -226,6 +225,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
 
     let mut eng = eng();
     eng.id = 5; // make it a learner, then become follower
+    eng.state.server_state = eng.calc_server_state();
 
     eng.follower_do_append_entries(
         &[
@@ -290,7 +290,6 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(4, 7)), m45())),
             },
-            Command::QuitLeader,
             Command::MoveInputCursorBy { n: 5 }
         ],
         eng.commands

@@ -40,9 +40,9 @@ fn eng() -> Engine<u64, ()> {
         id: 2, // make it a member
         ..Default::default()
     };
-    eng.state.server_state = ServerState::Follower;
     eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state.server_state = eng.calc_server_state();
     eng
 }
 
@@ -130,12 +130,9 @@ fn test_update_committed_membership_at_index_3() -> anyhow::Result<()> {
     );
 
     assert_eq!(
-        vec![
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34())),
-            },
-            Command::QuitLeader,
-        ],
+        vec![Command::UpdateMembership {
+            membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34())),
+        },],
         eng.commands
     );
 
@@ -168,12 +165,9 @@ fn test_update_committed_membership_at_index_4() -> anyhow::Result<()> {
     );
 
     assert_eq!(
-        vec![
-            Command::UpdateMembership {
-                membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
-            },
-            Command::QuitLeader,
-        ],
+        vec![Command::UpdateMembership {
+            membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
+        },],
         eng.commands
     );
 
