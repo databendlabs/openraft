@@ -312,6 +312,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
     let mut eng = eng();
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1()));
     eng.state.new_leader();
+    eng.state.server_state = eng.calc_server_state();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -404,6 +405,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
     let mut eng = eng();
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m13()));
     eng.state.new_leader();
+    eng.state.server_state = eng.calc_server_state();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [

@@ -46,6 +46,7 @@ fn eng() -> Engine<u64, ()> {
         log_id(4, 6),
         log_id(4, 8),
     ]);
+    eng.state.server_state = eng.calc_server_state();
 
     eng
 }
@@ -216,6 +217,8 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             log_id(4, 6),
             log_id(4, 8),
         ]);
+
+        eng.state.server_state = eng.calc_server_state();
 
         eng
     };

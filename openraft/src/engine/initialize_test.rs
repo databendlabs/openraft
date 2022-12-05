@@ -21,7 +21,11 @@ use crate::Vote;
 
 #[test]
 fn test_initialize_single_node() -> anyhow::Result<()> {
-    let eng = Engine::<u64, ()>::default;
+    let eng = || {
+        let mut eng = Engine::<u64, ()>::default();
+        eng.state.server_state = eng.calc_server_state();
+        eng
+    };
 
     let log_id0 = LogId {
         leader_id: LeaderId::new(0, 0),
@@ -70,7 +74,6 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output command.
-                Command::QuitLeader,
                 Command::MoveInputCursorBy { n: 1 },
                 Command::SaveVote {
                     vote: Vote {
@@ -124,7 +127,11 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 
 #[test]
 fn test_initialize() -> anyhow::Result<()> {
-    let eng = Engine::<u64, ()>::default;
+    let eng = || {
+        let mut eng = Engine::<u64, ()>::default();
+        eng.state.server_state = eng.calc_server_state();
+        eng
+    };
 
     let log_id0 = LogId {
         leader_id: LeaderId::new(0, 0),
@@ -167,7 +174,6 @@ fn test_initialize() -> anyhow::Result<()> {
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output command.
-                Command::QuitLeader,
                 Command::MoveInputCursorBy { n: 1 },
                 Command::SaveVote {
                     vote: Vote {
@@ -189,7 +195,6 @@ fn test_initialize() -> anyhow::Result<()> {
                         },),
                     },
                 },
-                Command::QuitLeader,
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.commands
