@@ -1161,7 +1161,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 let _ = tx.send(self.handle_vote_request(rpc).await.extract_fatal()?);
             }
             RaftMsg::VoteResponse { target, resp, vote } => {
-                if self.does_vote_match(vote, "VoteResponse") {
+                if self.does_vote_match(&vote, "VoteResponse") {
                     self.handle_vote_resp(resp, target).await?;
                 }
             }
@@ -1291,7 +1291,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 higher,
                 vote,
             } => {
-                if self.does_vote_match(vote, "HigherVote") {
+                if self.does_vote_match(&vote, "HigherVote") {
                     // Rejected vote change is ok.
                     let _ = self.engine.handle_vote_change(&higher);
                     self.run_engine_commands::<Entry<C>>(&[]).await?;
@@ -1303,17 +1303,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 result,
                 session_id,
             } => {
-                if self.does_vote_match(session_id.vote, "UpdateReplicationMatched") {
-                    // If membership changes, ignore the message.
-                    // There is chance delayed message reports a wrong state.
-                    if session_id.membership_log_id == self.engine.state.membership_state.effective.log_id {
-                        self.handle_update_matched(target, result).await?;
-                    }
+                // If vote or membership changes, ignore the message.
+                // There is chance delayed message reports a wrong state.
+                if self.does_replication_session_match(&session_id, "UpdateReplicationMatched") {
+                    self.handle_update_matched(target, result).await?;
                 }
             }
 
             RaftMsg::NeedsSnapshot { target: _, tx, vote } => {
-                if self.does_vote_match(vote, "NeedsSnapshot") {
+                if self.does_vote_match(&vote, "NeedsSnapshot") {
                     self.handle_needs_snapshot(tx).await?;
                 }
             }
@@ -1382,8 +1380,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// If a message is sent by a previous server state but is received by current server state,
     /// it is a stale message and should be just ignored.
-    fn does_vote_match(&self, vote: Vote<C::NodeId>, msg: impl Display) -> bool {
-        if vote != self.engine.state.vote {
+    fn does_vote_match(&self, vote: &Vote<C::NodeId>, msg: impl Display) -> bool {
+        if vote != &self.engine.state.vote {
             tracing::warn!(
                 "vote changed: msg sent by: {:?}; curr: {}; ignore when ({})",
                 vote,
@@ -1394,6 +1392,28 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         } else {
             true
         }
+    }
+    /// If a message is sent by a previous replication session but is received by current server state,
+    /// it is a stale message and should be just ignored.
+    fn does_replication_session_match(
+        &self,
+        session_id: &ReplicationSessionId<C::NodeId>,
+        msg: impl Display + Copy,
+    ) -> bool {
+        if !self.does_vote_match(&session_id.vote, msg) {
+            return false;
+        }
+
+        if session_id.membership_log_id != self.engine.state.membership_state.effective.log_id {
+            tracing::warn!(
+                "membership_log_id changed: msg sent by: {:?}; curr: {}; ignore when ({})",
+                session_id.membership_log_id,
+                self.engine.state.membership_state.effective.log_id.summary(),
+                msg
+            );
+            return false;
+        }
+        true
     }
 
     /// A replication streams requesting for snapshot info.
