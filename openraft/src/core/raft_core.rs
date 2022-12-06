@@ -15,7 +15,6 @@ use futures::StreamExt;
 use futures::TryFutureExt;
 use maplit::btreeset;
 use pin_utils::pin_mut;
-use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -81,7 +80,6 @@ use crate::replication::ReplicationSessionId;
 use crate::replication::ReplicationStream;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
-use crate::storage::Snapshot;
 use crate::storage::StorageHelper;
 use crate::versioned::Updatable;
 use crate::versioned::Versioned;
@@ -765,13 +763,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // At this point, we are clear to begin a new compaction process.
         let mut builder = self.storage.get_snapshot_builder().await;
         let (abort_handle, reg) = AbortHandle::new_pair();
-        let (chan_tx, _) = broadcast::channel(1);
         let tx_api = self.tx_api.clone();
 
-        self.snapshot_state = SnapshotState::Snapshotting {
-            abort_handle,
-            sender: chan_tx.clone(),
-        };
+        self.snapshot_state = SnapshotState::Snapshotting { abort_handle };
 
         tokio::spawn(
             async move {
@@ -781,10 +775,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     Ok(res) => match res {
                         Ok(snapshot) => {
                             let _ = tx_api.send(RaftMsg::BuildingSnapshotResult {
-                                result: SnapshotResult::Ok(snapshot.meta.clone()),
+                                result: SnapshotResult::Ok(snapshot.meta),
                             });
-                            // This will always succeed.
-                            let _ = chan_tx.send(snapshot.meta.last_log_id);
                         }
                         Err(err) => {
                             tracing::error!({error=%err}, "error while generating snapshot");
@@ -1309,10 +1301,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     self.handle_update_matched(target, result).await?;
                 }
             }
-
             RaftMsg::NeedsSnapshot { target: _, tx, vote } => {
+                // TODO check session_id
                 if self.does_vote_match(&vote, "NeedsSnapshot") {
-                    self.handle_needs_snapshot(tx).await?;
+                    let snapshot = self.storage.get_current_snapshot().await?;
+
+                    if let Some(snapshot) = snapshot {
+                        let _ = tx.send(snapshot);
+                        return Ok(());
+                    }
+
+                    unreachable!("A log is lacking, which means a snapshot is already built");
                 }
             }
             RaftMsg::ReplicationFatal => {
@@ -1414,49 +1413,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return false;
         }
         true
-    }
-
-    /// A replication streams requesting for snapshot info.
-    ///
-    /// The snapshot has to include `must_include`.
-    #[tracing::instrument(level = "debug", skip(self, tx))]
-    async fn handle_needs_snapshot(
-        &mut self,
-        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotData>>,
-    ) -> Result<(), StorageError<C::NodeId>> {
-        // Check for existence of current snapshot.
-        let current_snapshot_opt = self.storage.get_current_snapshot().await?;
-
-        if let Some(snapshot) = current_snapshot_opt {
-            let _ = tx.send(snapshot);
-            return Ok(());
-        }
-
-        // Check if snapshot creation is already in progress. If so, we spawn a task to await its
-        // completion (or cancellation), and respond to the replication stream. The repl stream
-        // will wait for the completion and will then send another request to fetch the finished snapshot.
-        // Else we just drop any other state and continue. Leaders never enter `Streaming` state.
-        if let SnapshotState::Snapshotting { sender, .. } = &self.snapshot_state {
-            let mut chan = sender.subscribe();
-            tokio::spawn(
-                async move {
-                    let _ = chan.recv().await;
-                    // TODO(xp): send another ReplicaEvent::NeedSnapshot to raft core
-                    drop(tx);
-                }
-                .instrument(tracing::debug_span!("spawn-recv-and-drop")),
-            );
-            return Ok(());
-        }
-
-        // At this point, we just attempt to request a snapshot. Under normal circumstances, the
-        // leader will always be keeping up-to-date with its snapshotting, and the latest snapshot
-        // will always be found and this block will never even be executed.
-        //
-        // If this block is executed, and a snapshot is needed, the repl stream will submit another
-        // request here shortly, and will hit the above logic where it will await the snapshot completion.
-        self.trigger_snapshot_if_needed(false).await;
-        Ok(())
     }
 }
 
