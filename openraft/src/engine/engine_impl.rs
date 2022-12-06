@@ -1226,7 +1226,7 @@ where
 
     /// The node is candidate or leader
     fn is_leading(&self) -> bool {
-        self.state.internal_server_state.is_leading()
+        self.state.vote.node_id == self.id
     }
 
     pub(crate) fn is_leader(&self) -> bool {

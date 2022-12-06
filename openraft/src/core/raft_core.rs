@@ -77,6 +77,7 @@ use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
 use crate::replication::Replicate;
 use crate::replication::ReplicationCore;
+use crate::replication::ReplicationSessionId;
 use crate::replication::ReplicationStream;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
@@ -644,7 +645,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             snapshot: self.engine.snapshot_meta.last_log_id,
 
             // --- cluster ---
-            state: self.engine.calc_server_state(),
+            state: self.engine.state.server_state,
             current_leader: self.current_leader(),
             membership_config: self.engine.state.membership_state.effective.clone(),
 
@@ -944,10 +945,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let membership_log_id = self.engine.state.membership_state.effective.log_id;
         let network = self.network.new_client(target, target_node).await?;
 
+        let session_id = ReplicationSessionId::new(self.engine.state.vote, membership_log_id);
+
         Ok(ReplicationCore::<C, N, S>::spawn(
             target,
-            self.engine.state.vote,
-            membership_log_id,
+            session_id,
             self.config.clone(),
             self.engine.state.committed,
             progress_entry,
@@ -1299,13 +1301,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             RaftMsg::UpdateReplicationMatched {
                 target,
                 result,
-                vote,
-                membership_log_id,
+                session_id,
             } => {
-                if self.does_vote_match(vote, "UpdateReplicationMatched") {
+                if self.does_vote_match(session_id.vote, "UpdateReplicationMatched") {
                     // If membership changes, ignore the message.
                     // There is chance delayed message reports a wrong state.
-                    if membership_log_id == self.engine.state.membership_state.effective.log_id {
+                    if session_id.membership_log_id == self.engine.state.membership_state.effective.log_id {
                         self.handle_update_matched(target, result).await?;
                     }
                 }

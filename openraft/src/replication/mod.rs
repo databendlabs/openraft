@@ -1,9 +1,11 @@
 //! Replication stream.
 
+mod replication_session_id;
 use std::io::SeekFrom;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
+pub(crate) use replication_session_id::ReplicationSessionId;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
@@ -43,7 +45,6 @@ use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::ToStorageResult;
-use crate::Vote;
 
 /// The handle to a spawned replication stream.
 pub(crate) struct ReplicationStream<NID: NodeId> {
@@ -63,29 +64,8 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     /// The ID of the target Raft node which replication events are to be sent to.
     target: C::NodeId,
 
-    /// The vote of the leader.
-    vote: Vote<C::NodeId>,
-
-    /// The log id of the membership log this replication works for.
-    ///
-    /// Replication state belongs to a specific membership config.
-    /// E.g. given 3 membership log:
-    /// - `log_id=1, members={a,b,c}`
-    /// - `log_id=5, members={a,b}`
-    /// - `log_id=10, members={a,b,c}`
-    ///
-    /// When log_id=1 is appended, openraft spawns a replication to node `c`.
-    /// Then log_id=1 is replicated to node `c`.
-    /// Then a replication state update message `{target=c, matched=log_id-1}` is piped in message queue(`tx_api`),
-    /// waiting the raft core to process.
-    ///
-    /// Then log_id=5 is appended, replication to node `c` is dropped.
-    ///
-    /// Then log_id=10 is appended, another replication to node `c` is spawned.
-    /// Now node `c` is a new empty node, no log is replicated to it.
-    /// But the delayed message `{target=c, matched=log_id-1}` may be process by raft core and make raft core believe
-    /// node `c` already has `log_id=1`, and commit it.
-    membership_log_id: Option<LogId<C::NodeId>>,
+    /// Identifies which session this replication belongs to.
+    session_id: ReplicationSessionId<C::NodeId>,
 
     /// A channel for sending events to the Raft node.
     #[allow(clippy::type_complexity)]
@@ -132,8 +112,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
         target: C::NodeId,
-        vote: Vote<C::NodeId>,
-        membership_log_id: Option<LogId<C::NodeId>>,
+        session_id: ReplicationSessionId<C::NodeId>,
         config: Arc<Config>,
         committed: Option<LogId<C::NodeId>>,
         progress_entry: ProgressEntry<C::NodeId>,
@@ -147,8 +126,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         let this = Self {
             target,
-            vote,
-            membership_log_id,
+            session_id,
             network,
             log_reader,
             config,
@@ -166,7 +144,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         ReplicationStream { handle, repl_tx }
     }
 
-    #[tracing::instrument(level="debug", skip(self), fields(vote=%self.vote, target=display(self.target), cluster=%self.config.cluster_name))]
+    #[tracing::instrument(level="debug", skip(self), fields(session=%self.session_id, target=display(self.target), cluster=%self.config.cluster_name))]
     async fn main(mut self) {
         loop {
             // If it returns Ok(), always go back to LineRate state.
@@ -193,7 +171,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     let _ = self.raft_core_tx.send(RaftMsg::HigherVote {
                         target: self.target,
                         higher: h.higher,
-                        vote: self.vote,
+                        vote: self.session_id.vote,
                     });
                     return;
                 }
@@ -311,7 +289,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
-            vote: self.vote,
+            vote: self.session_id.vote,
             prev_log_id,
             leader_commit: self.committed,
             entries: logs,
@@ -339,8 +317,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                             let _ = self.raft_core_tx.send(RaftMsg::UpdateReplicationMatched {
                                 target: self.target,
                                 result: Err(e.to_string()),
-                                vote: self.vote,
-                                membership_log_id: self.membership_log_id,
+                                session_id: self.session_id,
                             });
                             ReplicationError::Timeout(e)
                         }
@@ -348,8 +325,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                             let _ = self.raft_core_tx.send(RaftMsg::UpdateReplicationMatched {
                                 target: self.target,
                                 result: Err(e.to_string()),
-                                vote: self.vote,
-                                membership_log_id: self.membership_log_id,
+                                session_id: self.session_id,
                             });
                             ReplicationError::Network(e)
                         }
@@ -364,13 +340,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 let _ = self.raft_core_tx.send(RaftMsg::UpdateReplicationMatched {
                     target: self.target,
                     result: Err(timeout_err.to_string()),
-                    vote: self.vote,
-                    membership_log_id: self.membership_log_id,
+                    session_id: self.session_id,
                 });
 
                 return Err(ReplicationError::Timeout(Timeout {
                     action: RPCTypes::AppendEntries,
-                    id: self.vote.node_id,
+                    id: self.session_id.vote.node_id,
                     target: self.target,
                     timeout: the_timeout,
                 }));
@@ -389,12 +364,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 Ok(())
             }
             AppendEntriesResponse::HigherVote(vote) => {
-                assert!(vote > self.vote, "higher vote should be greater than leader's vote");
+                assert!(
+                    vote > self.session_id.vote,
+                    "higher vote should be greater than leader's vote"
+                );
                 tracing::debug!(%vote, "append entries failed. converting to follower");
 
                 Err(ReplicationError::HigherVote(HigherVote {
                     higher: vote,
-                    mine: self.vote,
+                    mine: self.session_id.vote,
                 }))
             }
             AppendEntriesResponse::Conflict => {
@@ -458,8 +436,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 // `self.matched < new_matched` implies new_matched can not be None.
                 // Thus unwrap is safe.
                 result: Ok(self.matched.unwrap()),
-                vote: self.vote,
-                membership_log_id: self.membership_log_id,
+                session_id: self.session_id,
             });
         }
     }
@@ -556,10 +533,10 @@ impl<NID: NodeId> MessageSummary<Replicate<NID>> for Replicate<NID> {
     fn summary(&self) -> String {
         match self {
             Replicate::Committed(c) => {
-                format!("Replciate::Committed: {:?}", c)
+                format!("Replicate::Committed: {:?}", c)
             }
             Replicate::Entries(last) => {
-                format!("Replciate::Entries: upto: {:?}", last)
+                format!("Replicate::Entries: upto: {:?}", last)
             }
         }
     }
@@ -665,7 +642,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             let _ = self.raft_core_tx.send(RaftMsg::NeedsSnapshot {
                 target: self.target,
                 tx,
-                vote: self.vote,
+                vote: self.session_id.vote,
             });
 
             let mut waiting_for_snapshot = true;
@@ -728,7 +705,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
             let done = (offset + n_read as u64) == end; // If bytes read == 0, then we're done.
             let req = InstallSnapshotRequest {
-                vote: self.vote,
+                vote: self.session_id.vote,
                 meta: snapshot.meta.clone(),
                 offset,
                 data: Vec::from(&buf[..n_read]),
@@ -776,10 +753,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             };
 
             // Handle response conditions.
-            if res.vote > self.vote {
+            if res.vote > self.session_id.vote {
                 return Err(ReplicationError::HigherVote(HigherVote {
                     higher: res.vote,
-                    mine: self.vote,
+                    mine: self.session_id.vote,
                 }));
             }
 
