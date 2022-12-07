@@ -445,6 +445,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     /// snapshot is warranted.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(self) fn needs_snapshot(&self) -> bool {
+        // TODO needs_snapshot threshold should be greater than build-snapshot threshold
         match &self.config.snapshot_policy {
             SnapshotPolicy::LogsSinceLast(threshold) => {
                 let c = self.committed.next_index();
@@ -620,68 +621,33 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         Ok(())
     }
 
-    /// Wait for a response from the storage layer for the current snapshot.
-    ///
-    /// If an error comes up during processing, this routine should simple be called again after
-    /// issuing a new request to the storage layer.
+    /// Ask RaftCore for a snapshot
     #[tracing::instrument(level = "debug", skip(self))]
     async fn wait_for_snapshot(
         &mut self,
     ) -> Result<Snapshot<C::NodeId, C::Node, S::SnapshotData>, ReplicationError<C::NodeId, C::Node>> {
         // Ask raft core for a snapshot.
-        // - If raft core has a ready snapshot, it sends back through tx.
-        // - Otherwise raft core starts a new task taking snapshot, and **close** `tx` when finished. Thus there has to
-        //   be a loop.
+        //
+        // RaftCore must have a ready snapshot:
+        // When `ReplicationCore` asks for a snapshot for replication, `RaftCore`
+        // could just gives it the last built one. There is never need to rebuild
+        // one. Because a log won't be purged until a snapshot including it is
+        // built.
 
-        loop {
-            // channel to communicate with raft-core
-            let (tx, mut rx) = oneshot::channel();
+        let (tx, mut rx) = oneshot::channel();
 
-            // TODO(xp): handle sending error. If channel is closed, quite replication by returning
-            // ReplicationError::Closed.
-            let _ = self.raft_core_tx.send(RaftMsg::NeedsSnapshot {
-                target: self.target,
-                tx,
-                vote: self.session_id.vote,
-            });
+        let _ = self.raft_core_tx.send(RaftMsg::NeedsSnapshot {
+            target: self.target,
+            tx,
+            session_id: self.session_id,
+        });
 
-            let mut waiting_for_snapshot = true;
+        let snapshot = rx.await.map_err(|e| {
+            tracing::info!("error waiting for snapshot: {}", e);
+            ReplicationError::Closed
+        })?;
 
-            // TODO(xp): use a watch channel to let the core to send one of the 3 event:
-            //           heartbeat, new-log, or snapshot is ready.
-            while waiting_for_snapshot {
-                tokio::select! {
-
-                    event_opt = self.repl_rx.recv() =>  {
-                        match event_opt {
-                            Some(event) => {
-                                self.process_raft_event(event);
-                                self.try_drain_raft_rx().await?;
-                            },
-                            None => {
-                                tracing::info!("repl_rx is closed");
-                                return Err(ReplicationError::Closed);
-                            }
-                        }
-                    },
-
-                    res = &mut rx => {
-                        match res {
-                            Ok(snapshot) => {
-                                return Ok(snapshot);
-                            }
-                            Err(_) => {
-                                // TODO(xp): This channel is closed to notify an in progress snapshotting is completed.
-                                //           Start a new round to get the snapshot.
-
-                                tracing::info!("rx for waiting for snapshot is closed, may be snapshot is ready. re-send need-snapshot.");
-                                waiting_for_snapshot = false;
-                            },
-                        }
-                    },
-                }
-            }
-        }
+        Ok(snapshot)
     }
 
     #[tracing::instrument(level = "trace", skip(self, snapshot))]

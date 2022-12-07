@@ -1301,9 +1301,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     self.handle_update_matched(target, result).await?;
                 }
             }
-            RaftMsg::NeedsSnapshot { target: _, tx, vote } => {
-                // TODO check session_id
-                if self.does_vote_match(&vote, "NeedsSnapshot") {
+            RaftMsg::NeedsSnapshot {
+                target: _,
+                tx,
+                session_id,
+            } => {
+                if self.does_replication_session_match(&session_id, "NeedsSnapshot") {
                     let snapshot = self.storage.get_current_snapshot().await?;
 
                     if let Some(snapshot) = snapshot {

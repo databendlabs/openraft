@@ -956,8 +956,8 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         /// The response channel for delivering the snapshot data.
         tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotData>>,
 
-        /// Which ServerState sent this message
-        vote: Vote<C::NodeId>,
+        /// Which replication session sent this message
+        session_id: ReplicationSessionId<C::NodeId>,
     },
 
     /// Some critical error has taken place, and Raft needs to shutdown.
@@ -1040,7 +1040,9 @@ where
                 )
             }
             RaftMsg::NeedsSnapshot {
-                ref target, ref vote, ..
+                ref target,
+                session_id: ref vote,
+                ..
             } => {
                 format!("NeedsSnapshot: target: {}, server_state_vote: {}", target, vote)
             }
