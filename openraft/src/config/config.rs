@@ -121,9 +121,12 @@ pub struct Config {
 
     /// The distance behind in log replication a follower must fall before it is considered lagging
     ///
-    /// Once a replication stream transition into line-rate state, the target node will be considered safe to join a
-    /// cluster.
-    #[clap(long, default_value = "1000")]
+    /// A follower falls behind this index are replicated with snapshot.
+    /// A follower falls within this index are replicated with log entries.
+    ///
+    /// This value should be greater than snapshot_policy.SnapshotPolicy.LogsSinceLast, otherwise transmitting a
+    /// snapshot may not fix the lagging.
+    #[clap(long, default_value = "5000")]
     pub replication_lag_threshold: u64,
 
     /// The snapshot policy to use for a Raft node.

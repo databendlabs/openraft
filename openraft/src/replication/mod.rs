@@ -17,7 +17,6 @@ use tokio::time::Duration;
 use tracing_futures::Instrument;
 
 use crate::config::Config;
-use crate::config::SnapshotPolicy;
 use crate::error::AppendEntriesError;
 use crate::error::CommittedAdvanceTooMany;
 use crate::error::HigherVote;
@@ -44,6 +43,7 @@ use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
+use crate::SnapshotPolicy;
 use crate::ToStorageResult;
 
 /// The handle to a spawned replication stream.
@@ -445,18 +445,26 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     /// snapshot is warranted.
     #[tracing::instrument(level = "trace", skip(self))]
     pub(self) fn needs_snapshot(&self) -> bool {
-        // TODO needs_snapshot threshold should be greater than build-snapshot threshold
-        match &self.config.snapshot_policy {
-            SnapshotPolicy::LogsSinceLast(threshold) => {
-                let c = self.committed.next_index();
-                let m = self.matched.next_index();
+        let c = self.committed.next_index();
+        let m = self.matched.next_index();
+        let distance = c.saturating_sub(m);
 
-                let needs_snap = c.saturating_sub(m) >= *threshold;
+        #[allow(clippy::infallible_destructuring_match)]
+        let snapshot_threshold = match self.config.snapshot_policy {
+            SnapshotPolicy::LogsSinceLast(n) => n,
+        };
 
-                tracing::trace!("snapshot needed: {}", needs_snap);
-                needs_snap
-            }
-        }
+        let lagging_threshold = self.config.replication_lag_threshold;
+        let needs_snap = distance >= lagging_threshold && distance > snapshot_threshold;
+
+        tracing::trace!(
+            "snapshot needed: {}, distance:{}; lagging_threshold:{}; snapshot_threshold:{}",
+            needs_snap,
+            distance,
+            lagging_threshold,
+            snapshot_threshold
+        );
+        needs_snap
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -634,7 +642,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         // one. Because a log won't be purged until a snapshot including it is
         // built.
 
-        let (tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
 
         let _ = self.raft_core_tx.send(RaftMsg::NeedsSnapshot {
             target: self.target,
