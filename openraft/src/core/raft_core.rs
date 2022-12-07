@@ -76,8 +76,8 @@ use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
 use crate::replication::Replicate;
 use crate::replication::ReplicationCore;
+use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
-use crate::replication::ReplicationStream;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
 use crate::storage::StorageHelper;
@@ -109,7 +109,7 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
     /// A mapping of node IDs the replication state of the target node.
     // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
     //           It requires the Engine to emit correct add/remove replication commands
-    pub(super) nodes: BTreeMap<C::NodeId, ReplicationStream<C::NodeId>>,
+    pub(super) nodes: BTreeMap<C::NodeId, ReplicationHandle<C::NodeId>>,
 
     /// The metrics of all replication streams
     pub(crate) replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
@@ -930,7 +930,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         target: C::NodeId,
         progress_entry: ProgressEntry<C::NodeId>,
-    ) -> Result<ReplicationStream<C::NodeId>, N::ConnectionError> {
+    ) -> Result<ReplicationHandle<C::NodeId>, N::ConnectionError> {
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective.get_node(&target).unwrap();
 
@@ -966,10 +966,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             );
 
             for (target, s) in nodes {
-                let handle = s.handle;
+                let handle = s.join_handle;
 
                 // Drop sender to notify the task to shutdown
-                drop(s.repl_tx);
+                drop(s.tx_repl);
 
                 tracing::debug!("joining removed replication: {}", target);
                 let _x = handle.await;
@@ -1488,7 +1488,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::ReplicateCommitted { committed } => {
                 if let Some(l) = &self.leader_data {
                     for node in l.nodes.values() {
-                        let _ = node.repl_tx.send(Replicate::Committed(*committed));
+                        let _ = node.tx_repl.send(Replicate::Committed(*committed));
                     }
                 } else {
                     unreachable!("it has to be a leader!!!");
@@ -1509,7 +1509,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::ReplicateEntries { upto } => {
                 if let Some(l) = &self.leader_data {
                     for node in l.nodes.values() {
-                        let _ = node.repl_tx.send(Replicate::Entries(*upto));
+                        let _ = node.tx_repl.send(Replicate::Entries(*upto));
                     }
                 } else {
                     unreachable!("it has to be a leader!!!");

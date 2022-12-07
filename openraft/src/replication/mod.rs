@@ -47,12 +47,12 @@ use crate::SnapshotPolicy;
 use crate::ToStorageResult;
 
 /// The handle to a spawned replication stream.
-pub(crate) struct ReplicationStream<NID: NodeId> {
+pub(crate) struct ReplicationHandle<NID: NodeId> {
     /// The spawn handle the `ReplicationCore` task.
-    pub handle: JoinHandle<()>,
+    pub(crate) join_handle: JoinHandle<()>,
 
     /// The channel used for communicating with the replication task.
-    pub repl_tx: mpsc::UnboundedSender<Replicate<NID>>,
+    pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<NID>>,
 }
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
@@ -67,12 +67,12 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     /// Identifies which session this replication belongs to.
     session_id: ReplicationSessionId<C::NodeId>,
 
-    /// A channel for sending events to the Raft node.
+    /// A channel for sending events to the RaftCore.
     #[allow(clippy::type_complexity)]
-    raft_core_tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
+    tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
 
-    /// A channel for receiving events from the Raft node.
-    repl_rx: mpsc::UnboundedReceiver<Replicate<C::NodeId>>,
+    /// A channel for receiving events from the RaftCore.
+    rx_repl: mpsc::UnboundedReceiver<Replicate<C::NodeId>>,
 
     /// The `RaftNetwork` interface.
     network: N::Network,
@@ -107,7 +107,7 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
     /// Spawn a new replication task for the target node.
-    #[tracing::instrument(level = "trace", skip(config, network, log_reader, raft_core_tx))]
+    #[tracing::instrument(level = "trace", skip_all,fields(target=display(target), session_id=display(session_id)))]
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn spawn(
@@ -118,11 +118,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         progress_entry: ProgressEntry<C::NodeId>,
         network: N::Network,
         log_reader: S::LogReader,
-        raft_core_tx: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
+        tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
         span: tracing::Span,
-    ) -> ReplicationStream<C::NodeId> {
+    ) -> ReplicationHandle<C::NodeId> {
+        tracing::debug!(
+            session_id = display(&session_id),
+            target = display(&target),
+            committed = display(committed.summary()),
+            progress_entry = debug(&progress_entry),
+            "spawn replication"
+        );
         // other component to ReplicationStream
-        let (repl_tx, repl_rx) = mpsc::unbounded_channel();
+        let (tx_repl, rx_repl) = mpsc::unbounded_channel();
 
         let this = Self {
             target,
@@ -134,14 +141,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             committed,
             matched: progress_entry.matching,
             max_possible_matched_index: progress_entry.max_possible_matching(),
-            raft_core_tx,
-            repl_rx,
+            tx_raft_core,
+            rx_repl,
             need_to_replicate: true,
         };
 
-        let handle = tokio::spawn(this.main().instrument(span));
+        let join_handle = tokio::spawn(this.main().instrument(span));
 
-        ReplicationStream { handle, repl_tx }
+        ReplicationHandle { join_handle, tx_repl }
     }
 
     #[tracing::instrument(level="debug", skip(self), fields(session=%self.session_id, target=display(self.target), cluster=%self.config.cluster_name))]
@@ -168,7 +175,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     return;
                 }
                 ReplicationError::HigherVote(h) => {
-                    let _ = self.raft_core_tx.send(RaftMsg::HigherVote {
+                    let _ = self.tx_raft_core.send(RaftMsg::HigherVote {
                         target: self.target,
                         higher: h.higher,
                         vote: self.session_id.vote,
@@ -183,7 +190,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 }
                 ReplicationError::StorageError(_err) => {
                     // TODO: report this error
-                    let _ = self.raft_core_tx.send(RaftMsg::ReplicationFatal);
+                    let _ = self.tx_raft_core.send(RaftMsg::ReplicationFatal);
                     return;
                 }
                 ReplicationError::NodeNotFound(err) => {
@@ -314,7 +321,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     let repl_err = match err {
                         RPCError::NodeNotFound(e) => ReplicationError::NodeNotFound(e),
                         RPCError::Timeout(e) => {
-                            let _ = self.raft_core_tx.send(RaftMsg::UpdateReplicationMatched {
+                            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationMatched {
                                 target: self.target,
                                 result: Err(e.to_string()),
                                 session_id: self.session_id,
@@ -322,7 +329,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                             ReplicationError::Timeout(e)
                         }
                         RPCError::Network(e) => {
-                            let _ = self.raft_core_tx.send(RaftMsg::UpdateReplicationMatched {
+                            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationMatched {
                                 target: self.target,
                                 result: Err(e.to_string()),
                                 session_id: self.session_id,
@@ -337,7 +344,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             Err(timeout_err) => {
                 tracing::warn!(error=%timeout_err, "timeout while sending AppendEntries RPC to target");
 
-                let _ = self.raft_core_tx.send(RaftMsg::UpdateReplicationMatched {
+                let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationMatched {
                     target: self.target,
                     result: Err(timeout_err.to_string()),
                     session_id: self.session_id,
@@ -431,7 +438,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
             tracing::debug!(target=%self.target, matched=?self.matched, "matched updated");
 
-            let _ = self.raft_core_tx.send(RaftMsg::UpdateReplicationMatched {
+            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationMatched {
                 target: self.target,
                 // `self.matched < new_matched` implies new_matched can not be None.
                 // Thus unwrap is safe.
@@ -472,7 +479,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         tracing::debug!("try_drain_raft_rx");
 
         for _i in 0..self.config.max_payload_entries {
-            let event_or_nothing = self.repl_rx.recv().now_or_never();
+            let event_or_nothing = self.rx_repl.recv().now_or_never();
             let ev_opt = match event_or_nothing {
                 None => {
                     // no event in self.repl_rx
@@ -607,7 +614,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 continue;
             }
 
-            let event_or_none = self.repl_rx.recv().await;
+            let event_or_none = self.rx_repl.recv().await;
             match event_or_none {
                 Some(event) => {
                     self.process_raft_event(event);
@@ -644,7 +651,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         let (tx, rx) = oneshot::channel();
 
-        let _ = self.raft_core_tx.send(RaftMsg::NeedsSnapshot {
+        let _ = self.tx_raft_core.send(RaftMsg::NeedsSnapshot {
             target: self.target,
             tx,
             session_id: self.session_id,
@@ -665,19 +672,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
 
-        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
-
         let mut offset = 0;
-
+        let end = snapshot.snapshot.seek(SeekFrom::End(0)).await.sto_res(err_x)?;
         let mut buf = Vec::with_capacity(self.config.snapshot_max_chunk_size as usize);
 
         loop {
             // Build the RPC.
             snapshot.snapshot.seek(SeekFrom::Start(offset)).await.sto_res(err_x)?;
-
             let n_read = snapshot.snapshot.read_buf(&mut buf).await.sto_res(err_x)?;
 
-            let done = (offset + n_read as u64) == end; // If bytes read == 0, then we're done.
+            let done = (offset + n_read as u64) == end;
             let req = InstallSnapshotRequest {
                 vote: self.session_id.vote,
                 meta: snapshot.meta.clone(),
