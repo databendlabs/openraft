@@ -13,7 +13,7 @@ fn test_config_defaults() {
 
     assert_eq!(50, cfg.heartbeat_interval);
     assert_eq!(300, cfg.max_payload_entries);
-    assert_eq!(1000, cfg.replication_lag_threshold);
+    assert_eq!(5000, cfg.replication_lag_threshold);
 
     assert_eq!(3 * 1024 * 1024, cfg.snapshot_max_chunk_size);
     assert_eq!(SnapshotPolicy::LogsSinceLast(5000), cfg.snapshot_policy);
@@ -57,8 +57,8 @@ fn test_build() -> anyhow::Result<()> {
         "--send-snapshot-timeout=199",
         "--install-snapshot-timeout=200",
         "--max-payload-entries=201",
-        "--replication-lag-threshold=202",
-        "--snapshot-policy=since_last:203",
+        "--snapshot-policy=since_last:202",
+        "--replication-lag-threshold=203",
         "--snapshot-max-chunk-size=204",
         "--max-in-snapshot-log-to-keep=205",
         "--purge-batch-size=207",
@@ -71,8 +71,8 @@ fn test_build() -> anyhow::Result<()> {
     assert_eq!(199, config.send_snapshot_timeout);
     assert_eq!(200, config.install_snapshot_timeout);
     assert_eq!(201, config.max_payload_entries);
-    assert_eq!(202, config.replication_lag_threshold);
-    assert_eq!(SnapshotPolicy::LogsSinceLast(203), config.snapshot_policy);
+    assert_eq!(SnapshotPolicy::LogsSinceLast(202), config.snapshot_policy);
+    assert_eq!(203, config.replication_lag_threshold);
     assert_eq!(204, config.snapshot_max_chunk_size);
     assert_eq!(205, config.max_in_snapshot_log_to_keep);
     assert_eq!(207, config.purge_batch_size);

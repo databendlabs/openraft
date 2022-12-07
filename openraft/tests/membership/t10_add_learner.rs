@@ -43,17 +43,18 @@ async fn add_learner_basic() -> Result<()> {
     tracing::info!("--- add new node node-1");
     {
         tracing::info!("--- write up to 1000 logs");
+        {
+            router.client_request_many(0, "learner_add", 1000 - log_index as usize).await?;
+            log_index = 1000;
 
-        router.client_request_many(0, "learner_add", 1000 - log_index as usize).await?;
-        log_index = 1000;
-
-        tracing::info!("--- write up to 1000 logs done");
-
-        router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "write 1000 logs to leader").await?;
+            tracing::info!("--- write up to 1000 logs done");
+            router.wait_for_log(&btreeset! {0}, Some(log_index), timeout(), "write 1000 logs to leader").await?;
+        }
 
         router.new_raft_node(1);
         router.add_learner(0, 1).await?;
         log_index += 1;
+
         router.wait_for_log(&btreeset! {0,1}, Some(log_index), timeout(), "add learner").await?;
 
         tracing::info!("--- add_learner blocks until the replication catches up");
