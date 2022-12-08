@@ -32,7 +32,7 @@ fix:
 	cargo fix --allow-staged
 
 doc:
-	cargo doc --all --no-deps
+	RUSTDOCFLAGS="-D warnings" cargo doc --all --no-deps
 
 guide:
 	mdbook build
