@@ -41,6 +41,7 @@ use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::node::Node;
+use crate::progress::entry::ProgressEntry;
 use crate::replication::ReplicationSessionId;
 use crate::storage::Snapshot;
 use crate::AppData;
@@ -919,13 +920,13 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
 
     /// Update the `matched` log id of a replication target.
     /// Sent by a replication task `ReplicationCore`.
-    UpdateReplicationMatched {
+    UpdateReplicationProgress {
         /// The ID of the target node for which the match index is to be updated.
         target: C::NodeId,
 
         /// Either the last log id that has been successfully replicated to the target,
         /// or an error in string.
-        result: Result<LogId<C::NodeId>, String>,
+        result: Result<ProgressEntry<C::NodeId>, String>,
 
         /// In which session this message is sent.
         /// A replication session(vote,membership_log_id) should ignore message from other session.
@@ -1016,7 +1017,7 @@ where
             RaftMsg::Tick { i } => {
                 format!("Tick {}", i)
             }
-            RaftMsg::UpdateReplicationMatched {
+            RaftMsg::UpdateReplicationProgress {
                 ref target,
                 ref result,
                 ref session_id,

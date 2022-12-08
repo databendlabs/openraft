@@ -1,4 +1,6 @@
 use std::borrow::Borrow;
+use std::fmt::Display;
+use std::fmt::Formatter;
 
 use crate::summary::MessageSummary;
 use crate::LogId;
@@ -86,7 +88,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
 
         if let Some(s) = &mut self.searching {
             debug_assert!(conflict < s.end);
-            debug_assert!(conflict >= s.mid);
+            debug_assert!(conflict + 1 >= s.mid, "conflict can only be the prev_log_index");
 
             s.end = conflict;
 
@@ -100,7 +102,9 @@ impl<NID: NodeId> ProgressEntry<NID> {
         }
     }
 
-    /// Return the starting log index range(`[start,end)`) for the next AppendEntries.
+    /// Return the index range(`[start,end]`) of the first log in the next AppendEntries.
+    ///
+    /// The returned range is left close and right close.
     #[allow(dead_code)]
     pub(crate) fn sending_start(&self) -> (u64, u64) {
         match self.searching {
@@ -135,6 +139,19 @@ impl<NID: NodeId> ProgressEntry<NID> {
 impl<NID: NodeId> Borrow<Option<LogId<NID>>> for ProgressEntry<NID> {
     fn borrow(&self) -> &Option<LogId<NID>> {
         &self.matching
+    }
+}
+
+impl<NID: NodeId> Display for ProgressEntry<NID> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.searching {
+            None => {
+                write!(f, "{}", self.matching.summary())
+            }
+            Some(s) => {
+                write!(f, "[{}, {}, {})", self.matching.summary(), s.mid, s.end)
+            }
+        }
     }
 }
 
