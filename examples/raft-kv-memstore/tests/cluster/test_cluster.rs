@@ -12,6 +12,7 @@ use raft_kv_memstore::start_example_raft_node;
 use raft_kv_memstore::store::ExampleRequest;
 use raft_kv_memstore::ExampleNodeId;
 use tokio::runtime::Runtime;
+use tracing_subscriber::EnvFilter;
 
 /// Setup a cluster of 3 nodes.
 /// Write to it and read from it.
@@ -20,6 +21,14 @@ async fn test_cluster() -> anyhow::Result<()> {
     // --- The client itself does not store addresses for all nodes, but just node id.
     //     Thus we need a supporting component to provide mapping from node id to node address.
     //     This is only used by the client. A raft node in this example stores node addresses in its store.
+
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_level(true)
+        .with_ansi(false)
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     let get_addr = |node_id| {
         let addr = match node_id {

@@ -183,6 +183,8 @@ jobs:
         with:
           command: test
           args: --manifest-path examples/${{ matrix.example }}/Cargo.toml
+        env:
+          RUST_LOG: debug
 
 
       - name: Test demo script of examples/${{ matrix.example }}
