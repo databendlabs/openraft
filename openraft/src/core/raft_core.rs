@@ -1290,7 +1290,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
 
-            RaftMsg::UpdateReplicationMatched {
+            RaftMsg::UpdateReplicationProgress {
                 target,
                 result,
                 session_id,
@@ -1328,7 +1328,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     async fn handle_update_matched(
         &mut self,
         target: C::NodeId,
-        result: Result<LogId<C::NodeId>, String>,
+        result: Result<ProgressEntry<C::NodeId>, String>,
     ) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(
             target = display(target),
@@ -1346,17 +1346,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
         }
 
-        let matched = match result {
-            Ok(matched) => matched,
+        let progress = match result {
+            Ok(p) => p,
             Err(_err_str) => {
                 return Ok(());
             }
         };
 
-        self.engine.update_progress(target, Some(matched));
+        self.engine.update_progress(target, Some(progress.matching.unwrap()));
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
-        self.update_replication_metrics(target, matched);
+        self.update_replication_metrics(target, progress.matching.unwrap());
 
         Ok(())
     }
