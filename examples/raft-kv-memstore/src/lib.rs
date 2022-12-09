@@ -36,7 +36,14 @@ pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>
 
 pub async fn start_example_raft_node(node_id: ExampleNodeId, http_addr: String) -> std::io::Result<()> {
     // Create a configuration for the raft instance.
-    let config = Arc::new(Config::default().validate().unwrap());
+    let config = Config {
+        heartbeat_interval: 500,
+        election_timeout_min: 1500,
+        election_timeout_max: 3000,
+        ..Default::default()
+    };
+
+    let config = Arc::new(config.validate().unwrap());
 
     // Create a instance of where the Raft data will be stored.
     let store = Arc::new(ExampleStore::default());

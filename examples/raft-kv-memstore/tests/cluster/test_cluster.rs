@@ -209,7 +209,7 @@ async fn test_cluster() -> anyhow::Result<()> {
     println!("=== change-membership to 3, ");
     let _x = client.change_membership(&btreeset! {3}).await?;
 
-    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    tokio::time::sleep(Duration::from_millis(8_000)).await;
 
     println!("=== metrics after change-membership to {{3}}");
     let x = client.metrics().await?;

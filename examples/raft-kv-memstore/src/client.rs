@@ -170,7 +170,7 @@ impl ExampleClient {
         }
         .send();
 
-        let res = timeout(Duration::from_millis(500), fu).await;
+        let res = timeout(Duration::from_millis(3_000), fu).await;
         let resp = match res {
             Ok(x) => x.map_err(|e| RPCError::Network(NetworkError::new(&e)))?,
             Err(timeout_err) => {
