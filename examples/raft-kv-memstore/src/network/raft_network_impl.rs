@@ -38,9 +38,16 @@ impl ExampleNetwork {
         let addr = &target_node.addr;
 
         let url = format!("http://{}/{}", addr, uri);
+
+        tracing::debug!("send_rpc to url: {}", url);
+
         let client = reqwest::Client::new();
 
+        tracing::debug!("client is created for: {}", url);
+
         let resp = client.post(url).json(&req).send().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+
+        tracing::debug!("client.post() is sent");
 
         let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
 

@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use openraft::error::AddLearnerError;
 use openraft::error::CheckIsLeaderError;
@@ -19,6 +20,7 @@ use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::time::timeout;
 
 use crate::ExampleNodeId;
 use crate::ExampleRequest;
@@ -155,23 +157,30 @@ impl ExampleClient {
             (t.0, format!("http://{}/{}", target_addr, uri))
         };
 
-        let resp = if let Some(r) = req {
-            println!(
+        let fu = if let Some(r) = req {
+            tracing::debug!(
                 ">>> client send request to {}: {}",
                 url,
                 serde_json::to_string_pretty(&r).unwrap()
             );
             self.inner.post(url.clone()).json(r)
         } else {
-            println!(">>> client send request to {}", url,);
+            tracing::debug!(">>> client send request to {}", url,);
             self.inner.get(url.clone())
         }
-        .send()
-        .await
-        .map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
+        .send();
+
+        let res = timeout(Duration::from_millis(3_000), fu).await;
+        let resp = match res {
+            Ok(x) => x.map_err(|e| RPCError::Network(NetworkError::new(&e)))?,
+            Err(timeout_err) => {
+                tracing::error!("timeout {} to url: {}", timeout_err, url);
+                return Err(RPCError::Network(NetworkError::new(&timeout_err)));
+            }
+        };
 
         let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
-        println!(
+        tracing::debug!(
             "<<< client recv reply from {}: {}",
             url,
             serde_json::to_string_pretty(&res).unwrap()

@@ -1408,8 +1408,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         if session_id.membership_log_id != self.engine.state.membership_state.effective.log_id {
             tracing::warn!(
-                "membership_log_id changed: msg sent by: {:?}; curr: {}; ignore when ({})",
-                session_id.membership_log_id,
+                "membership_log_id changed: msg sent by: {}; curr: {}; ignore when ({})",
+                session_id.membership_log_id.summary(),
                 self.engine.state.membership_state.effective.log_id.summary(),
                 msg
             );
