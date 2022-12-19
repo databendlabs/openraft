@@ -226,6 +226,15 @@ impl ExampleStore {
         self.db.cf_handle("logs").unwrap()
     }
 
+    fn flush(
+        &self,
+        subject: ErrorSubject<ExampleNodeId>,
+        verb: ErrorVerb,
+    ) -> Result<(), StorageIOError<ExampleNodeId>> {
+        self.db.flush_wal(true).map_err(|e| StorageIOError::new(subject, verb, AnyError::new(&e)))?;
+        Ok(())
+    }
+
     fn get_last_purged_(&self) -> StorageResult<Option<LogId<u64>>> {
         Ok(self
             .db
@@ -241,7 +250,10 @@ impl ExampleStore {
                 b"last_purged_log_id",
                 serde_json::to_vec(&log_id).unwrap().as_slice(),
             )
-            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into())
+            .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)))?;
+
+        self.flush(ErrorSubject::Store, ErrorVerb::Write)?;
+        Ok(())
     }
 
     fn get_snapshot_index_(&self) -> StorageResult<u64> {
@@ -263,6 +275,7 @@ impl ExampleStore {
             .map_err(|e| StorageError::IO {
                 source: StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)),
             })?;
+        self.flush(ErrorSubject::Store, ErrorVerb::Write)?;
         Ok(())
     }
 
@@ -271,7 +284,10 @@ impl ExampleStore {
             .put_cf(self.store(), b"vote", serde_json::to_vec(vote).unwrap())
             .map_err(|e| StorageError::IO {
                 source: StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Write, AnyError::new(&e)),
-            })
+            })?;
+
+        self.flush(ErrorSubject::Vote, ErrorVerb::Write)?;
+        Ok(())
     }
 
     fn get_vote_(&self) -> StorageResult<Option<Vote<ExampleNodeId>>> {
@@ -304,6 +320,7 @@ impl ExampleStore {
                     AnyError::new(&e),
                 ),
             })?;
+        self.flush(ErrorSubject::Snapshot(snap.meta.signature()), ErrorVerb::Write)?;
         Ok(())
     }
 }
@@ -434,6 +451,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
                 )
                 .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?;
         }
+
         Ok(())
     }
 
@@ -506,9 +524,8 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
                 }
             };
         }
-        self.db
-            .flush_wal(true)
-            .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?;
+
+        self.flush(ErrorSubject::StateMachine, ErrorVerb::Write)?;
         Ok(res)
     }
 
