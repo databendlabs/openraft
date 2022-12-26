@@ -1,4 +1,5 @@
 use futures::future::AbortHandle;
+use tokio::task::JoinHandle;
 
 use crate::core::streaming_state::StreamingState;
 use crate::Node;
@@ -15,6 +16,7 @@ pub(crate) enum SnapshotState<C: RaftTypeConfig, SD> {
     Snapshotting {
         /// A handle to abort the compaction process early if needed.
         abort_handle: AbortHandle,
+        join_handle: JoinHandle<()>,
     },
     /// The Raft node is streaming in a snapshot from the leader.
     Streaming(StreamingState<C, SD>),
