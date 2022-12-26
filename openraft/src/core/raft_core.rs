@@ -6,9 +6,8 @@ use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use futures::future::abortable;
 use futures::future::select;
-use futures::future::AbortHandle;
-use futures::future::Abortable;
 use futures::future::Either;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -762,16 +761,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // At this point, we are clear to begin a new compaction process.
         let mut builder = self.storage.get_snapshot_builder().await;
-        let (abort_handle, reg) = AbortHandle::new_pair();
+
+        let (fu, abort_handle) = abortable(async move { builder.build_snapshot().await });
+
         let tx_api = self.tx_api.clone();
 
-        self.snapshot_state = SnapshotState::Snapshotting { abort_handle };
-
-        tokio::spawn(
+        let join_handle = tokio::spawn(
             async move {
-                let f = builder.build_snapshot();
-                let res = Abortable::new(f, reg).await;
-                match res {
+                match fu.await {
                     Ok(res) => match res {
                         Ok(snapshot) => {
                             let _ = tx_api.send(RaftMsg::BuildingSnapshotResult {
@@ -792,8 +789,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     }
                 }
             }
-            .instrument(tracing::debug_span!("beginning new log compaction process")),
+            .instrument(tracing::debug_span!("building-snapshot")),
         );
+
+        self.snapshot_state = SnapshotState::Snapshotting {
+            abort_handle,
+            join_handle,
+        };
     }
 
     /// Reject a request due to the Raft node being in a state which prohibits the request.

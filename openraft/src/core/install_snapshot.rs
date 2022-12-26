@@ -45,8 +45,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.set_next_election_time(false);
 
         // Clear the state to None if it is building a snapshot locally.
-        if let SnapshotState::Snapshotting { abort_handle, .. } = &mut self.snapshot_state {
-            abort_handle.abort(); // Abort the current compaction in favor of installation from leader.
+        if let SnapshotState::Snapshotting {
+            abort_handle,
+            join_handle,
+        } = &mut self.snapshot_state
+        {
+            abort_handle.abort();
+
+            // The building-snapshot task in another thread may still be running.
+            // It has to block until it returns before dealing with snapshot streaming.
+            // Otherwise there might be concurrency issue: installing the streaming snapshot and saving the built
+            // snapshot may happen in any order.
+            let _ = join_handle.await;
             self.snapshot_state = SnapshotState::None;
         }
 
