@@ -786,6 +786,22 @@ where
     /// Follower/Learner handles install-snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn install_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
+        // There are two special cases in which snapshot last log id does not exists locally:
+        // Snapshot last log id before the local last-purged-log-id, or after the local last-log-id:
+        //
+        //      snapshot ----.
+        //                   v
+        // -----------------------llllllllll--->
+        //
+        //      snapshot ----.
+        //                   v
+        // ----lllllllllll--------------------->
+        //
+        // In the first case, snapshot-last-log-id <= last-purged-log-id <= local-snapshot-last-log-id.
+        // Thus snapshot is obsolete and won't be installed.
+        //
+        // In the second case, all local logs will be purged after install.
+
         tracing::info!("install_snapshot: meta:{:?}", meta);
 
         let snap_last_log_id = meta.last_log_id;
@@ -848,6 +864,10 @@ where
 
         // A local log that is <= snap_last_log_id can not conflict with the leader.
         // But there will be a hole in the logs. Thus it's better remove all logs.
+
+        // In the second case, if local-last-log-id is smaller than snapshot-last-log-id,
+        // and this node crashes after installing snapshot and before purging logs,
+        // the log will be purged the next start up, in [`RaftState::get_initial_state`].
         self.purge_log(snap_last_log_id)
     }
 
