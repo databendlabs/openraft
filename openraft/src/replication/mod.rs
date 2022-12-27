@@ -1,15 +1,19 @@
 //! Replication stream.
 
 mod replication_session_id;
+
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use std::io::SeekFrom;
 use std::sync::Arc;
 
 use futures::future::FutureExt;
 pub(crate) use replication_session_id::ReplicationSessionId;
+use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
+use tokio::io::AsyncSeek;
 use tokio::io::AsyncSeekExt;
 use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 use tokio::time::timeout;
@@ -17,41 +21,43 @@ use tokio::time::Duration;
 use tracing_futures::Instrument;
 
 use crate::config::Config;
-use crate::error::CommittedAdvanceTooMany;
 use crate::error::HigherVote;
-use crate::error::LackEntry;
 use crate::error::RPCError;
 use crate::error::ReplicationError;
 use crate::error::Timeout;
-use crate::progress::entry::ProgressEntry;
+use crate::log_id_range::LogIdRange;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::RaftMsg;
 use crate::raft_types::LogIdOptionExt;
-use crate::raft_types::LogIndexOptionExt;
 use crate::storage::RaftLogReader;
 use crate::storage::Snapshot;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
 use crate::LogId;
 use crate::MessageSummary;
+use crate::Node;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::RaftNetwork;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
-use crate::SnapshotPolicy;
 use crate::ToStorageResult;
 
 /// The handle to a spawned replication stream.
-pub(crate) struct ReplicationHandle<NID: NodeId> {
+pub(crate) struct ReplicationHandle<NID, N, S>
+where
+    NID: NodeId,
+    N: Node,
+    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
     /// The spawn handle the `ReplicationCore` task.
     pub(crate) join_handle: JoinHandle<()>,
 
     /// The channel used for communicating with the replication task.
-    pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<NID>>,
+    pub(crate) tx_repl: mpsc::UnboundedSender<Replicate<NID, N, S>>,
 }
 
 /// A task responsible for sending replication events to a target follower in the Raft cluster.
@@ -71,7 +77,7 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
 
     /// A channel for receiving events from the RaftCore.
-    rx_repl: mpsc::UnboundedReceiver<Replicate<C::NodeId>>,
+    rx_repl: mpsc::UnboundedReceiver<Replicate<C::NodeId, C::Node, S::SnapshotData>>,
 
     /// The `RaftNetwork` interface.
     network: N::Network,
@@ -82,17 +88,14 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     /// The Raft's runtime config.
     config: Arc<Config>,
 
-    /// The target state of this replication stream.
-    target_repl_state: TargetReplState,
-
     /// The log id of the highest log entry which is known to be committed in the cluster.
     committed: Option<LogId<C::NodeId>>,
 
-    /// Replication progress
-    progress: ProgressEntry<C::NodeId>,
+    /// Last matching log id on a follower/learner
+    matching: Option<LogId<C::NodeId>>,
 
-    /// if or not need to replicate log entries or states, e.g., `commit_index` etc.
-    need_to_replicate: bool,
+    /// Next replication action to run.
+    next_action: ReplicationAction<C::NodeId, C::Node, S::SnapshotData>,
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
@@ -105,19 +108,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         session_id: ReplicationSessionId<C::NodeId>,
         config: Arc<Config>,
         committed: Option<LogId<C::NodeId>>,
-        progress_entry: ProgressEntry<C::NodeId>,
+        matching: Option<LogId<C::NodeId>>,
         network: N::Network,
         log_reader: S::LogReader,
         tx_raft_core: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
         span: tracing::Span,
-    ) -> ReplicationHandle<C::NodeId> {
+    ) -> ReplicationHandle<C::NodeId, C::Node, S::SnapshotData> {
         tracing::debug!(
             session_id = display(&session_id),
             target = display(&target),
             committed = display(committed.summary()),
-            progress_entry = debug(&progress_entry),
+            matching = debug(&matching),
             "spawn replication"
         );
+
         // other component to ReplicationStream
         let (tx_repl, rx_repl) = mpsc::unbounded_channel();
 
@@ -127,12 +131,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             network,
             log_reader,
             config,
-            target_repl_state: TargetReplState::LineRate,
             committed,
-            progress: progress_entry,
+            matching,
             tx_raft_core,
             rx_repl,
-            need_to_replicate: true,
+            next_action: ReplicationAction::None,
         };
 
         let join_handle = tokio::spawn(this.main().instrument(span));
@@ -143,49 +146,72 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[tracing::instrument(level="debug", skip(self), fields(session=%self.session_id, target=display(self.target), cluster=%self.config.cluster_name))]
     async fn main(mut self) {
         loop {
-            // If it returns Ok(), always go back to LineRate state.
-            let res = match &self.target_repl_state {
-                TargetReplState::LineRate => self.line_rate_loop().await,
-                TargetReplState::Snapshotting => self.replicate_snapshot().await,
+            let action = std::mem::replace(&mut self.next_action, ReplicationAction::None);
+
+            let mut repl_id = 0;
+
+            let res = match action {
+                ReplicationAction::None => Ok(()),
+                ReplicationAction::Logs { id, log_id_range } => {
+                    repl_id = id;
+                    self.send_log_entries(id, log_id_range).await
+                }
+                ReplicationAction::Snapshot { id, snapshot } => {
+                    repl_id = id;
+                    self.stream_snapshot(id, snapshot).await
+                }
             };
 
-            let err = match res {
-                Ok(_) => {
-                    self.set_target_repl_state(TargetReplState::LineRate);
-                    continue;
+            match res {
+                Ok(_x) => {}
+                Err(err) => {
+                    tracing::warn!(error=%err, "error replication to target={}", self.target);
+
+                    match err {
+                        ReplicationError::Closed => {
+                            return;
+                        }
+                        ReplicationError::HigherVote(h) => {
+                            let _ = self.tx_raft_core.send(RaftMsg::HigherVote {
+                                target: self.target,
+                                higher: h.higher,
+                                vote: self.session_id.vote,
+                            });
+                            return;
+                        }
+                        ReplicationError::StorageError(err) => {
+                            tracing::error!(error=%err, "error replication to target={}", self.target);
+
+                            // TODO: report this error
+                            let _ = self.tx_raft_core.send(RaftMsg::ReplicationFatal);
+                            return;
+                        }
+                        ReplicationError::RPCError(err) => {
+                            tracing::error!(err = display(&err), "RPCError");
+                            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
+                                target: self.target,
+                                id: repl_id,
+                                result: Err(err.to_string()),
+                                session_id: self.session_id,
+                            });
+                        }
+                    };
                 }
-                Err(err) => err,
             };
 
-            tracing::warn!(error=%err, "error replication to target={}", self.target);
+            let res = self.drain_events().await;
+            match res {
+                Ok(_x) => {}
+                Err(err) => match err {
+                    ReplicationError::Closed => {
+                        return;
+                    }
 
-            match err {
-                ReplicationError::Closed => {
-                    return;
-                }
-                ReplicationError::HigherVote(h) => {
-                    let _ = self.tx_raft_core.send(RaftMsg::HigherVote {
-                        target: self.target,
-                        higher: h.higher,
-                        vote: self.session_id.vote,
-                    });
-                    return;
-                }
-                ReplicationError::LackEntry(_lack_ent) => {
-                    self.set_target_repl_state(TargetReplState::Snapshotting);
-                }
-                ReplicationError::CommittedAdvanceTooMany { .. } => {
-                    self.set_target_repl_state(TargetReplState::Snapshotting);
-                }
-                ReplicationError::StorageError(_err) => {
-                    // TODO: report this error
-                    let _ = self.tx_raft_core.send(RaftMsg::ReplicationFatal);
-                    return;
-                }
-                ReplicationError::RPCError(_e) => {
-                    unreachable!("RPCError is dealt with in the inner loop");
-                }
-            };
+                    _ => {
+                        unreachable!("no other error expected but: {:?}", err);
+                    }
+                },
+            }
         }
     }
 
@@ -193,82 +219,27 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     ///
     /// This request will timeout if no response is received within the
     /// configured heartbeat interval.
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn send_append_entries(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
-        let (start, _right) = self.progress.sending_start();
+    #[tracing::instrument(level = "debug", skip_all)]
+    async fn send_log_entries(
+        &mut self,
+        id: u64,
+        req: LogIdRange<C::NodeId>,
+    ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
+        tracing::debug!(id = display(id), send_req = display(&req), "send_log_entries",);
 
-        let mut prev_index = if start == 0 { None } else { Some(start - 1) };
+        let start = req.prev_log_id.next_index();
+        let end = req.last_log_id.next_index();
 
-        let (prev_log_id, logs, has_more_logs) = loop {
-            // TODO(xp): test heartbeat when all logs are removed.
-
-            let log_state = self.log_reader.get_log_state().await?;
-
-            let last_purged = log_state.last_purged_log_id;
-
-            self.check_consecutive(last_purged)?;
-
-            if prev_index < last_purged.index() {
-                prev_index = last_purged.index();
-            }
-
-            let last_log_index = log_state.last_log_id.next_index();
-            let start = prev_index.next_index();
-            let end = std::cmp::min(start + self.config.max_payload_entries, last_log_index);
-
-            tracing::debug!(
-                progress = display(&self.progress),
-                ?last_purged,
-                ?prev_index,
-                end,
-                "load entries",
-            );
-
-            assert!(end >= prev_index.next_index());
-
-            let prev_log_id = if prev_index == last_purged.index() {
-                last_purged
-            } else if let Some(prev_i) = prev_index {
-                let first = self.log_reader.try_get_log_entry(prev_i).await?;
-                match first {
-                    Some(f) => Some(f.log_id),
-                    None => {
-                        tracing::info!("can not load first entry: at {:?}, retry loading logs", prev_index);
-                        continue;
-                    }
-                }
-            } else {
-                None
-            };
-
-            let logs = if start == end {
-                vec![]
-            } else {
-                let logs = self.log_reader.try_get_log_entries(start..end).await?;
-                if !logs.is_empty() && logs[0].log_id.index > prev_log_id.next_index() {
-                    // There is still chance the first log is removed.
-                    // log entry is just deleted after fetching first_log_id.
-                    // Without consecutive logs, we have to retry loading.
-                    continue;
-                }
-
-                logs
-            };
-
-            break (prev_log_id, logs, end < last_log_index);
-        };
-
-        let conflict = prev_log_id;
-        let matched = if logs.is_empty() {
-            prev_log_id
+        let logs = if start == end {
+            vec![]
         } else {
-            Some(logs[logs.len() - 1].log_id)
+            self.log_reader.get_log_entries(start..end).await?
         };
 
         // Build the heartbeat frame to be sent to the follower.
         let payload = AppendEntriesRequest {
             vote: self.session_id.vote,
-            prev_log_id,
+            prev_log_id: req.prev_log_id,
             leader_commit: self.committed,
             entries: logs,
         };
@@ -282,6 +253,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
         let res = timeout(the_timeout, self.network.send_append_entries(payload)).await;
+
+        tracing::debug!("append_entries res: {:?}", res);
 
         let append_res = res.map_err(|_e| {
             let to = Timeout {
@@ -298,11 +271,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         match append_resp {
             AppendEntriesResponse::Success => {
-                self.update_matched(matched);
-
-                // Set the need_to_replicate flag if there is more log to send.
-                // Otherwise leave it as is.
-                self.need_to_replicate = has_more_logs;
+                self.update_matching(id, req.last_log_id);
                 Ok(())
             }
             AppendEntriesResponse::HigherVote(vote) => {
@@ -318,277 +287,233 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 }))
             }
             AppendEntriesResponse::Conflict => {
+                let conflict = req.prev_log_id;
                 debug_assert!(conflict.is_some(), "prev_log_id=None never conflict");
+
                 let conflict = conflict.unwrap();
-                self.progress.update_conflicting(conflict.index);
+                self.update_conflicting(id, conflict);
 
                 Ok(())
             }
         }
     }
 
-    /// max_possible_matched_index is the least index for `prev_log_id` to form a consecutive log sequence
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn check_consecutive(&self, last_purged: Option<LogId<C::NodeId>>) -> Result<(), LackEntry<C::NodeId>> {
-        tracing::debug!(?last_purged, progress = display(&self.progress), "check_consecutive");
+    fn update_conflicting(&mut self, id: u64, conflict: LogId<C::NodeId>) {
+        tracing::debug!(
+            target = display(self.target),
+            id = display(id),
+            conflict = display(&conflict),
+            "update_conflicting"
+        );
 
-        if last_purged.index() > self.progress.max_possible_matching() {
-            return Err(LackEntry {
-                index: self.progress.max_possible_matching(),
-                last_purged_log_id: last_purged,
-            });
-        }
-
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    fn set_target_repl_state(&mut self, state: TargetReplState) {
-        tracing::debug!(?state, "set_target_repl_state");
-        self.target_repl_state = state;
+        let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
+            session_id: self.session_id,
+            id,
+            target: self.target,
+            result: Ok(ReplicationResult::Conflict(conflict)),
+        });
     }
 
     /// Update the `matched` and `max_possible_matched_index`, which both are for tracking
     /// follower replication(the left and right cursor in a bsearch).
     /// And also report the matched log id to RaftCore to commit an entry etc.
     #[tracing::instrument(level = "trace", skip(self))]
-    fn update_matched(&mut self, new_matched: Option<LogId<C::NodeId>>) {
-        tracing::debug!(progress = display(&self.progress), ?new_matched, "update_matched");
+    fn update_matching(&mut self, id: u64, new_matching: Option<LogId<C::NodeId>>) {
+        tracing::debug!(
+            id = display(id),
+            target = display(self.target),
+            matching = debug(&new_matching),
+            "update_matching"
+        );
 
-        if self.progress.matching < new_matched {
-            self.progress.update_matching(new_matched);
+        debug_assert!(self.matching <= new_matching);
 
-            tracing::debug!(target=%self.target, progress=display(&self.progress), "matched updated");
+        if self.matching < new_matching {
+            self.matching = new_matching;
 
             let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
                 session_id: self.session_id,
+                id,
                 target: self.target,
-                result: Ok(self.progress),
+                result: Ok(ReplicationResult::Matching(new_matching)),
             });
         }
     }
 
-    /// Perform a check to see if this replication stream is lagging behind far enough that a
-    /// snapshot is warranted.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(self) fn needs_snapshot(&self) -> bool {
-        let c = self.committed.next_index();
-        let m = self.progress.matching.next_index();
-        let distance = c.saturating_sub(m);
+    /// Receive and process events from RaftCore, until `next_action` is filled.
+    ///
+    /// It blocks until at least one event is received.
+    #[tracing::instrument(level = "trace", skip_all)]
+    pub async fn drain_events(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
+        tracing::debug!("drain_events");
 
-        #[allow(clippy::infallible_destructuring_match)]
-        let snapshot_threshold = match self.config.snapshot_policy {
-            SnapshotPolicy::LogsSinceLast(n) => n,
-        };
+        let event = self.rx_repl.recv().await.ok_or(ReplicationError::Closed)?;
+        self.process_event(event);
 
-        let lagging_threshold = self.config.replication_lag_threshold;
-        let needs_snap = distance >= lagging_threshold && distance > snapshot_threshold;
+        self.try_drain_events().await?;
 
-        tracing::trace!(
-            "snapshot needed: {}, distance:{}; lagging_threshold:{}; snapshot_threshold:{}",
-            needs_snap,
-            distance,
-            lagging_threshold,
-            snapshot_threshold
-        );
-        needs_snap
+        // No action filled after all events are processed, fill in an action to send committed index.
+        if let ReplicationAction::None = self.next_action {
+            let m = &self.matching;
+
+            // empty message, just for syncing the committed index
+            self.next_action = ReplicationAction::Logs {
+                // id==0 will be ignored by RaftCore.
+                id: 0,
+                log_id_range: LogIdRange {
+                    prev_log_id: *m,
+                    last_log_id: *m,
+                },
+            };
+        }
+
+        Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn try_drain_raft_rx(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
+    pub async fn try_drain_events(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         tracing::debug!("try_drain_raft_rx");
 
-        for _i in 0..self.config.max_payload_entries {
-            let event_or_nothing = self.rx_repl.recv().now_or_never();
-            let ev_opt = match event_or_nothing {
+        while let ReplicationAction::None = self.next_action {
+            let maybe_res = self.rx_repl.recv().now_or_never();
+
+            let recv_res = match maybe_res {
                 None => {
-                    // no event in self.repl_rx
+                    // No more events in self.repl_rx
                     return Ok(());
                 }
                 Some(x) => x,
             };
 
-            let event = match ev_opt {
-                None => {
-                    // channel is closed, Leader quited.
-                    return Err(ReplicationError::Closed);
-                }
-                Some(x) => x,
-            };
+            let event = recv_res.ok_or(ReplicationError::Closed)?;
 
-            self.process_raft_event(event)
+            self.process_event(event);
         }
 
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn process_raft_event(&mut self, event: Replicate<C::NodeId>) {
-        tracing::debug!(event=%event.summary(), "process_raft_event");
+    pub fn process_event(&mut self, event: Replicate<C::NodeId, C::Node, S::SnapshotData>) {
+        tracing::debug!(event=%event.summary(), "process_event");
 
         match event {
             Replicate::Committed(c) => {
-                if c > self.committed {
-                    self.need_to_replicate = true;
-                    self.committed = c;
+                // RaftCore may send a committed equals to the initial value.
+                debug_assert!(
+                    c >= self.committed,
+                    "expect new committed {} > self.committed {}",
+                    c.summary(),
+                    self.committed.summary()
+                );
+
+                self.committed = c;
+            }
+            Replicate::Ent { id, log_id_range } => {
+                // TODO(1): when starting replication, or updating matching, re-send Replicate::Ent() to ReplicationCore
+                if let ReplicationAction::None = self.next_action {
+                    self.next_action = ReplicationAction::Logs { id, log_id_range };
+                } else {
+                    unreachable!("current state is: {:?}, can not accept other state", self.next_action);
                 }
             }
-            Replicate::Entries(last) => {
-                if last.index() > self.progress.matching.index() {
-                    self.need_to_replicate = true;
+            Replicate::Snapshot { id, snapshot } => {
+                if let ReplicationAction::None = self.next_action {
+                    self.next_action = ReplicationAction::Snapshot { id, snapshot };
+                } else {
+                    unreachable!("current state is: {:?}, can not accept other state", self.next_action);
                 }
             }
         }
     }
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////
+pub(crate) enum ReplicationAction<NID, N, SD>
+where
+    NID: NodeId,
+    N: Node,
+    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
+    None,
+    Logs { id: u64, log_id_range: LogIdRange<NID> },
+    Snapshot { id: u64, snapshot: Snapshot<NID, N, SD> },
+}
 
-/// The state of the replication stream.
-#[derive(Debug, Eq, PartialEq)]
-enum TargetReplState {
-    /// The replication stream is running at line rate.
-    LineRate,
+impl<NID, N, SD> Debug for ReplicationAction<NID, N, SD>
+where
+    NID: NodeId,
+    N: Node,
+    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReplicationAction::None => {
+                write!(f, "None")
+            }
+            ReplicationAction::Logs { id, log_id_range } => {
+                write!(f, "Logs(id={}):{}", id, log_id_range)
+            }
+            ReplicationAction::Snapshot { id, snapshot } => {
+                write!(f, "Snapshot(id={}):{:?}", id, snapshot.meta)
+            }
+        }
+    }
+}
 
-    /// The replication stream is streaming a snapshot over to the target node.
-    Snapshotting,
+/// Result of an replication action.
+#[derive(Clone, Debug)]
+pub(crate) enum ReplicationResult<NID: NodeId> {
+    Matching(Option<LogId<NID>>),
+    Conflict(LogId<NID>),
 }
 
 /// An event from the RaftCore leader state to replication stream, to inform what to replicate.
-pub(crate) enum Replicate<NID: NodeId> {
+pub(crate) enum Replicate<NID, N, S>
+where
+    NID: NodeId,
+    N: Node,
+    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
     /// Inform replication stream to forward the committed log id to followers/learners.
     Committed(Option<LogId<NID>>),
 
     /// Inform replication stream to forward the log entries to followers/learners.
-    ///
-    /// This message contains the last log id on this leader
-    Entries(Option<LogId<NID>>),
+    Ent { id: u64, log_id_range: LogIdRange<NID> },
+
+    /// Replicate a snapshot
+    Snapshot { id: u64, snapshot: Snapshot<NID, N, S> },
 }
 
-impl<NID: NodeId> MessageSummary<Replicate<NID>> for Replicate<NID> {
+impl<NID, N, S> MessageSummary<Replicate<NID, N, S>> for Replicate<NID, N, S>
+where
+    NID: NodeId,
+    N: Node,
+    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
     fn summary(&self) -> String {
         match self {
             Replicate::Committed(c) => {
                 format!("Replicate::Committed: {:?}", c)
             }
-            Replicate::Entries(last) => {
-                format!("Replicate::Entries: upto: {:?}", last)
+            Replicate::Ent { id, log_id_range } => {
+                format!("Replicate::Entries(id={}): {}", id, log_id_range)
+            }
+            Replicate::Snapshot { id, snapshot } => {
+                format!("Replicate::Snapshot(id={}): {}", id, snapshot.meta.summary())
             }
         }
     }
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn line_rate_loop(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
-        loop {
-            loop {
-                tracing::debug!("progress: {}", self.progress);
-
-                let res = self.send_append_entries().await;
-                tracing::debug!(target = display(self.target), res = debug(&res), "replication res",);
-
-                if let Err(err) = res {
-                    tracing::error!(error=%err, "error replication to target={}", self.target);
-
-                    // For transport error, just keep retrying.
-                    match err {
-                        ReplicationError::RPCError(e) => {
-                            tracing::error!(%e, "RPCError");
-                            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
-                                target: self.target,
-                                result: Err(e.to_string()),
-                                session_id: self.session_id,
-                            });
-                            break;
-                        }
-                        _ => {
-                            return Err(err);
-                        }
-                    }
-                }
-
-                if self.progress.searching.is_none() {
-                    break;
-                }
-            }
-
-            if self.needs_snapshot() {
-                return Err(ReplicationError::CommittedAdvanceTooMany(CommittedAdvanceTooMany {
-                    // TODO(xp) fill them
-                    committed_index: 0,
-                    target_index: 0,
-                }));
-            }
-
-            // Check raft channel to ensure we are staying up-to-date
-            self.try_drain_raft_rx().await?;
-            tracing::debug!(
-                target = display(self.target),
-                need = display(self.need_to_replicate),
-                "need_to_replicate"
-            );
-            if self.need_to_replicate {
-                // if there is more log, continue to send_append_entries
-                continue;
-            }
-
-            let event_or_none = self.rx_repl.recv().await;
-            match event_or_none {
-                Some(event) => {
-                    self.process_raft_event(event);
-                    self.try_drain_raft_rx().await?;
-                }
-                None => {
-                    tracing::debug!("received: RaftEvent::Terminate: closed");
-                    return Err(ReplicationError::Closed);
-                }
-            }
-        }
-    }
-
-    #[tracing::instrument(level = "debug", skip(self), fields(state = "snapshotting"))]
-    pub async fn replicate_snapshot(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
-        let snapshot = self.wait_for_snapshot().await?;
-        self.stream_snapshot(snapshot).await?;
-
-        Ok(())
-    }
-
-    /// Ask RaftCore for a snapshot
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn wait_for_snapshot(
-        &mut self,
-    ) -> Result<Snapshot<C::NodeId, C::Node, S::SnapshotData>, ReplicationError<C::NodeId, C::Node>> {
-        // Ask raft core for a snapshot.
-        //
-        // RaftCore must have a ready snapshot:
-        // When `ReplicationCore` asks for a snapshot for replication, `RaftCore`
-        // could just gives it the last built one. There is never need to rebuild
-        // one. Because a log won't be purged until a snapshot including it is
-        // built.
-
-        let (tx, rx) = oneshot::channel();
-
-        let _ = self.tx_raft_core.send(RaftMsg::NeedsSnapshot {
-            target: self.target,
-            tx,
-            session_id: self.session_id,
-        });
-
-        let snapshot = rx.await.map_err(|e| {
-            tracing::info!("error waiting for snapshot: {}", e);
-            ReplicationError::Closed
-        })?;
-
-        Ok(snapshot)
-    }
-
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn stream_snapshot(
         &mut self,
+        id: u64,
         mut snapshot: Snapshot<C::NodeId, C::Node, S::SnapshotData>,
     ) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
+        tracing::debug!(id = display(id), snapshot = debug(&snapshot.meta), "stream_snapshot",);
+
         let err_x = || (ErrorSubject::Snapshot(snapshot.meta.signature()), ErrorVerb::Read);
 
         let mut offset = 0;
@@ -660,12 +585,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             // If we just sent the final chunk of the snapshot, then transition to lagging state.
             if done {
                 tracing::debug!(
-                    "done install snapshot: snapshot last_log_id: {:?}, progress: {}",
+                    "done install snapshot: snapshot last_log_id: {:?}, matching: {}",
                     snapshot.meta.last_log_id,
-                    self.progress,
+                    self.matching.summary(),
                 );
 
-                self.update_matched(snapshot.meta.last_log_id);
+                self.update_matching(id, snapshot.meta.last_log_id);
 
                 return Ok(());
             }
@@ -674,7 +599,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             offset += n_read as u64;
 
             // Check raft channel to ensure we are staying up-to-date, then loop.
-            self.try_drain_raft_rx().await?;
+            self.try_drain_events().await?;
         }
     }
 }

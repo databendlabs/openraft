@@ -13,6 +13,7 @@ mod inflight;
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::slice::Iter;
+use std::slice::IterMut;
 
 // TODO: remove it
 #[allow(unused_imports)] pub(crate) use inflight::Inflight;
@@ -162,6 +163,10 @@ where
         }
 
         0
+    }
+
+    pub(crate) fn iter_mut(&mut self) -> IterMut<(ID, V)> {
+        self.vector.iter_mut()
     }
 
     #[allow(dead_code)]

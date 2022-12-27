@@ -14,6 +14,8 @@ use futures::StreamExt;
 use futures::TryFutureExt;
 use maplit::btreeset;
 use pin_utils::pin_mut;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncSeek;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -57,6 +59,7 @@ use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::UpdateMatchedLogId;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::quorum::QuorumSet;
 use crate::raft::AddLearnerResponse;
@@ -76,6 +79,7 @@ use crate::raft_types::RaftLogId;
 use crate::replication::Replicate;
 use crate::replication::ReplicationCore;
 use crate::replication::ReplicationHandle;
+use crate::replication::ReplicationResult;
 use crate::replication::ReplicationSessionId;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
@@ -100,14 +104,16 @@ use crate::Vote;
 /// Data for a Leader.
 ///
 /// It is created when RaftCore enters leader state, and will be dropped when it quits leader state.
-pub(crate) struct LeaderData<C: RaftTypeConfig> {
+pub(crate) struct LeaderData<C: RaftTypeConfig, SD>
+where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
+{
     /// Channels to send result back to client when logs are committed.
     pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C, C::NodeId, C::Node>>,
 
     /// A mapping of node IDs the replication state of the target node.
     // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
     //           It requires the Engine to emit correct add/remove replication commands
-    pub(super) nodes: BTreeMap<C::NodeId, ReplicationHandle<C::NodeId>>,
+    pub(super) nodes: BTreeMap<C::NodeId, ReplicationHandle<C::NodeId, C::Node, SD>>,
 
     /// The metrics of all replication streams
     pub(crate) replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
@@ -116,7 +122,9 @@ pub(crate) struct LeaderData<C: RaftTypeConfig> {
     pub(crate) next_heartbeat: Instant,
 }
 
-impl<C: RaftTypeConfig> LeaderData<C> {
+impl<C: RaftTypeConfig, SD> LeaderData<C, SD>
+where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
+{
     pub(crate) fn new() -> Self {
         Self {
             client_resp_channels: Default::default(),
@@ -145,7 +153,7 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
 
     pub(crate) engine: Engine<C::NodeId, C::Node>,
 
-    pub(crate) leader_data: Option<LeaderData<C>>,
+    pub(crate) leader_data: Option<LeaderData<C, S::SnapshotData>>,
 
     /// The node's current snapshot state.
     pub(crate) snapshot_state: SnapshotState<C, S::SnapshotData>,
@@ -606,7 +614,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     /// Report a metrics payload on the current state of the Raft node.
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn report_metrics(&self, replication: Update<Option<Versioned<ReplicationMetrics<C::NodeId>>>>) {
         let replication = match replication {
             Update::Update(v) => v,
@@ -914,7 +922,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         target: C::NodeId,
         progress_entry: ProgressEntry<C::NodeId>,
-    ) -> Result<ReplicationHandle<C::NodeId>, N::ConnectionError> {
+    ) -> Result<ReplicationHandle<C::NodeId, C::Node, S::SnapshotData>, N::ConnectionError> {
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective.get_node(&target).unwrap();
 
@@ -928,7 +936,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             session_id,
             self.config.clone(),
             self.engine.state.committed,
-            progress_entry,
+            progress_entry.matching,
             network,
             self.storage.get_log_reader().await,
             self.tx_api.clone(),
@@ -1278,29 +1286,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             RaftMsg::UpdateReplicationProgress {
                 target,
+                id,
                 result,
                 session_id,
             } => {
                 // If vote or membership changes, ignore the message.
                 // There is chance delayed message reports a wrong state.
                 if self.does_replication_session_match(&session_id, "UpdateReplicationMatched") {
-                    self.handle_update_matched(target, result).await?;
-                }
-            }
-            RaftMsg::NeedsSnapshot {
-                target: _,
-                tx,
-                session_id,
-            } => {
-                if self.does_replication_session_match(&session_id, "NeedsSnapshot") {
-                    let snapshot = self.storage.get_current_snapshot().await?;
-
-                    if let Some(snapshot) = snapshot {
-                        let _ = tx.send(snapshot);
-                        return Ok(());
-                    }
-
-                    unreachable!("A log is lacking, which means a snapshot is already built");
+                    self.handle_replication_progress(target, id, result).await?;
                 }
             }
             RaftMsg::ReplicationFatal => {
@@ -1311,10 +1304,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn handle_update_matched(
+    async fn handle_replication_progress(
         &mut self,
         target: C::NodeId,
-        result: Result<ProgressEntry<C::NodeId>, String>,
+        id: u64,
+        result: Result<ReplicationResult<C::NodeId>, String>,
     ) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(
             target = display(target),
@@ -1332,14 +1326,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
         }
 
-        let progress = match result {
-            Ok(p) => p,
-            Err(_err_str) => {
-                return Ok(());
-            }
-        };
-
-        self.engine.replication_handler().update_progress(target, Some(progress.matching.unwrap()));
+        self.engine.replication_handler().update_progress(target, id, result);
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
         Ok(())
@@ -1490,10 +1477,37 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             } => {
                 self.apply_to_state_machine(committed.next_index(), upto.index).await?;
             }
-            Command::ReplicateEntries { upto } => {
+            Command::ReplicateEnt { req, target } => {
                 if let Some(l) = &self.leader_data {
-                    for node in l.nodes.values() {
-                        let _ = node.tx_repl.send(Replicate::Entries(*upto));
+                    // TODO: consider remove the returned error from new_client().
+                    // Node may not exist because `RaftNetworkFactory::new_client()` returns an error.
+                    let node = &l.nodes.get(target);
+
+                    if let Some(node) = node {
+                        match req {
+                            Inflight::None => {
+                                unreachable!("Inflight::None");
+                            }
+                            Inflight::Logs { id, log_id_range } => {
+                                let _ = node.tx_repl.send(Replicate::Ent {
+                                    id: *id,
+                                    log_id_range: *log_id_range,
+                                });
+                            }
+                            Inflight::Snapshot { id, last_log_id } => {
+                                let snapshot = self.storage.get_current_snapshot().await?;
+                                tracing::debug!("snapshot: {}", snapshot.as_ref().map(|x| &x.meta).summary());
+
+                                if let Some(snapshot) = snapshot {
+                                    debug_assert_eq!(last_log_id, &snapshot.meta.last_log_id);
+                                    let _ = node.tx_repl.send(Replicate::Snapshot { id: *id, snapshot });
+                                } else {
+                                    unreachable!("No snapshot");
+                                }
+                            }
+                        }
+                    } else {
+                        // TODO(1): if no such node, return an RemoteError?
                     }
                 } else {
                     unreachable!("it has to be a leader!!!");

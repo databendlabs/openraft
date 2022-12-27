@@ -5,7 +5,9 @@ use maplit::btreeset;
 use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::LogIdList;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::EffectiveMembership;
 use crate::LeaderId;
@@ -152,6 +154,8 @@ fn test_update_effective_membership_update_learner_process() -> anyhow::Result<(
     // inherit from voter process. If voter changes to learner or vice versa.
 
     let mut eng = eng();
+    eng.state.log_ids = LogIdList::new([LogId::new(LeaderId::new(0, 0), 0), log_id(1, 1), log_id(5, 10)]);
+
     eng.state.server_state = ServerState::Leader;
     // Make it a real leader: voted for itself and vote is committed.
     eng.state.vote = Vote::new_committed(2, 2);
@@ -159,8 +163,8 @@ fn test_update_effective_membership_update_learner_process() -> anyhow::Result<(
     eng.new_leader();
 
     if let Some(l) = &mut eng.internal_server_state.leading_mut() {
-        assert_eq!(&ProgressEntry::empty(0), l.progress.get(&4));
-        assert_eq!(&ProgressEntry::empty(0), l.progress.get(&5));
+        assert_eq!(&ProgressEntry::empty(11), l.progress.get(&4));
+        assert_eq!(&ProgressEntry::empty(11), l.progress.get(&5));
 
         let p = ProgressEntry::new(Some(log_id(1, 4)));
         let _ = l.progress.update(&4, p);
@@ -189,23 +193,33 @@ fn test_update_effective_membership_update_learner_process() -> anyhow::Result<(
 
     if let Some(l) = &mut eng.internal_server_state.leading_mut() {
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 4))),
+            &ProgressEntry::new(Some(log_id(1, 4)))
+                .with_inflight(Inflight::logs(Some(log_id(1, 4)), Some(log_id(5, 10))).with_id(1))
+                .with_curr_inflight_id(1),
             l.progress.get(&4),
             "learner-4 progress should be transferred to voter progress"
         );
+
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 3))),
+            &ProgressEntry::new(Some(log_id(1, 3)))
+                .with_inflight(Inflight::logs(Some(log_id(1, 3)), Some(log_id(5, 10))).with_id(1))
+                .with_curr_inflight_id(1),
             l.progress.get(&3),
             "voter-3 progress should be transferred to learner progress"
         );
 
         assert_eq!(
-            &ProgressEntry::new(Some(log_id(1, 5))),
+            &ProgressEntry::new(Some(log_id(1, 5)))
+                .with_inflight(Inflight::logs(Some(log_id(1, 5)), Some(log_id(5, 10))).with_id(1))
+                .with_curr_inflight_id(1),
             l.progress.get(&5),
             "learner-5 has previous value"
         );
+
         assert_eq!(
-            &ProgressEntry::empty(0), //
+            &ProgressEntry::empty(11)
+                .with_inflight(Inflight::logs(None, Some(log_id(5, 10))).with_id(1))
+                .with_curr_inflight_id(1),
             l.progress.get(&6)
         );
     } else {

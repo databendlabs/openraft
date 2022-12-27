@@ -32,6 +32,7 @@ fn m12() -> Membership<u64, ()> {
 
 fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::default();
+    eng.state.log_ids = LogIdList::new([LogId::new(LeaderId::new(0, 0), 0)]);
     eng.state.enable_validate = false; // Disable validation for incomplete state
     eng
 }
@@ -73,27 +74,21 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::AppendBlankLog {
                     log_id: LogId {
                         leader_id: LeaderId { term: 1, node_id: 1 },
-                        index: 0,
+                        index: 1,
                     },
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
                         leader_id: LeaderId { term: 1, node_id: 1 },
-                        index: 0,
+                        index: 1,
                     },),
                 },
                 Command::LeaderCommit {
                     already_committed: None,
                     upto: LogId {
                         leader_id: LeaderId { term: 1, node_id: 1 },
-                        index: 0,
+                        index: 1,
                     },
-                },
-                Command::ReplicateEntries {
-                    upto: Some(LogId {
-                        leader_id: LeaderId { term: 1, node_id: 1 },
-                        index: 0,
-                    },),
                 },
             ],
             eng.output.commands
@@ -140,27 +135,21 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::AppendBlankLog {
                     log_id: LogId {
                         leader_id: LeaderId { term: 2, node_id: 1 },
-                        index: 0,
+                        index: 1,
                     },
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
                         leader_id: LeaderId { term: 2, node_id: 1 },
-                        index: 0,
+                        index: 1,
                     },),
                 },
                 Command::LeaderCommit {
                     already_committed: None,
                     upto: LogId {
                         leader_id: LeaderId { term: 2, node_id: 1 },
-                        index: 0,
+                        index: 1,
                     },
-                },
-                Command::ReplicateEntries {
-                    upto: Some(LogId {
-                        leader_id: LeaderId { term: 2, node_id: 1 },
-                        index: 0,
-                    },),
                 },
             ],
             eng.output.commands

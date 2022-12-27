@@ -1,21 +1,20 @@
 use std::borrow::Borrow;
+use std::error::Error;
+use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::ops::Deref;
 
+use crate::less;
+use crate::less_equal;
+use crate::progress::inflight::Inflight;
+use crate::raft_state::LogStateReader;
 use crate::summary::MessageSummary;
+use crate::validate::Valid;
+use crate::validate::Validate;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::NodeId;
-
-#[derive(Clone, Copy, Debug)]
-#[derive(PartialEq, Eq)]
-pub(crate) struct Searching {
-    /// Logs being sent to the target following node.
-    pub(crate) mid: u64,
-
-    /// One plus the max log index on the following node that might match the leader log.
-    pub(crate) end: u64,
-}
 
 /// State of replication to a target node.
 #[derive(Clone, Copy, Debug)]
@@ -24,8 +23,13 @@ pub(crate) struct ProgressEntry<NID: NodeId> {
     /// The id of the last matching log on the target following node.
     pub(crate) matching: Option<LogId<NID>>,
 
-    /// The last matching log index has not yet been determined.
-    pub(crate) searching: Option<Searching>,
+    pub(crate) curr_inflight_id: u64,
+
+    /// The log entries being transmitted in flight.
+    pub(crate) inflight: Inflight<NID>,
+
+    /// One plus the max log index on the following node that might match the leader log.
+    pub(crate) searching_end: u64,
 }
 
 impl<NID: NodeId> ProgressEntry<NID> {
@@ -33,7 +37,9 @@ impl<NID: NodeId> ProgressEntry<NID> {
     pub(crate) fn new(matching: Option<LogId<NID>>) -> Self {
         Self {
             matching,
-            searching: None,
+            curr_inflight_id: 0,
+            inflight: Inflight::None,
+            searching_end: matching.next_index(),
         }
     }
 
@@ -41,18 +47,41 @@ impl<NID: NodeId> ProgressEntry<NID> {
     ///
     /// It's going to initiate a binary search to find the minimal matching log id.
     pub(crate) fn empty(end: u64) -> Self {
-        let searching = if end == 0 {
-            None
-        } else {
-            Some(Searching {
-                mid: Self::calc_mid(0, end),
-                end,
-            })
-        };
-
         Self {
             matching: None,
-            searching,
+            curr_inflight_id: 0,
+            inflight: Inflight::None,
+            searching_end: end,
+        }
+    }
+
+    // This method is only used by tests.
+    #[allow(dead_code)]
+    pub(crate) fn with_curr_inflight_id(mut self, v: u64) -> Self {
+        self.curr_inflight_id = v;
+        self
+    }
+
+    // This method is only used by tests.
+    #[allow(dead_code)]
+    pub(crate) fn with_inflight(mut self, inflight: Inflight<NID>) -> Self {
+        debug_assert_eq!(self.inflight, Inflight::None);
+
+        self.inflight = inflight;
+        self
+    }
+
+    /// Return if a log id is inflight sending.
+    ///
+    /// `prev_log_id` is never inflight.
+    pub(crate) fn is_inflight(&self, log_id: &LogId<NID>) -> bool {
+        match &self.inflight {
+            Inflight::None => false,
+            Inflight::Logs { log_id_range, .. } => {
+                let lid = Some(*log_id);
+                lid > log_id_range.prev_log_id && lid <= log_id_range.last_log_id
+            }
+            Inflight::Snapshot { last_log_id: _, .. } => false,
         }
     }
 
@@ -66,40 +95,81 @@ impl<NID: NodeId> ProgressEntry<NID> {
         debug_assert!(matching >= self.matching);
 
         self.matching = matching;
+        // TODO(1): check id
+        self.inflight.ack(self.matching);
 
-        if let Some(s) = &mut self.searching {
-            let next = matching.next_index();
-
-            if next >= s.end {
-                self.searching = None;
-            } else {
-                s.mid = Self::calc_mid(next, s.end);
-            }
-        }
+        let matching_next = self.matching.next_index();
+        self.searching_end = std::cmp::max(self.searching_end, matching_next);
     }
 
     #[allow(dead_code)]
     pub(crate) fn update_conflicting(&mut self, conflict: u64) {
         tracing::debug!(self = debug(&self), conflict = display(conflict), "update_conflict");
 
-        let matching_next = self.matching.next_index();
+        // TODO(1): check id
+        self.inflight.conflict(conflict);
 
-        debug_assert!(conflict >= matching_next);
+        debug_assert!(conflict < self.searching_end);
+        self.searching_end = conflict;
+    }
 
-        if let Some(s) = &mut self.searching {
-            debug_assert!(conflict < s.end);
-            debug_assert!(conflict + 1 >= s.mid, "conflict can only be the prev_log_index");
-
-            s.end = conflict;
-
-            if matching_next >= s.end {
-                self.searching = None;
-            } else {
-                s.mid = Self::calc_mid(matching_next, s.end);
-            }
-        } else {
-            unreachable!("found conflict({}) when searching is None", conflict);
+    /// Initialize a replication action: sending log entries or sending snapshot.
+    ///
+    /// If there is an action in progress, i.e., `inflight` is not None, it returns an `Err` containing the current
+    /// `inflight` data
+    #[allow(dead_code)]
+    pub(crate) fn next_send(
+        &mut self,
+        log_state: &impl LogStateReader<NID>,
+        max_entries: u64,
+    ) -> Result<&Inflight<NID>, &Inflight<NID>> {
+        if !self.inflight.is_none() {
+            return Err(&self.inflight);
         }
+        let purged = log_state.last_purged_log_id();
+        let snapshot_last = log_state.snapshot_last_log_id();
+
+        let last_next = log_state.last_log_id().next_index();
+        let purged_next = purged.next_index();
+
+        debug_assert!(
+            self.searching_end <= last_next,
+            "expect: searching_end: {} <= last_log_id.next_index: {}",
+            self.searching_end,
+            last_next
+        );
+
+        // `searching_end` is the max value for `start`.
+
+        // The log the follower needs is purged.
+        // Replicate by snapshot.
+        if self.searching_end < purged_next {
+            self.curr_inflight_id += 1;
+            self.inflight = Inflight::snapshot(snapshot_last.copied()).with_id(self.curr_inflight_id);
+            return Ok(&self.inflight);
+        }
+
+        // Replicate by logs.
+        // Run a binary search to find the matching log id, if matching log id is not determined.
+        let mut start = Self::calc_mid(self.matching.next_index(), self.searching_end);
+        if start < purged_next {
+            start = purged_next;
+        }
+
+        let end = std::cmp::min(start + max_entries, last_next);
+
+        if start == end {
+            self.inflight = Inflight::None;
+            return Err(&self.inflight);
+        }
+
+        let prev = log_state.prev_log_id(start);
+        let last = log_state.prev_log_id(end);
+
+        self.curr_inflight_id += 1;
+        self.inflight = Inflight::logs(prev, last).with_id(self.curr_inflight_id);
+
+        Ok(&self.inflight)
     }
 
     /// Return the index range(`[start,end]`) of the first log in the next AppendEntries.
@@ -107,29 +177,12 @@ impl<NID: NodeId> ProgressEntry<NID> {
     /// The returned range is left close and right close.
     #[allow(dead_code)]
     pub(crate) fn sending_start(&self) -> (u64, u64) {
-        match self.searching {
-            None => {
-                let next = self.matching.next_index();
-                (next, next)
-            }
-            Some(s) => (s.mid, s.end),
-        }
-    }
-
-    pub(crate) fn max_possible_matching(&self) -> Option<u64> {
-        if let Some(s) = &self.searching {
-            if s.end == 0 {
-                None
-            } else {
-                Some(s.end - 1)
-            }
-        } else {
-            self.matching.index()
-        }
+        let mid = Self::calc_mid(self.matching.next_index(), self.searching_end);
+        (mid, self.searching_end)
     }
 
     fn calc_mid(matching_next: u64, end: u64) -> u64 {
-        debug_assert!(matching_next < end);
+        debug_assert!(matching_next <= end);
         let d = end - matching_next;
         let offset = d / 16 * 8;
         matching_next + offset
@@ -142,16 +195,38 @@ impl<NID: NodeId> Borrow<Option<LogId<NID>>> for ProgressEntry<NID> {
     }
 }
 
+impl<NID: NodeId> Borrow<Option<LogId<NID>>> for Valid<ProgressEntry<NID>> {
+    fn borrow(&self) -> &Option<LogId<NID>> {
+        self.deref().borrow()
+    }
+}
+
 impl<NID: NodeId> Display for ProgressEntry<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match &self.searching {
-            None => {
-                write!(f, "{}", self.matching.summary())
+        write!(f, "[{}, {})", self.matching.summary(), self.searching_end)
+    }
+}
+
+impl<NID: NodeId> Validate for ProgressEntry<NID> {
+    fn validate(&self) -> Result<(), Box<dyn Error>> {
+        less_equal!(self.matching.next_index(), self.searching_end);
+
+        self.inflight.validate()?;
+
+        match self.inflight {
+            Inflight::None => {}
+            Inflight::Logs { log_id_range, .. } => {
+                // matching <= prev_log_id              <= last_log_id
+                //             prev_log_id.next_index() <= searching_end
+                less_equal!(self.matching, log_id_range.prev_log_id);
+                less_equal!(log_id_range.prev_log_id.next_index(), self.searching_end);
             }
-            Some(s) => {
-                write!(f, "[{}, {}, {})", self.matching.summary(), s.mid, s.end)
+            Inflight::Snapshot { last_log_id, .. } => {
+                // There is no need to send a snapshot smaller than last matching.
+                less!(self.matching, last_log_id);
             }
         }
+        Ok(())
     }
 }
 
@@ -160,6 +235,8 @@ mod tests {
     use std::borrow::Borrow;
 
     use crate::progress::entry::ProgressEntry;
+    use crate::progress::inflight::Inflight;
+    use crate::raft_state::LogStateReader;
     use crate::LeaderId;
     use crate::LogId;
 
@@ -170,60 +247,290 @@ mod tests {
         }
     }
 
+    fn inflight_logs(prev_index: u64, last_index: u64) -> Inflight<u64> {
+        Inflight::logs(Some(log_id(prev_index)), Some(log_id(last_index)))
+    }
     #[test]
-    fn test_update_matching() -> anyhow::Result<()> {
+    fn test_is_inflight() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::empty(20);
-        assert_eq!(&None, pe.borrow());
-        assert_eq!((8, 20), pe.sending_start());
+        assert_eq!(false, pe.is_inflight(&log_id(2)));
 
-        pe.update_matching(None);
-        assert_eq!(&None, pe.borrow());
-        assert_eq!((8, 20), pe.sending_start());
+        pe.inflight = inflight_logs(2, 4);
+        assert_eq!(false, pe.is_inflight(&log_id(1)));
+        assert_eq!(false, pe.is_inflight(&log_id(2)));
+        assert_eq!(true, pe.is_inflight(&log_id(3)));
+        assert_eq!(true, pe.is_inflight(&log_id(4)));
+        assert_eq!(false, pe.is_inflight(&log_id(5)));
 
-        pe.update_matching(Some(log_id(0)));
-        assert_eq!(&Some(log_id(0)), pe.borrow());
-        assert_eq!((9, 20), pe.sending_start());
+        pe.inflight = Inflight::snapshot(Some(log_id(5)));
+        assert_eq!(false, pe.is_inflight(&log_id(5)));
 
-        pe.update_matching(Some(log_id(0)));
-        assert_eq!(&Some(log_id(0)), pe.borrow());
-        assert_eq!((9, 20), pe.sending_start());
-
-        pe.update_matching(Some(log_id(1)));
-        assert_eq!(&Some(log_id(1)), pe.borrow());
-        assert_eq!((10, 20), pe.sending_start());
-
-        pe.update_matching(Some(log_id(4)));
-        assert_eq!(&Some(log_id(4)), pe.borrow());
-        assert_eq!((5, 20), pe.sending_start());
-
-        // All logs are matching
-        pe.update_matching(Some(log_id(19)));
-        assert_eq!(&Some(log_id(19)), pe.borrow());
-        assert_eq!((20, 20), pe.sending_start());
-
-        pe.update_matching(Some(log_id(20)));
-        assert_eq!(&Some(log_id(20)), pe.borrow());
-        assert_eq!((21, 21), pe.sending_start());
         Ok(())
     }
 
     #[test]
-    fn test_update_conflict() -> anyhow::Result<()> {
+    fn test_update_matching() -> anyhow::Result<()> {
+        // Update matching and inflight
+        {
+            let mut pe = ProgressEntry::empty(20);
+            pe.inflight = inflight_logs(5, 10);
+            pe.update_matching(Some(log_id(6)));
+            assert_eq!(inflight_logs(6, 10), pe.inflight);
+            assert_eq!(Some(log_id(6)), pe.matching);
+            assert_eq!(20, pe.searching_end);
+
+            pe.update_matching(Some(log_id(10)));
+            assert_eq!(Inflight::None, pe.inflight);
+            assert_eq!(Some(log_id(10)), pe.matching);
+            assert_eq!(20, pe.searching_end);
+        }
+
+        // `searching_end` should be updated
+        {
+            let mut pe = ProgressEntry::empty(20);
+            pe.matching = Some(log_id(6));
+            pe.inflight = inflight_logs(5, 20);
+
+            pe.update_matching(Some(log_id(20)));
+            assert_eq!(21, pe.searching_end);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_update_conflicting() -> anyhow::Result<()> {
         let mut pe = ProgressEntry::empty(20);
-
-        pe.update_matching(Some(log_id(4)));
-        assert_eq!(&Some(log_id(4)), pe.borrow());
-        assert_eq!((5, 20), pe.sending_start());
-
-        pe.update_conflicting(19);
-        assert_eq!(&Some(log_id(4)), pe.borrow());
-        assert_eq!((5, 19), pe.sending_start());
-
+        pe.matching = Some(log_id(3));
+        pe.inflight = inflight_logs(5, 10);
         pe.update_conflicting(5);
-        assert_eq!(&Some(log_id(4)), pe.borrow());
-        assert_eq!((5, 5), pe.sending_start());
-        assert!(pe.searching.is_none());
+        assert_eq!(Inflight::None, pe.inflight);
+        assert_eq!(&Some(log_id(3)), pe.borrow());
+        assert_eq!(5, pe.searching_end);
 
+        Ok(())
+    }
+
+    /// LogStateReader impl for testing
+    struct LogState {
+        last: Option<LogId<u64>>,
+        snap_last: Option<LogId<u64>>,
+        purged: Option<LogId<u64>>,
+    }
+
+    impl LogState {
+        fn new(purged: u64, snap_last: u64, last: u64) -> Self {
+            Self {
+                last: Some(log_id(last)),
+                snap_last: Some(log_id(snap_last)),
+                purged: Some(log_id(purged)),
+            }
+        }
+    }
+
+    impl LogStateReader<u64> for LogState {
+        fn get_log_id(&self, index: u64) -> Option<LogId<u64>> {
+            let x = Some(log_id(index));
+            if x >= self.purged && x <= self.last {
+                x
+            } else {
+                None
+            }
+        }
+
+        fn last_log_id(&self) -> Option<&LogId<u64>> {
+            self.last.as_ref()
+        }
+
+        fn committed(&self) -> Option<&LogId<u64>> {
+            unimplemented!("testing")
+        }
+
+        fn snapshot_last_log_id(&self) -> Option<&LogId<u64>> {
+            self.snap_last.as_ref()
+        }
+
+        fn last_purged_log_id(&self) -> Option<&LogId<u64>> {
+            self.purged.as_ref()
+        }
+    }
+
+    #[test]
+    fn test_next_send() -> anyhow::Result<()> {
+        // There is already inflight data, return it in an Err
+        {
+            let mut pe = ProgressEntry::empty(20);
+            pe.inflight = inflight_logs(10, 11);
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Err(&inflight_logs(10, 11)), res);
+        }
+
+        {
+            //    matching,end
+            //    4,5
+            //    v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(4);
+            pe.matching = Some(log_id(4));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Ok(&Inflight::snapshot(Some(log_id(10))).with_id(1)), res);
+        }
+        {
+            //    matching,end
+            //    4 6
+            //    v-v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(6);
+            pe.matching = Some(log_id(4));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Ok(&Inflight::snapshot(Some(log_id(10))).with_id(1)), res);
+        }
+
+        {
+            //    matching,end
+            //    4  7
+            //    v--v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(7);
+            pe.matching = Some(log_id(4));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        }
+
+        {
+            //    matching,end
+            //    4              20
+            //    v--------------v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(20);
+            pe.matching = Some(log_id(4));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        }
+
+        //-----------
+
+        {
+            //      matching,end
+            //      6,7
+            //      v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(7);
+            pe.matching = Some(log_id(6));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        }
+
+        {
+            //      matching,end
+            //      6, 8
+            //      v--v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(8);
+            pe.matching = Some(log_id(6));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        }
+
+        {
+            //      matching,end
+            //      6,           20
+            //      v------------v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(20);
+            pe.matching = Some(log_id(6));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Ok(&inflight_logs(6, 20).with_id(1)), res);
+        }
+
+        {
+            //       matching,end
+            //       7,          20
+            //       v-----------v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(20);
+            pe.matching = Some(log_id(7));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res);
+        }
+
+        {
+            //          matching,end
+            //          7,8
+            //          v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(8);
+            pe.matching = Some(log_id(7));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Ok(&inflight_logs(7, 20).with_id(1)), res);
+        }
+
+        {
+            //                   matching,end
+            //                   20,21
+            //                   v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(21);
+            pe.matching = Some(log_id(20));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 100);
+            assert_eq!(Err(&Inflight::None), res, "nothing to send");
+        }
+
+        // Test max_entries
+        {
+            //       matching,end
+            //       7,          20
+            //       v-----------v
+            // -----+------+-----+--->
+            //      purged snap  last
+            //      6      10    20
+
+            let mut pe = ProgressEntry::empty(20);
+            pe.matching = Some(log_id(7));
+
+            let res = pe.next_send(&LogState::new(6, 10, 20), 5);
+            assert_eq!(Ok(&inflight_logs(7, 12).with_id(1)), res);
+        }
         Ok(())
     }
 }

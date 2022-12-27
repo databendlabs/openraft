@@ -280,7 +280,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn purge_logs_upto(&mut self, log_id: LogId<MemNodeId>) -> Result<(), StorageError<MemNodeId>> {
         tracing::debug!("delete_log: [{:?}, +oo)", log_id);
 

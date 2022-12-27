@@ -8,6 +8,7 @@ use maplit::btreeset;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::Entry;
@@ -157,8 +158,13 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendInputEntries { range: 0..3 },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
+            Command::ReplicateEnt {
+                target: 2,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
+            },
+            Command::ReplicateEnt {
+                target: 3,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
@@ -221,9 +227,6 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
             Command::LeaderCommit {
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
-            },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
@@ -306,8 +309,13 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
             Command::UpdateReplicationStreams {
                 targets: vec![(3, ProgressEntry::empty(7)), (4, ProgressEntry::empty(7))]
             },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
+            Command::ReplicateEnt {
+                target: 3,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
+            },
+            Command::ReplicateEnt {
+                target: 4,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
@@ -392,6 +400,10 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
             Command::UpdateReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
             },
+            Command::ReplicateEnt {
+                target: 2,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
+            },
             // second commit upto the end.
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 6))
@@ -399,9 +411,6 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
             Command::LeaderCommit {
                 already_committed: Some(LogId::new(LeaderId::new(3, 1), 4)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
-            },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
@@ -480,6 +489,10 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             Command::UpdateReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
             },
+            Command::ReplicateEnt {
+                target: 2,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
+            },
             // It is correct to commit if the membership change ot a one node cluster.
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 6))
@@ -487,9 +500,6 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             Command::LeaderCommit {
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
-            },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
             },
             Command::MoveInputCursorBy { n: 3 },
         ],

@@ -2,6 +2,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::raft::VoteRequest;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -51,9 +52,14 @@ where
         upto: LogId<NID>,
     },
 
-    /// Replicate entries upto log id `upto`, inclusive.
-    ReplicateEntries { upto: Option<LogId<NID>> },
+    /// Replicate entries to a target.
+    ReplicateEnt { target: NID, req: Inflight<NID> },
 
+    // /// Replicate a snapshot to a target.
+    // ReplicateSnapshot {
+    //     target: NID,
+    //     snapshot_last_log_id: Option<LogId<NID>>,
+    // },
     /// Membership config changed, need to update replication streams.
     UpdateMembership {
         // TODO: not used yet.
@@ -125,7 +131,7 @@ where
             Command::ReplicateCommitted { .. } => {}
             Command::LeaderCommit { .. } => flags.set_data_changed(),
             Command::FollowerCommit { .. } => flags.set_data_changed(),
-            Command::ReplicateEntries { .. } => {}
+            Command::ReplicateEnt { .. } => {}
             Command::UpdateMembership { .. } => flags.set_cluster_changed(),
             Command::UpdateReplicationStreams { .. } => flags.set_replication_changed(),
             Command::UpdateReplicationMetrics { .. } => flags.set_replication_changed(),

@@ -8,6 +8,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::raft::VoteResponse;
 use crate::EffectiveMembership;
 use crate::LeaderId;
@@ -35,6 +36,7 @@ fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::<u64, ()>::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
+    eng.state.log_ids = LogIdList::new([LogId::new(LeaderId::new(0, 0), 0)]);
     eng
 }
 
@@ -258,19 +260,18 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 },
                 Command::BecomeLeader,
                 Command::UpdateReplicationStreams {
-                    targets: vec![(2, ProgressEntry::empty(0))]
+                    targets: vec![(2, ProgressEntry::empty(1))]
                 },
                 Command::AppendBlankLog {
                     log_id: LogId {
                         leader_id: LeaderId { term: 2, node_id: 1 },
-                        index: 0,
+                        index: 1,
                     },
                 },
-                Command::ReplicateEntries {
-                    upto: Some(LogId {
-                        leader_id: LeaderId { term: 2, node_id: 1 },
-                        index: 0,
-                    },),
+                Command::ReplicateEnt {
+                    target: 2,
+                    // TODO(1): fix inflight_id
+                    req: Inflight::logs(None, Some(log_id(2, 1))).with_id(1),
                 },
             ],
             eng.output.commands

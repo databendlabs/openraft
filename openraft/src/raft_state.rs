@@ -86,6 +86,8 @@ where
     // -- volatile fields: they are not persisted.
     // --
     pub server_state: ServerState,
+
+    pub(crate) want_to_purge: Option<LogId<NID>>,
 }
 
 impl<NID, N> LogStateReader<NID> for RaftState<NID, N>

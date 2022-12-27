@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::ServerState;
+use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
@@ -17,6 +18,7 @@ use crate::membership::EffectiveMembership;
 use crate::membership::NodeRole;
 use crate::node::Node;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::VoteRequest;
@@ -140,7 +142,11 @@ where
         if self.is_leader() {
             self.switch_internal_server_state();
             self.update_server_state_if_changed();
-            self.update_replications();
+
+            let mut rh = self.replication_handler();
+            rh.update_replications();
+            rh.send_to_all();
+
             return;
         }
 
@@ -375,9 +381,20 @@ where
                 let log_index = entry.get_log_id().index;
 
                 if log_index > 0 {
-                    if let Some(prev_log_id) = self.state.get_log_id(log_index - 1) {
-                        let id = self.config.id;
-                        self.replication_handler().update_progress(id, Some(prev_log_id));
+                    let mut rh = self.replication_handler();
+                    if let Some(prev_log_id) = rh.state.get_log_id(log_index - 1) {
+                        let id = rh.config.id;
+
+                        // The leader may not be in membership anymore
+                        if rh.leader.progress.index(&id).is_some() {
+                            let inflight_id = {
+                                let prog_entry = rh.leader.progress.get_mut(&id).unwrap();
+                                // TODO: It should be self.state.last_log_id() but None is ok.
+                                prog_entry.inflight = Inflight::logs(None, Some(prev_log_id));
+                                prog_entry.inflight.get_id().unwrap()
+                            };
+                            rh.update_matching(id, inflight_id, Some(prev_log_id));
+                        }
                     }
                 }
 
@@ -385,15 +402,28 @@ where
                 self.update_effective_membership(entry.get_log_id(), _m);
             }
         }
-        if let Some(last) = entries.last() {
-            let id = self.config.id;
-            self.replication_handler().update_progress(id, Some(*last.get_log_id()));
+
+        let mut rh = self.replication_handler();
+        {
+            // Safe unwrap(): entries.len() > 0
+            let last = entries.last().unwrap();
+            let id = rh.config.id;
+
+            // The leader may not be in membership anymore
+            if rh.leader.progress.index(&id).is_some() {
+                let inflight_id = {
+                    let prog_entry = rh.leader.progress.get_mut(&id).unwrap();
+                    // TODO: It should be self.state.last_log_id() but None is ok.
+                    prog_entry.inflight = Inflight::logs(None, Some(*last.get_log_id()));
+                    prog_entry.inflight.get_id().unwrap()
+                };
+                rh.update_matching(id, inflight_id, Some(*last.get_log_id()));
+            }
         }
 
         // Still need to replicate to learners, even when it is fast-committed.
-        self.output.push_command(Command::ReplicateEntries {
-            upto: Some(*entries.last().unwrap().get_log_id()),
-        });
+        rh.send_to_all();
+
         self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
 
@@ -595,14 +625,21 @@ where
     }
 
     /// Purge logs that are already in snapshot if needed.
-    ///
-    /// `max_in_snapshot_log_to_keep` specifies the number of logs already included in snapshot to keep.
-    /// `max_in_snapshot_log_to_keep==0` means to purge every log stored in snapshot.
     // NOTE: simple method, not tested.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn purge_in_snapshot_log(&mut self) {
         if let Some(purge_upto) = self.calc_purge_upto() {
-            self.purge_log(purge_upto);
+            debug_assert!(self.state.want_to_purge <= Some(purge_upto));
+
+            // TODO(1): replication should not use a log before `want_to_purge`
+            self.state.want_to_purge = Some(purge_upto);
+
+            if self.internal_server_state.is_leading() {
+                // If it is leading, it must not delete a log that is in use by a replication task.
+                self.replication_handler().try_purge_log();
+            } else {
+                self.log_handler().purge_log(purge_upto);
+            }
         }
     }
 
@@ -649,21 +686,6 @@ where
         );
 
         log_id
-    }
-
-    /// Purge log entries upto `upto`, inclusive.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub(crate) fn purge_log(&mut self, upto: LogId<NID>) {
-        let st = &mut self.state;
-        let log_id = Some(&upto);
-
-        if log_id <= st.last_purged_log_id() {
-            return;
-        }
-
-        st.purge_log(&upto);
-
-        self.output.push_command(Command::PurgeLog { upto });
     }
 
     /// Update membership state with a committed membership config
@@ -730,7 +752,9 @@ where
         //       It's better to setup replication for both leader and candidate.
         //       e.g.: if self.internal_server_state.is_leading() {
         if self.is_leader() {
-            self.update_replications()
+            let mut rh = self.replication_handler();
+            rh.update_replications();
+            rh.send_to_all();
         }
 
         // Leader should not quit at once.
@@ -862,7 +886,7 @@ where
         // In the second case, if local-last-log-id is smaller than snapshot-last-log-id,
         // and this node crashes after installing snapshot and before purging logs,
         // the log will be purged the next start up, in [`RaftState::get_initial_state`].
-        self.purge_log(snap_last_log_id);
+        self.log_handler().purge_log(snap_last_log_id);
 
         // TODO: temp solution: committed is updated after snapshot_last_log_id.
         self.state.enable_validate = old_validate;
@@ -953,27 +977,46 @@ where
     }
 
     /// Vote is granted by a quorum, leader established.
+    #[tracing::instrument(level = "debug", skip_all)]
     fn establish_leader(&mut self) {
         self.vote_handler().commit();
 
         self.update_server_state_if_changed();
-        self.update_replications();
+        self.replication_handler().update_replications();
 
         // Only when a log with current `vote` is replicated to a quorum, the logs are considered committed.
         self.append_blank_log();
+
+        // Send former logs and the blank log.
+        self.replication_handler().send_to_all();
     }
 
     /// Create a new Leader, when raft enters candidate state.
     /// In openraft, Leader and Candidate shares the same state.
     pub(crate) fn new_leader(&mut self) {
         let em = &self.state.membership_state.effective;
-        self.internal_server_state = InternalServerState::Leading(Leader::new(
+        let mut leader = Leader::new(
             em.membership.to_quorum_set(),
             em.learner_ids(),
             self.state.last_log_id().index(),
-        ));
+        );
+
+        // TODO: refactor this piece of codes:
+        //       progress.update() would be better to accept a closure
+        // TODO: for a new leader, update the matching
+        if leader.progress.index(&self.config.id).is_some() {
+            let mut x = *leader.progress.get(&self.config.id);
+            x.matching = self.state.last_log_id().copied();
+
+            // We can just ignore the result here:
+            // The `committed` will not be updated until a log of current term is granted by a quorum
+            let _ = leader.progress.update(&self.config.id, x);
+        }
+
+        self.internal_server_state = InternalServerState::Leading(leader);
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     fn append_blank_log(&mut self) {
         let log_id = LogId {
             leader_id: self.state.vote.leader_id(),
@@ -983,20 +1026,18 @@ where
         self.output.push_command(Command::AppendBlankLog { log_id });
 
         let id = self.config.id;
-        self.replication_handler().update_progress(id, Some(log_id));
-        self.output.push_command(Command::ReplicateEntries { upto: Some(log_id) });
-    }
-
-    /// update replication streams to reflect replication progress change.
-    fn update_replications(&mut self) {
-        if let Some(leader) = self.internal_server_state.leading() {
-            let mut targets = vec![];
-            for (node_id, matched) in leader.progress.iter() {
-                if node_id != &self.config.id {
-                    targets.push((*node_id, *matched));
-                }
-            }
-            self.output.push_command(Command::UpdateReplicationStreams { targets });
+        let mut rh = self.replication_handler();
+        {
+            // leader must initialize its replication progress too.
+            // TODO: refactor this
+            let x = rh.leader.progress.get_mut(&id).unwrap();
+            let res = x.next_send(rh.state, 1).unwrap();
+            let inflight_id = res.get_id().unwrap();
+            debug_assert_eq!(
+                &Inflight::logs(rh.state.get_log_id(log_id.index - 1), Some(log_id)).with_id(inflight_id),
+                res
+            );
+            rh.update_matching(id, inflight_id, Some(log_id));
         }
     }
 
@@ -1241,6 +1282,13 @@ where
 
     pub(crate) fn vote_handler(&mut self) -> VoteHandler<NID, N> {
         VoteHandler {
+            state: &mut self.state,
+            output: &mut self.output,
+        }
+    }
+
+    pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {
+        LogHandler {
             state: &mut self.state,
             output: &mut self.output,
         }

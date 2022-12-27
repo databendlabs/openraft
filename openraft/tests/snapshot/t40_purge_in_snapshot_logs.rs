@@ -34,6 +34,10 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     let leader = router.get_raft_handle(&0)?;
     let learner = router.get_raft_handle(&1)?;
 
+    // Delay every log reading to expose concurrent log reading bugs, by letting logs be purged before being read.
+    let sto0 = router.get_storage_handle(&0)?;
+    sto0.set_delay_log_read(100);
+
     tracing::info!("--- build snapshot on leader, check purged log");
     {
         log_index += router.client_request_many(0, "0", 10).await?;
@@ -80,6 +84,8 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         let logs = sto1.try_get_log_entries(..).await?;
         assert_eq!(0, logs.len());
     }
+
+    // TODO(1): finally logs are purged on leader.
 
     Ok(())
 }

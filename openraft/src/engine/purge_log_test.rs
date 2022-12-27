@@ -25,7 +25,7 @@ fn eng() -> Engine<u64, ()> {
 fn test_purge_log_already_purged() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.purge_log(log_id(1, 1));
+    eng.log_handler().purge_log(log_id(1, 1));
 
     assert_eq!(Some(log_id(2, 2)), eng.state.last_purged_log_id().copied(),);
     assert_eq!(log_id(2, 2), eng.state.log_ids.key_log_ids()[0],);
@@ -40,7 +40,7 @@ fn test_purge_log_already_purged() -> anyhow::Result<()> {
 fn test_purge_log_equal_prev_last_purged() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.purge_log(log_id(2, 2));
+    eng.log_handler().purge_log(log_id(2, 2));
 
     assert_eq!(Some(log_id(2, 2)), eng.state.last_purged_log_id().copied());
     assert_eq!(log_id(2, 2), eng.state.log_ids.key_log_ids()[0],);
@@ -54,7 +54,7 @@ fn test_purge_log_equal_prev_last_purged() -> anyhow::Result<()> {
 fn test_purge_log_same_leader_as_prev_last_purged() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.purge_log(log_id(2, 3));
+    eng.log_handler().purge_log(log_id(2, 3));
 
     assert_eq!(Some(log_id(2, 3)), eng.state.last_purged_log_id().copied(),);
     assert_eq!(log_id(2, 3), eng.state.log_ids.key_log_ids()[0],);
@@ -69,7 +69,7 @@ fn test_purge_log_same_leader_as_prev_last_purged() -> anyhow::Result<()> {
 fn test_purge_log_to_last_key_log() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.purge_log(log_id(4, 4));
+    eng.log_handler().purge_log(log_id(4, 4));
 
     assert_eq!(Some(log_id(4, 4)), eng.state.last_purged_log_id().copied(),);
     assert_eq!(log_id(4, 4), eng.state.log_ids.key_log_ids()[0],);
@@ -84,7 +84,7 @@ fn test_purge_log_to_last_key_log() -> anyhow::Result<()> {
 fn test_purge_log_go_pass_last_key_log() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.purge_log(log_id(4, 5));
+    eng.log_handler().purge_log(log_id(4, 5));
 
     assert_eq!(Some(log_id(4, 5)), eng.state.last_purged_log_id().copied(),);
     assert_eq!(log_id(4, 5), eng.state.log_ids.key_log_ids()[0],);
@@ -99,7 +99,7 @@ fn test_purge_log_go_pass_last_key_log() -> anyhow::Result<()> {
 fn test_purge_log_to_last_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.purge_log(log_id(4, 6));
+    eng.log_handler().purge_log(log_id(4, 6));
 
     assert_eq!(Some(log_id(4, 6)), eng.state.last_purged_log_id().copied(),);
     assert_eq!(log_id(4, 6), eng.state.log_ids.key_log_ids()[0],);
@@ -114,7 +114,7 @@ fn test_purge_log_to_last_log_id() -> anyhow::Result<()> {
 fn test_purge_log_go_pass_last_log_id() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.purge_log(log_id(4, 7));
+    eng.log_handler().purge_log(log_id(4, 7));
 
     assert_eq!(Some(log_id(4, 7)), eng.state.last_purged_log_id().copied(),);
     assert_eq!(log_id(4, 7), eng.state.log_ids.key_log_ids()[0],);
@@ -129,7 +129,7 @@ fn test_purge_log_go_pass_last_log_id() -> anyhow::Result<()> {
 fn test_purge_log_to_higher_leader_lgo() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    eng.purge_log(log_id(5, 7));
+    eng.log_handler().purge_log(log_id(5, 7));
 
     assert_eq!(Some(log_id(5, 7)), eng.state.last_purged_log_id().copied(),);
     assert_eq!(log_id(5, 7), eng.state.log_ids.key_log_ids()[0],);

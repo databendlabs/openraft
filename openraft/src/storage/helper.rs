@@ -72,6 +72,7 @@ where
 
             // -- volatile fields: they are not persisted.
             server_state: Default::default(),
+            want_to_purge: None,
         })
     }
 

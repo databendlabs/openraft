@@ -52,6 +52,7 @@ use openraft::EntryPayload;
 use openraft::LeaderId;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
+use openraft::MessageSummary;
 use openraft::Raft;
 use openraft::RaftMetrics;
 use openraft::RaftNetwork;
@@ -992,7 +993,7 @@ where
         AppendEntriesResponse<C::NodeId>,
         RPCError<C::NodeId, C::Node, AppendEntriesError<C::NodeId>>,
     > {
-        tracing::debug!("append_entries to id={} {:?}", self.target, rpc);
+        tracing::debug!("append_entries to id={} {}", self.target, rpc.summary());
         self.owner.check_reachable(rpc.vote.node_id, self.target)?;
         self.owner.rand_send_delay().await;
 

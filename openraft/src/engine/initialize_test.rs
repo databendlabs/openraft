@@ -115,12 +115,6 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                         index: 1,
                     },
                 },
-                Command::ReplicateEntries {
-                    upto: Some(LogId {
-                        leader_id: LeaderId { term: 1, node_id: 1 },
-                        index: 1,
-                    },),
-                }
             ],
             eng.output.commands
         );

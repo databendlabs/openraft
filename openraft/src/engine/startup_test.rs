@@ -5,6 +5,7 @@ use maplit::btreeset;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;
@@ -64,7 +65,9 @@ fn test_startup_as_leader() -> anyhow::Result<()> {
             Command::UpdateReplicationStreams {
                 targets: vec![(3, ProgressEntry {
                     matching: None,
-                    searching: None
+                    curr_inflight_id: 0,
+                    inflight: Inflight::None,
+                    searching_end: 0
                 })]
             }
         ],
