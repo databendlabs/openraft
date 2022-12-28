@@ -32,7 +32,6 @@ use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
-use openraft::error::NodeNotFound;
 use openraft::error::RPCError;
 use openraft::error::RemoteError;
 use openraft::error::VoteError;
@@ -423,12 +422,11 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    pub fn get_raft_handle(&self, node_id: &C::NodeId) -> std::result::Result<MemRaft<C, S>, NodeNotFound<C::NodeId>> {
+    pub fn get_raft_handle(&self, node_id: &C::NodeId) -> std::result::Result<MemRaft<C, S>, NetworkError> {
         let rt = self.routing_table.lock().unwrap();
-        let raft_and_sto = rt.get(node_id).ok_or_else(|| NodeNotFound {
-            node_id: *node_id,
-            source: AnyError::error(""),
-        })?;
+        let raft_and_sto = rt
+            .get(node_id)
+            .ok_or_else(|| NetworkError::new(&AnyError::error(format!("node {} not found", *node_id))))?;
         let r = raft_and_sto.clone().0;
         Ok(r)
     }

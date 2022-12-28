@@ -284,9 +284,6 @@ where
     StorageError(#[from] StorageError<NID>),
 
     #[error(transparent)]
-    NodeNotFound(#[from] NodeNotFound<NID>),
-
-    #[error(transparent)]
     Timeout(#[from] Timeout<NID>),
 
     #[error(transparent)]
@@ -303,9 +300,6 @@ where
     serde(bound = "T:serde::Serialize + for <'d> serde::Deserialize<'d>")
 )]
 pub enum RPCError<NID: NodeId, N: Node, T: Error> {
-    #[error(transparent)]
-    NodeNotFound(#[from] NodeNotFound<NID>),
-
     #[error(transparent)]
     Timeout(#[from] Timeout<NID>),
 
@@ -476,14 +470,6 @@ pub struct NotAMembershipEntry {}
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("new membership can not be empty")]
 pub struct EmptyMembership {}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("node not found: {node_id}, source: {source}")]
-pub struct NodeNotFound<NID: NodeId> {
-    pub node_id: NID,
-    pub source: AnyError,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
