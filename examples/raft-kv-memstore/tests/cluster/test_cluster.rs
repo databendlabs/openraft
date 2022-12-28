@@ -4,13 +4,10 @@ use std::time::Duration;
 
 use maplit::btreemap;
 use maplit::btreeset;
-use openraft::error::NodeNotFound;
-use openraft::AnyError;
 use openraft::BasicNode;
 use raft_kv_memstore::client::ExampleClient;
 use raft_kv_memstore::start_example_raft_node;
 use raft_kv_memstore::store::ExampleRequest;
-use raft_kv_memstore::ExampleNodeId;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
@@ -36,10 +33,7 @@ async fn test_cluster() -> anyhow::Result<()> {
             2 => "127.0.0.1:21002".to_string(),
             3 => "127.0.0.1:21003".to_string(),
             _ => {
-                return Err(NodeNotFound::<ExampleNodeId> {
-                    node_id,
-                    source: AnyError::error("node not found"),
-                });
+                return Err(anyhow::anyhow!("node {} not found", node_id));
             }
         };
         Ok(addr)

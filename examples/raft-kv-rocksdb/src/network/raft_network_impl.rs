@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use openraft::error::AppendEntriesError;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
-use openraft::error::NodeNotFound;
 use openraft::error::RPCError;
 use openraft::error::RemoteError;
 use openraft::error::VoteError;
@@ -19,7 +18,6 @@ use openraft::AnyError;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use serde::de::DeserializeOwned;
-use serde::Serialize;
 use toy_rpc::pubsub::AckModeNone;
 use toy_rpc::Client;
 
@@ -29,37 +27,6 @@ use crate::ExampleNodeId;
 use crate::ExampleTypeConfig;
 
 pub struct ExampleNetwork {}
-
-impl ExampleNetwork {
-    pub async fn send_rpc<Req, Resp, Err>(
-        &self,
-        target: ExampleNodeId,
-        target_node: Option<&ExampleNode>,
-        uri: &str,
-        req: Req,
-    ) -> Result<Resp, RPCError<ExampleNodeId, ExampleNode, Err>>
-    where
-        Req: Serialize,
-        Err: std::error::Error + DeserializeOwned,
-        Resp: DeserializeOwned,
-    {
-        let addr = target_node.map(|x| &x.rpc_addr).ok_or_else(|| {
-            RPCError::NodeNotFound(NodeNotFound {
-                node_id: target,
-                source: AnyError::default(),
-            })
-        })?;
-
-        let url = format!("http://{}/{}", addr, uri);
-        let client = reqwest::Client::new();
-
-        let resp = client.post(url).json(&req).send().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
-
-        let res: Result<Resp, Err> = resp.json().await.map_err(|e| RPCError::Network(NetworkError::new(&e)))?;
-
-        res.map_err(|e| RPCError::RemoteError(RemoteError::new(target, e)))
-    }
-}
 
 // NOTE: This could be implemented also on `Arc<ExampleNetwork>`, but since it's empty, implemented directly.
 #[async_trait]
