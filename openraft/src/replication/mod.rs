@@ -17,7 +17,6 @@ use tokio::time::Duration;
 use tracing_futures::Instrument;
 
 use crate::config::Config;
-use crate::error::AppendEntriesError;
 use crate::error::CommittedAdvanceTooMany;
 use crate::error::HigherVote;
 use crate::error::LackEntry;
@@ -183,20 +182,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     let _ = self.tx_raft_core.send(RaftMsg::ReplicationFatal);
                     return;
                 }
-                ReplicationError::Timeout { .. } => {
-                    // nothing to do
-                }
-                ReplicationError::Network { .. } => {
-                    // nothing to do
-                }
-                ReplicationError::RemoteError(remote_err) => {
-                    tracing::error!(%remote_err, "remote peer error");
-                    match remote_err.source {
-                        AppendEntriesError::Fatal(fatal) => {
-                            tracing::error!(%fatal, target=%remote_err.target, "remote fatal error, close replication");
-                            return;
-                        }
-                    }
+                ReplicationError::RPCError(_e) => {
+                    unreachable!("RPCError is dealt with in the inner loop");
                 }
             };
         }
@@ -296,51 +283,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         let the_timeout = Duration::from_millis(self.config.heartbeat_interval);
         let res = timeout(the_timeout, self.network.send_append_entries(payload)).await;
 
-        let append_resp = match res {
-            Ok(append_res) => match append_res {
-                Ok(res) => res,
-                Err(err) => {
-                    tracing::warn!(error=%err, "error sending AppendEntries RPC to target");
-
-                    let repl_err = match err {
-                        RPCError::Timeout(e) => {
-                            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
-                                target: self.target,
-                                result: Err(e.to_string()),
-                                session_id: self.session_id,
-                            });
-                            ReplicationError::Timeout(e)
-                        }
-                        RPCError::Network(e) => {
-                            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
-                                target: self.target,
-                                result: Err(e.to_string()),
-                                session_id: self.session_id,
-                            });
-                            ReplicationError::Network(e)
-                        }
-                        RPCError::RemoteError(e) => ReplicationError::RemoteError(e),
-                    };
-                    return Err(repl_err);
-                }
-            },
-            Err(timeout_err) => {
-                tracing::warn!(error=%timeout_err, "timeout while sending AppendEntries RPC to target");
-
-                let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
-                    target: self.target,
-                    result: Err(timeout_err.to_string()),
-                    session_id: self.session_id,
-                });
-
-                return Err(ReplicationError::Timeout(Timeout {
-                    action: RPCTypes::AppendEntries,
-                    id: self.session_id.vote.node_id,
-                    target: self.target,
-                    timeout: the_timeout,
-                }));
-            }
-        };
+        let append_res = res.map_err(|_e| {
+            let to = Timeout {
+                action: RPCTypes::AppendEntries,
+                id: self.session_id.vote.node_id,
+                target: self.target,
+                timeout: the_timeout,
+            };
+            RPCError::Timeout(to)
+        })?;
+        let append_resp = append_res?;
 
         tracing::debug!("append_entries resp: {:?}", append_resp);
 
@@ -541,10 +493,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
                     // For transport error, just keep retrying.
                     match err {
-                        ReplicationError::Timeout { .. } => {
-                            break;
-                        }
-                        ReplicationError::Network { .. } => {
+                        ReplicationError::RPCError(e) => {
+                            tracing::error!(%e, "RPCError");
+                            let _ = self.tx_raft_core.send(RaftMsg::UpdateReplicationProgress {
+                                target: self.target,
+                                result: Err(e.to_string()),
+                                session_id: self.session_id,
+                            });
                             break;
                         }
                         _ => {

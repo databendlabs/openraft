@@ -284,13 +284,7 @@ where
     StorageError(#[from] StorageError<NID>),
 
     #[error(transparent)]
-    Timeout(#[from] Timeout<NID>),
-
-    #[error(transparent)]
-    Network(#[from] NetworkError),
-
-    #[error(transparent)]
-    RemoteError(#[from] RemoteError<NID, N, AppendEntriesError<NID>>),
+    RPCError(#[from] RPCError<NID, N, AppendEntriesError<NID>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
