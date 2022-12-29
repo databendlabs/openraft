@@ -700,6 +700,7 @@ where
         let committed = {
             let leader = match self.state.internal_server_state.leading_mut() {
                 None => {
+                    // TODO: is it a bug if trying to update progress when it is not in leading state?
                     return;
                 }
                 Some(x) => x,
@@ -707,12 +708,14 @@ where
 
             tracing::debug!(progress = debug(&leader.progress), "leader progress");
 
-            // TODO: merge this step into progress.update()
-            if leader.progress.index(&node_id).is_none() {
-                return;
-            }
+            let v = leader.progress.try_get(&node_id);
+            let mut updated = match v {
+                None => {
+                    return;
+                }
+                Some(x) => *x,
+            };
 
-            let mut updated = *leader.progress.get(&node_id);
             updated.update_matching(log_id);
 
             let res = leader.progress.update(&node_id, updated);

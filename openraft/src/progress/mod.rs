@@ -33,6 +33,9 @@ where
     /// It returns Err(committed) if the `id` is not found.
     fn update(&mut self, id: &ID, value: V) -> Result<&P, &P>;
 
+    /// Try to get the value by `id`.
+    fn try_get(&self, id: &ID) -> Option<&V>;
+
     /// Get the value by `id`.
     // TODO: is `get_mut()` required ?
     fn get(&self, id: &ID) -> &V;
@@ -259,6 +262,11 @@ where
         Ok(&self.granted)
     }
 
+    fn try_get(&self, id: &ID) -> Option<&V> {
+        let index = self.index(id)?;
+        Some(&self.vector[index].1)
+    }
+
     fn get(&self, id: &ID) -> &V {
         let index = self.index(id).unwrap();
         &self.vector[index].1
@@ -320,6 +328,19 @@ mod t {
             progress.vector
         );
         assert_eq!(5, progress.voter_count);
+
+        Ok(())
+    }
+
+    #[test]
+    fn vec_progress_get() -> anyhow::Result<()> {
+        let quorum_set: Vec<u64> = vec![0, 1, 2, 3, 4];
+        let mut progress = VecProgress::<u64, u64, u64, _>::new(quorum_set, [6, 7].into_iter(), 0);
+
+        let _ = progress.update(&6, 5);
+        assert_eq!(&5, progress.get(&6));
+        assert_eq!(Some(&5), progress.try_get(&6));
+        assert_eq!(None, progress.try_get(&9));
 
         Ok(())
     }
