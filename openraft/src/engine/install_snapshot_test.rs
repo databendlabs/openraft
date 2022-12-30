@@ -29,14 +29,7 @@ fn m1234() -> Membership<u64, ()> {
 }
 
 fn eng() -> Engine<u64, ()> {
-    let mut eng = Engine::<u64, ()> {
-        snapshot_meta: SnapshotMeta {
-            last_log_id: Some(log_id(2, 2)),
-            last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
-            snapshot_id: "1-2-3-4".to_string(),
-        },
-        ..Default::default()
-    };
+    let mut eng = Engine::<u64, ()> { ..Default::default() };
 
     eng.state.committed = Some(log_id(4, 5));
     eng.state.log_ids = LogIdList::new(vec![
@@ -46,6 +39,11 @@ fn eng() -> Engine<u64, ()> {
         log_id(4, 6),
         log_id(4, 8),
     ]);
+    eng.state.snapshot_meta = SnapshotMeta {
+        last_log_id: Some(log_id(2, 2)),
+        last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+        snapshot_id: "1-2-3-4".to_string(),
+    };
     eng.state.server_state = eng.calc_server_state();
 
     eng
@@ -68,7 +66,7 @@ fn test_install_snapshot_lt_last_snapshot() -> anyhow::Result<()> {
             last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        eng.snapshot_meta
+        eng.state.snapshot_meta
     );
 
     assert_eq!(
@@ -113,7 +111,7 @@ fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
             last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        eng.snapshot_meta
+        eng.state.snapshot_meta
     );
 
     assert_eq!(
@@ -156,7 +154,7 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
             last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        eng.snapshot_meta
+        eng.state.snapshot_meta
     );
     assert_eq!(&[log_id(4, 6), log_id(4, 8)], eng.state.log_ids.key_log_ids());
     assert_eq!(Some(log_id(4, 6)), eng.state.committed);
@@ -200,14 +198,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     // Snapshot will be installed, all non-committed log will be deleted.
     // And there should be no conflicting logs left.
     let mut eng = {
-        let mut eng = Engine::<u64, ()> {
-            snapshot_meta: SnapshotMeta {
-                last_log_id: Some(log_id(2, 2)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
-                snapshot_id: "1-2-3-4".to_string(),
-            },
-            ..Default::default()
-        };
+        let mut eng = Engine::<u64, ()> { ..Default::default() };
 
         eng.state.committed = Some(log_id(2, 3));
         eng.state.log_ids = LogIdList::new(vec![
@@ -217,6 +208,12 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             log_id(4, 6),
             log_id(4, 8),
         ]);
+
+        eng.state.snapshot_meta = SnapshotMeta {
+            last_log_id: Some(log_id(2, 2)),
+            last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+            snapshot_id: "1-2-3-4".to_string(),
+        };
 
         eng.state.server_state = eng.calc_server_state();
 
@@ -235,7 +232,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
             last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        eng.snapshot_meta
+        eng.state.snapshot_meta
     );
     assert_eq!(&[log_id(5, 6)], eng.state.log_ids.key_log_ids());
     assert_eq!(Some(log_id(5, 6)), eng.state.committed);
@@ -292,7 +289,7 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
             last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        eng.snapshot_meta
+        eng.state.snapshot_meta
     );
     assert_eq!(&[log_id(100, 100)], eng.state.log_ids.key_log_ids());
     assert_eq!(Some(log_id(100, 100)), eng.state.committed);
