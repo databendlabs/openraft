@@ -25,14 +25,14 @@ fn m1234() -> Membership<u64, ()> {
 }
 
 fn eng() -> Engine<u64, ()> {
-    Engine::<u64, ()> {
-        snapshot_meta: SnapshotMeta {
-            last_log_id: Some(log_id(2, 2)),
-            last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
-            snapshot_id: "1-2-3-4".to_string(),
-        },
-        ..Default::default()
-    }
+    let mut eng = Engine::<u64, ()> { ..Default::default() };
+
+    eng.state.snapshot_meta = SnapshotMeta {
+        last_log_id: Some(log_id(2, 2)),
+        last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+        snapshot_id: "1-2-3-4".to_string(),
+    };
+    eng
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn test_update_snapshot_no_update() -> anyhow::Result<()> {
             last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        eng.snapshot_meta
+        eng.state.snapshot_meta
     );
 
     assert_eq!(
@@ -90,7 +90,7 @@ fn test_update_snapshot_updated() -> anyhow::Result<()> {
             last_membership: EffectiveMembership::new(Some(log_id(2, 2)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         },
-        eng.snapshot_meta
+        eng.state.snapshot_meta
     );
 
     assert_eq!(

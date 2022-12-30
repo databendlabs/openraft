@@ -8,6 +8,7 @@ use crate::LogIdOptionExt;
 use crate::MembershipState;
 use crate::NodeId;
 use crate::ServerState;
+use crate::SnapshotMeta;
 use crate::Vote;
 
 /// A struct used to represent the raft state which a Raft node needs.
@@ -32,6 +33,9 @@ where
 
     /// The latest cluster membership configuration found, in log or in state machine.
     pub membership_state: MembershipState<NID, N>,
+
+    /// The metadata of the last snapshot.
+    pub snapshot_meta: SnapshotMeta<NID, N>,
 
     // --
     // -- volatile fields: they are not persisted.

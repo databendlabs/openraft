@@ -62,7 +62,7 @@ fn test_calc_purge_upto() -> anyhow::Result<()> {
         if let Some(last_purged) = last_purged {
             eng.state.log_ids.purge(&last_purged);
         }
-        eng.snapshot_meta.last_log_id = snapshot_last_log_id;
+        eng.state.snapshot_meta.last_log_id = snapshot_last_log_id;
         let got = eng.calc_purge_upto();
 
         assert_eq!(

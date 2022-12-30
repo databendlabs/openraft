@@ -207,12 +207,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             purge_batch_size: self.config.purge_batch_size,
         });
 
-        // Fetch the most recent snapshot in the system.
-        if let Some(snapshot) = self.storage.get_current_snapshot().await? {
-            self.engine.snapshot_meta = snapshot.meta;
-            self.engine.metrics_flags.set_data_changed();
-        }
-
         self.engine.startup();
         // No output commands
 
@@ -639,7 +633,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             current_term: self.engine.state.vote.term,
             last_log_index: self.engine.state.last_log_id().map(|id| id.index),
             last_applied: self.engine.state.committed,
-            snapshot: self.engine.snapshot_meta.last_log_id,
+            snapshot: self.engine.state.snapshot_meta.last_log_id,
 
             // --- cluster ---
             state: self.engine.state.server_state,
@@ -752,7 +746,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
-            if self.engine.state.committed.next_index() - self.engine.snapshot_meta.last_log_id.next_index()
+            if self.engine.state.committed.next_index() - self.engine.state.snapshot_meta.last_log_id.next_index()
                 < *threshold
             {
                 return;

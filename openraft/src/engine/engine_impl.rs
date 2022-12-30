@@ -71,9 +71,6 @@ where
 
     pub(crate) config: EngineConfig,
 
-    /// The metadata of the last snapshot.
-    pub(crate) snapshot_meta: SnapshotMeta<NID, N>,
-
     /// The state of this raft node.
     pub(crate) state: RaftState<NID, N>,
 
@@ -93,7 +90,6 @@ where
         Self {
             id,
             config,
-            snapshot_meta: Default::default(),
             state: init_state.clone(),
             metrics_flags: MetricsChangeFlags::default(),
             commands: vec![],
@@ -575,10 +571,10 @@ where
         let max_keep = self.config.max_in_snapshot_log_to_keep;
         let batch_size = self.config.purge_batch_size;
 
-        let purge_end = self.snapshot_meta.last_log_id.next_index().saturating_sub(max_keep);
+        let purge_end = self.state.snapshot_meta.last_log_id.next_index().saturating_sub(max_keep);
 
         tracing::debug!(
-            snapshot_last_log_id = debug(self.snapshot_meta.last_log_id),
+            snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id),
             max_keep,
             "try purge: (-oo, {})",
             purge_end
@@ -586,7 +582,7 @@ where
 
         if st.last_purged_log_id().next_index() + batch_size > purge_end {
             tracing::debug!(
-                snapshot_last_log_id = debug(self.snapshot_meta.last_log_id),
+                snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id),
                 max_keep,
                 last_purged_log_id = display(st.last_purged_log_id().summary()),
                 batch_size,
@@ -893,16 +889,16 @@ where
     pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<NID, N>) -> bool {
         tracing::info!("update_snapshot: {:?}", meta);
 
-        if meta.last_log_id <= self.snapshot_meta.last_log_id {
+        if meta.last_log_id <= self.state.snapshot_meta.last_log_id {
             tracing::info!(
                 "No need to install a smaller snapshot: current snapshot last_log_id({}), new snapshot last_log_id({})",
-                self.snapshot_meta.last_log_id.summary(),
+                self.state.snapshot_meta.last_log_id.summary(),
                 meta.last_log_id.summary()
             );
             return false;
         }
 
-        self.snapshot_meta = meta;
+        self.state.snapshot_meta = meta;
         self.metrics_flags.set_data_changed();
 
         true

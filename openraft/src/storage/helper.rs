@@ -56,6 +56,8 @@ where
 
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self).await?;
 
+        let snapshot_meta = self.sto.get_current_snapshot().await?.map(|x| x.meta).unwrap_or_default();
+
         Ok(RaftState {
             committed: last_applied,
             // The initial value for `vote` is the minimal possible value.
@@ -63,6 +65,7 @@ where
             vote: vote.unwrap_or_default(),
             log_ids,
             membership_state: mem_state,
+            snapshot_meta,
 
             // -- volatile fields: they are not persisted.
             internal_server_state: InternalServerState::default(),
