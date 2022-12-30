@@ -36,14 +36,9 @@ impl<NID: NodeId> Display for LogId<NID> {
     }
 }
 
-impl<NID: NodeId> MessageSummary<LogId<NID>> for Option<LogId<NID>> {
+impl<NID: NodeId> MessageSummary<LogId<NID>> for LogId<NID> {
     fn summary(&self) -> String {
-        match self {
-            None => "None".to_string(),
-            Some(x) => {
-                format!("{x}")
-            }
-        }
+        format!("{}", self)
     }
 }
 
@@ -78,6 +73,19 @@ pub trait LogIdOptionExt {
 }
 
 impl<NID: NodeId> LogIdOptionExt for Option<LogId<NID>> {
+    fn index(&self) -> Option<u64> {
+        self.map(|x| x.index)
+    }
+
+    fn next_index(&self) -> u64 {
+        match self {
+            None => 0,
+            Some(log_id) => log_id.index + 1,
+        }
+    }
+}
+
+impl<NID: NodeId> LogIdOptionExt for Option<&LogId<NID>> {
     fn index(&self) -> Option<u64> {
         self.map(|x| x.index)
     }

@@ -88,7 +88,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id());
+    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id().copied());
     assert_eq!(
         MembershipState {
             committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
@@ -131,7 +131,10 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
+    assert_eq!(
+        Some(LogId::new(LeaderId::new(3, 1), 6)),
+        eng.state.last_log_id().copied()
+    );
     assert_eq!(
         MembershipState {
             committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
@@ -185,7 +188,10 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
+    assert_eq!(
+        Some(LogId::new(LeaderId::new(3, 1), 6)),
+        eng.state.last_log_id().copied()
+    );
     assert_eq!(
         MembershipState {
             committed: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())),
@@ -252,7 +258,10 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
+    assert_eq!(
+        Some(LogId::new(LeaderId::new(3, 1), 6)),
+        eng.state.last_log_id().copied()
+    );
     assert_eq!(
         MembershipState {
             // previous effective become committed.
@@ -333,7 +342,10 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
+    assert_eq!(
+        Some(LogId::new(LeaderId::new(3, 1), 6)),
+        eng.state.last_log_id().copied()
+    );
     assert_eq!(
         MembershipState {
             committed: Arc::new(EffectiveMembership::new(
@@ -426,7 +438,10 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
+    assert_eq!(
+        Some(LogId::new(LeaderId::new(3, 1), 6)),
+        eng.state.last_log_id().copied()
+    );
     assert_eq!(
         MembershipState {
             committed: Arc::new(EffectiveMembership::new(

@@ -430,7 +430,7 @@ where
         let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
         assert_eq!(
-            initial.last_log_id(),
+            initial.last_log_id().copied(),
             Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 2)),
             "state machine has higher log"
         );
@@ -544,7 +544,7 @@ where
         let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
         assert_eq!(
-            initial.last_log_id(),
+            initial.last_log_id().copied(),
             Some(LogId::new(LeaderId::new(2, NODE_ID.into()), 1)),
             "state machine has higher log"
         );
@@ -561,12 +561,12 @@ where
         let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
         assert_eq!(
-            initial.last_log_id(),
+            initial.last_log_id().copied(),
             Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
             "state machine has higher log"
         );
         assert_eq!(
-            initial.last_purged_log_id(),
+            initial.last_purged_log_id().copied(),
             Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
             "state machine has higher log"
         );
