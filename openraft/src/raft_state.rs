@@ -89,18 +89,20 @@ where
     }
 
     /// The last known log id in the store.
-    pub(crate) fn last_log_id(&self) -> Option<LogId<NID>> {
-        self.log_ids.last().cloned()
+    ///
+    /// The range of all stored log ids are `(last_purged_log_id(), last_log_id()]`, left open right close.
+    pub(crate) fn last_log_id(&self) -> Option<&LogId<NID>> {
+        self.log_ids.last()
     }
 
     /// The greatest log id that has been purged after being applied to state machine, i.e., the oldest known log id.
     ///
-    /// The range of log entries that exist in storage is `(last_purged_log_id, last_log_id]`,
+    /// The range of log entries that exist in storage is `(last_purged_log_id(), last_log_id()]`,
     /// left open and right close.
     ///
     /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
-    pub(crate) fn last_purged_log_id(&self) -> Option<LogId<NID>> {
-        self.log_ids.first().cloned()
+    pub(crate) fn last_purged_log_id(&self) -> Option<&LogId<NID>> {
+        self.log_ids.first()
     }
 
     /// Create a new Leader, when raft enters candidate state.

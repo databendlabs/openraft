@@ -76,7 +76,7 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id());
+    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id().copied());
     assert_eq!(
         MembershipState {
             committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
@@ -120,7 +120,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(3, 4)), eng.state.last_log_id());
+    assert_eq!(Some(log_id(3, 4)), eng.state.last_log_id().copied());
     assert_eq!(
         MembershipState {
             committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
@@ -180,7 +180,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(3, 5)), eng.state.last_log_id());
+    assert_eq!(Some(log_id(3, 5)), eng.state.last_log_id().copied());
     assert_eq!(
         MembershipState {
             committed: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
@@ -260,7 +260,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(4, 7)), eng.state.last_log_id());
+    assert_eq!(Some(log_id(4, 7)), eng.state.last_log_id().copied());
     assert_eq!(
         MembershipState {
             committed: Arc::new(EffectiveMembership::new(Some(log_id(4, 6)), m34())),

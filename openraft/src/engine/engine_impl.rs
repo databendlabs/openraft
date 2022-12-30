@@ -171,7 +171,7 @@ where
         // Slow-path: send vote request, let a quorum grant it.
 
         self.push_command(Command::SendVote {
-            vote_req: VoteRequest::new(self.state.vote, self.state.last_log_id()),
+            vote_req: VoteRequest::new(self.state.vote, self.state.last_log_id().copied()),
         });
 
         // TODO: For compatibility. remove it. The runtime does not need to know about server state.
@@ -188,10 +188,10 @@ where
             "Engine::handle_vote_req"
         );
 
-        let res = if req.last_log_id >= self.state.last_log_id() {
+        let res = if req.last_log_id.as_ref() >= self.state.last_log_id() {
             self.handle_vote_change(&req.vote)
         } else {
-            Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id()))
+            Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id().copied()))
         };
 
         let vote_granted = if let Err(reject) = res {
@@ -210,7 +210,7 @@ where
             // is changed after sending the vote request.
             vote: self.state.vote,
             vote_granted,
-            last_log_id: self.state.last_log_id(),
+            last_log_id: self.state.last_log_id().copied(),
         }
     }
 
@@ -264,7 +264,7 @@ where
         // Seen a higher log.
         // TODO: if already installed a timer with can_be_leader==false, it should not install a timer with
         //       can_be_leader==true.
-        if resp.last_log_id > self.state.last_log_id() {
+        if resp.last_log_id.as_ref() > self.state.last_log_id() {
             self.push_command(Command::InstallElectionTimer { can_be_leader: false });
         } else {
             self.push_command(Command::InstallElectionTimer { can_be_leader: true });
@@ -607,7 +607,7 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn purge_log(&mut self, upto: LogId<NID>) {
         let st = &mut self.state;
-        let log_id = Some(upto);
+        let log_id = Some(&upto);
 
         if log_id <= st.last_purged_log_id() {
             return;
@@ -1139,7 +1139,7 @@ where
         tracing::error!(last_log_id = display(self.state.last_log_id().summary()), ?self.state.vote, "Can not initialize");
 
         Err(NotAllowed {
-            last_log_id: self.state.last_log_id(),
+            last_log_id: self.state.last_log_id().copied(),
             vote: self.state.vote,
         })
     }
