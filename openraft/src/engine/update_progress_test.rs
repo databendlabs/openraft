@@ -60,17 +60,33 @@ fn test_update_progress_update_leader_progress() -> anyhow::Result<()> {
     // progress: None, None, (1,2)
     eng.update_progress(3, Some(log_id(1, 2)));
     assert_eq!(None, eng.state.committed);
+    assert_eq!(
+        vec![
+            //
+            Command::UpdateReplicationMetrics {
+                target: 3,
+                matching: log_id(1, 2),
+            },
+        ],
+        eng.commands
+    );
 
     // progress: None, (2,1), (1,2); quorum-ed: (1,2), not at leader vote, not committed
+    eng.commands = vec![];
     eng.update_progress(2, Some(log_id(2, 1)));
     assert_eq!(None, eng.state.committed);
     assert_eq!(0, eng.commands.len());
 
     // progress: None, (2,1), (2,3); committed: (2,1)
+    eng.commands = vec![];
     eng.update_progress(3, Some(log_id(2, 3)));
     assert_eq!(Some(log_id(2, 1)), eng.state.committed);
     assert_eq!(
         vec![
+            Command::UpdateReplicationMetrics {
+                target: 3,
+                matching: log_id(2, 3),
+            },
             Command::ReplicateCommitted {
                 committed: Some(log_id(2, 1))
             },
@@ -88,6 +104,10 @@ fn test_update_progress_update_leader_progress() -> anyhow::Result<()> {
     assert_eq!(Some(log_id(2, 3)), eng.state.committed);
     assert_eq!(
         vec![
+            Command::UpdateReplicationMetrics {
+                target: 1,
+                matching: log_id(2, 4),
+            },
             Command::ReplicateCommitted {
                 committed: Some(log_id(2, 3))
             },

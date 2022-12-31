@@ -1354,8 +1354,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.engine.update_progress(target, Some(progress.matching.unwrap()));
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
-        self.update_replication_metrics(target, progress.matching.unwrap());
-
         Ok(())
     }
 
@@ -1531,6 +1529,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                         }
                     };
                 }
+            }
+            Command::UpdateReplicationMetrics { target, matching } => {
+                self.update_replication_metrics(*target, *matching);
             }
             Command::UpdateMembership { .. } => {
                 // TODO: not used

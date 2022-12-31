@@ -742,6 +742,15 @@ where
 
         tracing::debug!(committed = debug(&committed), "committed after updating progress");
 
+        debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
+
+        if node_id != self.id {
+            self.push_command(Command::UpdateReplicationMetrics {
+                target: node_id,
+                matching: log_id.unwrap(),
+            });
+        }
+
         // Only when the log id is proposed by current leader, it is committed.
         if let Some(c) = committed {
             if c.leader_id.term != self.state.vote.term || c.leader_id.node_id != self.state.vote.node_id {
