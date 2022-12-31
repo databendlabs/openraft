@@ -12,6 +12,7 @@ use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
+use crate::raft_state::LogStateReader;
 use crate::EntryPayload;
 use crate::LeaderId;
 use crate::LogId;

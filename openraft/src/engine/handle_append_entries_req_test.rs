@@ -7,6 +7,7 @@ use crate::core::ServerState;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::raft::AppendEntriesResponse;
+use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;

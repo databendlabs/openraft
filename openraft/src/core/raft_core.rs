@@ -71,6 +71,7 @@ use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft_state::LogStateReader;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
 use crate::replication::Replicate;

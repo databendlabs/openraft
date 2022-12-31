@@ -11,6 +11,37 @@ use crate::ServerState;
 use crate::SnapshotMeta;
 use crate::Vote;
 
+/// APIs to get significant log ids reflecting the raft state.
+///
+/// See: https://datafuselabs.github.io/openraft/log-data-layout
+pub(crate) trait LogStateReader<NID: NodeId> {
+    /// Get the log id at the specified index.
+    ///
+    /// It will return `last_purged_log_id` if index is at the last purged index.
+    /// If the log at the specified index is smaller than `last_purged_log_id`, or greater than `last_log_id`, it
+    /// returns None.
+    fn get_log_id(&self, index: u64) -> Option<LogId<NID>>;
+
+    /// The last known log id in the store.
+    ///
+    /// The range of all stored log ids are `(last_purged_log_id(), last_log_id()]`, left open right close.
+    fn last_log_id(&self) -> Option<&LogId<NID>>;
+
+    /// The last known committed log id, i.e., the id of the log that is accepted by a quorum of voters.
+    fn committed(&self) -> Option<&LogId<NID>>;
+
+    /// Return the last log id the snapshot includes.
+    fn snapshot_last_log_id(&self) -> Option<&LogId<NID>>;
+
+    /// The greatest log id that has been purged after being applied to state machine, i.e., the oldest known log id.
+    ///
+    /// The range of log entries that exist in storage is `(last_purged_log_id(), last_log_id()]`,
+    /// left open and right close.
+    ///
+    /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
+    fn last_purged_log_id(&self) -> Option<&LogId<NID>>;
+}
+
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RaftState<NID, N>
@@ -46,6 +77,32 @@ where
     pub server_state: ServerState,
 }
 
+impl<NID, N> LogStateReader<NID> for RaftState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn get_log_id(&self, index: u64) -> Option<LogId<NID>> {
+        self.log_ids.get(index)
+    }
+
+    fn last_log_id(&self) -> Option<&LogId<NID>> {
+        self.log_ids.last()
+    }
+
+    fn committed(&self) -> Option<&LogId<NID>> {
+        self.committed.as_ref()
+    }
+
+    fn snapshot_last_log_id(&self) -> Option<&LogId<NID>> {
+        self.snapshot_meta.last_log_id.as_ref()
+    }
+
+    fn last_purged_log_id(&self) -> Option<&LogId<NID>> {
+        self.log_ids.first()
+    }
+}
+
 impl<NID, N> RaftState<NID, N>
 where
     NID: NodeId,
@@ -61,13 +118,6 @@ where
     #[allow(dead_code)]
     pub(crate) fn extend_log_ids<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_log_id: &[LID]) {
         self.log_ids.extend(new_log_id)
-    }
-
-    /// Get the log id at the specified index.
-    ///
-    /// It will return `last_purged_log_id` if index is at the last purged index.
-    pub(crate) fn get_log_id(&self, index: u64) -> Option<LogId<NID>> {
-        self.log_ids.get(index)
     }
 
     /// Return if a log id exists.
@@ -86,23 +136,6 @@ where
         } else {
             false
         }
-    }
-
-    /// The last known log id in the store.
-    ///
-    /// The range of all stored log ids are `(last_purged_log_id(), last_log_id()]`, left open right close.
-    pub(crate) fn last_log_id(&self) -> Option<&LogId<NID>> {
-        self.log_ids.last()
-    }
-
-    /// The greatest log id that has been purged after being applied to state machine, i.e., the oldest known log id.
-    ///
-    /// The range of log entries that exist in storage is `(last_purged_log_id(), last_log_id()]`,
-    /// left open and right close.
-    ///
-    /// `last_purged_log_id == last_log_id` means there is no log entry in the storage.
-    pub(crate) fn last_purged_log_id(&self) -> Option<&LogId<NID>> {
-        self.log_ids.first()
     }
 
     /// Create a new Leader, when raft enters candidate state.
