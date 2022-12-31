@@ -39,6 +39,9 @@ pub(crate) struct EngineConfig {
 
     /// The minimal number of applied logs to purge in a batch.
     pub(crate) purge_batch_size: u64,
+
+    /// The maximum number of entries per payload allowed to be transmitted during replication
+    pub(crate) max_payload_entries: u64,
 }
 
 impl Default for EngineConfig {
@@ -46,6 +49,7 @@ impl Default for EngineConfig {
         Self {
             max_in_snapshot_log_to_keep: 1000,
             purge_batch_size: 256,
+            max_payload_entries: 300,
         }
     }
 }

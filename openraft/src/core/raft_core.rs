@@ -206,6 +206,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.engine = Engine::new(self.id, &state, EngineConfig {
             max_in_snapshot_log_to_keep: self.config.max_in_snapshot_log_to_keep,
             purge_batch_size: self.config.purge_batch_size,
+            max_payload_entries: self.config.max_payload_entries,
         });
 
         self.engine.startup();
