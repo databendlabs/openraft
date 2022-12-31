@@ -69,6 +69,9 @@ where
         targets: Vec<(NID, ProgressEntry<NID>)>,
     },
 
+    /// The state of replication to `target` is updated, the metrics should be updated.
+    UpdateReplicationMetrics { target: NID, matching: LogId<NID> },
+
     /// Move the cursor pointing to an entry in the input buffer.
     MoveInputCursorBy { n: usize },
 
@@ -125,6 +128,7 @@ where
             Command::ReplicateEntries { .. } => {}
             Command::UpdateMembership { .. } => flags.set_cluster_changed(),
             Command::UpdateReplicationStreams { .. } => flags.set_replication_changed(),
+            Command::UpdateReplicationMetrics { .. } => flags.set_replication_changed(),
             Command::MoveInputCursorBy { .. } => {}
             Command::SaveVote { .. } => flags.set_data_changed(),
             Command::SendVote { .. } => {}
