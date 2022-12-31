@@ -3,6 +3,7 @@ use std::sync::Arc;
 use maplit::btreeset;
 
 use crate::engine::LogIdList;
+use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;

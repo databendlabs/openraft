@@ -17,6 +17,7 @@ use crate::progress::Progress;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::raft_types::RaftLogId;
 use crate::summary::MessageSummary;

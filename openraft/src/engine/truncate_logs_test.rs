@@ -5,6 +5,7 @@ use maplit::btreeset;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
+use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;

@@ -8,6 +8,7 @@ use maplit::btreeset;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::entry::ProgressEntry;
+use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
