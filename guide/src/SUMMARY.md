@@ -16,6 +16,7 @@
 - [Internal](./internal.md)
     - [Architecture](./architecture.md)
     - [Threads](./threading.md)
+    - [Log data layout](./log-data-layout.md)
     - [Heartbeat](./heartbeat.md)
     - [Vote](./vote.md)
     - [Replication](./replication.md)
