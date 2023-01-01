@@ -36,8 +36,11 @@ where
     /// Try to get the value by `id`.
     fn try_get(&self, id: &ID) -> Option<&V>;
 
+    /// Returns a mutable reference to the value corresponding to the `id`.
+    fn get_mut(&mut self, id: &ID) -> Option<&mut V>;
+
+    // TODO: merge `get` and `try_get`
     /// Get the value by `id`.
-    // TODO: is `get_mut()` required ?
     fn get(&self, id: &ID) -> &V;
 
     /// Get the greatest value that is granted by a quorum defined in [`quorum_set()`].
@@ -267,6 +270,11 @@ where
         Some(&self.vector[index].1)
     }
 
+    fn get_mut(&mut self, id: &ID) -> Option<&mut V> {
+        let index = self.index(id)?;
+        Some(&mut self.vector[index].1)
+    }
+
     fn get(&self, id: &ID) -> &V {
         let index = self.index(id).unwrap();
         &self.vector[index].1
@@ -341,6 +349,14 @@ mod t {
         assert_eq!(&5, progress.get(&6));
         assert_eq!(Some(&5), progress.try_get(&6));
         assert_eq!(None, progress.try_get(&9));
+
+        {
+            let x = progress.get_mut(&6);
+            if let Some(x) = x {
+                *x = 10;
+            }
+        }
+        assert_eq!(Some(&10), progress.try_get(&6));
 
         Ok(())
     }
