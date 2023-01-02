@@ -62,7 +62,7 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
     assert_eq!(
         MembershipState {
@@ -81,7 +81,7 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -101,7 +101,7 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
     assert_eq!(
         MembershipState {
@@ -112,7 +112,10 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
 
-    assert_eq!(vec![Command::DeleteConflictLog { since: log_id(4, 4) }], eng.commands);
+    assert_eq!(
+        vec![Command::DeleteConflictLog { since: log_id(4, 4) }],
+        eng.output.commands
+    );
 
     Ok(())
 }
@@ -131,10 +134,13 @@ fn test_truncate_logs_since_5() -> anyhow::Result<()> {
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(vec![Command::DeleteConflictLog { since: log_id(4, 5) }], eng.commands);
+    assert_eq!(
+        vec![Command::DeleteConflictLog { since: log_id(4, 5) }],
+        eng.output.commands
+    );
 
     Ok(())
 }
@@ -156,10 +162,13 @@ fn test_truncate_logs_since_6() -> anyhow::Result<()> {
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(vec![Command::DeleteConflictLog { since: log_id(4, 6) }], eng.commands);
+    assert_eq!(
+        vec![Command::DeleteConflictLog { since: log_id(4, 6) }],
+        eng.output.commands
+    );
 
     Ok(())
 }
@@ -181,10 +190,10 @@ fn test_truncate_logs_since_7() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert!(eng.commands.is_empty());
+    assert!(eng.output.commands.is_empty());
 
     Ok(())
 }
@@ -206,10 +215,10 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert!(eng.commands.is_empty());
+    assert!(eng.output.commands.is_empty());
 
     Ok(())
 }
@@ -233,7 +242,7 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -244,7 +253,7 @@ fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01()))
             },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())

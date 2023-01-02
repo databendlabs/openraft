@@ -45,7 +45,7 @@ fn test_update_progress_no_leader() -> anyhow::Result<()> {
 
     assert_eq!(eng0, eng, "nothing changed");
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -66,17 +66,17 @@ fn test_update_progress_update_leader_progress() -> anyhow::Result<()> {
                 matching: log_id(1, 2),
             },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     // progress: None, (2,1), (1,2); quorum-ed: (1,2), not at leader vote, not committed
-    eng.commands = vec![];
+    eng.output.commands = vec![];
     eng.update_progress(2, Some(log_id(2, 1)));
     assert_eq!(None, eng.state.committed);
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     // progress: None, (2,1), (2,3); committed: (2,1)
-    eng.commands = vec![];
+    eng.output.commands = vec![];
     eng.update_progress(3, Some(log_id(2, 3)));
     assert_eq!(Some(log_id(2, 1)), eng.state.committed);
     assert_eq!(
@@ -93,10 +93,10 @@ fn test_update_progress_update_leader_progress() -> anyhow::Result<()> {
                 upto: log_id(2, 1)
             }
         ],
-        eng.commands
+        eng.output.commands
     );
 
-    eng.commands = vec![];
+    eng.output.commands = vec![];
     // progress: (2,4), (2,1), (2,3); committed: (1,3)
     eng.update_progress(1, Some(log_id(2, 4)));
     assert_eq!(Some(log_id(2, 3)), eng.state.committed);
@@ -114,7 +114,7 @@ fn test_update_progress_update_leader_progress() -> anyhow::Result<()> {
                 upto: log_id(2, 3)
             }
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())

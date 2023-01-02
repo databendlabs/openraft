@@ -59,10 +59,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 local_data: false,
                 cluster: false,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
 
-        assert_eq!(0, eng.commands.len());
+        assert_eq!(0, eng.output.commands.len());
     }
 
     tracing::info!("--- recv a smaller vote. vote_granted==false always; keep trying in candidate state");
@@ -94,12 +94,12 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 local_data: false,
                 cluster: false,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
 
         assert_eq!(
             vec![Command::InstallElectionTimer { can_be_leader: false },],
-            eng.commands
+            eng.output.commands
         );
     }
 
@@ -130,7 +130,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 local_data: true,
                 cluster: false,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
 
         assert_eq!(
@@ -138,7 +138,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 Command::SaveVote { vote: Vote::new(2, 2) },
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
-            eng.commands
+            eng.output.commands
         );
     }
 
@@ -171,12 +171,12 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 local_data: false,
                 cluster: false,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
 
         assert_eq!(
             vec![Command::InstallElectionTimer { can_be_leader: false },],
-            eng.commands
+            eng.output.commands
         );
     }
 
@@ -209,10 +209,10 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 local_data: false,
                 cluster: false,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
 
-        assert_eq!(0, eng.commands.len());
+        assert_eq!(0, eng.output.commands.len());
     }
 
     tracing::info!("--- equal vote, granted, constitute a quorum. become leader");
@@ -244,7 +244,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 local_data: true,
                 cluster: true,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
 
         assert_eq!(
@@ -269,7 +269,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                     },),
                 },
             ],
-            eng.commands
+            eng.output.commands
         );
     }
 

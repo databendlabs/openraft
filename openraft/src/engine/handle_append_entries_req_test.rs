@@ -93,10 +93,10 @@ fn test_handle_append_entries_req_vote_is_rejected() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -141,7 +141,7 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -151,7 +151,7 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
             },
             Command::InstallElectionTimer { can_be_leader: false },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -193,7 +193,7 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -207,7 +207,7 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -250,7 +250,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -270,7 +270,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
                 upto: log_id(1, 1)
             },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -315,7 +315,7 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -325,7 +325,7 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
             },
             Command::InstallElectionTimer { can_be_leader: false },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -376,7 +376,7 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -399,7 +399,7 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
                 upto: log_id(3, 3)
             },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())

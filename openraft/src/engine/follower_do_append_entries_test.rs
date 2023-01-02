@@ -91,10 +91,10 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -135,7 +135,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -143,7 +143,7 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
             Command::AppendInputEntries { range: 1..2 },
             Command::MoveInputCursorBy { n: 2 }
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -200,7 +200,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -211,7 +211,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
             },
             Command::MoveInputCursorBy { n: 5 }
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -280,7 +280,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -291,7 +291,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
             },
             Command::MoveInputCursorBy { n: 5 }
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
