@@ -56,8 +56,8 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     let _ = log_index;
 
     // To let tne router not panic
-    router.new_raft_node(1);
-    router.new_raft_node(2);
+    router.new_raft_node(1).await;
+    router.new_raft_node(2).await;
 
     let node = Raft::new(0, config.clone(), router.clone(), sto.clone());
 

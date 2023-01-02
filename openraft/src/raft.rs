@@ -29,6 +29,7 @@ use crate::core::Tick;
 use crate::core::TickHandle;
 use crate::core::VoteWiseTime;
 use crate::engine::Engine;
+use crate::engine::EngineConfig;
 use crate::error::AddLearnerError;
 use crate::error::AppendEntriesError;
 use crate::error::CheckIsLeaderError;
@@ -57,6 +58,7 @@ use crate::RaftNetworkFactory;
 use crate::RaftState;
 use crate::RaftStorage;
 use crate::SnapshotMeta;
+use crate::StorageHelper;
 use crate::Vote;
 
 /// Configuration of types used by the [`Raft`] core engine.
@@ -197,7 +199,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
     /// See the docs on the `RaftStorage` trait for more details.
     #[tracing::instrument(level="debug", skip(config, network, storage), fields(cluster=%config.cluster_name))]
-    pub fn new(id: C::NodeId, config: Arc<Config>, network: N, storage: S) -> Self {
+    pub async fn new(id: C::NodeId, config: Arc<Config>, network: N, mut storage: S) -> Result<Self, Fatal<C::NodeId>> {
         let (tx_api, rx_api) = mpsc::unbounded_channel();
         let (tx_metrics, rx_metrics) = watch::channel(RaftMetrics::new_initial(id));
         let (tx_shutdown, rx_shutdown) = oneshot::channel();
@@ -218,6 +220,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             cluster = display(&config.cluster_name)
         );
 
+        let state = {
+            let mut helper = StorageHelper::new(&mut storage);
+            helper.get_initial_state().await?
+        };
+
+        // TODO(xp): this is not necessary.
+        storage.save_vote(&state.vote).await?;
+
+        let engine = Engine::new(&state, EngineConfig {
+            id,
+            max_in_snapshot_log_to_keep: config.max_in_snapshot_log_to_keep,
+            purge_batch_size: config.purge_batch_size,
+            max_payload_entries: config.max_payload_entries,
+        });
+
         let core = RaftCore {
             id,
             config: config.clone(),
@@ -225,7 +242,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             network,
             storage,
 
-            engine: Engine::default(),
+            engine,
             leader_data: None,
 
             snapshot_state: SnapshotState::None,
@@ -256,7 +273,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             core_state: Mutex::new(CoreState::Running(core_handle)),
         };
 
-        Self { inner: Arc::new(inner) }
+        Ok(Self { inner: Arc::new(inner) })
     }
 
     /// Enable or disable raft internal ticker.

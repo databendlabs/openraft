@@ -36,7 +36,7 @@ async fn snapshot_arguments() -> Result<()> {
 
     tracing::info!("--- initializing cluster");
     {
-        router.new_raft_node(0);
+        router.new_raft_node(0).await;
 
         router.wait_for_log(&btreeset![0], None, timeout(), "empty").await?;
         router.wait_for_state(&btreeset![0], ServerState::Learner, timeout(), "empty").await?;

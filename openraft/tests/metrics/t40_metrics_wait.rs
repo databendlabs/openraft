@@ -30,7 +30,7 @@ async fn metrics_wait() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     let cluster = btreeset![0];
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
     {
         let n0 = router.get_raft_handle(&0)?;
         n0.initialize(cluster.clone()).await?;

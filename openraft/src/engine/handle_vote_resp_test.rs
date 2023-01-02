@@ -68,7 +68,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     tracing::info!("--- recv a smaller vote. vote_granted==false always; keep trying in candidate state");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.new_leader();
@@ -106,7 +106,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     tracing::info!("--- seen a higher vote. keep trying in candidate state");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.log_ids = LogIdList::new(vec![log_id(3, 3)]);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
@@ -145,7 +145,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     tracing::info!("--- equal vote, rejected by higher last_log_id. keep trying in candidate state");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.new_leader();
@@ -183,7 +183,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     tracing::info!("--- equal vote, granted, but not constitute a quorum. nothing to do");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()));
         eng.new_leader();
@@ -218,7 +218,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     tracing::info!("--- equal vote, granted, constitute a quorum. become leader");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
         eng.new_leader();

@@ -21,7 +21,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
 

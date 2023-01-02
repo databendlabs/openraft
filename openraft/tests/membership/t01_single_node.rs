@@ -31,7 +31,7 @@ async fn single_node() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     let mut log_index = 0;
 

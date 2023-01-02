@@ -34,7 +34,10 @@ use crate::Vote;
 /// Config for Engine
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
-pub(crate) struct EngineConfig {
+pub(crate) struct EngineConfig<NID: NodeId> {
+    /// The id of this node.
+    pub(crate) id: NID,
+
     /// The maximum number of applied logs to keep before purging.
     pub(crate) max_in_snapshot_log_to_keep: u64,
 
@@ -45,9 +48,10 @@ pub(crate) struct EngineConfig {
     pub(crate) max_payload_entries: u64,
 }
 
-impl Default for EngineConfig {
+impl<NID: NodeId> Default for EngineConfig<NID> {
     fn default() -> Self {
         Self {
+            id: NID::default(),
             max_in_snapshot_log_to_keep: 1000,
             purge_batch_size: 256,
             max_payload_entries: 300,
@@ -71,11 +75,7 @@ where
     N: Node,
     NID: NodeId,
 {
-    /// TODO:
-    #[allow(dead_code)]
-    pub(crate) id: NID,
-
-    pub(crate) config: EngineConfig,
+    pub(crate) config: EngineConfig<NID>,
 
     /// The state of this raft node.
     pub(crate) state: RaftState<NID, N>,
@@ -95,9 +95,8 @@ where
     N: Node,
     NID: NodeId,
 {
-    pub(crate) fn new(id: NID, init_state: &RaftState<NID, N>, config: EngineConfig) -> Self {
+    pub(crate) fn new(init_state: &RaftState<NID, N>, config: EngineConfig<NID>) -> Self {
         Self {
-            id,
             config,
             state: init_state.clone(),
             internal_server_state: InternalServerState::default(),
@@ -112,13 +111,17 @@ where
         // On startup, do not assume a leader. Becoming a leader require initialization on several fields.
         // TODO: allows starting up as a leader. After `server_state` is removed from Engine.
 
-        let server_state = if self.state.membership_state.effective.is_voter(&self.id) {
+        let server_state = if self.state.membership_state.effective.is_voter(&self.config.id) {
             ServerState::Follower
         } else {
             ServerState::Learner
         };
 
-        tracing::debug!("startup: id={} target_state: {:?}", self.id, self.state.server_state);
+        tracing::debug!(
+            "startup: id={} target_state: {:?}",
+            self.config.id,
+            self.state.server_state
+        );
 
         self.state.server_state = server_state;
     }
@@ -164,11 +167,11 @@ where
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        self.handle_vote_change(&Vote::new(self.state.vote.term + 1, self.id)).unwrap();
+        self.handle_vote_change(&Vote::new(self.state.vote.term + 1, self.config.id)).unwrap();
 
         // Safe unwrap()
         let leader = self.internal_server_state.leading_mut().unwrap();
-        leader.grant_vote_by(self.id);
+        leader.grant_vote_by(self.config.id);
         let quorum_granted = leader.is_vote_granted();
 
         // Fast-path: if there is only one node in the cluster.
@@ -262,7 +265,7 @@ where
 
         debug_assert_eq!(
             Some(NodeRole::Voter),
-            self.state.membership_state.effective.get_node_role(&self.id)
+            self.state.membership_state.effective.get_node_role(&self.config.id)
         );
 
         // If peer's vote is greater than current vote, revert to follower state.
@@ -340,7 +343,7 @@ where
 
                 if log_index > 0 {
                     if let Some(prev_log_id) = self.state.get_log_id(log_index - 1) {
-                        self.update_progress(self.id, Some(prev_log_id));
+                        self.update_progress(self.config.id, Some(prev_log_id));
                     }
                 }
 
@@ -349,7 +352,7 @@ where
             }
         }
         if let Some(last) = entries.last() {
-            self.update_progress(self.id, Some(*last.get_log_id()));
+            self.update_progress(self.config.id, Some(*last.get_log_id()));
         }
 
         // Still need to replicate to learners, even when it is fast-committed.
@@ -749,7 +752,7 @@ where
 
         debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
 
-        if node_id != self.id {
+        if node_id != self.config.id {
             self.push_command(Command::UpdateReplicationMetrics {
                 target: node_id,
                 matching: log_id.unwrap(),
@@ -779,7 +782,7 @@ where
     /// This is only called by leader.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn leader_step_down(&mut self) {
-        tracing::debug!("leader_step_down: node_id:{}", self.id);
+        tracing::debug!("leader_step_down: node_id:{}", self.config.id);
 
         // Step down:
         // Keep acting as leader until a membership without this node is committed.
@@ -794,8 +797,8 @@ where
 
         #[allow(clippy::collapsible_if)]
         if em.log_id <= self.state.committed {
-            if !em.is_voter(&self.id) && self.is_leading() {
-                tracing::debug!("leader {} is stepping down", self.id);
+            if !em.is_voter(&self.config.id) && self.is_leading() {
+                tracing::debug!("leader {} is stepping down", self.config.id);
                 self.enter_following();
             }
         }
@@ -935,7 +938,7 @@ where
     /// `vote.node_id == self.id`: Leading state;
     /// `vote.node_id != self.id`: Following state;
     pub(crate) fn switch_internal_server_state(&mut self) {
-        if self.state.vote.node_id == self.id {
+        if self.state.vote.node_id == self.config.id {
             self.enter_leading();
         } else {
             self.enter_following();
@@ -946,7 +949,7 @@ where
     ///
     /// Leader state has two phase: election phase and replication phase, similar to paxos phase-1 and phase-2
     pub(crate) fn enter_leading(&mut self) {
-        debug_assert_eq!(self.state.vote.node_id, self.id);
+        debug_assert_eq!(self.state.vote.node_id, self.config.id);
         // debug_assert!(
         //     self.internal_server_state.is_following(),
         //     "can not enter leading twice"
@@ -1028,7 +1031,7 @@ where
         };
         self.state.log_ids.append(log_id);
         self.push_command(Command::AppendBlankLog { log_id });
-        self.update_progress(self.id, Some(log_id));
+        self.update_progress(self.config.id, Some(log_id));
         self.push_command(Command::ReplicateEntries { upto: Some(log_id) });
     }
 
@@ -1037,7 +1040,7 @@ where
         if let Some(leader) = self.internal_server_state.leading() {
             let mut targets = vec![];
             for (node_id, matched) in leader.progress.iter() {
-                if node_id != &self.id {
+                if node_id != &self.config.id {
                     targets.push((*node_id, *matched));
                 }
             }
@@ -1133,7 +1136,7 @@ where
         let server_state = self.calc_server_state();
 
         tracing::debug!(
-            id = display(self.id),
+            id = display(self.config.id),
             prev_server_state = debug(self.state.server_state),
             server_state = debug(server_state),
             "update_server_state_if_changed"
@@ -1176,9 +1179,9 @@ where
 
     /// When initialize, the node that accept initialize request has to be a member of the initial config.
     fn check_members_contain_me(&self, m: &Membership<NID, N>) -> Result<(), NotInMembers<NID, N>> {
-        if !m.is_voter(&self.id) {
+        if !m.is_voter(&self.config.id) {
             let e = NotInMembers {
-                node_id: self.id,
+                node_id: self.config.id,
                 membership: m.clone(),
             };
             Err(e)
@@ -1270,16 +1273,16 @@ where
     }
 
     fn is_voter(&self) -> bool {
-        self.state.membership_state.is_voter(&self.id)
+        self.state.membership_state.is_voter(&self.config.id)
     }
 
     /// The node is candidate or leader
     fn is_leading(&self) -> bool {
-        self.state.vote.node_id == self.id
+        self.state.vote.node_id == self.config.id
     }
 
     pub(crate) fn is_leader(&self) -> bool {
-        self.state.vote.node_id == self.id && self.state.vote.committed
+        self.state.vote.node_id == self.config.id && self.state.vote.committed
     }
 
     fn push_command(&mut self, cmd: Command<NID, N>) {

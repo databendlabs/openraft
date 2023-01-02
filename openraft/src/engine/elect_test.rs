@@ -39,7 +39,7 @@ fn test_elect() -> anyhow::Result<()> {
     tracing::info!("--- single node: become leader at once");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m1()));
 
         eng.elect();
@@ -101,7 +101,7 @@ fn test_elect() -> anyhow::Result<()> {
     tracing::info!("--- single node: electing again will override previous state");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m1()));
 
         // Build in-progress election state
@@ -168,7 +168,7 @@ fn test_elect() -> anyhow::Result<()> {
     tracing::info!("--- multi nodes: enter candidate state");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m12()));
         eng.state.log_ids = LogIdList::new(vec![log_id(1, 1)]);
 

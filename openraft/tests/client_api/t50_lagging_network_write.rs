@@ -31,7 +31,7 @@ async fn lagging_network_write() -> Result<()> {
     );
     let mut router = RaftRouter::builder(config).send_delay(50).build();
 
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
     let mut log_index = 0;
 
     // Assert all nodes are in learner state & have no entries.
@@ -49,11 +49,11 @@ async fn lagging_network_write() -> Result<()> {
     router.assert_stable_cluster(Some(1), Some(log_index));
 
     // Sync some new nodes.
-    router.new_raft_node(1);
+    router.new_raft_node(1).await;
     router.add_learner(0, 1).await?;
     log_index += 1;
 
-    router.new_raft_node(2);
+    router.new_raft_node(2).await;
     router.add_learner(0, 2).await?;
     log_index += 1;
 

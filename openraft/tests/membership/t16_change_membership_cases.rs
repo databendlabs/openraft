@@ -131,7 +131,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
     tracing::info!("--- change to {:?}", new);
     {
         for id in only_in_new {
-            router.new_raft_node(*id);
+            router.new_raft_node(*id).await;
             router.add_learner(0, *id).await?;
             log_index += 1;
             router.wait_for_log(&old, Some(log_index), timeout(), &format!("add learner, {}", mes)).await?;
@@ -275,7 +275,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
     tracing::info!("--- add learner before change-membership");
     {
         for id in only_in_new {
-            router.new_raft_node(*id);
+            router.new_raft_node(*id).await;
             router.add_learner(0, *id).await?;
             log_index += 1;
             router.wait(id, timeout()).log(Some(log_index), format!("add learner, {}", mes)).await?;

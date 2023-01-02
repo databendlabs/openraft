@@ -30,7 +30,7 @@ async fn network_connection_error() -> anyhow::Result<()> {
 
     tracing::info!("--- failure to add unreachable learner to cluster");
     {
-        router.new_raft_node(3);
+        router.new_raft_node(3).await;
         router.set_connectable(3, false);
 
         let res = router.add_learner(0, 3).await;

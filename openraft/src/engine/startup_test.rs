@@ -26,10 +26,8 @@ fn m34() -> Membership<u64, ()> {
 }
 
 fn eng() -> Engine<u64, ()> {
-    let mut eng = Engine::<u64, ()> {
-        id: 2, // make it a member
-        ..Default::default()
-    };
+    let mut eng = Engine::default();
+    eng.config.id = 2;
     // This will be overrided
     eng.state.server_state = ServerState::Leader;
     eng

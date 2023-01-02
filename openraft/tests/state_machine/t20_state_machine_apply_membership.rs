@@ -35,7 +35,7 @@ async fn state_machine_apply_membership() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     let mut log_index = 0;
 
@@ -64,10 +64,10 @@ async fn state_machine_apply_membership() -> Result<()> {
     }
 
     // Sync some new nodes.
-    router.new_raft_node(1);
-    router.new_raft_node(2);
-    router.new_raft_node(3);
-    router.new_raft_node(4);
+    router.new_raft_node(1).await;
+    router.new_raft_node(2).await;
+    router.new_raft_node(3).await;
+    router.new_raft_node(4).await;
 
     tracing::info!("--- adding new nodes to cluster");
     let mut new_nodes = futures::stream::FuturesUnordered::new();

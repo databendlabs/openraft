@@ -43,7 +43,7 @@ async fn append_inconsistent_log() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
 
@@ -88,14 +88,14 @@ async fn append_inconsistent_log() -> Result<()> {
 
     tracing::info!("--- restart node 1 and isolate. To let node-2 to become leader, node-1 should not vote for node-0");
     {
-        router.new_raft_node_with_sto(1, sto1.clone());
+        router.new_raft_node_with_sto(1, sto1.clone()).await;
         router.isolate_node(1);
     }
 
     tracing::info!("--- restart node 0 and 2");
     {
-        router.new_raft_node_with_sto(0, sto0.clone());
-        router.new_raft_node_with_sto(2, sto2.clone());
+        router.new_raft_node_with_sto(0, sto0.clone()).await;
+        router.new_raft_node_with_sto(2, sto2.clone()).await;
     }
 
     // leader appends at least one blank log. There may be more than one transient leaders

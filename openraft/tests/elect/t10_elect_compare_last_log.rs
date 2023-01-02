@@ -79,8 +79,8 @@ async fn elect_compare_last_log() -> Result<()> {
 
     tracing::info!("--- bring up cluster and elect");
 
-    router.new_raft_node_with_sto(0, sto0.clone());
-    router.new_raft_node_with_sto(1, sto1.clone());
+    router.new_raft_node_with_sto(0, sto0.clone()).await;
+    router.new_raft_node_with_sto(1, sto1.clone()).await;
 
     router.wait(&0, timeout()).state(ServerState::Leader, "only node 0 becomes leader").await?;
 

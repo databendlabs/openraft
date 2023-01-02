@@ -69,7 +69,7 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
 
     tracing::info!("--- add learner to receive snapshot and logs");
     {
-        router.new_raft_node(1);
+        router.new_raft_node(1).await;
         router.add_learner(0, 1).await.expect("failed to add new node as learner");
         log_index += 1;
 

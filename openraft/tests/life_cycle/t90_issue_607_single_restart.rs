@@ -38,7 +38,7 @@ async fn single_restart() -> anyhow::Result<()> {
         let (node, sto) = router.remove_node(0).unwrap();
         node.shutdown().await?;
 
-        router.new_raft_node_with_sto(0, sto);
+        router.new_raft_node_with_sto(0, sto).await;
         // leader appends a blank log.
         log_index += 1;
 

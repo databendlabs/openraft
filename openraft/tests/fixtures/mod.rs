@@ -256,7 +256,7 @@ where
         let leader_id = C::NodeId::default();
         assert!(node_ids.contains(&leader_id));
 
-        self.new_raft_node(leader_id);
+        self.new_raft_node(leader_id).await;
 
         tracing::info!("--- wait for init node to ready");
 
@@ -279,7 +279,7 @@ where
             }
             tracing::info!("--- add voter: {}", id);
 
-            self.new_raft_node(*id);
+            self.new_raft_node(*id).await;
             self.add_learner(leader_id, *id).await?;
             log_index += 1;
         }
@@ -309,7 +309,7 @@ where
 
         for id in learners.clone() {
             tracing::info!("--- add learner: {}", id);
-            self.new_raft_node(id);
+            self.new_raft_node(id).await;
             self.add_learner(C::NodeId::default(), id).await?;
             log_index += 1;
         }
@@ -325,9 +325,9 @@ where
     }
 
     /// Create and register a new Raft node bearing the given ID.
-    pub fn new_raft_node(&mut self, id: C::NodeId) {
+    pub async fn new_raft_node(&mut self, id: C::NodeId) {
         let memstore = self.new_store();
-        self.new_raft_node_with_sto(id, memstore)
+        self.new_raft_node_with_sto(id, memstore).await
     }
 
     pub fn new_store(&mut self) -> StoreWithDefensive<C, S> {
@@ -357,8 +357,8 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip(self, sto))]
-    pub fn new_raft_node_with_sto(&mut self, id: C::NodeId, sto: StoreWithDefensive<C, S>) {
-        let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone());
+    pub async fn new_raft_node_with_sto(&mut self, id: C::NodeId, sto: StoreWithDefensive<C, S>) {
+        let node = Raft::new(id, self.config.clone(), self.clone(), sto.clone()).await.unwrap();
         let mut rt = self.routing_table.lock().unwrap();
         rt.insert(id, (node, sto));
     }
