@@ -49,10 +49,8 @@ fn m34() -> Membership<u64, ()> {
 }
 
 fn eng() -> Engine<u64, ()> {
-    let mut eng = Engine::<u64, ()> {
-        id: 2, // make it a member
-        ..Default::default()
-    };
+    let mut eng = Engine::default();
+    eng.config.id = 2;
     eng.state.vote = Vote::new(2, 1);
     eng.state.log_ids.append(log_id(1, 1));
     eng.state.log_ids.append(log_id(2, 3));

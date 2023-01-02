@@ -46,7 +46,7 @@ async fn compaction() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     let mut log_index = 0;
 
@@ -100,7 +100,7 @@ async fn compaction() -> Result<()> {
     }])
     .await?;
 
-    router.new_raft_node_with_sto(1, sto1.clone());
+    router.new_raft_node_with_sto(1, sto1.clone()).await;
     router.add_learner(0, 1).await.expect("failed to add new node as learner");
     log_index += 1; // add_learner log
 

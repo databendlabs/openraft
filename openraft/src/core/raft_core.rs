@@ -35,7 +35,6 @@ use crate::core::SnapshotState;
 use crate::core::VoteWiseTime;
 use crate::engine::Command;
 use crate::engine::Engine;
-use crate::engine::EngineConfig;
 use crate::entry::EntryRef;
 use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
@@ -80,7 +79,6 @@ use crate::replication::ReplicationHandle;
 use crate::replication::ReplicationSessionId;
 use crate::runtime::RaftRuntime;
 use crate::storage::RaftSnapshotBuilder;
-use crate::storage::StorageHelper;
 use crate::versioned::Updatable;
 use crate::versioned::Versioned;
 use crate::ChangeMembers;
@@ -194,20 +192,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level="trace", skip_all, fields(id=display(self.id), cluster=%self.config.cluster_name))]
     async fn do_main(&mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("raft node is initializing");
-
-        let state = {
-            let mut helper = StorageHelper::new(&mut self.storage);
-            helper.get_initial_state().await?
-        };
-
-        // TODO(xp): this is not necessary.
-        self.storage.save_vote(&state.vote).await?;
-
-        self.engine = Engine::new(self.id, &state, EngineConfig {
-            max_in_snapshot_log_to_keep: self.config.max_in_snapshot_log_to_keep,
-            purge_batch_size: self.config.purge_batch_size,
-            max_payload_entries: self.config.max_payload_entries,
-        });
 
         self.engine.startup();
         // No output commands

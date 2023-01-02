@@ -31,8 +31,8 @@ async fn metrics_state_machine_consistency() -> Result<()> {
 
     let mut log_index = 0;
 
-    router.new_raft_node(0);
-    router.new_raft_node(1);
+    router.new_raft_node(0).await;
+    router.new_raft_node(1).await;
 
     tracing::info!("--- initializing single node cluster");
     {

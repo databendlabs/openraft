@@ -50,10 +50,8 @@ fn m45() -> Membership<u64, ()> {
 }
 
 fn eng() -> Engine<u64, ()> {
-    let mut eng = Engine {
-        id: 2, // make it a member
-        ..Default::default()
-    };
+    let mut eng = Engine::default();
+    eng.config.id = 2;
     eng.state.log_ids.append(log_id(1, 1));
     eng.state.log_ids.append(log_id(2, 3));
     eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
@@ -156,7 +154,7 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
     // - The membership entry in the input becomes effective membership. The previous effective becomes committed.
     // - Follower become Learner, since it is not in the new effective membership.
     let mut eng = eng();
-    eng.id = 2; // make it a member, the become learner
+    eng.config.id = 2; // make it a member, the become learner
 
     eng.follower_do_append_entries(
         &[
@@ -225,7 +223,7 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
     // - A learner become follower.
 
     let mut eng = eng();
-    eng.id = 5; // make it a learner, then become follower
+    eng.config.id = 5; // make it a learner, then become follower
     eng.state.server_state = eng.calc_server_state();
 
     eng.follower_do_append_entries(

@@ -28,7 +28,7 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     // router.assert_pristine_cluster().await;
 
@@ -41,8 +41,8 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
     router.wait_for_log(&btreeset![0], Some(log_index), None, "init node 0").await?;
 
     // Sync some new nodes.
-    router.new_raft_node(1);
-    router.new_raft_node(2);
+    router.new_raft_node(1).await;
+    router.new_raft_node(2).await;
 
     tracing::info!("--- adding new nodes to cluster");
     let mut new_nodes = futures::stream::FuturesUnordered::new();
@@ -102,7 +102,7 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
 

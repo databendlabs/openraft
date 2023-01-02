@@ -41,7 +41,7 @@ async fn leader_metrics() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     // Assert all nodes are in learner state & have no entries.
     let mut log_index = 0;
@@ -75,10 +75,10 @@ async fn leader_metrics() -> Result<()> {
         .await?;
 
     // Sync some new nodes.
-    router.new_raft_node(1);
-    router.new_raft_node(2);
-    router.new_raft_node(3);
-    router.new_raft_node(4);
+    router.new_raft_node(1).await;
+    router.new_raft_node(2).await;
+    router.new_raft_node(3).await;
+    router.new_raft_node(4).await;
 
     tracing::info!("--- adding 4 new nodes to cluster");
 

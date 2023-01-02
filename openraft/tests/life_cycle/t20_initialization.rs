@@ -43,9 +43,9 @@ async fn initialization() -> anyhow::Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
-    router.new_raft_node(1);
-    router.new_raft_node(2);
+    router.new_raft_node(0).await;
+    router.new_raft_node(1).await;
+    router.new_raft_node(2).await;
 
     let mut log_index = 0;
 
@@ -166,8 +166,8 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
 
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
-    router.new_raft_node(1);
+    router.new_raft_node(0).await;
+    router.new_raft_node(1).await;
 
     for node in [0, 1] {
         router.external_request(node, |s, _sto, _net| {
@@ -201,7 +201,7 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
 
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     for node in [0] {
         router.external_request(node, |s, _sto, _net| {

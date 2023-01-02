@@ -66,7 +66,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         .await?;
         log_index = 1;
 
-        router.new_raft_node_with_sto(0, sto0);
+        router.new_raft_node_with_sto(0, sto0).await;
 
         router.wait(&0, timeout()).state(ServerState::Leader, "init node-0 server-state").await?;
         router.wait(&0, timeout()).log(Some(log_index), "init node-0 log").await?;
@@ -86,7 +86,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
     tracing::info!("--- create node-1 and add conflicting logs");
     {
-        router.new_raft_node(1);
+        router.new_raft_node(1).await;
 
         let req = AppendEntriesRequest {
             vote: Vote::new_committed(1, 0),

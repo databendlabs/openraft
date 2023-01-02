@@ -26,8 +26,8 @@ async fn total_order_apply() -> Result<()> {
 
     let mut router = RaftRouter::new(config.clone());
 
-    router.new_raft_node(0);
-    router.new_raft_node(1);
+    router.new_raft_node(0).await;
+    router.new_raft_node(1).await;
 
     tracing::info!("--- initializing single node cluster");
     {

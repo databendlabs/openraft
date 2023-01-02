@@ -205,7 +205,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
         let st = ServerState::Learner;
 
         let mut eng = eng();
-        eng.id = 100; // make it a non-voter
+        eng.config.id = 100; // make it a non-voter
         eng.enter_following();
         eng.state.server_state = st;
         eng.commands = vec![];
@@ -230,7 +230,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
         let st = ServerState::Follower;
 
         let mut eng = eng();
-        eng.id = 0; // make it a voter
+        eng.config.id = 0; // make it a voter
         eng.enter_following();
         eng.state.server_state = st;
         eng.commands = vec![];

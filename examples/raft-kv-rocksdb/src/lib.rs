@@ -73,7 +73,7 @@ where
     let network = ExampleNetwork {};
 
     // Create a local raft instance.
-    let raft = Raft::new(node_id, config.clone(), network, store.clone());
+    let raft = Raft::new(node_id, config.clone(), network, store.clone()).await.unwrap();
 
     let app = Arc::new(ExampleApp {
         id: node_id,

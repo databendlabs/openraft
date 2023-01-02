@@ -29,9 +29,9 @@ async fn client_reads() -> Result<()> {
     // This test is sensitive to network delay.
     router.network_send_delay(0);
 
-    router.new_raft_node(0);
-    router.new_raft_node(1);
-    router.new_raft_node(2);
+    router.new_raft_node(0).await;
+    router.new_raft_node(1).await;
+    router.new_raft_node(2).await;
 
     let mut log_index = 0;
 

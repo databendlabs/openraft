@@ -46,7 +46,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
     tracing::info!("--- expect OK result, check output commands and state changes");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
 
         eng.initialize(&mut entries)?;
 
@@ -148,7 +148,7 @@ fn test_initialize() -> anyhow::Result<()> {
     tracing::info!("--- expect OK result, check output commands and state changes");
     {
         let mut eng = eng();
-        eng.id = 1;
+        eng.config.id = 1;
 
         eng.initialize(&mut entries)?;
 

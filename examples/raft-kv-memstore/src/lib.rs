@@ -53,7 +53,7 @@ pub async fn start_example_raft_node(node_id: ExampleNodeId, http_addr: String) 
     let network = ExampleNetwork {};
 
     // Create a local raft instance.
-    let raft = Raft::new(node_id, config.clone(), network, store.clone());
+    let raft = Raft::new(node_id, config.clone(), network, store.clone()).await.unwrap();
 
     // Create an application that will store all the instances created above, this will
     // be later used on the actix-web services.

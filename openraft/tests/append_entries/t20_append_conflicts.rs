@@ -32,7 +32,7 @@ async fn append_conflicts() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     tracing::info!("--- wait for init node to ready");
 

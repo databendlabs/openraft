@@ -49,7 +49,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    router.new_raft_node(0);
+    router.new_raft_node(0).await;
 
     let mut log_index;
 
@@ -64,8 +64,8 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     tracing::info!("--- adding two candidate nodes");
     {
         // Sync some new nodes.
-        router.new_raft_node(1);
-        router.new_raft_node(2);
+        router.new_raft_node(1).await;
+        router.new_raft_node(2).await;
         router.add_learner(0, 1).await?;
         router.add_learner(0, 2).await?;
         log_index += 2; // two add_learner logs
@@ -93,7 +93,7 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
     // Concurrently add Learner and write another log.
     tracing::info!("--- concurrently add learner and write another log");
     {
-        router.new_raft_node(3);
+        router.new_raft_node(3).await;
         let r = router.clone();
 
         let handle = {
