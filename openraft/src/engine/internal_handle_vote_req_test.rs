@@ -52,10 +52,10 @@ fn test_handle_vote_change_reject_smaller_vote() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -79,7 +79,7 @@ fn test_handle_vote_change_committed_vote() -> anyhow::Result<()> {
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -90,7 +90,7 @@ fn test_handle_vote_change_committed_vote() -> anyhow::Result<()> {
             },
             Command::InstallElectionTimer { can_be_leader: false },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -117,7 +117,7 @@ fn test_handle_vote_change_granted_equal_vote() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -125,7 +125,7 @@ fn test_handle_vote_change_granted_equal_vote() -> anyhow::Result<()> {
             //
             Command::InstallElectionTimer { can_be_leader: true },
         ],
-        eng.commands
+        eng.output.commands
     );
     Ok(())
 }
@@ -151,7 +151,7 @@ fn test_handle_vote_change_granted_greater_vote() -> anyhow::Result<()> {
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -159,7 +159,7 @@ fn test_handle_vote_change_granted_greater_vote() -> anyhow::Result<()> {
             Command::SaveVote { vote: Vote::new(3, 1) },
             Command::InstallElectionTimer { can_be_leader: true },
         ],
-        eng.commands
+        eng.output.commands
     );
     Ok(())
 }
@@ -176,7 +176,7 @@ fn test_handle_vote_change_granted_follower_learner_does_not_emit_update_server_
         eng.config.id = 100; // make it a non-voter
         eng.enter_following();
         eng.state.server_state = st;
-        eng.commands = vec![];
+        eng.output.commands = vec![];
 
         let resp = eng.handle_vote_change(&Vote::new(3, 1));
 
@@ -189,7 +189,7 @@ fn test_handle_vote_change_granted_follower_learner_does_not_emit_update_server_
                 Command::SaveVote { vote: Vote::new(3, 1) },
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
-            eng.commands
+            eng.output.commands
         );
     }
     // Follower
@@ -200,7 +200,7 @@ fn test_handle_vote_change_granted_follower_learner_does_not_emit_update_server_
         eng.config.id = 0; // make it a voter
         eng.enter_following();
         eng.state.server_state = st;
-        eng.commands = vec![];
+        eng.output.commands = vec![];
 
         let resp = eng.handle_vote_change(&Vote::new(3, 1));
 
@@ -213,7 +213,7 @@ fn test_handle_vote_change_granted_follower_learner_does_not_emit_update_server_
                 Command::SaveVote { vote: Vote::new(3, 1) },
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
-            eng.commands
+            eng.output.commands
         );
     }
     Ok(())

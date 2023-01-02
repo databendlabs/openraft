@@ -49,10 +49,10 @@ fn test_startup_as_follower() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -73,10 +73,10 @@ fn test_startup_as_learner() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }

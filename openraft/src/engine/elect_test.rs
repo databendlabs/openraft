@@ -57,7 +57,7 @@ fn test_elect() -> anyhow::Result<()> {
                 local_data: true,
                 cluster: true,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
 
         assert_eq!(
@@ -94,7 +94,7 @@ fn test_elect() -> anyhow::Result<()> {
                     },),
                 },
             ],
-            eng.commands
+            eng.output.commands
         );
     }
 
@@ -124,7 +124,7 @@ fn test_elect() -> anyhow::Result<()> {
                 local_data: true,
                 cluster: true,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
 
         assert_eq!(
@@ -161,7 +161,7 @@ fn test_elect() -> anyhow::Result<()> {
                     },),
                 },
             ],
-            eng.commands
+            eng.output.commands
         );
     }
 
@@ -187,7 +187,7 @@ fn test_elect() -> anyhow::Result<()> {
                 local_data: true,
                 cluster: false,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
 
         assert_eq!(
@@ -198,7 +198,7 @@ fn test_elect() -> anyhow::Result<()> {
                 },
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
-            eng.commands
+            eng.output.commands
         );
     }
     Ok(())

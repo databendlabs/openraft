@@ -76,7 +76,7 @@ fn test_update_effective_membership_at_index_0_is_allowed() -> anyhow::Result<()
             local_data: false,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -86,7 +86,7 @@ fn test_update_effective_membership_at_index_0_is_allowed() -> anyhow::Result<()
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(0, 0)), m34())),
             },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -121,7 +121,7 @@ fn test_update_effective_membership_for_leader() -> anyhow::Result<()> {
             local_data: false,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -135,7 +135,7 @@ fn test_update_effective_membership_for_leader() -> anyhow::Result<()> {
                                                                                             * won't be removed */
             }
         ],
-        eng.commands
+        eng.output.commands
     );
 
     assert!(

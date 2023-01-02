@@ -102,10 +102,10 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -148,7 +148,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -159,7 +159,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -206,7 +206,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -224,7 +224,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -281,7 +281,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -308,7 +308,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -366,7 +366,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -402,7 +402,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -462,7 +462,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             local_data: true,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -490,7 +490,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())

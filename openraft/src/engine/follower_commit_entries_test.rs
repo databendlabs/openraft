@@ -68,10 +68,10 @@ fn test_follower_commit_entries_empty() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -97,10 +97,10 @@ fn test_follower_commit_entries_no_update() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -126,7 +126,7 @@ fn test_follower_commit_entries_lt_last_entry() -> anyhow::Result<()> {
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -134,7 +134,7 @@ fn test_follower_commit_entries_lt_last_entry() -> anyhow::Result<()> {
             already_committed: Some(log_id(1, 1)),
             upto: log_id(2, 3)
         }],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -161,7 +161,7 @@ fn test_follower_commit_entries_gt_last_entry() -> anyhow::Result<()> {
             local_data: true,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
@@ -169,7 +169,7 @@ fn test_follower_commit_entries_gt_last_entry() -> anyhow::Result<()> {
             already_committed: Some(log_id(1, 1)),
             upto: log_id(2, 3)
         }],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())

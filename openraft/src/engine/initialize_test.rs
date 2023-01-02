@@ -63,7 +63,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 local_data: true,
                 cluster: true,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
         assert_eq!(m1(), eng.state.membership_state.effective.membership);
 
@@ -120,7 +120,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                     },),
                 }
             ],
-            eng.commands
+            eng.output.commands
         );
     }
     Ok(())
@@ -163,7 +163,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 local_data: true,
                 cluster: true,
             },
-            eng.metrics_flags
+            eng.output.metrics_flags
         );
         assert_eq!(m12(), eng.state.membership_state.effective.membership);
 
@@ -198,7 +198,7 @@ fn test_initialize() -> anyhow::Result<()> {
                 },
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
-            eng.commands
+            eng.output.commands
         );
     }
 

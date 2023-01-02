@@ -59,6 +59,21 @@ impl<NID: NodeId> Default for EngineConfig<NID> {
     }
 }
 
+/// The entry of output from Engine to the runtime.
+#[derive(Debug, Clone, Default)]
+#[derive(PartialEq, Eq)]
+pub(crate) struct EngineOutput<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    /// Tracks what kind of metrics changed
+    pub(crate) metrics_flags: MetricsChangeFlags,
+
+    /// Command queue that need to be executed by `RaftRuntime`.
+    pub(crate) commands: Vec<Command<NID, N>>,
+}
+
 /// Raft protocol algorithm.
 ///
 /// It implement the complete raft algorithm except does not actually update any states.
@@ -72,8 +87,8 @@ impl<NID: NodeId> Default for EngineConfig<NID> {
 #[derive(PartialEq, Eq)]
 pub(crate) struct Engine<NID, N>
 where
-    N: Node,
     NID: NodeId,
+    N: Node,
 {
     pub(crate) config: EngineConfig<NID>,
 
@@ -83,11 +98,8 @@ where
     /// The internal server state used by Engine.
     pub(crate) internal_server_state: InternalServerState<NID>,
 
-    /// Tracks what kind of metrics changed
-    pub(crate) metrics_flags: MetricsChangeFlags,
-
-    /// Command queue that need to be executed by `RaftRuntime`.
-    pub(crate) commands: Vec<Command<NID, N>>,
+    /// Output entry for the runtime.
+    pub(crate) output: EngineOutput<NID, N>,
 }
 
 impl<NID, N> Engine<NID, N>
@@ -100,8 +112,7 @@ where
             config,
             state: init_state.clone(),
             internal_server_state: InternalServerState::default(),
-            metrics_flags: MetricsChangeFlags::default(),
-            commands: vec![],
+            output: EngineOutput::default(),
         }
     }
 
@@ -921,7 +932,7 @@ where
         }
 
         self.state.snapshot_meta = meta;
-        self.metrics_flags.set_data_changed();
+        self.output.metrics_flags.set_data_changed();
 
         true
     }
@@ -1286,7 +1297,7 @@ where
     }
 
     fn push_command(&mut self, cmd: Command<NID, N>) {
-        cmd.update_metrics_flags(&mut self.metrics_flags);
-        self.commands.push(cmd)
+        cmd.update_metrics_flags(&mut self.output.metrics_flags);
+        self.output.commands.push(cmd)
     }
 }

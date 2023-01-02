@@ -65,10 +65,10 @@ fn test_update_committed_membership_at_index_0() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -94,10 +94,10 @@ fn test_update_committed_membership_at_index_2() -> anyhow::Result<()> {
             local_data: false,
             cluster: false,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
-    assert_eq!(0, eng.commands.len());
+    assert_eq!(0, eng.output.commands.len());
 
     Ok(())
 }
@@ -124,14 +124,14 @@ fn test_update_committed_membership_at_index_3() -> anyhow::Result<()> {
             local_data: false,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
         vec![Command::UpdateMembership {
             membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34())),
         },],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())
@@ -159,14 +159,14 @@ fn test_update_committed_membership_at_index_4() -> anyhow::Result<()> {
             local_data: false,
             cluster: true,
         },
-        eng.metrics_flags
+        eng.output.metrics_flags
     );
 
     assert_eq!(
         vec![Command::UpdateMembership {
             membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
         },],
-        eng.commands
+        eng.output.commands
     );
 
     Ok(())

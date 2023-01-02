@@ -583,11 +583,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Then clear flags about the cached changes, to avoid unnecessary metrics report.
     #[tracing::instrument(level = "debug", skip_all)]
     pub fn flush_metrics(&mut self) {
-        if !self.engine.metrics_flags.changed() {
+        if !self.engine.output.metrics_flags.changed() {
             return;
         }
 
-        let leader_metrics = if self.engine.metrics_flags.replication {
+        let leader_metrics = if self.engine.output.metrics_flags.replication {
             let replication_metrics = self.leader_data.as_ref().map(|x| x.replication_metrics.clone());
             Update::Update(replication_metrics)
         } else {
@@ -600,7 +600,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         };
 
         self.report_metrics(leader_metrics);
-        self.engine.metrics_flags.reset();
+        self.engine.output.metrics_flags.reset();
     }
 
     /// Report a metrics payload on the current state of the Raft node.
@@ -977,14 +977,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     {
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!("run command: start...");
-            for c in self.engine.commands.iter() {
+            for c in self.engine.output.commands.iter() {
                 tracing::debug!("run command: {:?}", c);
             }
         }
 
         let mut curr = 0;
         let mut commands = vec![];
-        swap(&mut self.engine.commands, &mut commands);
+        swap(&mut self.engine.output.commands, &mut commands);
         for cmd in commands {
             self.run_command(input_entries, &mut curr, &cmd).await?;
         }
@@ -1357,7 +1357,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             // And this node may become a non-leader after `update_progress()`
         }
 
-        self.engine.metrics_flags.set_replication_changed()
+        self.engine.output.metrics_flags.set_replication_changed()
     }
 
     /// If a message is sent by a previous server state but is received by current server state,
