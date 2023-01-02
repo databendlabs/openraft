@@ -1,6 +1,4 @@
 use crate::engine::LogIdList;
-use crate::internal_server_state::InternalServerState;
-use crate::leader::Leader;
 use crate::node::Node;
 use crate::raft_types::RaftLogId;
 use crate::LogId;
@@ -71,9 +69,6 @@ where
     // --
     // -- volatile fields: they are not persisted.
     // --
-    /// The internal server state used by Engine.
-    pub(crate) internal_server_state: InternalServerState<NID>,
-
     pub server_state: ServerState,
 }
 
@@ -136,17 +131,6 @@ where
         } else {
             false
         }
-    }
-
-    /// Create a new Leader, when raft enters candidate state.
-    /// In openraft, Leader and Candidate shares the same state.
-    pub(crate) fn new_leader(&mut self) {
-        let em = &self.membership_state.effective;
-        self.internal_server_state = InternalServerState::Leading(Leader::new(
-            em.membership.to_quorum_set(),
-            em.learner_ids(),
-            self.last_log_id().index(),
-        ));
     }
 
     /// Return true if the currently effective membership is committed.

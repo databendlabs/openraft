@@ -251,7 +251,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Spawn parallel requests, all with the standard timeout for heartbeats.
         let mut pending = FuturesUnordered::new();
 
-        let voter_progresses = if let Some(l) = &self.engine.state.internal_server_state.leading() {
+        let voter_progresses = if let Some(l) = &self.engine.internal_server_state.leading() {
             l.progress
                 .iter()
                 .filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
@@ -399,7 +399,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let curr = &self.engine.state.membership_state.effective;
         if curr.contains(&target) {
-            let matched = if let Some(l) = &self.engine.state.internal_server_state.leading() {
+            let matched = if let Some(l) = &self.engine.internal_server_state.leading() {
                 *l.progress.get(&target)
             } else {
                 unreachable!("it has to be a leader!!!");
@@ -538,7 +538,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 Expectation::AtLineRate => {
                     // Expect to be at line rate but not.
 
-                    let matched = if let Some(l) = &self.engine.state.internal_server_state.leading() {
+                    let matched = if let Some(l) = &self.engine.internal_server_state.leading() {
                         *l.progress.get(node_id)
                     } else {
                         unreachable!("it has to be a leader!!!");

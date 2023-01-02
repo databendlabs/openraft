@@ -9,6 +9,7 @@ use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
+use crate::leader::Leader;
 use crate::membership::EffectiveMembership;
 use crate::membership::NodeRole;
 use crate::node::Node;
@@ -79,6 +80,9 @@ where
     /// The state of this raft node.
     pub(crate) state: RaftState<NID, N>,
 
+    /// The internal server state used by Engine.
+    pub(crate) internal_server_state: InternalServerState<NID>,
+
     /// Tracks what kind of metrics changed
     pub(crate) metrics_flags: MetricsChangeFlags,
 
@@ -96,6 +100,7 @@ where
             id,
             config,
             state: init_state.clone(),
+            internal_server_state: InternalServerState::default(),
             metrics_flags: MetricsChangeFlags::default(),
             commands: vec![],
         }
@@ -162,7 +167,7 @@ where
         self.handle_vote_change(&Vote::new(self.state.vote.term + 1, self.id)).unwrap();
 
         // Safe unwrap()
-        let leader = self.state.internal_server_state.leading_mut().unwrap();
+        let leader = self.internal_server_state.leading_mut().unwrap();
         leader.grant_vote_by(self.id);
         let quorum_granted = leader.is_vote_granted();
 
@@ -233,7 +238,7 @@ where
         );
 
         // If this node is no longer a leader(i.e., electing), just ignore the delayed vote_resp.
-        let leader = match &mut self.state.internal_server_state {
+        let leader = match &mut self.internal_server_state {
             InternalServerState::Leading(l) => l,
             InternalServerState::Following => return,
         };
@@ -674,7 +679,7 @@ where
         let end = self.state.last_log_id().next_index();
 
         // If membership changes, the progress should be upgraded.
-        if let Some(leader) = &mut self.state.internal_server_state.leading_mut() {
+        if let Some(leader) = &mut self.internal_server_state.leading_mut() {
             let old_progress = leader.progress.clone();
             let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
@@ -683,7 +688,7 @@ where
         }
 
         // A leader that is removed will be shut down when this membership log is committed.
-        if self.state.internal_server_state.is_leading() {
+        if self.internal_server_state.is_leading() {
             self.update_replications()
         }
 
@@ -699,7 +704,7 @@ where
         tracing::debug!("update_progress: node_id:{} log_id:{:?}", node_id, log_id);
 
         let committed = {
-            let leader = match self.state.internal_server_state.leading_mut() {
+            let leader = match self.internal_server_state.leading_mut() {
                 None => {
                     // TODO: is it a bug if trying to update progress when it is not in leading state?
                     return;
@@ -943,11 +948,11 @@ where
     pub(crate) fn enter_leading(&mut self) {
         debug_assert_eq!(self.state.vote.node_id, self.id);
         // debug_assert!(
-        //     self.state.internal_server_state.is_following(),
+        //     self.internal_server_state.is_following(),
         //     "can not enter leading twice"
         // );
 
-        self.state.new_leader();
+        self.new_leader();
     }
 
     /// Leave leading state and enter following state(vote.node_id != self.id).
@@ -962,7 +967,7 @@ where
         // debug_assert_ne!(self.state.vote.node_id, self.id);
 
         // debug_assert!(
-        //     self.state.internal_server_state.is_leading(),
+        //     self.internal_server_state.is_leading(),
         //     "can not enter following twice"
         // );
 
@@ -980,11 +985,11 @@ where
             self.push_command(Command::InstallElectionTimer { can_be_leader: true });
         }
 
-        if self.state.internal_server_state.is_following() {
+        if self.internal_server_state.is_following() {
             return;
         }
 
-        self.state.internal_server_state = InternalServerState::Following;
+        self.internal_server_state = InternalServerState::Following;
 
         self.update_server_state_if_changed();
     }
@@ -1005,6 +1010,17 @@ where
         self.append_blank_log();
     }
 
+    /// Create a new Leader, when raft enters candidate state.
+    /// In openraft, Leader and Candidate shares the same state.
+    pub(crate) fn new_leader(&mut self) {
+        let em = &self.state.membership_state.effective;
+        self.internal_server_state = InternalServerState::Leading(Leader::new(
+            em.membership.to_quorum_set(),
+            em.learner_ids(),
+            self.state.last_log_id().index(),
+        ));
+    }
+
     fn append_blank_log(&mut self) {
         let log_id = LogId {
             leader_id: self.state.vote.leader_id(),
@@ -1018,7 +1034,7 @@ where
 
     /// update replication streams to reflect replication progress change.
     fn update_replications(&mut self) {
-        if let Some(leader) = self.state.internal_server_state.leading() {
+        if let Some(leader) = self.internal_server_state.leading() {
             let mut targets = vec![];
             for (node_id, matched) in leader.progress.iter() {
                 if node_id != &self.id {
