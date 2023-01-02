@@ -55,7 +55,7 @@ fn test_update_progress_no_leader() -> anyhow::Result<()> {
 #[test]
 fn test_update_progress_update_leader_progress() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.new_leader();
+    eng.new_leader();
 
     // progress: None, None, (1,2)
     eng.update_progress(3, Some(log_id(1, 2)));

@@ -30,7 +30,7 @@ fn eng() -> Engine<u64, ()> {
     eng.state.vote = Vote::new(2, 1);
     eng.state.server_state = ServerState::Candidate;
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
-    eng.state.new_leader();
+    eng.new_leader();
     eng
 }
 
@@ -43,7 +43,7 @@ fn test_handle_vote_change_reject_smaller_vote() -> anyhow::Result<()> {
     assert_eq!(Err(RejectVoteRequest::ByVote(Vote::new(2, 1))), resp);
 
     assert_eq!(Vote::new(2, 1), eng.state.vote);
-    assert!(eng.state.internal_server_state.is_leading());
+    assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
     assert_eq!(
@@ -70,7 +70,7 @@ fn test_handle_vote_change_committed_vote() -> anyhow::Result<()> {
     assert_eq!(Ok(()), resp);
 
     assert_eq!(Vote::new_committed(3, 2), eng.state.vote);
-    assert!(eng.state.internal_server_state.is_following());
+    assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
@@ -108,7 +108,7 @@ fn test_handle_vote_change_granted_equal_vote() -> anyhow::Result<()> {
     assert_eq!(Ok(()), resp);
 
     assert_eq!(Vote::new(2, 1), eng.state.vote);
-    assert!(eng.state.internal_server_state.is_following());
+    assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(
@@ -142,7 +142,7 @@ fn test_handle_vote_change_granted_greater_vote() -> anyhow::Result<()> {
     assert_eq!(Ok(()), resp);
 
     assert_eq!(Vote::new(3, 1), eng.state.vote);
-    assert!(eng.state.internal_server_state.is_following());
+    assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
     assert_eq!(

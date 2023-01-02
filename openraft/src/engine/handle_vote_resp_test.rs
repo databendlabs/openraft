@@ -50,7 +50,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 1), eng.state.vote);
-        assert!(eng.state.internal_server_state.is_following());
+        assert!(eng.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
         assert_eq!(
@@ -71,8 +71,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
-        eng.state.new_leader();
-        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.new_leader();
+        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -84,7 +84,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(
             Some(btreeset! {1},),
-            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+            eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -110,8 +110,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = Vote::new(2, 1);
         eng.state.log_ids = LogIdList::new(vec![log_id(3, 3)]);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
-        eng.state.new_leader();
-        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.new_leader();
+        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -121,7 +121,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(2, 2), eng.state.vote);
-        assert!(eng.state.internal_server_state.is_leading());
+        assert!(eng.internal_server_state.is_leading());
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
@@ -148,8 +148,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
-        eng.state.new_leader();
-        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.new_leader();
+        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -161,7 +161,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(
             Some(btreeset! {1},),
-            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+            eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -186,8 +186,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()));
-        eng.state.new_leader();
-        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.new_leader();
+        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -199,7 +199,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new(2, 1), eng.state.vote);
         assert_eq!(
             Some(btreeset! {1,2},),
-            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+            eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
         );
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -221,8 +221,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
-        eng.state.new_leader();
-        eng.state.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
+        eng.new_leader();
+        eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
@@ -234,7 +234,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
         assert_eq!(
             Some(btreeset! {1,2},),
-            eng.state.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
+            eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
         );
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
