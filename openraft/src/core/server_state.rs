@@ -1,8 +1,10 @@
 /// All possible states of a Raft node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum ServerState {
     /// The node is completely passive; replicating entries, but neither voting nor timing out.
+    #[default]
     Learner,
     /// The node is replicating logs from the leader.
     Follower,
@@ -12,12 +14,6 @@ pub enum ServerState {
     Leader,
     /// The Raft node is shutting down.
     Shutdown,
-}
-
-impl Default for ServerState {
-    fn default() -> Self {
-        Self::Follower
-    }
 }
 
 impl ServerState {

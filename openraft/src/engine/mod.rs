@@ -29,6 +29,7 @@
 mod command;
 mod engine_impl;
 mod log_id_list;
+mod vote_handler;
 
 #[cfg(test)] mod calc_purge_upto_test;
 #[cfg(test)] mod elect_test;

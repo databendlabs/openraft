@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use maplit::btreeset;
 use openraft::Config;
-use openraft::ServerState;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -39,11 +38,6 @@ async fn single_restart() -> anyhow::Result<()> {
         node.shutdown().await?;
 
         router.new_raft_node_with_sto(0, sto).await;
-        // leader appends a blank log.
-        log_index += 1;
-
-        router.wait(&0, timeout()).state(ServerState::Leader, "node-0 is leader").await?;
-        router.wait(&0, timeout()).log(Some(log_index), "node-0 restarted").await?;
     }
 
     tracing::info!("--- write to 1 log after restart");

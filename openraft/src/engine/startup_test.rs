@@ -2,13 +2,16 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
+use crate::engine::Command;
 use crate::engine::Engine;
+use crate::progress::entry::ProgressEntry;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
 use crate::ServerState;
+use crate::Vote;
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
@@ -28,11 +31,74 @@ fn m34() -> Membership<u64, ()> {
 fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::default();
     eng.config.id = 2;
-    // This will be overrided
-    eng.state.server_state = ServerState::Leader;
+    // This will be overridden
+    eng.state.server_state = ServerState::default();
     eng
 }
 
+#[test]
+fn test_startup_as_leader() -> anyhow::Result<()> {
+    let mut eng = eng();
+    // self.id==2 is a voter:
+    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    // Committed vote makes it a leader at startup.
+    eng.state.vote = Vote::new_committed(1, 2);
+
+    eng.startup();
+
+    assert_eq!(ServerState::Leader, eng.state.server_state);
+
+    assert_eq!(
+        MetricsChangeFlags {
+            replication: true,
+            local_data: false,
+            cluster: true,
+        },
+        eng.output.metrics_flags
+    );
+
+    assert_eq!(
+        vec![
+            //
+            Command::BecomeLeader,
+            Command::UpdateReplicationStreams {
+                targets: vec![(3, ProgressEntry {
+                    matching: None,
+                    searching: None
+                })]
+            }
+        ],
+        eng.output.commands
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
+    let mut eng = eng();
+    // self.id==2 is a voter:
+    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    // Non-committed vote makes it a candidate at startup.
+    eng.state.vote = Vote::new(1, 2);
+
+    eng.startup();
+
+    assert_eq!(ServerState::Follower, eng.state.server_state);
+
+    assert_eq!(
+        MetricsChangeFlags {
+            replication: false,
+            local_data: false,
+            cluster: false,
+        },
+        eng.output.metrics_flags
+    );
+
+    assert_eq!(0, eng.output.commands.len());
+
+    Ok(())
+}
 #[test]
 fn test_startup_as_follower() -> anyhow::Result<()> {
     let mut eng = eng();

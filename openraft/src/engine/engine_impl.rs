@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::ServerState;
+use crate::engine::vote_handler::VoteHandler;
 use crate::engine::Command;
 use crate::entry::RaftEntry;
 use crate::error::InitializeError;
@@ -74,6 +75,17 @@ where
     pub(crate) commands: Vec<Command<NID, N>>,
 }
 
+impl<NID, N> EngineOutput<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    pub(crate) fn push_command(&mut self, cmd: Command<NID, N>) {
+        cmd.update_metrics_flags(&mut self.metrics_flags);
+        self.commands.push(cmd)
+    }
+}
+
 /// Raft protocol algorithm.
 ///
 /// It implement the complete raft algorithm except does not actually update any states.
@@ -119,8 +131,15 @@ where
     // TODO: test it
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn startup(&mut self) {
-        // On startup, do not assume a leader. Becoming a leader require initialization on several fields.
-        // TODO: allows starting up as a leader. After `server_state` is removed from Engine.
+        // Allows starting up as a leader.
+
+        // Previously it is a leader. restore it as leader at once
+        if self.is_leader() {
+            self.switch_internal_server_state();
+            self.update_server_state_if_changed();
+            self.update_replications();
+            return;
+        }
 
         let server_state = if self.state.membership_state.effective.is_voter(&self.config.id) {
             ServerState::Follower
@@ -128,13 +147,13 @@ where
             ServerState::Learner
         };
 
+        self.state.server_state = server_state;
+
         tracing::debug!(
             "startup: id={} target_state: {:?}",
             self.config.id,
             self.state.server_state
         );
-
-        self.state.server_state = server_state;
     }
 
     /// Initialize a node by appending the first log.
@@ -702,7 +721,10 @@ where
         }
 
         // A leader that is removed will be shut down when this membership log is committed.
-        if self.internal_server_state.is_leading() {
+        // TODO: currently only a leader has replication setup.
+        //       It's better to setup replication for both leader and candidate.
+        //       e.g.: if self.internal_server_state.is_leading() {
+        if self.is_leader() {
             self.update_replications()
         }
 
@@ -1010,12 +1032,7 @@ where
 
     /// Vote is granted by a quorum, leader established.
     fn establish_leader(&mut self) {
-        self.state.vote.commit();
-        // Saving the vote that is granted by a quorum, AKA committed vote, is not necessary by original raft.
-        // Openraft insists doing this because:
-        // - Voting is not in the hot path, thus no performance penalty.
-        // - Leadership won't be lost if a leader restarted quick enough.
-        self.push_command(Command::SaveVote { vote: self.state.vote });
+        self.vote_handler().commit();
 
         self.update_server_state_if_changed();
         self.update_replications();
@@ -1297,7 +1314,15 @@ where
     }
 
     fn push_command(&mut self, cmd: Command<NID, N>) {
-        cmd.update_metrics_flags(&mut self.output.metrics_flags);
-        self.output.commands.push(cmd)
+        self.output.push_command(cmd)
+    }
+
+    // --- handlers ---
+
+    fn vote_handler(&mut self) -> VoteHandler<NID, N> {
+        VoteHandler {
+            state: &mut self.state,
+            output: &mut self.output,
+        }
     }
 }

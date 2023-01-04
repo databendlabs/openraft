@@ -194,10 +194,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!("raft node is initializing");
 
         self.engine.startup();
-        // No output commands
+        self.run_engine_commands::<Entry<C>>(&[]).await?;
 
         // To ensure that restarted nodes don't disrupt a stable cluster.
-        self.set_next_election_time(false);
+        if self.engine.state.server_state == ServerState::Follower {
+            self.set_next_election_time(false);
+        }
 
         // Initialize metrics.
         self.report_metrics(Update::Update(None));
@@ -976,16 +978,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &'e Ent: Into<Entry<C>>,
     {
         if tracing::enabled!(Level::DEBUG) {
-            tracing::debug!("run command: start...");
+            tracing::debug!("commands: start...");
             for c in self.engine.output.commands.iter() {
-                tracing::debug!("run command: {:?}", c);
+                tracing::debug!("commands: {:?}", c);
             }
+            tracing::debug!("commands: end...");
         }
 
         let mut curr = 0;
         let mut commands = vec![];
         swap(&mut self.engine.output.commands, &mut commands);
         for cmd in commands {
+            tracing::debug!("run command: {:?}", cmd);
             self.run_command(input_entries, &mut curr, &cmd).await?;
         }
 
