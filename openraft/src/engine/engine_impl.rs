@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::core::ServerState;
-use crate::engine::vote_handler::VoteHandler;
+use crate::engine::handler::snapshot_handler::SnapshotHandler;
+use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
 use crate::entry::RaftEntry;
 use crate::error::InitializeError;
@@ -687,7 +688,7 @@ where
         let mem_state = MembershipState { committed, effective };
 
         if self.state.membership_state.effective != mem_state.effective {
-            self.push_command(Command::UpdateMembership {
+            self.output.push_command(Command::UpdateMembership {
                 membership: mem_state.effective.clone(),
             })
         }
@@ -873,7 +874,8 @@ where
         // snapshot_last_log_id can not be None
         let snap_last_log_id = snap_last_log_id.unwrap();
 
-        let updated = self.update_snapshot(meta.clone());
+        let mut snap_handler = self.snapshot_handler();
+        let updated = snap_handler.update_snapshot(meta.clone());
         if !updated {
             return;
         }
@@ -914,7 +916,7 @@ where
         //       - Replace state machine with snapshot and replace the `current_snapshot` in the store.
         //       - Do not install, just replace the `current_snapshot` with a newer one. This command can be used for
         //         leader to synchronize its snapshot data.
-        self.push_command(Command::InstallSnapshot { snapshot_meta: meta });
+        self.output.push_command(Command::InstallSnapshot { snapshot_meta: meta });
 
         // A local log that is <= snap_last_log_id can not conflict with the leader.
         // But there will be a hole in the logs. Thus it's better remove all logs.
@@ -929,34 +931,13 @@ where
     pub(crate) fn finish_building_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
         tracing::info!("finish_building_snapshot: {:?}", meta);
 
-        let updated = self.update_snapshot(meta);
+        let mut h = self.snapshot_handler();
+        let updated = h.update_snapshot(meta);
         if !updated {
             return;
         }
 
         self.purge_in_snapshot_log();
-    }
-
-    /// Update engine state when a new snapshot is built or installed.
-    ///
-    /// Engine records only the metadata of a snapshot. Snapshot data is stored by RaftStorage implementation.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<NID, N>) -> bool {
-        tracing::info!("update_snapshot: {:?}", meta);
-
-        if meta.last_log_id <= self.state.snapshot_meta.last_log_id {
-            tracing::info!(
-                "No need to install a smaller snapshot: current snapshot last_log_id({}), new snapshot last_log_id({})",
-                self.state.snapshot_meta.last_log_id.summary(),
-                meta.last_log_id.summary()
-            );
-            return false;
-        }
-
-        self.state.snapshot_meta = meta;
-        self.output.metrics_flags.set_data_changed();
-
-        true
     }
 }
 
@@ -1178,9 +1159,9 @@ where
         let is_leader = server_state == ServerState::Leader;
 
         if !was_leader && is_leader {
-            self.push_command(Command::BecomeLeader);
+            self.output.push_command(Command::BecomeLeader);
         } else if was_leader && !is_leader {
-            self.push_command(Command::QuitLeader);
+            self.output.push_command(Command::QuitLeader);
         } else {
             // nothing to do
         }
@@ -1319,8 +1300,15 @@ where
 
     // --- handlers ---
 
-    fn vote_handler(&mut self) -> VoteHandler<NID, N> {
+    pub(crate) fn vote_handler(&mut self) -> VoteHandler<NID, N> {
         VoteHandler {
+            state: &mut self.state,
+            output: &mut self.output,
+        }
+    }
+
+    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N> {
+        SnapshotHandler {
             state: &mut self.state,
             output: &mut self.output,
         }
