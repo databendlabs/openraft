@@ -28,8 +28,8 @@
 
 mod command;
 mod engine_impl;
+mod handler;
 mod log_id_list;
-mod vote_handler;
 
 #[cfg(test)] mod calc_purge_upto_test;
 #[cfg(test)] mod elect_test;
@@ -50,7 +50,6 @@ mod vote_handler;
 #[cfg(test)] mod update_committed_membership_test;
 #[cfg(test)] mod update_effective_membership_test;
 #[cfg(test)] mod update_progress_test;
-#[cfg(test)] mod update_snapshot_test;
 
 pub(crate) use command::Command;
 pub(crate) use engine_impl::Engine;
