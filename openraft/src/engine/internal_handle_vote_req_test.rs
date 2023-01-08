@@ -27,6 +27,8 @@ fn m01() -> Membership<u64, ()> {
 
 fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::<u64, ()>::default();
+    eng.state.enable_validate = false; // Disable validation for incomplete state
+
     eng.state.vote = Vote::new(2, 1);
     eng.state.server_state = ServerState::Candidate;
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));

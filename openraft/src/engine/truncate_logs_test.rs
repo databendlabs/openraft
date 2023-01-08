@@ -35,6 +35,8 @@ fn m23() -> Membership<u64, ()> {
 
 fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::default();
+    eng.state.enable_validate = false; // Disable validation for incomplete state
+
     eng.config.id = 2;
     eng.state.log_ids = LogIdList::new(vec![
         log_id(2, 2), //

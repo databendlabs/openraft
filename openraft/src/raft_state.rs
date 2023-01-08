@@ -1,6 +1,11 @@
+use std::error::Error;
+
 use crate::engine::LogIdList;
+use crate::equal;
+use crate::less_equal;
 use crate::node::Node;
 use crate::raft_types::RaftLogId;
+use crate::valid::Validate;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MembershipState;
@@ -57,6 +62,8 @@ where
     /// - A quorum could be a uniform quorum or joint quorum.
     pub committed: Option<LogId<NID>>,
 
+    pub(crate) next_purge: u64,
+
     /// All log ids this node has.
     pub log_ids: LogIdList<NID>,
 
@@ -94,7 +101,30 @@ where
     }
 
     fn last_purged_log_id(&self) -> Option<&LogId<NID>> {
+        if self.next_purge == 0 {
+            return None;
+        }
         self.log_ids.first()
+    }
+}
+
+impl<NID, N> Validate for RaftState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn validate(&self) -> Result<(), Box<dyn Error>> {
+        if self.next_purge == 0 {
+            less_equal!(self.log_ids.first().index(), Some(0));
+        } else {
+            equal!(self.next_purge, self.log_ids.first().next_index());
+        }
+
+        less_equal!(self.last_purged_log_id(), self.snapshot_last_log_id());
+        less_equal!(self.snapshot_last_log_id(), self.committed());
+        less_equal!(self.committed(), self.last_log_id());
+
+        Ok(())
     }
 }
 
@@ -155,5 +185,10 @@ where
         } else {
             None
         }
+    }
+
+    pub(crate) fn purge_log(&mut self, upto: &LogId<NID>) {
+        self.next_purge = upto.index + 1;
+        self.log_ids.purge(upto);
     }
 }

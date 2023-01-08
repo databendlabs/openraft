@@ -74,6 +74,7 @@ mod tests {
 
     fn eng() -> Engine<u64, ()> {
         let mut eng = Engine::<u64, ()> { ..Default::default() };
+        eng.state.enable_validate = false; // Disable validation for incomplete state
 
         eng.state.snapshot_meta = SnapshotMeta {
             last_log_id: Some(log_id(2, 2)),

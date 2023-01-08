@@ -12,6 +12,8 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
 
 fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::default();
+    eng.state.enable_validate = false; // Disable validation for incomplete state
+
     eng.state.log_ids = LogIdList::new(vec![
         //
         log_id(0, 0),
@@ -32,7 +34,7 @@ fn test_calc_purge_upto() -> anyhow::Result<()> {
         (None, None, 1, None),
         //
         (None, Some(log_id(1, 1)), 0, Some(log_id(1, 1))),
-        (None, Some(log_id(1, 1)), 1, None),
+        (None, Some(log_id(1, 1)), 1, Some(log_id(0, 0))),
         (None, Some(log_id(1, 1)), 2, None),
         //
         (Some(log_id(0, 0)), Some(log_id(1, 1)), 0, Some(log_id(1, 1))),
@@ -43,7 +45,7 @@ fn test_calc_purge_upto() -> anyhow::Result<()> {
         (None, Some(log_id(3, 4)), 1, Some(log_id(3, 3))),
         (None, Some(log_id(3, 4)), 2, Some(log_id(1, 2))),
         (None, Some(log_id(3, 4)), 3, Some(log_id(1, 1))),
-        (None, Some(log_id(3, 4)), 4, None),
+        (None, Some(log_id(3, 4)), 4, Some(log_id(0, 0))),
         (None, Some(log_id(3, 4)), 5, None),
         //
         (Some(log_id(1, 2)), Some(log_id(3, 4)), 0, Some(log_id(3, 4))),
@@ -61,6 +63,7 @@ fn test_calc_purge_upto() -> anyhow::Result<()> {
 
         if let Some(last_purged) = last_purged {
             eng.state.log_ids.purge(&last_purged);
+            eng.state.next_purge = last_purged.index + 1;
         }
         eng.state.snapshot_meta.last_log_id = snapshot_last_log_id;
         let got = eng.calc_purge_upto();

@@ -30,6 +30,7 @@ fn m1234() -> Membership<u64, ()> {
 
 fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::<u64, ()> { ..Default::default() };
+    eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.state.committed = Some(log_id(4, 5));
     eng.state.log_ids = LogIdList::new(vec![
@@ -199,6 +200,7 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     // And there should be no conflicting logs left.
     let mut eng = {
         let mut eng = Engine::<u64, ()> { ..Default::default() };
+        eng.state.enable_validate = false; // Disable validation for incomplete state
 
         eng.state.committed = Some(log_id(2, 3));
         eng.state.log_ids = LogIdList::new(vec![

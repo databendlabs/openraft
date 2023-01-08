@@ -69,6 +69,11 @@ where
             snapshot_id: self.snapshot_id.clone(),
         }
     }
+
+    /// Returns a ref to the id of the last log that is included in this snasphot.
+    pub fn last_log_id(&self) -> Option<&LogId<NID>> {
+        self.last_log_id.as_ref()
+    }
 }
 
 /// The data associated with the current snapshot.
