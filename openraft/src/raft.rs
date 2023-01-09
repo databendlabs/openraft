@@ -228,7 +228,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         // TODO(xp): this is not necessary.
         storage.save_vote(&state.vote).await?;
 
-        let engine = Engine::new(&state, EngineConfig {
+        let engine = Engine::new(state, EngineConfig {
             id,
             max_in_snapshot_log_to_keep: config.max_in_snapshot_log_to_keep,
             purge_batch_size: config.purge_batch_size,

@@ -53,7 +53,10 @@ where
             last_purged_log_id = last_applied;
         }
 
+        println!("purged: {:?}", last_purged_log_id);
+        println!("last: {:?}", last_log_id);
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self).await?;
+        println!("log_ids: {:?}", log_ids);
 
         let snapshot_meta = self.sto.get_current_snapshot().await?.map(|x| x.meta).unwrap_or_default();
 
@@ -62,6 +65,7 @@ where
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
             vote: vote.unwrap_or_default(),
+            next_purge: last_purged_log_id.next_index(),
             log_ids,
             membership_state: mem_state,
             snapshot_meta,

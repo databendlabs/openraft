@@ -24,6 +24,7 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::raft_types::RaftLogId;
 use crate::summary::MessageSummary;
+use crate::valid::Valid;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
@@ -106,7 +107,7 @@ where
     pub(crate) config: EngineConfig<NID>,
 
     /// The state of this raft node.
-    pub(crate) state: RaftState<NID, N>,
+    pub(crate) state: Valid<RaftState<NID, N>>,
 
     /// The internal server state used by Engine.
     pub(crate) internal_server_state: InternalServerState<NID>,
@@ -120,10 +121,10 @@ where
     N: Node,
     NID: NodeId,
 {
-    pub(crate) fn new(init_state: &RaftState<NID, N>, config: EngineConfig<NID>) -> Self {
+    pub(crate) fn new(init_state: RaftState<NID, N>, config: EngineConfig<NID>) -> Self {
         Self {
             config,
-            state: init_state.clone(),
+            state: Valid::new(init_state),
             internal_server_state: InternalServerState::default(),
             output: EngineOutput::default(),
         }
@@ -657,7 +658,7 @@ where
             return;
         }
 
-        st.log_ids.purge(&upto);
+        st.purge_log(&upto);
 
         self.output.push_command(Command::PurgeLog { upto });
     }
@@ -859,6 +860,11 @@ where
 
         tracing::info!("install_snapshot: meta:{:?}", meta);
 
+        // TODO: temp solution: committed is updated after snapshot_last_log_id.
+        //       committed should be updated first or together with snapshot_last_log_id(i.e., extract `state` first).
+        let old_validate = self.state.enable_validate;
+        self.state.enable_validate = false;
+
         let snap_last_log_id = meta.last_log_id;
 
         if snap_last_log_id <= self.state.committed {
@@ -868,6 +874,8 @@ where
                 self.state.committed.summary()
             );
             self.output.push_command(Command::CancelSnapshot { snapshot_meta: meta });
+            // TODO: temp solution: committed is updated after snapshot_last_log_id.
+            self.state.enable_validate = old_validate;
             return;
         }
 
@@ -877,6 +885,8 @@ where
         let mut snap_handler = self.snapshot_handler();
         let updated = snap_handler.update_snapshot(meta.clone());
         if !updated {
+            // TODO: temp solution: committed is updated after snapshot_last_log_id.
+            self.state.enable_validate = old_validate;
             return;
         }
 
@@ -924,7 +934,10 @@ where
         // In the second case, if local-last-log-id is smaller than snapshot-last-log-id,
         // and this node crashes after installing snapshot and before purging logs,
         // the log will be purged the next start up, in [`RaftState::get_initial_state`].
-        self.purge_log(snap_last_log_id)
+        self.purge_log(snap_last_log_id);
+
+        // TODO: temp solution: committed is updated after snapshot_last_log_id.
+        self.state.enable_validate = old_validate;
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

@@ -14,7 +14,10 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
 
 fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::<u64, ()>::default();
+    eng.state.enable_validate = false; // Disable validation for incomplete state
+
     eng.state.log_ids = LogIdList::new(vec![log_id(2, 2), log_id(4, 4), log_id(4, 6)]);
+    eng.state.next_purge = 3;
     eng
 }
 

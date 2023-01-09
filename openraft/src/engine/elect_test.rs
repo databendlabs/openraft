@@ -31,7 +31,9 @@ fn m12() -> Membership<u64, ()> {
 }
 
 fn eng() -> Engine<u64, ()> {
-    Engine::default()
+    let mut eng = Engine::default();
+    eng.state.enable_validate = false; // Disable validation for incomplete state
+    eng
 }
 
 #[test]
