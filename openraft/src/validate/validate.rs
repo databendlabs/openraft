@@ -1,8 +1,29 @@
 use std::error::Error;
 use std::fmt::Debug;
+use std::fmt::Display;
 use std::fmt::Formatter;
 use std::ops::Deref;
 use std::ops::DerefMut;
+
+#[macro_export]
+macro_rules! less {
+    ($a: expr, $b: expr) => {{
+        let a = $a;
+        let b = $b;
+        if (a < b) {
+            // Ok
+        } else {
+            Err(::anyerror::AnyError::error(format!(
+                "expect: {}({:?}) {} {}({:?})",
+                stringify!($a),
+                a,
+                "<",
+                stringify!($b),
+                b,
+            )))?;
+        }
+    }};
+}
 
 #[macro_export]
 macro_rules! less_equal {
@@ -171,13 +192,24 @@ where T: Validate
     }
 }
 
+impl<T: Display> Display for Valid<T>
+where T: Validate
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
+    use std::fmt::Display;
+    use std::fmt::Formatter;
 
-    use crate::valid::Valid;
-    use crate::valid::Validate;
+    use crate::validate::Valid;
+    use crate::validate::Validate;
 
+    #[derive(Debug, Clone, Default, PartialEq, Eq)]
     struct Foo {
         a: u64,
     }
@@ -187,6 +219,25 @@ mod tests {
             less_equal!(self.a, 10);
             Ok(())
         }
+    }
+
+    impl Display for Foo {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Foo:{}", self.a)
+        }
+    }
+
+    #[test]
+    fn test_trait() {
+        // Display
+        println!("Display: {}", Valid::new(Foo { a: 3 }));
+
+        // Default
+        assert_eq!(Valid::new(Foo { a: 0 }), Valid::<Foo>::default(), "impl Default");
+
+        // Clone
+        #[allow(clippy::redundant_clone)]
+        let _clone = Valid::new(Foo { a: 3 }).clone();
     }
 
     #[test]

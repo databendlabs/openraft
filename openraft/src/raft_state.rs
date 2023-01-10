@@ -5,7 +5,7 @@ use crate::equal;
 use crate::less_equal;
 use crate::node::Node;
 use crate::raft_types::RaftLogId;
-use crate::valid::Validate;
+use crate::validate::Validate;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MembershipState;

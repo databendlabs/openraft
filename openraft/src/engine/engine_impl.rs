@@ -24,7 +24,7 @@ use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::raft_types::RaftLogId;
 use crate::summary::MessageSummary;
-use crate::valid::Valid;
+use crate::validate::Valid;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;

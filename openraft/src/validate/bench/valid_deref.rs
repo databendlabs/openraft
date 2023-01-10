@@ -8,8 +8,8 @@ use test::Bencher;
 use crate::less_equal;
 use crate::quorum::AsJoint;
 use crate::quorum::QuorumSet;
-use crate::valid::Valid;
-use crate::valid::Validate;
+use crate::validate::Valid;
+use crate::validate::Validate;
 
 struct Foo {
     a: u64,
