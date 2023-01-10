@@ -45,7 +45,7 @@ mod runtime;
 pub mod storage;
 pub mod testing;
 pub mod timer;
-pub(crate) mod valid;
+pub(crate) mod validate;
 pub mod versioned;
 
 #[cfg(test)] mod raft_state_test;
