@@ -8,10 +8,14 @@
 #[cfg(test)]
 mod bench;
 pub(crate) mod entry;
+mod inflight;
 
 use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::slice::Iter;
+
+// TODO: remove it
+#[allow(unused_imports)] pub(crate) use inflight::Inflight;
 
 use crate::quorum::QuorumSet;
 

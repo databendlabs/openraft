@@ -33,6 +33,8 @@ mod store_wrapper;
 mod summary;
 mod vote;
 
+pub(crate) mod log_id_range;
+
 mod engine;
 pub mod error;
 mod internal_server_state;
