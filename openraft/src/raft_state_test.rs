@@ -13,13 +13,44 @@ use crate::RaftState;
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
-        leader_id: LeaderId { term, node_id: 1 },
+        leader_id: LeaderId { term, node_id: 0 },
         index,
     }
 }
 
 fn m12() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {1,2}], None)
+}
+
+#[test]
+fn test_raft_state_prev_log_id() -> anyhow::Result<()> {
+    // There is log id at 0
+    {
+        let rs = RaftState::<u64, ()> {
+            log_ids: LogIdList::new(vec![log_id(0, 0), log_id(1, 1), log_id(3, 4)]),
+            ..Default::default()
+        };
+
+        assert_eq!(None, rs.prev_log_id(0));
+        assert_eq!(Some(log_id(0, 0)), rs.prev_log_id(1));
+        assert_eq!(Some(log_id(1, 3)), rs.prev_log_id(4));
+        assert_eq!(Some(log_id(3, 4)), rs.prev_log_id(5));
+    }
+
+    // There is no log id at 0
+    {
+        let rs = RaftState::<u64, ()> {
+            log_ids: LogIdList::new(vec![log_id(1, 1), log_id(3, 4)]),
+            ..Default::default()
+        };
+
+        assert_eq!(None, rs.prev_log_id(0));
+        assert_eq!(None, rs.prev_log_id(1));
+        assert_eq!(Some(log_id(1, 1)), rs.prev_log_id(2));
+        assert_eq!(Some(log_id(1, 3)), rs.prev_log_id(4));
+        assert_eq!(Some(log_id(3, 4)), rs.prev_log_id(5));
+    }
+    Ok(())
 }
 
 #[test]

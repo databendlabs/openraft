@@ -18,6 +18,15 @@ use crate::Vote;
 ///
 /// See: https://datafuselabs.github.io/openraft/log-data-layout
 pub(crate) trait LogStateReader<NID: NodeId> {
+    /// Get previous log id, i.e., the log id at index - 1
+    fn prev_log_id(&self, index: u64) -> Option<LogId<NID>> {
+        if index == 0 {
+            None
+        } else {
+            self.get_log_id(index - 1)
+        }
+    }
+
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
