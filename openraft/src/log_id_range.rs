@@ -1,9 +1,14 @@
+use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use crate::less_equal;
+use crate::validate::Validate;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
+
+// TODO: I need just a range, but not a log id range.
 
 /// A log id range of continuous series of log entries.
 ///
@@ -24,11 +29,52 @@ impl<NID: NodeId> Display for LogIdRange<NID> {
     }
 }
 
+impl<NID: NodeId> Validate for LogIdRange<NID> {
+    fn validate(&self) -> Result<(), Box<dyn Error>> {
+        less_equal!(self.prev_log_id, self.last_log_id);
+        Ok(())
+    }
+}
+
 impl<NID: NodeId> LogIdRange<NID> {
     pub(crate) fn new(prev: Option<LogId<NID>>, last: Option<LogId<NID>>) -> Self {
         Self {
             prev_log_id: prev,
             last_log_id: last,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::log_id_range::LogIdRange;
+    use crate::validate::Valid;
+    use crate::LeaderId;
+    use crate::LogId;
+
+    fn log_id(index: u64) -> LogId<u64> {
+        LogId {
+            leader_id: LeaderId { term: 1, node_id: 1 },
+            index,
+        }
+    }
+
+    #[test]
+    fn test_log_id_range_validate() -> anyhow::Result<()> {
+        let res = std::panic::catch_unwind(|| {
+            let r = Valid::new(LogIdRange::new(Some(log_id(5)), None));
+            let _x = &r.last_log_id;
+        });
+        tracing::info!("res: {:?}", res);
+        assert!(res.is_err(), "prev(5) > last(None)");
+
+        let res = std::panic::catch_unwind(|| {
+            let r = Valid::new(LogIdRange::new(Some(log_id(5)), Some(log_id(4))));
+            let _x = &r.last_log_id;
+        });
+        tracing::info!("res: {:?}", res);
+        assert!(res.is_err(), "prev(5) > last(4)");
+
+        Ok(())
     }
 }

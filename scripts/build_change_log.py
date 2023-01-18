@@ -19,6 +19,7 @@ typs = {x:x for x in typs}
 categories = {
         'api-change:':   typs['api-change'],
         'new-feature:':  typs['new-feature'],
+        'improve:':      typs['improve'],
         'internal:':     typs['internal'],
         'doc:':          typs['doc'],
         'refactor:':     typs['refactor'],

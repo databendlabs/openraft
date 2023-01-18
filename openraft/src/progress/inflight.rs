@@ -1,10 +1,13 @@
 // TODO: remove it
 #![allow(unused)]
 
+use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
 
+use crate::less_equal;
 use crate::log_id_range::LogIdRange;
+use crate::validate::Validate;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
@@ -29,6 +32,16 @@ pub(crate) enum Inflight<NID: NodeId> {
         /// It is None, if the snapshot is empty.
         last_log_id: Option<LogId<NID>>,
     },
+}
+
+impl<NID: NodeId> Validate for Inflight<NID> {
+    fn validate(&self) -> Result<(), Box<dyn Error>> {
+        match self {
+            Inflight::None => Ok(()),
+            Inflight::Logs(r) => r.validate(),
+            Inflight::Snapshot { .. } => Ok(()),
+        }
+    }
 }
 
 impl<NID: NodeId> Display for Inflight<NID> {
@@ -121,6 +134,7 @@ impl<NID: NodeId> Inflight<NID> {
 mod tests {
     use crate::log_id_range::LogIdRange;
     use crate::progress::Inflight;
+    use crate::validate::Validate;
     use crate::LeaderId;
     use crate::LogId;
 
@@ -281,6 +295,15 @@ mod tests {
             tracing::info!("res: {:?}", res);
             assert!(res.is_err(), "conflict is not expected by Inflight::Snapshot");
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_inflight_validate() -> anyhow::Result<()> {
+        let r = Inflight::Logs(LogIdRange::new(Some(log_id(5)), Some(log_id(4))));
+        let res = r.validate();
+        assert!(res.is_err(), "prev(5) > last(4)");
 
         Ok(())
     }
