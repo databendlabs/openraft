@@ -83,6 +83,12 @@ pub(crate) trait Validate {
     fn validate(&self) -> Result<(), Box<dyn Error>>;
 }
 
+impl<T: Validate> Validate for &T {
+    fn validate(&self) -> Result<(), Box<dyn Error>> {
+        (*self).validate()
+    }
+}
+
 /// A wrapper of T that validate the state of T every time accessing it.
 ///
 /// - It validates the state before accessing it, i.e., if when a invalid state is written to it, it won't panic until
@@ -278,6 +284,27 @@ mod tests {
             let mut f = Valid::new(Foo { a: 10 });
             f.a += 3;
             f.a += 1;
+        });
+        tracing::info!("res: {:?}", res);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_validate_impl_for_ref() {
+        // Valid
+        let res = std::panic::catch_unwind(|| {
+            let f = Foo { a: 5 };
+            let f = Valid::new(&f);
+            let _x = f.a;
+        });
+        tracing::info!("res: {:?}", res);
+        assert!(res.is_ok());
+
+        // Invalid
+        let res = std::panic::catch_unwind(|| {
+            let f = Foo { a: 20 };
+            let f = Valid::new(&f);
+            let _x = f.a;
         });
         tracing::info!("res: {:?}", res);
         assert!(res.is_err());
