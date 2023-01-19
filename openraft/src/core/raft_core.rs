@@ -1339,7 +1339,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
         };
 
-        self.engine.update_progress(target, Some(progress.matching.unwrap()));
+        self.engine.replication_handler().update_progress(target, Some(progress.matching.unwrap()));
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
         Ok(())

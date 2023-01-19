@@ -115,6 +115,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
 #[test]
 fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     let mut eng = eng();
+    eng.new_leader();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
