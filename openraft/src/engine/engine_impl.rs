@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::core::ServerState;
+use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
@@ -375,7 +376,8 @@ where
 
                 if log_index > 0 {
                     if let Some(prev_log_id) = self.state.get_log_id(log_index - 1) {
-                        self.update_progress(self.config.id, Some(prev_log_id));
+                        let id = self.config.id;
+                        self.replication_handler().update_progress(id, Some(prev_log_id));
                     }
                 }
 
@@ -384,7 +386,8 @@ where
             }
         }
         if let Some(last) = entries.last() {
-            self.update_progress(self.config.id, Some(*last.get_log_id()));
+            let id = self.config.id;
+            self.replication_handler().update_progress(id, Some(*last.get_log_id()));
         }
 
         // Still need to replicate to learners, even when it is fast-committed.
@@ -737,81 +740,6 @@ where
         }
     }
 
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_progress(&mut self, node_id: NID, log_id: Option<LogId<NID>>) {
-        tracing::debug!("update_progress: node_id:{} log_id:{:?}", node_id, log_id);
-
-        let committed = {
-            let leader = match self.internal_server_state.leading_mut() {
-                None => {
-                    // TODO: is it a bug if trying to update progress when it is not in leading state?
-                    return;
-                }
-                Some(x) => x,
-            };
-
-            tracing::debug!(progress = debug(&leader.progress), "leader progress");
-
-            let v = leader.progress.try_get(&node_id);
-            let mut updated = match v {
-                None => {
-                    return;
-                }
-                Some(x) => *x,
-            };
-
-            updated.update_matching(log_id);
-
-            let res = leader.progress.update(&node_id, updated);
-            match res {
-                Ok(c) => *c,
-                Err(_) => {
-                    // TODO: leader should not append log if it is no longer in the membership.
-                    //       There is a chance this will happen:
-                    //       If leader is `1`, when a the membership changes from [1,2,3] to [2,3],
-                    //       The leader will still try to append log to its local store.
-                    //       This is still correct but unnecessary.
-                    //       To make thing clear, a leader should stop appending log at once if it is no longer in the
-                    //       membership.
-                    //       The replication task should be generalized to write log for
-                    //       both leader and follower.
-
-                    // unreachable!("updating nonexistent id: {}, progress: {:?}", node_id, leader.progress);
-
-                    return;
-                }
-            }
-        };
-
-        tracing::debug!(committed = debug(&committed), "committed after updating progress");
-
-        debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
-
-        if node_id != self.config.id {
-            self.output.push_command(Command::UpdateReplicationMetrics {
-                target: node_id,
-                matching: log_id.unwrap(),
-            });
-        }
-
-        // Only when the log id is proposed by current leader, it is committed.
-        if let Some(c) = committed {
-            if c.leader_id.term != self.state.vote.term || c.leader_id.node_id != self.state.vote.node_id {
-                return;
-            }
-        }
-
-        if let Some(prev_committed) = self.state.update_committed(&committed) {
-            self.output.push_command(Command::ReplicateCommitted {
-                committed: self.state.committed,
-            });
-            self.output.push_command(Command::LeaderCommit {
-                already_committed: prev_committed,
-                upto: self.state.committed.unwrap(),
-            });
-        }
-    }
-
     /// Leader steps down(convert to learner) once the membership not containing it is committed.
     ///
     /// This is only called by leader.
@@ -1053,7 +981,9 @@ where
         };
         self.state.log_ids.append(log_id);
         self.output.push_command(Command::AppendBlankLog { log_id });
-        self.update_progress(self.config.id, Some(log_id));
+
+        let id = self.config.id;
+        self.replication_handler().update_progress(id, Some(log_id));
         self.output.push_command(Command::ReplicateEntries { upto: Some(log_id) });
     }
 
@@ -1318,6 +1248,23 @@ where
 
     pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N> {
         SnapshotHandler {
+            state: &mut self.state,
+            output: &mut self.output,
+        }
+    }
+
+    pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<NID, N> {
+        let leader = match self.internal_server_state.leading_mut() {
+            None => {
+                // TODO: is it a bug if trying to update progress when it is not in leading state?
+                unreachable!("There is no leader, can not handle replication");
+            }
+            Some(x) => x,
+        };
+
+        ReplicationHandler {
+            config: &self.config,
+            leader,
             state: &mut self.state,
             output: &mut self.output,
         }
