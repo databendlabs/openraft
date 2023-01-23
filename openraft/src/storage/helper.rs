@@ -53,10 +53,7 @@ where
             last_purged_log_id = last_applied;
         }
 
-        println!("purged: {:?}", last_purged_log_id);
-        println!("last: {:?}", last_log_id);
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self).await?;
-        println!("log_ids: {:?}", log_ids);
 
         let snapshot_meta = self.sto.get_current_snapshot().await?.map(|x| x.meta).unwrap_or_default();
 
