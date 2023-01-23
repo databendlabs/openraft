@@ -144,8 +144,8 @@ where
             self.update_server_state_if_changed();
 
             let mut rh = self.replication_handler();
-            rh.update_replications();
-            rh.send_to_all();
+            rh.update_replication_streams();
+            rh.initiate_replication();
 
             return;
         }
@@ -422,7 +422,7 @@ where
         }
 
         // Still need to replicate to learners, even when it is fast-committed.
-        rh.send_to_all();
+        rh.initiate_replication();
 
         self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
@@ -753,8 +753,8 @@ where
         //       e.g.: if self.internal_server_state.is_leading() {
         if self.is_leader() {
             let mut rh = self.replication_handler();
-            rh.update_replications();
-            rh.send_to_all();
+            rh.update_replication_streams();
+            rh.initiate_replication();
         }
 
         // Leader should not quit at once.
@@ -982,13 +982,13 @@ where
         self.vote_handler().commit();
 
         self.update_server_state_if_changed();
-        self.replication_handler().update_replications();
+        self.replication_handler().update_replication_streams();
 
         // Only when a log with current `vote` is replicated to a quorum, the logs are considered committed.
         self.append_blank_log();
 
         // Send former logs and the blank log.
-        self.replication_handler().send_to_all();
+        self.replication_handler().initiate_replication();
     }
 
     /// Create a new Leader, when raft enters candidate state.

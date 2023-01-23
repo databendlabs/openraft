@@ -152,7 +152,7 @@ where
             tracing::debug!(next_send_res = debug(&r), "next_send");
 
             if let Ok(inflight) = r {
-                Self::send_to(self.output, &target, inflight);
+                Self::send_to_target(self.output, &target, inflight);
             } else {
                 // TODO:
                 tracing::debug!("can not send: TODO");
@@ -162,7 +162,7 @@ where
 
     /// Update replication streams to reflect replication progress change.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_replications(&mut self) {
+    pub(crate) fn update_replication_streams(&mut self) {
         let mut targets = vec![];
 
         // TODO: maybe it's better to update leader's matching when update_repliation() is called.
@@ -177,10 +177,10 @@ where
         self.output.push_command(Command::UpdateReplicationStreams { targets });
     }
 
+    /// Initiate replication for every target that is not sending data in flight.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_to_all(&mut self) {
+    pub(crate) fn initiate_replication(&mut self) {
         tracing::debug!(progress = debug(&self.leader.progress), "send_to_all");
-        // TODO(1):
 
         for (id, prog_entry) in self.leader.progress.iter_mut() {
             // TODO: update matching should be done here for leader
@@ -193,7 +193,7 @@ where
 
             match t {
                 Ok(inflight) => {
-                    Self::send_to(self.output, id, inflight);
+                    Self::send_to_target(self.output, id, inflight);
                 }
                 Err(e) => {
                     tracing::debug!("no need to replicate for node-{}: current inflight: {:?}", id, e,);
@@ -203,13 +203,11 @@ where
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn send_to(output: &mut EngineOutput<NID, N>, node_id: &NID, inflight: &Inflight<NID>) {
-        // TODO(1): test
-
+    pub(crate) fn send_to_target(output: &mut EngineOutput<NID, N>, target: &NID, inflight: &Inflight<NID>) {
         debug_assert!(!inflight.is_none());
 
         output.push_command(Command::ReplicateEnt {
-            target: *node_id,
+            target: *target,
             req: *inflight,
         });
     }
@@ -322,13 +320,11 @@ mod tests {
         }
 
         #[test]
-        fn test_update_matching_update_leader_progress() -> anyhow::Result<()> {
+        fn test_update_matching() -> anyhow::Result<()> {
             let mut eng = eng();
             eng.new_leader();
 
-            // TODO(1): If inflight becomes None, it should output another replication action.
-            //          Otherwise, it outputs nothing.
-            let rh = eng.replication_handler();
+            let mut rh = eng.replication_handler();
             let inflight_id_1 = {
                 let prog_entry = rh.leader.progress.get_mut(&1).unwrap();
                 prog_entry.inflight = Inflight::logs(Some(log_id(2, 3)), Some(log_id(2, 4)));
@@ -347,8 +343,8 @@ mod tests {
 
             // progress: None, None, (1,2)
             {
-                eng.replication_handler().update_matching(3, inflight_id_3, Some(log_id(1, 2)));
-                assert_eq!(None, eng.state.committed);
+                rh.update_matching(3, inflight_id_3, Some(log_id(1, 2)));
+                assert_eq!(None, rh.state.committed);
                 assert_eq!(
                     vec![
                         //
@@ -357,23 +353,23 @@ mod tests {
                             matching: log_id(1, 2),
                         },
                     ],
-                    eng.output.commands
+                    rh.output.commands
                 );
             }
 
             // progress: None, (2,1), (1,2); quorum-ed: (1,2), not at leader vote, not committed
             {
-                eng.output.commands = vec![];
-                eng.replication_handler().update_matching(2, inflight_id_2, Some(log_id(2, 1)));
-                assert_eq!(None, eng.state.committed);
-                assert_eq!(0, eng.output.commands.len());
+                rh.output.commands = vec![];
+                rh.update_matching(2, inflight_id_2, Some(log_id(2, 1)));
+                assert_eq!(None, rh.state.committed);
+                assert_eq!(0, rh.output.commands.len());
             }
 
             // progress: None, (2,1), (2,3); committed: (2,1)
             {
-                eng.output.commands = vec![];
-                eng.replication_handler().update_matching(3, inflight_id_3, Some(log_id(2, 3)));
-                assert_eq!(Some(log_id(2, 1)), eng.state.committed);
+                rh.output.commands = vec![];
+                rh.update_matching(3, inflight_id_3, Some(log_id(2, 3)));
+                assert_eq!(Some(log_id(2, 1)), rh.state.committed);
                 assert_eq!(
                     vec![
                         Command::UpdateReplicationMetrics {
@@ -388,15 +384,15 @@ mod tests {
                             upto: log_id(2, 1)
                         }
                     ],
-                    eng.output.commands
+                    rh.output.commands
                 );
             }
 
             // progress: (2,4), (2,1), (2,3); committed: (1,3)
             {
-                eng.output.commands = vec![];
-                eng.replication_handler().update_matching(1, inflight_id_1, Some(log_id(2, 4)));
-                assert_eq!(Some(log_id(2, 3)), eng.state.committed);
+                rh.output.commands = vec![];
+                rh.update_matching(1, inflight_id_1, Some(log_id(2, 4)));
+                assert_eq!(Some(log_id(2, 3)), rh.state.committed);
                 assert_eq!(
                     vec![
                         Command::UpdateReplicationMetrics {
@@ -411,7 +407,7 @@ mod tests {
                             upto: log_id(2, 3)
                         }
                     ],
-                    eng.output.commands
+                    rh.output.commands
                 );
             }
 

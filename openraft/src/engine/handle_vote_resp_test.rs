@@ -270,7 +270,6 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 },
                 Command::ReplicateEnt {
                     target: 2,
-                    // TODO(1): fix inflight_id
                     req: Inflight::logs(None, Some(log_id(2, 1))).with_id(1),
                 },
             ],
