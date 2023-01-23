@@ -848,7 +848,7 @@ where
             self.replication_handler().try_purge_log();
         } else {
             #[allow(clippy::collapsible_else_if)]
-            if let Some(purge_upto) = self.state.purge_upto {
+            if let Some(purge_upto) = self.state.purge_upto().copied() {
                 self.log_handler().purge_log(purge_upto);
             }
         }

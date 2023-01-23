@@ -348,6 +348,10 @@ mod tests {
             self.snap_last.as_ref()
         }
 
+        fn purge_upto(&self) -> Option<&LogId<u64>> {
+            todo!()
+        }
+
         fn last_purged_log_id(&self) -> Option<&LogId<u64>> {
             self.purged.as_ref()
         }

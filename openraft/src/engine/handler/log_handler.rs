@@ -49,9 +49,10 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_purge_upto(&mut self) {
         if let Some(purge_upto) = self.calc_purge_upto() {
-            debug_assert!(self.state.purge_upto <= Some(purge_upto));
+            debug_assert!(self.state.purge_upto() <= Some(&purge_upto));
 
             // TODO(2): replication should not use a log before `to_purge`
+            // TODO(2): use method instead of this field
             self.state.purge_upto = Some(purge_upto);
         }
     }

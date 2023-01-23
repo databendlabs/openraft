@@ -45,6 +45,11 @@ pub(crate) trait LogStateReader<NID: NodeId> {
     /// Return the last log id the snapshot includes.
     fn snapshot_last_log_id(&self) -> Option<&LogId<NID>>;
 
+    /// Return the log id it wants to purge up to.
+    ///
+    /// Logs may not be able to be purged at once because they are in use by replication tasks.
+    fn purge_upto(&self) -> Option<&LogId<NID>>;
+
     /// The greatest log id that has been purged after being applied to state machine, i.e., the oldest known log id.
     ///
     /// The range of log entries that exist in storage is `(last_purged_log_id(), last_log_id()]`,
@@ -114,6 +119,10 @@ where
         self.snapshot_meta.last_log_id.as_ref()
     }
 
+    fn purge_upto(&self) -> Option<&LogId<NID>> {
+        self.purge_upto.as_ref()
+    }
+
     fn last_purged_log_id(&self) -> Option<&LogId<NID>> {
         if self.purged_next == 0 {
             return None;
@@ -134,8 +143,8 @@ where
             equal!(self.purged_next, self.log_ids.first().next_index());
         }
 
-        less_equal!(self.last_purged_log_id(), self.purge_upto.as_ref());
-        less_equal!(self.purge_upto.as_ref(), self.snapshot_last_log_id());
+        less_equal!(self.last_purged_log_id(), self.purge_upto());
+        less_equal!(self.purge_upto(), self.snapshot_last_log_id());
         less_equal!(self.snapshot_last_log_id(), self.committed());
         less_equal!(self.committed(), self.last_log_id());
 

@@ -121,6 +121,18 @@ fn test_raft_state_last_log_id() -> anyhow::Result<()> {
 }
 
 #[test]
+fn test_raft_state_purge_upto() -> anyhow::Result<()> {
+    let rs = RaftState::<u64, ()> {
+        purge_upto: Some(log_id(1, 2)),
+        ..Default::default()
+    };
+
+    assert_eq!(Some(&log_id(1, 2)), rs.purge_upto());
+
+    Ok(())
+}
+
+#[test]
 fn test_raft_state_last_purged_log_id() -> anyhow::Result<()> {
     let rs = RaftState::<u64, ()> {
         log_ids: LogIdList::new(vec![]),

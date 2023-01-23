@@ -219,18 +219,19 @@ where
     /// Therefor it is a method of ReplicationHandler.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_purge_log(&mut self) {
+        // TODO refactor this
         // TODO: test
 
-        tracing::debug!(to_purge = display(self.state.purge_upto.summary()), "try_purge_log");
+        tracing::debug!(to_purge = display(self.state.purge_upto().summary()), "try_purge_log");
 
-        if self.state.purge_upto.as_ref() <= self.state.last_purged_log_id() {
+        if self.state.purge_upto() <= self.state.last_purged_log_id() {
             tracing::debug!("no postponed purge");
             return;
         }
 
         // Safe unwrap(): it greater than an Option thus it has to be a Some()
-        let purge_upto = self.state.purge_upto.unwrap();
-        tracing::debug!("pending purge: {}", purge_upto);
+        let purge_upto = *self.state.purge_upto().unwrap();
+        tracing::debug!("purge_upto: {}", purge_upto);
 
         // Check if any replication task is going to use the log that are going to purge.
         let mut in_use = false;
