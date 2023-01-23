@@ -34,17 +34,15 @@ where
 {
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_matching(&mut self, node_id: NID, id: u64, log_id: Option<LogId<NID>>) {
-        tracing::debug!("update_progress: node_id:{} id:{} log_id:{:?}", node_id, id, log_id);
+        tracing::debug!(
+            node_id = display(node_id),
+            id = display(id),
+            log_id = display(log_id),
+            "update_progress",
+        );
         tracing::debug!(progress = debug(&self.leader.progress), "leader progress");
 
-        let v = self.leader.progress.try_get(&node_id);
-        let mut updated = match v {
-            None => {
-                // TODO no such node, it should be a bug.
-                return;
-            }
-            Some(x) => *x,
-        };
+        let mut updated = *self.leader.progress.try_get(&node_id).expect("should be a progress");
 
         // Update inflight state only when a matching response is received.
         if !updated.inflight.is_my_id(id) {

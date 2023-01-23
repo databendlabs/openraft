@@ -95,7 +95,6 @@ impl<NID: NodeId> ProgressEntry<NID> {
         debug_assert!(matching >= self.matching);
 
         self.matching = matching;
-        // TODO(1): check id
         self.inflight.ack(self.matching);
 
         let matching_next = self.matching.next_index();
@@ -106,7 +105,6 @@ impl<NID: NodeId> ProgressEntry<NID> {
     pub(crate) fn update_conflicting(&mut self, conflict: u64) {
         tracing::debug!(self = debug(&self), conflict = display(conflict), "update_conflict");
 
-        // TODO(1): check id
         self.inflight.conflict(conflict);
 
         debug_assert!(conflict < self.searching_end);
