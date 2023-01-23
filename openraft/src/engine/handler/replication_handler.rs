@@ -244,7 +244,6 @@ where
 
         if in_use {
             // Logs to purge is in use, postpone purging.
-            // TODO(2): next_send should never try to send log that are scheduled to purge.
             tracing::debug!("can not purge: {} is in use", purge_upto);
             return;
         }

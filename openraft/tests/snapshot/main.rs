@@ -15,3 +15,4 @@ mod t40_purge_in_snapshot_logs;
 mod t41_snapshot_overrides_membership;
 mod t42_snapshot_uses_prev_snap_membership;
 mod t43_snapshot_delete_conflict_logs;
+mod t44_replication_does_not_block_purge;

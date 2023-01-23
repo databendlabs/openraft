@@ -1254,7 +1254,6 @@ where
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<NID, N> {
         let leader = match self.internal_server_state.leading_mut() {
             None => {
-                // TODO: is it a bug if trying to update progress when it is not in leading state?
                 unreachable!("There is no leader, can not handle replication");
             }
             Some(x) => x,

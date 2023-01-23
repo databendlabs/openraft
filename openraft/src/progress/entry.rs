@@ -124,11 +124,11 @@ impl<NID: NodeId> ProgressEntry<NID> {
         if !self.inflight.is_none() {
             return Err(&self.inflight);
         }
-        let purged = log_state.last_purged_log_id();
+        let purge_upto = log_state.purge_upto();
         let snapshot_last = log_state.snapshot_last_log_id();
 
         let last_next = log_state.last_log_id().next_index();
-        let purged_next = purged.next_index();
+        let purge_upto_next = purge_upto.next_index();
 
         debug_assert!(
             self.searching_end <= last_next,
@@ -141,7 +141,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
 
         // The log the follower needs is purged.
         // Replicate by snapshot.
-        if self.searching_end < purged_next {
+        if self.searching_end < purge_upto_next {
             self.curr_inflight_id += 1;
             self.inflight = Inflight::snapshot(snapshot_last.copied()).with_id(self.curr_inflight_id);
             return Ok(&self.inflight);
@@ -150,8 +150,8 @@ impl<NID: NodeId> ProgressEntry<NID> {
         // Replicate by logs.
         // Run a binary search to find the matching log id, if matching log id is not determined.
         let mut start = Self::calc_mid(self.matching.next_index(), self.searching_end);
-        if start < purged_next {
-            start = purged_next;
+        if start < purge_upto_next {
+            start = purge_upto_next;
         }
 
         let end = std::cmp::min(start + max_entries, last_next);
@@ -313,15 +313,19 @@ mod tests {
     struct LogState {
         last: Option<LogId<u64>>,
         snap_last: Option<LogId<u64>>,
+        purge_upto: Option<LogId<u64>>,
         purged: Option<LogId<u64>>,
     }
 
     impl LogState {
-        fn new(purged: u64, snap_last: u64, last: u64) -> Self {
+        fn new(purge_upto: u64, snap_last: u64, last: u64) -> Self {
             Self {
                 last: Some(log_id(last)),
                 snap_last: Some(log_id(snap_last)),
-                purged: Some(log_id(purged)),
+                // `next_send()` only checks purge_upto, but not purged,
+                // We just fake a purged
+                purge_upto: Some(log_id(purge_upto)),
+                purged: Some(log_id(purge_upto - 1)),
             }
         }
     }
@@ -349,7 +353,7 @@ mod tests {
         }
 
         fn purge_upto(&self) -> Option<&LogId<u64>> {
-            todo!()
+            self.purge_upto.as_ref()
         }
 
         fn last_purged_log_id(&self) -> Option<&LogId<u64>> {
