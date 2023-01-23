@@ -646,7 +646,7 @@ where
 
     /// Calculate the log id up to which to purge, inclusive.
     ///
-    /// Only applied log will be purged.
+    /// Only log included in snapshot will be purged.
     /// It may return None if there is no log to purge.
     ///
     /// `max_keep` specifies the number of applied logs to keep.
