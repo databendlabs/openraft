@@ -42,6 +42,20 @@ where
         self.output.push_command(Command::PurgeLog { upto });
     }
 
+    /// Update the next log id to purge upto, if more logs can be purged, according to configured policy.
+    ///
+    /// This method is called after building a snapshot, because openraft only purge logs that are already included in
+    /// snapshot.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn update_purge_upto(&mut self) {
+        if let Some(purge_upto) = self.calc_purge_upto() {
+            debug_assert!(self.state.purge_upto <= Some(purge_upto));
+
+            // TODO(2): replication should not use a log before `to_purge`
+            self.state.purge_upto = Some(purge_upto);
+        }
+    }
+
     /// Calculate the log id up to which to purge, inclusive.
     ///
     /// Only log included in snapshot will be purged.

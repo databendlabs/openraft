@@ -69,7 +69,7 @@ where
 
             // -- volatile fields: they are not persisted.
             server_state: Default::default(),
-            to_purge: last_purged_log_id,
+            purge_upto: last_purged_log_id,
         })
     }
 

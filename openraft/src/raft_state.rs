@@ -90,7 +90,7 @@ where
     /// The log id upto which the next time it purges.
     ///
     /// If a log is in use by a replication task, the purge is postponed and is stored in this field.
-    pub(crate) to_purge: Option<LogId<NID>>,
+    pub(crate) purge_upto: Option<LogId<NID>>,
 }
 
 impl<NID, N> LogStateReader<NID> for RaftState<NID, N>
@@ -134,8 +134,8 @@ where
             equal!(self.purged_next, self.log_ids.first().next_index());
         }
 
-        less_equal!(self.last_purged_log_id(), self.to_purge.as_ref());
-        less_equal!(self.to_purge.as_ref(), self.snapshot_last_log_id());
+        less_equal!(self.last_purged_log_id(), self.purge_upto.as_ref());
+        less_equal!(self.purge_upto.as_ref(), self.snapshot_last_log_id());
         less_equal!(self.snapshot_last_log_id(), self.committed());
         less_equal!(self.committed(), self.last_log_id());
 

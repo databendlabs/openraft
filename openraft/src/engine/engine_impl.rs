@@ -624,18 +624,6 @@ where
         }
     }
 
-    /// Purge logs that are already in snapshot if needed.
-    #[tracing::instrument(level = "debug", skip_all)]
-    // TODO(2): rename it
-    pub(crate) fn purge_in_snapshot_log(&mut self) {
-        if let Some(purge_upto) = self.log_handler().calc_purge_upto() {
-            debug_assert!(self.state.to_purge <= Some(purge_upto));
-
-            // TODO(2): replication should not use a log before `to_purge`
-            self.state.to_purge = Some(purge_upto);
-        }
-    }
-
     /// Update membership state with a committed membership config
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_committed_membership(&mut self, membership: EffectiveMembership<NID, N>) {
@@ -835,7 +823,7 @@ where
         // and this node crashes after installing snapshot and before purging logs,
         // the log will be purged the next start up, in [`RaftState::get_initial_state`].
         // TODO: move this to LogHandler::purge_log()?
-        self.state.to_purge = Some(snap_last_log_id);
+        self.state.purge_upto = Some(snap_last_log_id);
         self.log_handler().purge_log(snap_last_log_id);
 
         // TODO: temp solution: committed is updated after snapshot_last_log_id.
@@ -853,14 +841,14 @@ where
             return;
         }
 
-        self.purge_in_snapshot_log();
+        self.log_handler().update_purge_upto();
 
         if self.internal_server_state.is_leading() {
             // If it is leading, it must not delete a log that is in use by a replication task.
             self.replication_handler().try_purge_log();
         } else {
             #[allow(clippy::collapsible_else_if)]
-            if let Some(purge_upto) = self.state.to_purge {
+            if let Some(purge_upto) = self.state.purge_upto {
                 self.log_handler().purge_log(purge_upto);
             }
         }
