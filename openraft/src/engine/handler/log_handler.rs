@@ -111,7 +111,7 @@ mod tests {
             eng.state.enable_validate = false; // Disable validation for incomplete state
 
             eng.state.log_ids = LogIdList::new(vec![log_id(2, 2), log_id(4, 4), log_id(4, 6)]);
-            eng.state.next_purge = 3;
+            eng.state.purged_next = 3;
             eng
         }
 
@@ -308,7 +308,7 @@ mod tests {
 
                 if let Some(last_purged) = last_purged {
                     eng.state.log_ids.purge(&last_purged);
-                    eng.state.next_purge = last_purged.index + 1;
+                    eng.state.purged_next = last_purged.index + 1;
                 }
                 eng.state.snapshot_meta.last_log_id = snapshot_last_log_id;
                 let got = eng.log_handler().calc_purge_upto();

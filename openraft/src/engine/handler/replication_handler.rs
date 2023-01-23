@@ -8,6 +8,7 @@ use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leader;
 use crate::progress::Inflight;
 use crate::progress::Progress;
+use crate::raft_state::LogStateReader;
 use crate::replication::ReplicationResult;
 use crate::LogId;
 use crate::MessageSummary;
@@ -219,13 +220,17 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn try_purge_log(&mut self) {
         // TODO: test
-        let purge_upto = if let Some(x) = self.state.want_to_purge.take() {
-            tracing::debug!("pending purge: {}", x.summary());
-            x
-        } else {
-            tracing::debug!("no pending purge");
+
+        tracing::debug!(to_purge = display(self.state.to_purge.summary()), "try_purge_log");
+
+        if self.state.to_purge.as_ref() <= self.state.last_purged_log_id() {
+            tracing::debug!("no postponed purge");
             return;
-        };
+        }
+
+        // Safe unwrap(): it greater than an Option thus it has to be a Some()
+        let purge_upto = self.state.to_purge.unwrap();
+        tracing::debug!("pending purge: {}", purge_upto);
 
         // Check if any replication task is going to use the log that are going to purge.
         let mut in_use = false;
@@ -238,16 +243,13 @@ where
 
         if in_use {
             // Logs to purge is in use, postpone purging.
-            // TODO: when update replications, inflight is cleaned, thus new replication must be closed completed
-            //       before purging.
-            // TODO: next_send should never try to send log that are scheduled to purge.
-            debug_assert!(self.state.want_to_purge <= Some(purge_upto));
-            tracing::debug!("can not purge, postpone purge: {}", purge_upto);
-            self.state.want_to_purge = Some(purge_upto);
-        } else {
-            tracing::debug!("do purge: {}", purge_upto.summary());
-            self.log_handler().purge_log(purge_upto);
+            // TODO(2): next_send should never try to send log that are scheduled to purge.
+            tracing::debug!("can not purge: {} is in use", purge_upto);
+            return;
         }
+
+        tracing::debug!("do purge: {}", purge_upto.summary());
+        self.log_handler().purge_log(purge_upto);
     }
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {

@@ -131,14 +131,14 @@ fn test_raft_state_last_purged_log_id() -> anyhow::Result<()> {
 
     let rs = RaftState::<u64, ()> {
         log_ids: LogIdList::new(vec![log_id(1, 2)]),
-        next_purge: 3,
+        purged_next: 3,
         ..Default::default()
     };
     assert_eq!(Some(log_id(1, 2)), rs.last_purged_log_id().copied());
 
     let rs = RaftState::<u64, ()> {
         log_ids: LogIdList::new(vec![log_id(1, 2), log_id(3, 4)]),
-        next_purge: 3,
+        purged_next: 3,
         ..Default::default()
     };
     assert_eq!(Some(log_id(1, 2)), rs.last_purged_log_id().copied());

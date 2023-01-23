@@ -626,21 +626,13 @@ where
 
     /// Purge logs that are already in snapshot if needed.
     #[tracing::instrument(level = "debug", skip_all)]
+    // TODO(2): rename it
     pub(crate) fn purge_in_snapshot_log(&mut self) {
-        // TODO(2): test
-
         if let Some(purge_upto) = self.log_handler().calc_purge_upto() {
-            debug_assert!(self.state.want_to_purge <= Some(purge_upto));
+            debug_assert!(self.state.to_purge <= Some(purge_upto));
 
-            // TODO(2): replication should not use a log before `want_to_purge`
-            self.state.want_to_purge = Some(purge_upto);
-
-            if self.internal_server_state.is_leading() {
-                // If it is leading, it must not delete a log that is in use by a replication task.
-                self.replication_handler().try_purge_log();
-            } else {
-                self.log_handler().purge_log(purge_upto);
-            }
+            // TODO(2): replication should not use a log before `to_purge`
+            self.state.to_purge = Some(purge_upto);
         }
     }
 
@@ -842,6 +834,8 @@ where
         // In the second case, if local-last-log-id is smaller than snapshot-last-log-id,
         // and this node crashes after installing snapshot and before purging logs,
         // the log will be purged the next start up, in [`RaftState::get_initial_state`].
+        // TODO: move this to LogHandler::purge_log()?
+        self.state.to_purge = Some(snap_last_log_id);
         self.log_handler().purge_log(snap_last_log_id);
 
         // TODO: temp solution: committed is updated after snapshot_last_log_id.
@@ -853,12 +847,23 @@ where
         tracing::info!("finish_building_snapshot: {:?}", meta);
 
         let mut h = self.snapshot_handler();
+
         let updated = h.update_snapshot(meta);
         if !updated {
             return;
         }
 
         self.purge_in_snapshot_log();
+
+        if self.internal_server_state.is_leading() {
+            // If it is leading, it must not delete a log that is in use by a replication task.
+            self.replication_handler().try_purge_log();
+        } else {
+            #[allow(clippy::collapsible_else_if)]
+            if let Some(purge_upto) = self.state.to_purge {
+                self.log_handler().purge_log(purge_upto);
+            }
+        }
     }
 }
 

@@ -62,14 +62,14 @@ where
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
             vote: vote.unwrap_or_default(),
-            next_purge: last_purged_log_id.next_index(),
+            purged_next: last_purged_log_id.next_index(),
             log_ids,
             membership_state: mem_state,
             snapshot_meta,
 
             // -- volatile fields: they are not persisted.
             server_state: Default::default(),
-            want_to_purge: None,
+            to_purge: last_purged_log_id,
         })
     }
 

@@ -71,7 +71,7 @@ where
     /// - A quorum could be a uniform quorum or joint quorum.
     pub committed: Option<LogId<NID>>,
 
-    pub(crate) next_purge: u64,
+    pub(crate) purged_next: u64,
 
     /// All log ids this node has.
     pub log_ids: LogIdList<NID>,
@@ -87,7 +87,10 @@ where
     // --
     pub server_state: ServerState,
 
-    pub(crate) want_to_purge: Option<LogId<NID>>,
+    /// The log id upto which the next time it purges.
+    ///
+    /// If a log is in use by a replication task, the purge is postponed and is stored in this field.
+    pub(crate) to_purge: Option<LogId<NID>>,
 }
 
 impl<NID, N> LogStateReader<NID> for RaftState<NID, N>
@@ -112,7 +115,7 @@ where
     }
 
     fn last_purged_log_id(&self) -> Option<&LogId<NID>> {
-        if self.next_purge == 0 {
+        if self.purged_next == 0 {
             return None;
         }
         self.log_ids.first()
@@ -125,13 +128,14 @@ where
     N: Node,
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        if self.next_purge == 0 {
+        if self.purged_next == 0 {
             less_equal!(self.log_ids.first().index(), Some(0));
         } else {
-            equal!(self.next_purge, self.log_ids.first().next_index());
+            equal!(self.purged_next, self.log_ids.first().next_index());
         }
 
-        less_equal!(self.last_purged_log_id(), self.snapshot_last_log_id());
+        less_equal!(self.last_purged_log_id(), self.to_purge.as_ref());
+        less_equal!(self.to_purge.as_ref(), self.snapshot_last_log_id());
         less_equal!(self.snapshot_last_log_id(), self.committed());
         less_equal!(self.committed(), self.last_log_id());
 
@@ -199,7 +203,7 @@ where
     }
 
     pub(crate) fn purge_log(&mut self, upto: &LogId<NID>) {
-        self.next_purge = upto.index + 1;
+        self.purged_next = upto.index + 1;
         self.log_ids.purge(upto);
     }
 }
