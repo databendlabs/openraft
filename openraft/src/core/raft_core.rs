@@ -1452,6 +1452,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::DeleteConflictLog { since } => {
                 self.storage.delete_conflict_logs_since(*since).await?;
             }
+            // TODO(2): Engine initiate a snapshot building
             Command::BuildSnapshot { .. } => {}
             Command::SendVote { vote_req } => {
                 self.spawn_parallel_vote_requests(vote_req).await;
@@ -1466,20 +1467,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 }
             }
             Command::LeaderCommit {
-                already_committed: ref committed,
+                ref already_committed,
                 ref upto,
             } => {
-                self.apply_to_state_machine(committed.next_index(), upto.index).await?;
+                self.apply_to_state_machine(already_committed.next_index(), upto.index).await?;
             }
             Command::FollowerCommit {
-                already_committed: ref committed,
+                ref already_committed,
                 ref upto,
             } => {
-                self.apply_to_state_machine(committed.next_index(), upto.index).await?;
+                self.apply_to_state_machine(already_committed.next_index(), upto.index).await?;
             }
-            Command::ReplicateEnt { req, target } => {
+            Command::Replicate { req, target } => {
                 if let Some(l) = &self.leader_data {
-                    // TODO: consider remove the returned error from new_client().
+                    // TODO(2): consider remove the returned error from new_client().
                     // Node may not exist because `RaftNetworkFactory::new_client()` returns an error.
                     let node = &l.nodes.get(target);
 
@@ -1489,7 +1490,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                                 unreachable!("Inflight::None");
                             }
                             Inflight::Logs { id, log_id_range } => {
-                                let _ = node.tx_repl.send(Replicate::Ent {
+                                let _ = node.tx_repl.send(Replicate::Logs {
                                     id: *id,
                                     log_id_range: *log_id_range,
                                 });
@@ -1507,7 +1508,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                             }
                         }
                     } else {
-                        // TODO(1): if no such node, return an RemoteError?
+                        // TODO(2): if no such node, return an RemoteError?
                     }
                 } else {
                     unreachable!("it has to be a leader!!!");

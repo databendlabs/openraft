@@ -158,11 +158,11 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendInputEntries { range: 0..3 },
-            Command::ReplicateEnt {
+            Command::Replicate {
                 target: 2,
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
-            Command::ReplicateEnt {
+            Command::Replicate {
                 target: 3,
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
@@ -309,11 +309,11 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
             Command::UpdateReplicationStreams {
                 targets: vec![(3, ProgressEntry::empty(7)), (4, ProgressEntry::empty(7))]
             },
-            Command::ReplicateEnt {
+            Command::Replicate {
                 target: 3,
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
-            Command::ReplicateEnt {
+            Command::Replicate {
                 target: 4,
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
@@ -400,7 +400,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
             Command::UpdateReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
             },
-            Command::ReplicateEnt {
+            Command::Replicate {
                 target: 2,
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
@@ -489,7 +489,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             Command::UpdateReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
             },
-            Command::ReplicateEnt {
+            Command::Replicate {
                 target: 2,
                 req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },

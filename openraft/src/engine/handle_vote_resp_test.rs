@@ -268,7 +268,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                         index: 1,
                     },
                 },
-                Command::ReplicateEnt {
+                Command::Replicate {
                     target: 2,
                     req: Inflight::logs(None, Some(log_id(2, 1))).with_id(1),
                 },

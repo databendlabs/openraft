@@ -409,8 +409,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
                 self.committed = c;
             }
-            Replicate::Ent { id, log_id_range } => {
-                // TODO(1): when starting replication, or updating matching, re-send Replicate::Ent() to ReplicationCore
+            Replicate::Logs { id, log_id_range } => {
                 if let ReplicationAction::None = self.next_action {
                     self.next_action = ReplicationAction::Logs { id, log_id_range };
                 } else {
@@ -478,7 +477,7 @@ where
     Committed(Option<LogId<NID>>),
 
     /// Inform replication stream to forward the log entries to followers/learners.
-    Ent { id: u64, log_id_range: LogIdRange<NID> },
+    Logs { id: u64, log_id_range: LogIdRange<NID> },
 
     /// Replicate a snapshot
     Snapshot { id: u64, snapshot: Snapshot<NID, N, S> },
@@ -495,7 +494,7 @@ where
             Replicate::Committed(c) => {
                 format!("Replicate::Committed: {:?}", c)
             }
-            Replicate::Ent { id, log_id_range } => {
+            Replicate::Logs { id, log_id_range } => {
                 format!("Replicate::Entries(id={}): {}", id, log_id_range)
             }
             Replicate::Snapshot { id, snapshot } => {

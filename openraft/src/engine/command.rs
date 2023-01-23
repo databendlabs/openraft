@@ -52,8 +52,8 @@ where
         upto: LogId<NID>,
     },
 
-    /// Replicate entries to a target.
-    ReplicateEnt { target: NID, req: Inflight<NID> },
+    /// Replicate log entries or snapshot to a target.
+    Replicate { target: NID, req: Inflight<NID> },
 
     // /// Replicate a snapshot to a target.
     // ReplicateSnapshot {
@@ -131,7 +131,7 @@ where
             Command::ReplicateCommitted { .. } => {}
             Command::LeaderCommit { .. } => flags.set_data_changed(),
             Command::FollowerCommit { .. } => flags.set_data_changed(),
-            Command::ReplicateEnt { .. } => {}
+            Command::Replicate { .. } => {}
             Command::UpdateMembership { .. } => flags.set_cluster_changed(),
             Command::UpdateReplicationStreams { .. } => flags.set_replication_changed(),
             Command::UpdateReplicationMetrics { .. } => flags.set_replication_changed(),

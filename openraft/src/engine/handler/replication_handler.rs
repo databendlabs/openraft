@@ -90,7 +90,7 @@ where
     /// Update progress when replicated data(logs or snapshot) does not match follower/learner state and is rejected.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_conflicting(&mut self, target: NID, inflight_id: u64, conflict: LogId<NID>) {
-        // TODO(1): test it?
+        // TODO(2): test it?
         tracing::debug!(
             target = display(target),
             inflight_id = display(inflight_id),
@@ -112,7 +112,7 @@ where
     /// Update replication progress when a response is received.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_progress(&mut self, target: NID, id: u64, repl_res: Result<ReplicationResult<NID>, String>) {
-        // TODO(1): test
+        // TODO(2): test
         match repl_res {
             Ok(p) => {
                 tracing::debug!(id = display(id), result = debug(&p), "update progress");
@@ -206,7 +206,7 @@ where
     pub(crate) fn send_to_target(output: &mut EngineOutput<NID, N>, target: &NID, inflight: &Inflight<NID>) {
         debug_assert!(!inflight.is_none());
 
-        output.push_command(Command::ReplicateEnt {
+        output.push_command(Command::Replicate {
             target: *target,
             req: *inflight,
         });

@@ -625,13 +625,14 @@ where
     }
 
     /// Purge logs that are already in snapshot if needed.
-    // NOTE: simple method, not tested.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn purge_in_snapshot_log(&mut self) {
+        // TODO(2): test
+
         if let Some(purge_upto) = self.calc_purge_upto() {
             debug_assert!(self.state.want_to_purge <= Some(purge_upto));
 
-            // TODO(1): replication should not use a log before `want_to_purge`
+            // TODO(2): replication should not use a log before `want_to_purge`
             self.state.want_to_purge = Some(purge_upto);
 
             if self.internal_server_state.is_leading() {
