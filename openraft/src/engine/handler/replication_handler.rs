@@ -32,44 +32,31 @@ where
     NID: NodeId,
     N: Node,
 {
+    /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is accepted.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_matching(&mut self, node_id: NID, id: u64, log_id: Option<LogId<NID>>) {
+    pub(crate) fn update_matching(&mut self, node_id: NID, inflight_id: u64, log_id: Option<LogId<NID>>) {
         tracing::debug!(
             node_id = display(node_id),
-            id = display(id),
-            log_id = display(log_id),
+            inflight_id = display(inflight_id),
+            log_id = display(log_id.summary()),
             "update_progress",
         );
         tracing::debug!(progress = debug(&self.leader.progress), "leader progress");
 
-        let mut updated = *self.leader.progress.try_get(&node_id).expect("should be a progress");
+        let mut prog_entry = *self.leader.progress.try_get(&node_id).expect("should be a progress");
 
         // Update inflight state only when a matching response is received.
-        if !updated.inflight.is_my_id(id) {
+        if !prog_entry.inflight.is_my_id(inflight_id) {
             return;
         }
 
-        updated.update_matching(log_id);
+        prog_entry.update_matching(log_id);
 
-        let res = self.leader.progress.update(&node_id, updated);
-        let committed = match res {
-            Ok(c) => *c,
-            Err(_) => {
-                // TODO: leader should not append log if it is no longer in the membership.
-                //       There is a chance this will happen:
-                //       If leader is `1`, when a the membership changes from [1,2,3] to [2,3],
-                //       The leader will still try to append log to its local store.
-                //       This is still correct but unnecessary.
-                //       To make thing clear, a leader should stop appending log at once if it is no longer in the
-                //       membership.
-                //       The replication task should be generalized to write log for
-                //       both leader and follower.
-
-                // unreachable!("updating nonexistent id: {}, progress: {:?}", node_id, leader.progress);
-
-                return;
-            }
-        };
+        let committed = *self
+            .leader
+            .progress
+            .update(&node_id, prog_entry)
+            .expect("it should always update existing progress");
 
         tracing::debug!(committed = debug(&committed), "committed after updating progress");
 
@@ -100,26 +87,29 @@ where
         }
     }
 
+    /// Update progress when replicated data(logs or snapshot) does not match follower/learner state and is rejected.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_conflicting(&mut self, target: NID, id: u64, conflict: LogId<NID>) {
+    pub(crate) fn update_conflicting(&mut self, target: NID, inflight_id: u64, conflict: LogId<NID>) {
         // TODO(1): test it?
         tracing::debug!(
             target = display(target),
-            id = display(id),
+            inflight_id = display(inflight_id),
             conflict = display(&conflict),
             progress = debug(&self.leader.progress),
             "update_conflicting"
         );
 
-        // TODO(1): assert unwrap() safe
-        let p = self.leader.progress.get_mut(&target).unwrap();
+        let prog_entry = self.leader.progress.get_mut(&target).unwrap();
 
         // Update inflight state only when a matching response is received.
-        if p.inflight.is_my_id(id) {
-            p.update_conflicting(conflict.index);
+        if !prog_entry.inflight.is_my_id(inflight_id) {
+            return;
         }
+
+        prog_entry.update_conflicting(conflict.index);
     }
 
+    /// Update replication progress when a response is received.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_progress(&mut self, target: NID, id: u64, repl_res: Result<ReplicationResult<NID>, String>) {
         // TODO(1): test
@@ -168,7 +158,6 @@ where
                 tracing::debug!("can not send: TODO");
             }
         }
-        // TODO(1):
     }
 
     /// Update replication streams to reflect replication progress change.
