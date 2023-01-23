@@ -953,14 +953,9 @@ where
         // TODO: refactor this piece of codes:
         //       progress.update() would be better to accept a closure
         // TODO: for a new leader, update the matching
-        if leader.progress.index(&self.config.id).is_some() {
-            let mut x = *leader.progress.get(&self.config.id);
-            x.matching = self.state.last_log_id().copied();
-
-            // We can just ignore the result here:
-            // The `committed` will not be updated until a log of current term is granted by a quorum
-            let _ = leader.progress.update(&self.config.id, x);
-        }
+        // We can just ignore the result here:
+        // The `committed` will not be updated until a log of current term is granted by a quorum
+        let _ = leader.progress.update_with(&self.config.id, |v| v.matching = self.state.last_log_id().copied());
 
         self.internal_server_state = InternalServerState::Leading(leader);
     }
