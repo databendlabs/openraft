@@ -21,7 +21,7 @@ where
     NID: NodeId,
     N: Node,
 {
-    pub(crate) config: &'x EngineConfig<NID>,
+    pub(crate) config: &'x mut EngineConfig<NID>,
     pub(crate) leader: &'x mut Leader<NID, LeaderQuorumSet<NID>>,
     pub(crate) state: &'x mut RaftState<NID, N>,
     pub(crate) output: &'x mut EngineOutput<NID, N>,
@@ -252,6 +252,7 @@ where
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {
         LogHandler {
+            config: self.config,
             state: self.state,
             output: self.output,
         }

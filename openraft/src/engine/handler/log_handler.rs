@@ -1,7 +1,10 @@
 use crate::engine::engine_impl::EngineOutput;
 use crate::engine::Command;
+use crate::engine::EngineConfig;
 use crate::raft_state::LogStateReader;
+use crate::summary::MessageSummary;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::Node;
 use crate::NodeId;
 use crate::RaftState;
@@ -12,6 +15,7 @@ where
     NID: NodeId,
     N: Node,
 {
+    pub(crate) config: &'x mut EngineConfig<NID>,
     pub(crate) state: &'x mut RaftState<NID, N>,
     pub(crate) output: &'x mut EngineOutput<NID, N>,
 }
@@ -36,6 +40,51 @@ where
         st.purge_log(&upto);
 
         self.output.push_command(Command::PurgeLog { upto });
+    }
+
+    /// Calculate the log id up to which to purge, inclusive.
+    ///
+    /// Only log included in snapshot will be purged.
+    /// It may return None if there is no log to purge.
+    ///
+    /// `max_keep` specifies the number of applied logs to keep.
+    /// `max_keep==0` means every applied log can be purged.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn calc_purge_upto(&self) -> Option<LogId<NID>> {
+        let st = &self.state;
+        let max_keep = self.config.max_in_snapshot_log_to_keep;
+        let batch_size = self.config.purge_batch_size;
+
+        let purge_end = self.state.snapshot_meta.last_log_id.next_index().saturating_sub(max_keep);
+
+        tracing::debug!(
+            snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id),
+            max_keep,
+            "try purge: (-oo, {})",
+            purge_end
+        );
+
+        if st.last_purged_log_id().next_index() + batch_size > purge_end {
+            tracing::debug!(
+                snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id),
+                max_keep,
+                last_purged_log_id = display(st.last_purged_log_id().summary()),
+                batch_size,
+                purge_end,
+                "no need to purge",
+            );
+            return None;
+        }
+
+        let log_id = self.state.log_ids.get(purge_end - 1);
+        debug_assert!(
+            log_id.is_some(),
+            "log id not found at {}, engine.state:{:?}",
+            purge_end - 1,
+            st
+        );
+
+        log_id
     }
 }
 
@@ -189,6 +238,87 @@ mod tests {
             assert_eq!(Some(log_id(5, 7)), lh.state.last_log_id().copied());
 
             assert_eq!(vec![Command::PurgeLog { upto: log_id(5, 7) }], lh.output.commands);
+
+            Ok(())
+        }
+    }
+    mod calc_purge_upto_test {
+        use crate::engine::Engine;
+        use crate::engine::LogIdList;
+        use crate::LeaderId;
+        use crate::LogId;
+
+        fn log_id(term: u64, index: u64) -> LogId<u64> {
+            LogId::<u64> {
+                leader_id: LeaderId { term, node_id: 0 },
+                index,
+            }
+        }
+
+        fn eng() -> Engine<u64, ()> {
+            let mut eng = Engine::default();
+            eng.state.enable_validate = false; // Disable validation for incomplete state
+
+            eng.state.log_ids = LogIdList::new(vec![
+                //
+                log_id(0, 0),
+                log_id(1, 1),
+                log_id(3, 3),
+                log_id(5, 5),
+            ]);
+            eng
+        }
+
+        #[test]
+        fn test_calc_purge_upto() -> anyhow::Result<()> {
+            // last_purged_log_id, last_snapshot_log_id, max_keep, want
+            // last_applied should not affect the purge
+            let cases = vec![
+                //
+                (None, None, 0, None),
+                (None, None, 1, None),
+                //
+                (None, Some(log_id(1, 1)), 0, Some(log_id(1, 1))),
+                (None, Some(log_id(1, 1)), 1, Some(log_id(0, 0))),
+                (None, Some(log_id(1, 1)), 2, None),
+                //
+                (Some(log_id(0, 0)), Some(log_id(1, 1)), 0, Some(log_id(1, 1))),
+                (Some(log_id(0, 0)), Some(log_id(1, 1)), 1, None),
+                (Some(log_id(0, 0)), Some(log_id(1, 1)), 2, None),
+                //
+                (None, Some(log_id(3, 4)), 0, Some(log_id(3, 4))),
+                (None, Some(log_id(3, 4)), 1, Some(log_id(3, 3))),
+                (None, Some(log_id(3, 4)), 2, Some(log_id(1, 2))),
+                (None, Some(log_id(3, 4)), 3, Some(log_id(1, 1))),
+                (None, Some(log_id(3, 4)), 4, Some(log_id(0, 0))),
+                (None, Some(log_id(3, 4)), 5, None),
+                //
+                (Some(log_id(1, 2)), Some(log_id(3, 4)), 0, Some(log_id(3, 4))),
+                (Some(log_id(1, 2)), Some(log_id(3, 4)), 1, Some(log_id(3, 3))),
+                (Some(log_id(1, 2)), Some(log_id(3, 4)), 2, None),
+                (Some(log_id(1, 2)), Some(log_id(3, 4)), 3, None),
+                (Some(log_id(1, 2)), Some(log_id(3, 4)), 4, None),
+                (Some(log_id(1, 2)), Some(log_id(3, 4)), 5, None),
+            ];
+
+            for (last_purged, snapshot_last_log_id, max_keep, want) in cases {
+                let mut eng = eng();
+                eng.config.max_in_snapshot_log_to_keep = max_keep;
+                eng.config.purge_batch_size = 1;
+
+                if let Some(last_purged) = last_purged {
+                    eng.state.log_ids.purge(&last_purged);
+                    eng.state.next_purge = last_purged.index + 1;
+                }
+                eng.state.snapshot_meta.last_log_id = snapshot_last_log_id;
+                let got = eng.log_handler().calc_purge_upto();
+
+                assert_eq!(
+                    want, got,
+                    "case: last_purged: {:?}, snapshot_last_log_id: {:?}, max_keep: {}",
+                    last_purged, snapshot_last_log_id, max_keep
+                );
+            }
 
             Ok(())
         }

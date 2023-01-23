@@ -629,7 +629,7 @@ where
     pub(crate) fn purge_in_snapshot_log(&mut self) {
         // TODO(2): test
 
-        if let Some(purge_upto) = self.calc_purge_upto() {
+        if let Some(purge_upto) = self.log_handler().calc_purge_upto() {
             debug_assert!(self.state.want_to_purge <= Some(purge_upto));
 
             // TODO(2): replication should not use a log before `want_to_purge`
@@ -642,51 +642,6 @@ where
                 self.log_handler().purge_log(purge_upto);
             }
         }
-    }
-
-    /// Calculate the log id up to which to purge, inclusive.
-    ///
-    /// Only log included in snapshot will be purged.
-    /// It may return None if there is no log to purge.
-    ///
-    /// `max_keep` specifies the number of applied logs to keep.
-    /// `max_keep==0` means every applied log can be purged.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn calc_purge_upto(&mut self) -> Option<LogId<NID>> {
-        let st = &self.state;
-        let max_keep = self.config.max_in_snapshot_log_to_keep;
-        let batch_size = self.config.purge_batch_size;
-
-        let purge_end = self.state.snapshot_meta.last_log_id.next_index().saturating_sub(max_keep);
-
-        tracing::debug!(
-            snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id),
-            max_keep,
-            "try purge: (-oo, {})",
-            purge_end
-        );
-
-        if st.last_purged_log_id().next_index() + batch_size > purge_end {
-            tracing::debug!(
-                snapshot_last_log_id = debug(self.state.snapshot_meta.last_log_id),
-                max_keep,
-                last_purged_log_id = display(st.last_purged_log_id().summary()),
-                batch_size,
-                purge_end,
-                "no need to purge",
-            );
-            return None;
-        }
-
-        let log_id = self.state.log_ids.get(purge_end - 1);
-        debug_assert!(
-            log_id.is_some(),
-            "log id not found at {}, engine.state:{:?}",
-            purge_end - 1,
-            st
-        );
-
-        log_id
     }
 
     /// Update membership state with a committed membership config
@@ -1290,6 +1245,7 @@ where
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {
         LogHandler {
+            config: &mut self.config,
             state: &mut self.state,
             output: &mut self.output,
         }
@@ -1312,7 +1268,7 @@ where
         };
 
         ReplicationHandler {
-            config: &self.config,
+            config: &mut self.config,
             leader,
             state: &mut self.state,
             output: &mut self.output,
