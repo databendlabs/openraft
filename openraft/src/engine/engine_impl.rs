@@ -876,10 +876,7 @@ where
     /// Leader state has two phase: election phase and replication phase, similar to paxos phase-1 and phase-2
     pub(crate) fn enter_leading(&mut self) {
         debug_assert_eq!(self.state.vote.node_id, self.config.id);
-        // debug_assert!(
-        //     self.internal_server_state.is_following(),
-        //     "can not enter leading twice"
-        // );
+        // debug_assert!(self.internal_server_state.is_following(), "can not enter leading twice");
 
         self.new_leading();
     }

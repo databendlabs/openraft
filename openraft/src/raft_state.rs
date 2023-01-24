@@ -27,6 +27,23 @@ pub(crate) trait LogStateReader<NID: NodeId> {
         }
     }
 
+    /// Return if a log id exists.
+    ///
+    /// It assumes a committed log will always get positive return value, according to raft spec.
+    fn has_log_id(&self, log_id: &LogId<NID>) -> bool {
+        if log_id.index < self.committed().next_index() {
+            debug_assert!(Some(log_id) <= self.committed());
+            return true;
+        }
+
+        // The local log id exists at the index and is same as the input.
+        if let Some(local) = self.get_log_id(log_id.index) {
+            *log_id == local
+        } else {
+            false
+        }
+    }
+
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
@@ -167,24 +184,6 @@ where
     #[allow(dead_code)]
     pub(crate) fn extend_log_ids<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_log_id: &[LID]) {
         self.log_ids.extend(new_log_id)
-    }
-
-    /// Return if a log id exists.
-    ///
-    /// It assumes a committed log will always be chosen, according to raft spec.
-    #[allow(dead_code)]
-    pub(crate) fn has_log_id(&self, log_id: &LogId<NID>) -> bool {
-        if log_id.index < self.committed.next_index() {
-            debug_assert!(Some(*log_id) <= self.committed);
-            return true;
-        }
-
-        // The local log id exists at the index and is same as the input.
-        if let Some(local) = self.get_log_id(log_id.index) {
-            *log_id == local
-        } else {
-            false
-        }
     }
 
     /// Return true if the currently effective membership is committed.
