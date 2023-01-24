@@ -57,6 +57,16 @@ where
     pub(crate) fn is_voter(&self, id: &NID) -> bool {
         self.effective.membership.is_voter(id)
     }
+
+    // ---
+
+    pub(crate) fn committed(&self) -> &EffectiveMembership<NID, N> {
+        self.committed.as_ref()
+    }
+
+    pub(crate) fn effective(&self) -> &EffectiveMembership<NID, N> {
+        self.effective.as_ref()
+    }
 }
 
 impl<NID, N> Validate for MembershipState<NID, N>
