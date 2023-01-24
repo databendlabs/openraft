@@ -34,6 +34,9 @@ where
         }
     }
 
+    // TODO: let RaftStore store node-id.
+    //       To achieve this, RaftStorage must store node-id
+    //       To achieve this, RaftStorage has to provide API to initialize with a node id and API to read node-id
     /// Get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known state from stable

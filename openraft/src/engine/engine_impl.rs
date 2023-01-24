@@ -139,7 +139,7 @@ where
         // Allows starting up as a leader.
 
         // Previously it is a leader. restore it as leader at once
-        if self.is_leader() {
+        if self.state.is_leader(&self.config.id) {
             self.switch_internal_server_state();
             self.update_server_state_if_changed();
 
@@ -322,7 +322,7 @@ where
             self.output.push_command(Command::InstallElectionTimer { can_be_leader: true });
         }
 
-        debug_assert!(self.is_voter());
+        debug_assert!(self.state.is_voter(&self.config.id));
 
         // When vote is rejected, it does not need to leave candidate state.
         // Candidate loop, follower loop and learner loop are totally the same.
@@ -687,7 +687,7 @@ where
         // TODO: currently only a leader has replication setup.
         //       It's better to setup replication for both leader and candidate.
         //       e.g.: if self.internal_server_state.is_leading() {
-        if self.is_leader() {
+        if self.state.is_leader(&self.config.id) {
             let mut rh = self.replication_handler();
             rh.update_replication_streams();
             rh.initiate_replication();
@@ -715,12 +715,12 @@ where
             "membership: {}, committed: {}, is_leading: {}",
             em.summary(),
             self.state.committed.summary(),
-            self.is_leading(),
+            self.state.is_leading(&self.config.id),
         );
 
         #[allow(clippy::collapsible_if)]
         if em.log_id <= self.state.committed {
-            if !em.is_voter(&self.config.id) && self.is_leading() {
+            if !em.is_voter(&self.config.id) && self.state.is_leading(&self.config.id) {
                 tracing::debug!("leader {} is stepping down", self.config.id);
                 self.enter_following();
             }
@@ -1066,7 +1066,7 @@ where
     }
 
     fn update_server_state_if_changed(&mut self) {
-        let server_state = self.calc_server_state();
+        let server_state = self.state.calc_server_state(&self.config.id);
 
         tracing::debug!(
             id = display(self.config.id),
@@ -1184,38 +1184,10 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip_all)]
+    // Only used by tests
+    #[allow(dead_code)]
     pub(crate) fn calc_server_state(&self) -> ServerState {
-        tracing::debug!(
-            is_member = display(self.is_voter()),
-            is_leader = display(self.is_leader()),
-            is_leading = display(self.is_leading()),
-            "states"
-        );
-        if self.is_voter() {
-            if self.is_leader() {
-                ServerState::Leader
-            } else if self.is_leading() {
-                ServerState::Candidate
-            } else {
-                ServerState::Follower
-            }
-        } else {
-            ServerState::Learner
-        }
-    }
-
-    fn is_voter(&self) -> bool {
-        self.state.membership_state.is_voter(&self.config.id)
-    }
-
-    /// The node is candidate or leader
-    fn is_leading(&self) -> bool {
-        self.state.vote.node_id == self.config.id
-    }
-
-    pub(crate) fn is_leader(&self) -> bool {
-        self.state.vote.node_id == self.config.id && self.state.vote.committed
+        self.state.calc_server_state(&self.config.id)
     }
 
     // --- handlers ---

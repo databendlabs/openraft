@@ -335,7 +335,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     continue;
                 }
                 // we are no longer leader so error out early
-                if !self.engine.is_leader() {
+                if !self.engine.state.is_leader(&self.engine.config.id) {
                     self.reject_with_forward_to_leader(tx);
                     return;
                 }
@@ -393,21 +393,21 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         let curr = &self.engine.state.membership_state.effective;
         if curr.contains(&target) {
-            let matched = if let Some(l) = &self.engine.internal_server_state.leading() {
+            let matching = if let Some(l) = &self.engine.internal_server_state.leading() {
                 *l.progress.get(&target)
             } else {
                 unreachable!("it has to be a leader!!!");
             };
 
             tracing::debug!(
-                "target {:?} already member or learner, can't add; matched:{:?}",
+                "target {:?} already member or learner, can't add; matching:{:?}",
                 target,
-                matched
+                matching
             );
 
             let _ = tx.send(Ok(AddLearnerResponse {
                 membership_log_id: self.engine.state.membership_state.effective.log_id,
-                matched: matched.matching,
+                matched: matching.matching,
             }));
             return Ok(());
         }
@@ -532,13 +532,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 Expectation::AtLineRate => {
                     // Expect to be at line rate but not.
 
-                    let matched = if let Some(l) = &self.engine.internal_server_state.leading() {
+                    let matching = if let Some(l) = &self.engine.internal_server_state.leading() {
                         *l.progress.get(node_id)
                     } else {
                         unreachable!("it has to be a leader!!!");
                     };
 
-                    let distance = replication_lag(&matched.matching.index(), &last_log_id.index());
+                    let distance = replication_lag(&matching.matching.index(), &last_log_id.index());
 
                     if distance <= self.config.replication_lag_threshold {
                         continue;
@@ -546,7 +546,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
                     let lagging = LearnerIsLagging {
                         node_id: *node_id,
-                        matched: matched.matching,
+                        matched: matching.matching,
                         distance,
                     };
 
@@ -1158,14 +1158,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.handle_building_snapshot_result(result).await?;
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
-                if self.engine.is_leader() {
+                if self.engine.state.is_leader(&self.engine.config.id) {
                     self.handle_check_is_leader_request(tx).await;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }
             }
             RaftMsg::ClientWriteRequest { payload: rpc, tx } => {
-                if self.engine.is_leader() {
+                if self.engine.state.is_leader(&self.engine.config.id) {
                     self.write_entry(rpc, Some(tx)).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
@@ -1175,7 +1175,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 let _ = tx.send(self.handle_initialize(members).await.extract_fatal()?);
             }
             RaftMsg::AddLearner { id, node, tx } => {
-                if self.engine.is_leader() {
+                if self.engine.state.is_leader(&self.engine.config.id) {
                     self.add_learner(id, node, tx).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
@@ -1187,7 +1187,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 turn_to_learner,
                 tx,
             } => {
-                if self.engine.is_leader() {
+                if self.engine.state.is_leader(&self.engine.config.id) {
                     self.change_membership(changes, when, turn_to_learner, tx).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
@@ -1313,7 +1313,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(
             target = display(target),
             result = debug(&result),
-            "handle_update_matched"
+            "handle_replication_progress"
         );
 
         if tracing::enabled!(Level::DEBUG) {
@@ -1342,10 +1342,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 matching = debug(&matching),
                 "update replication_metrics"
             );
-            l.replication_metrics.update(UpdateMatchedLogId {
-                target,
-                matching: matching,
-            });
+            l.replication_metrics.update(UpdateMatchedLogId { target, matching });
         } else {
             // This method is only called after `update_progress()`.
             // And this node may become a non-leader after `update_progress()`
@@ -1520,17 +1517,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::UpdateReplicationStreams { targets } => {
                 self.remove_all_replication().await;
 
-                for (node_id, matched) in targets.iter() {
-                    match self.spawn_replication_stream(*node_id, *matched).await {
+                for (target, matching) in targets.iter() {
+                    match self.spawn_replication_stream(*target, *matching).await {
                         Ok(state) => {
                             if let Some(l) = &mut self.leader_data {
-                                l.nodes.insert(*node_id, state);
+                                l.nodes.insert(*target, state);
                             } else {
                                 unreachable!("it has to be a leader!!!");
                             }
                         }
                         Err(e) => {
-                            tracing::error!({node = % node_id}, "cannot connect to {:?}", e);
+                            tracing::error!({node = % target}, "cannot connect to {:?}", e);
                             // cannot return Err, or raft fail completely
                         }
                     };

@@ -181,7 +181,6 @@ where
         self.log_ids.extend_from_same_leader(new_log_ids)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn extend_log_ids<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_log_id: &[LID]) {
         self.log_ids.extend(new_log_id)
     }
@@ -213,5 +212,40 @@ where
     pub(crate) fn purge_log(&mut self, upto: &LogId<NID>) {
         self.purged_next = upto.index + 1;
         self.log_ids.purge(upto);
+    }
+
+    /// Determine the current server state by state.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn calc_server_state(&self, id: &NID) -> ServerState {
+        tracing::debug!(
+            is_member = display(self.is_voter(id)),
+            is_leader = display(self.is_leader(id)),
+            is_leading = display(self.is_leading(id)),
+            "states"
+        );
+        if self.is_voter(id) {
+            if self.is_leader(id) {
+                ServerState::Leader
+            } else if self.is_leading(id) {
+                ServerState::Candidate
+            } else {
+                ServerState::Follower
+            }
+        } else {
+            ServerState::Learner
+        }
+    }
+
+    pub(crate) fn is_voter(&self, id: &NID) -> bool {
+        self.membership_state.is_voter(id)
+    }
+
+    /// The node is candidate(leadership is not granted by a quorum) or leader(leadership is granted by a quorum)
+    pub(crate) fn is_leading(&self, id: &NID) -> bool {
+        &self.vote.node_id == id
+    }
+
+    pub(crate) fn is_leader(&self, id: &NID) -> bool {
+        &self.vote.node_id == id && self.vote.committed
     }
 }
