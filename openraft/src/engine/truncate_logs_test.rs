@@ -43,8 +43,11 @@ fn eng() -> Engine<u64, ()> {
         log_id(4, 4),
         log_id(4, 6),
     ]);
-    eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+    );
+
     eng.state.server_state = ServerState::Follower;
     eng
 }
@@ -67,10 +70,10 @@ fn test_truncate_logs_since_3() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+        ),
         eng.state.membership_state
     );
     assert_eq!(ServerState::Learner, eng.state.server_state);
@@ -106,10 +109,10 @@ fn test_truncate_logs_since_4() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        ),
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -228,10 +231,10 @@ fn test_truncate_logs_since_8() -> anyhow::Result<()> {
 #[test]
 fn test_truncate_logs_revert_effective_membership() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.membership_state = MembershipState {
-        committed: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01())),
-        effective: Arc::new(EffectiveMembership::new(Some(log_id(4, 4)), m12())),
-    };
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id(4, 4)), m12())),
+    );
     eng.state.server_state = eng.calc_server_state();
 
     eng.truncate_logs(4);

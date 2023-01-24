@@ -608,10 +608,7 @@ where
                 "committed membership can not conflict with the leader"
             );
 
-            let mem_state = MembershipState {
-                committed: committed.clone(),
-                effective: committed,
-            };
+            let mem_state = MembershipState::new(committed.clone(), committed);
 
             self.state.membership_state = mem_state;
             self.output.push_command(Command::UpdateMembership {
@@ -647,7 +644,7 @@ where
             effective = m;
         }
 
-        let mem_state = MembershipState { committed, effective };
+        let mem_state = MembershipState::new(committed, effective);
 
         if self.state.membership_state.effective != mem_state.effective {
             self.output.push_command(Command::UpdateMembership {
@@ -1047,16 +1044,13 @@ where
         debug_assert!(self.state.membership_state.effective.log_id < memberships[0].log_id);
 
         let new_mem_state = if memberships.len() == 1 {
-            MembershipState {
-                committed: self.state.membership_state.effective.clone(),
-                effective: Arc::new(memberships[0].clone()),
-            }
+            MembershipState::new(
+                self.state.membership_state.effective.clone(),
+                Arc::new(memberships[0].clone()),
+            )
         } else {
             // len() == 2
-            MembershipState {
-                committed: Arc::new(memberships[0].clone()),
-                effective: Arc::new(memberships[1].clone()),
-            }
+            MembershipState::new(Arc::new(memberships[0].clone()), Arc::new(memberships[1].clone()))
         };
         self.state.membership_state = new_mem_state;
         tracing::debug!(

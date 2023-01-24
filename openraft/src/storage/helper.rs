@@ -115,10 +115,10 @@ where
 
         // There 2 membership configs in logs.
         if log_mem.len() == 2 {
-            return Ok(MembershipState {
-                committed: Arc::new(log_mem[0].clone()),
-                effective: Arc::new(log_mem[1].clone()),
-            });
+            return Ok(MembershipState::new(
+                Arc::new(log_mem[0].clone()),
+                Arc::new(log_mem[1].clone()),
+            ));
         }
 
         let effective = if log_mem.is_empty() {
@@ -127,10 +127,7 @@ where
             log_mem[0].clone()
         };
 
-        let res = MembershipState {
-            committed: Arc::new(sm_mem),
-            effective: Arc::new(effective),
-        };
+        let res = MembershipState::new(Arc::new(sm_mem), Arc::new(effective));
 
         Ok(res)
     }

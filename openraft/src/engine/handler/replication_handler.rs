@@ -296,6 +296,7 @@ mod tests {
         use crate::LeaderId;
         use crate::LogId;
         use crate::Membership;
+        use crate::MembershipState;
         use crate::Vote;
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
@@ -319,8 +320,11 @@ mod tests {
 
             eng.config.id = 2;
             eng.state.vote = Vote::new_committed(2, 1);
-            eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
-            eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m123()));
+            eng.state.membership_state = MembershipState::new(
+                Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+                Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m123())),
+            );
+
             eng
         }
 

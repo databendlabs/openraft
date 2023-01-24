@@ -163,10 +163,10 @@ fn test_raft_state_is_membership_committed() -> anyhow::Result<()> {
     //
     let rs = RaftState {
         committed: None,
-        membership_state: MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
-        },
+        membership_state: MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
+        ),
         ..Default::default()
     };
 
@@ -177,10 +177,10 @@ fn test_raft_state_is_membership_committed() -> anyhow::Result<()> {
 
     let rs = RaftState {
         committed: Some(log_id(2, 2)),
-        membership_state: MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 2)), m12())),
-        },
+        membership_state: MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 2)), m12())),
+        ),
         ..Default::default()
     };
 
@@ -191,10 +191,10 @@ fn test_raft_state_is_membership_committed() -> anyhow::Result<()> {
 
     let rs = RaftState {
         committed: Some(log_id(2, 2)),
-        membership_state: MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m12())),
-        },
+        membership_state: MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m12())),
+        ),
         ..Default::default()
     };
 

@@ -45,8 +45,10 @@ fn eng() -> Engine<u64, ()> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.state.committed = Some(log_id(1, 1));
-    eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+    );
     eng
 }
 
@@ -58,10 +60,10 @@ fn test_follower_commit_entries_empty() -> anyhow::Result<()> {
 
     assert_eq!(Some(&log_id(1, 1)), eng.state.committed());
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        ),
         eng.state.membership_state
     );
 
@@ -87,10 +89,10 @@ fn test_follower_commit_entries_no_update() -> anyhow::Result<()> {
 
     assert_eq!(Some(&log_id(1, 1)), eng.state.committed());
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        ),
         eng.state.membership_state
     );
 
@@ -116,10 +118,10 @@ fn test_follower_commit_entries_lt_last_entry() -> anyhow::Result<()> {
 
     assert_eq!(Some(&log_id(2, 3)), eng.state.committed());
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        ),
         eng.state.membership_state
     );
 

@@ -25,10 +25,10 @@ fn m123_345() -> Membership<u64, ()> {
 
 #[test]
 fn test_membership_state_is_member() -> anyhow::Result<()> {
-    let x = MembershipState {
-        committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1())),
-        effective: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m123_345())),
-    };
+    let x = MembershipState::new(
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1())),
+        Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m123_345())),
+    );
 
     assert!(!x.is_voter(&0));
     assert!(x.is_voter(&1));
