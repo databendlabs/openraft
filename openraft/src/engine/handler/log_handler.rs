@@ -25,20 +25,25 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Purge log entries upto `upto`, inclusive.
+    /// Purge log entries upto `RaftState.purge_upto()`, inclusive.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn purge_log(&mut self, upto: LogId<NID>) {
-        tracing::info!(upto = display(&upto), "purge_log");
-        // TODO: move tests into this mod
+    pub(crate) fn purge_log(&mut self) {
         let st = &mut self.state;
-        let log_id = Some(&upto);
+        let purge_upto = st.purge_upto();
 
-        if log_id <= st.last_purged_log_id() {
+        tracing::info!(
+            last_purged_log_id = display(st.last_purged_log_id().summary()),
+            purge_upto = display(purge_upto.summary()),
+            "purge_log"
+        );
+
+        if purge_upto <= st.last_purged_log_id() {
             return;
         }
 
-        st.purge_log(&upto);
+        let upto = *purge_upto.unwrap();
 
+        st.purge_log(&upto);
         self.output.push_command(Command::PurgeLog { upto });
     }
 
@@ -133,7 +138,8 @@ mod tests {
             let mut eng = eng();
 
             let mut lh = eng.log_handler();
-            lh.purge_log(log_id(1, 1));
+            lh.state.purge_upto = Some(log_id(1, 1));
+            lh.purge_log();
 
             assert_eq!(Some(log_id(2, 2)), lh.state.last_purged_log_id().copied(),);
             assert_eq!(log_id(2, 2), lh.state.log_ids.key_log_ids()[0],);
@@ -149,7 +155,8 @@ mod tests {
             let mut eng = eng();
 
             let mut lh = eng.log_handler();
-            lh.purge_log(log_id(2, 2));
+            lh.state.purge_upto = Some(log_id(2, 2));
+            lh.purge_log();
 
             assert_eq!(Some(log_id(2, 2)), lh.state.last_purged_log_id().copied());
             assert_eq!(log_id(2, 2), lh.state.log_ids.key_log_ids()[0],);
@@ -164,7 +171,8 @@ mod tests {
             let mut eng = eng();
 
             let mut lh = eng.log_handler();
-            lh.purge_log(log_id(2, 3));
+            lh.state.purge_upto = Some(log_id(2, 3));
+            lh.purge_log();
 
             assert_eq!(Some(log_id(2, 3)), lh.state.last_purged_log_id().copied(),);
             assert_eq!(log_id(2, 3), lh.state.log_ids.key_log_ids()[0],);
@@ -180,7 +188,8 @@ mod tests {
             let mut eng = eng();
 
             let mut lh = eng.log_handler();
-            lh.purge_log(log_id(4, 4));
+            lh.state.purge_upto = Some(log_id(4, 4));
+            lh.purge_log();
 
             assert_eq!(Some(log_id(4, 4)), lh.state.last_purged_log_id().copied(),);
             assert_eq!(log_id(4, 4), lh.state.log_ids.key_log_ids()[0],);
@@ -196,7 +205,8 @@ mod tests {
             let mut eng = eng();
 
             let mut lh = eng.log_handler();
-            lh.purge_log(log_id(4, 5));
+            lh.state.purge_upto = Some(log_id(4, 5));
+            lh.purge_log();
 
             assert_eq!(Some(log_id(4, 5)), lh.state.last_purged_log_id().copied(),);
             assert_eq!(log_id(4, 5), lh.state.log_ids.key_log_ids()[0],);
@@ -212,7 +222,8 @@ mod tests {
             let mut eng = eng();
 
             let mut lh = eng.log_handler();
-            lh.purge_log(log_id(4, 6));
+            lh.state.purge_upto = Some(log_id(4, 6));
+            lh.purge_log();
 
             assert_eq!(Some(log_id(4, 6)), lh.state.last_purged_log_id().copied(),);
             assert_eq!(log_id(4, 6), lh.state.log_ids.key_log_ids()[0],);
@@ -228,7 +239,8 @@ mod tests {
             let mut eng = eng();
 
             let mut lh = eng.log_handler();
-            lh.purge_log(log_id(4, 7));
+            lh.state.purge_upto = Some(log_id(4, 7));
+            lh.purge_log();
 
             assert_eq!(Some(log_id(4, 7)), lh.state.last_purged_log_id().copied(),);
             assert_eq!(log_id(4, 7), lh.state.log_ids.key_log_ids()[0],);
@@ -244,7 +256,8 @@ mod tests {
             let mut eng = eng();
 
             let mut lh = eng.log_handler();
-            lh.purge_log(log_id(5, 7));
+            lh.state.purge_upto = Some(log_id(5, 7));
+            lh.purge_log();
 
             assert_eq!(Some(log_id(5, 7)), lh.state.last_purged_log_id().copied(),);
             assert_eq!(log_id(5, 7), lh.state.log_ids.key_log_ids()[0],);

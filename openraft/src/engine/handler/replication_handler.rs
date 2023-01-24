@@ -44,10 +44,14 @@ where
         );
         tracing::debug!(progress = display(&self.leader.progress), "leader progress");
 
+        debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
+
         // Whether it is a response for the current inflight request.
         let mut is_mine = true;
 
-        let committed = *self
+        // The value granted by a quorum may not yet be a committed.
+        // A committed is **granted** and also in current term.
+        let granted = *self
             .leader
             .progress
             .update_with(&node_id, |prog_entry| {
@@ -62,9 +66,7 @@ where
             return;
         }
 
-        tracing::debug!(committed = debug(&committed), "committed after updating progress");
-
-        debug_assert!(log_id.is_some(), "a valid update can never set matching to None");
+        tracing::debug!(granted = display(granted.summary()), "granted after updating progress");
 
         if node_id != self.config.id {
             self.output.push_command(Command::UpdateReplicationMetrics {
@@ -74,13 +76,13 @@ where
         }
 
         // Only when the log id is proposed by current leader, it is committed.
-        if let Some(c) = committed {
+        if let Some(c) = granted {
             if c.leader_id.term != self.state.vote.term || c.leader_id.node_id != self.state.vote.node_id {
                 return;
             }
         }
 
-        if let Some(prev_committed) = self.state.update_committed(&committed) {
+        if let Some(prev_committed) = self.state.update_committed(&granted) {
             self.output.push_command(Command::ReplicateCommitted {
                 committed: self.state.committed,
             });
@@ -225,16 +227,19 @@ where
         // TODO refactor this
         // TODO: test
 
-        tracing::debug!(to_purge = display(self.state.purge_upto().summary()), "try_purge_log");
+        tracing::debug!(
+            last_purged_log_id = display(self.state.last_purged_log_id().summary()),
+            purge_upto = display(self.state.purge_upto().summary()),
+            "try_purge_log"
+        );
 
         if self.state.purge_upto() <= self.state.last_purged_log_id() {
-            tracing::debug!("no postponed purge");
+            tracing::debug!("no need to purge, return");
             return;
         }
 
-        // Safe unwrap(): it greater than an Option thus it has to be a Some()
+        // Safe unwrap(): it greater than an Option thus it must be a Some()
         let purge_upto = *self.state.purge_upto().unwrap();
-        tracing::debug!("purge_upto: {}", purge_upto);
 
         // Check if any replication task is going to use the log that are going to purge.
         let mut in_use = false;
@@ -251,8 +256,7 @@ where
             return;
         }
 
-        tracing::debug!("do purge: {}", purge_upto.summary());
-        self.log_handler().purge_log(purge_upto);
+        self.log_handler().purge_log();
     }
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {

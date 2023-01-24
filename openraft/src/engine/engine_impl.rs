@@ -824,7 +824,7 @@ where
         // the log will be purged the next start up, in [`RaftState::get_initial_state`].
         // TODO: move this to LogHandler::purge_log()?
         self.state.purge_upto = Some(snap_last_log_id);
-        self.log_handler().purge_log(snap_last_log_id);
+        self.log_handler().purge_log();
 
         // TODO: temp solution: committed is updated after snapshot_last_log_id.
         self.state.enable_validate = old_validate;
@@ -847,10 +847,8 @@ where
             // If it is leading, it must not delete a log that is in use by a replication task.
             self.replication_handler().try_purge_log();
         } else {
-            #[allow(clippy::collapsible_else_if)]
-            if let Some(purge_upto) = self.state.purge_upto().copied() {
-                self.log_handler().purge_log(purge_upto);
-            }
+            // For follower/learner, no other tasks are using logs, just purge.
+            self.log_handler().purge_log();
         }
     }
 }
