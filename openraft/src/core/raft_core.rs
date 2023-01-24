@@ -264,7 +264,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 vote: self.engine.state.vote,
                 prev_log_id: progress.matching,
                 entries: vec![],
-                leader_commit: self.engine.state.committed,
+                leader_commit: self.engine.state.committed().copied(),
             };
 
             let my_id = self.id;
@@ -506,7 +506,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         Err(ChangeMembershipError::InProgress(InProgress {
-            committed: st.committed,
+            committed: st.committed().copied(),
             membership_log_id: st.membership_state.effective.log_id,
         }))
     }
@@ -627,8 +627,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             // --- data ---
             current_term: self.engine.state.vote.term,
-            last_log_index: self.engine.state.last_log_id().map(|id| id.index),
-            last_applied: self.engine.state.committed,
+            last_log_index: self.engine.state.last_log_id().index(),
+            last_applied: self.engine.state.committed().copied(),
             snapshot: self.engine.state.snapshot_meta.last_log_id,
 
             // --- cluster ---
@@ -742,7 +742,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         if !force {
             // If we are below the threshold, then there is nothing to do.
-            if self.engine.state.committed.next_index() - self.engine.state.snapshot_meta.last_log_id.next_index()
+            if self.engine.state.committed().next_index() - self.engine.state.snapshot_meta.last_log_id.next_index()
                 < *threshold
             {
                 return;
@@ -935,7 +935,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             target,
             session_id,
             self.config.clone(),
-            self.engine.state.committed,
+            self.engine.state.committed().copied(),
             progress_entry.matching,
             network,
             self.storage.get_log_reader().await,

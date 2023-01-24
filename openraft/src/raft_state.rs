@@ -187,19 +187,20 @@ where
 
     /// Return true if the currently effective membership is committed.
     pub(crate) fn is_membership_committed(&self) -> bool {
-        self.committed >= self.membership_state.effective.log_id
+        self.committed() >= self.membership_state.effective.log_id.as_ref()
     }
 
     /// Update field `committed` if the input is greater.
     /// If updated, it returns the previous value in a `Some()`.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_committed(&mut self, committed: &Option<LogId<NID>>) -> Option<Option<LogId<NID>>> {
-        if committed > &self.committed {
-            let prev = self.committed;
+        if committed.as_ref() > self.committed() {
+            let prev = self.committed().copied();
 
             self.committed = *committed;
 
             // TODO(xp): use a vec to store committed and effective membership.
-            if self.committed >= self.membership_state.effective.log_id {
+            if self.committed() >= self.membership_state.effective.log_id.as_ref() {
                 self.membership_state.committed = self.membership_state.effective.clone();
             }
 
@@ -209,6 +210,7 @@ where
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn purge_log(&mut self, upto: &LogId<NID>) {
         self.purged_next = upto.index + 1;
         self.log_ids.purge(upto);

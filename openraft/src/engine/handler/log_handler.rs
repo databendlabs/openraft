@@ -141,9 +141,9 @@ mod tests {
             lh.state.purge_upto = Some(log_id(1, 1));
             lh.purge_log();
 
-            assert_eq!(Some(log_id(2, 2)), lh.state.last_purged_log_id().copied(),);
+            assert_eq!(Some(&log_id(2, 2)), lh.state.last_purged_log_id());
             assert_eq!(log_id(2, 2), lh.state.log_ids.key_log_ids()[0],);
-            assert_eq!(Some(log_id(4, 6)), lh.state.last_log_id().copied());
+            assert_eq!(Some(&log_id(4, 6)), lh.state.last_log_id());
 
             assert_eq!(0, lh.output.commands.len());
 
@@ -158,9 +158,9 @@ mod tests {
             lh.state.purge_upto = Some(log_id(2, 2));
             lh.purge_log();
 
-            assert_eq!(Some(log_id(2, 2)), lh.state.last_purged_log_id().copied());
+            assert_eq!(Some(&log_id(2, 2)), lh.state.last_purged_log_id());
             assert_eq!(log_id(2, 2), lh.state.log_ids.key_log_ids()[0],);
-            assert_eq!(Some(log_id(4, 6)), lh.state.last_log_id().copied());
+            assert_eq!(Some(&log_id(4, 6)), lh.state.last_log_id());
 
             assert_eq!(0, lh.output.commands.len());
 
@@ -174,9 +174,9 @@ mod tests {
             lh.state.purge_upto = Some(log_id(2, 3));
             lh.purge_log();
 
-            assert_eq!(Some(log_id(2, 3)), lh.state.last_purged_log_id().copied(),);
+            assert_eq!(Some(&log_id(2, 3)), lh.state.last_purged_log_id());
             assert_eq!(log_id(2, 3), lh.state.log_ids.key_log_ids()[0],);
-            assert_eq!(Some(log_id(4, 6)), lh.state.last_log_id().copied());
+            assert_eq!(Some(&log_id(4, 6)), lh.state.last_log_id());
 
             assert_eq!(vec![Command::PurgeLog { upto: log_id(2, 3) }], lh.output.commands);
 
@@ -191,9 +191,9 @@ mod tests {
             lh.state.purge_upto = Some(log_id(4, 4));
             lh.purge_log();
 
-            assert_eq!(Some(log_id(4, 4)), lh.state.last_purged_log_id().copied(),);
+            assert_eq!(Some(&log_id(4, 4)), lh.state.last_purged_log_id());
             assert_eq!(log_id(4, 4), lh.state.log_ids.key_log_ids()[0],);
-            assert_eq!(Some(log_id(4, 6)), lh.state.last_log_id().copied());
+            assert_eq!(Some(&log_id(4, 6)), lh.state.last_log_id());
 
             assert_eq!(vec![Command::PurgeLog { upto: log_id(4, 4) }], lh.output.commands);
 
@@ -208,9 +208,9 @@ mod tests {
             lh.state.purge_upto = Some(log_id(4, 5));
             lh.purge_log();
 
-            assert_eq!(Some(log_id(4, 5)), lh.state.last_purged_log_id().copied(),);
+            assert_eq!(Some(&log_id(4, 5)), lh.state.last_purged_log_id());
             assert_eq!(log_id(4, 5), lh.state.log_ids.key_log_ids()[0],);
-            assert_eq!(Some(log_id(4, 6)), lh.state.last_log_id().copied());
+            assert_eq!(Some(&log_id(4, 6)), lh.state.last_log_id());
 
             assert_eq!(vec![Command::PurgeLog { upto: log_id(4, 5) }], lh.output.commands);
 
@@ -225,9 +225,9 @@ mod tests {
             lh.state.purge_upto = Some(log_id(4, 6));
             lh.purge_log();
 
-            assert_eq!(Some(log_id(4, 6)), lh.state.last_purged_log_id().copied(),);
+            assert_eq!(Some(&log_id(4, 6)), lh.state.last_purged_log_id());
             assert_eq!(log_id(4, 6), lh.state.log_ids.key_log_ids()[0],);
-            assert_eq!(Some(log_id(4, 6)), lh.state.last_log_id().copied());
+            assert_eq!(Some(&log_id(4, 6)), lh.state.last_log_id());
 
             assert_eq!(vec![Command::PurgeLog { upto: log_id(4, 6) }], lh.output.commands);
 
@@ -242,9 +242,9 @@ mod tests {
             lh.state.purge_upto = Some(log_id(4, 7));
             lh.purge_log();
 
-            assert_eq!(Some(log_id(4, 7)), lh.state.last_purged_log_id().copied(),);
+            assert_eq!(Some(&log_id(4, 7)), lh.state.last_purged_log_id());
             assert_eq!(log_id(4, 7), lh.state.log_ids.key_log_ids()[0],);
-            assert_eq!(Some(log_id(4, 7)), lh.state.last_log_id().copied());
+            assert_eq!(Some(&log_id(4, 7)), lh.state.last_log_id());
 
             assert_eq!(vec![Command::PurgeLog { upto: log_id(4, 7) }], lh.output.commands);
 
@@ -259,9 +259,9 @@ mod tests {
             lh.state.purge_upto = Some(log_id(5, 7));
             lh.purge_log();
 
-            assert_eq!(Some(log_id(5, 7)), lh.state.last_purged_log_id().copied(),);
+            assert_eq!(Some(&log_id(5, 7)), lh.state.last_purged_log_id());
             assert_eq!(log_id(5, 7), lh.state.log_ids.key_log_ids()[0],);
-            assert_eq!(Some(log_id(5, 7)), lh.state.last_log_id().copied());
+            assert_eq!(Some(&log_id(5, 7)), lh.state.last_log_id());
 
             assert_eq!(vec![Command::PurgeLog { upto: log_id(5, 7) }], lh.output.commands);
 

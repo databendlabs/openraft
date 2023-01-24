@@ -93,11 +93,11 @@ where
 
         if let Some(prev_committed) = self.state.update_committed(&granted) {
             self.output.push_command(Command::ReplicateCommitted {
-                committed: self.state.committed,
+                committed: self.state.committed().copied(),
             });
             self.output.push_command(Command::LeaderCommit {
                 already_committed: prev_committed,
-                upto: self.state.committed.unwrap(),
+                upto: self.state.committed().copied().unwrap(),
             });
         }
     }
@@ -291,6 +291,7 @@ mod tests {
         use crate::engine::Engine;
         use crate::progress::Inflight;
         use crate::progress::Progress;
+        use crate::raft_state::LogStateReader;
         use crate::EffectiveMembership;
         use crate::LeaderId;
         use crate::LogId;
@@ -363,7 +364,7 @@ mod tests {
             // progress: None, None, (1,2)
             {
                 rh.update_matching(3, inflight_id_3, Some(log_id(1, 2)));
-                assert_eq!(None, rh.state.committed);
+                assert_eq!(None, rh.state.committed());
                 assert_eq!(
                     vec![
                         //
@@ -380,7 +381,7 @@ mod tests {
             {
                 rh.output.commands = vec![];
                 rh.update_matching(2, inflight_id_2, Some(log_id(2, 1)));
-                assert_eq!(None, rh.state.committed);
+                assert_eq!(None, rh.state.committed());
                 assert_eq!(0, rh.output.commands.len());
             }
 
@@ -388,7 +389,7 @@ mod tests {
             {
                 rh.output.commands = vec![];
                 rh.update_matching(3, inflight_id_3, Some(log_id(2, 3)));
-                assert_eq!(Some(log_id(2, 1)), rh.state.committed);
+                assert_eq!(Some(&log_id(2, 1)), rh.state.committed());
                 assert_eq!(
                     vec![
                         Command::UpdateProgressMetrics {
@@ -411,7 +412,7 @@ mod tests {
             {
                 rh.output.commands = vec![];
                 rh.update_matching(1, inflight_id_1, Some(log_id(2, 4)));
-                assert_eq!(Some(log_id(2, 3)), rh.state.committed);
+                assert_eq!(Some(&log_id(2, 3)), rh.state.committed());
                 assert_eq!(
                     vec![
                         Command::UpdateProgressMetrics {

@@ -109,13 +109,13 @@ fn test_raft_state_last_log_id() -> anyhow::Result<()> {
         log_ids: LogIdList::new(vec![log_id(1, 2)]),
         ..Default::default()
     };
-    assert_eq!(Some(log_id(1, 2)), rs.last_log_id().copied());
+    assert_eq!(Some(&log_id(1, 2)), rs.last_log_id());
 
     let rs = RaftState::<u64, ()> {
         log_ids: LogIdList::new(vec![log_id(1, 2), log_id(3, 4)]),
         ..Default::default()
     };
-    assert_eq!(Some(log_id(3, 4)), rs.last_log_id().copied());
+    assert_eq!(Some(&log_id(3, 4)), rs.last_log_id());
 
     Ok(())
 }

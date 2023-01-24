@@ -431,13 +431,13 @@ where
         let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
         assert_eq!(
-            initial.last_log_id().copied(),
-            Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 2)),
+            Some(&LogId::new(LeaderId::new(3, NODE_ID.into()), 2)),
+            initial.last_log_id(),
             "state machine has higher log"
         );
         assert_eq!(
-            initial.committed,
-            Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
+            initial.committed(),
+            Some(&LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
             "unexpected value for last applied log"
         );
         assert_eq!(
@@ -545,8 +545,8 @@ where
         let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
         assert_eq!(
-            initial.last_log_id().copied(),
-            Some(LogId::new(LeaderId::new(2, NODE_ID.into()), 1)),
+            Some(&LogId::new(LeaderId::new(2, NODE_ID.into()), 1)),
+            initial.last_log_id(),
             "state machine has higher log"
         );
         Ok(())
@@ -562,8 +562,8 @@ where
         let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
         assert_eq!(
-            initial.last_log_id().copied(),
-            Some(LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
+            Some(&LogId::new(LeaderId::new(3, NODE_ID.into()), 1)),
+            initial.last_log_id(),
             "state machine has higher log"
         );
         assert_eq!(

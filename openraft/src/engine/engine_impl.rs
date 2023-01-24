@@ -451,7 +451,7 @@ where
         tracing::debug!(
             my_vote = display(self.state.vote),
             my_last_log_id = display(self.state.last_log_id().summary()),
-            my_committed = display(self.state.committed.summary()),
+            my_committed = display(self.state.committed().summary()),
             "local state"
         );
 
@@ -474,8 +474,8 @@ where
         // else `prev_log_id.is_none()` means replicating logs from the very beginning.
 
         tracing::debug!(
-            ?self.state.committed,
-            entries = %entries.summary(),
+            committed = display(self.state.committed().summary()),
+            entries = display(entries.summary()),
             "prev_log_id matches, skip matching entries",
         );
 
@@ -684,7 +684,7 @@ where
         }
 
         // A leader that is removed will be shut down when this membership log is committed.
-        // TODO: currently only a leader has replication setup.
+        // TODO(9): currently only a leader has replication setup.
         //       It's better to setup replication for both leader and candidate.
         //       e.g.: if self.internal_server_state.is_leading() {
         if self.state.is_leader(&self.config.id) {
@@ -714,12 +714,12 @@ where
         tracing::debug!(
             "membership: {}, committed: {}, is_leading: {}",
             em.summary(),
-            self.state.committed.summary(),
+            self.state.committed().summary(),
             self.state.is_leading(&self.config.id),
         );
 
         #[allow(clippy::collapsible_if)]
-        if em.log_id <= self.state.committed {
+        if em.log_id.as_ref() <= self.state.committed() {
             if !em.is_voter(&self.config.id) && self.state.is_leading(&self.config.id) {
                 tracing::debug!("leader {} is stepping down", self.config.id);
                 self.enter_following();
@@ -755,11 +755,11 @@ where
 
         let snap_last_log_id = meta.last_log_id;
 
-        if snap_last_log_id <= self.state.committed {
+        if snap_last_log_id.as_ref() <= self.state.committed() {
             tracing::info!(
                 "No need to install snapshot; snapshot last_log_id({}) <= committed({})",
                 snap_last_log_id.summary(),
-                self.state.committed.summary()
+                self.state.committed().summary()
             );
             self.output.push_command(Command::CancelSnapshot { snapshot_meta: meta });
             // TODO: temp solution: committed is updated after snapshot_last_log_id.
@@ -803,7 +803,7 @@ where
         if let Some(local) = local {
             if local != snap_last_log_id {
                 // Delete non-committed logs.
-                self.truncate_logs(self.state.committed.next_index());
+                self.truncate_logs(self.state.committed().next_index());
             }
         }
 
