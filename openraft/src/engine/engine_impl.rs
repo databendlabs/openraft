@@ -881,7 +881,7 @@ where
         //     "can not enter leading twice"
         // );
 
-        self.new_leader();
+        self.new_leading();
     }
 
     /// Leave leading state and enter following state(vote.node_id != self.id).
@@ -938,9 +938,12 @@ where
         self.replication_handler().initiate_replication();
     }
 
+    // TODO: Incomplete method:
+    //       This should ony be used by test and internally.
+    //       No other mod should use it
     /// Create a new Leader, when raft enters candidate state.
     /// In openraft, Leader and Candidate shares the same state.
-    pub(crate) fn new_leader(&mut self) {
+    pub(crate) fn new_leading(&mut self) {
         let em = &self.state.membership_state.effective;
         let mut leader = Leader::new(
             em.membership.to_quorum_set(),
@@ -948,8 +951,6 @@ where
             self.state.last_log_id().index(),
         );
 
-        // TODO: refactor this piece of codes:
-        //       progress.update() would be better to accept a closure
         // TODO: for a new leader, update the matching
         // We can just ignore the result here:
         // The `committed` will not be updated until a log of current term is granted by a quorum
@@ -972,8 +973,8 @@ where
         {
             // leader must initialize its replication progress too.
             // TODO: refactor this
-            let x = rh.leader.progress.get_mut(&id).unwrap();
-            let res = x.next_send(rh.state, 1).unwrap();
+            let prog_entry = rh.leader.progress.get_mut(&id).unwrap();
+            let res = prog_entry.next_send(rh.state, 1).unwrap();
             let inflight_id = res.get_id().unwrap();
             debug_assert_eq!(
                 &Inflight::logs(rh.state.get_log_id(log_id.index - 1), Some(log_id)).with_id(inflight_id),

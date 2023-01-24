@@ -50,7 +50,7 @@ where
         let mut is_mine = true;
 
         // The value granted by a quorum may not yet be a committed.
-        // A committed is **granted** and also in current term.
+        // A committed is **granted** and also is in current term.
         let granted = *self
             .leader
             .progress
@@ -69,12 +69,21 @@ where
         tracing::debug!(granted = display(granted.summary()), "granted after updating progress");
 
         if node_id != self.config.id {
-            self.output.push_command(Command::UpdateReplicationMetrics {
+            // TODO(3): replication metrics should also contains leader's progress
+            self.output.push_command(Command::UpdateProgressMetrics {
                 target: node_id,
                 matching: log_id.unwrap(),
             });
         }
 
+        self.try_commit_granted(granted);
+    }
+
+    /// Commit the log id that is granted(accepted) by a quorum of voters.
+    ///
+    /// In raft a log that is granted and in the leader term is committed.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn try_commit_granted(&mut self, granted: Option<LogId<NID>>) {
         // Only when the log id is proposed by current leader, it is committed.
         if let Some(c) = granted {
             if c.leader_id.term != self.state.vote.term || c.leader_id.node_id != self.state.vote.node_id {
@@ -332,7 +341,7 @@ mod tests {
         #[test]
         fn test_update_matching() -> anyhow::Result<()> {
             let mut eng = eng();
-            eng.new_leader();
+            eng.new_leading();
 
             let mut rh = eng.replication_handler();
             let inflight_id_1 = {
@@ -358,7 +367,7 @@ mod tests {
                 assert_eq!(
                     vec![
                         //
-                        Command::UpdateReplicationMetrics {
+                        Command::UpdateProgressMetrics {
                             target: 3,
                             matching: log_id(1, 2),
                         },
@@ -382,7 +391,7 @@ mod tests {
                 assert_eq!(Some(log_id(2, 1)), rh.state.committed);
                 assert_eq!(
                     vec![
-                        Command::UpdateReplicationMetrics {
+                        Command::UpdateProgressMetrics {
                             target: 3,
                             matching: log_id(2, 3),
                         },
@@ -405,7 +414,7 @@ mod tests {
                 assert_eq!(Some(log_id(2, 3)), rh.state.committed);
                 assert_eq!(
                     vec![
-                        Command::UpdateReplicationMetrics {
+                        Command::UpdateProgressMetrics {
                             target: 1,
                             matching: log_id(2, 4),
                         },

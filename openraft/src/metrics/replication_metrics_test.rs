@@ -18,7 +18,7 @@ fn test_versioned() -> anyhow::Result<()> {
 
     a.update(UpdateMatchedLogId {
         target: 1,
-        matched: LogId::new(LeaderId::new(1, 2), 3),
+        matching: LogId::new(LeaderId::new(1, 2), 3),
     });
 
     assert_eq!("{ver:1, LeaderMetrics{1:1-2-3}}", a.summary());
@@ -30,7 +30,7 @@ fn test_versioned() -> anyhow::Result<()> {
 
     b1.update(UpdateMatchedLogId {
         target: 1,
-        matched: LogId::new(LeaderId::new(1, 2), 5),
+        matching: LogId::new(LeaderId::new(1, 2), 5),
     });
     assert_eq!("{ver:1, LeaderMetrics{1:1-2-5}}", a.summary());
     assert_eq!("{ver:2, LeaderMetrics{1:1-2-5}}", b1.summary());
@@ -40,7 +40,7 @@ fn test_versioned() -> anyhow::Result<()> {
 
     b1.update(UpdateMatchedLogId {
         target: 2,
-        matched: LogId::new(LeaderId::new(1, 2), 5),
+        matching: LogId::new(LeaderId::new(1, 2), 5),
     });
     assert_eq!("{ver:1, LeaderMetrics{1:1-2-5}}", a.summary());
     assert_eq!("{ver:3, LeaderMetrics{1:1-2-5, 2:1-2-5}}", b1.summary());
@@ -49,11 +49,11 @@ fn test_versioned() -> anyhow::Result<()> {
 
     a.update(UpdateMatchedLogId {
         target: 1,
-        matched: LogId::new(LeaderId::new(1, 2), 5),
+        matching: LogId::new(LeaderId::new(1, 2), 5),
     });
     a.update(UpdateMatchedLogId {
         target: 2,
-        matched: LogId::new(LeaderId::new(1, 2), 5),
+        matching: LogId::new(LeaderId::new(1, 2), 5),
     });
     assert_eq!("{ver:3, LeaderMetrics{1:1-2-5, 2:1-2-5}}", a.summary());
     assert_eq!("{ver:3, LeaderMetrics{1:1-2-5, 2:1-2-5}}", b1.summary());
@@ -64,7 +64,7 @@ fn test_versioned() -> anyhow::Result<()> {
     let mut b2 = b1.clone();
     b2.update(UpdateMatchedLogId {
         target: 2,
-        matched: LogId::new(LeaderId::new(1, 2), 9),
+        matching: LogId::new(LeaderId::new(1, 2), 9),
     });
     assert_eq!("{ver:3, LeaderMetrics{1:1-2-5, 2:1-2-9}}", b1.summary());
     assert_eq!("{ver:4, LeaderMetrics{1:1-2-5, 2:1-2-9}}", b2.summary());
@@ -74,7 +74,7 @@ fn test_versioned() -> anyhow::Result<()> {
 
     b1.update(UpdateMatchedLogId {
         target: 2,
-        matched: LogId::new(LeaderId::new(1, 2), 9),
+        matching: LogId::new(LeaderId::new(1, 2), 9),
     });
     assert_eq!("{ver:4, LeaderMetrics{1:1-2-5, 2:1-2-9}}", b1.summary());
     assert_eq!("{ver:4, LeaderMetrics{1:1-2-5, 2:1-2-9}}", b2.summary());
@@ -91,7 +91,7 @@ fn test_versioned_methods() -> anyhow::Result<()> {
 
     a.update(UpdateMatchedLogId {
         target: 1,
-        matched: LogId::new(LeaderId::new(1, 2), 3),
+        matching: LogId::new(LeaderId::new(1, 2), 3),
     });
 
     assert_eq!("{ver:1, LeaderMetrics{1:1-2-3}}", a.summary());

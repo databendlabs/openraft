@@ -103,7 +103,7 @@ fn test_elect() -> anyhow::Result<()> {
 
         // Build in-progress election state
         eng.state.vote = Vote::new_committed(1, 2);
-        eng.new_leader();
+        eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
 
         eng.elect();

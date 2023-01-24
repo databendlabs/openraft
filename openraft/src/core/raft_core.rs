@@ -1333,16 +1333,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    fn update_replication_metrics(&mut self, target: C::NodeId, matched: LogId<C::NodeId>) {
-        tracing::debug!(%target, ?matched, "update_leader_metrics");
+    fn update_progress_metrics(&mut self, target: C::NodeId, matching: LogId<C::NodeId>) {
+        tracing::debug!(%target, ?matching, "update_leader_metrics");
 
         if let Some(l) = &mut self.leader_data {
             tracing::debug!(
                 target = display(target),
-                matched = debug(&matched),
+                matching = debug(&matching),
                 "update replication_metrics"
             );
-            l.replication_metrics.update(UpdateMatchedLogId { target, matched });
+            l.replication_metrics.update(UpdateMatchedLogId {
+                target,
+                matching: matching,
+            });
         } else {
             // This method is only called after `update_progress()`.
             // And this node may become a non-leader after `update_progress()`
@@ -1533,8 +1536,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     };
                 }
             }
-            Command::UpdateReplicationMetrics { target, matching } => {
-                self.update_replication_metrics(*target, *matching);
+            Command::UpdateProgressMetrics { target, matching } => {
+                self.update_progress_metrics(*target, *matching);
             }
             Command::UpdateMembership { .. } => {
                 // TODO: not used
