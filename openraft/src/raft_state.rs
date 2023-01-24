@@ -165,6 +165,8 @@ where
         less_equal!(self.snapshot_last_log_id(), self.committed());
         less_equal!(self.committed(), self.last_log_id());
 
+        self.membership_state.validate()?;
+
         Ok(())
     }
 }

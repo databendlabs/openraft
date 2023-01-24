@@ -38,8 +38,11 @@ fn m34() -> Membership<u64, ()> {
 fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::default();
     eng.config.id = 2;
-    eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+    );
+
     eng.state.server_state = eng.calc_server_state();
     eng
 }
@@ -51,10 +54,10 @@ fn test_update_committed_membership_at_index_0() -> anyhow::Result<()> {
     eng.update_committed_membership(EffectiveMembership::new(Some(log_id(0, 0)), m34()));
 
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
+        ),
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -80,10 +83,10 @@ fn test_update_committed_membership_at_index_2() -> anyhow::Result<()> {
     eng.update_committed_membership(EffectiveMembership::new(Some(log_id(1, 2)), m34()));
 
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 2)), m34())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 2)), m34())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
+        ),
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -110,10 +113,10 @@ fn test_update_committed_membership_at_index_3() -> anyhow::Result<()> {
     eng.update_committed_membership(EffectiveMembership::new(Some(log_id(3, 3)), m34()));
 
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34())),
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34()))
+        ),
         eng.state.membership_state
     );
     assert_eq!(ServerState::Learner, eng.state.server_state);
@@ -145,10 +148,10 @@ fn test_update_committed_membership_at_index_4() -> anyhow::Result<()> {
     eng.update_committed_membership(EffectiveMembership::new(Some(log_id(3, 4)), m34()));
 
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34()))
+        ),
         eng.state.membership_state
     );
     assert_eq!(ServerState::Learner, eng.state.server_state);
