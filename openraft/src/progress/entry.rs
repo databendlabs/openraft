@@ -87,7 +87,7 @@ impl<NID: NodeId> ProgressEntry<NID> {
 
     pub(crate) fn update_matching(&mut self, matching: Option<LogId<NID>>) {
         tracing::debug!(
-            self = debug(&self),
+            self = display(&self),
             matching = display(matching.summary()),
             "update_matching"
         );
@@ -201,7 +201,13 @@ impl<NID: NodeId> Borrow<Option<LogId<NID>>> for Valid<ProgressEntry<NID>> {
 
 impl<NID: NodeId> Display for ProgressEntry<NID> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}, {})", self.matching.summary(), self.searching_end)
+        write!(
+            f,
+            "{{[{}, {}), inflight:{}}}",
+            self.matching.summary(),
+            self.searching_end,
+            self.inflight
+        )
     }
 }
 

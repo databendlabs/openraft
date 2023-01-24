@@ -42,22 +42,25 @@ where
             log_id = display(log_id.summary()),
             "update_progress",
         );
-        tracing::debug!(progress = debug(&self.leader.progress), "leader progress");
+        tracing::debug!(progress = display(&self.leader.progress), "leader progress");
 
-        let mut prog_entry = *self.leader.progress.try_get(&node_id).expect("should be a progress");
-
-        // Update inflight state only when a matching response is received.
-        if !prog_entry.inflight.is_my_id(inflight_id) {
-            return;
-        }
-
-        prog_entry.update_matching(log_id);
+        // Whether it is a response for the current inflight request.
+        let mut is_mine = true;
 
         let committed = *self
             .leader
             .progress
-            .update(&node_id, prog_entry)
+            .update_with(&node_id, |prog_entry| {
+                is_mine = prog_entry.inflight.is_my_id(inflight_id);
+                if is_mine {
+                    prog_entry.update_matching(log_id);
+                }
+            })
             .expect("it should always update existing progress");
+
+        if !is_mine {
+            return;
+        }
 
         tracing::debug!(committed = debug(&committed), "committed after updating progress");
 

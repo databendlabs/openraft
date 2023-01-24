@@ -12,6 +12,8 @@ mod inflight;
 
 use std::borrow::Borrow;
 use std::fmt::Debug;
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::slice::Iter;
 use std::slice::IterMut;
 
@@ -113,6 +115,30 @@ where
 
     /// Statistics of how it runs.
     stat: Stat,
+}
+
+impl<ID, V, P, QS> Display for VecProgress<ID, V, P, QS>
+where
+    ID: PartialEq + Debug + Copy + 'static,
+    V: Copy + 'static,
+    V: Borrow<P>,
+    P: PartialOrd + Ord + Copy + 'static,
+    QS: QuorumSet<ID> + 'static,
+    ID: Display,
+    V: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+        for (i, (id, v)) in self.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}: {}", id, v)?
+        }
+        write!(f, "}}")?;
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -245,7 +271,7 @@ where
 
         debug_assert!(new_progress >= &prev_progress);
 
-        let prev_le_granted = &prev_progress <= &self.granted;
+        let prev_le_granted = prev_progress <= self.granted;
         let new_gt_granted = new_progress > &self.granted;
 
         if &prev_progress == new_progress {
