@@ -30,6 +30,8 @@ use crate::Vote;
 /// node `c` already has `log_id=1`, and commit it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ReplicationSessionId<NID: NodeId> {
+    // TODO: a replication session id does not need a vote in it?
+    //       Log id contains a vote.
     /// The vote of the leader.
     pub(crate) vote: Vote<NID>,
 

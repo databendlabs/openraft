@@ -34,6 +34,9 @@ where
         }
     }
 
+    // TODO: let RaftStore store node-id.
+    //       To achieve this, RaftStorage must store node-id
+    //       To achieve this, RaftStorage has to provide API to initialize with a node id and API to read node-id
     /// Get Raft's state information from storage.
     ///
     /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
@@ -53,10 +56,7 @@ where
             last_purged_log_id = last_applied;
         }
 
-        println!("purged: {:?}", last_purged_log_id);
-        println!("last: {:?}", last_log_id);
         let log_ids = LogIdList::load_log_ids(last_purged_log_id, last_log_id, self).await?;
-        println!("log_ids: {:?}", log_ids);
 
         let snapshot_meta = self.sto.get_current_snapshot().await?.map(|x| x.meta).unwrap_or_default();
 
@@ -65,13 +65,14 @@ where
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
             vote: vote.unwrap_or_default(),
-            next_purge: last_purged_log_id.next_index(),
+            purged_next: last_purged_log_id.next_index(),
             log_ids,
             membership_state: mem_state,
             snapshot_meta,
 
             // -- volatile fields: they are not persisted.
             server_state: Default::default(),
+            purge_upto: last_purged_log_id,
         })
     }
 
@@ -114,10 +115,10 @@ where
 
         // There 2 membership configs in logs.
         if log_mem.len() == 2 {
-            return Ok(MembershipState {
-                committed: Arc::new(log_mem[0].clone()),
-                effective: Arc::new(log_mem[1].clone()),
-            });
+            return Ok(MembershipState::new(
+                Arc::new(log_mem[0].clone()),
+                Arc::new(log_mem[1].clone()),
+            ));
         }
 
         let effective = if log_mem.is_empty() {
@@ -126,10 +127,7 @@ where
             log_mem[0].clone()
         };
 
-        let res = MembershipState {
-            committed: Arc::new(sm_mem),
-            effective: Arc::new(effective),
-        };
+        let res = MembershipState::new(Arc::new(sm_mem), Arc::new(effective));
 
         Ok(res)
     }

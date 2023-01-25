@@ -1,6 +1,9 @@
+use std::error::Error;
 use std::sync::Arc;
 
+use crate::less_equal;
 use crate::node::Node;
+use crate::validate::Validate;
 use crate::EffectiveMembership;
 use crate::NodeId;
 
@@ -44,7 +47,25 @@ where
     NID: NodeId,
     N: Node,
 {
+    pub(crate) fn new(
+        committed: Arc<EffectiveMembership<NID, N>>,
+        effective: Arc<EffectiveMembership<NID, N>>,
+    ) -> Self {
+        Self { committed, effective }
+    }
+
     pub(crate) fn is_voter(&self, id: &NID) -> bool {
         self.effective.membership.is_voter(id)
+    }
+}
+
+impl<NID, N> Validate for MembershipState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn validate(&self) -> Result<(), Box<dyn Error>> {
+        less_equal!(self.committed.log_id, self.effective.log_id);
+        Ok(())
     }
 }

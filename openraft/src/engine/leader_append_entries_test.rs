@@ -8,6 +8,7 @@ use maplit::btreeset;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::Entry;
@@ -71,8 +72,11 @@ fn eng() -> Engine<u64, ()> {
     eng.state.vote = Vote::new_committed(3, 1);
     eng.state.log_ids.append(log_id(1, 1));
     eng.state.log_ids.append(log_id(2, 3));
-    eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+    );
+
     eng
 }
 
@@ -89,12 +93,12 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id().copied());
+    assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        ),
         eng.state.membership_state
     );
 
@@ -115,7 +119,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
 #[test]
 fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.new_leader();
+    eng.new_leading();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -133,15 +137,12 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
+    assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
     assert_eq!(
-        Some(LogId::new(LeaderId::new(3, 1), 6)),
-        eng.state.last_log_id().copied()
-    );
-    assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        ),
         eng.state.membership_state
     );
 
@@ -157,8 +158,13 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     assert_eq!(
         vec![
             Command::AppendInputEntries { range: 0..3 },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
+            Command::Replicate {
+                target: 2,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
+            },
+            Command::Replicate {
+                target: 3,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
@@ -172,7 +178,7 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
 fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1()));
-    eng.new_leader();
+    eng.new_leading();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -190,18 +196,15 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
+    assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
     assert_eq!(
-        Some(LogId::new(LeaderId::new(3, 1), 6)),
-        eng.state.last_log_id().copied()
-    );
-    assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())),
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())),
+        ),
         eng.state.membership_state
     );
-    assert_eq!(Some(LogId::new(LeaderId::new(3, 1), 6)), eng.state.committed);
+    assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.committed());
 
     assert_eq!(
         MetricsChangeFlags {
@@ -222,9 +225,6 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
             },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
-            },
             Command::MoveInputCursorBy { n: 3 },
         ],
         eng.output.commands
@@ -239,7 +239,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
 fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1()));
-    eng.new_leader();
+    eng.new_leading();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -260,23 +260,17 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
         ],
         eng.state.log_ids.key_log_ids()
     );
+    assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
     assert_eq!(
-        Some(LogId::new(LeaderId::new(3, 1), 6)),
-        eng.state.last_log_id().copied()
-    );
-    assert_eq!(
-        MembershipState {
+        MembershipState::new(
             // previous effective become committed.
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())),
             // new effective.
-            effective: Arc::new(EffectiveMembership::new(
-                Some(LogId::new(LeaderId::new(3, 1), 5)),
-                m34()
-            ))
-        },
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34())),
+        ),
         eng.state.membership_state
     );
-    assert_eq!(Some(LogId::new(LeaderId::new(3, 1), 4)), eng.state.committed);
+    assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 4)), eng.state.committed());
 
     assert_eq!(
         MetricsChangeFlags {
@@ -306,8 +300,13 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
             Command::UpdateReplicationStreams {
                 targets: vec![(3, ProgressEntry::empty(7)), (4, ProgressEntry::empty(7))]
             },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
+            Command::Replicate {
+                target: 3,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
+            },
+            Command::Replicate {
+                target: 4,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
@@ -322,7 +321,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
 fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1()));
-    eng.new_leader();
+    eng.new_leading();
     eng.state.server_state = eng.calc_server_state();
 
     // log id will be assigned by eng.
@@ -344,24 +343,15 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
         ],
         eng.state.log_ids.key_log_ids()
     );
+    assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
     assert_eq!(
-        Some(LogId::new(LeaderId::new(3, 1), 6)),
-        eng.state.last_log_id().copied()
-    );
-    assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(
-                Some(LogId::new(LeaderId::new(3, 1), 5)),
-                m1_2()
-            )),
-            effective: Arc::new(EffectiveMembership::new(
-                Some(LogId::new(LeaderId::new(3, 1), 5)),
-                m1_2()
-            ))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m1_2())),
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m1_2())),
+        ),
         eng.state.membership_state
     );
-    assert_eq!(Some(LogId::new(LeaderId::new(3, 1), 6)), eng.state.committed);
+    assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.committed());
 
     assert_eq!(
         MetricsChangeFlags {
@@ -392,6 +382,10 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
             Command::UpdateReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
             },
+            Command::Replicate {
+                target: 2,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
+            },
             // second commit upto the end.
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 6))
@@ -399,9 +393,6 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
             Command::LeaderCommit {
                 already_committed: Some(LogId::new(LeaderId::new(3, 1), 4)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
-            },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
             },
             Command::MoveInputCursorBy { n: 3 },
         ],
@@ -418,7 +409,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
 fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m13()));
-    eng.new_leader();
+    eng.new_leading();
     eng.state.server_state = eng.calc_server_state();
 
     // log id will be assigned by eng.
@@ -440,24 +431,15 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
         ],
         eng.state.log_ids.key_log_ids()
     );
+    assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.last_log_id());
     assert_eq!(
-        Some(LogId::new(LeaderId::new(3, 1), 6)),
-        eng.state.last_log_id().copied()
-    );
-    assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(
-                Some(LogId::new(LeaderId::new(3, 1), 5)),
-                m1_2()
-            )),
-            effective: Arc::new(EffectiveMembership::new(
-                Some(LogId::new(LeaderId::new(3, 1), 5)),
-                m1_2()
-            ))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m1_2())),
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m1_2())),
+        ),
         eng.state.membership_state
     );
-    assert_eq!(Some(LogId::new(LeaderId::new(3, 1), 6)), eng.state.committed);
+    assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.committed());
 
     assert_eq!(
         MetricsChangeFlags {
@@ -480,6 +462,10 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             Command::UpdateReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
             },
+            Command::Replicate {
+                target: 2,
+                req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
+            },
             // It is correct to commit if the membership change ot a one node cluster.
             Command::ReplicateCommitted {
                 committed: Some(log_id(3, 6))
@@ -487,9 +473,6 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             Command::LeaderCommit {
                 already_committed: Some(log_id(0, 0)),
                 upto: LogId::new(LeaderId::new(3, 1), 6)
-            },
-            Command::ReplicateEntries {
-                upto: Some(log_id(3, 6))
             },
             Command::MoveInputCursorBy { n: 3 },
         ],

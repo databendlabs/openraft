@@ -2,6 +2,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::raft::VoteRequest;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -51,9 +52,14 @@ where
         upto: LogId<NID>,
     },
 
-    /// Replicate entries upto log id `upto`, inclusive.
-    ReplicateEntries { upto: Option<LogId<NID>> },
+    /// Replicate log entries or snapshot to a target.
+    Replicate { target: NID, req: Inflight<NID> },
 
+    // /// Replicate a snapshot to a target.
+    // ReplicateSnapshot {
+    //     target: NID,
+    //     snapshot_last_log_id: Option<LogId<NID>>,
+    // },
     /// Membership config changed, need to update replication streams.
     UpdateMembership {
         // TODO: not used yet.
@@ -69,8 +75,11 @@ where
         targets: Vec<(NID, ProgressEntry<NID>)>,
     },
 
-    /// The state of replication to `target` is updated, the metrics should be updated.
-    UpdateReplicationMetrics { target: NID, matching: LogId<NID> },
+    // TODO(3): it also update the progress of a leader.
+    //          Add doc:
+    //          `target` can also be the leader id.
+    /// As the state of replication to `target` is updated, the metrics should be updated.
+    UpdateProgressMetrics { target: NID, matching: LogId<NID> },
 
     /// Move the cursor pointing to an entry in the input buffer.
     MoveInputCursorBy { n: usize },
@@ -125,10 +134,10 @@ where
             Command::ReplicateCommitted { .. } => {}
             Command::LeaderCommit { .. } => flags.set_data_changed(),
             Command::FollowerCommit { .. } => flags.set_data_changed(),
-            Command::ReplicateEntries { .. } => {}
+            Command::Replicate { .. } => {}
             Command::UpdateMembership { .. } => flags.set_cluster_changed(),
             Command::UpdateReplicationStreams { .. } => flags.set_replication_changed(),
-            Command::UpdateReplicationMetrics { .. } => flags.set_replication_changed(),
+            Command::UpdateProgressMetrics { .. } => flags.set_replication_changed(),
             Command::MoveInputCursorBy { .. } => {}
             Command::SaveVote { .. } => flags.set_data_changed(),
             Command::SendVote { .. } => {}

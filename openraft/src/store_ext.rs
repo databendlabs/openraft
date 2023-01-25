@@ -3,8 +3,12 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::ops::RangeBounds;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::time::sleep;
 
 use crate::async_trait::async_trait;
 use crate::defensive::DefensiveCheckBase;
@@ -25,13 +29,51 @@ use crate::StorageError;
 use crate::Vote;
 use crate::Wrapper;
 
+#[derive(Clone, Debug)]
+pub(crate) struct Config {
+    /// Time in milliseconds to delay before reading logs.
+    ///
+    /// For debug only.
+    delay_log_read: Arc<AtomicU64>,
+
+    #[allow(dead_code)]
+    id: u64,
+}
+
+impl Config {
+    pub(crate) fn new() -> Self {
+        static CONFIG_ID: AtomicU64 = AtomicU64::new(1);
+
+        let id = CONFIG_ID.fetch_add(1, Ordering::Relaxed);
+
+        Self {
+            delay_log_read: Arc::new(AtomicU64::new(0)),
+            id,
+        }
+    }
+
+    pub(crate) fn get_delay_log_read(&self) -> Option<Duration> {
+        let d = self.delay_log_read.load(Ordering::Relaxed);
+
+        if d == 0 {
+            return None;
+        }
+        Some(Duration::from_millis(d))
+    }
+}
+
 /// Extended store backed by another impl.
 ///
 /// It provides defensive check against input and the state of underlying store.
 /// And it provides more APIs.
 pub struct StoreExt<C: RaftTypeConfig, T: RaftStorage<C>> {
+    // TODO: move defensive to config
     defensive: Arc<AtomicBool>,
+
+    config: Config,
+
     inner: T,
+
     c: PhantomData<C>,
 }
 
@@ -39,6 +81,7 @@ impl<C: RaftTypeConfig, T: RaftStorage<C> + Clone> Clone for StoreExt<C, T> {
     fn clone(&self) -> Self {
         Self {
             defensive: self.defensive.clone(),
+            config: self.config.clone(),
             inner: self.inner.clone(),
             c: PhantomData,
         }
@@ -58,9 +101,16 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> StoreExt<C, T> {
     pub fn new(inner: T) -> Self {
         StoreExt {
             defensive: Arc::new(AtomicBool::new(false)),
+            config: Config::new(),
             inner,
             c: PhantomData,
         }
+    }
+
+    pub fn set_delay_log_read(&self, ms: u64) {
+        self.config.delay_log_read.store(ms, Ordering::Relaxed);
+        let delay = self.config.delay_log_read.load(Ordering::Relaxed);
+        tracing::info!("Set log reading delay to {delay}");
     }
 }
 
@@ -142,7 +192,7 @@ where
         self.inner().delete_conflict_logs_since(log_id).await
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn purge_logs_upto(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
         self.defensive_purge_applied_le_last_applied(log_id).await?;
         self.inner().purge_logs_upto(log_id).await
@@ -191,6 +241,7 @@ where
     async fn get_log_reader(&mut self) -> Self::LogReader {
         LogReaderExt {
             defensive: self.defensive.clone(),
+            config: self.config.clone(),
             inner: self.inner().get_log_reader().await,
         }
     }
@@ -209,6 +260,10 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftLogReader<C> for StoreExt<C, T> {
         &mut self,
         range: RB,
     ) -> Result<Vec<Entry<C>>, StorageError<C::NodeId>> {
+        if let Some(d) = self.config.get_delay_log_read() {
+            sleep(d).await;
+        }
+
         self.defensive_nonempty_range(range.clone())?;
         self.inner().try_get_log_entries(range).await
     }
@@ -241,6 +296,7 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftSnapshotBuilder<C, T::SnapshotDat
 /// It provides defensive check against input and the state of underlying log reader.
 pub struct LogReaderExt<C: RaftTypeConfig, T: RaftStorage<C>> {
     defensive: Arc<AtomicBool>,
+    config: Config,
     inner: T::LogReader,
 }
 
@@ -251,6 +307,10 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftLogReader<C> for LogReaderExt<C, 
         &mut self,
         range: RB,
     ) -> Result<Vec<Entry<C>>, StorageError<C::NodeId>> {
+        if let Some(d) = self.config.get_delay_log_read() {
+            sleep(d).await;
+        }
+
         self.defensive_nonempty_range(range.clone())?;
         self.inner.try_get_log_entries(range).await
     }

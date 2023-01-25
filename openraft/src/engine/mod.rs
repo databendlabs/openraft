@@ -31,7 +31,6 @@ mod engine_impl;
 mod handler;
 mod log_id_list;
 
-#[cfg(test)] mod calc_purge_upto_test;
 #[cfg(test)] mod elect_test;
 #[cfg(test)] mod follower_commit_entries_test;
 #[cfg(test)] mod follower_do_append_entries_test;
@@ -43,7 +42,6 @@ mod log_id_list;
 #[cfg(test)] mod internal_handle_vote_req_test;
 #[cfg(test)] mod leader_append_entries_test;
 #[cfg(test)] mod log_id_list_test;
-#[cfg(test)] mod purge_log_test;
 #[cfg(test)] mod startup_test;
 #[cfg(test)] mod testing;
 #[cfg(test)] mod truncate_logs_test;

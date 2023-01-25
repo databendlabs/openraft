@@ -56,8 +56,10 @@ fn eng() -> Engine<u64, ()> {
     eng.config.id = 2;
     eng.state.log_ids.append(log_id(1, 1));
     eng.state.log_ids.append(log_id(2, 3));
-    eng.state.membership_state.committed = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()));
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state.membership_state = MembershipState::new(
+        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+        Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+    );
     eng.state.server_state = eng.calc_server_state();
     eng
 }
@@ -77,12 +79,12 @@ fn test_follower_do_append_entries_empty() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(2, 3)), eng.state.last_log_id().copied());
+    assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        ),
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -121,12 +123,12 @@ fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()>
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(3, 4)), eng.state.last_log_id().copied());
+    assert_eq!(Some(&log_id(3, 4)), eng.state.last_log_id());
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+        ),
         eng.state.membership_state
     );
     assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -181,12 +183,12 @@ fn test_follower_do_append_entries_one_membership_entry() -> anyhow::Result<()> 
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(3, 5)), eng.state.last_log_id().copied());
+    assert_eq!(Some(&log_id(3, 5)), eng.state.last_log_id());
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+            Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34())),
+        ),
         eng.state.membership_state,
         "previous effective become committed"
     );
@@ -261,12 +263,12 @@ fn test_follower_do_append_entries_three_membership_entries() -> anyhow::Result<
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Some(log_id(4, 7)), eng.state.last_log_id().copied());
+    assert_eq!(Some(&log_id(4, 7)), eng.state.last_log_id());
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(4, 6)), m34())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(4, 7)), m45()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(4, 6)), m34())),
+            Arc::new(EffectiveMembership::new(Some(log_id(4, 7)), m45())),
+        ),
         eng.state.membership_state,
         "seen 3 membership, the last 2 become committed and effective"
     );

@@ -27,7 +27,7 @@ use crate::fixtures::RaftRouter;
 /// ```
 /// R0 ... 2,99 2,100
 /// R1
-/// R2 ... 3,99, 3,00
+/// R2 ... 3,99 3,100
 /// ```
 ///
 /// - Start the cluster and node 2 start to replicate logs.

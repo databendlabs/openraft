@@ -27,6 +27,23 @@ pub(crate) trait LogStateReader<NID: NodeId> {
         }
     }
 
+    /// Return if a log id exists.
+    ///
+    /// It assumes a committed log will always get positive return value, according to raft spec.
+    fn has_log_id(&self, log_id: &LogId<NID>) -> bool {
+        if log_id.index < self.committed().next_index() {
+            debug_assert!(Some(log_id) <= self.committed());
+            return true;
+        }
+
+        // The local log id exists at the index and is same as the input.
+        if let Some(local) = self.get_log_id(log_id.index) {
+            *log_id == local
+        } else {
+            false
+        }
+    }
+
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
@@ -44,6 +61,11 @@ pub(crate) trait LogStateReader<NID: NodeId> {
 
     /// Return the last log id the snapshot includes.
     fn snapshot_last_log_id(&self) -> Option<&LogId<NID>>;
+
+    /// Return the log id it wants to purge up to.
+    ///
+    /// Logs may not be able to be purged at once because they are in use by replication tasks.
+    fn purge_upto(&self) -> Option<&LogId<NID>>;
 
     /// The greatest log id that has been purged after being applied to state machine, i.e., the oldest known log id.
     ///
@@ -71,7 +93,7 @@ where
     /// - A quorum could be a uniform quorum or joint quorum.
     pub committed: Option<LogId<NID>>,
 
-    pub(crate) next_purge: u64,
+    pub(crate) purged_next: u64,
 
     /// All log ids this node has.
     pub log_ids: LogIdList<NID>,
@@ -86,6 +108,11 @@ where
     // -- volatile fields: they are not persisted.
     // --
     pub server_state: ServerState,
+
+    /// The log id upto which the next time it purges.
+    ///
+    /// If a log is in use by a replication task, the purge is postponed and is stored in this field.
+    pub(crate) purge_upto: Option<LogId<NID>>,
 }
 
 impl<NID, N> LogStateReader<NID> for RaftState<NID, N>
@@ -109,8 +136,12 @@ where
         self.snapshot_meta.last_log_id.as_ref()
     }
 
+    fn purge_upto(&self) -> Option<&LogId<NID>> {
+        self.purge_upto.as_ref()
+    }
+
     fn last_purged_log_id(&self) -> Option<&LogId<NID>> {
-        if self.next_purge == 0 {
+        if self.purged_next == 0 {
             return None;
         }
         self.log_ids.first()
@@ -123,15 +154,18 @@ where
     N: Node,
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        if self.next_purge == 0 {
+        if self.purged_next == 0 {
             less_equal!(self.log_ids.first().index(), Some(0));
         } else {
-            equal!(self.next_purge, self.log_ids.first().next_index());
+            equal!(self.purged_next, self.log_ids.first().next_index());
         }
 
-        less_equal!(self.last_purged_log_id(), self.snapshot_last_log_id());
+        less_equal!(self.last_purged_log_id(), self.purge_upto());
+        less_equal!(self.purge_upto(), self.snapshot_last_log_id());
         less_equal!(self.snapshot_last_log_id(), self.committed());
         less_equal!(self.committed(), self.last_log_id());
+
+        self.membership_state.validate()?;
 
         Ok(())
     }
@@ -149,44 +183,26 @@ where
         self.log_ids.extend_from_same_leader(new_log_ids)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn extend_log_ids<'a, LID: RaftLogId<NID> + 'a>(&mut self, new_log_id: &[LID]) {
         self.log_ids.extend(new_log_id)
     }
 
-    /// Return if a log id exists.
-    ///
-    /// It assumes a committed log will always be chosen, according to raft spec.
-    #[allow(dead_code)]
-    pub(crate) fn has_log_id(&self, log_id: &LogId<NID>) -> bool {
-        if log_id.index < self.committed.next_index() {
-            debug_assert!(Some(*log_id) <= self.committed);
-            return true;
-        }
-
-        // The local log id exists at the index and is same as the input.
-        if let Some(local) = self.get_log_id(log_id.index) {
-            *log_id == local
-        } else {
-            false
-        }
-    }
-
     /// Return true if the currently effective membership is committed.
     pub(crate) fn is_membership_committed(&self) -> bool {
-        self.committed >= self.membership_state.effective.log_id
+        self.committed() >= self.membership_state.effective.log_id.as_ref()
     }
 
     /// Update field `committed` if the input is greater.
     /// If updated, it returns the previous value in a `Some()`.
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_committed(&mut self, committed: &Option<LogId<NID>>) -> Option<Option<LogId<NID>>> {
-        if committed > &self.committed {
-            let prev = self.committed;
+        if committed.as_ref() > self.committed() {
+            let prev = self.committed().copied();
 
             self.committed = *committed;
 
             // TODO(xp): use a vec to store committed and effective membership.
-            if self.committed >= self.membership_state.effective.log_id {
+            if self.committed() >= self.membership_state.effective.log_id.as_ref() {
                 self.membership_state.committed = self.membership_state.effective.clone();
             }
 
@@ -196,8 +212,44 @@ where
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn purge_log(&mut self, upto: &LogId<NID>) {
-        self.next_purge = upto.index + 1;
+        self.purged_next = upto.index + 1;
         self.log_ids.purge(upto);
+    }
+
+    /// Determine the current server state by state.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn calc_server_state(&self, id: &NID) -> ServerState {
+        tracing::debug!(
+            is_member = display(self.is_voter(id)),
+            is_leader = display(self.is_leader(id)),
+            is_leading = display(self.is_leading(id)),
+            "states"
+        );
+        if self.is_voter(id) {
+            if self.is_leader(id) {
+                ServerState::Leader
+            } else if self.is_leading(id) {
+                ServerState::Candidate
+            } else {
+                ServerState::Follower
+            }
+        } else {
+            ServerState::Learner
+        }
+    }
+
+    pub(crate) fn is_voter(&self, id: &NID) -> bool {
+        self.membership_state.is_voter(id)
+    }
+
+    /// The node is candidate(leadership is not granted by a quorum) or leader(leadership is granted by a quorum)
+    pub(crate) fn is_leading(&self, id: &NID) -> bool {
+        &self.vote.node_id == id
+    }
+
+    pub(crate) fn is_leader(&self, id: &NID) -> bool {
+        &self.vote.node_id == id && self.vote.committed
     }
 }

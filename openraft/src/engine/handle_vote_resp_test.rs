@@ -8,6 +8,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::progress::entry::ProgressEntry;
+use crate::progress::Inflight;
 use crate::raft::VoteResponse;
 use crate::EffectiveMembership;
 use crate::LeaderId;
@@ -35,6 +36,7 @@ fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::<u64, ()>::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
+    eng.state.log_ids = LogIdList::new([LogId::new(LeaderId::new(0, 0), 0)]);
     eng
 }
 
@@ -75,7 +77,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
-        eng.new_leader();
+        eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
@@ -114,7 +116,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.vote = Vote::new(2, 1);
         eng.state.log_ids = LogIdList::new(vec![log_id(3, 3)]);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
-        eng.new_leader();
+        eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
@@ -152,7 +154,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
-        eng.new_leader();
+        eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
@@ -190,7 +192,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()));
-        eng.new_leader();
+        eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
@@ -225,7 +227,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
-        eng.new_leader();
+        eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
@@ -258,19 +260,17 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 },
                 Command::BecomeLeader,
                 Command::UpdateReplicationStreams {
-                    targets: vec![(2, ProgressEntry::empty(0))]
+                    targets: vec![(2, ProgressEntry::empty(1))]
                 },
                 Command::AppendBlankLog {
                     log_id: LogId {
                         leader_id: LeaderId { term: 2, node_id: 1 },
-                        index: 0,
+                        index: 1,
                     },
                 },
-                Command::ReplicateEntries {
-                    upto: Some(LogId {
-                        leader_id: LeaderId { term: 2, node_id: 1 },
-                        index: 0,
-                    },),
+                Command::Replicate {
+                    target: 2,
+                    req: Inflight::logs(None, Some(log_id(2, 1))).with_id(1),
                 },
             ],
             eng.output.commands

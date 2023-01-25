@@ -12,7 +12,10 @@ mod inflight;
 
 use std::borrow::Borrow;
 use std::fmt::Debug;
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::slice::Iter;
+use std::slice::IterMut;
 
 // TODO: remove it
 #[allow(unused_imports)] pub(crate) use inflight::Inflight;
@@ -32,10 +35,19 @@ where
     V: Borrow<P>,
     QS: QuorumSet<ID>,
 {
+    /// Update one of the scalar value and re-calculate the committed value with provided function.
+    ///
+    /// It returns Err(committed) if the `id` is not found.
+    /// The provided function `f` update the value of `id`.
+    fn update_with<F>(&mut self, id: &ID, f: F) -> Result<&P, &P>
+    where F: FnOnce(&mut V);
+
     /// Update one of the scalar value and re-calculate the committed value.
     ///
     /// It returns Err(committed) if the `id` is not found.
-    fn update(&mut self, id: &ID, value: V) -> Result<&P, &P>;
+    fn update(&mut self, id: &ID, value: V) -> Result<&P, &P> {
+        self.update_with(id, |x| *x = value)
+    }
 
     /// Try to get the value by `id`.
     fn try_get(&self, id: &ID) -> Option<&V>;
@@ -105,6 +117,30 @@ where
     stat: Stat,
 }
 
+impl<ID, V, P, QS> Display for VecProgress<ID, V, P, QS>
+where
+    ID: PartialEq + Debug + Copy + 'static,
+    V: Copy + 'static,
+    V: Borrow<P>,
+    P: PartialOrd + Ord + Copy + 'static,
+    QS: QuorumSet<ID> + 'static,
+    ID: Display,
+    V: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+        for (i, (id, v)) in self.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}: {}", id, v)?
+        }
+        write!(f, "}}")?;
+
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct Stat {
@@ -164,6 +200,10 @@ where
         0
     }
 
+    pub(crate) fn iter_mut(&mut self) -> IterMut<(ID, V)> {
+        self.vector.iter_mut()
+    }
+
     #[allow(dead_code)]
     pub(crate) fn stat(&self) -> &Stat {
         &self.stat
@@ -210,7 +250,8 @@ where
     /// ------------------------------
     ///      1   3   5
     /// ```
-    fn update(&mut self, id: &ID, value: V) -> Result<&P, &P> {
+    fn update_with<F>(&mut self, id: &ID, f: F) -> Result<&P, &P>
+    where F: FnOnce(&mut V) {
         self.stat.update_count += 1;
 
         let index = match self.index(id) {
@@ -221,18 +262,21 @@ where
         };
 
         let elt = &mut self.vector[index];
-        let prev = elt.1;
 
-        let prev_progress = prev.borrow();
-        let new_progress = value.borrow();
+        let prev_progress = *elt.1.borrow();
 
-        if prev_progress == new_progress {
-            elt.1 = value; // no progress change, update the entire value.
+        f(&mut elt.1);
+
+        let new_progress = elt.1.borrow();
+
+        debug_assert!(new_progress >= &prev_progress);
+
+        let prev_le_granted = prev_progress <= self.granted;
+        let new_gt_granted = new_progress > &self.granted;
+
+        if &prev_progress == new_progress {
             return Ok(&self.granted);
         }
-
-        debug_assert!(new_progress > prev_progress);
-        elt.1 = value;
 
         // Learner does not grant a value.
         // And it won't be moved up to adjust the order.
@@ -242,7 +286,7 @@ where
 
         // Sort and find the greatest value granted by a quorum set.
 
-        if prev_progress <= &self.granted && &self.granted < new_progress {
+        if prev_le_granted && new_gt_granted {
             let new_index = self.move_up(index);
 
             // From high to low, find the max value that has constituted a quorum.
@@ -443,8 +487,9 @@ mod t {
             ((9, 1), Err(&4)), // nonexistent id, ignore.
         ];
 
+        // TODO: test update_with
         for (ith, ((id, v), want_committed)) in cases.iter().enumerate() {
-            let got = progress.update(id, *v);
+            let got = progress.update_with(id, |x| *x = *v);
             assert_eq!(want_committed.clone(), got, "{}-th case: id:{}, v:{}", ith, id, v);
         }
         Ok(())

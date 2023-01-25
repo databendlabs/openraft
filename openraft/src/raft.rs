@@ -42,9 +42,8 @@ use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::node::Node;
-use crate::progress::entry::ProgressEntry;
+use crate::replication::ReplicationResult;
 use crate::replication::ReplicationSessionId;
-use crate::storage::Snapshot;
 use crate::AppData;
 use crate::AppDataResponse;
 use crate::ChangeMembers;
@@ -941,9 +940,12 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         /// The ID of the target node for which the match index is to be updated.
         target: C::NodeId,
 
+        /// The id of the subject that submit this replication action.
+        id: u64,
+
         /// Either the last log id that has been successfully replicated to the target,
         /// or an error in string.
-        result: Result<ProgressEntry<C::NodeId>, String>,
+        result: Result<ReplicationResult<C::NodeId>, String>,
 
         /// In which session this message is sent.
         /// A replication session(vote,membership_log_id) should ignore message from other session.
@@ -964,18 +966,6 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         // TODO: need this?
         // /// The cluster this replication works for.
         // membership_log_id: Option<LogId<C::NodeId>>,
-    },
-
-    /// An event from a replication stream requesting snapshot info.
-    /// Sent by a replication task `ReplicationCore`.
-    NeedsSnapshot {
-        target: C::NodeId,
-
-        /// The response channel for delivering the snapshot data.
-        tx: oneshot::Sender<Snapshot<C::NodeId, C::Node, S::SnapshotData>>,
-
-        /// Which replication session sent this message
-        session_id: ReplicationSessionId<C::NodeId>,
     },
 
     /// Some critical error has taken place, and Raft needs to shutdown.
@@ -1036,15 +1026,13 @@ where
             }
             RaftMsg::UpdateReplicationProgress {
                 ref target,
+                ref id,
                 ref result,
                 ref session_id,
             } => {
                 format!(
-                    "UpdateMatchIndex: target: {}, result: {:?}, server_state_vote: {}, membership_log_id: {}",
-                    target,
-                    result,
-                    session_id.vote,
-                    session_id.membership_log_id.summary()
+                    "UpdateReplicationProgress: target: {}, id: {}, result: {:?}, session_id: {}",
+                    target, id, result, session_id,
                 )
             }
             RaftMsg::HigherVote {
@@ -1056,13 +1044,6 @@ where
                     "RevertToFollower: target: {}, vote: {}, server_state_vote: {}",
                     target, new_vote, vote
                 )
-            }
-            RaftMsg::NeedsSnapshot {
-                ref target,
-                session_id: ref vote,
-                ..
-            } => {
-                format!("NeedsSnapshot: target: {}, server_state_vote: {}", target, vote)
             }
             RaftMsg::ReplicationFatal => "ReplicationFatal".to_string(),
         }

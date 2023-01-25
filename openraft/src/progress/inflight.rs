@@ -4,6 +4,8 @@
 use std::error::Error;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 
 use crate::less_equal;
 use crate::log_id_range::LogIdRange;
@@ -23,10 +25,16 @@ pub(crate) enum Inflight<NID: NodeId> {
     None,
 
     /// Being replicating a series of logs.
-    Logs(LogIdRange<NID>),
+    Logs {
+        id: u64,
+
+        log_id_range: LogIdRange<NID>,
+    },
 
     /// Being replicating a snapshot.
     Snapshot {
+        id: u64,
+
         /// The last log id snapshot includes.
         ///
         /// It is None, if the snapshot is empty.
@@ -38,7 +46,7 @@ impl<NID: NodeId> Validate for Inflight<NID> {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         match self {
             Inflight::None => Ok(()),
-            Inflight::Logs(r) => r.validate(),
+            Inflight::Logs { log_id_range: r, .. } => r.validate(),
             Inflight::Snapshot { .. } => Ok(()),
         }
     }
@@ -50,11 +58,14 @@ impl<NID: NodeId> Display for Inflight<NID> {
             Inflight::None => {
                 write!(f, "None")
             }
-            Inflight::Logs(l) => {
-                write!(f, "Logs:{}", l)
+            Inflight::Logs { id, log_id_range: l } => {
+                write!(f, "Logs(id={}):{}", id, l)
             }
-            Inflight::Snapshot { last_log_id: last_next } => {
-                write!(f, "Snapshot:{}", last_next.summary())
+            Inflight::Snapshot {
+                id,
+                last_log_id: last_next,
+            } => {
+                write!(f, "Snapshot(id={}):{}", id, last_next.summary())
             }
         }
     }
@@ -66,13 +77,49 @@ impl<NID: NodeId> Inflight<NID> {
         if !(prev < last) {
             Self::None
         } else {
-            Self::Logs(LogIdRange::new(prev, last))
+            Self::Logs {
+                id: 0,
+                log_id_range: LogIdRange::new(prev, last),
+            }
         }
     }
 
     pub(crate) fn snapshot(snapshot_last_log_id: Option<LogId<NID>>) -> Self {
         Self::Snapshot {
+            id: 0,
             last_log_id: snapshot_last_log_id,
+        }
+    }
+
+    pub(crate) fn with_id(self, id: u64) -> Self {
+        match self {
+            Inflight::None => Inflight::None,
+            Inflight::Logs { id: _, log_id_range } => Inflight::Logs { id, log_id_range },
+            Inflight::Snapshot { id: _, last_log_id } => Inflight::Snapshot { id, last_log_id },
+        }
+    }
+
+    pub(crate) fn is_my_id(&self, res_id: u64) -> bool {
+        match self {
+            Inflight::None => false,
+            Inflight::Logs { id, .. } => *id == res_id,
+            Inflight::Snapshot { id, .. } => *id == res_id,
+        }
+    }
+
+    pub(crate) fn set_id(&mut self, v: u64) {
+        match self {
+            Inflight::None => {}
+            Inflight::Logs { id, .. } => *id = v,
+            Inflight::Snapshot { id, .. } => *id = v,
+        }
+    }
+
+    pub(crate) fn get_id(&self) -> Option<u64> {
+        match self {
+            Inflight::None => None,
+            Inflight::Logs { id, .. } => Some(*id),
+            Inflight::Snapshot { id, .. } => Some(*id),
         }
     }
 
@@ -83,7 +130,7 @@ impl<NID: NodeId> Inflight<NID> {
     // test it if used
     #[allow(dead_code)]
     pub(crate) fn is_sending_log(&self) -> bool {
-        matches!(self, Inflight::Logs(_))
+        matches!(self, Inflight::Logs { .. })
     }
 
     // test it if used
@@ -98,14 +145,17 @@ impl<NID: NodeId> Inflight<NID> {
             Inflight::None => {
                 unreachable!("no inflight data")
             }
-            Inflight::Logs(logs) => {
+            Inflight::Logs {
+                id: _,
+                log_id_range: logs,
+            } => {
                 *self = {
                     debug_assert!(upto >= logs.prev_log_id);
                     debug_assert!(upto <= logs.last_log_id);
                     Inflight::logs(upto, logs.last_log_id)
                 }
             }
-            Inflight::Snapshot { last_log_id } => {
+            Inflight::Snapshot { id: _, last_log_id } => {
                 debug_assert_eq!(&upto, last_log_id);
                 *self = Inflight::None;
             }
@@ -118,12 +168,15 @@ impl<NID: NodeId> Inflight<NID> {
             Inflight::None => {
                 unreachable!("no inflight data")
             }
-            Inflight::Logs(logs) => {
+            Inflight::Logs {
+                id: _,
+                log_id_range: logs,
+            } => {
                 // if prev_log_id==None, it will never conflict
                 debug_assert_eq!(Some(conflict), logs.prev_log_id.index());
                 *self = Inflight::None
             }
-            Inflight::Snapshot { last_log_id: _ } => {
+            Inflight::Snapshot { id: _, last_log_id: _ } => {
                 unreachable!("sending snapshot should not conflict");
             }
         }
@@ -132,6 +185,8 @@ impl<NID: NodeId> Inflight<NID> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::Ordering;
+
     use crate::log_id_range::LogIdRange;
     use crate::progress::Inflight;
     use crate::validate::Validate;
@@ -149,8 +204,13 @@ mod tests {
     fn test_inflight_create() -> anyhow::Result<()> {
         // Logs
         let l = Inflight::logs(Some(log_id(5)), Some(log_id(10)));
-        assert_eq!(Inflight::Logs(LogIdRange::new(Some(log_id(5)), Some(log_id(10)))), l);
-        assert!(!l.is_none());
+        assert_eq!(
+            Inflight::Logs {
+                id: 0,
+                log_id_range: LogIdRange::new(Some(log_id(5)), Some(log_id(10)))
+            },
+            l
+        );
 
         // Empty range
         let l = Inflight::logs(Some(log_id(11)), Some(log_id(10)));
@@ -161,6 +221,7 @@ mod tests {
         let l = Inflight::snapshot(Some(log_id(10)));
         assert_eq!(
             Inflight::Snapshot {
+                id: 0,
                 last_log_id: Some(log_id(10))
             },
             l
@@ -185,17 +246,18 @@ mod tests {
     }
 
     #[test]
-    fn test_inflight_ack() -> anyhow::Result<()> {
-        // Update matching when no inflight data
-        {
-            let res = std::panic::catch_unwind(|| {
-                let mut f = Inflight::<u64>::None;
-                f.ack(Some(log_id(4)));
-            });
-            tracing::info!("res: {:?}", res);
-            assert!(res.is_err(), "Inflight::None can not ack");
-        }
+    fn test_inflight_ack_without_inflight_data() -> anyhow::Result<()> {
+        let res = std::panic::catch_unwind(|| {
+            let mut f = Inflight::<u64>::None;
+            f.ack(Some(log_id(4)));
+        });
+        tracing::info!("res: {:?}", res);
+        assert!(res.is_err(), "Inflight::None can not ack");
+        Ok(())
+    }
 
+    #[test]
+    fn test_inflight_ack() -> anyhow::Result<()> {
         // Update matching when transmitting by logs
         {
             let mut f = Inflight::logs(Some(log_id(5)), Some(log_id(10)));
@@ -301,7 +363,10 @@ mod tests {
 
     #[test]
     fn test_inflight_validate() -> anyhow::Result<()> {
-        let r = Inflight::Logs(LogIdRange::new(Some(log_id(5)), Some(log_id(4))));
+        let r = Inflight::Logs {
+            id: 0,
+            log_id_range: LogIdRange::new(Some(log_id(5)), Some(log_id(4))),
+        };
         let res = r.validate();
         assert!(res.is_err(), "prev(5) > last(4)");
 

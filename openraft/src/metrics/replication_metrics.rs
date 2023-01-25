@@ -33,10 +33,10 @@ impl<NID: NodeId> MessageSummary<ReplicationMetrics<NID>> for ReplicationMetrics
     }
 }
 
-/// Update one replication metrics in `LeaderMetrics.replication`.
+/// Update one progress metrics in `LeaderMetrics.replication`.
 pub(crate) struct UpdateMatchedLogId<NID: NodeId> {
-    pub target: NID,
-    pub matched: LogId<NID>,
+    pub(crate) target: NID,
+    pub(crate) matching: LogId<NID>,
 }
 
 impl<NID: NodeId> Update<ReplicationMetrics<NID>> for UpdateMatchedLogId<NID> {
@@ -44,8 +44,8 @@ impl<NID: NodeId> Update<ReplicationMetrics<NID>> for UpdateMatchedLogId<NID> {
     fn apply_in_place(&self, to: &Arc<ReplicationMetrics<NID>>) -> Result<(), UpdateError> {
         let target_metrics = to.replication.get(&self.target).ok_or(UpdateError::CanNotUpdateInPlace)?;
 
-        if target_metrics.matched_leader_id == self.matched.leader_id {
-            target_metrics.matched_index.store(self.matched.index, Ordering::Relaxed);
+        if target_metrics.matched_leader_id == self.matching.leader_id {
+            target_metrics.matched_index.store(self.matching.index, Ordering::Relaxed);
             return Ok(());
         }
 
@@ -55,8 +55,8 @@ impl<NID: NodeId> Update<ReplicationMetrics<NID>> for UpdateMatchedLogId<NID> {
     /// To insert a new record always work.
     fn apply_mut(&self, to: &mut ReplicationMetrics<NID>) {
         to.replication.insert(self.target, ReplicationTargetMetrics {
-            matched_leader_id: self.matched.leader_id,
-            matched_index: AtomicU64::new(self.matched.index),
+            matched_leader_id: self.matching.leader_id,
+            matched_index: AtomicU64::new(self.matching.index),
         });
     }
 }

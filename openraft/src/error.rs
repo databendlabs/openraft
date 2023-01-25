@@ -272,12 +272,6 @@ where
     #[error("Replication is closed")]
     Closed,
 
-    #[error(transparent)]
-    LackEntry(#[from] LackEntry<NID>),
-
-    #[error(transparent)]
-    CommittedAdvanceTooMany(#[from] CommittedAdvanceTooMany),
-
     // TODO(xp): two sub type: StorageError / TransportError
     // TODO(xp): a sub error for just send_append_entries()
     #[error(transparent)]

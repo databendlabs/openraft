@@ -54,7 +54,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
         assert_eq!(Some(log_id(1, 1)), eng.state.get_log_id(1));
-        assert_eq!(Some(log_id(1, 1)), eng.state.last_log_id().copied());
+        assert_eq!(Some(&log_id(1, 1)), eng.state.last_log_id());
 
         assert_eq!(ServerState::Leader, eng.state.server_state);
         assert_eq!(
@@ -115,12 +115,6 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                         index: 1,
                     },
                 },
-                Command::ReplicateEntries {
-                    upto: Some(LogId {
-                        leader_id: LeaderId { term: 1, node_id: 1 },
-                        index: 1,
-                    },),
-                }
             ],
             eng.output.commands
         );
@@ -158,7 +152,7 @@ fn test_initialize() -> anyhow::Result<()> {
 
         assert_eq!(Some(log_id0), eng.state.get_log_id(0));
         assert_eq!(None, eng.state.get_log_id(1));
-        assert_eq!(Some(log_id0), eng.state.last_log_id().copied());
+        assert_eq!(Some(&log_id0), eng.state.last_log_id());
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
         assert_eq!(
