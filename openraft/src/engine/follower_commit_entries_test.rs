@@ -153,10 +153,10 @@ fn test_follower_commit_entries_gt_last_entry() -> anyhow::Result<()> {
 
     assert_eq!(Some(&log_id(2, 3)), eng.state.committed());
     assert_eq!(
-        MembershipState {
-            committed: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
-            effective: Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
-        },
+        MembershipState::new(
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
+            Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()))
+        ),
         eng.state.membership_state
     );
 

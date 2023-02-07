@@ -96,12 +96,14 @@ async fn initialization() -> anyhow::Result<()> {
             );
             let want = Arc::new(want);
             assert_eq!(
-                s.membership_state.effective, want,
+                s.membership_state.effective(),
+                &want,
                 "node-{}: effective membership",
                 node_id
             );
             assert_eq!(
-                s.membership_state.committed, want,
+                s.membership_state.committed(),
+                &want,
                 "node-{}: committed membership",
                 node_id
             );

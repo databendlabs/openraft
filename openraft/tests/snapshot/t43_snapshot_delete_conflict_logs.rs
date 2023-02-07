@@ -123,8 +123,8 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
             let m = StorageHelper::new(&mut sto1).get_membership().await?;
 
             tracing::info!("got membership of node-1: {:?}", m);
-            assert_eq!(Membership::new(vec![btreeset! {2,3}], None), m.committed.membership);
-            assert_eq!(Membership::new(vec![btreeset! {4,5}], None), m.effective.membership);
+            assert_eq!(Membership::new(vec![btreeset! {2,3}], None), m.committed().membership);
+            assert_eq!(Membership::new(vec![btreeset! {4,5}], None), m.effective().membership);
         }
     }
 
@@ -164,12 +164,12 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         tracing::info!("got membership of node-1: {:?}", m);
         assert_eq!(
             Membership::new(vec![btreeset! {0}], None),
-            m.committed.membership,
+            m.committed().membership,
             "membership should be overridden by the snapshot"
         );
         assert_eq!(
             Membership::new(vec![btreeset! {0}], None),
-            m.effective.membership,
+            m.effective().membership,
             "conflicting effective membership does not have to be clear"
         );
 

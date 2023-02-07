@@ -161,8 +161,8 @@ fn test_install_snapshot_not_conflict() -> anyhow::Result<()> {
     assert_eq!(&[log_id(4, 6), log_id(4, 8)], eng.state.log_ids.key_log_ids());
     assert_eq!(Some(&log_id(4, 6)), eng.state.committed());
     assert_eq!(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
-        eng.state.membership_state.committed
+        &Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
+        eng.state.membership_state.committed()
     );
 
     assert_eq!(
@@ -240,8 +240,8 @@ fn test_install_snapshot_conflict() -> anyhow::Result<()> {
     assert_eq!(&[log_id(5, 6)], eng.state.log_ids.key_log_ids());
     assert_eq!(Some(&log_id(5, 6)), eng.state.committed());
     assert_eq!(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
-        eng.state.membership_state.committed
+        &Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
+        eng.state.membership_state.committed()
     );
 
     assert_eq!(
@@ -297,12 +297,12 @@ fn test_install_snapshot_advance_last_log_id() -> anyhow::Result<()> {
     assert_eq!(&[log_id(100, 100)], eng.state.log_ids.key_log_ids());
     assert_eq!(Some(&log_id(100, 100)), eng.state.committed());
     assert_eq!(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
-        eng.state.membership_state.committed
+        &Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
+        eng.state.membership_state.committed()
     );
     assert_eq!(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
-        eng.state.membership_state.effective
+        &Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())),
+        eng.state.membership_state.effective()
     );
 
     assert_eq!(

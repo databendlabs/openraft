@@ -234,7 +234,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
-        let em = &self.engine.state.membership_state.effective;
+        let em = self.engine.state.membership_state.effective();
         let mut granted = btreeset! {self.id};
 
         if em.is_quorum(granted.iter()) {
@@ -269,7 +269,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             let my_id = self.id;
             // Safe unwrap(): target is in membership
-            let target_node = self.engine.state.membership_state.effective.get_node(&target).unwrap().clone();
+            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
             let mut client = match self.network.new_client(target, &target_node).await {
                 Ok(n) => n,
                 Err(e) => {
@@ -343,7 +343,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             granted.insert(target);
 
-            let mem = &self.engine.state.membership_state.effective;
+            let mem = &self.engine.state.membership_state.effective();
             if mem.is_quorum(granted.iter()) {
                 let _ = tx.send(Ok(()));
                 return;
@@ -354,7 +354,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // request failures.
 
         let _ = tx.send(Err(QuorumNotEnough {
-            cluster: self.engine.state.membership_state.effective.membership.summary(),
+            cluster: self.engine.state.membership_state.effective().membership.summary(),
             got: granted,
         }
         .into()));
@@ -391,7 +391,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Ensure the node doesn't already exist in the current config,
         // in the set of new nodes already being synced, or in the nodes being removed.
 
-        let curr = &self.engine.state.membership_state.effective;
+        let curr = &self.engine.state.membership_state.effective();
         if curr.contains(&target) {
             let matching = if let Some(l) = &self.engine.internal_server_state.leading() {
                 *l.progress.get(&target)
@@ -406,7 +406,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             );
 
             let _ = tx.send(Ok(AddLearnerResponse {
-                membership_log_id: self.engine.state.membership_state.effective.log_id,
+                membership_log_id: self.engine.state.membership_state.effective().log_id,
                 matched: matching.matching,
             }));
             return Ok(());
@@ -419,7 +419,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
-        let curr = &self.engine.state.membership_state.effective.membership;
+        let curr = &self.engine.state.membership_state.effective().membership;
         let new_membership = curr.add_learner(target, node);
 
         tracing::debug!(?new_membership, "new_membership with added learner: {}", target);
@@ -451,7 +451,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     ) -> Result<(), Fatal<C::NodeId>> {
-        let last = self.engine.state.membership_state.effective.membership.get_joint_config().last().unwrap();
+        let last = self.engine.state.membership_state.effective().membership.get_joint_config().last().unwrap();
         let members = changes.apply_to(last);
 
         // Ensure cluster will have at least one node.
@@ -468,7 +468,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
-        let mem = &self.engine.state.membership_state.effective;
+        let mem = &self.engine.state.membership_state.effective();
         let curr = mem.membership.clone();
 
         let old_members = mem.voter_ids().collect::<BTreeSet<_>>();
@@ -507,7 +507,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         Err(ChangeMembershipError::InProgress(InProgress {
             committed: st.committed().copied(),
-            membership_log_id: st.membership_state.effective.log_id,
+            membership_log_id: st.membership_state.effective().log_id,
         }))
     }
 
@@ -634,7 +634,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             // --- cluster ---
             state: self.engine.state.server_state,
             current_leader: self.current_leader(),
-            membership_config: self.engine.state.membership_state.effective.clone(),
+            membership_config: self.engine.state.membership_state.effective().clone(),
 
             // --- replication ---
             replication,
@@ -821,7 +821,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // TODO: `is_voter()` is slow, maybe cache `current_leader`,
         //       e.g., only update it when membership or vote changes
-        if self.engine.state.membership_state.effective.is_voter(&id) {
+        if self.engine.state.membership_state.effective().is_voter(&id) {
             Some(id)
         } else {
             tracing::debug!("id={} is not a voter", id);
@@ -835,7 +835,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             Some(x) => x,
         };
 
-        self.engine.state.membership_state.effective.get_node(&leader_id).cloned()
+        self.engine.state.membership_state.effective().get_node(&leader_id).cloned()
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -924,9 +924,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         progress_entry: ProgressEntry<C::NodeId>,
     ) -> Result<ReplicationHandle<C::NodeId, C::Node, S::SnapshotData>, N::ConnectionError> {
         // Safe unwrap(): target must be in membership
-        let target_node = self.engine.state.membership_state.effective.get_node(&target).unwrap();
+        let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
 
-        let membership_log_id = self.engine.state.membership_state.effective.log_id;
+        let membership_log_id = self.engine.state.membership_state.effective().log_id;
         let network = self.network.new_client(target, target_node).await?;
 
         let session_id = ReplicationSessionId::new(self.engine.state.vote, membership_log_id);
@@ -1038,7 +1038,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Spawn parallel vote requests to all cluster members.
     #[tracing::instrument(level = "trace", skip_all, fields(vote=vote_req.summary()))]
     async fn spawn_parallel_vote_requests(&mut self, vote_req: &VoteRequest<C::NodeId>) {
-        let members = self.engine.state.membership_state.effective.voter_ids();
+        let members = self.engine.state.membership_state.effective().voter_ids();
 
         let vote = vote_req.vote;
 
@@ -1050,7 +1050,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             let req = vote_req.clone();
 
             // Safe unwrap(): target must be in membership
-            let target_node = self.engine.state.membership_state.effective.get_node(&target).unwrap().clone();
+            let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
             let mut client = match self.network.new_client(target, &target_node).await {
                 Ok(n) => n,
                 Err(err) => {
@@ -1199,7 +1199,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             RaftMsg::ExternalCommand { cmd } => {
                 match cmd {
                     ExternalCommand::Elect => {
-                        if self.engine.state.membership_state.effective.is_voter(&self.id) {
+                        if self.engine.state.membership_state.effective().is_voter(&self.id) {
                             // TODO: reject if it is already a leader?
                             self.engine.elect();
                             self.run_engine_commands::<Entry<C>>(&[]).await?;
@@ -1232,7 +1232,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     } else {
                         #[allow(clippy::collapsible_else_if)]
                         if self.runtime_config.enable_elect.load(Ordering::Relaxed) {
-                            if self.engine.state.membership_state.effective.is_voter(&self.id) {
+                            if self.engine.state.membership_state.effective().is_voter(&self.id) {
                                 self.engine.elect();
                                 self.run_engine_commands::<Entry<C>>(&[]).await?;
                             } else {
@@ -1377,11 +1377,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return false;
         }
 
-        if session_id.membership_log_id != self.engine.state.membership_state.effective.log_id {
+        if session_id.membership_log_id != self.engine.state.membership_state.effective().log_id {
             tracing::warn!(
                 "membership_log_id changed: msg sent by: {}; curr: {}; ignore when ({})",
                 session_id.membership_log_id.summary(),
-                self.engine.state.membership_state.effective.log_id.summary(),
+                self.engine.state.membership_state.effective().log_id.summary(),
                 msg
             );
             return false;

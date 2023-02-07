@@ -67,13 +67,13 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
             },
             eng.output.metrics_flags
         );
-        assert_eq!(m1(), eng.state.membership_state.effective.membership);
+        assert_eq!(m1(), eng.state.membership_state.effective().membership);
 
         assert_eq!(
             vec![
                 Command::AppendInputEntries { range: 0..1 },
                 Command::UpdateMembership {
-                    membership: eng.state.membership_state.effective.clone()
+                    membership: eng.state.membership_state.effective().clone()
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output command.
@@ -163,13 +163,13 @@ fn test_initialize() -> anyhow::Result<()> {
             },
             eng.output.metrics_flags
         );
-        assert_eq!(m12(), eng.state.membership_state.effective.membership);
+        assert_eq!(m12(), eng.state.membership_state.effective().membership);
 
         assert_eq!(
             vec![
                 Command::AppendInputEntries { range: 0..1 },
                 Command::UpdateMembership {
-                    membership: eng.state.membership_state.effective.clone()
+                    membership: eng.state.membership_state.effective().clone()
                 },
                 // When update the effective membership, the engine set it to Follower.
                 // But when initializing, it will switch to Candidate at once, in the last output command.

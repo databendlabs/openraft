@@ -165,7 +165,9 @@ fn test_update_effective_membership_update_learner_process() -> anyhow::Result<(
     eng.state.server_state = ServerState::Leader;
     // Make it a real leader: voted for itself and vote is committed.
     eng.state.vote = Vote::new_committed(2, 2);
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23_45()));
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23_45())));
     eng.new_leading();
 
     if let Some(l) = &mut eng.internal_server_state.leading_mut() {

@@ -189,7 +189,7 @@ where
 
     /// Return true if the currently effective membership is committed.
     pub(crate) fn is_membership_committed(&self) -> bool {
-        self.committed() >= self.membership_state.effective.log_id.as_ref()
+        self.committed() >= self.membership_state.effective().log_id.as_ref()
     }
 
     /// Update field `committed` if the input is greater.
@@ -202,8 +202,8 @@ where
             self.committed = *committed;
 
             // TODO(xp): use a vec to store committed and effective membership.
-            if self.committed() >= self.membership_state.effective.log_id.as_ref() {
-                self.membership_state.committed = self.membership_state.effective.clone();
+            if self.committed() >= self.membership_state.effective().log_id.as_ref() {
+                self.membership_state.set_committed(self.membership_state.effective().clone());
             }
 
             Some(prev)

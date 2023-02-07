@@ -269,8 +269,8 @@ where
     pub async fn get_membership_initial(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
-        assert_eq!(&EffectiveMembership::default(), mem_state.committed.as_ref());
-        assert_eq!(&EffectiveMembership::default(), mem_state.effective.as_ref());
+        assert_eq!(&EffectiveMembership::default(), mem_state.committed().as_ref());
+        assert_eq!(&EffectiveMembership::default(), mem_state.effective().as_ref());
 
         Ok(())
     }
@@ -289,10 +289,10 @@ where
 
             let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
-            assert_eq!(&EffectiveMembership::default(), mem_state.committed.as_ref());
+            assert_eq!(&EffectiveMembership::default(), mem_state.committed().as_ref());
             assert_eq!(
                 Membership::new(vec![btreeset! {1,2,3}], None),
-                mem_state.effective.membership,
+                mem_state.effective().membership,
             );
         }
 
@@ -319,11 +319,11 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.committed.membership,
+                mem_state.committed().membership,
             );
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.effective.membership,
+                mem_state.effective().membership,
             );
         }
 
@@ -340,11 +340,11 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.committed.membership,
+                mem_state.committed().membership,
             );
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.effective.membership,
+                mem_state.effective().membership,
             );
         }
 
@@ -367,11 +367,11 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.committed.membership,
+                mem_state.committed().membership,
             );
             assert_eq!(
                 Membership::new(vec![btreeset! {7,8,9}], None),
-                mem_state.effective.membership,
+                mem_state.effective().membership,
             );
         }
 
@@ -394,11 +394,11 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {7,8,9}], None),
-                mem_state.committed.membership,
+                mem_state.committed().membership,
             );
             assert_eq!(
                 Membership::new(vec![btreeset! {10,11}], None),
-                mem_state.effective.membership,
+                mem_state.effective().membership,
             );
         }
 
@@ -478,7 +478,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.membership_state.effective.membership,
+                initial.membership_state.effective().membership,
             );
         }
 
@@ -495,7 +495,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.membership_state.effective.membership,
+                initial.membership_state.effective().membership,
             );
         }
 
@@ -512,7 +512,7 @@ where
 
             assert_eq!(
                 Membership::new(vec![btreeset! {1,2,3}], None),
-                initial.membership_state.effective.membership,
+                initial.membership_state.effective().membership,
             );
         }
 

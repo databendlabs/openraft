@@ -41,7 +41,9 @@ fn eng() -> Engine<u64, ()> {
 fn test_startup_as_leader() -> anyhow::Result<()> {
     let mut eng = eng();
     // self.id==2 is a voter:
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())));
     // Committed vote makes it a leader at startup.
     eng.state.vote = Vote::new_committed(1, 2);
 
@@ -81,7 +83,9 @@ fn test_startup_as_leader() -> anyhow::Result<()> {
 fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
     let mut eng = eng();
     // self.id==2 is a voter:
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())));
     // Non-committed vote makes it a candidate at startup.
     eng.state.vote = Vote::new(1, 2);
 
@@ -106,7 +110,9 @@ fn test_startup_candidate_becomes_follower() -> anyhow::Result<()> {
 fn test_startup_as_follower() -> anyhow::Result<()> {
     let mut eng = eng();
     // self.id==2 is a voter:
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23()));
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())));
 
     eng.startup();
 
@@ -130,7 +136,9 @@ fn test_startup_as_follower() -> anyhow::Result<()> {
 fn test_startup_as_learner() -> anyhow::Result<()> {
     let mut eng = eng();
     // self.id==2 is not a voter:
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m34()));
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m34())));
 
     eng.startup();
 

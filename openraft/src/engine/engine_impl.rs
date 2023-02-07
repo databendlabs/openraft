@@ -150,7 +150,7 @@ where
             return;
         }
 
-        let server_state = if self.state.membership_state.effective.is_voter(&self.config.id) {
+        let server_state = if self.state.membership_state.effective().is_voter(&self.config.id) {
             ServerState::Follower
         } else {
             ServerState::Learner
@@ -304,7 +304,7 @@ where
 
         debug_assert_eq!(
             Some(NodeRole::Voter),
-            self.state.membership_state.effective.get_node_role(&self.config.id)
+            self.state.membership_state.effective().get_node_role(&self.config.id)
         );
 
         // If peer's vote is greater than current vote, revert to follower state.
@@ -593,9 +593,9 @@ where
         // last membership                                           // after  deleting since..
         // ```
 
-        let effective = self.state.membership_state.effective.clone();
+        let effective = self.state.membership_state.effective().clone();
         if Some(since) <= effective.log_id.index() {
-            let committed = self.state.membership_state.committed.clone();
+            let committed = self.state.membership_state.committed().clone();
 
             tracing::debug!(
                 effective = debug(&effective),
@@ -612,7 +612,7 @@ where
 
             self.state.membership_state = mem_state;
             self.output.push_command(Command::UpdateMembership {
-                membership: self.state.membership_state.effective.clone(),
+                membership: self.state.membership_state.effective().clone(),
             });
 
             tracing::debug!(effective = debug(&effective), "Done reverting membership");
@@ -628,8 +628,8 @@ where
 
         let m = Arc::new(membership);
 
-        let mut committed = self.state.membership_state.committed.clone();
-        let mut effective = self.state.membership_state.effective.clone();
+        let mut committed = self.state.membership_state.committed().clone();
+        let mut effective = self.state.membership_state.effective().clone();
 
         if committed.log_id < m.log_id {
             committed = m.clone();
@@ -646,9 +646,9 @@ where
 
         let mem_state = MembershipState::new(committed, effective);
 
-        if self.state.membership_state.effective != mem_state.effective {
+        if self.state.membership_state.effective() != mem_state.effective() {
             self.output.push_command(Command::UpdateMembership {
-                membership: mem_state.effective.clone(),
+                membership: mem_state.effective().clone(),
             })
         }
 
@@ -663,10 +663,10 @@ where
 
         let em = Arc::new(EffectiveMembership::new(Some(*log_id), m.clone()));
 
-        self.state.membership_state.effective = em.clone();
+        self.state.membership_state.set_effective(em.clone());
 
         self.output.push_command(Command::UpdateMembership {
-            membership: self.state.membership_state.effective.clone(),
+            membership: self.state.membership_state.effective().clone(),
         });
 
         let end = self.state.last_log_id().next_index();
@@ -706,7 +706,7 @@ where
 
         // Step down:
         // Keep acting as leader until a membership without this node is committed.
-        let em = &self.state.membership_state.effective;
+        let em = &self.state.membership_state.effective();
 
         tracing::debug!(
             "membership: {}, committed: {}, is_leading: {}",
@@ -938,7 +938,7 @@ where
     /// Create a new Leader, when raft enters candidate state.
     /// In openraft, Leader and Candidate shares the same state.
     pub(crate) fn new_leading(&mut self) {
-        let em = &self.state.membership_state.effective;
+        let em = &self.state.membership_state.effective();
         let mut leader = Leader::new(
             em.membership.to_quorum_set(),
             em.learner_ids(),
@@ -1007,7 +1007,7 @@ where
 
         self.update_membership_state(memberships);
         self.output.push_command(Command::UpdateMembership {
-            membership: self.state.membership_state.effective.clone(),
+            membership: self.state.membership_state.effective().clone(),
         });
 
         self.update_server_state_if_changed();
@@ -1041,11 +1041,11 @@ where
     ///
     /// Return if new membership config is found
     fn update_membership_state(&mut self, memberships: Vec<EffectiveMembership<NID, N>>) {
-        debug_assert!(self.state.membership_state.effective.log_id < memberships[0].log_id);
+        debug_assert!(self.state.membership_state.effective().log_id < memberships[0].log_id);
 
         let new_mem_state = if memberships.len() == 1 {
             MembershipState::new(
-                self.state.membership_state.effective.clone(),
+                self.state.membership_state.effective().clone(),
                 Arc::new(memberships[0].clone()),
             )
         } else {
