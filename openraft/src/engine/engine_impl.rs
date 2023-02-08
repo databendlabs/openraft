@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::core::ServerState;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
+use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
@@ -140,7 +141,7 @@ where
         // Previously it is a leader. restore it as leader at once
         if self.state.is_leader(&self.config.id) {
             self.update_internal_server_state();
-            self.update_server_state_if_changed();
+            self.server_state_handler().update_server_state_if_changed();
 
             let mut rh = self.replication_handler();
             rh.update_replication_streams();
@@ -200,7 +201,7 @@ where
             let em = EffectiveMembership::new_arc(Some(*log_id), m.clone());
             self.state.membership_state.append(em.clone());
             self.output.push_command(Command::UpdateMembership { membership: em });
-            self.update_server_state_if_changed();
+            self.server_state_handler().update_server_state_if_changed();
         }
 
         self.output.push_command(Command::MoveInputCursorBy { n: l });
@@ -235,7 +236,7 @@ where
         });
 
         // TODO: For compatibility. remove it. The runtime does not need to know about server state.
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
         self.output.push_command(Command::InstallElectionTimer { can_be_leader: true });
     }
 
@@ -595,7 +596,7 @@ where
         let changed = self.state.membership_state.truncate(since);
         if let Some(c) = changed {
             self.output.push_command(Command::UpdateMembership { membership: c });
-            self.update_server_state_if_changed();
+            self.server_state_handler().update_server_state_if_changed();
         }
     }
 
@@ -612,7 +613,7 @@ where
             self.output.push_command(Command::UpdateMembership { membership: c })
         }
 
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -858,7 +859,7 @@ where
 
         self.internal_server_state = InternalServerState::Following;
 
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
     }
 
     /// Vote is granted by a quorum, leader established.
@@ -866,7 +867,7 @@ where
     fn establish_leader(&mut self) {
         self.vote_handler().commit();
 
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
         self.replication_handler().update_replication_streams();
 
         // Only when a log with current `vote` is replicated to a quorum, the logs are considered committed.
@@ -951,7 +952,7 @@ where
             membership: self.state.membership_state.effective().clone(),
         });
 
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
     }
 
     /// Find the last 2 membership entries in a list of entries.
@@ -976,34 +977,6 @@ where
         }
 
         memberships
-    }
-
-    fn update_server_state_if_changed(&mut self) {
-        let server_state = self.state.calc_server_state(&self.config.id);
-
-        tracing::debug!(
-            id = display(self.config.id),
-            prev_server_state = debug(self.state.server_state),
-            server_state = debug(server_state),
-            "update_server_state_if_changed"
-        );
-
-        if self.state.server_state == server_state {
-            return;
-        }
-
-        let was_leader = self.state.server_state == ServerState::Leader;
-        let is_leader = server_state == ServerState::Leader;
-
-        if !was_leader && is_leader {
-            self.output.push_command(Command::BecomeLeader);
-        } else if was_leader && !is_leader {
-            self.output.push_command(Command::QuitLeader);
-        } else {
-            // nothing to do
-        }
-
-        self.state.server_state = server_state;
     }
 
     /// Check if a raft node is in a state that allows to initialize.
@@ -1139,6 +1112,14 @@ where
         ReplicationHandler {
             config: &mut self.config,
             leader,
+            state: &mut self.state,
+            output: &mut self.output,
+        }
+    }
+
+    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<NID, N> {
+        ServerStateHandler {
+            config: &self.config,
             state: &mut self.state,
             output: &mut self.output,
         }
