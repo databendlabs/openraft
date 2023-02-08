@@ -41,12 +41,12 @@ mod log_id_list;
 #[cfg(test)] mod install_snapshot_test;
 #[cfg(test)] mod internal_handle_vote_req_test;
 #[cfg(test)] mod leader_append_entries_test;
+#[cfg(test)] mod leader_append_membership_test;
 #[cfg(test)] mod log_id_list_test;
 #[cfg(test)] mod startup_test;
 #[cfg(test)] mod testing;
 #[cfg(test)] mod truncate_logs_test;
 #[cfg(test)] mod update_committed_membership_test;
-#[cfg(test)] mod update_effective_membership_test;
 #[cfg(test)] mod update_progress_test;
 
 pub(crate) use command::Command;

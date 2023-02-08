@@ -6,6 +6,7 @@ use crate::node::Node;
 use crate::validate::Validate;
 use crate::EffectiveMembership;
 use crate::LogIdOptionExt;
+use crate::MessageSummary;
 use crate::NodeId;
 
 /// The state of membership configs a raft node needs to know.
@@ -41,6 +42,20 @@ where
 
     // Using `Arc` because the effective membership will be copied to RaftMetrics frequently.
     effective: Arc<EffectiveMembership<NID, N>>,
+}
+
+impl<NID, N> MessageSummary<MembershipState<NID, N>> for MembershipState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn summary(&self) -> String {
+        format!(
+            "MembershipState{{committed: {}, effective: {}}}",
+            self.committed().summary(),
+            self.effective().summary()
+        )
+    }
 }
 
 impl<NID, N> MembershipState<NID, N>
@@ -104,10 +119,34 @@ where
         }
     }
 
+    /// Append a membership config `m`.
+    ///
+    /// It assumes `self.effective` does not conflict with the leader's log, i.e.:
+    /// - Leader appends a new membership,
+    /// - Or a follower has confirmed preceding logs matches the leaders' and appends membership received from the
+    ///   leader.
+    pub(crate) fn append(&mut self, m: Arc<EffectiveMembership<NID, N>>) {
+        debug_assert!(
+            m.log_id > self.effective.log_id,
+            "new membership has to have a greater log_id"
+        );
+        debug_assert!(
+            m.log_id.index() > self.effective.log_id.index(),
+            "new membership has to have a greater index"
+        );
+
+        // Openraft allows at most only one non-committed membership config.
+        // If there is another new config, self.effective must have been committed.
+        self.committed = self.effective.clone();
+        self.effective = m;
+    }
+
     pub(crate) fn set_committed(&mut self, c: Arc<EffectiveMembership<NID, N>>) {
         self.committed = c
     }
 
+    // This method is only used by tests
+    #[cfg(test)]
     pub(crate) fn set_effective(&mut self, e: Arc<EffectiveMembership<NID, N>>) {
         self.effective = e
     }
@@ -128,6 +167,7 @@ where
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
         less_equal!(self.committed.log_id, self.effective.log_id);
+        less_equal!(self.committed.log_id.index(), self.effective.log_id.index());
         Ok(())
     }
 }

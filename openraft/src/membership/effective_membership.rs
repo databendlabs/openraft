@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use crate::entry::RaftEntry;
 use crate::membership::NodeRole;
@@ -92,6 +93,10 @@ where
     N: Node,
     NID: NodeId,
 {
+    pub(crate) fn new_arc(log_id: Option<LogId<NID>>, membership: Membership<NID, N>) -> Arc<Self> {
+        Arc::new(Self::new(log_id, membership))
+    }
+
     pub fn new(log_id: Option<LogId<NID>>, membership: Membership<NID, N>) -> Self {
         let voter_ids = membership.voter_ids().collect();
 

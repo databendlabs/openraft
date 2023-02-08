@@ -15,6 +15,12 @@ fn log_id(term: u64, index: u64) -> LogId<u64> {
     }
 }
 
+/// Create an Arc<EffectiveMembership>
+fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembership<u64, ()>> {
+    let lid = Some(log_id(term, index));
+    Arc::new(EffectiveMembership::new(lid, m))
+}
+
 fn m1() -> Membership<u64, ()> {
     Membership::new(vec![btreeset! {1}], None)
 }
@@ -29,10 +35,7 @@ fn m123_345() -> Membership<u64, ()> {
 
 #[test]
 fn test_membership_state_is_member() -> anyhow::Result<()> {
-    let x = MembershipState::new(
-        Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1())),
-        Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m123_345())),
-    );
+    let x = MembershipState::new(effmem(1, 1, m1()), effmem(3, 4, m123_345()));
 
     assert!(!x.is_voter(&0));
     assert!(x.is_voter(&1));
@@ -92,6 +95,20 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
         assert_eq!(Some(log_id(2, 5)), x.effective().log_id);
         assert_eq!(m12(), x.effective().membership);
     }
+
+    Ok(())
+}
+
+#[test]
+fn test_membership_state_append() -> anyhow::Result<()> {
+    let new = || MembershipState::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
+
+    let mut ms = new();
+    ms.append(effmem(4, 5, m12()));
+
+    assert_eq!(Some(log_id(3, 4)), ms.committed().log_id);
+    assert_eq!(Some(log_id(4, 5)), ms.effective().log_id);
+    assert_eq!(m12(), ms.effective().membership);
 
     Ok(())
 }

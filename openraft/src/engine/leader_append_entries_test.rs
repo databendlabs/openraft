@@ -18,6 +18,7 @@ use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
+use crate::ServerState;
 use crate::Vote;
 
 crate::declare_raft_types!(
@@ -76,6 +77,7 @@ fn eng() -> Engine<u64, ()> {
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
     );
+    eng.state.server_state = eng.calc_server_state();
 
     eng
 }
@@ -243,6 +245,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
+    eng.state.server_state = ServerState::Leader;
     eng.new_leading();
 
     // log id will be assigned by eng.
