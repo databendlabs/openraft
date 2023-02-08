@@ -74,7 +74,7 @@ async fn append_updates_membership() -> Result<()> {
     tracing::info!("--- delete inconsistent logs update membership");
     {
         let req = AppendEntriesRequest {
-            vote: Vote::new_committed(1, 0),
+            vote: Vote::new_committed(1, 2),
             prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 2)),
             entries: vec![blank(2, 3)],
             leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),

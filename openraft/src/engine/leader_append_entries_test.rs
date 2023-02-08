@@ -121,7 +121,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
 #[test]
 fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.new_leading();
+    eng.become_leading();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -182,7 +182,7 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
-    eng.new_leading();
+    eng.become_leading();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -246,7 +246,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
     eng.state.server_state = ServerState::Leader;
-    eng.new_leading();
+    eng.become_leading();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -330,7 +330,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
-    eng.new_leading();
+    eng.become_leading();
     eng.state.server_state = eng.calc_server_state();
 
     // log id will be assigned by eng.
@@ -420,7 +420,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m13())));
-    eng.new_leading();
+    eng.become_leading();
     eng.state.server_state = eng.calc_server_state();
 
     // log id will be assigned by eng.

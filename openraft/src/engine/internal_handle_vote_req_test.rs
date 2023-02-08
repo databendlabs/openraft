@@ -35,7 +35,7 @@ fn eng() -> Engine<u64, ()> {
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())));
 
-    eng.new_leading();
+    eng.become_leading();
     eng
 }
 
@@ -43,7 +43,7 @@ fn eng() -> Engine<u64, ()> {
 fn test_handle_vote_change_reject_smaller_vote() -> anyhow::Result<()> {
     let mut eng = eng();
 
-    let resp = eng.handle_vote_change(&Vote::new(1, 2));
+    let resp = eng.handle_message_vote(&Vote::new(1, 2));
 
     assert_eq!(Err(RejectVoteRequest::ByVote(Vote::new(2, 1))), resp);
 
@@ -70,7 +70,7 @@ fn test_handle_vote_change_committed_vote() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
-    let resp = eng.handle_vote_change(&Vote::new_committed(3, 2));
+    let resp = eng.handle_message_vote(&Vote::new_committed(3, 2));
 
     assert_eq!(Ok(()), resp);
 
@@ -108,7 +108,7 @@ fn test_handle_vote_change_granted_equal_vote() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
-    let resp = eng.handle_vote_change(&Vote::new(2, 1));
+    let resp = eng.handle_message_vote(&Vote::new(2, 1));
 
     assert_eq!(Ok(()), resp);
 
@@ -142,7 +142,7 @@ fn test_handle_vote_change_granted_greater_vote() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
 
-    let resp = eng.handle_vote_change(&Vote::new(3, 1));
+    let resp = eng.handle_message_vote(&Vote::new(3, 1));
 
     assert_eq!(Ok(()), resp);
 
@@ -179,11 +179,11 @@ fn test_handle_vote_change_granted_follower_learner_does_not_emit_update_server_
 
         let mut eng = eng();
         eng.config.id = 100; // make it a non-voter
-        eng.enter_following();
+        eng.become_following();
         eng.state.server_state = st;
         eng.output.commands = vec![];
 
-        let resp = eng.handle_vote_change(&Vote::new(3, 1));
+        let resp = eng.handle_message_vote(&Vote::new(3, 1));
 
         assert_eq!(Ok(()), resp);
 
@@ -203,11 +203,11 @@ fn test_handle_vote_change_granted_follower_learner_does_not_emit_update_server_
 
         let mut eng = eng();
         eng.config.id = 0; // make it a voter
-        eng.enter_following();
+        eng.become_following();
         eng.state.server_state = st;
         eng.output.commands = vec![];
 
-        let resp = eng.handle_vote_change(&Vote::new(3, 1));
+        let resp = eng.handle_message_vote(&Vote::new(3, 1));
 
         assert_eq!(Ok(()), resp);
 

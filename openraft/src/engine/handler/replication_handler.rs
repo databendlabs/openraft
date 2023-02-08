@@ -346,7 +346,7 @@ mod tests {
         #[test]
         fn test_update_matching() -> anyhow::Result<()> {
             let mut eng = eng();
-            eng.new_leading();
+            eng.become_leading();
 
             let mut rh = eng.replication_handler();
             let inflight_id_1 = {

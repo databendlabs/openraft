@@ -81,7 +81,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
-        eng.new_leading();
+        eng.become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
@@ -122,7 +122,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
-        eng.new_leading();
+        eng.become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
@@ -162,7 +162,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
-        eng.new_leading();
+        eng.become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
@@ -202,7 +202,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())));
-        eng.new_leading();
+        eng.become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 
@@ -239,7 +239,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
-        eng.new_leading();
+        eng.become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
 

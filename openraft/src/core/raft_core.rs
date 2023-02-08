@@ -324,7 +324,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             // If we receive a response with a greater term, then revert to follower and abort this request.
             if let AppendEntriesResponse::HigherVote(vote) = data {
-                let res = self.engine.handle_vote_change(&vote);
+                let res = self.engine.handle_message_vote(&vote);
                 if let Err(e) = self.run_engine_commands::<Entry<C>>(&[]).await.extract_fatal() {
                     let _ = tx.send(Err(e.into()));
                     return;
@@ -1279,7 +1279,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             } => {
                 if self.does_vote_match(&vote, "HigherVote") {
                     // Rejected vote change is ok.
-                    let _ = self.engine.handle_vote_change(&higher);
+                    let _ = self.engine.handle_message_vote(&higher);
                     self.run_engine_commands::<Entry<C>>(&[]).await?;
                 }
             }
