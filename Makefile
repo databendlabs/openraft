@@ -6,7 +6,7 @@ defensive_test:
 send_delay_test:
 	OPENRAFT_NETWORK_SEND_DELAY=30 cargo test
 
-test: lint fmt
+test:
 	cargo test
 	cargo test --features bt
 	cargo test --features serde

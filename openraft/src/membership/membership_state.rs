@@ -5,6 +5,7 @@ use crate::less_equal;
 use crate::node::Node;
 use crate::validate::Validate;
 use crate::EffectiveMembership;
+use crate::LogIdOptionExt;
 use crate::NodeId;
 
 /// The state of membership configs a raft node needs to know.
@@ -59,6 +60,49 @@ where
     }
 
     // ---
+
+    /// A committed membership log is found and the either of `self.committed` and `self.effective` should be updated if
+    /// it is smaller than the new one.
+    ///
+    /// If `self.effective` changed, it returns a reference to the new one.
+    /// If not, it returns None.
+    pub(crate) fn update_committed(
+        &mut self,
+        c: Arc<EffectiveMembership<NID, N>>,
+    ) -> Option<Arc<EffectiveMembership<NID, N>>> {
+        let mut changed = false;
+
+        // The local effective membership may conflict with the leader.
+        // Thus it has to compare by log-index, e.g.:
+        //   membership.log_id       = (10, 5);
+        //   local_effective.log_id = (2, 10);
+        if c.log_id.index() >= self.effective.log_id.index() {
+            changed = c.membership != self.effective.membership;
+
+            // The effective may override by a new leader with a different one.
+            self.effective = c.clone()
+        }
+
+        #[allow(clippy::collapsible_if)]
+        if cfg!(debug_assertions) {
+            if c.log_id == self.committed.log_id {
+                debug_assert_eq!(
+                    c.membership, self.committed.membership,
+                    "the same log id implies the same membership"
+                );
+            }
+        }
+
+        if c.log_id > self.committed.log_id {
+            self.committed = c
+        }
+
+        if changed {
+            Some(self.effective().clone())
+        } else {
+            None
+        }
+    }
 
     pub(crate) fn set_committed(&mut self, c: Arc<EffectiveMembership<NID, N>>) {
         self.committed = c

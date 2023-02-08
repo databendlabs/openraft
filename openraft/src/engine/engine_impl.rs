@@ -628,31 +628,11 @@ where
 
         let m = Arc::new(membership);
 
-        let mut committed = self.state.membership_state.committed().clone();
-        let mut effective = self.state.membership_state.effective().clone();
-
-        if committed.log_id < m.log_id {
-            committed = m.clone();
+        // TODO: if effective membership changes, call `update_repliation()`
+        let effective_changed = self.state.membership_state.update_committed(m);
+        if let Some(c) = effective_changed {
+            self.output.push_command(Command::UpdateMembership { membership: c })
         }
-
-        // The local effective membership may conflict with the leader.
-        // Thus it has to compare by log-index, e.g.:
-        //   membership.log_id       = (10, 5);
-        //   local_effective.log_id = (2, 10);
-        if effective.log_id.index() <= m.log_id.index() {
-            // TODO: if effective membership changes, call `update_repliation()`
-            effective = m;
-        }
-
-        let mem_state = MembershipState::new(committed, effective);
-
-        if self.state.membership_state.effective() != mem_state.effective() {
-            self.output.push_command(Command::UpdateMembership {
-                membership: mem_state.effective().clone(),
-            })
-        }
-
-        self.state.membership_state = mem_state;
 
         self.update_server_state_if_changed();
     }
