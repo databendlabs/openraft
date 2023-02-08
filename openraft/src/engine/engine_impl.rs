@@ -193,7 +193,10 @@ where
         } else {
             Err(NotAMembershipEntry {})?;
         }
-        self.try_update_membership(entry);
+
+        if let Some(m) = entry.get_membership() {
+            self.update_effective_membership(entry.get_log_id(), m);
+        }
 
         self.output.push_command(Command::MoveInputCursorBy { n: l });
 
@@ -955,13 +958,6 @@ where
                 res
             );
             rh.update_matching(id, inflight_id, Some(log_id));
-        }
-    }
-
-    /// Update effective membership config if encountering a membership config log entry.
-    fn try_update_membership<Ent: RaftEntry<NID, N>>(&mut self, entry: &Ent) {
-        if let Some(m) = entry.get_membership() {
-            self.update_effective_membership(entry.get_log_id(), m);
         }
     }
 
