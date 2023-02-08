@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::core::ServerState;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
+use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
@@ -139,8 +140,8 @@ where
 
         // Previously it is a leader. restore it as leader at once
         if self.state.is_leader(&self.config.id) {
-            self.switch_internal_server_state();
-            self.update_server_state_if_changed();
+            self.update_internal_server_state();
+            self.server_state_handler().update_server_state_if_changed();
 
             let mut rh = self.replication_handler();
             rh.update_replication_streams();
@@ -200,7 +201,7 @@ where
             let em = EffectiveMembership::new_arc(Some(*log_id), m.clone());
             self.state.membership_state.append(em.clone());
             self.output.push_command(Command::UpdateMembership { membership: em });
-            self.update_server_state_if_changed();
+            self.server_state_handler().update_server_state_if_changed();
         }
 
         self.output.push_command(Command::MoveInputCursorBy { n: l });
@@ -214,7 +215,7 @@ where
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        self.handle_vote_change(&Vote::new(self.state.vote.term + 1, self.config.id)).unwrap();
+        self.handle_message_vote(&Vote::new(self.state.vote.term + 1, self.config.id)).unwrap();
 
         // Safe unwrap()
         let leader = self.internal_server_state.leading_mut().unwrap();
@@ -235,7 +236,7 @@ where
         });
 
         // TODO: For compatibility. remove it. The runtime does not need to know about server state.
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
         self.output.push_command(Command::InstallElectionTimer { can_be_leader: true });
     }
 
@@ -249,7 +250,7 @@ where
         );
 
         let res = if req.last_log_id.as_ref() >= self.state.last_log_id() {
-            self.handle_vote_change(&req.vote)
+            self.handle_message_vote(&req.vote)
         } else {
             Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id().copied()))
         };
@@ -463,7 +464,7 @@ where
             "local state"
         );
 
-        let res = self.handle_vote_change(vote);
+        let res = self.handle_message_vote(vote);
         if let Err(rejected) = res {
             return rejected.into();
         }
@@ -595,7 +596,7 @@ where
         let changed = self.state.membership_state.truncate(since);
         if let Some(c) = changed {
             self.output.push_command(Command::UpdateMembership { membership: c });
-            self.update_server_state_if_changed();
+            self.server_state_handler().update_server_state_if_changed();
         }
     }
 
@@ -612,7 +613,7 @@ where
             self.output.push_command(Command::UpdateMembership { membership: c })
         }
 
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -679,7 +680,7 @@ where
         if em.log_id.as_ref() <= self.state.committed() {
             if !em.is_voter(&self.config.id) && self.state.is_leading(&self.config.id) {
                 tracing::debug!("leader {} is stepping down", self.config.id);
-                self.enter_following();
+                self.become_following();
             }
         }
     }
@@ -817,46 +818,30 @@ where
     NID: NodeId,
 {
     /// Enter leading or following state by checking `vote`.
-    ///
-    /// `vote.node_id == self.id`: Leading state;
-    /// `vote.node_id != self.id`: Following state;
-    pub(crate) fn switch_internal_server_state(&mut self) {
+    pub(crate) fn update_internal_server_state(&mut self) {
         if self.state.vote.node_id == self.config.id {
-            self.enter_leading();
+            self.become_leading();
         } else {
-            self.enter_following();
+            self.become_following();
         }
     }
 
-    /// Enter leading state(vote.node_id == self.id) .
-    ///
-    /// Leader state has two phase: election phase and replication phase, similar to paxos phase-1 and phase-2
-    pub(crate) fn enter_leading(&mut self) {
-        debug_assert_eq!(self.state.vote.node_id, self.config.id);
-        // debug_assert!(self.internal_server_state.is_following(), "can not enter leading twice");
-
-        self.new_leading();
-    }
-
-    /// Leave leading state and enter following state(vote.node_id != self.id).
+    /// Enter following state(vote.node_id != self.id or self is not a voter).
     ///
     /// This node then becomes raft-follower or raft-learner.
-    pub(crate) fn enter_following(&mut self) {
+    pub(crate) fn become_following(&mut self) {
         // TODO: entering following needs to check last-log-id on other node to decide the election timeout.
 
-        // TODO: a candidate that can not elect successfully should not enter following state.
-        //       It should just sleep in leading state(candidate state for an application).
-        //       This way it holds that 'vote.node_id != self.id <=> following state`.
-        // debug_assert_ne!(self.state.vote.node_id, self.id);
-
-        // debug_assert!(
-        //     self.internal_server_state.is_leading(),
-        //     "can not enter following twice"
-        // );
+        debug_assert!(
+            self.state.vote.node_id != self.config.id
+                || !self.state.membership_state.effective().contains(&self.config.id),
+            "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
+        );
 
         let vote = &self.state.vote;
 
         // TODO: installing election timer should be driven by change of last-log-id
+        // TODO: `can_be_leader` should consider if this node is in a voter.
         if vote.committed {
             // There is an active leader.
             // Do not elect for a longer while.
@@ -874,7 +859,7 @@ where
 
         self.internal_server_state = InternalServerState::Following;
 
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
     }
 
     /// Vote is granted by a quorum, leader established.
@@ -882,7 +867,7 @@ where
     fn establish_leader(&mut self) {
         self.vote_handler().commit();
 
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
         self.replication_handler().update_replication_streams();
 
         // Only when a log with current `vote` is replicated to a quorum, the logs are considered committed.
@@ -892,12 +877,12 @@ where
         self.replication_handler().initiate_replication();
     }
 
-    // TODO: Incomplete method:
-    //       This should ony be used by test and internally.
-    //       No other mod should use it
-    /// Create a new Leader, when raft enters candidate state.
-    /// In openraft, Leader and Candidate shares the same state.
-    pub(crate) fn new_leading(&mut self) {
+    /// Enter leading state(vote.node_id == self.id) .
+    ///
+    /// Create a new leading state, when raft enters candidate state.
+    /// Leading state has two phase: election phase and replication phase, similar to paxos phase-1 and phase-2.
+    /// Leader and Candidate shares the same state.
+    pub(crate) fn become_leading(&mut self) {
         let em = &self.state.membership_state.effective();
         let mut leader = Leader::new(
             em.membership.to_quorum_set(),
@@ -905,7 +890,6 @@ where
             self.state.last_log_id().index(),
         );
 
-        // TODO: for a new leader, update the matching
         // We can just ignore the result here:
         // The `committed` will not be updated until a log of current term is granted by a quorum
         let _ = leader.progress.update_with(&self.config.id, |v| v.matching = self.state.last_log_id().copied());
@@ -968,7 +952,7 @@ where
             membership: self.state.membership_state.effective().clone(),
         });
 
-        self.update_server_state_if_changed();
+        self.server_state_handler().update_server_state_if_changed();
     }
 
     /// Find the last 2 membership entries in a list of entries.
@@ -993,34 +977,6 @@ where
         }
 
         memberships
-    }
-
-    fn update_server_state_if_changed(&mut self) {
-        let server_state = self.state.calc_server_state(&self.config.id);
-
-        tracing::debug!(
-            id = display(self.config.id),
-            prev_server_state = debug(self.state.server_state),
-            server_state = debug(server_state),
-            "update_server_state_if_changed"
-        );
-
-        if self.state.server_state == server_state {
-            return;
-        }
-
-        let was_leader = self.state.server_state == ServerState::Leader;
-        let is_leader = server_state == ServerState::Leader;
-
-        if !was_leader && is_leader {
-            self.output.push_command(Command::BecomeLeader);
-        } else if was_leader && !is_leader {
-            self.output.push_command(Command::QuitLeader);
-        } else {
-            // nothing to do
-        }
-
-        self.state.server_state = server_state;
     }
 
     /// Check if a raft node is in a state that allows to initialize.
@@ -1086,12 +1042,13 @@ where
         }
     }
 
-    /// Check and change vote.
+    /// Check and update vote and related state for every message received.
+    ///
     /// This is used by all 3 RPC append-entries, vote, install-snapshot to check the `vote` field.
     ///
     /// Grant vote if vote >= mine.
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with last-log-id itself.
-    pub(crate) fn handle_vote_change(&mut self, vote: &Vote<NID>) -> Result<(), RejectVoteRequest<NID>> {
+    pub(crate) fn handle_message_vote(&mut self, vote: &Vote<NID>) -> Result<(), RejectVoteRequest<NID>> {
         // Partial ord compare:
         // Vote does not has to be total ord.
         // `!(a >= b)` does not imply `a < b`.
@@ -1109,7 +1066,7 @@ where
             self.output.push_command(Command::SaveVote { vote: *vote });
         }
 
-        self.switch_internal_server_state();
+        self.update_internal_server_state();
 
         Ok(())
     }
@@ -1155,6 +1112,14 @@ where
         ReplicationHandler {
             config: &mut self.config,
             leader,
+            state: &mut self.state,
+            output: &mut self.output,
+        }
+    }
+
+    pub(crate) fn server_state_handler(&mut self) -> ServerStateHandler<NID, N> {
+        ServerStateHandler {
+            config: &self.config,
             state: &mut self.state,
             output: &mut self.output,
         }
