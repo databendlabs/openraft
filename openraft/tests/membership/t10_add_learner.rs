@@ -185,12 +185,12 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
 
         assert_eq!(
             Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),
-            m.committed.membership,
+            m.committed().membership,
             "membership should be overridden by the snapshot"
         );
         assert_eq!(
             Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),
-            m.effective.membership,
+            m.effective().membership,
             "membership should be overridden by the snapshot"
         );
     }

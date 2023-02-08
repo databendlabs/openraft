@@ -47,7 +47,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.state.server_state = ServerState::Follower;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state
+            .membership_state
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
 
         eng.handle_vote_resp(2, VoteResponse {
             vote: Vote::new(2, 2),
@@ -76,7 +78,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state
+            .membership_state
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
         eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
@@ -115,7 +119,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
         eng.state.log_ids = LogIdList::new(vec![log_id(3, 3)]);
-        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state
+            .membership_state
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
         eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
@@ -153,7 +159,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state
+            .membership_state
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
         eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
@@ -191,7 +199,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234()));
+        eng.state
+            .membership_state
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())));
         eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;
@@ -226,7 +236,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.config.id = 1;
         eng.state.vote = Vote::new(2, 1);
-        eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12()));
+        eng.state
+            .membership_state
+            .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
         eng.new_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
         eng.state.server_state = ServerState::Candidate;

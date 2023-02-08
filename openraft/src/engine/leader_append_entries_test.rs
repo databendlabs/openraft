@@ -18,6 +18,7 @@ use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
 use crate::MetricsChangeFlags;
+use crate::ServerState;
 use crate::Vote;
 
 crate::declare_raft_types!(
@@ -76,6 +77,7 @@ fn eng() -> Engine<u64, ()> {
         Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
         Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
     );
+    eng.state.server_state = eng.calc_server_state();
 
     eng
 }
@@ -177,7 +179,9 @@ fn test_leader_append_entries_normal() -> anyhow::Result<()> {
 #[test]
 fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1()));
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
     eng.new_leading();
 
     // log id will be assigned by eng.
@@ -238,7 +242,10 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
 #[test]
 fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1()));
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
+    eng.state.server_state = ServerState::Leader;
     eng.new_leading();
 
     // log id will be assigned by eng.
@@ -320,7 +327,9 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
 #[test]
 fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1()));
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
     eng.new_leading();
     eng.state.server_state = eng.calc_server_state();
 
@@ -408,7 +417,9 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
 #[test]
 fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.membership_state.effective = Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m13()));
+    eng.state
+        .membership_state
+        .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m13())));
     eng.new_leading();
     eng.state.server_state = eng.calc_server_state();
 

@@ -104,8 +104,8 @@ async fn snapshot_overrides_membership() -> Result<()> {
             {
                 let m = StorageHelper::new(&mut sto).get_membership().await?;
 
-                assert_eq!(&EffectiveMembership::default(), m.committed.as_ref());
-                assert_eq!(Membership::new(vec![btreeset! {2,3}], None), m.effective.membership);
+                assert_eq!(&EffectiveMembership::default(), m.committed().as_ref());
+                assert_eq!(Membership::new(vec![btreeset! {2,3}], None), m.effective().membership);
             }
         }
 
@@ -144,12 +144,12 @@ async fn snapshot_overrides_membership() -> Result<()> {
 
             assert_eq!(
                 Membership::new(vec![btreeset! {0}], Some(btreeset! {1})),
-                m.committed.membership,
+                m.committed().membership,
                 "membership should be overridden by the snapshot"
             );
             assert_eq!(
                 Membership::new(vec![btreeset! {0}], Some(btreeset! {1})),
-                m.effective.membership,
+                m.effective().membership,
                 "membership should be overridden by the snapshot"
             );
         }

@@ -79,12 +79,12 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
         assert_eq!(
             Membership::new(vec![btreeset! {0,1}], None),
-            m.committed.membership,
+            m.committed().membership,
             "membership "
         );
         assert_eq!(
             Membership::new(vec![btreeset! {0,1}], None),
-            m.effective.membership,
+            m.effective().membership,
             "membership "
         );
     }
@@ -115,12 +115,12 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
 
         assert_eq!(
             Membership::new(vec![btreeset! {0,1}], None),
-            m.committed.membership,
+            m.committed().membership,
             "membership "
         );
         assert_eq!(
             Membership::new(vec![btreeset! {0,1}], None),
-            m.effective.membership,
+            m.effective().membership,
             "membership "
         );
     }

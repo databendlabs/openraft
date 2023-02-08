@@ -31,7 +31,6 @@ use crate::validate::Valid;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
-use crate::MembershipState;
 use crate::MetricsChangeFlags;
 use crate::NodeId;
 use crate::SnapshotMeta;
@@ -150,7 +149,7 @@ where
             return;
         }
 
-        let server_state = if self.state.membership_state.effective.is_voter(&self.config.id) {
+        let server_state = if self.state.membership_state.effective().is_voter(&self.config.id) {
             ServerState::Follower
         } else {
             ServerState::Learner
@@ -193,7 +192,16 @@ where
         } else {
             Err(NotAMembershipEntry {})?;
         }
-        self.try_update_membership(entry);
+
+        if let Some(m) = entry.get_membership() {
+            let log_id = entry.get_log_id();
+            tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
+
+            let em = EffectiveMembership::new_arc(Some(*log_id), m.clone());
+            self.state.membership_state.append(em.clone());
+            self.output.push_command(Command::UpdateMembership { membership: em });
+            self.update_server_state_if_changed();
+        }
 
         self.output.push_command(Command::MoveInputCursorBy { n: l });
 
@@ -304,7 +312,7 @@ where
 
         debug_assert_eq!(
             Some(NodeRole::Voter),
-            self.state.membership_state.effective.get_node_role(&self.config.id)
+            self.state.membership_state.effective().get_node_role(&self.config.id)
         );
 
         // If peer's vote is greater than current vote, revert to follower state.
@@ -377,7 +385,7 @@ where
         // c
         // ```
         for entry in entries.iter() {
-            if let Some(_m) = entry.get_membership() {
+            if let Some(m) = entry.get_membership() {
                 let log_index = entry.get_log_id().index;
 
                 if log_index > 0 {
@@ -399,7 +407,7 @@ where
                 }
 
                 // since this entry, the condition to commit has been changed.
-                self.update_effective_membership(entry.get_log_id(), _m);
+                self.leader_append_membership(entry.get_log_id(), m);
             }
         }
 
@@ -521,6 +529,9 @@ where
                 upto: committed.unwrap(),
             });
         }
+
+        // TODO(5): follower has not yet commit the membership_state.
+        //          For now it is OK. But it should be done here.
     }
 
     /// Follower/Learner appends `entries[since..]`.
@@ -553,7 +564,8 @@ where
         self.state.extend_log_ids(entries);
 
         self.output.push_command(Command::AppendInputEntries { range: since..l });
-        self.follower_update_membership(entries.iter());
+
+        self.follower_append_membership(entries.iter());
 
         // TODO(xp): should be moved to handle_append_entries_req()
         self.output.push_command(Command::MoveInputCursorBy { n: l });
@@ -578,45 +590,11 @@ where
         };
 
         self.state.log_ids.truncate(since);
-
         self.output.push_command(Command::DeleteConflictLog { since: since_log_id });
 
-        // If the effective membership is from a conflicting log,
-        // the membership state has to revert to the last committed membership config.
-        // See: [Effective-membership](https://datafuselabs.github.io/openraft/effective-membership.html)
-        //
-        // ```text
-        // committed_membership, ... since, ... effective_membership // log
-        // ^                                    ^
-        // |                                    |
-        // |                                    last membership      // before deleting since..
-        // last membership                                           // after  deleting since..
-        // ```
-
-        let effective = self.state.membership_state.effective.clone();
-        if Some(since) <= effective.log_id.index() {
-            let committed = self.state.membership_state.committed.clone();
-
-            tracing::debug!(
-                effective = debug(&effective),
-                committed = debug(&committed),
-                "effective membership is in conflicting logs, revert it to last committed"
-            );
-
-            debug_assert!(
-                committed.log_id.index() < Some(since),
-                "committed membership can not conflict with the leader"
-            );
-
-            let mem_state = MembershipState::new(committed.clone(), committed);
-
-            self.state.membership_state = mem_state;
-            self.output.push_command(Command::UpdateMembership {
-                membership: self.state.membership_state.effective.clone(),
-            });
-
-            tracing::debug!(effective = debug(&effective), "Done reverting membership");
-
+        let changed = self.state.membership_state.truncate(since);
+        if let Some(c) = changed {
+            self.output.push_command(Command::UpdateMembership { membership: c });
             self.update_server_state_if_changed();
         }
     }
@@ -628,51 +606,38 @@ where
 
         let m = Arc::new(membership);
 
-        let mut committed = self.state.membership_state.committed.clone();
-        let mut effective = self.state.membership_state.effective.clone();
-
-        if committed.log_id < m.log_id {
-            committed = m.clone();
+        // TODO: if effective membership changes, call `update_repliation()`
+        let effective_changed = self.state.membership_state.update_committed(m);
+        if let Some(c) = effective_changed {
+            self.output.push_command(Command::UpdateMembership { membership: c })
         }
-
-        // The local effective membership may conflict with the leader.
-        // Thus it has to compare by log-index, e.g.:
-        //   membership.log_id       = (10, 5);
-        //   local_effective.log_id = (2, 10);
-        if effective.log_id.index() <= m.log_id.index() {
-            // TODO: if effective membership changes, call `update_repliation()`
-            effective = m;
-        }
-
-        let mem_state = MembershipState::new(committed, effective);
-
-        if self.state.membership_state.effective != mem_state.effective {
-            self.output.push_command(Command::UpdateMembership {
-                membership: mem_state.effective.clone(),
-            })
-        }
-
-        self.state.membership_state = mem_state;
 
         self.update_server_state_if_changed();
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_effective_membership(&mut self, log_id: &LogId<NID>, m: &Membership<NID, N>) {
+    pub(crate) fn leader_append_membership(&mut self, log_id: &LogId<NID>, m: &Membership<NID, N>) {
+        // TODO(5): ensure leadership before entering this method.
         tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
 
-        let em = Arc::new(EffectiveMembership::new(Some(*log_id), m.clone()));
+        debug_assert!(
+            self.state.server_state == ServerState::Leader,
+            "Only leader is allowed to call update_effective_membership()"
+        );
+        debug_assert!(
+            self.state.is_leader(&self.config.id),
+            "Only leader is allowed to call update_effective_membership()"
+        );
 
-        self.state.membership_state.effective = em.clone();
+        self.state.membership_state.append(Arc::new(EffectiveMembership::new(Some(*log_id), m.clone())));
+        let em = self.state.membership_state.effective();
 
-        self.output.push_command(Command::UpdateMembership {
-            membership: self.state.membership_state.effective.clone(),
-        });
-
-        let end = self.state.last_log_id().next_index();
+        self.output.push_command(Command::UpdateMembership { membership: em.clone() });
 
         // If membership changes, the progress should be upgraded.
         if let Some(leader) = &mut self.internal_server_state.leading_mut() {
+            let end = self.state.last_log_id().next_index();
+
             let old_progress = leader.progress.clone();
             let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
@@ -680,21 +645,16 @@ where
                 old_progress.upgrade_quorum_set(em.membership.to_quorum_set(), &learner_ids, ProgressEntry::empty(end));
         }
 
+        // Leader should not quit at once.
+        // A leader should always keep replicating logs.
         // A leader that is removed will be shut down when this membership log is committed.
+
         // TODO(9): currently only a leader has replication setup.
         //       It's better to setup replication for both leader and candidate.
         //       e.g.: if self.internal_server_state.is_leading() {
-        if self.state.is_leader(&self.config.id) {
-            let mut rh = self.replication_handler();
-            rh.update_replication_streams();
-            rh.initiate_replication();
-        }
-
-        // Leader should not quit at once.
-        // A leader should always keep replicating logs.
-        if self.state.server_state != ServerState::Leader {
-            self.update_server_state_if_changed();
-        }
+        let mut rh = self.replication_handler();
+        rh.update_replication_streams();
+        rh.initiate_replication();
     }
 
     /// Leader steps down(convert to learner) once the membership not containing it is committed.
@@ -706,7 +666,7 @@ where
 
         // Step down:
         // Keep acting as leader until a membership without this node is committed.
-        let em = &self.state.membership_state.effective;
+        let em = &self.state.membership_state.effective();
 
         tracing::debug!(
             "membership: {}, committed: {}, is_leading: {}",
@@ -938,7 +898,7 @@ where
     /// Create a new Leader, when raft enters candidate state.
     /// In openraft, Leader and Candidate shares the same state.
     pub(crate) fn new_leading(&mut self) {
-        let em = &self.state.membership_state.effective;
+        let em = &self.state.membership_state.effective();
         let mut leader = Leader::new(
             em.membership.to_quorum_set(),
             em.learner_ids(),
@@ -978,16 +938,8 @@ where
         }
     }
 
-    /// Update effective membership config if encountering a membership config log entry.
-    fn try_update_membership<Ent: RaftEntry<NID, N>>(&mut self, entry: &Ent) {
-        if let Some(m) = entry.get_membership() {
-            self.update_effective_membership(entry.get_log_id(), m);
-        }
-    }
-
-    /// Update membership state if membership config entries are found.
-    #[allow(dead_code)]
-    fn follower_update_membership<'a, Ent: RaftEntry<NID, N> + 'a>(
+    /// Append membership log if membership config entries are found, after appending entries to log.
+    fn follower_append_membership<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
         entries: impl DoubleEndedIterator<Item = &'a Ent>,
     ) {
@@ -996,18 +948,24 @@ where
             return;
         }
 
+        // Update membership state with the last 2 membership configs found in new log entries.
+        // Other membership log can be just ignored.
+        for (i, m) in memberships.into_iter().enumerate() {
+            tracing::debug!(
+                last = display(m.summary()),
+                "applying {}-th new membership configs received from leader",
+                i
+            );
+            self.state.membership_state.append(Arc::new(m));
+        }
+
         tracing::debug!(
-            first = display(memberships.first().summary()),
-            "applying new membership configs received from leader"
-        );
-        tracing::debug!(
-            last = display(memberships.last().summary()),
-            "applying new membership configs received from leader"
+            membership_state = display(&self.state.membership_state.summary()),
+            "updated membership state"
         );
 
-        self.update_membership_state(memberships);
         self.output.push_command(Command::UpdateMembership {
-            membership: self.state.membership_state.effective.clone(),
+            membership: self.state.membership_state.effective().clone(),
         });
 
         self.update_server_state_if_changed();
@@ -1035,28 +993,6 @@ where
         }
 
         memberships
-    }
-
-    /// Update membership state with the last 2 membership configs found in new log entries
-    ///
-    /// Return if new membership config is found
-    fn update_membership_state(&mut self, memberships: Vec<EffectiveMembership<NID, N>>) {
-        debug_assert!(self.state.membership_state.effective.log_id < memberships[0].log_id);
-
-        let new_mem_state = if memberships.len() == 1 {
-            MembershipState::new(
-                self.state.membership_state.effective.clone(),
-                Arc::new(memberships[0].clone()),
-            )
-        } else {
-            // len() == 2
-            MembershipState::new(Arc::new(memberships[0].clone()), Arc::new(memberships[1].clone()))
-        };
-        self.state.membership_state = new_mem_state;
-        tracing::debug!(
-            membership_state = debug(&self.state.membership_state),
-            "updated membership state"
-        );
     }
 
     fn update_server_state_if_changed(&mut self) {
