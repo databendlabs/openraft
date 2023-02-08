@@ -31,7 +31,6 @@ use crate::validate::Valid;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::Membership;
-use crate::MembershipState;
 use crate::MetricsChangeFlags;
 use crate::NodeId;
 use crate::SnapshotMeta;
@@ -591,45 +590,11 @@ where
         };
 
         self.state.log_ids.truncate(since);
-
         self.output.push_command(Command::DeleteConflictLog { since: since_log_id });
 
-        // If the effective membership is from a conflicting log,
-        // the membership state has to revert to the last committed membership config.
-        // See: [Effective-membership](https://datafuselabs.github.io/openraft/effective-membership.html)
-        //
-        // ```text
-        // committed_membership, ... since, ... effective_membership // log
-        // ^                                    ^
-        // |                                    |
-        // |                                    last membership      // before deleting since..
-        // last membership                                           // after  deleting since..
-        // ```
-
-        let effective = self.state.membership_state.effective().clone();
-        if Some(since) <= effective.log_id.index() {
-            let committed = self.state.membership_state.committed().clone();
-
-            tracing::debug!(
-                effective = debug(&effective),
-                committed = debug(&committed),
-                "effective membership is in conflicting logs, revert it to last committed"
-            );
-
-            debug_assert!(
-                committed.log_id.index() < Some(since),
-                "committed membership can not conflict with the leader"
-            );
-
-            let mem_state = MembershipState::new(committed.clone(), committed);
-
-            self.state.membership_state = mem_state;
-            self.output.push_command(Command::UpdateMembership {
-                membership: self.state.membership_state.effective().clone(),
-            });
-
-            tracing::debug!(effective = debug(&effective), "Done reverting membership");
-
+        let changed = self.state.membership_state.truncate(since);
+        if let Some(c) = changed {
+            self.output.push_command(Command::UpdateMembership { membership: c });
             self.update_server_state_if_changed();
         }
     }

@@ -151,3 +151,34 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_membership_state_truncate() -> anyhow::Result<()> {
+    let new = || MembershipState::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
+
+    {
+        let mut ms = new();
+        let res = ms.truncate(5);
+        assert!(res.is_none());
+        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
+        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+    }
+
+    {
+        let mut ms = new();
+        let res = ms.truncate(4);
+        assert_eq!(Some(log_id(2, 2)), res.unwrap().log_id);
+        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
+        assert_eq!(Some(log_id(2, 2)), ms.effective().log_id);
+    }
+
+    {
+        let mut ms = new();
+        let res = ms.truncate(3);
+        assert_eq!(Some(log_id(2, 2)), res.unwrap().log_id);
+        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
+        assert_eq!(Some(log_id(2, 2)), ms.effective().log_id);
+    }
+
+    Ok(())
+}

@@ -150,6 +150,43 @@ where
         self.effective = m;
     }
 
+    /// Truncate membership state if log is truncated since `since`(inclusive).
+    ///
+    /// It returns the updated effective membership config if it is changed.
+    ///
+    /// It will reset `self.effective` to `self.committed`. Only the effective could be truncated, when a new leader
+    /// tries ot truncate follower logs that the leader does not have.
+    ///
+    /// If the effective membership is from a conflicting log,
+    /// the membership state has to revert to the last committed membership config.
+    /// See: [Effective-membership](https://datafuselabs.github.io/openraft/effective-membership.html)
+    ///
+    /// ```text
+    /// committed_membership, ... since, ... effective_membership // log
+    /// ^                                    ^
+    /// |                                    |
+    /// |                                    last membership      // before deleting since..
+    /// last membership                                           // after  deleting since..
+    /// ```
+    pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<EffectiveMembership<NID, N>>> {
+        debug_assert!(
+            since >= self.committed().log_id.next_index(),
+            "committed log should never be truncated: committed membership can not conflict with the leader"
+        );
+
+        if Some(since) <= self.effective().log_id.index() {
+            tracing::debug!(
+                effective = display(self.effective().summary()),
+                committed = display(self.committed().summary()),
+                "effective membership is in conflicting logs, revert it to last committed"
+            );
+
+            self.effective = self.committed.clone();
+            return Some(self.effective.clone());
+        }
+        None
+    }
+
     // This method is only used by tests
     #[cfg(test)]
     pub(crate) fn set_effective(&mut self, e: Arc<EffectiveMembership<NID, N>>) {
