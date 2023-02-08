@@ -200,11 +200,7 @@ where
             let prev = self.committed().copied();
 
             self.committed = *committed;
-
-            // TODO(xp): use a vec to store committed and effective membership.
-            if self.committed() >= self.membership_state.effective().log_id.as_ref() {
-                self.membership_state.set_committed(self.membership_state.effective().clone());
-            }
+            self.membership_state.commit(committed);
 
             Some(prev)
         } else {

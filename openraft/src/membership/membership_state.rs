@@ -5,6 +5,7 @@ use crate::less_equal;
 use crate::node::Node;
 use crate::validate::Validate;
 use crate::EffectiveMembership;
+use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -76,6 +77,14 @@ where
 
     // ---
 
+    /// Update membership state if the specified committed_log_id is greater than `self.effective`
+    pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<NID>>) {
+        if committed_log_id >= &self.effective().log_id {
+            debug_assert!(committed_log_id.index() >= self.effective().log_id.index());
+            self.committed = self.effective.clone();
+        }
+    }
+
     /// A committed membership log is found and the either of `self.committed` and `self.effective` should be updated if
     /// it is smaller than the new one.
     ///
@@ -139,10 +148,6 @@ where
         // If there is another new config, self.effective must have been committed.
         self.committed = self.effective.clone();
         self.effective = m;
-    }
-
-    pub(crate) fn set_committed(&mut self, c: Arc<EffectiveMembership<NID, N>>) {
-        self.committed = c
     }
 
     // This method is only used by tests

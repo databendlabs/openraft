@@ -112,3 +112,42 @@ fn test_membership_state_append() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_membership_state_commit() -> anyhow::Result<()> {
+    let new = || MembershipState::new(effmem(2, 2, m1()), effmem(3, 4, m123_345()));
+
+    // Less than committed
+    {
+        let mut ms = new();
+        ms.commit(&Some(log_id(1, 1)));
+        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
+        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+    }
+
+    // Equal committed
+    {
+        let mut ms = new();
+        ms.commit(&Some(log_id(2, 2)));
+        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
+        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+    }
+
+    // Greater than committed, smaller than effective
+    {
+        let mut ms = new();
+        ms.commit(&Some(log_id(2, 3)));
+        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
+        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+    }
+
+    // Greater than committed, equal effective
+    {
+        let mut ms = new();
+        ms.commit(&Some(log_id(3, 4)));
+        assert_eq!(Some(log_id(3, 4)), ms.committed().log_id);
+        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+    }
+
+    Ok(())
+}
