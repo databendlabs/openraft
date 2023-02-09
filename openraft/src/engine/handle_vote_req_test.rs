@@ -30,12 +30,13 @@ fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::<u64, ()>::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
+    eng.config.id = 1;
     eng.state.vote = Vote::new(2, 1);
     eng.state.server_state = ServerState::Candidate;
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())));
-    eng.become_leading();
+    eng.vote_handler().become_leading();
     eng
 }
 
@@ -116,7 +117,11 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
     // Equal vote should not emit a SaveVote command.
 
     let mut eng = eng();
+    eng.config.id = 0;
+    eng.vote_handler().update_internal_server_state();
     eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
+
+    eng.output.commands = vec![];
 
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(2, 1),
@@ -160,7 +165,11 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
     // A greater vote should emit a SaveVote command.
 
     let mut eng = eng();
+    eng.config.id = 0;
+    eng.vote_handler().update_internal_server_state();
     eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
+
+    eng.output.commands = vec![];
 
     let resp = eng.handle_vote_req(VoteRequest {
         vote: Vote::new(3, 1),
@@ -210,7 +219,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
 
         let mut eng = eng();
         eng.config.id = 100; // make it a non-voter
-        eng.become_following();
+        eng.vote_handler().become_following();
         eng.state.server_state = st;
         eng.output.commands = vec![];
 
@@ -235,7 +244,7 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
 
         let mut eng = eng();
         eng.config.id = 0; // make it a voter
-        eng.become_following();
+        eng.vote_handler().become_following();
         eng.state.server_state = st;
         eng.output.commands = vec![];
 

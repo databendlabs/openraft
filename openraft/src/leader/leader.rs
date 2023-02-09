@@ -7,6 +7,7 @@ use crate::quorum::QuorumSet;
 use crate::raft_types::LogIndexOptionExt;
 use crate::LogId;
 use crate::NodeId;
+use crate::Vote;
 
 /// Leader data.
 ///
@@ -24,6 +25,9 @@ use crate::NodeId;
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
+    /// The vote this leader works in.
+    pub(crate) vote: Vote<NID>,
+
     /// Which nodes have granted the the vote of this node.
     pub(crate) vote_granted_by: BTreeSet<NID>,
 
@@ -36,8 +40,14 @@ where
     NID: NodeId,
     QS: QuorumSet<NID> + 'static,
 {
-    pub(crate) fn new(quorum_set: QS, learner_ids: impl Iterator<Item = NID>, last_log_index: Option<u64>) -> Self {
+    pub(crate) fn new(
+        vote: Vote<NID>,
+        quorum_set: QS,
+        learner_ids: impl Iterator<Item = NID>,
+        last_log_index: Option<u64>,
+    ) -> Self {
         Self {
+            vote,
             vote_granted_by: BTreeSet::new(),
             progress: VecProgress::new(
                 quorum_set,

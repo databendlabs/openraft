@@ -110,7 +110,7 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
     // An applied log id has to be committed thus
     let mut eng = eng();
     eng.state.vote = Vote::new(1, 2);
-    eng.become_leading();
+    eng.vote_handler().become_leading();
 
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),
@@ -284,7 +284,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
 fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()> {
     let mut eng = eng();
     eng.state.vote = Vote::new(1, 2);
-    eng.become_leading();
+    eng.vote_handler().become_leading();
 
     let resp = eng.handle_append_entries_req(
         &Vote::new_committed(2, 1),

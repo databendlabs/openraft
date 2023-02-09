@@ -39,7 +39,6 @@ mod log_id_list;
 #[cfg(test)] mod handle_vote_resp_test;
 #[cfg(test)] mod initialize_test;
 #[cfg(test)] mod install_snapshot_test;
-#[cfg(test)] mod internal_handle_vote_req_test;
 #[cfg(test)] mod leader_append_entries_test;
 #[cfg(test)] mod leader_append_membership_test;
 #[cfg(test)] mod log_id_list_test;
