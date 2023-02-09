@@ -140,7 +140,6 @@ where
         // Previously it is a leader. restore it as leader at once
         if self.state.is_leader(&self.config.id) {
             self.vote_handler().update_internal_server_state();
-            self.server_state_handler().update_server_state_if_changed();
 
             let mut rh = self.replication_handler();
             rh.update_replication_streams();
