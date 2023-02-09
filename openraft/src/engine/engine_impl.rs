@@ -381,18 +381,20 @@ where
         // b
         // c
         // ```
+
+        let mut rh = self.replication_handler();
+
         for entry in entries.iter() {
             if let Some(m) = entry.get_membership() {
                 let log_index = entry.get_log_id().index;
 
                 if log_index > 0 {
-                    let mut rh = self.replication_handler();
                     let prev_log_id = rh.state.get_log_id(log_index - 1);
                     rh.update_local_progress(prev_log_id);
                 }
 
                 // since this entry, the condition to commit has been changed.
-                self.leader_append_membership(entry.get_log_id(), m);
+                rh.append_membership(entry.get_log_id(), m);
             }
         }
 
@@ -402,13 +404,13 @@ where
             Some(*last.get_log_id())
         };
 
-        let mut rh = self.replication_handler();
         rh.update_local_progress(last_log_id);
         rh.initiate_replication();
 
         self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
 
+    // TODO: AcceptorHandler
     /// Append entries to follower/learner.
     ///
     /// Also clean conflicting entries and update membership state.
@@ -477,6 +479,7 @@ where
         AppendEntriesResponse::Success
     }
 
+    // TODO: AcceptorHandler
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn follower_commit_entries<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
@@ -508,6 +511,7 @@ where
         //          For now it is OK. But it should be done here.
     }
 
+    // TODO: AcceptorHandler
     /// Follower/Learner appends `entries[since..]`.
     ///
     /// It assumes:
@@ -545,6 +549,7 @@ where
         self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
 
+    // TODO: AcceptorHandler
     /// Delete log entries since log index `since`, inclusive, when the log at `since` is found conflict with the
     /// leader.
     ///
@@ -573,6 +578,7 @@ where
         }
     }
 
+    // TODO: AcceptorHandler
     /// Update membership state with a committed membership config
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_committed_membership(&mut self, membership: EffectiveMembership<NID, N>) {
@@ -587,39 +593,6 @@ where
         }
 
         self.server_state_handler().update_server_state_if_changed();
-    }
-
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn leader_append_membership(&mut self, log_id: &LogId<NID>, m: &Membership<NID, N>) {
-        // TODO(5): ensure leadership before entering this method.
-        tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
-
-        debug_assert!(
-            self.state.server_state == ServerState::Leader,
-            "Only leader is allowed to call update_effective_membership()"
-        );
-        debug_assert!(
-            self.state.is_leader(&self.config.id),
-            "Only leader is allowed to call update_effective_membership()"
-        );
-
-        self.state.membership_state.append(EffectiveMembership::new_arc(Some(*log_id), m.clone()));
-
-        let em = self.state.membership_state.effective();
-        self.output.push_command(Command::UpdateMembership { membership: em.clone() });
-
-        // TODO(9): currently only a leader has replication setup.
-        //       It's better to setup replication for both leader and candidate.
-        //       e.g.: if self.internal_server_state.is_leading() {
-
-        // Leader does not quit at once:
-        // A leader should always keep replicating logs.
-        // A leader that is removed will shut down replications when this membership log is committed.
-
-        let mut rh = self.replication_handler();
-        rh.rebuild_progresses();
-        rh.rebuild_replication_streams();
-        rh.initiate_replication();
     }
 
     /// Leader steps down(convert to learner) once the membership not containing it is committed.
@@ -649,6 +622,7 @@ where
         }
     }
 
+    // TODO: AcceptorHandler
     /// Follower/Learner handles install-snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn install_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
@@ -799,6 +773,7 @@ where
         rh.initiate_replication();
     }
 
+    // TODO: AcceptorHandler
     /// Append membership log if membership config entries are found, after appending entries to log.
     fn follower_append_membership<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
@@ -832,6 +807,7 @@ where
         self.server_state_handler().update_server_state_if_changed();
     }
 
+    // TODO: AcceptorHandler
     /// Find the last 2 membership entries in a list of entries.
     ///
     /// A follower/learner reverts the effective membership to the previous one,
@@ -886,6 +862,7 @@ where
         }
     }
 
+    // TODO: AcceptorHandler
     /// Find the first entry in the input that does not exist on local raft-log,
     /// by comparing the log id.
     fn first_conflicting_index<Ent: RaftLogId<NID>>(&self, entries: &[Ent]) -> usize {
