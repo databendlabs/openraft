@@ -17,9 +17,6 @@ use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::membership::NodeRole;
 use crate::node::Node;
-use crate::progress::entry::ProgressEntry;
-use crate::progress::Inflight;
-use crate::progress::Progress;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
@@ -390,20 +387,8 @@ where
 
                 if log_index > 0 {
                     let mut rh = self.replication_handler();
-                    if let Some(prev_log_id) = rh.state.get_log_id(log_index - 1) {
-                        let id = rh.config.id;
-
-                        // The leader may not be in membership anymore
-                        if rh.leader.progress.index(&id).is_some() {
-                            let inflight_id = {
-                                let prog_entry = rh.leader.progress.get_mut(&id).unwrap();
-                                // TODO: It should be self.state.last_log_id() but None is ok.
-                                prog_entry.inflight = Inflight::logs(None, Some(prev_log_id));
-                                prog_entry.inflight.get_id().unwrap()
-                            };
-                            rh.update_matching(id, inflight_id, Some(prev_log_id));
-                        }
-                    }
+                    let prev_log_id = rh.state.get_log_id(log_index - 1);
+                    rh.update_local_progress(prev_log_id);
                 }
 
                 // since this entry, the condition to commit has been changed.
@@ -411,25 +396,14 @@ where
             }
         }
 
-        let mut rh = self.replication_handler();
-        {
+        let last_log_id = {
             // Safe unwrap(): entries.len() > 0
             let last = entries.last().unwrap();
-            let id = rh.config.id;
+            Some(*last.get_log_id())
+        };
 
-            // The leader may not be in membership anymore
-            if rh.leader.progress.index(&id).is_some() {
-                let inflight_id = {
-                    let prog_entry = rh.leader.progress.get_mut(&id).unwrap();
-                    // TODO: It should be self.state.last_log_id() but None is ok.
-                    prog_entry.inflight = Inflight::logs(None, Some(*last.get_log_id()));
-                    prog_entry.inflight.get_id().unwrap()
-                };
-                rh.update_matching(id, inflight_id, Some(*last.get_log_id()));
-            }
-        }
-
-        // Still need to replicate to learners, even when it is fast-committed.
+        let mut rh = self.replication_handler();
+        rh.update_local_progress(last_log_id);
         rh.initiate_replication();
 
         self.output.push_command(Command::MoveInputCursorBy { n: l });

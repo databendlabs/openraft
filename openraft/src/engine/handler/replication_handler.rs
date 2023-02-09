@@ -44,18 +44,7 @@ where
         self.state.log_ids.append(log_id);
         self.output.push_command(Command::AppendBlankLog { log_id });
 
-        let id = self.config.id;
-
-        // leader must initialize its replication progress too.
-        // TODO: refactor this
-        let prog_entry = self.leader.progress.get_mut(&id).unwrap();
-        let res = prog_entry.next_send(self.state, 1).unwrap();
-        let inflight_id = res.get_id().unwrap();
-        debug_assert_eq!(
-            &Inflight::logs(self.state.get_log_id(log_id.index - 1), Some(log_id)).with_id(inflight_id),
-            res
-        );
-        self.update_matching(id, inflight_id, Some(log_id));
+        self.update_local_progress(Some(log_id));
     }
 
     /// Rebuild leader's replication progress to reflect replication changes.
@@ -307,6 +296,32 @@ where
         }
 
         self.log_handler().purge_log();
+    }
+
+    // TODO: replication handler should provide the same API for both locally and remotely log writing.
+    //       This may simplify upper level accessing.
+    /// Update the progress of local log to `upto`(inclusive).
+    ///
+    /// Writing to local log store does not have to wait for a replication response from remote node.
+    /// Thus it can just be done in a fast-path.
+    pub(crate) fn update_local_progress(&mut self, upto: Option<LogId<NID>>) {
+        if upto.is_none() {
+            return;
+        }
+
+        let id = self.config.id;
+
+        // The leader may not be in membership anymore
+        if let Some(prog_entry) = self.leader.progress.get_mut(&id) {
+            if prog_entry.matching >= upto {
+                return;
+            }
+            // TODO: It should be self.state.last_log_id() but None is ok.
+            prog_entry.inflight = Inflight::logs(None, upto);
+
+            let inflight_id = prog_entry.inflight.get_id().unwrap();
+            self.update_matching(id, inflight_id, upto);
+        }
     }
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {
