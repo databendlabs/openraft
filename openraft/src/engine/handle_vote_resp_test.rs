@@ -271,7 +271,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                     vote: Vote::new_committed(2, 1)
                 },
                 Command::BecomeLeader,
-                Command::UpdateReplicationStreams {
+                Command::RebuildReplicationStreams {
                     targets: vec![(2, ProgressEntry::empty(1))]
                 },
                 Command::AppendBlankLog {

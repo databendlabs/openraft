@@ -1514,7 +1514,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     unreachable!("it has to be a leader!!!");
                 }
             }
-            Command::UpdateReplicationStreams { targets } => {
+            Command::RebuildReplicationStreams { targets } => {
                 self.remove_all_replication().await;
 
                 for (target, matching) in targets.iter() {

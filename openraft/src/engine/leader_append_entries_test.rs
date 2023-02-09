@@ -307,7 +307,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
                     m34()
                 )),
             },
-            Command::UpdateReplicationStreams {
+            Command::RebuildReplicationStreams {
                 targets: vec![(3, ProgressEntry::empty(7)), (4, ProgressEntry::empty(7))]
             },
             Command::Replicate {
@@ -394,7 +394,7 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
                     m1_2()
                 )),
             },
-            Command::UpdateReplicationStreams {
+            Command::RebuildReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
             },
             Command::Replicate {
@@ -470,7 +470,7 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
                     m1_2()
                 )),
             },
-            Command::UpdateReplicationStreams {
+            Command::RebuildReplicationStreams {
                 targets: vec![(2, ProgressEntry::empty(7))]
             },
             Command::Replicate {

@@ -6,6 +6,7 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::internal_server_state::LeaderQuorumSet;
 use crate::leader::Leader;
+use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
@@ -55,6 +56,22 @@ where
             res
         );
         self.update_matching(id, inflight_id, Some(log_id));
+    }
+
+    /// Rebuild leader's replication progress to reflect replication changes.
+    ///
+    /// E.g. when adding/removing a follower/learner.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn rebuild_progresses(&mut self) {
+        let em = self.state.membership_state.effective();
+
+        let end = self.state.last_log_id().next_index();
+
+        let old_progress = self.leader.progress.clone();
+        let learner_ids = em.learner_ids().collect::<Vec<_>>();
+
+        self.leader.progress =
+            old_progress.upgrade_quorum_set(em.membership.to_quorum_set(), &learner_ids, ProgressEntry::empty(end));
     }
 
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is accepted.
@@ -201,7 +218,7 @@ where
 
     /// Update replication streams to reflect replication progress change.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_replication_streams(&mut self) {
+    pub(crate) fn rebuild_replication_streams(&mut self) {
         let mut targets = vec![];
 
         // TODO: maybe it's better to update leader's matching when update_repliation() is called.
@@ -213,7 +230,7 @@ where
                 targets.push((*target, *prog_entry));
             }
         }
-        self.output.push_command(Command::UpdateReplicationStreams { targets });
+        self.output.push_command(Command::RebuildReplicationStreams { targets });
     }
 
     /// Initiate replication for every target that is not sending data in flight.

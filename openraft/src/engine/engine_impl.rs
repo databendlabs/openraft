@@ -142,7 +142,7 @@ where
             self.vote_handler().update_internal_server_state();
 
             let mut rh = self.replication_handler();
-            rh.update_replication_streams();
+            rh.rebuild_replication_streams();
             rh.initiate_replication();
 
             return;
@@ -629,31 +629,22 @@ where
             "Only leader is allowed to call update_effective_membership()"
         );
 
-        self.state.membership_state.append(Arc::new(EffectiveMembership::new(Some(*log_id), m.clone())));
+        self.state.membership_state.append(EffectiveMembership::new_arc(Some(*log_id), m.clone()));
+
         let em = self.state.membership_state.effective();
-
         self.output.push_command(Command::UpdateMembership { membership: em.clone() });
-
-        // If membership changes, the progress should be upgraded.
-        if let Some(leader) = &mut self.internal_server_state.leading_mut() {
-            let end = self.state.last_log_id().next_index();
-
-            let old_progress = leader.progress.clone();
-            let learner_ids = em.learner_ids().collect::<Vec<_>>();
-
-            leader.progress =
-                old_progress.upgrade_quorum_set(em.membership.to_quorum_set(), &learner_ids, ProgressEntry::empty(end));
-        }
-
-        // Leader should not quit at once.
-        // A leader should always keep replicating logs.
-        // A leader that is removed will be shut down when this membership log is committed.
 
         // TODO(9): currently only a leader has replication setup.
         //       It's better to setup replication for both leader and candidate.
         //       e.g.: if self.internal_server_state.is_leading() {
+
+        // Leader does not quit at once:
+        // A leader should always keep replicating logs.
+        // A leader that is removed will shut down replications when this membership log is committed.
+
         let mut rh = self.replication_handler();
-        rh.update_replication_streams();
+        rh.rebuild_progresses();
+        rh.rebuild_replication_streams();
         rh.initiate_replication();
     }
 
@@ -823,7 +814,13 @@ where
 
         let mut rh = self.replication_handler();
 
-        rh.update_replication_streams();
+        // It has to setup replication stream first because append_blank_log() may update the committed-log-id(a single
+        // leader with several learners), in which case the committed-log-id will be at once submitted to
+        // replicate before replication stream is built.
+        // TODO: But replication streams should be built when a node enters leading state.
+        //       Thus append_blank_log() can be moved before rebuild_replication_streams()
+
+        rh.rebuild_replication_streams();
         rh.append_blank_log();
         rh.initiate_replication();
     }

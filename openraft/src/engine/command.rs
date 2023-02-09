@@ -70,7 +70,7 @@ where
     /// The Runtime has to close all old replications and start new ones.
     /// Because a replication stream should only report state for one membership config.
     /// When membership config changes, the membership log id stored in ReplicationCore has to be updated.
-    UpdateReplicationStreams {
+    RebuildReplicationStreams {
         /// Targets to replicate to.
         targets: Vec<(NID, ProgressEntry<NID>)>,
     },
@@ -136,7 +136,7 @@ where
             Command::FollowerCommit { .. } => flags.set_data_changed(),
             Command::Replicate { .. } => {}
             Command::UpdateMembership { .. } => flags.set_cluster_changed(),
-            Command::UpdateReplicationStreams { .. } => flags.set_replication_changed(),
+            Command::RebuildReplicationStreams { .. } => flags.set_replication_changed(),
             Command::UpdateProgressMetrics { .. } => flags.set_replication_changed(),
             Command::MoveInputCursorBy { .. } => {}
             Command::SaveVote { .. } => flags.set_data_changed(),
