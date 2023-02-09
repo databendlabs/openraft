@@ -410,6 +410,7 @@ where
         self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
 
+    // TODO: AcceptorHandler
     /// Append entries to follower/learner.
     ///
     /// Also clean conflicting entries and update membership state.
@@ -478,6 +479,7 @@ where
         AppendEntriesResponse::Success
     }
 
+    // TODO: AcceptorHandler
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn follower_commit_entries<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
@@ -509,6 +511,7 @@ where
         //          For now it is OK. But it should be done here.
     }
 
+    // TODO: AcceptorHandler
     /// Follower/Learner appends `entries[since..]`.
     ///
     /// It assumes:
@@ -546,6 +549,7 @@ where
         self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
 
+    // TODO: AcceptorHandler
     /// Delete log entries since log index `since`, inclusive, when the log at `since` is found conflict with the
     /// leader.
     ///
@@ -574,6 +578,7 @@ where
         }
     }
 
+    // TODO: AcceptorHandler
     /// Update membership state with a committed membership config
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_committed_membership(&mut self, membership: EffectiveMembership<NID, N>) {
@@ -617,6 +622,7 @@ where
         }
     }
 
+    // TODO: AcceptorHandler
     /// Follower/Learner handles install-snapshot.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn install_snapshot(&mut self, meta: SnapshotMeta<NID, N>) {
@@ -767,6 +773,7 @@ where
         rh.initiate_replication();
     }
 
+    // TODO: AcceptorHandler
     /// Append membership log if membership config entries are found, after appending entries to log.
     fn follower_append_membership<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
@@ -800,6 +807,7 @@ where
         self.server_state_handler().update_server_state_if_changed();
     }
 
+    // TODO: AcceptorHandler
     /// Find the last 2 membership entries in a list of entries.
     ///
     /// A follower/learner reverts the effective membership to the previous one,
@@ -854,6 +862,7 @@ where
         }
     }
 
+    // TODO: AcceptorHandler
     /// Find the first entry in the input that does not exist on local raft-log,
     /// by comparing the log id.
     fn first_conflicting_index<Ent: RaftLogId<NID>>(&self, entries: &[Ent]) -> usize {
