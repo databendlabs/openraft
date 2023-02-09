@@ -72,7 +72,7 @@ fn test_elect() -> anyhow::Result<()> {
                     vote: Vote::new_committed(1, 1)
                 },
                 Command::BecomeLeader,
-                Command::UpdateReplicationStreams { targets: vec![] },
+                Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendBlankLog {
                     log_id: LogId {
                         leader_id: LeaderId { term: 1, node_id: 1 },
@@ -135,7 +135,7 @@ fn test_elect() -> anyhow::Result<()> {
                     vote: Vote::new_committed(2, 1)
                 },
                 Command::BecomeLeader,
-                Command::UpdateReplicationStreams { targets: vec![] },
+                Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendBlankLog {
                     log_id: LogId {
                         leader_id: LeaderId { term: 2, node_id: 1 },

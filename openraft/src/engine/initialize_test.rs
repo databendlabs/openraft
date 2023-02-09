@@ -95,7 +95,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                     },
                 },
                 Command::BecomeLeader,
-                Command::UpdateReplicationStreams { targets: vec![] },
+                Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendBlankLog {
                     log_id: LogId {
                         leader_id: LeaderId { term: 1, node_id: 1 },

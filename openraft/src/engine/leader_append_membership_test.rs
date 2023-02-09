@@ -98,7 +98,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m34())),
             },
-            Command::UpdateReplicationStreams {
+            Command::RebuildReplicationStreams {
                 targets: vec![(3, ProgressEntry::empty(0)), (4, ProgressEntry::empty(0))], /* node-2 is leader,
                                                                                             * won't be removed */
             }
