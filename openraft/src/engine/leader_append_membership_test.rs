@@ -66,7 +66,7 @@ fn test_leader_append_membership_for_leader() -> anyhow::Result<()> {
     eng.state.server_state = ServerState::Leader;
     // Make it a real leader: voted for itself and vote is committed.
     eng.state.vote = Vote::new_committed(2, 2);
-    eng.become_leading();
+    eng.vote_handler().become_leading();
 
     eng.leader_append_membership(&log_id(3, 4), &m34());
 
@@ -128,7 +128,7 @@ fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> 
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23_45())));
-    eng.become_leading();
+    eng.vote_handler().become_leading();
 
     if let Some(l) = &mut eng.internal_server_state.leading_mut() {
         assert_eq!(&ProgressEntry::empty(11), l.progress.get(&4));

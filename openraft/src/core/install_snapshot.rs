@@ -33,7 +33,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
         tracing::debug!(req = display(req.summary()));
 
-        let res = self.engine.handle_message_vote(&req.vote);
+        let res = self.engine.vote_handler().handle_message_vote(&req.vote);
         self.run_engine_commands::<Entry<C>>(&[]).await?;
         if res.is_err() {
             tracing::info!(?self.engine.state.vote, %req.vote, "InstallSnapshot RPC term is less than current term, ignoring it.");

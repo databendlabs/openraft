@@ -121,7 +121,7 @@ fn test_leader_append_entries_empty() -> anyhow::Result<()> {
 #[test]
 fn test_leader_append_entries_normal() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.become_leading();
+    eng.vote_handler().become_leading();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -182,7 +182,10 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
-    eng.become_leading();
+    eng.vote_handler().become_leading();
+
+    eng.output.commands = vec![];
+    eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -211,15 +214,6 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
     assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.committed());
 
     assert_eq!(
-        MetricsChangeFlags {
-            replication: false,
-            local_data: true,
-            cluster: false,
-        },
-        eng.output.metrics_flags
-    );
-
-    assert_eq!(
         vec![
             Command::AppendInputEntries { range: 0..3 },
             Command::ReplicateCommitted {
@@ -234,6 +228,15 @@ fn test_leader_append_entries_fast_commit() -> anyhow::Result<()> {
         eng.output.commands
     );
 
+    assert_eq!(
+        MetricsChangeFlags {
+            replication: false,
+            local_data: true,
+            cluster: false,
+        },
+        eng.output.metrics_flags
+    );
+
     Ok(())
 }
 
@@ -246,7 +249,7 @@ fn test_leader_append_entries_fast_commit_upto_membership_entry() -> anyhow::Res
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
     eng.state.server_state = ServerState::Leader;
-    eng.become_leading();
+    eng.vote_handler().become_leading();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -330,8 +333,11 @@ fn test_leader_append_entries_fast_commit_membership_no_voter_change() -> anyhow
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m1())));
-    eng.become_leading();
+    eng.vote_handler().become_leading();
     eng.state.server_state = eng.calc_server_state();
+
+    eng.output.commands = vec![];
+    eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -420,8 +426,11 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m13())));
-    eng.become_leading();
+    eng.vote_handler().become_leading();
     eng.state.server_state = eng.calc_server_state();
+
+    eng.output.commands = vec![];
+    eng.output.metrics_flags.reset();
 
     // log id will be assigned by eng.
     eng.leader_append_entries(&mut [
@@ -453,15 +462,6 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
     assert_eq!(Some(&LogId::new(LeaderId::new(3, 1), 6)), eng.state.committed());
 
     assert_eq!(
-        MetricsChangeFlags {
-            replication: true,
-            local_data: true,
-            cluster: true,
-        },
-        eng.output.metrics_flags
-    );
-
-    assert_eq!(
         vec![
             Command::AppendInputEntries { range: 0..3 },
             Command::UpdateMembership {
@@ -488,6 +488,15 @@ fn test_leader_append_entries_fast_commit_if_membership_voter_change_to_1() -> a
             Command::MoveInputCursorBy { n: 3 },
         ],
         eng.output.commands
+    );
+
+    assert_eq!(
+        MetricsChangeFlags {
+            replication: true,
+            local_data: true,
+            cluster: true,
+        },
+        eng.output.metrics_flags
     );
 
     Ok(())
