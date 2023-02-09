@@ -821,38 +821,11 @@ where
     fn establish_leader(&mut self) {
         self.vote_handler().commit_vote();
 
-        self.replication_handler().update_replication_streams();
-
-        // Only when a log with current `vote` is replicated to a quorum, the logs are considered committed.
-        self.append_blank_log();
-
-        // Send former logs and the blank log.
-        self.replication_handler().initiate_replication();
-    }
-
-    #[tracing::instrument(level = "debug", skip_all)]
-    fn append_blank_log(&mut self) {
-        let log_id = LogId {
-            leader_id: self.state.vote.leader_id(),
-            index: self.state.last_log_id().next_index(),
-        };
-        self.state.log_ids.append(log_id);
-        self.output.push_command(Command::AppendBlankLog { log_id });
-
-        let id = self.config.id;
         let mut rh = self.replication_handler();
-        {
-            // leader must initialize its replication progress too.
-            // TODO: refactor this
-            let prog_entry = rh.leader.progress.get_mut(&id).unwrap();
-            let res = prog_entry.next_send(rh.state, 1).unwrap();
-            let inflight_id = res.get_id().unwrap();
-            debug_assert_eq!(
-                &Inflight::logs(rh.state.get_log_id(log_id.index - 1), Some(log_id)).with_id(inflight_id),
-                res
-            );
-            rh.update_matching(id, inflight_id, Some(log_id));
-        }
+
+        rh.update_replication_streams();
+        rh.append_blank_log();
+        rh.initiate_replication();
     }
 
     /// Append membership log if membership config entries are found, after appending entries to log.

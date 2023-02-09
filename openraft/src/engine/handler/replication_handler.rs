@@ -11,6 +11,7 @@ use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
 use crate::replication::ReplicationResult;
 use crate::LogId;
+use crate::LogIdOptionExt;
 use crate::MessageSummary;
 use crate::Node;
 use crate::NodeId;
@@ -33,6 +34,29 @@ where
     NID: NodeId,
     N: Node,
 {
+    /// Append a blank log.
+    ///
+    /// It is used by the leader when leadership is established.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn append_blank_log(&mut self) {
+        let log_id = LogId::new(self.state.vote.leader_id(), self.state.last_log_id().next_index());
+        self.state.log_ids.append(log_id);
+        self.output.push_command(Command::AppendBlankLog { log_id });
+
+        let id = self.config.id;
+
+        // leader must initialize its replication progress too.
+        // TODO: refactor this
+        let prog_entry = self.leader.progress.get_mut(&id).unwrap();
+        let res = prog_entry.next_send(self.state, 1).unwrap();
+        let inflight_id = res.get_id().unwrap();
+        debug_assert_eq!(
+            &Inflight::logs(self.state.get_log_id(log_id.index - 1), Some(log_id)).with_id(inflight_id),
+            res
+        );
+        self.update_matching(id, inflight_id, Some(log_id));
+    }
+
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is accepted.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_matching(&mut self, node_id: NID, inflight_id: u64, log_id: Option<LogId<NID>>) {
