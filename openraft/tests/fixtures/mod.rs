@@ -116,6 +116,8 @@ pub fn log_panic(panic: &PanicInfo) {
         }
     };
 
+    eprintln!("{}", panic);
+
     if let Some(location) = panic.location() {
         tracing::error!(
             message = %panic,
@@ -124,9 +126,12 @@ pub fn log_panic(panic: &PanicInfo) {
             panic.line = location.line(),
             panic.column = location.column(),
         );
+        eprintln!("{}:{}:{}", location.file(), location.line(), location.column());
     } else {
         tracing::error!(message = %panic, backtrace = %backtrace);
     }
+
+    eprintln!("{}", backtrace);
 }
 
 /// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
