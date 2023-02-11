@@ -76,7 +76,8 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                     membership: eng.state.membership_state.effective().clone()
                 },
                 // When update the effective membership, the engine set it to Follower.
-                // But when initializing, it will switch to Candidate at once, in the last output command.
+                // But when initializing, it will switch to Candidate at once, in the last output
+                // command.
                 Command::MoveInputCursorBy { n: 1 },
                 Command::SaveVote {
                     vote: Vote {
@@ -85,8 +86,8 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                         committed: false,
                     },
                 },
-                // TODO: duplicated SaveVote: one is emitted by elect(), the second is emitted when the node becomes
-                //       leader.
+                // TODO: duplicated SaveVote: one is emitted by elect(), the second is emitted when
+                // the node becomes       leader.
                 Command::SaveVote {
                     vote: Vote {
                         term: 1,
@@ -172,7 +173,8 @@ fn test_initialize() -> anyhow::Result<()> {
                     membership: eng.state.membership_state.effective().clone()
                 },
                 // When update the effective membership, the engine set it to Follower.
-                // But when initializing, it will switch to Candidate at once, in the last output command.
+                // But when initializing, it will switch to Candidate at once, in the last output
+                // command.
                 Command::MoveInputCursorBy { n: 1 },
                 Command::SaveVote {
                     vote: Vote {

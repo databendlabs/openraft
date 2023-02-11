@@ -18,11 +18,12 @@ use crate::fixtures::RaftRouter;
 
 /// Too many inconsistent log should not block replication.
 ///
-/// Reproduce the bug that when append-entries, if there are more than 50 inconsistent logs the conflict is always set
-/// to `last_log`, which blocks replication for ever.
+/// Reproduce the bug that when append-entries, if there are more than 50 inconsistent logs the
+/// conflict is always set to `last_log`, which blocks replication for ever.
 /// https://github.com/drmingdrmer/openraft/blob/79a39970855d80e1d3b761fadbce140ecf1da59e/async-raft/src/core/append_entries.rs#L131-L154
 ///
-/// - fake a cluster of node 0,1,2. R0 has ~100 uncommitted log at term 2. R2 has ~100 uncommitted log at term 3.
+/// - fake a cluster of node 0,1,2. R0 has ~100 uncommitted log at term 2. R2 has ~100 uncommitted
+///   log at term 3.
 ///
 /// ```
 /// R0 ... 2,99 2,100

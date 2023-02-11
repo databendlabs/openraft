@@ -19,7 +19,8 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
     let config = Arc::new(
         Config {
             snapshot_policy: SnapshotPolicy::LogsSinceLast(snapshot_threshold),
-            max_in_snapshot_log_to_keep: 2, // do not let add-learner log and client-write log to trigger a snapshot.
+            max_in_snapshot_log_to_keep: 2, /* do not let add-learner log and client-write log to
+                                             * trigger a snapshot. */
             purge_batch_size: 1,
             enable_heartbeat: false,
             ..Default::default()

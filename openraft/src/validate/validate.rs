@@ -91,8 +91,8 @@ impl<T: Validate> Validate for &T {
 
 /// A wrapper of T that validate the state of T every time accessing it.
 ///
-/// - It validates the state before accessing it, i.e., if when a invalid state is written to it, it won't panic until
-///   next time accessing it.
+/// - It validates the state before accessing it, i.e., if when a invalid state is written to it, it
+///   won't panic until next time accessing it.
 /// - The validation is turned on only when `debug_assertions` is enabled.
 ///
 /// An example of defining field `a` whose value must not exceed `10`.

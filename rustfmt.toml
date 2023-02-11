@@ -31,7 +31,7 @@ where_single_line       = true
 trailing_comma          = "Vertical"
 overflow_delimited_expr = true
 wrap_comments           = true
-comment_width           = 120
+comment_width           = 100
 max_width               = 120
 inline_attribute_width  = 80
 

@@ -12,8 +12,8 @@ use crate::MessageSummary;
 /// Every update that is made to it increments the `version` by 1.
 /// The inner `data` is an `Arc` thus `Clone` would be cheap enough.
 ///
-/// **Caveat**: an instance will see changes made on another clone, since they reference the same data, until an
-/// update-by-replace is made.
+/// **Caveat**: an instance will see changes made on another clone, since they reference the same
+/// data, until an update-by-replace is made.
 #[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct Versioned<Data>
@@ -83,7 +83,8 @@ pub enum UpdateError {
 /// Defines an update operation that can be applied to `Versioned<Data>`
 ///
 /// The update try to update `Versioned.data` in place if possible.
-/// If in place update can not be done, it then update it by replacing `Versioned.data` with a new cloned instance.
+/// If in place update can not be done, it then update it by replacing `Versioned.data` with a new
+/// cloned instance.
 ///
 /// A user needs to implement two update methods: `update_in_place()` and `update_mut()`.
 pub trait Update<Data>
@@ -105,7 +106,8 @@ where Data: Clone
 
     /// Apply the update to the `Versioned.data` in place if possible.
     ///
-    /// If it can not be done, it should return an error to inform it to update the `Versioned.data` by replacing it.
+    /// If it can not be done, it should return an error to inform it to update the `Versioned.data`
+    /// by replacing it.
     fn apply_in_place(&self, to: &Arc<Data>) -> Result<(), UpdateError>;
 
     /// Apply the update a cloned new instance of `Versioned.data`.

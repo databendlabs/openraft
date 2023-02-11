@@ -112,7 +112,8 @@ where
         // run_fut(Suite::apply_single(builder))?;
         // run_fut(Suite::apply_multi(builder))?;
 
-        // TODO(xp): test: finalized_snapshot, do_log_compaction, begin_receiving_snapshot, get_current_snapshot
+        // TODO(xp): test: finalized_snapshot, do_log_compaction, begin_receiving_snapshot,
+        // get_current_snapshot
 
         Ok(())
     }
@@ -1115,11 +1116,12 @@ where
     //
     //     let sm = store.get_state_machine().await;
     //     let client_serial =
-    //         sm.client_serial_responses.get("0").expect("expected entry to exist in client_serial_responses");
-    //     assert_eq!(client_serial, &(0, None), "unexpected client serial response");
+    //         sm.client_serial_responses.get("0").expect("expected entry to exist in
+    // client_serial_responses");     assert_eq!(client_serial, &(0, None), "unexpected client
+    // serial response");
     //
-    //     let client_status = sm.client_status.get("0").expect("expected entry to exist in client_status");
-    //     assert_eq!(
+    //     let client_status = sm.client_status.get("0").expect("expected entry to exist in
+    // client_status");     assert_eq!(
     //         client_status, "lit",
     //         "expected client_status to be 'lit', got '{}'",
     //         client_status
@@ -1189,8 +1191,9 @@ where
     //     assert_eq!(client_serial2.0, 0, "unexpected client serial response");
     //     assert_eq!(client_serial2.1, None, "unexpected client serial response");
     //
-    //     let client_status1 = sm.client_status.get("1").expect("expected entry to exist in client_status for client
-    // 1");     let client_status2 = sm.client_status.get("2").expect("expected entry to exist in client_status for
+    //     let client_status1 = sm.client_status.get("1").expect("expected entry to exist in
+    // client_status for client 1");     let client_status2 =
+    // sm.client_status.get("2").expect("expected entry to exist in client_status for
     // client 2");     assert_eq!(
     //         client_status1, "new",
     //         "expected client_status to be 'new', got '{}'",
@@ -1233,8 +1236,8 @@ where
 }
 
 // Defensive test:
-// If a RaftStore impl support defensive check, enable it and check if it returns errors when abnormal input is seen.
-// A RaftStore with defensive check is able to expose bugs in raft core.
+// If a RaftStore impl support defensive check, enable it and check if it returns errors when
+// abnormal input is seen. A RaftStore with defensive check is able to expose bugs in raft core.
 impl<C, S, B> Suite<C, S, B>
 where
     C: RaftTypeConfig,
@@ -1810,7 +1813,8 @@ where C::NodeId: From<u64> {
 }
 
 /// Block until a future is finished.
-/// The future will be running in a clean tokio runtime, to prevent an unfinished task affecting the test.
+/// The future will be running in a clean tokio runtime, to prevent an unfinished task affecting the
+/// test.
 pub fn run_fut<NID, F>(f: F) -> Result<(), StorageError<NID>>
 where
     NID: NodeId,

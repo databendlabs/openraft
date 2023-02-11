@@ -17,10 +17,11 @@ use crate::fixtures::RaftRouter;
 ///
 /// - bring on a cluster of 1 voter and 1 learner.
 /// - send several logs and check the replication.
-/// - isolate replication to node 1. send some other logs to trigger snapshot on node 0. The logs on node 0 should be
-///   removed.
+/// - isolate replication to node 1. send some other logs to trigger snapshot on node 0. The logs on
+///   node 0 should be removed.
 /// - restore replication.
-/// - ensure that replication is switched from line-rate mode to snapshotting mode, on absence of logs.
+/// - ensure that replication is switched from line-rate mode to snapshotting mode, on absence of
+///   logs.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn snapshot_line_rate_to_snapshot() -> Result<()> {
     let snapshot_threshold: u64 = 10;

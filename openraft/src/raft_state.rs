@@ -47,16 +47,18 @@ pub(crate) trait LogStateReader<NID: NodeId> {
     /// Get the log id at the specified index.
     ///
     /// It will return `last_purged_log_id` if index is at the last purged index.
-    /// If the log at the specified index is smaller than `last_purged_log_id`, or greater than `last_log_id`, it
-    /// returns None.
+    /// If the log at the specified index is smaller than `last_purged_log_id`, or greater than
+    /// `last_log_id`, it returns None.
     fn get_log_id(&self, index: u64) -> Option<LogId<NID>>;
 
     /// The last known log id in the store.
     ///
-    /// The range of all stored log ids are `(last_purged_log_id(), last_log_id()]`, left open right close.
+    /// The range of all stored log ids are `(last_purged_log_id(), last_log_id()]`, left open right
+    /// close.
     fn last_log_id(&self) -> Option<&LogId<NID>>;
 
-    /// The last known committed log id, i.e., the id of the log that is accepted by a quorum of voters.
+    /// The last known committed log id, i.e., the id of the log that is accepted by a quorum of
+    /// voters.
     fn committed(&self) -> Option<&LogId<NID>>;
 
     /// Return the last log id the snapshot includes.
@@ -67,7 +69,8 @@ pub(crate) trait LogStateReader<NID: NodeId> {
     /// Logs may not be able to be purged at once because they are in use by replication tasks.
     fn purge_upto(&self) -> Option<&LogId<NID>>;
 
-    /// The greatest log id that has been purged after being applied to state machine, i.e., the oldest known log id.
+    /// The greatest log id that has been purged after being applied to state machine, i.e., the
+    /// oldest known log id.
     ///
     /// The range of log entries that exist in storage is `(last_purged_log_id(), last_log_id()]`,
     /// left open and right close.
@@ -88,7 +91,8 @@ where
 
     /// The LogId of the last log committed(AKA applied) to the state machine.
     ///
-    /// - Committed means: a log that is replicated to a quorum of the cluster and it is of the term of the leader.
+    /// - Committed means: a log that is replicated to a quorum of the cluster and it is of the term
+    ///   of the leader.
     ///
     /// - A quorum could be a uniform quorum or joint quorum.
     pub committed: Option<LogId<NID>>,
@@ -111,7 +115,8 @@ where
 
     /// The log id upto which the next time it purges.
     ///
-    /// If a log is in use by a replication task, the purge is postponed and is stored in this field.
+    /// If a log is in use by a replication task, the purge is postponed and is stored in this
+    /// field.
     pub(crate) purge_upto: Option<LogId<NID>>,
 }
 
@@ -240,7 +245,8 @@ where
         self.membership_state.is_voter(id)
     }
 
-    /// The node is candidate(leadership is not granted by a quorum) or leader(leadership is granted by a quorum)
+    /// The node is candidate(leadership is not granted by a quorum) or leader(leadership is granted
+    /// by a quorum)
     pub(crate) fn is_leading(&self, id: &NID) -> bool {
         &self.vote.node_id == id
     }

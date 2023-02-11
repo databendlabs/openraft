@@ -11,7 +11,8 @@ use crate::fixtures::RaftRouter;
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn t99_issue_584_replication_state_reverted() -> Result<()> {
     // - Add a learner and replicate all logs to it.
-    // - Add the learner as a voter. When membership changes, openraft internally restarts all replication.
+    // - Add the learner as a voter. When membership changes, openraft internally restarts all
+    //   replication.
     //
     // This case asserts it does not break the internal monotonic-replication-progress guarantee.
 

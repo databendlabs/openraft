@@ -66,8 +66,8 @@ where
 
 /// The membership configuration of the cluster.
 ///
-/// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset of a majority of
-/// every config.
+/// It could be a joint of one, two or more configs, i.e., a quorum is a node set that is superset
+/// of a majority of every config.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Membership<NID, N>
@@ -165,9 +165,11 @@ where
     /// The node infos `nodes` can be:
     /// - a simple `()`, if there are no non-voter(learner) nodes,
     /// - `BTreeSet<NodeId>` provides learner node ids whose `Node` data are `Node::default()`,
-    /// - `BTreeMap<NodeId, Node>` provides nodes for every node id. Node ids that are not in `configs` are learners.
+    /// - `BTreeMap<NodeId, Node>` provides nodes for every node id. Node ids that are not in
+    ///   `configs` are learners.
     ///
-    /// Every node id in `configs` has to present in `nodes`. This is the only difference from [`Membership::new`].
+    /// Every node id in `configs` has to present in `nodes`. This is the only difference from
+    /// [`Membership::new`].
     pub(crate) fn with_nodes<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
     where T: IntoNodes<NID, N> {
         let nodes = nodes.into_nodes();
@@ -187,8 +189,8 @@ where
 
     /// Extends nodes btreemap with another.
     ///
-    /// Node that present in `old` will **NOT** be replaced because changing the address of a node potentially breaks
-    /// consensus guarantee.
+    /// Node that present in `old` will **NOT** be replaced because changing the address of a node
+    /// potentially breaks consensus guarantee.
     pub(crate) fn extend_nodes(old: BTreeMap<NID, N>, new: &BTreeMap<NID, N>) -> BTreeMap<NID, N> {
         let mut res = old;
 

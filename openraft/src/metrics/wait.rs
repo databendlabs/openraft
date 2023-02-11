@@ -22,7 +22,8 @@ pub enum WaitError {
     ShuttingDown,
 }
 
-/// Wait is a wrapper of RaftMetrics channel that impls several utils to wait for metrics to satisfy some condition.
+/// Wait is a wrapper of RaftMetrics channel that impls several utils to wait for metrics to satisfy
+/// some condition.
 pub struct Wait<NID, N>
 where
     NID: NodeId,

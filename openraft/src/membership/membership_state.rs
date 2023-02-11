@@ -13,8 +13,8 @@ use crate::NodeId;
 /// The state of membership configs a raft node needs to know.
 ///
 /// A raft node needs to store at most 2 membership config log:
-/// - The first(committed) one must have been committed, because (1): raft allows to propose new membership only when
-///   the previous one is committed.
+/// - The first(committed) one must have been committed, because (1): raft allows to propose new
+///   membership only when the previous one is committed.
 /// - The second(effective) may be committed or not.
 ///
 /// From (1) we have:
@@ -85,8 +85,8 @@ where
         }
     }
 
-    /// A committed membership log is found and the either of `self.committed` and `self.effective` should be updated if
-    /// it is smaller than the new one.
+    /// A committed membership log is found and the either of `self.committed` and `self.effective`
+    /// should be updated if it is smaller than the new one.
     ///
     /// If `self.effective` changed, it returns a reference to the new one.
     /// If not, it returns None.
@@ -132,8 +132,8 @@ where
     ///
     /// It assumes `self.effective` does not conflict with the leader's log, i.e.:
     /// - Leader appends a new membership,
-    /// - Or a follower has confirmed preceding logs matches the leaders' and appends membership received from the
-    ///   leader.
+    /// - Or a follower has confirmed preceding logs matches the leaders' and appends membership
+    ///   received from the leader.
     pub(crate) fn append(&mut self, m: Arc<EffectiveMembership<NID, N>>) {
         debug_assert!(
             m.log_id > self.effective.log_id,
@@ -154,8 +154,8 @@ where
     ///
     /// It returns the updated effective membership config if it is changed.
     ///
-    /// It will reset `self.effective` to `self.committed`. Only the effective could be truncated, when a new leader
-    /// tries ot truncate follower logs that the leader does not have.
+    /// It will reset `self.effective` to `self.committed`. Only the effective could be truncated,
+    /// when a new leader tries ot truncate follower logs that the leader does not have.
     ///
     /// If the effective membership is from a conflicting log,
     /// the membership state has to revert to the last committed membership config.

@@ -27,11 +27,12 @@ use crate::fixtures::RaftRouter;
 /// What does this test do?
 ///
 /// - brings 3 nodes online with only knowledge of themselves.
-/// - asserts that they remain in learner state with no activity (they should be completely passive).
+/// - asserts that they remain in learner state with no activity (they should be completely
+///   passive).
 /// - initializes the cluster with membership config including all nodes.
 /// - asserts that the cluster was able to come online, elect a leader and maintain a stable state.
-/// - asserts that the leader was able to successfully commit its initial payload and that all followers have
-///   successfully replicated the payload.
+/// - asserts that the leader was able to successfully commit its initial payload and that all
+///   followers have successfully replicated the payload.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn initialization() -> anyhow::Result<()> {
     let config = Arc::new(
@@ -163,8 +164,8 @@ async fn initialization() -> anyhow::Result<()> {
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
-    // Initialize a node with membership config that does not include the target node that accepts the `initialize`
-    // request.
+    // Initialize a node with membership config that does not include the target node that accepts
+    // the `initialize` request.
 
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());
@@ -198,8 +199,8 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn initialize_err_not_allowed() -> anyhow::Result<()> {
-    // Initialize a node with membership config that does not include the target node that accepts the `initialize`
-    // request.
+    // Initialize a node with membership config that does not include the target node that accepts
+    // the `initialize` request.
 
     let config = Arc::new(Config::default().validate()?);
     let mut router = RaftRouter::new(config.clone());

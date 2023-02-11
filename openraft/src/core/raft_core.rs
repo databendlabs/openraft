@@ -322,7 +322,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             };
 
-            // If we receive a response with a greater term, then revert to follower and abort this request.
+            // If we receive a response with a greater term, then revert to follower and abort this
+            // request.
             if let AppendEntriesResponse::HigherVote(vote) = data {
                 let res = self.engine.vote_handler().handle_message_vote(&vote);
                 if let Err(e) = self.run_engine_commands::<Entry<C>>(&[]).await.extract_fatal() {
@@ -368,9 +369,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// TODO: It has to wait for the previous membership to commit.
     /// TODO: Otherwise a second proposed membership implies the previous one is committed.
     /// TODO: Test it.
-    /// TODO: This limit can be removed if membership_state is replaced by a list of membership logs.
-    /// TODO: Because allowing this requires the engine to be able to store more than 2 membership logs.
-    /// And it does not need to wait for the previous membership log to commit to propose the new membership log.
+    /// TODO: This limit can be removed if membership_state is replaced by a list of membership
+    /// logs. TODO: Because allowing this requires the engine to be able to store more than 2
+    /// membership logs. And it does not need to wait for the previous membership log to commit
+    /// to propose the new membership log.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) async fn add_learner(
         &mut self,
@@ -442,7 +444,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Submit change-membership by writing a Membership log entry, if the `expect` is satisfied.
     ///
-    /// If `turn_to_learner` is `true`, removed `voter` will becomes `learner`. Otherwise they will be just removed.
+    /// If `turn_to_learner` is `true`, removed `voter` will becomes `learner`. Otherwise they will
+    /// be just removed.
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(
         &mut self,
@@ -497,7 +500,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
-    /// Check if the effective membership is committed, so that a new membership is allowed to be proposed.
+    /// Check if the effective membership is committed, so that a new membership is allowed to be
+    /// proposed.
     fn check_membership_committed(&self) -> Result<(), ChangeMembershipError<C::NodeId>> {
         let st = &self.engine.state;
 
@@ -511,7 +515,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }))
     }
 
-    /// return Ok if all the current replication states satisfy the `expectation` for changing membership.
+    /// return Ok if all the current replication states satisfy the `expectation` for changing
+    /// membership.
     fn check_replication_states<'n>(
         &self,
         nodes: impl Iterator<Item = &'n C::NodeId>,
@@ -560,8 +565,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Write a log entry to the cluster through raft protocol.
     ///
-    /// I.e.: append the log entry to local store, forward it to a quorum(including the leader), waiting for it to be
-    /// committed and applied.
+    /// I.e.: append the log entry to local store, forward it to a quorum(including the leader),
+    /// waiting for it to be committed and applied.
     ///
     /// The result of applying it to state machine is sent to `resp_tx`, if it is not `None`.
     /// The calling side may not receive a result from `resp_tx`, if raft is shut down.
@@ -574,7 +579,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(payload = display(payload.summary()), "write_entry");
 
         let mut entry_refs = [EntryRef::new(&payload)];
-        // TODO: it should returns membership config error etc. currently this is done by the caller.
+        // TODO: it should returns membership config error etc. currently this is done by the
+        // caller.
         self.engine.leader_append_entries(&mut entry_refs);
 
         // Install callback channels.
@@ -691,9 +697,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         );
 
         // TODO: election timer should be bound to `(vote, membership_log_id)`:
-        //       i.e., when membership is updated, the previous election timer should be invalidated.
-        //       e.g., in a same `vote`, a learner becomes voter and then becomes learner again.
-        //             election timer should be cleared for learner, set for voter and then cleared again.
+        //       i.e., when membership is updated, the previous election timer should be
+        // invalidated.       e.g., in a same `vote`, a learner becomes voter and then
+        // becomes learner again.             election timer should be cleared for learner,
+        // set for voter and then cleared again.
         self.next_election_time = VoteWiseTime::new(self.engine.state.vote, now + t);
     }
 
@@ -1265,8 +1272,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
                 // When a membership that removes the leader is committed,
                 // the leader continue to work for a short while before reverting to a learner.
-                // This way, let the leader replicate the `membership-log-is-committed` message to followers.
-                // Otherwise, if the leader step down at once, the follower might have to re-commit the membership log
+                // This way, let the leader replicate the `membership-log-is-committed` message to
+                // followers. Otherwise, if the leader step down at once, the
+                // follower might have to re-commit the membership log
                 // again, electing itself.
                 self.engine.leader_step_down();
                 self.run_engine_commands::<Entry<C>>(&[]).await?;
@@ -1366,8 +1374,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             true
         }
     }
-    /// If a message is sent by a previous replication session but is received by current server state,
-    /// it is a stale message and should be just ignored.
+    /// If a message is sent by a previous replication session but is received by current server
+    /// state, it is a stale message and should be just ignored.
     fn does_replication_session_match(
         &self,
         session_id: &ReplicationSessionId<C::NodeId>,
@@ -1481,7 +1489,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::Replicate { req, target } => {
                 if let Some(l) = &self.leader_data {
                     // TODO(2): consider remove the returned error from new_client().
-                    // Node may not exist because `RaftNetworkFactory::new_client()` returns an error.
+                    // Node may not exist because `RaftNetworkFactory::new_client()` returns an
+                    // error.
                     let node = &l.nodes.get(target);
 
                     if let Some(node) = node {

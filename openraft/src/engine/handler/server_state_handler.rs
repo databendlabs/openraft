@@ -22,8 +22,8 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Re-calculate the server-state, if it changed, update the `server_state` field and dispatch commands to inform a
-    /// runtime.
+    /// Re-calculate the server-state, if it changed, update the `server_state` field and dispatch
+    /// commands to inform a runtime.
     pub(crate) fn update_server_state_if_changed(&mut self) {
         let server_state = self.state.calc_server_state(&self.config.id);
 

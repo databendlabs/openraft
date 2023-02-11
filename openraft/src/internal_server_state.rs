@@ -8,13 +8,15 @@ pub(crate) type LeaderQuorumSet<NID> = Joint<NID, Vec<NID>, Vec<Vec<NID>>>;
 /// In openraft there are only two state for a server:
 /// Leading(raft leader or raft candidate) and following(raft follower or raft learner):
 ///
-/// - A leading state is able to vote(candidate in original raft) and is able to propose new log if its vote is granted
-///   by quorum(leader in original raft).
+/// - A leading state is able to vote(candidate in original raft) and is able to propose new log if
+///   its vote is granted by quorum(leader in original raft).
 ///
-///   In this way the leadership won't be lost when it sees a higher `vote` and needs upgrade its `vote`.
+///   In this way the leadership won't be lost when it sees a higher `vote` and needs upgrade its
+/// `vote`.
 ///
-/// - A following state just receives replication from a leader. A follower that is one of the member will be able to
-///   become leader. A following state that is not a member is just a learner.
+/// - A following state just receives replication from a leader. A follower that is one of the
+///   member will be able to become leader. A following state that is not a member is just a
+///   learner.
 #[derive(Clone, Debug)]
 #[derive(PartialEq, Eq)]
 pub(crate) enum InternalServerState<NID>

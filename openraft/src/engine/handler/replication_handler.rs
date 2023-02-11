@@ -84,7 +84,8 @@ where
 
         // Leader does not quit at once:
         // A leader should always keep replicating logs.
-        // A leader that is removed will shut down replications when this membership log is committed.
+        // A leader that is removed will shut down replications when this membership log is
+        // committed.
 
         self.rebuild_progresses();
         self.rebuild_replication_streams();
@@ -107,7 +108,8 @@ where
             old_progress.upgrade_quorum_set(em.membership.to_quorum_set(), &learner_ids, ProgressEntry::empty(end));
     }
 
-    /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is accepted.
+    /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is
+    /// accepted.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_matching(&mut self, node_id: NID, inflight_id: u64, log_id: Option<LogId<NID>>) {
         tracing::debug!(
@@ -176,7 +178,8 @@ where
         }
     }
 
-    /// Update progress when replicated data(logs or snapshot) does not match follower/learner state and is rejected.
+    /// Update progress when replicated data(logs or snapshot) does not match follower/learner state
+    /// and is rejected.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_conflicting(&mut self, target: NID, inflight_id: u64, conflict: LogId<NID>) {
         // TODO(2): test it?
@@ -342,12 +345,12 @@ where
         self.log_handler().purge_log();
     }
 
-    // TODO: replication handler should provide the same API for both locally and remotely log writing.
-    //       This may simplify upper level accessing.
+    // TODO: replication handler should provide the same API for both locally and remotely log
+    // writing.       This may simplify upper level accessing.
     /// Update the progress of local log to `upto`(inclusive).
     ///
-    /// Writing to local log store does not have to wait for a replication response from remote node.
-    /// Thus it can just be done in a fast-path.
+    /// Writing to local log store does not have to wait for a replication response from remote
+    /// node. Thus it can just be done in a fast-path.
     pub(crate) fn update_local_progress(&mut self, upto: Option<LogId<NID>>) {
         if upto.is_none() {
             return;
@@ -658,8 +661,9 @@ mod tests {
 
         #[test]
         fn test_leader_append_membership_update_learner_process() -> anyhow::Result<()> {
-            // When updating membership, voter progreess should inherit from learner progress, and learner process
-            // should inherit from voter process. If voter changes to learner or vice versa.
+            // When updating membership, voter progreess should inherit from learner progress, and
+            // learner process should inherit from voter process. If voter changes to
+            // learner or vice versa.
 
             let mut eng = eng();
             eng.state.log_ids = LogIdList::new([LogId::new(LeaderId::new(0, 0), 0), log_id(1, 1), log_id(5, 10)]);

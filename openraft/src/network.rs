@@ -64,7 +64,8 @@ where C: RaftTypeConfig
     ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, VoteError<C::NodeId>>>;
 }
 
-/// A trait defining the interface for a Raft network factory to create connections between cluster members.
+/// A trait defining the interface for a Raft network factory to create connections between cluster
+/// members.
 ///
 /// See the [network chapter of the guide](https://datafuselabs.github.io/openraft/getting-started.html#3-impl-raftnetwork)
 /// for details and discussion on this trait and how to implement it.

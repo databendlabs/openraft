@@ -85,8 +85,8 @@ async fn commit_joint_config_during_0_to_012() -> Result<()> {
 }
 
 /// Replace membership with another one with only one common node.
-/// To reproduce the bug that new config does not actually examine the term/index of learner, but instead only
-/// examining the followers
+/// To reproduce the bug that new config does not actually examine the term/index of learner, but
+/// instead only examining the followers
 ///
 /// - bring a cluster of node 0,1,2 online.
 /// - isolate 3,4; change config to 2,3,4

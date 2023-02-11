@@ -138,7 +138,8 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
         router
             .wait(&2, timeout())
             // The last_applied may not be updated on follower nodes:
-            // because leader node-0 will steps down at once when the second membership log is committed.
+            // because leader node-0 will steps down at once when the second membership log is
+            // committed.
             .metrics(
                 |x| x.last_log_index == Some(log_index),
                 "new leader node-2 commits 2 membership log",

@@ -26,7 +26,8 @@ pub(crate) trait RaftTimer {
 /// When timeout deadline is reached, the `callback: Fn()` is called.
 /// `callback` is guaranteed to be called at most once.
 ///
-/// The deadline can be updated to a higher value then the old deadline won't trigger the `callback`.
+/// The deadline can be updated to a higher value then the old deadline won't trigger the
+/// `callback`.
 pub(crate) struct Timeout {
     /// A guard to notify the inner-task to quit when it is dropped.
     // tx is not explicitly used.
