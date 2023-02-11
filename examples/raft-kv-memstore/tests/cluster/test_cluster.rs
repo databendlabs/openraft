@@ -17,7 +17,8 @@ use tracing_subscriber::EnvFilter;
 async fn test_cluster() -> anyhow::Result<()> {
     // --- The client itself does not store addresses for all nodes, but just node id.
     //     Thus we need a supporting component to provide mapping from node id to node address.
-    //     This is only used by the client. A raft node in this example stores node addresses in its store.
+    //     This is only used by the client. A raft node in this example stores node addresses in its
+    // store.
 
     tracing_subscriber::fmt()
         .with_target(true)
@@ -75,8 +76,8 @@ async fn test_cluster() -> anyhow::Result<()> {
     println!("=== metrics after init");
     let _x = client.metrics().await?;
 
-    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication from the
-    //        leader.
+    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication
+    // from the        leader.
 
     println!("=== add-learner 2");
     let _x = client.add_learner((2, get_addr(2)?)).await?;

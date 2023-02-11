@@ -16,7 +16,8 @@ use raft_kv_rocksdb::ExampleNode;
 async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     // --- The client itself does not store addresses for all nodes, but just node id.
     //     Thus we need a supporting component to provide mapping from node id to node address.
-    //     This is only used by the client. A raft node in this example stores node addresses in its store.
+    //     This is only used by the client. A raft node in this example stores node addresses in its
+    // store.
 
     fn get_addr(node_id: u32) -> String {
         match node_id {
@@ -71,8 +72,8 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== metrics after init");
     let _x = leader.metrics().await?;
 
-    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication from the
-    //        leader.
+    // --- 2. Add node 2 and 3 to the cluster as `Learner`, to let them start to receive log replication
+    // from the        leader.
 
     println!("=== add-learner 2");
     let _x = leader.add_learner((2, get_addr(2), get_rpc_addr(2))).await?;
