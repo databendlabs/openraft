@@ -50,9 +50,10 @@ where
         debug_assert!(_res.is_ok(), "commit vote can not fail but: {:?}", _res);
     }
 
-    /// Check and update vote and related state for every message received.
+    /// Check and update the local vote and related state for every message received.
     ///
-    /// This is used by all 3 RPC append-entries, vote, install-snapshot to check the `vote` field.
+    /// This is used by all incoming event, such as the 3 RPC append-entries, vote, install-snapshot
+    /// to check the `vote` field.
     ///
     /// Grant vote if vote >= mine.
     /// Note: This method does not check last-log-id. handle-vote-request has to deal with

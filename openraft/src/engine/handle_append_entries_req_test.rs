@@ -269,11 +269,11 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
             },
             Command::AppendInputEntries { range: 1..2 },
-            Command::MoveInputCursorBy { n: 2 },
             Command::FollowerCommit {
                 already_committed: Some(log_id(0, 0)),
                 upto: log_id(1, 1)
             },
+            Command::MoveInputCursorBy { n: 2 },
         ],
         eng.output.commands
     );
@@ -398,11 +398,11 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m34()))
             },
-            Command::MoveInputCursorBy { n: 2 },
             Command::FollowerCommit {
                 already_committed: Some(log_id(0, 0)),
                 upto: log_id(3, 3)
             },
+            Command::MoveInputCursorBy { n: 2 },
         ],
         eng.output.commands
     );
