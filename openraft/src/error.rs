@@ -63,6 +63,7 @@ where
 
 // TODO: not used, remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum AppendEntriesError<NID>
 where NID: NodeId
@@ -73,6 +74,7 @@ where NID: NodeId
 
 // TODO: not used, remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum VoteError<NID>
 where NID: NodeId
@@ -83,6 +85,7 @@ where NID: NodeId
 
 // TODO: remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum InstallSnapshotError<NID>
 where NID: NodeId

@@ -60,7 +60,7 @@ impl<NID: NodeId> Default for EngineConfig<NID> {
 }
 
 /// The entry of output from Engine to the runtime.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct EngineOutput<NID, N>
 where
@@ -94,7 +94,7 @@ where
 /// This structure only contains necessary information to run raft algorithm,
 /// but none of the application specific data.
 /// TODO: make the fields private
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 #[derive(PartialEq, Eq)]
 pub(crate) struct Engine<NID, N>
 where

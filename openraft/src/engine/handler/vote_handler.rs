@@ -43,7 +43,8 @@ where
     pub(crate) fn commit_vote(&mut self) {
         debug_assert!(!self.state.get_vote().committed);
         debug_assert_eq!(
-            self.state.get_vote().node_id == self.config.id,
+            self.state.get_vote().node_id,
+            self.config.id,
             "it can only commit its own vote"
         );
 

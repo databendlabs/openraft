@@ -17,6 +17,20 @@
 //! - `serde`: Add serde::Serialize and serde:Deserialize bound to data types. If you'd like to use
 //!   `serde` to serialize messages.
 
+macro_rules! func_name {
+    () => {{
+        fn f() {}
+        fn type_name_of<T>(_: T) -> &'static str {
+            std::any::type_name::<T>()
+        }
+        let name = type_name_of(f);
+        let n = &name[..name.len() - 3];
+        let nn = n.replace("::{{closure}}", "");
+        nn
+        // nn.split("::").last().unwrap_or_default()
+    }};
+}
+
 mod change_members;
 mod config;
 mod core;

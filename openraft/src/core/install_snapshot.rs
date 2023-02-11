@@ -4,10 +4,10 @@ use tokio::io::AsyncWriteExt;
 use crate::core::streaming_state::StreamingState;
 use crate::core::RaftCore;
 use crate::core::SnapshotState;
-use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
+use crate::raft::InstallSnapshotTx;
 use crate::raft_state::VoteStateReader;
 use crate::Entry;
 use crate::ErrorSubject;
@@ -32,7 +32,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn handle_install_snapshot_request(
         &mut self,
         req: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C::NodeId>, InstallSnapshotError<C::NodeId>> {
+        tx: InstallSnapshotTx<C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>> {
         tracing::debug!(req = display(req.summary()));
 
         let res = self.engine.vote_handler().handle_message_vote(&req.vote);
@@ -43,9 +44,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 req_vote = display(&req.vote),
                 "InstallSnapshot RPC term is less than current term, ignoring it."
             );
-            return Ok(InstallSnapshotResponse {
+            let _ = tx.send(Ok(InstallSnapshotResponse {
                 vote: *self.engine.state.get_vote(),
-            });
+            }));
+            return Ok(());
         }
 
         // Clear the state to None if it is building a snapshot locally.
@@ -66,6 +68,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // Init a new streaming state if it is None.
         if let SnapshotState::None = self.snapshot_state {
+            if let Err(e) = self.check_new_install_snapshot(&req) {
+                let _ = tx.send(Err(e.into()));
+                return Ok(());
+            }
             self.begin_installing_snapshot(&req).await?;
         }
 
@@ -82,6 +88,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         };
 
         if stream_changed {
+            if let Err(e) = self.check_new_install_snapshot(&req) {
+                let _ = tx.send(Err(e.into()));
+                return Ok(());
+            }
             self.begin_installing_snapshot(&req).await?;
         }
 
@@ -97,16 +107,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.finalize_snapshot_installation(req_meta).await?;
         }
 
-        Ok(InstallSnapshotResponse {
+        let _ = tx.send(Ok(InstallSnapshotResponse {
             vote: *self.engine.state.get_vote(),
-        })
+        }));
+
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    async fn begin_installing_snapshot(
-        &mut self,
-        req: &InstallSnapshotRequest<C>,
-    ) -> Result<(), InstallSnapshotError<C::NodeId>> {
+    fn check_new_install_snapshot(&mut self, req: &InstallSnapshotRequest<C>) -> Result<(), SnapshotMismatch> {
         tracing::debug!(req = display(req.summary()));
 
         let id = req.meta.snapshot_id.clone();
@@ -118,9 +127,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     offset: 0,
                 },
                 got: SnapshotSegmentId { id, offset: req.offset },
-            }
-            .into());
+            });
         }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip_all)]
+    async fn begin_installing_snapshot(
+        &mut self,
+        req: &InstallSnapshotRequest<C>,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        tracing::debug!(req = display(req.summary()));
+
+        let id = req.meta.snapshot_id.clone();
 
         let snapshot_data = self.storage.begin_receiving_snapshot().await?;
         self.snapshot_state = SnapshotState::Streaming(StreamingState::new(id, snapshot_data));

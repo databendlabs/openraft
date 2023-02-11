@@ -1,9 +1,18 @@
 use std::ops::Range;
 use std::sync::Arc;
 
+use crate::error::AppendEntriesError;
+use crate::error::InstallSnapshotError;
+use crate::error::VoteError;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
+use crate::raft::AppendEntriesResponse;
+use crate::raft::AppendEntriesTx;
+use crate::raft::InstallSnapshotResponse;
+use crate::raft::InstallSnapshotTx;
 use crate::raft::VoteRequest;
+use crate::raft::VoteResponse;
+use crate::raft::VoteTx;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::MetricsChangeFlags;
@@ -13,7 +22,9 @@ use crate::SnapshotMeta;
 use crate::Vote;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(derivative::Derivative)]
+#[derivative(PartialEq)]
+#[derive(Debug)]
 pub(crate) enum Command<NID, N>
 where
     N: Node,
@@ -116,12 +127,45 @@ where
     /// A received snapshot does not need to be installed, just drop buffered snapshot data.
     CancelSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
 
+    // ---
+    // --- Response commands
+    // ---
+    /// Send vote result `res` to its caller via `tx`
+    SendVoteResult {
+        res: Result<VoteResponse<NID>, VoteError<NID>>,
+        #[derivative(PartialEq = "ignore")]
+        tx: VoteTx<NID>,
+    },
+
+    /// Send append-entries result `res` to its caller via `tx`
+    SendAppendEntriesResult {
+        res: Result<AppendEntriesResponse<NID>, AppendEntriesError<NID>>,
+        #[derivative(PartialEq = "ignore")]
+        tx: AppendEntriesTx<NID>,
+    },
+
+    // TODO: use it
+    #[allow(dead_code)]
+    /// Send install-snapshot result `res` to its caller via `tx`
+    SendInstallSnapshotResult {
+        res: Result<InstallSnapshotResponse<NID>, InstallSnapshotError<NID>>,
+        #[derivative(PartialEq = "ignore")]
+        tx: InstallSnapshotTx<NID>,
+    },
+
     //
     // --- Draft unimplemented commands:
 
     // TODO:
     #[allow(dead_code)]
     BuildSnapshot {},
+}
+
+impl<NID, N> Eq for Command<NID, N>
+where
+    N: Node,
+    NID: NodeId,
+{
 }
 
 impl<NID, N> Command<NID, N>
@@ -152,6 +196,9 @@ where
             Command::InstallSnapshot { .. } => flags.set_data_changed(),
             Command::CancelSnapshot { .. } => {}
             Command::BuildSnapshot { .. } => flags.set_data_changed(),
+            Command::SendVoteResult { .. } => {}
+            Command::SendAppendEntriesResult { .. } => {}
+            Command::SendInstallSnapshotResult { .. } => {}
         }
     }
 }
