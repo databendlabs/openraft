@@ -45,7 +45,7 @@ async fn append_updates_membership() -> Result<()> {
     tracing::info!("--- append-entries update membership");
     {
         let req = AppendEntriesRequest {
-            vote: Vote::new_committed(1, 0),
+            vote: Vote::new_committed(1, 1),
             prev_log_id: None,
             entries: vec![
                 blank(0, 0),
