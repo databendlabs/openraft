@@ -38,10 +38,8 @@ where
 {
     /// Append membership log if membership config entries are found, after appending entries to
     /// log.
-    fn follower_append_membership<'a, Ent: RaftEntry<NID, N> + 'a>(
-        &mut self,
-        entries: impl DoubleEndedIterator<Item = &'a Ent>,
-    ) {
+    fn follower_append_membership<'a, Ent>(&mut self, entries: impl DoubleEndedIterator<Item = &'a Ent>)
+    where Ent: RaftEntry<NID, N> + 'a {
         let memberships = Self::last_two_memberships(entries);
         if memberships.is_empty() {
             return;

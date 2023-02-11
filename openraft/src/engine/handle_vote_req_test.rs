@@ -8,6 +8,7 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft_state::VoteStateReader;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;
@@ -58,7 +59,7 @@ fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
         resp
     );
 
-    assert_eq!(Vote::new(2, 1), eng.state.vote);
+    assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
     assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -95,7 +96,7 @@ fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
         resp
     );
 
-    assert_eq!(Vote::new(2, 1), eng.state.vote);
+    assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
     assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -137,7 +138,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
         resp
     );
 
-    assert_eq!(Vote::new(2, 1), eng.state.vote);
+    assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
     assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -186,7 +187,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
         resp
     );
 
-    assert_eq!(Vote::new(3, 1), eng.state.vote);
+    assert_eq!(Vote::new(3, 1), *eng.state.get_vote());
     assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);

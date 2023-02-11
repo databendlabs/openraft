@@ -8,6 +8,7 @@ use crate::error::InstallSnapshotError;
 use crate::error::SnapshotMismatch;
 use crate::raft::InstallSnapshotRequest;
 use crate::raft::InstallSnapshotResponse;
+use crate::raft_state::VoteStateReader;
 use crate::Entry;
 use crate::ErrorSubject;
 use crate::ErrorVerb;
@@ -37,9 +38,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let res = self.engine.vote_handler().handle_message_vote(&req.vote);
         self.run_engine_commands::<Entry<C>>(&[]).await?;
         if res.is_err() {
-            tracing::info!(?self.engine.state.vote, %req.vote, "InstallSnapshot RPC term is less than current term, ignoring it.");
+            tracing::info!(
+                my_vote = display(self.engine.state.get_vote()),
+                req_vote = display(&req.vote),
+                "InstallSnapshot RPC term is less than current term, ignoring it."
+            );
             return Ok(InstallSnapshotResponse {
-                vote: self.engine.state.vote,
+                vote: *self.engine.state.get_vote(),
             });
         }
 
@@ -95,7 +100,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         Ok(InstallSnapshotResponse {
-            vote: self.engine.state.vote,
+            vote: *self.engine.state.get_vote(),
         })
     }
 

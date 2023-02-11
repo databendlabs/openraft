@@ -8,6 +8,7 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_state::LogStateReader;
+use crate::raft_state::VoteStateReader;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
@@ -79,7 +80,7 @@ fn test_handle_append_entries_req_vote_is_rejected() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Vote::new(2, 1), eng.state.vote);
+    assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
     assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
     assert_eq!(Some(&log_id(0, 0)), eng.state.committed());
     assert_eq!(
@@ -127,7 +128,7 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.get_vote());
     assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
     assert_eq!(Some(&log_id(0, 0)), eng.state.committed());
     assert_eq!(
@@ -179,7 +180,7 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.get_vote());
     assert_eq!(Some(&log_id(1, 1)), eng.state.last_log_id());
     assert_eq!(Some(&log_id(0, 0)), eng.state.committed());
     assert_eq!(
@@ -236,7 +237,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.get_vote());
     assert_eq!(Some(&log_id(2, 2)), eng.state.last_log_id());
     assert_eq!(Some(&log_id(1, 1)), eng.state.committed());
     assert_eq!(
@@ -301,7 +302,7 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.get_vote());
     assert_eq!(Some(&log_id(2, 3)), eng.state.last_log_id());
     assert_eq!(Some(&log_id(0, 0)), eng.state.committed());
     assert_eq!(
@@ -362,7 +363,7 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
         ],
         eng.state.log_ids.key_log_ids()
     );
-    assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.get_vote());
     assert_eq!(Some(&log_id(3, 3)), eng.state.last_log_id());
     assert_eq!(Some(&log_id(3, 3)), eng.state.committed());
     assert_eq!(

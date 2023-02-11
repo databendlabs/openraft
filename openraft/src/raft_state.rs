@@ -79,6 +79,12 @@ pub(crate) trait LogStateReader<NID: NodeId> {
     fn last_purged_log_id(&self) -> Option<&LogId<NID>>;
 }
 
+/// APIs to get vote.
+pub(crate) trait VoteStateReader<NID: NodeId> {
+    /// Get the current vote.
+    fn get_vote(&self) -> &Vote<NID>;
+}
+
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RaftState<NID, N>
@@ -150,6 +156,16 @@ where
             return None;
         }
         self.log_ids.first()
+    }
+}
+
+impl<NID, N> VoteStateReader<NID> for RaftState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn get_vote(&self) -> &Vote<NID> {
+        &self.vote
     }
 }
 

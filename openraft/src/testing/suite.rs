@@ -8,6 +8,7 @@ use maplit::btreeset;
 use crate::membership::EffectiveMembership;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
+use crate::raft_state::VoteStateReader;
 use crate::storage::LogState;
 use crate::storage::StorageHelper;
 use crate::testing::DefensiveStoreBuilder;
@@ -447,7 +448,7 @@ where
                 node_id: NODE_ID.into(),
                 committed: false,
             },
-            initial.vote,
+            *initial.get_vote(),
             "unexpected value for default hard state"
         );
         Ok(())

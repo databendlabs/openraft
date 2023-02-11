@@ -21,6 +21,7 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
+use crate::raft_state::VoteStateReader;
 use crate::summary::MessageSummary;
 use crate::validate::Valid;
 use crate::LogId;
@@ -210,7 +211,7 @@ where
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        let v = Vote::new(self.state.vote.term + 1, self.config.id);
+        let v = Vote::new(self.state.get_vote().term + 1, self.config.id);
         self.vote_handler().handle_message_vote(&v).unwrap();
 
         // Safe unwrap()
@@ -228,7 +229,7 @@ where
         // Slow-path: send vote request, let a quorum grant it.
 
         self.output.push_command(Command::SendVote {
-            vote_req: VoteRequest::new(self.state.vote, self.state.last_log_id().copied()),
+            vote_req: VoteRequest::new(*self.state.get_vote(), self.state.last_log_id().copied()),
         });
 
         // TODO: For compatibility. remove it. The runtime does not need to know about server state.
@@ -240,11 +241,12 @@ where
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<NID>) -> VoteResponse<NID> {
         tracing::debug!(req = display(req.summary()), "Engine::handle_vote_req");
         tracing::debug!(
-            my_vote = display(self.state.vote.summary()),
+            my_vote = display(self.state.get_vote().summary()),
             my_last_log_id = display(self.state.last_log_id().summary()),
             "Engine::handle_vote_req"
         );
 
+        // TODO: refactor
         let res = if req.last_log_id.as_ref() >= self.state.last_log_id() {
             self.vote_handler().handle_message_vote(&req.vote)
         } else {
@@ -265,7 +267,7 @@ where
         VoteResponse {
             // Return the updated vote, this way the candidate knows which vote is granted, in case
             // the candidate's vote is changed after sending the vote request.
-            vote: self.state.vote,
+            vote: *self.state.get_vote(),
             vote_granted,
             last_log_id: self.state.last_log_id().copied(),
         }
@@ -279,7 +281,7 @@ where
             "handle_vote_resp"
         );
         tracing::debug!(
-            my_vote = display(self.state.vote),
+            my_vote = display(self.state.get_vote()),
             my_last_log_id = display(self.state.last_log_id().summary()),
             "handle_vote_resp"
         );
@@ -290,7 +292,7 @@ where
             InternalServerState::Following => return,
         };
 
-        if resp.vote < self.state.vote {
+        if &resp.vote < self.state.get_vote() {
             debug_assert!(!resp.vote_granted);
         }
 
@@ -313,9 +315,11 @@ where
         );
 
         // If peer's vote is greater than current vote, revert to follower state.
-        if resp.vote > self.state.vote {
+        if &resp.vote > self.state.get_vote() {
             self.state.vote = resp.vote;
-            self.output.push_command(Command::SaveVote { vote: self.state.vote });
+            self.output.push_command(Command::SaveVote {
+                vote: *self.state.get_vote(),
+            });
         }
 
         // Seen a higher log.
@@ -435,7 +439,7 @@ where
             "append-entries request"
         );
         tracing::debug!(
-            my_vote = display(self.state.vote),
+            my_vote = display(self.state.get_vote()),
             my_last_log_id = display(self.state.last_log_id().summary()),
             my_committed = display(self.state.committed().summary()),
             "local state"
@@ -561,15 +565,19 @@ where
     /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(term=0,
     /// node_id=0)`. See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
     fn check_initialize(&self) -> Result<(), NotAllowed<NID>> {
-        if self.state.last_log_id().is_none() && self.state.vote == Vote::default() {
+        if self.state.last_log_id().is_none() && self.state.get_vote() == &Vote::default() {
             return Ok(());
         }
 
-        tracing::error!(last_log_id = display(self.state.last_log_id().summary()), ?self.state.vote, "Can not initialize");
+        tracing::error!(
+            last_log_id = display(self.state.last_log_id().summary()),
+            vote = display(self.state.get_vote()),
+            "Can not initialize"
+        );
 
         Err(NotAllowed {
             last_log_id: self.state.last_log_id().copied(),
-            vote: self.state.vote,
+            vote: *self.state.get_vote(),
         })
     }
 
@@ -588,7 +596,7 @@ where
     }
 
     fn assign_log_ids<'a, Ent: RaftEntry<NID, N> + 'a>(&mut self, entries: impl Iterator<Item = &'a mut Ent>) {
-        let mut log_id = LogId::new(self.state.vote.leader_id(), self.state.last_log_id().next_index());
+        let mut log_id = LogId::new(self.state.get_vote().leader_id(), self.state.last_log_id().next_index());
         for entry in entries {
             entry.set_log_id(&log_id);
             tracing::debug!("assign log id: {}", log_id);

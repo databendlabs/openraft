@@ -7,6 +7,7 @@ use crate::internal_server_state::InternalServerState;
 use crate::leader::Leader;
 use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
+use crate::raft_state::VoteStateReader;
 use crate::LogIdOptionExt;
 use crate::Node;
 use crate::NodeId;
@@ -40,9 +41,9 @@ where
     /// - Voting is not in the hot path, thus no performance penalty.
     /// - Leadership won't be lost if a leader restarted quick enough.
     pub(crate) fn commit_vote(&mut self) {
-        debug_assert!(!self.state.vote.committed);
+        debug_assert!(!self.state.get_vote().committed);
 
-        let mut v = self.state.vote;
+        let mut v = *self.state.get_vote();
         v.commit();
 
         let _res = self.handle_message_vote(&v);
@@ -60,16 +61,16 @@ where
         // Partial ord compare:
         // Vote does not has to be total ord.
         // `!(a >= b)` does not imply `a < b`.
-        if vote >= &self.state.vote {
+        if vote >= self.state.get_vote() {
             // Ok
         } else {
-            return Err(RejectVoteRequest::ByVote(self.state.vote));
+            return Err(RejectVoteRequest::ByVote(*self.state.get_vote()));
         }
         tracing::debug!(%vote, "vote is changing to" );
 
         // Grant the vote
 
-        if vote > &self.state.vote {
+        if vote > self.state.get_vote() {
             self.state.vote = *vote;
             self.output.push_command(Command::SaveVote { vote: *vote });
         }
@@ -81,7 +82,7 @@ where
 
     /// Enter leading or following state by checking `vote`.
     pub(crate) fn update_internal_server_state(&mut self) {
-        if self.state.vote.node_id == self.config.id {
+        if self.state.get_vote().node_id == self.config.id {
             self.become_leading();
         } else {
             self.become_following();
@@ -95,9 +96,9 @@ where
     /// and phase-2. Leader and Candidate shares the same state.
     pub(crate) fn become_leading(&mut self) {
         if let Some(l) = self.internal_server_state.leading_mut() {
-            if l.vote.leader_id() == self.state.vote.leader_id() {
+            if l.vote.leader_id() == self.state.get_vote().leader_id() {
                 // Vote still belongs to the same leader. Just updating vote is enough.
-                l.vote = self.state.vote;
+                l.vote = *self.state.get_vote();
                 self.server_state_handler().update_server_state_if_changed();
                 return;
             }
@@ -108,7 +109,7 @@ where
 
         let em = &self.state.membership_state.effective();
         let mut leader = Leader::new(
-            self.state.vote,
+            *self.state.get_vote(),
             em.membership.to_quorum_set(),
             em.learner_ids(),
             self.state.last_log_id().index(),
@@ -131,12 +132,12 @@ where
         // timeout.
 
         debug_assert!(
-            self.state.vote.node_id != self.config.id
+            self.state.get_vote().node_id != self.config.id
                 || !self.state.membership_state.effective().contains(&self.config.id),
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );
 
-        let vote = &self.state.vote;
+        let vote = self.state.get_vote();
 
         // TODO: installing election timer should be driven by change of last-log-id
         // TODO: `can_be_leader` should consider if this node is in a voter.
@@ -181,6 +182,7 @@ mod tests {
     use crate::engine::Engine;
     use crate::engine::LogIdList;
     use crate::error::RejectVoteRequest;
+    use crate::raft_state::VoteStateReader;
     use crate::EffectiveMembership;
     use crate::LeaderId;
     use crate::LogId;
@@ -222,7 +224,7 @@ mod tests {
 
         assert_eq!(Err(RejectVoteRequest::ByVote(Vote::new(2, 1))), resp);
 
-        assert_eq!(Vote::new(2, 1), eng.state.vote);
+        assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
         assert!(eng.internal_server_state.is_leading());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -250,7 +252,7 @@ mod tests {
 
         assert_eq!(Ok(()), resp);
 
-        assert_eq!(Vote::new_committed(3, 2), eng.state.vote);
+        assert_eq!(Vote::new_committed(3, 2), *eng.state.get_vote());
         assert!(eng.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -288,7 +290,7 @@ mod tests {
 
         assert_eq!(Ok(()), resp);
 
-        assert_eq!(Vote::new(2, 1), eng.state.vote);
+        assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
         assert!(eng.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -322,7 +324,7 @@ mod tests {
 
         assert_eq!(Ok(()), resp);
 
-        assert_eq!(Vote::new(3, 1), eng.state.vote);
+        assert_eq!(Vote::new(3, 1), *eng.state.get_vote());
         assert!(eng.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
