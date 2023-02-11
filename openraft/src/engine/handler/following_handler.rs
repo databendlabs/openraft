@@ -18,7 +18,6 @@ use crate::NodeId;
 use crate::RaftState;
 use crate::SnapshotMeta;
 
-// TODO: move tests to this file
 /// Receive replication request and deal with them.
 ///
 /// It mainly implements the logic of a follower/learner
@@ -88,48 +87,49 @@ where
             // Raft requires log ids are in total order by (term,index).
             // Otherwise the log id with max index makes committed entry invisible in election.
             self.truncate_logs(entries[since].get_log_id().index);
-            self.follower_do_append_entries(entries, since);
+            self.do_append_entries(entries, since);
         }
 
-        self.follower_commit_entries(leader_committed, prev_log_id, entries);
+        self.commit_entries(leader_committed, prev_log_id, entries);
+
+        if l > 0 {
+            self.output.push_command(Command::MoveInputCursorBy { n: l });
+        }
 
         AppendEntriesResponse::Success
     }
 
-    /// Append membership log if membership config entries are found, after appending entries to
-    /// log.
-    fn follower_append_membership<'a, Ent>(&mut self, entries: impl DoubleEndedIterator<Item = &'a Ent>)
-    where Ent: RaftEntry<NID, N> + 'a {
-        let memberships = Self::last_two_memberships(entries);
-        if memberships.is_empty() {
+    /// Follower/Learner appends `entries[since..]`.
+    ///
+    /// It assumes:
+    /// - Previous entries all match the leader's.
+    /// - conflicting entries are deleted.
+    ///
+    /// Membership config changes are also detected and applied here.
+    #[tracing::instrument(level = "debug", skip(self, entries))]
+    fn do_append_entries<'a, Ent: RaftEntry<NID, N> + 'a>(&mut self, entries: &[Ent], since: usize) {
+        let l = entries.len();
+        if since == l {
             return;
         }
 
-        // Update membership state with the last 2 membership configs found in new log entries.
-        // Other membership log can be just ignored.
-        for (i, m) in memberships.into_iter().enumerate() {
-            tracing::debug!(
-                last = display(m.summary()),
-                "applying {}-th new membership configs received from leader",
-                i
-            );
-            self.state.membership_state.append(Arc::new(m));
-        }
+        let entries = &entries[since..];
 
-        tracing::debug!(
-            membership_state = display(&self.state.membership_state.summary()),
-            "updated membership state"
+        debug_assert_eq!(
+            entries[0].get_log_id().index,
+            self.state.log_ids.last().cloned().next_index(),
         );
 
-        self.output.push_command(Command::UpdateMembership {
-            membership: self.state.membership_state.effective().clone(),
-        });
+        debug_assert!(Some(entries[0].get_log_id()) > self.state.log_ids.last());
 
-        self.server_state_handler().update_server_state_if_changed();
+        self.state.extend_log_ids(entries);
+        self.output.push_command(Command::AppendInputEntries { range: since..l });
+
+        self.append_membership(entries.iter());
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn follower_commit_entries<'a, Ent: RaftEntry<NID, N> + 'a>(
+    fn commit_entries<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
         leader_committed: Option<LogId<NID>>,
         prev_log_id: Option<LogId<NID>>,
@@ -159,49 +159,12 @@ where
         //          For now it is OK. But it should be done here.
     }
 
-    /// Follower/Learner appends `entries[since..]`.
-    ///
-    /// It assumes:
-    /// - Previous entries all match.
-    /// - conflicting entries are deleted.
-    ///
-    /// Membership config changes are also detected and applied here.
-    #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn follower_do_append_entries<'a, Ent: RaftEntry<NID, N> + 'a>(
-        &mut self,
-        entries: &[Ent],
-        since: usize,
-    ) {
-        let l = entries.len();
-        if since == l {
-            return;
-        }
-
-        let entries = &entries[since..];
-
-        debug_assert_eq!(
-            entries[0].get_log_id().index,
-            self.state.log_ids.last().cloned().next_index(),
-        );
-
-        debug_assert!(Some(entries[0].get_log_id()) > self.state.log_ids.last());
-
-        self.state.extend_log_ids(entries);
-
-        self.output.push_command(Command::AppendInputEntries { range: since..l });
-
-        self.follower_append_membership(entries.iter());
-
-        // TODO(xp): should be moved to handle_append_entries_req()
-        self.output.push_command(Command::MoveInputCursorBy { n: l });
-    }
-
     /// Delete log entries since log index `since`, inclusive, when the log at `since` is found
     /// conflict with the leader.
     ///
     /// And revert effective membership to the last committed if it is from the conflicting logs.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub(crate) fn truncate_logs(&mut self, since: u64) {
+    fn truncate_logs(&mut self, since: u64) {
         tracing::debug!(since = since, "truncate_logs");
 
         debug_assert!(since >= self.state.last_purged_log_id().next_index());
@@ -224,9 +187,41 @@ where
         }
     }
 
+    /// Append membership log if membership config entries are found, after appending entries to
+    /// log.
+    fn append_membership<'a, Ent>(&mut self, entries: impl DoubleEndedIterator<Item = &'a Ent>)
+    where Ent: RaftEntry<NID, N> + 'a {
+        let memberships = Self::last_two_memberships(entries);
+        if memberships.is_empty() {
+            return;
+        }
+
+        // Update membership state with the last 2 membership configs found in new log entries.
+        // Other membership log can be just ignored.
+        for (i, m) in memberships.into_iter().enumerate() {
+            tracing::debug!(
+                last = display(m.summary()),
+                "applying {}-th new membership configs received from leader",
+                i
+            );
+            self.state.membership_state.append(Arc::new(m));
+        }
+
+        tracing::debug!(
+            membership_state = display(&self.state.membership_state.summary()),
+            "updated membership state"
+        );
+
+        self.output.push_command(Command::UpdateMembership {
+            membership: self.state.membership_state.effective().clone(),
+        });
+
+        self.server_state_handler().update_server_state_if_changed();
+    }
+
     /// Update membership state with a committed membership config
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn update_committed_membership(&mut self, membership: EffectiveMembership<NID, N>) {
+    fn update_committed_membership(&mut self, membership: EffectiveMembership<NID, N>) {
         tracing::debug!("update committed membership: {}", membership.summary());
 
         let m = Arc::new(membership);
@@ -367,7 +362,7 @@ where
         memberships
     }
 
-    pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {
+    fn log_handler(&mut self) -> LogHandler<NID, N> {
         LogHandler {
             config: self.config,
             state: self.state,
@@ -375,7 +370,7 @@ where
         }
     }
 
-    pub(crate) fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N> {
+    fn snapshot_handler(&mut self) -> SnapshotHandler<NID, N> {
         SnapshotHandler {
             state: self.state,
             output: self.output,
@@ -453,7 +448,7 @@ mod tests {
         fn test_follower_commit_entries_empty() -> anyhow::Result<()> {
             let mut eng = eng();
 
-            eng.following_handler().follower_commit_entries(None, None, &Vec::<Entry<Foo>>::new());
+            eng.following_handler().commit_entries(None, None, &Vec::<Entry<Foo>>::new());
 
             assert_eq!(Some(&log_id(1, 1)), eng.state.committed());
             assert_eq!(
@@ -482,7 +477,7 @@ mod tests {
         fn test_follower_commit_entries_no_update() -> anyhow::Result<()> {
             let mut eng = eng();
 
-            eng.following_handler().follower_commit_entries(Some(log_id(1, 1)), None, &[blank(2, 4)]);
+            eng.following_handler().commit_entries(Some(log_id(1, 1)), None, &[blank(2, 4)]);
 
             assert_eq!(Some(&log_id(1, 1)), eng.state.committed());
             assert_eq!(
@@ -511,7 +506,7 @@ mod tests {
         fn test_follower_commit_entries_lt_last_entry() -> anyhow::Result<()> {
             let mut eng = eng();
 
-            eng.following_handler().follower_commit_entries(Some(log_id(2, 3)), None, &[blank(2, 3)]);
+            eng.following_handler().commit_entries(Some(log_id(2, 3)), None, &[blank(2, 3)]);
 
             assert_eq!(Some(&log_id(2, 3)), eng.state.committed());
             assert_eq!(
@@ -532,10 +527,12 @@ mod tests {
             );
 
             assert_eq!(
-                vec![Command::FollowerCommit {
-                    already_committed: Some(log_id(1, 1)),
-                    upto: log_id(2, 3)
-                }],
+                vec![
+                    Command::FollowerCommit {
+                        already_committed: Some(log_id(1, 1)),
+                        upto: log_id(2, 3)
+                    }, //
+                ],
                 eng.output.commands
             );
 
@@ -546,7 +543,7 @@ mod tests {
         fn test_follower_commit_entries_gt_last_entry() -> anyhow::Result<()> {
             let mut eng = eng();
 
-            eng.following_handler().follower_commit_entries(Some(log_id(3, 1)), None, &[blank(2, 3)]);
+            eng.following_handler().commit_entries(Some(log_id(3, 1)), None, &[blank(2, 3)]);
 
             assert_eq!(Some(&log_id(2, 3)), eng.state.committed());
             assert_eq!(
@@ -567,10 +564,12 @@ mod tests {
             );
 
             assert_eq!(
-                vec![Command::FollowerCommit {
-                    already_committed: Some(log_id(1, 1)),
-                    upto: log_id(2, 3)
-                }],
+                vec![
+                    Command::FollowerCommit {
+                        already_committed: Some(log_id(1, 1)),
+                        upto: log_id(2, 3)
+                    }, //
+                ],
                 eng.output.commands
             );
 
@@ -651,8 +650,8 @@ mod tests {
             let mut eng = eng();
 
             // Neither of these two will update anything.
-            eng.following_handler().follower_do_append_entries(&Vec::<Entry<Foo>>::new(), 0);
-            eng.following_handler().follower_do_append_entries(&[blank(3, 4)], 1);
+            eng.following_handler().do_append_entries(&Vec::<Entry<Foo>>::new(), 0);
+            eng.following_handler().do_append_entries(&[blank(3, 4)], 1);
 
             assert_eq!(
                 &[
@@ -689,7 +688,7 @@ mod tests {
         fn test_follower_do_append_entries_no_membership_entries() -> anyhow::Result<()> {
             let mut eng = eng();
 
-            eng.following_handler().follower_do_append_entries(
+            eng.following_handler().do_append_entries(
                 &[
                     blank(100, 100), // just be ignored
                     blank(3, 4),
@@ -725,10 +724,8 @@ mod tests {
             );
 
             assert_eq!(
-                vec![
-                    Command::AppendInputEntries { range: 1..2 },
-                    Command::MoveInputCursorBy { n: 2 }
-                ],
+                vec![Command::AppendInputEntries { range: 1..2 }, //
+            ],
                 eng.output.commands
             );
 
@@ -743,7 +740,7 @@ mod tests {
             let mut eng = eng();
             eng.config.id = 2; // make it a member, the become learner
 
-            eng.following_handler().follower_do_append_entries(
+            eng.following_handler().do_append_entries(
                 &[
                     blank(3, 3), // ignored
                     blank(3, 3), // ignored
@@ -792,11 +789,10 @@ mod tests {
 
             assert_eq!(
                 vec![
-                    Command::AppendInputEntries { range: 3..5 },
+                    Command::AppendInputEntries { range: 3..5 }, //
                     Command::UpdateMembership {
                         membership: Arc::new(EffectiveMembership::new(Some(log_id(3, 5)), m34())),
                     },
-                    Command::MoveInputCursorBy { n: 5 }
                 ],
                 eng.output.commands
             );
@@ -813,7 +809,7 @@ mod tests {
             eng.config.id = 5; // make it a learner, then become follower
             eng.state.server_state = eng.calc_server_state();
 
-            eng.following_handler().follower_do_append_entries(
+            eng.following_handler().do_append_entries(
                 &[
                     Entry {
                         log_id: log_id(3, 4),
@@ -872,11 +868,10 @@ mod tests {
 
             assert_eq!(
                 vec![
-                    Command::AppendInputEntries { range: 1..5 },
+                    Command::AppendInputEntries { range: 1..5 }, //
                     Command::UpdateMembership {
                         membership: Arc::new(EffectiveMembership::new(Some(log_id(4, 7)), m45())),
                     },
-                    Command::MoveInputCursorBy { n: 5 }
                 ],
                 eng.output.commands
             );
