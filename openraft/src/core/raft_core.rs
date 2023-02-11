@@ -74,6 +74,7 @@ use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
+use crate::raft_state::VoteStateReader;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
 use crate::replication::Replicate;
@@ -261,7 +262,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
 
             let rpc = AppendEntriesRequest {
-                vote: self.engine.state.vote,
+                vote: *self.engine.state.get_vote(),
                 prev_log_id: progress.matching,
                 entries: vec![],
                 leader_commit: self.engine.state.committed().copied(),
@@ -632,7 +633,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             id: self.id,
 
             // --- data ---
-            current_term: self.engine.state.vote.term,
+            current_term: self.engine.state.get_vote().term,
             last_log_index: self.engine.state.last_log_id().index(),
             last_applied: self.engine.state.committed().copied(),
             snapshot: self.engine.state.snapshot_meta.last_log_id,
@@ -701,7 +702,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // invalidated.       e.g., in a same `vote`, a learner becomes voter and then
         // becomes learner again.             election timer should be cleared for learner,
         // set for voter and then cleared again.
-        self.next_election_time = VoteWiseTime::new(self.engine.state.vote, now + t);
+        self.next_election_time = VoteWiseTime::new(*self.engine.state.get_vote(), now + t);
     }
 
     pub(crate) async fn handle_building_snapshot_result(
@@ -816,15 +817,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
             self_id = display(self.id),
-            vote = display(self.engine.state.vote.summary()),
+            vote = display(self.engine.state.get_vote().summary()),
             "get current_leader"
         );
 
-        if !self.engine.state.vote.committed {
+        if !self.engine.state.get_vote().committed {
             return None;
         }
 
-        let id = self.engine.state.vote.node_id;
+        let id = self.engine.state.get_vote().node_id;
 
         // TODO: `is_voter()` is slow, maybe cache `current_leader`,
         //       e.g., only update it when membership or vote changes
@@ -936,7 +937,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let membership_log_id = self.engine.state.membership_state.effective().log_id;
         let network = self.network.new_client(target, target_node).await?;
 
-        let session_id = ReplicationSessionId::new(self.engine.state.vote, membership_log_id);
+        let session_id = ReplicationSessionId::new(*self.engine.state.get_vote(), membership_log_id);
 
         Ok(ReplicationCore::<C, N, S>::spawn(
             target,
@@ -1128,7 +1129,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(
             resp = debug(&resp),
             target = display(target),
-            my_vote = display(&self.engine.state.vote),
+            my_vote = display(&self.engine.state.get_vote()),
             my_last_log_id = debug(self.engine.state.last_log_id()),
             "recv vote response"
         );
@@ -1229,7 +1230,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 let now = Instant::now();
                 tracing::debug!("received tick: {}, now: {:?}", i, now);
 
-                let current_vote = &self.engine.state.vote;
+                let current_vote = self.engine.state.get_vote();
 
                 // Follower/Candidate timer: next election
                 if let Some(t) = self.next_election_time.get_time(current_vote) {
@@ -1362,11 +1363,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// If a message is sent by a previous server state but is received by current server state,
     /// it is a stale message and should be just ignored.
     fn does_vote_match(&self, vote: &Vote<C::NodeId>, msg: impl Display) -> bool {
-        if vote != &self.engine.state.vote {
+        if vote != self.engine.state.get_vote() {
             tracing::warn!(
                 "vote changed: msg sent by: {:?}; curr: {}; ignore when ({})",
                 vote,
-                self.engine.state.vote,
+                self.engine.state.get_vote(),
                 msg
             );
             false

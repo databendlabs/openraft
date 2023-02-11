@@ -10,6 +10,7 @@ use crate::engine::LogIdList;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::VoteResponse;
+use crate::raft_state::VoteStateReader;
 use crate::EffectiveMembership;
 use crate::LeaderId;
 use crate::LogId;
@@ -57,7 +58,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             last_log_id: Some(log_id(2, 2)),
         });
 
-        assert_eq!(Vote::new(2, 1), eng.state.vote);
+        assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
         assert!(eng.internal_server_state.is_following());
 
         assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -91,7 +92,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             last_log_id: Some(log_id(2, 2)),
         });
 
-        assert_eq!(Vote::new(2, 1), eng.state.vote);
+        assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
         assert_eq!(
             Some(btreeset! {1},),
             eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
@@ -132,7 +133,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             last_log_id: Some(log_id(2, 2)),
         });
 
-        assert_eq!(Vote::new(2, 2), eng.state.vote);
+        assert_eq!(Vote::new(2, 2), *eng.state.get_vote());
         assert!(eng.internal_server_state.is_leading());
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -172,7 +173,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             last_log_id: Some(log_id(2, 2)),
         });
 
-        assert_eq!(Vote::new(2, 1), eng.state.vote);
+        assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
         assert_eq!(
             Some(btreeset! {1},),
             eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
@@ -212,7 +213,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             last_log_id: Some(log_id(2, 2)),
         });
 
-        assert_eq!(Vote::new(2, 1), eng.state.vote);
+        assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
         assert_eq!(
             Some(btreeset! {1,2},),
             eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
@@ -249,7 +250,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             last_log_id: Some(log_id(2, 2)),
         });
 
-        assert_eq!(Vote::new_committed(2, 1), eng.state.vote);
+        assert_eq!(Vote::new_committed(2, 1), *eng.state.get_vote());
         assert_eq!(
             Some(btreeset! {1,2},),
             eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())

@@ -79,6 +79,12 @@ pub(crate) trait LogStateReader<NID: NodeId> {
     fn last_purged_log_id(&self) -> Option<&LogId<NID>>;
 }
 
+/// APIs to get vote.
+pub(crate) trait VoteStateReader<NID: NodeId> {
+    /// Get the current vote.
+    fn get_vote(&self) -> &Vote<NID>;
+}
+
 /// A struct used to represent the raft state which a Raft node needs.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RaftState<NID, N>
@@ -153,6 +159,16 @@ where
     }
 }
 
+impl<NID, N> VoteStateReader<NID> for RaftState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn get_vote(&self) -> &Vote<NID> {
+        &self.vote
+    }
+}
+
 impl<NID, N> Validate for RaftState<NID, N>
 where
     NID: NodeId,
@@ -211,6 +227,29 @@ where
         } else {
             None
         }
+    }
+
+    /// Find the first entry in the input that does not exist on local raft-log,
+    /// by comparing the log id.
+    pub(crate) fn first_conflicting_index<Ent>(&self, entries: &[Ent]) -> usize
+    where Ent: RaftLogId<NID> {
+        let l = entries.len();
+
+        for (i, ent) in entries.iter().enumerate() {
+            let log_id = ent.get_log_id();
+
+            if !self.has_log_id(log_id) {
+                tracing::debug!(
+                    at = display(i),
+                    entry_log_id = display(log_id),
+                    "found nonexistent log id"
+                );
+                return i;
+            }
+        }
+
+        tracing::debug!("not found nonexistent");
+        l
     }
 
     #[tracing::instrument(level = "debug", skip_all)]

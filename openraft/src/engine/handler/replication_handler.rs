@@ -10,6 +10,7 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
+use crate::raft_state::VoteStateReader;
 use crate::replication::ReplicationResult;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -50,7 +51,7 @@ where
     /// It is used by the leader when leadership is established.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_blank_log(&mut self) {
-        let log_id = LogId::new(self.state.vote.leader_id(), self.state.last_log_id().next_index());
+        let log_id = LogId::new(self.state.get_vote().leader_id(), self.state.last_log_id().next_index());
         self.state.log_ids.append(log_id);
         self.output.push_command(Command::AppendBlankLog { log_id });
 
@@ -162,7 +163,7 @@ where
     pub(crate) fn try_commit_granted(&mut self, granted: Option<LogId<NID>>) {
         // Only when the log id is proposed by current leader, it is committed.
         if let Some(c) = granted {
-            if c.leader_id.term != self.state.vote.term || c.leader_id.node_id != self.state.vote.node_id {
+            if c.leader_id.term != self.state.get_vote().term || c.leader_id.node_id != self.state.get_vote().node_id {
                 return;
             }
         }
