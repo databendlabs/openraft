@@ -7,6 +7,7 @@ use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::entry::RaftEntry;
+use crate::raft::AppendEntriesResponse;
 use crate::raft_state::LogStateReader;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -36,6 +37,65 @@ where
     NID: NodeId,
     N: Node,
 {
+    /// Append entries to follower/learner.
+    ///
+    /// Also clean conflicting entries and update membership state.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn append_entries<'a, Ent>(
+        &mut self,
+        prev_log_id: Option<LogId<NID>>,
+        entries: &[Ent],
+        leader_committed: Option<LogId<NID>>,
+    ) -> AppendEntriesResponse<NID>
+    where
+        Ent: RaftEntry<NID, N> + MessageSummary<Ent> + 'a,
+    {
+        tracing::debug!(
+            prev_log_id = display(prev_log_id.summary()),
+            entries = display(entries.summary()),
+            leader_committed = display(leader_committed.summary()),
+            "append-entries request"
+        );
+        tracing::debug!(
+            my_last_log_id = display(self.state.last_log_id().summary()),
+            my_committed = display(self.state.committed().summary()),
+            "local state"
+        );
+
+        if let Some(ref prev) = prev_log_id {
+            if !self.state.has_log_id(prev) {
+                let local = self.state.get_log_id(prev.index);
+                tracing::debug!(local = display(local.summary()), "prev_log_id does not match");
+
+                self.truncate_logs(prev.index);
+                return AppendEntriesResponse::Conflict;
+            }
+        }
+
+        // else `prev_log_id.is_none()` means replicating logs from the very beginning.
+
+        tracing::debug!(
+            committed = display(self.state.committed().summary()),
+            entries = display(entries.summary()),
+            "prev_log_id matches, skip matching entries",
+        );
+
+        let l = entries.len();
+        let since = self.state.first_conflicting_index(entries);
+        if since < l {
+            // Before appending, if an entry overrides an conflicting one,
+            // the entries after it has to be deleted first.
+            // Raft requires log ids are in total order by (term,index).
+            // Otherwise the log id with max index makes committed entry invisible in election.
+            self.truncate_logs(entries[since].get_log_id().index);
+            self.follower_do_append_entries(entries, since);
+        }
+
+        self.follower_commit_entries(leader_committed, prev_log_id, entries);
+
+        AppendEntriesResponse::Success
+    }
+
     /// Append membership log if membership config entries are found, after appending entries to
     /// log.
     fn follower_append_membership<'a, Ent>(&mut self, entries: impl DoubleEndedIterator<Item = &'a Ent>)

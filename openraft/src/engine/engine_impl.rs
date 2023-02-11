@@ -416,7 +416,6 @@ where
         self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
 
-    // TODO: move logic to FollowingHandler
     /// Append entries to follower/learner.
     ///
     /// Also clean conflicting entries and update membership state.
@@ -452,37 +451,8 @@ where
 
         // Vote is legal. Check if prev_log_id matches local raft-log.
 
-        if let Some(ref prev) = prev_log_id {
-            if !self.state.has_log_id(prev) {
-                let local = self.state.get_log_id(prev.index);
-                tracing::debug!(local = debug(&local), "prev_log_id does not match");
-
-                self.following_handler().truncate_logs(prev.index);
-                return AppendEntriesResponse::Conflict;
-            }
-        }
-        // else `prev_log_id.is_none()` means replicating logs from the very beginning.
-
-        tracing::debug!(
-            committed = display(self.state.committed().summary()),
-            entries = display(entries.summary()),
-            "prev_log_id matches, skip matching entries",
-        );
-
-        let l = entries.len();
-        let since = self.following_handler().state.first_conflicting_index(entries);
-        if since < l {
-            // Before appending, if an entry overrides an conflicting one,
-            // the entries after it has to be deleted first.
-            // Raft requires log ids are in total order by (term,index).
-            // Otherwise the log id with max index makes committed entry invisible in election.
-            self.following_handler().truncate_logs(entries[since].get_log_id().index);
-            self.following_handler().follower_do_append_entries(entries, since);
-        }
-
-        self.following_handler().follower_commit_entries(leader_committed, prev_log_id, entries);
-
-        AppendEntriesResponse::Success
+        let mut fh = self.following_handler();
+        fh.append_entries(prev_log_id, entries, leader_committed)
     }
 
     /// Leader steps down(convert to learner) once the membership not containing it is committed.
