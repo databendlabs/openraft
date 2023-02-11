@@ -171,9 +171,10 @@ struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>>
 ///
 /// ### shutting down
 /// If any of the interfaces returns a `RaftError::ShuttingDown`, this indicates that the Raft node
-/// is shutting down (potentially for data safety reasons due to a storage error), and the `shutdown`
-/// method should be called on this type to await the shutdown of the node. If the parent
-/// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the trick.
+/// is shutting down (potentially for data safety reasons due to a storage error), and the
+/// `shutdown` method should be called on this type to await the shutdown of the node. If the parent
+/// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the
+/// trick.
 pub struct Raft<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     inner: Arc<RaftInner<C, N, S>>,
 }
@@ -191,8 +192,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// Raft's runtime config. See the docs on the `Config` object for more details.
     ///
     /// ### `network`
-    /// An implementation of the `RaftNetworkFactory` trait which will be used by Raft for sending RPCs to
-    /// peer nodes within the cluster. See the docs on the `RaftNetworkFactory` trait for more details.
+    /// An implementation of the `RaftNetworkFactory` trait which will be used by Raft for sending
+    /// RPCs to peer nodes within the cluster. See the docs on the `RaftNetworkFactory` trait
+    /// for more details.
     ///
     /// ### `storage`
     /// An implementation of the `RaftStorage` trait which will be used by Raft for data storage.
@@ -277,8 +279,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
     /// Enable or disable raft internal ticker.
     ///
-    /// The internal ticker triggers all timeout based event, e.g. election event or heartbeat event.
-    /// By disabling the ticker, a follower will not enter candidate again, a leader will not send heartbeat.
+    /// The internal ticker triggers all timeout based event, e.g. election event or heartbeat
+    /// event. By disabling the ticker, a follower will not enter candidate again, a leader will
+    /// not send heartbeat.
     pub fn enable_tick(&self, enabled: bool) {
         self.inner.tick_handle.enable(enabled);
     }
@@ -345,7 +348,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
     /// Submit a VoteRequest (RequestVote in the spec) RPC to this Raft node.
     ///
-    /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes (§5.2).
+    /// These RPCs are sent by cluster peers which are in candidate state attempting to gather votes
+    /// (§5.2).
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn vote(&self, rpc: VoteRequest<C::NodeId>) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
         tracing::debug!(rpc = display(rpc.summary()), "Raft::vote()");
@@ -356,8 +360,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
     /// Submit an InstallSnapshot RPC to this Raft node.
     ///
-    /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node up-to-speed
-    /// with the leader (§7).
+    /// These RPCs are sent by the cluster leader in order to bring a new node or a slow node
+    /// up-to-speed with the leader (§7).
     #[tracing::instrument(level = "debug", skip(self, rpc))]
     pub async fn install_snapshot(
         &self,
@@ -379,7 +383,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         self.metrics().borrow().current_leader
     }
 
-    /// Check to ensure this node is still the cluster leader, in order to guard against stale reads (§8).
+    /// Check to ensure this node is still the cluster leader, in order to guard against stale reads
+    /// (§8).
     ///
     /// The actual read operation itself is up to the application, this method just ensures that
     /// the read will not be stale.
@@ -395,17 +400,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// application state machine. The result of applying the request to the state machine will
     /// be returned as the response from this method.
     ///
-    /// Our goal for Raft is to implement linearizable semantics. If the leader crashes after committing
-    /// a log entry but before responding to the client, the client may retry the command with a new
-    /// leader, causing it to be executed a second time. As such, clients should assign unique serial
-    /// numbers to every command. Then, the state machine should track the latest serial number
-    /// processed for each client, along with the associated response. If it receives a command whose
-    /// serial number has already been executed, it responds immediately without re-executing the
-    /// request (§8). The `RaftStorage::apply_entry_to_state_machine` method is the perfect place
-    /// to implement this.
+    /// Our goal for Raft is to implement linearizable semantics. If the leader crashes after
+    /// committing a log entry but before responding to the client, the client may retry the
+    /// command with a new leader, causing it to be executed a second time. As such, clients
+    /// should assign unique serial numbers to every command. Then, the state machine should
+    /// track the latest serial number processed for each client, along with the associated
+    /// response. If it receives a command whose serial number has already been executed, it
+    /// responds immediately without re-executing the request (§8). The
+    /// `RaftStorage::apply_entry_to_state_machine` method is the perfect place to implement
+    /// this.
     ///
-    /// These are application specific requirements, and must be implemented by the application which is
-    /// being built on top of Raft.
+    /// These are application specific requirements, and must be implemented by the application
+    /// which is being built on top of Raft.
     #[tracing::instrument(level = "debug", skip(self, app_data))]
     pub async fn client_write(
         &self,
@@ -438,7 +444,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     ///
     /// Once a node successfully initialized it will commit a new membership config
     /// log entry to store.
-    /// Then it starts to work, i.e., entering Candidate state and try electing itself as the leader.
+    /// Then it starts to work, i.e., entering Candidate state and try electing itself as the
+    /// leader.
     ///
     /// More than one node performing `initialize()` with the same config is safe,
     /// with different config will result in split brain condition.
@@ -461,17 +468,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// - Add a node as learner into the cluster.
     /// - Setup replication from leader to it.
     ///
-    /// If blocking is true, this function blocks until the leader believes the logs on the new node is up to date,
-    /// i.e., ready to join the cluster, as a voter, by calling `change_membership`.
-    /// When finished, it returns the last log id on the new node, in a `RaftResponse::LogId`.
+    /// If blocking is true, this function blocks until the leader believes the logs on the new node
+    /// is up to date, i.e., ready to join the cluster, as a voter, by calling
+    /// `change_membership`. When finished, it returns the last log id on the new node, in a
+    /// `RaftResponse::LogId`.
     ///
-    /// If blocking is false, this function returns at once as successfully setting up the replication.
+    /// If blocking is false, this function returns at once as successfully setting up the
+    /// replication.
     ///
-    /// If the node to add is already a voter or learner, it returns `RaftResponse::NoChange` at once.
+    /// If the node to add is already a voter or learner, it returns `RaftResponse::NoChange` at
+    /// once.
     ///
     /// The caller can attach additional info `node` to this node id.
-    /// A `node` can be used to store the network address of a node. Thus an application does not need another store for
-    /// mapping node-id to ip-addr when implementing the RaftNetwork.
+    /// A `node` can be used to store the network address of a node. Thus an application does not
+    /// need another store for mapping node-id to ip-addr when implementing the RaftNetwork.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(id)))]
     pub async fn add_learner(
         &self,
@@ -522,8 +532,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         Ok(r)
     }
 
-    /// Returns Ok() with the latest known matched log id if it should quit waiting: leader change, node removed, or
-    /// replication becomes upto date.
+    /// Returns Ok() with the latest known matched log id if it should quit waiting: leader change,
+    /// node removed, or replication becomes upto date.
     ///
     /// Returns Err() if it should keep waiting.
     fn check_replication_upto_date(
@@ -574,27 +584,31 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
     /// Propose a cluster configuration change.
     ///
-    /// A node in the proposed config has to be a learner, otherwise it fails with LearnerNotFound error.
+    /// A node in the proposed config has to be a learner, otherwise it fails with LearnerNotFound
+    /// error.
     ///
     /// Internally:
     /// - It proposes a **joint** config.
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
-    /// If `allow_lagging` is true, it will always propose the new membership and wait until committed.
-    /// Otherwise it returns error `ChangeMembershipError::LearnerIsLagging` if there is a lagging learner.
+    /// If `allow_lagging` is true, it will always propose the new membership and wait until
+    /// committed. Otherwise it returns error `ChangeMembershipError::LearnerIsLagging` if there
+    /// is a lagging learner.
     ///
     /// If `turn_to_learner` is true, then all the members which not exists in the new membership,
     /// will be turned into learners, otherwise will be removed.
     ///
     /// Example of `turn_to_learner` usage:
-    /// If the original membership is {"members":{1,2,3}, "learners":{}}, and call `change_membership`
-    /// with `node_list` {3,4,5}, then:
-    ///    - If `turn_to_learner` is true, after commit the new membership is {"members":{3,4,5}, "learners":{1,2}}.
-    ///    - Otherwise if `turn_to_learner` is false, then the new membership is {"members":{3,4,5}, "learners":{}}, in
-    ///      which the members not exists in the new membership just be removed from the cluster.
+    /// If the original membership is {"members":{1,2,3}, "learners":{}}, and call
+    /// `change_membership` with `node_list` {3,4,5}, then:
+    ///    - If `turn_to_learner` is true, after commit the new membership is {"members":{3,4,5},
+    ///      "learners":{1,2}}.
+    ///    - Otherwise if `turn_to_learner` is false, then the new membership is {"members":{3,4,5},
+    ///      "learners":{}}, in which the members not exists in the new membership just be removed
+    ///      from the cluster.
     ///
-    /// If it loses leadership or crashed before committing the second **uniform** config log, the cluster is left in
-    /// the **joint** config.
+    /// If it loses leadership or crashed before committing the second **uniform** config log, the
+    /// cluster is left in the **joint** config.
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
@@ -807,7 +821,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// Shutdown this Raft node.
     pub async fn shutdown(&self) -> Result<(), JoinError> {
         if let Some(tx) = self.inner.tx_shutdown.lock().await.take() {
-            // A failure to send means the RaftCore is already shutdown. Continue to check the task return value.
+            // A failure to send means the RaftCore is already shutdown. Continue to check the task
+            // return value.
             let send_res = tx.send(());
             tracing::info!("sending shutdown signal to RaftCore, sending res: {:?}", send_res);
         }
@@ -912,8 +927,8 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         /// If expectation is not satisfied, a corresponding error will return.
         when: Option<Expectation>,
 
-        /// If `turn_to_learner` is `true`, then all the members which do not exist in the new membership
-        /// will be turned into learners, otherwise they will be removed.
+        /// If `turn_to_learner` is `true`, then all the members which do not exist in the new
+        /// membership will be turned into learners, otherwise they will be removed.
         turn_to_learner: bool,
 
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,

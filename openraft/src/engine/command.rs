@@ -31,7 +31,8 @@ where
 
     /// Append a blank log.
     ///
-    /// One of the usage is when a leader is established, a blank log is written to commit the state.
+    /// One of the usage is when a leader is established, a blank log is written to commit the
+    /// state.
     AppendBlankLog { log_id: LogId<NID> },
 
     /// Replicate the committed log id to other nodes
@@ -69,7 +70,8 @@ where
     /// Membership config changed, need to update replication streams.
     /// The Runtime has to close all old replications and start new ones.
     /// Because a replication stream should only report state for one membership config.
-    /// When membership config changes, the membership log id stored in ReplicationCore has to be updated.
+    /// When membership config changes, the membership log id stored in ReplicationCore has to be
+    /// updated.
     RebuildReplicationStreams {
         /// Targets to replicate to.
         targets: Vec<(NID, ProgressEntry<NID>)>,
@@ -90,8 +92,9 @@ where
     /// Send vote to all other members
     SendVote { vote_req: VoteRequest<NID> },
 
-    /// Install a timer to trigger an election, e.g., calling `Engine::elect()` after some `timeout` which is decided
-    /// by the runtime. An already installed timer should be cleared.
+    /// Install a timer to trigger an election, e.g., calling `Engine::elect()` after some
+    /// `timeout` which is decided by the runtime. An already installed timer should be
+    /// cleared.
     InstallElectionTimer {
         /// When a candidate fails to elect, it falls back to follower.
         /// If many enough greater last-log-ids are seen, then this node can never become a leader.
@@ -102,10 +105,12 @@ where
     /// Purge log from the beginning to `upto`, inclusive.
     PurgeLog { upto: LogId<NID> },
 
-    /// Delete logs that conflict with the leader from a follower/learner since log id `since`, inclusive.
+    /// Delete logs that conflict with the leader from a follower/learner since log id `since`,
+    /// inclusive.
     DeleteConflictLog { since: LogId<NID> },
 
-    /// Install a snapshot data file: e.g., replace state machine with snapshot, save snapshot data.
+    /// Install a snapshot data file: e.g., replace state machine with snapshot, save snapshot
+    /// data.
     InstallSnapshot { snapshot_meta: SnapshotMeta<NID, N> },
 
     /// A received snapshot does not need to be installed, just drop buffered snapshot data.

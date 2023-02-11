@@ -15,7 +15,8 @@ use crate::fixtures::RaftRouter;
 ///
 /// - bring a single-node cluster online.
 /// - add a few new nodes and assert that they've joined the cluster properly.
-/// - propose a new config change where the old master is not present, and assert that it steps down.
+/// - propose a new config change where the old master is not present, and assert that it steps
+///   down.
 /// - temporarily isolate the new master, and assert that a new master takes over.
 /// - restore the isolated node and assert that it becomes a follower.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]

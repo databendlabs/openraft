@@ -16,7 +16,8 @@ use crate::fixtures::RaftRouter;
 ///
 /// - brings 2 nodes online: one leader and one learner.
 /// - write one log to the leader.
-/// - asserts that when metrics.last_applied is upto date, the state machine should be upto date too.
+/// - asserts that when metrics.last_applied is upto date, the state machine should be upto date
+///   too.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn metrics_state_machine_consistency() -> Result<()> {
     let config = Arc::new(

@@ -55,7 +55,8 @@ impl ExampleNetwork {
     }
 }
 
-// NOTE: This could be implemented also on `Arc<ExampleNetwork>`, but since it's empty, implemented directly.
+// NOTE: This could be implemented also on `Arc<ExampleNetwork>`, but since it's empty, implemented
+// directly.
 #[async_trait]
 impl RaftNetworkFactory<ExampleTypeConfig> for ExampleNetwork {
     type Network = ExampleNetworkConnection;

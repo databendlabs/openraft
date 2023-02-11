@@ -5,11 +5,11 @@ use crate::NodeId;
 /// LeaderId is identifier of a `leader`.
 ///
 /// TODO(xp): this might be changed in future:
-/// In raft spec that in a term there is at most one leader, thus a `term` is enough to differentiate leaders.
-/// That is why raft uses `(term, index)` to uniquely identify a log entry.
+/// In raft spec that in a term there is at most one leader, thus a `term` is enough to
+/// differentiate leaders. That is why raft uses `(term, index)` to uniquely identify a log entry.
 ///
-/// But under this(dirty and stupid) simplification, a `Leader` is actually identified by `(term, node_id)`.
-/// By introducing `LeaderId {term, node_id}`, things become easier to understand.
+/// But under this(dirty and stupid) simplification, a `Leader` is actually identified by `(term,
+/// node_id)`. By introducing `LeaderId {term, node_id}`, things become easier to understand.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 // Clear the bound so that serde will generate required bounds.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]

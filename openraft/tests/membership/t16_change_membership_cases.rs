@@ -390,7 +390,8 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
     tracing::info!("--- removed nodes are left in follower state");
     {
         for id in only_in_old.clone() {
-            // The removed node will be left in follower state, it can never elect itself successfully.
+            // The removed node will be left in follower state, it can never elect itself
+            // successfully.
             router
                 .wait(id, timeout())
                 .metrics(

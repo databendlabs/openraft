@@ -1,4 +1,5 @@
-//! Progress tracks replication state, i.e., it can be considered a map of node id to already replicated log id.
+//! Progress tracks replication state, i.e., it can be considered a map of node id to already
+//! replicated log id.
 //!
 //! A progress internally is a vector of scalar values.
 //! The scalar value is monotonically incremental. Decreasing it is not allowed.
@@ -62,8 +63,8 @@ where
     /// Get the greatest value that is granted by a quorum defined in [`quorum_set()`].
     ///
     /// In raft or other distributed consensus,
-    /// To commit a value, the value has to be **granted by a quorum** and has to be the greatest value
-    /// every proposed.
+    /// To commit a value, the value has to be **granted by a quorum** and has to be the greatest
+    /// value every proposed.
     fn granted(&self) -> &P;
 
     /// Returns the reference to the quorum set
@@ -110,7 +111,8 @@ where
     ///
     /// The first `voter_count` elements are voters, the left are learners.
     /// Learner elements are always still.
-    /// A voter element will be moved up to keep them in a descending order, when a new value is updated.
+    /// A voter element will be moved up to keep them in a descending order, when a new value is
+    /// updated.
     vector: Vec<(ID, V)>,
 
     /// Statistics of how it runs.
@@ -229,8 +231,8 @@ where
     /// there is possibly an update to the committed.
     ///
     /// This way it gets rid of a portion of unnecessary re-calculation of committed,
-    /// and avoids unnecessary sorting: progresses are kept in order and only values greater than committed need to
-    /// sort.
+    /// and avoids unnecessary sorting: progresses are kept in order and only values greater than
+    /// committed need to sort.
     ///
     /// E.g., given 3 ids with value `1,3,5`,
     /// the committed is `3` and assumes a majority quorum set is used.

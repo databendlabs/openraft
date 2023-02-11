@@ -164,7 +164,8 @@ pub enum Violation<NID: NodeId> {
     },
 }
 
-/// A storage error could be either a defensive check error or an error occurred when doing the actual io operation.
+/// A storage error could be either a defensive check error or an error occurred when doing the
+/// actual io operation.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum StorageError<NID>

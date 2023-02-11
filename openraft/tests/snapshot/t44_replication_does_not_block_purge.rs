@@ -15,9 +15,11 @@ use crate::fixtures::RaftRouter;
 /// Replication blocks purge, but it should not purge for ever.
 /// Every new replication action should avoid using a log that is scheduled to be purged.
 ///
-/// - Bring up one leader and two isolated learners. The leader keeps trying replicating logs to learners.
-/// - Trigger snapshot on the leader, logs should be able to be purged. Because replication should avoid using a log id
-///   `i` that is `RaftState.last_purged_log_id() <= i <= RaftState.purge_upto()`.
+/// - Bring up one leader and two isolated learners. The leader keeps trying replicating logs to
+///   learners.
+/// - Trigger snapshot on the leader, logs should be able to be purged. Because replication should
+///   avoid using a log id `i` that is `RaftState.last_purged_log_id() <= i <=
+///   RaftState.purge_upto()`.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn replication_does_not_block_purge() -> Result<()> {
     let max_keep = 2;

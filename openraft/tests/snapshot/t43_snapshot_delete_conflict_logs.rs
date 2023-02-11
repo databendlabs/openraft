@@ -26,7 +26,8 @@ use crate::fixtures::blank;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-/// Installing snapshot on a node that has logs conflict with snapshot.meta.last_log_id will delete all conflict logs.
+/// Installing snapshot on a node that has logs conflict with snapshot.meta.last_log_id will delete
+/// all conflict logs.
 ///
 /// - Feed logs to node-0 to build a snapshot.
 /// - Init node-1 with conflicting log.

@@ -23,7 +23,8 @@ where
 {
     /// Update engine state when a new snapshot is built or installed.
     ///
-    /// Engine records only the metadata of a snapshot. Snapshot data is stored by RaftStorage implementation.
+    /// Engine records only the metadata of a snapshot. Snapshot data is stored by RaftStorage
+    /// implementation.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn update_snapshot(&mut self, meta: SnapshotMeta<NID, N>) -> bool {
         tracing::info!("update_snapshot: {:?}", meta);

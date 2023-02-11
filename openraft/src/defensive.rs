@@ -65,7 +65,8 @@ where
     Self: Wrapper<C, T>,
 {
     /// Ensure that logs that have greater index than last_applied should have greater log_id.
-    /// Invariant must hold: `log.log_id.index > last_applied.index` implies `log.log_id > last_applied`.
+    /// Invariant must hold: `log.log_id.index > last_applied.index` implies `log.log_id >
+    /// last_applied`.
     async fn defensive_no_dirty_log(&mut self) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
@@ -87,8 +88,8 @@ where
         Ok(())
     }
 
-    /// Ensure that current_term must increment for every update, and for every term there could be only one value for
-    /// voted_for.
+    /// Ensure that current_term must increment for every update, and for every term there could be
+    /// only one value for voted_for.
     async fn defensive_incremental_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());

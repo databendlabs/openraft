@@ -101,7 +101,8 @@ pub struct Config {
     pub heartbeat_interval: u64,
 
     /// The timeout for sending then installing the last snapshot segment,
-    /// in millisecond. It is also used as the timeout for sending a non-last segment, if `send_snapshot_timeout` is 0.
+    /// in millisecond. It is also used as the timeout for sending a non-last segment, if
+    /// `send_snapshot_timeout` is 0.
     #[clap(long, default_value = "200")]
     pub install_snapshot_timeout: u64,
 
@@ -124,8 +125,8 @@ pub struct Config {
     /// A follower falls behind this index are replicated with snapshot.
     /// A follower falls within this index are replicated with log entries.
     ///
-    /// This value should be greater than snapshot_policy.SnapshotPolicy.LogsSinceLast, otherwise transmitting a
-    /// snapshot may not fix the lagging.
+    /// This value should be greater than snapshot_policy.SnapshotPolicy.LogsSinceLast, otherwise
+    /// transmitting a snapshot may not fix the lagging.
     #[clap(long, default_value = "5000")]
     pub replication_lag_threshold: u64,
 
@@ -157,8 +158,8 @@ pub struct Config {
     /// a follower won't wake up to enter candidate state,
     /// and a leader won't send heartbeat.
     ///
-    /// This flag is mainly used for test, or to build a consensus system that does not depend on wall clock.
-    /// The value of this config is evaluated as follow:
+    /// This flag is mainly used for test, or to build a consensus system that does not depend on
+    /// wall clock. The value of this config is evaluated as follow:
     /// - being absent: true
     /// - `--enable-tick`: true
     /// - `--enable-tick=true`: true
@@ -176,7 +177,8 @@ pub struct Config {
            default_missing_value = "true")]
     pub enable_heartbeat: bool,
 
-    /// Whether a follower will enter candidate state if it does not receive message from the leader for a while.
+    /// Whether a follower will enter candidate state if it does not receive message from the
+    /// leader for a while.
     #[clap(long,
            default_value_t = true,
            action = clap::ArgAction::Set,

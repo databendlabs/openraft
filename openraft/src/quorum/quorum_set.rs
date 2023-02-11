@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 /// A set of quorums is a collection of quorum.
 ///
-/// A quorum is a collection of nodes that a read or write operation in distributed system has to contact to.
-/// See: http://web.mit.edu/6.033/2005/wwwdocs/quorum_note.html
+/// A quorum is a collection of nodes that a read or write operation in distributed system has to
+/// contact to. See: http://web.mit.edu/6.033/2005/wwwdocs/quorum_note.html
 pub(crate) trait QuorumSet<ID: 'static> {
     type Iter: Iterator<Item = ID>;
 

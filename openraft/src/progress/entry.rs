@@ -113,8 +113,8 @@ impl<NID: NodeId> ProgressEntry<NID> {
 
     /// Initialize a replication action: sending log entries or sending snapshot.
     ///
-    /// If there is an action in progress, i.e., `inflight` is not None, it returns an `Err` containing the current
-    /// `inflight` data
+    /// If there is an action in progress, i.e., `inflight` is not None, it returns an `Err`
+    /// containing the current `inflight` data
     #[allow(dead_code)]
     pub(crate) fn next_send(
         &mut self,

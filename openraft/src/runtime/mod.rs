@@ -6,7 +6,8 @@ use crate::StorageError;
 
 /// Defines behaviors of a runtime to support the protocol engine.
 ///
-/// An Engine defines the consensus algorithm, i.e., what to do(`command`) when some `event` happens:
+/// An Engine defines the consensus algorithm, i.e., what to do(`command`) when some `event`
+/// happens:
 ///
 /// It receives events such as `write-log-entry` from a client,
 /// or `elect` from a timer, and outputs `command`, such as
@@ -67,11 +68,11 @@ pub(crate) trait RaftRuntime<C: RaftTypeConfig> {
     /// TODO(xp): remove this method. The API should run all commands in one shot.
     ///           E.g. `run_engine_commands(input_entries, commands)`.
     ///           But it relates to the different behaviors of server states.
-    ///           LeaderState is a wrapper of RaftCore thus it can not just reuse `RaftCore::run_engine_commands()`.
-    ///           Thus LeaderState may have to re-implememnt every command.
-    ///           This can be done after moving all raft-algorithm logic into Engine.
-    ///           Then a Runtime do not need to differentiate states such as LeaderState or FollowerState and all
-    ///           command execution can be implemented in one method.
+    ///           LeaderState is a wrapper of RaftCore thus it can not just reuse
+    /// `RaftCore::run_engine_commands()`.           Thus LeaderState may have to re-implememnt
+    /// every command.           This can be done after moving all raft-algorithm logic into
+    /// Engine.           Then a Runtime do not need to differentiate states such as LeaderState
+    /// or FollowerState and all           command execution can be implemented in one method.
     async fn run_command<'e, Ent>(
         &mut self,
         input_entries: &'e [Ent],

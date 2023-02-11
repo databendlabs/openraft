@@ -36,11 +36,12 @@ where
 
     // TODO: let RaftStore store node-id.
     //       To achieve this, RaftStorage must store node-id
-    //       To achieve this, RaftStorage has to provide API to initialize with a node id and API to read node-id
+    //       To achieve this, RaftStorage has to provide API to initialize with a node id and API to
+    // read node-id
     /// Get Raft's state information from storage.
     ///
-    /// When the Raft node is first started, it will call this interface to fetch the last known state from stable
-    /// storage.
+    /// When the Raft node is first started, it will call this interface to fetch the last known
+    /// state from stable storage.
     pub async fn get_initial_state(&mut self) -> Result<RaftState<C::NodeId, C::Node>, StorageError<C::NodeId>> {
         let vote = self.sto.read_vote().await?;
         let st = self.sto.get_log_state().await?;
@@ -92,12 +93,12 @@ where
     /// Returns the last 2 membership config found in log or state machine.
     ///
     /// A raft node needs to store at most 2 membership config log:
-    /// - The first one must be committed, because raft allows to propose new membership only when the previous one is
-    ///   committed.
+    /// - The first one must be committed, because raft allows to propose new membership only when
+    ///   the previous one is committed.
     /// - The second may be committed or not.
     ///
-    /// Because when handling append-entries RPC, (1) a raft follower will delete logs that are inconsistent with the
-    /// leader,
+    /// Because when handling append-entries RPC, (1) a raft follower will delete logs that are
+    /// inconsistent with the leader,
     /// and (2) a membership will take effect at once it is written,
     /// a follower needs to revert the effective membership to a previous one.
     ///
@@ -134,8 +135,9 @@ where
 
     /// Get the last 2 membership configs found in the log.
     ///
-    /// This method returns at most membership logs with greatest log index which is `>=since_index`.
-    /// If no such membership log is found, it returns `None`, e.g., when logs are cleaned after being applied.
+    /// This method returns at most membership logs with greatest log index which is
+    /// `>=since_index`. If no such membership log is found, it returns `None`, e.g., when logs
+    /// are cleaned after being applied.
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn last_membership_in_log(
         &mut self,

@@ -18,7 +18,8 @@ use crate::fixtures::RaftRouter;
 /// Test a second compaction should not lose membership.
 /// To ensure the bug is fixed:
 /// - Snapshot stores membership when compaction.
-/// - But compaction does not extract membership config from Snapshot entry, only from MembershipConfig entry.
+/// - But compaction does not extract membership config from Snapshot entry, only from
+///   MembershipConfig entry.
 ///
 /// What does this test do?
 ///

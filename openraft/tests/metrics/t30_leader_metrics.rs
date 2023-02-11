@@ -22,8 +22,8 @@ use crate::fixtures::RaftRouter;
 ///
 /// - brings 5 nodes online: one leader and 4 learner.
 /// - add 4 learner as follower.
-/// - asserts that the leader was able to successfully commit logs and that the followers has successfully replicated
-///   the payload.
+/// - asserts that the leader was able to successfully commit logs and that the followers has
+///   successfully replicated the payload.
 /// - remove one follower: node-4
 /// - asserts node-4 becomes learner and the leader stops sending logs to it.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]

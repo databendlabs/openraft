@@ -16,8 +16,8 @@ use crate::fixtures::RaftRouter;
 ///
 /// - brings 2 nodes online: one leader and one learner.
 /// - write one log to the leader.
-/// - asserts that the leader was able to successfully commit its initial payload and that the learner has successfully
-///   replicated the payload.
+/// - asserts that the leader was able to successfully commit its initial payload and that the
+///   learner has successfully replicated the payload.
 /// - shutdown all and restart the learner node.
 /// - asserts the learner stays in non-voter state.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]

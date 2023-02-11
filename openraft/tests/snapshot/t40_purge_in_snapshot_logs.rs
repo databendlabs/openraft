@@ -12,8 +12,9 @@ use tokio::time::sleep;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-/// Leader logs should be deleted upto snapshot.last_log_id-max_in_snapshot_log_to_keep after building snapshot;
-/// Follower/learner should delete upto snapshot.last_log_id after installing snapshot.
+/// Leader logs should be deleted upto snapshot.last_log_id-max_in_snapshot_log_to_keep after
+/// building snapshot; Follower/learner should delete upto snapshot.last_log_id after installing
+/// snapshot.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn purge_in_snapshot_logs() -> Result<()> {
     let max_keep = 2;
@@ -34,7 +35,8 @@ async fn purge_in_snapshot_logs() -> Result<()> {
     let leader = router.get_raft_handle(&0)?;
     let learner = router.get_raft_handle(&1)?;
 
-    // Delay every log reading to expose concurrent log reading bugs, by letting logs be purged before being read.
+    // Delay every log reading to expose concurrent log reading bugs, by letting logs be purged
+    // before being read.
     let mut sto0 = router.get_storage_handle(&0)?;
     sto0.set_delay_log_read(100);
 
@@ -67,8 +69,8 @@ async fn purge_in_snapshot_logs() -> Result<()> {
             .await?;
     }
 
-    // There may be a cached append-entries request that already loads log 10..15 from the store, just before building
-    // snapshot.
+    // There may be a cached append-entries request that already loads log 10..15 from the store,
+    // just before building snapshot.
     sleep(Duration::from_millis(500)).await;
 
     tracing::info!("--- restore replication, install the 2nd snapshot on learner");

@@ -18,7 +18,8 @@ use crate::fixtures::RaftRouter;
 async fn adding_learner_do_not_use_matched_leader_id() -> Result<()> {
     let config = Arc::new(
         Config {
-            // Replicate log one by one, to trigger a state report with matched=(0,0,0), which is the first log id.
+            // Replicate log one by one, to trigger a state report with matched=(0,0,0), which is
+            // the first log id.
             max_payload_entries: 1,
             ..Default::default()
         }

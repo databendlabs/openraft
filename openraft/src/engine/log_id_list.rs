@@ -28,8 +28,8 @@ where NID: NodeId
     /// E.g., log ids with the same leader id will be got rid of, except the smallest.
     /// The `last_log_id` will always present at the end, to simplify searching.
     ///
-    /// Given an example with the logs `[(2,2),(2,3),(5,4),(5,5)]`, and the `last_purged_log_id` is (1,1).
-    /// This function returns `[(1,1),(2,2),(5,4),(5,5)]`.
+    /// Given an example with the logs `[(2,2),(2,3),(5,4),(5,5)]`, and the `last_purged_log_id` is
+    /// (1,1). This function returns `[(1,1),(2,2),(5,4),(5,5)]`.
     ///
     /// It adopts a modified binary-search algo.
     /// ```text
@@ -172,10 +172,11 @@ impl<NID: NodeId> LogIdList<NID> {
     /// Append a new `log_id`.
     ///
     /// The log id to append does not have to be the next to the last one in `key_log_ids`.
-    /// In such case, it fills the gap at index `i` with `LogId{leader_id: prev_log_id.leader, index: i}`.
+    /// In such case, it fills the gap at index `i` with `LogId{leader_id: prev_log_id.leader,
+    /// index: i}`.
     ///
-    /// NOTE: The last two in `key_log_ids` may be with the same `leader_id`, because `last_log_id` always present in
-    /// `log_ids`.
+    /// NOTE: The last two in `key_log_ids` may be with the same `leader_id`, because `last_log_id`
+    /// always present in `log_ids`.
     pub(crate) fn append(&mut self, new_log_id: LogId<NID>) {
         let l = self.key_log_ids.len();
         if l == 0 {

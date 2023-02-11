@@ -38,7 +38,8 @@ where
     pub last_membership: EffectiveMembership<NID, N>,
 
     /// To identify a snapshot when transferring.
-    /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be different in bytes.
+    /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be
+    /// different in bytes.
     pub snapshot_id: SnapshotId,
 }
 
@@ -141,14 +142,16 @@ where C: RaftTypeConfig
     /// Returns the last deleted log id and the last log id.
     ///
     /// The impl should not consider the applied log id in state machine.
-    /// The returned `last_log_id` could be the log id of the last present log entry, or the `last_purged_log_id` if
-    /// there is no entry at all.
-    // NOTE: This can be made into sync, provided all state machines will use atomic read or the like.
+    /// The returned `last_log_id` could be the log id of the last present log entry, or the
+    /// `last_purged_log_id` if there is no entry at all.
+    // NOTE: This can be made into sync, provided all state machines will use atomic read or the
+    // like.
     async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<C::NodeId>>;
 
     /// Get a series of log entries from storage.
     ///
-    /// The start value is inclusive in the search and the stop value is non-inclusive: `[start, stop)`.
+    /// The start value is inclusive in the search and the stop value is non-inclusive: `[start,
+    /// stop)`.
     ///
     /// Entry that is not found is allowed.
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
@@ -176,7 +179,8 @@ where
     /// A snapshot has to contain information about exactly all logs up to the last applied.
     ///
     /// Building snapshot can be done by:
-    /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a LSM-tree does,
+    /// - Performing log compaction, e.g. merge log entries that operates on the same key, like a
+    ///   LSM-tree does,
     /// - or by fetching a snapshot from the state machine.
     async fn build_snapshot(&mut self) -> Result<Snapshot<C::NodeId, C::Node, SD>, StorageError<C::NodeId>>;
 
@@ -242,9 +246,10 @@ where C: RaftTypeConfig
 
     // --- State Machine
 
-    /// Returns the last applied log id which is recorded in state machine, and the last applied membership log id and
-    /// membership config.
-    // NOTE: This can be made into sync, provided all state machines will use atomic read or the like.
+    /// Returns the last applied log id which is recorded in state machine, and the last applied
+    /// membership log id and membership config.
+    // NOTE: This can be made into sync, provided all state machines will use atomic read or the
+    // like.
     async fn last_applied_state(
         &mut self,
     ) -> Result<(Option<LogId<C::NodeId>>, EffectiveMembership<C::NodeId, C::Node>), StorageError<C::NodeId>>;
@@ -292,7 +297,8 @@ where C: RaftTypeConfig
     /// All other snapshots should be deleted at this point.
     ///
     /// ### snapshot
-    /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the snapshot.
+    /// A snapshot created from an earlier call to `begin_receiving_snapshot` which provided the
+    /// snapshot.
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<C::NodeId, C::Node>,

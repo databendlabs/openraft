@@ -51,8 +51,8 @@ impl ExampleClient {
 
     /// Submit a write request to the raft cluster.
     ///
-    /// The request will be processed by raft protocol: it will be replicated to a quorum and then will be applied to
-    /// state machine.
+    /// The request will be processed by raft protocol: it will be replicated to a quorum and then
+    /// will be applied to state machine.
     ///
     /// The result of applying the request will be returned.
     pub async fn write(

@@ -54,7 +54,8 @@ where
     /// This is used by all 3 RPC append-entries, vote, install-snapshot to check the `vote` field.
     ///
     /// Grant vote if vote >= mine.
-    /// Note: This method does not check last-log-id. handle-vote-request has to deal with last-log-id itself.
+    /// Note: This method does not check last-log-id. handle-vote-request has to deal with
+    /// last-log-id itself.
     pub(crate) fn handle_message_vote(&mut self, vote: &Vote<NID>) -> Result<(), RejectVoteRequest<NID>> {
         // Partial ord compare:
         // Vote does not has to be total ord.
@@ -90,8 +91,8 @@ where
     /// Enter leading state(vote.node_id == self.id) .
     ///
     /// Create a new leading state, when raft enters candidate state.
-    /// Leading state has two phase: election phase and replication phase, similar to paxos phase-1 and phase-2.
-    /// Leader and Candidate shares the same state.
+    /// Leading state has two phase: election phase and replication phase, similar to paxos phase-1
+    /// and phase-2. Leader and Candidate shares the same state.
     pub(crate) fn become_leading(&mut self) {
         if let Some(l) = self.internal_server_state.leading_mut() {
             if l.vote.leader_id() == self.state.vote.leader_id() {
@@ -126,7 +127,8 @@ where
     ///
     /// This node then becomes raft-follower or raft-learner.
     pub(crate) fn become_following(&mut self) {
-        // TODO: entering following needs to check last-log-id on other node to decide the election timeout.
+        // TODO: entering following needs to check last-log-id on other node to decide the election
+        // timeout.
 
         debug_assert!(
             self.state.vote.node_id != self.config.id

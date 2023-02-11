@@ -66,9 +66,11 @@ impl<T> Node for T where T: NodeEssential {}
 /// Minimal node information.
 ///
 /// The most common usage is to store the connecting address of a node.
-/// So that an application does not need an additional store to support its RaftNetwork implementation.
+/// So that an application does not need an additional store to support its RaftNetwork
+/// implementation.
 ///
-/// An application is also free not to use this storage and implements its own node-id to address mapping.
+/// An application is also free not to use this storage and implements its own node-id to address
+/// mapping.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct BasicNode {

@@ -352,7 +352,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         self.try_drain_events().await?;
 
-        // No action filled after all events are processed, fill in an action to send committed index.
+        // No action filled after all events are processed, fill in an action to send committed
+        // index.
         if let ReplicationAction::None = self.next_action {
             let m = &self.matching;
 
@@ -557,8 +558,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                     Err(err) => {
                         tracing::warn!(error=%err, "error sending InstallSnapshot RPC to target");
 
-                        // Sleep a short time otherwise in test environment it is a dead-loop that never yields.
-                        // Because network implementation does not yield.
+                        // Sleep a short time otherwise in test environment it is a dead-loop that
+                        // never yields. Because network implementation does
+                        // not yield.
                         sleep(Duration::from_millis(10)).await;
                         continue;
                     }
@@ -566,8 +568,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 Err(err) => {
                     tracing::warn!(error=%err, "timeout while sending InstallSnapshot RPC to target");
 
-                    // Sleep a short time otherwise in test environment it is a dead-loop that never yields.
-                    // Because network implementation does not yield.
+                    // Sleep a short time otherwise in test environment it is a dead-loop that never
+                    // yields. Because network implementation does not yield.
                     sleep(Duration::from_millis(10)).await;
                     continue;
                 }

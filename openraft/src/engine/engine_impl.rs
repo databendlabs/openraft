@@ -88,8 +88,8 @@ where
 /// Raft protocol algorithm.
 ///
 /// It implement the complete raft algorithm except does not actually update any states.
-/// But instead, it output commands to let a `RaftRuntime` implementation execute them to actually update the states
-/// such as append-log or save-vote by execute .
+/// But instead, it output commands to let a `RaftRuntime` implementation execute them to actually
+/// update the states such as append-log or save-vote by execute .
 ///
 /// This structure only contains necessary information to run raft algorithm,
 /// but none of the application specific data.
@@ -161,10 +161,12 @@ where
     /// Initialize a node by appending the first log.
     ///
     /// - The first log has to be membership config log.
-    /// - The node has to contain no logs at all and the vote is the minimal value. See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
+    /// - The node has to contain no logs at all and the vote is the minimal value. See: [Conditions
+    ///   for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
     ///
-    /// Appending the very first log is slightly different from appending log by a leader or follower.
-    /// This step is not confined by the consensus protocol and has to be dealt with differently.
+    /// Appending the very first log is slightly different from appending log by a leader or
+    /// follower. This step is not confined by the consensus protocol and has to be dealt with
+    /// differently.
     #[tracing::instrument(level = "debug", skip(self, entries))]
     pub(crate) fn initialize<Ent: RaftEntry<NID, N>>(
         &mut self,
@@ -261,8 +263,8 @@ where
         };
 
         VoteResponse {
-            // Return the updated vote, this way the candidate knows which vote is granted, in case the candidate's vote
-            // is changed after sending the vote request.
+            // Return the updated vote, this way the candidate knows which vote is granted, in case
+            // the candidate's vote is changed after sending the vote request.
             vote: self.state.vote,
             vote_granted,
             last_log_id: self.state.last_log_id().copied(),
@@ -317,8 +319,8 @@ where
         }
 
         // Seen a higher log.
-        // TODO: if already installed a timer with can_be_leader==false, it should not install a timer with
-        //       can_be_leader==true.
+        // TODO: if already installed a timer with can_be_leader==false, it should not install a
+        // timer with       can_be_leader==true.
         if resp.last_log_id.as_ref() > self.state.last_log_id() {
             self.output.push_command(Command::InstallElectionTimer { can_be_leader: false });
         } else {
@@ -338,7 +340,8 @@ where
     /// Also Update effective membership if the payload contains
     /// membership config.
     ///
-    /// If there is a membership config log entry, the caller has to guarantee the previous one is committed.
+    /// If there is a membership config log entry, the caller has to guarantee the previous one is
+    /// committed.
     ///
     /// TODO(xp): metrics flag needs to be dealt with.
     /// TODO(xp): if vote indicates this node is not the leader, refuse append
@@ -355,9 +358,10 @@ where
         self.output.push_command(Command::AppendInputEntries { range: 0..l });
 
         // Fast commit:
-        // If the cluster has only one voter, then an entry will be committed as soon as it is appended.
-        // But if there is a membership log in the middle of the input entries, the condition to commit will change.
-        // Thus we have to deal with entries before and after a membership entry differently:
+        // If the cluster has only one voter, then an entry will be committed as soon as it is
+        // appended. But if there is a membership log in the middle of the input entries,
+        // the condition to commit will change. Thus we have to deal with entries before and
+        // after a membership entry differently:
         //
         // When a membership entry is seen, update progress for all former entries.
         // Then upgrade the quorum set for the Progress.
@@ -540,11 +544,12 @@ where
 
         let mut rh = self.replication_handler();
 
-        // It has to setup replication stream first because append_blank_log() may update the committed-log-id(a single
-        // leader with several learners), in which case the committed-log-id will be at once submitted to
-        // replicate before replication stream is built.
-        // TODO: But replication streams should be built when a node enters leading state.
-        //       Thus append_blank_log() can be moved before rebuild_replication_streams()
+        // It has to setup replication stream first because append_blank_log() may update the
+        // committed-log-id(a single leader with several learners), in which case the
+        // committed-log-id will be at once submitted to replicate before replication stream
+        // is built. TODO: But replication streams should be built when a node enters
+        // leading state.       Thus append_blank_log() can be moved before
+        // rebuild_replication_streams()
 
         rh.rebuild_replication_streams();
         rh.append_blank_log();
@@ -553,8 +558,8 @@ where
 
     /// Check if a raft node is in a state that allows to initialize.
     ///
-    /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(term=0, node_id=0)`.
-    /// See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
+    /// It is allowed to initialize only when `last_log_id.is_none()` and `vote==(term=0,
+    /// node_id=0)`. See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
     fn check_initialize(&self) -> Result<(), NotAllowed<NID>> {
         if self.state.last_log_id().is_none() && self.state.vote == Vote::default() {
             return Ok(());
@@ -568,7 +573,8 @@ where
         })
     }
 
-    /// When initialize, the node that accept initialize request has to be a member of the initial config.
+    /// When initialize, the node that accept initialize request has to be a member of the initial
+    /// config.
     fn check_members_contain_me(&self, m: &Membership<NID, N>) -> Result<(), NotInMembers<NID, N>> {
         if !m.is_voter(&self.config.id) {
             let e = NotInMembers {

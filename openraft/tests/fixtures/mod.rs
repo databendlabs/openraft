@@ -728,7 +728,8 @@ where
         }
     }
 
-    /// Assert that the cluster has an elected leader, and is in a stable state with all nodes uniform.
+    /// Assert that the cluster has an elected leader, and is in a stable state with all nodes
+    /// uniform.
     ///
     /// If `expected_term` is `Some`, then all nodes will be tested to ensure that they are in the
     /// given term. Else, the leader's current term will be used for the assertion.

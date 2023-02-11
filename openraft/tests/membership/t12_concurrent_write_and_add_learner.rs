@@ -77,7 +77,8 @@ async fn concurrent_write_and_add_learner() -> Result<()> {
         log_index += 2; // Tow member change logs
 
         wait_log(&router, &candidates, log_index).await?;
-        router.assert_stable_cluster(Some(1), Some(log_index)); // Still in term 1, so leader is still node 0.
+        router.assert_stable_cluster(Some(1), Some(log_index)); // Still in term 1, so leader is
+                                                                // still node 0.
     }
 
     let leader = router.leader().unwrap();

@@ -37,7 +37,8 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Append membership log if membership config entries are found, after appending entries to log.
+    /// Append membership log if membership config entries are found, after appending entries to
+    /// log.
     fn follower_append_membership<'a, Ent: RaftEntry<NID, N> + 'a>(
         &mut self,
         entries: impl DoubleEndedIterator<Item = &'a Ent>,
@@ -138,8 +139,8 @@ where
         self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
 
-    /// Delete log entries since log index `since`, inclusive, when the log at `since` is found conflict with the
-    /// leader.
+    /// Delete log entries since log index `since`, inclusive, when the log at `since` is found
+    /// conflict with the leader.
     ///
     /// And revert effective membership to the last committed if it is from the conflicting logs.
     #[tracing::instrument(level = "debug", skip(self))]
@@ -196,16 +197,16 @@ where
         //                   v
         // ----lllllllllll--------------------->
         //
-        // In the first case, snapshot-last-log-id <= last-purged-log-id <= local-snapshot-last-log-id.
-        // Thus snapshot is obsolete and won't be installed.
+        // In the first case, snapshot-last-log-id <= last-purged-log-id <=
+        // local-snapshot-last-log-id. Thus snapshot is obsolete and won't be installed.
         //
         // In the second case, all local logs will be purged after install.
 
         tracing::info!("install_snapshot: meta:{:?}", meta);
 
         // // TODO: temp solution: committed is updated after snapshot_last_log_id.
-        // //       committed should be updated first or together with snapshot_last_log_id(i.e., extract `state`
-        // first). let old_validate = self.state.enable_validate;
+        // //       committed should be updated first or together with snapshot_last_log_id(i.e.,
+        // extract `state` first). let old_validate = self.state.enable_validate;
         // self.state.enable_validate = false;
 
         let snap_last_log_id = meta.last_log_id;
@@ -235,22 +236,22 @@ where
 
         // Do install:
         // 1. Truncate all logs if conflict
-        //    Unlike normal append-entries RPC, if conflicting logs are found, it is not **necessary** to delete them.
-        //    But cleaning them make the assumption of incremental-log-id always hold, which makes it easier to debug.
-        //    See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
+        //    Unlike normal append-entries RPC, if conflicting logs are found, it is not
+        // **necessary** to delete them.    But cleaning them make the assumption of
+        // incremental-log-id always hold, which makes it easier to debug.    See: [Snapshot-replication](https://datafuselabs.github.io/openraft/replication.html#snapshot-replication)
         //
         //    Truncate all:
         //
-        //    It just truncate **ALL** logs here, because `snap_last_log_id` is committed, if the local log id conflicts
-        //    with `snap_last_log_id`, there must be a quorum that contains `snap_last_log_id`.
-        //    Thus it is safe to remove all logs on this node.
+        //    It just truncate **ALL** logs here, because `snap_last_log_id` is committed, if the
+        // local log id conflicts    with `snap_last_log_id`, there must be a quorum that
+        // contains `snap_last_log_id`.    Thus it is safe to remove all logs on this node.
         //
         //    The logs before `snap_last_log_id` may conflicts with the leader too.
-        //    It's not safe to remove the conflicting logs that are less than `snap_last_log_id` after installing
-        //    snapshot.
+        //    It's not safe to remove the conflicting logs that are less than `snap_last_log_id`
+        // after installing    snapshot.
         //
-        //    If the node crashes, dirty logs may remain there. These logs may be forwarded to other nodes if this nodes
-        //    becomes a leader.
+        //    If the node crashes, dirty logs may remain there. These logs may be forwarded to other
+        // nodes if this nodes    becomes a leader.
         //
         // 2. Install snapshot.
 
@@ -267,8 +268,8 @@ where
 
         // TODO: There should be two separate commands for installing snapshot:
         //       - Replace state machine with snapshot and replace the `current_snapshot` in the store.
-        //       - Do not install, just replace the `current_snapshot` with a newer one. This command can be used for
-        //         leader to synchronize its snapshot data.
+        //       - Do not install, just replace the `current_snapshot` with a newer one. This command can be
+        //         used for leader to synchronize its snapshot data.
         self.output.push_command(Command::InstallSnapshot { snapshot_meta: meta });
 
         // A local log that is <= snap_last_log_id can not conflict with the leader.
@@ -1310,10 +1311,10 @@ mod tests {
 
         #[test]
         fn test_install_snapshot_lt_committed() -> anyhow::Result<()> {
-            // Snapshot will not be installed because new `last_log_id` is less or equal current `committed`.
-            // TODO: The snapshot should be able to be updated if `new_snapshot.last_log_id >
-            // engine.snapshot_meta.last_log_id`.       Although in this case the state machine is not
-            // affected.
+            // Snapshot will not be installed because new `last_log_id` is less or equal current
+            // `committed`. TODO: The snapshot should be able to be updated if
+            // `new_snapshot.last_log_id > engine.snapshot_meta.last_log_id`.
+            // Although in this case the state machine is not affected.
             let mut eng = eng();
 
             eng.following_handler().install_snapshot(SnapshotMeta {
