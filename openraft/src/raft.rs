@@ -857,7 +857,7 @@ pub struct AddLearnerResponse<NID: NodeId> {
     pub matched: Option<LogId<NID>>,
 }
 
-/// TX for Add Learner Respose
+/// TX for Add Learner Response
 pub(crate) type RaftAddLearnerTx<NID, N> = RaftRespTx<AddLearnerResponse<NID>, AddLearnerError<NID, N>>;
 
 /// TX for Install Snapshot Response
@@ -1239,6 +1239,7 @@ impl<C: RaftTypeConfig> MessageSummary<InstallSnapshotRequest<C>> for InstallSna
 
 /// The response to an `InstallSnapshotRequest`.
 #[derive(Debug)]
+#[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct InstallSnapshotResponse<NID: NodeId> {
     pub vote: Vote<NID>,

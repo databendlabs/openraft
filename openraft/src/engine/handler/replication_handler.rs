@@ -434,11 +434,10 @@ mod tests {
 
         #[test]
         fn test_update_matching_no_leader() -> anyhow::Result<()> {
-            let mut eng = eng();
-
             // There is no leader, it should panic.
 
             let res = std::panic::catch_unwind(move || {
+                let mut eng = eng();
                 eng.replication_handler().update_matching(3, 0, Some(log_id(1, 2)));
             });
             tracing::info!("res: {:?}", res);

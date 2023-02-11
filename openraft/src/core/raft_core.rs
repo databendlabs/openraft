@@ -54,7 +54,6 @@ use crate::error::NetworkError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
-use crate::error::VoteError;
 use crate::metrics::RaftMetrics;
 use crate::metrics::ReplicationMetrics;
 use crate::metrics::UpdateMatchedLogId;
@@ -65,6 +64,7 @@ use crate::quorum::QuorumSet;
 use crate::raft::AddLearnerResponse;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::AppendEntriesTx;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteTx;
 use crate::raft::ExternalCommand;
@@ -73,6 +73,7 @@ use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft::VoteTx;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::VoteStateReader;
 use crate::raft_types::LogIdOptionExt;
@@ -1006,7 +1007,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         swap(&mut self.engine.output.commands, &mut commands);
         for cmd in commands {
             tracing::debug!("run command: {:?}", cmd);
-            self.run_command(input_entries, &mut curr, &cmd).await?;
+            self.run_command(input_entries, &mut curr, cmd).await?;
         }
 
         Ok(())
@@ -1110,13 +1111,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn handle_vote_request(
         &mut self,
         req: VoteRequest<C::NodeId>,
-    ) -> Result<VoteResponse<C::NodeId>, VoteError<C::NodeId>> {
-        tracing::debug!(req = display(req.summary()), "handle_vote_request");
+        tx: VoteTx<C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        tracing::debug!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
+        self.engine.output.push_command(Command::SendVoteResult { res: Ok(resp), tx });
+
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
-        Ok(resp)
+        Ok(())
     }
 
     /// Handle response from a vote request sent to a peer.
@@ -1140,19 +1144,31 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(super) async fn handle_append_entries_request(
+        &mut self,
+        req: AppendEntriesRequest<C>,
+        tx: AppendEntriesTx<C::NodeId>,
+    ) -> Result<(), StorageError<C::NodeId>> {
+        tracing::debug!(req = display(req.summary()), func = func_name!());
+
+        let resp = self.engine.handle_append_entries_req(&req.vote, req.prev_log_id, &req.entries, req.leader_commit);
+        self.engine.output.push_command(Command::SendAppendEntriesResult { res: Ok(resp), tx });
+
+        self.run_engine_commands(req.entries.as_slice()).await?;
+        Ok(())
+    }
+
     #[tracing::instrument(level = "debug", skip(self, msg), fields(state = debug(self.engine.state.server_state), id=display(self.id)))]
     pub(crate) async fn handle_api_msg(&mut self, msg: RaftMsg<C, N, S>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("recv from rx_api: {}", msg.summary());
 
         match msg {
             RaftMsg::AppendEntries { rpc, tx } => {
-                let resp =
-                    self.engine.handle_append_entries_req(&rpc.vote, rpc.prev_log_id, &rpc.entries, rpc.leader_commit);
-                self.run_engine_commands(rpc.entries.as_slice()).await?;
-                let _ = tx.send(Ok(resp));
+                self.handle_append_entries_request(rpc, tx).await?;
             }
             RaftMsg::RequestVote { rpc, tx } => {
-                let _ = tx.send(self.handle_vote_request(rpc).await.extract_fatal()?);
+                self.handle_vote_request(rpc, tx).await?;
             }
             RaftMsg::VoteResponse { target, resp, vote } => {
                 if self.does_vote_match(&vote, "VoteResponse") {
@@ -1160,7 +1176,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
             RaftMsg::InstallSnapshot { rpc, tx } => {
-                let _ = tx.send(self.handle_install_snapshot_request(rpc).await.extract_fatal()?);
+                self.handle_install_snapshot_request(rpc, tx).await?;
             }
             RaftMsg::BuildingSnapshotResult { result } => {
                 self.handle_building_snapshot_result(result).await?;
@@ -1405,7 +1421,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
         &mut self,
         input_ref_entries: &'e [Ent],
         cur: &mut usize,
-        cmd: &Command<C::NodeId, C::Node>,
+        cmd: Command<C::NodeId, C::Node>,
     ) -> Result<(), StorageError<C::NodeId>>
     where
         Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
@@ -1444,7 +1460,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             }
             Command::AppendBlankLog { log_id } => {
                 let ent = Entry {
-                    log_id: *log_id,
+                    log_id,
                     payload: EntryPayload::Blank,
                 };
                 let entry_refs = vec![&ent];
@@ -1452,24 +1468,24 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             }
             Command::MoveInputCursorBy { n } => *cur += n,
             Command::SaveVote { vote } => {
-                self.storage.save_vote(vote).await?;
+                self.storage.save_vote(&vote).await?;
             }
             Command::InstallElectionTimer { can_be_leader } => {
-                self.set_next_election_time(*can_be_leader);
+                self.set_next_election_time(can_be_leader);
             }
-            Command::PurgeLog { upto } => self.storage.purge_logs_upto(*upto).await?,
+            Command::PurgeLog { upto } => self.storage.purge_logs_upto(upto).await?,
             Command::DeleteConflictLog { since } => {
-                self.storage.delete_conflict_logs_since(*since).await?;
+                self.storage.delete_conflict_logs_since(since).await?;
             }
             // TODO(2): Engine initiate a snapshot building
             Command::BuildSnapshot { .. } => {}
             Command::SendVote { vote_req } => {
-                self.spawn_parallel_vote_requests(vote_req).await;
+                self.spawn_parallel_vote_requests(&vote_req).await;
             }
             Command::ReplicateCommitted { committed } => {
                 if let Some(l) = &self.leader_data {
                     for node in l.nodes.values() {
-                        let _ = node.tx_repl.send(Replicate::Committed(*committed));
+                        let _ = node.tx_repl.send(Replicate::Committed(committed));
                     }
                 } else {
                     unreachable!("it has to be a leader!!!");
@@ -1492,7 +1508,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     // TODO(2): consider remove the returned error from new_client().
                     // Node may not exist because `RaftNetworkFactory::new_client()` returns an
                     // error.
-                    let node = &l.nodes.get(target);
+                    let node = &l.nodes.get(&target);
 
                     if let Some(node) = node {
                         match req {
@@ -1500,18 +1516,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                                 unreachable!("Inflight::None");
                             }
                             Inflight::Logs { id, log_id_range } => {
-                                let _ = node.tx_repl.send(Replicate::Logs {
-                                    id: *id,
-                                    log_id_range: *log_id_range,
-                                });
+                                let _ = node.tx_repl.send(Replicate::Logs { id, log_id_range });
                             }
                             Inflight::Snapshot { id, last_log_id } => {
                                 let snapshot = self.storage.get_current_snapshot().await?;
                                 tracing::debug!("snapshot: {}", snapshot.as_ref().map(|x| &x.meta).summary());
 
                                 if let Some(snapshot) = snapshot {
-                                    debug_assert_eq!(last_log_id, &snapshot.meta.last_log_id);
-                                    let _ = node.tx_repl.send(Replicate::Snapshot { id: *id, snapshot });
+                                    debug_assert_eq!(last_log_id, snapshot.meta.last_log_id);
+                                    let _ = node.tx_repl.send(Replicate::Snapshot { id, snapshot });
                                 } else {
                                     unreachable!("No snapshot");
                                 }
@@ -1544,7 +1557,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 }
             }
             Command::UpdateProgressMetrics { target, matching } => {
-                self.update_progress_metrics(*target, *matching);
+                self.update_progress_metrics(target, matching);
             }
             Command::UpdateMembership { .. } => {
                 // TODO: not used
@@ -1557,11 +1570,20 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 let snapshot_data = self.received_snapshot.remove(&snapshot_meta.snapshot_id);
 
                 if let Some(data) = snapshot_data {
-                    self.storage.install_snapshot(snapshot_meta, data).await?;
+                    self.storage.install_snapshot(&snapshot_meta, data).await?;
                     tracing::debug!("Done install_snapshot, meta: {:?}", snapshot_meta);
                 } else {
                     unreachable!("buffered snapshot not found: snapshot meta: {:?}", snapshot_meta)
                 }
+            }
+            Command::SendVoteResult { res, tx } => {
+                let _ = tx.send(res);
+            }
+            Command::SendAppendEntriesResult { res, tx } => {
+                let _ = tx.send(res);
+            }
+            Command::SendInstallSnapshotResult { res, tx } => {
+                let _ = tx.send(res);
             }
         }
 
