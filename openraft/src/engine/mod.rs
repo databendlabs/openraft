@@ -32,19 +32,14 @@ mod handler;
 mod log_id_list;
 
 #[cfg(test)] mod elect_test;
-#[cfg(test)] mod follower_commit_entries_test;
-#[cfg(test)] mod follower_do_append_entries_test;
 #[cfg(test)] mod handle_append_entries_req_test;
 #[cfg(test)] mod handle_vote_req_test;
 #[cfg(test)] mod handle_vote_resp_test;
 #[cfg(test)] mod initialize_test;
-#[cfg(test)] mod install_snapshot_test;
 #[cfg(test)] mod leader_append_entries_test;
 #[cfg(test)] mod log_id_list_test;
 #[cfg(test)] mod startup_test;
 #[cfg(test)] mod testing;
-#[cfg(test)] mod truncate_logs_test;
-#[cfg(test)] mod update_committed_membership_test;
 #[cfg(test)] mod update_progress_test;
 
 pub(crate) use command::Command;

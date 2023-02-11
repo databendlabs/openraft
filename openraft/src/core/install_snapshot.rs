@@ -154,7 +154,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Buffer the snapshot data, let Engine decide to install it or to cancel it.
         self.received_snapshot.insert(meta.snapshot_id.clone(), snapshot_data);
 
-        self.engine.install_snapshot(meta);
+        self.engine.following_handler().install_snapshot(meta);
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
         Ok(())
