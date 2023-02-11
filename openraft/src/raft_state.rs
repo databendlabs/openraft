@@ -213,6 +213,29 @@ where
         }
     }
 
+    /// Find the first entry in the input that does not exist on local raft-log,
+    /// by comparing the log id.
+    pub(crate) fn first_conflicting_index<Ent>(&self, entries: &[Ent]) -> usize
+    where Ent: RaftLogId<NID> {
+        let l = entries.len();
+
+        for (i, ent) in entries.iter().enumerate() {
+            let log_id = ent.get_log_id();
+
+            if !self.has_log_id(log_id) {
+                tracing::debug!(
+                    at = display(i),
+                    entry_log_id = display(log_id),
+                    "found nonexistent log id"
+                );
+                return i;
+            }
+        }
+
+        tracing::debug!("not found nonexistent");
+        l
+    }
+
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn purge_log(&mut self, upto: &LogId<NID>) {
         self.purged_next = upto.index + 1;

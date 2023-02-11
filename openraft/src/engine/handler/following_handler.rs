@@ -8,7 +8,6 @@ use crate::engine::Command;
 use crate::engine::EngineConfig;
 use crate::entry::RaftEntry;
 use crate::raft_state::LogStateReader;
-use crate::raft_types::RaftLogId;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -308,31 +307,6 @@ where
         }
 
         memberships
-    }
-
-    // TODO: move to RaftState
-    /// Find the first entry in the input that does not exist on local raft-log,
-    /// by comparing the log id.
-    pub(crate) fn first_conflicting_index<Ent: RaftLogId<NID>>(&self, entries: &[Ent]) -> usize {
-        let l = entries.len();
-
-        for (i, ent) in entries.iter().enumerate() {
-            let log_id = ent.get_log_id();
-            // for i in 0..l {
-            // let log_id = entries[i].get_log_id();
-
-            if !self.state.has_log_id(log_id) {
-                tracing::debug!(
-                    at = display(i),
-                    entry_log_id = display(log_id),
-                    "found nonexistent log id"
-                );
-                return i;
-            }
-        }
-
-        tracing::debug!("not found nonexistent");
-        l
     }
 
     pub(crate) fn log_handler(&mut self) -> LogHandler<NID, N> {

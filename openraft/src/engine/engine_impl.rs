@@ -466,7 +466,7 @@ where
         );
 
         let l = entries.len();
-        let since = self.following_handler().first_conflicting_index(entries);
+        let since = self.following_handler().state.first_conflicting_index(entries);
         if since < l {
             // Before appending, if an entry overrides an conflicting one,
             // the entries after it has to be deleted first.
