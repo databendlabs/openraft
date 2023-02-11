@@ -11,7 +11,6 @@ use crate::error::InitializeError;
 use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
-use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
 use crate::membership::NodeRole;
@@ -212,6 +211,7 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
         let v = Vote::new(self.state.get_vote().term + 1, self.config.id);
+        // Safe unwrap(): it won't reject itself ˙–˙
         self.vote_handler().handle_message_vote(&v).unwrap();
 
         // Safe unwrap()
@@ -239,30 +239,40 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<NID>) -> VoteResponse<NID> {
-        tracing::debug!(req = display(req.summary()), "Engine::handle_vote_req");
-        tracing::debug!(
+        tracing::info!(req = display(req.summary()), "Engine::handle_vote_req");
+        tracing::info!(
             my_vote = display(self.state.get_vote().summary()),
             my_last_log_id = display(self.state.last_log_id().summary()),
             "Engine::handle_vote_req"
         );
 
-        // TODO: refactor
-        let res = if req.last_log_id.as_ref() >= self.state.last_log_id() {
-            self.vote_handler().handle_message_vote(&req.vote)
-        } else {
-            Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id().copied()))
-        };
+        // The first step is to check log. If the candidate has less log, nothing needs to be done.
 
-        let vote_granted = if let Err(reject) = res {
-            tracing::debug!(
-                req = display(req.summary()),
-                err = display(reject),
-                "reject vote request"
-            );
-            false
+        if req.last_log_id.as_ref() >= self.state.last_log_id() {
+            // Ok
         } else {
-            true
-        };
+            // The res is not used yet.
+            // let _res = Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id().copied()));
+            return VoteResponse {
+                // Return the updated vote, this way the candidate knows which vote is granted, in case
+                // the candidate's vote is changed after sending the vote request.
+                vote: *self.state.get_vote(),
+                vote_granted: false,
+                last_log_id: self.state.last_log_id().copied(),
+            };
+        }
+
+        // Then check vote just as it does for every incoming event.
+
+        let res = self.vote_handler().handle_message_vote(&req.vote);
+
+        tracing::info!(
+            req = display(req.summary()),
+            result = debug(&res),
+            "handle vote request result"
+        );
+
+        let vote_granted = res.is_ok();
 
         VoteResponse {
             // Return the updated vote, this way the candidate knows which vote is granted, in case
@@ -449,7 +459,7 @@ where
             return rejected.into();
         }
 
-        // Vote is legal. Check if prev_log_id matches local raft-log.
+        // Vote is legal.
 
         let mut fh = self.following_handler();
         fh.append_entries(prev_log_id, entries, leader_committed)

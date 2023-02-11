@@ -48,8 +48,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             });
         }
 
-        self.set_next_election_time(false);
-
         // Clear the state to None if it is building a snapshot locally.
         if let SnapshotState::Snapshotting {
             abort_handle,
