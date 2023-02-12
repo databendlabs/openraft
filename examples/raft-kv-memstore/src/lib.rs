@@ -34,6 +34,26 @@ openraft::declare_raft_types!(
 
 pub type ExampleRaft = Raft<ExampleTypeConfig, ExampleNetwork, Arc<ExampleStore>>;
 
+pub mod typ {
+    use openraft::BasicNode;
+
+    use crate::ExampleNodeId;
+    use crate::ExampleTypeConfig;
+
+    pub type RaftError<E = openraft::error::Infallible> = openraft::error::RaftError<ExampleNodeId, E>;
+    pub type RPCError<E = openraft::error::Infallible> =
+        openraft::error::RPCError<ExampleNodeId, BasicNode, RaftError<E>>;
+
+    pub type ClientWriteError = openraft::error::ClientWriteError<ExampleNodeId, BasicNode>;
+    pub type AddLearnerError = openraft::error::AddLearnerError<ExampleNodeId, BasicNode>;
+    pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<ExampleNodeId, BasicNode>;
+    pub type ForwardToLeader = openraft::error::ForwardToLeader<ExampleNodeId, BasicNode>;
+    pub type InitializeError = openraft::error::InitializeError<ExampleNodeId, BasicNode>;
+
+    pub type AddLearnerResponse = openraft::raft::AddLearnerResponse<ExampleNodeId>;
+    pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<ExampleTypeConfig>;
+}
+
 pub async fn start_example_raft_node(node_id: ExampleNodeId, http_addr: String) -> std::io::Result<()> {
     // Create a configuration for the raft instance.
     let config = Config {

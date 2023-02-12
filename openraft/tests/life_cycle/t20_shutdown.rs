@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::error::ClientWriteError;
 use openraft::error::Fatal;
 use openraft::Config;
 use openraft::ServerState;
@@ -65,7 +64,7 @@ async fn return_error_after_panic() -> Result<()> {
     {
         let res = router.client_request(0, "foo", 2).await;
         let err = res.unwrap_err();
-        assert_eq!(ClientWriteError::<u64, ()>::Fatal(Fatal::Panicked), err);
+        assert_eq!(Fatal::Panicked, err.into_fatal().unwrap());
     }
 
     Ok(())
@@ -98,7 +97,7 @@ async fn return_error_after_shutdown() -> Result<()> {
     {
         let res = router.client_request(0, "foo", 2).await;
         let err = res.unwrap_err();
-        assert_eq!(ClientWriteError::<u64, _>::Fatal(Fatal::Stopped), err);
+        assert_eq!(Fatal::Stopped, err.into_fatal().unwrap());
     }
 
     Ok(())

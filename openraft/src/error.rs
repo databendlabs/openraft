@@ -10,12 +10,95 @@ use anyerror::AnyError;
 use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_types::SnapshotSegmentId;
+use crate::try_as_ref::TryAsRef;
 use crate::LogId;
 use crate::Membership;
 use crate::NodeId;
 use crate::RPCTypes;
 use crate::StorageError;
 use crate::Vote;
+
+/// RaftError is returned by API methods of `Raft`.
+///
+/// It is either a Fatal error indicating that `Raft` is no longer running, such as underlying IO
+/// error, or an API error `E`.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Deserialize, serde::Serialize),
+    serde(bound = "E:serde::Serialize + for <'d> serde::Deserialize<'d>")
+)]
+pub enum RaftError<NID, E = Infallible>
+where NID: NodeId
+{
+    #[error(transparent)]
+    APIError(E),
+
+    #[error(transparent)]
+    Fatal(#[from] Fatal<NID>),
+}
+
+impl<NID, E> RaftError<NID, E>
+where
+    NID: NodeId,
+    E: Debug,
+{
+    /// Return a reference to Self::APIError.
+    pub fn api_error(&self) -> Option<&E> {
+        match self {
+            RaftError::APIError(e) => Some(e),
+            RaftError::Fatal(_) => None,
+        }
+    }
+
+    /// Try to convert self to APIError.
+    pub fn into_api_error(self) -> Option<E> {
+        match self {
+            RaftError::APIError(e) => Some(e),
+            RaftError::Fatal(_) => None,
+        }
+    }
+
+    /// Return a reference to Self::Fatal.
+    pub fn fatal(&self) -> Option<&Fatal<NID>> {
+        match self {
+            RaftError::APIError(_) => None,
+            RaftError::Fatal(f) => Some(f),
+        }
+    }
+
+    /// Try to convert self to Fatal error.
+    pub fn into_fatal(self) -> Option<Fatal<NID>> {
+        match self {
+            RaftError::APIError(_) => None,
+            RaftError::Fatal(f) => Some(f),
+        }
+    }
+
+    /// Return a reference to ForwardToLeader if Self::APIError contains it.
+    pub fn forward_to_leader<N>(&self) -> Option<&ForwardToLeader<NID, N>>
+    where
+        N: Node,
+        E: TryAsRef<ForwardToLeader<NID, N>>,
+    {
+        match self {
+            RaftError::APIError(api_err) => api_err.try_as_ref(),
+            RaftError::Fatal(_) => None,
+        }
+    }
+
+    /// Try to convert self to ForwardToLeader error if APIError is a ForwardToLeader error.
+    pub fn into_forward_to_leader<N>(self) -> Option<ForwardToLeader<NID, N>>
+    where
+        N: Node,
+        E: TryInto<ForwardToLeader<NID, N>>,
+    {
+        match self {
+            RaftError::APIError(api_err) => api_err.try_into().ok(),
+            RaftError::Fatal(_) => None,
+        }
+    }
+}
 
 /// Fatal is unrecoverable and shuts down raft at once.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -33,40 +116,13 @@ where NID: NodeId
     Stopped,
 }
 
-// TODO: not used, remove
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
-#[derive(PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AppendEntriesError<NID>
-where NID: NodeId
-{
-    #[error(transparent)]
-    Fatal(#[from] Fatal<NID>),
-}
-
-// TODO: not used, remove
-#[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
-#[derive(PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum VoteError<NID>
-where NID: NodeId
-{
-    #[error(transparent)]
-    Fatal(#[from] Fatal<NID>),
-}
-
 // TODO: remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum InstallSnapshotError<NID>
-where NID: NodeId
-{
+pub enum InstallSnapshotError {
     #[error(transparent)]
     SnapshotMismatch(#[from] SnapshotMismatch),
-
-    #[error(transparent)]
-    Fatal(#[from] Fatal<NID>),
 }
 
 /// An error related to a is_leader request.
@@ -82,9 +138,19 @@ where
 
     #[error(transparent)]
     QuorumNotEnough(#[from] QuorumNotEnough<NID>),
+}
 
-    #[error(transparent)]
-    Fatal(#[from] Fatal<NID>),
+impl<NID, N> TryAsRef<ForwardToLeader<NID, N>> for CheckIsLeaderError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn try_as_ref(&self) -> Option<&ForwardToLeader<NID, N>> {
+        match self {
+            Self::ForwardToLeader(f) => Some(f),
+            _ => None,
+        }
+    }
 }
 
 /// An error related to a client write request.
@@ -102,9 +168,19 @@ where
     /// When writing a change-membership entry.
     #[error(transparent)]
     ChangeMembershipError(#[from] ChangeMembershipError<NID>),
+}
 
-    #[error(transparent)]
-    Fatal(#[from] Fatal<NID>),
+impl<NID, N> TryAsRef<ForwardToLeader<NID, N>> for ClientWriteError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn try_as_ref(&self) -> Option<&ForwardToLeader<NID, N>> {
+        match self {
+            Self::ForwardToLeader(f) => Some(f),
+            _ => None,
+        }
+    }
 }
 
 /// The set of errors which may take place when requesting to propose a config change.
@@ -137,9 +213,19 @@ where
     // TODO: do we really need this error? An app may check an target node if it wants to.
     #[error(transparent)]
     NetworkError(#[from] NetworkError),
+}
 
-    #[error(transparent)]
-    Fatal(#[from] Fatal<NID>),
+impl<NID, N> TryAsRef<ForwardToLeader<NID, N>> for AddLearnerError<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn try_as_ref(&self) -> Option<&ForwardToLeader<NID, N>> {
+        match self {
+            Self::ForwardToLeader(f) => Some(f),
+            _ => None,
+        }
+    }
 }
 
 impl<NID, N> TryFrom<AddLearnerError<NID, N>> for ForwardToLeader<NID, N>
@@ -170,67 +256,6 @@ where
 
     #[error(transparent)]
     NotInMembers(#[from] NotInMembers<NID, N>),
-
-    #[error(transparent)]
-    NotAMembershipEntry(#[from] NotAMembershipEntry),
-
-    #[error(transparent)]
-    Fatal(#[from] Fatal<NID>),
-}
-
-impl<NID> From<StorageError<NID>> for AppendEntriesError<NID>
-where NID: NodeId
-{
-    fn from(s: StorageError<NID>) -> Self {
-        let f: Fatal<NID> = s.into();
-        f.into()
-    }
-}
-impl<NID> From<StorageError<NID>> for VoteError<NID>
-where NID: NodeId
-{
-    fn from(s: StorageError<NID>) -> Self {
-        let f: Fatal<NID> = s.into();
-        f.into()
-    }
-}
-impl<NID> From<StorageError<NID>> for InstallSnapshotError<NID>
-where NID: NodeId
-{
-    fn from(s: StorageError<NID>) -> Self {
-        let f: Fatal<NID> = s.into();
-        f.into()
-    }
-}
-impl<NID, N> From<StorageError<NID>> for CheckIsLeaderError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn from(s: StorageError<NID>) -> Self {
-        let f: Fatal<NID> = s.into();
-        f.into()
-    }
-}
-impl<NID, N> From<StorageError<NID>> for InitializeError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn from(s: StorageError<NID>) -> Self {
-        let f: Fatal<NID> = s.into();
-        f.into()
-    }
-}
-impl<NID, N> From<StorageError<NID>> for AddLearnerError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn from(s: StorageError<NID>) -> Self {
-        let f: Fatal<NID> = s.into();
-        f.into()
-    }
 }
 
 /// Error variants related to the Replication.
@@ -253,16 +278,17 @@ where
     StorageError(#[from] StorageError<NID>),
 
     #[error(transparent)]
-    RPCError(#[from] RPCError<NID, N, AppendEntriesError<NID>>),
+    RPCError(#[from] RPCError<NID, N, RaftError<NID, Infallible>>),
 }
 
+/// Error occurs when invoking a remote raft API.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),
-    serde(bound = "T:serde::Serialize + for <'d> serde::Deserialize<'d>")
+    serde(bound = "E:serde::Serialize + for <'d> serde::Deserialize<'d>")
 )]
-pub enum RPCError<NID: NodeId, N: Node, T: Error> {
+pub enum RPCError<NID: NodeId, N: Node, E: Error> {
     #[error(transparent)]
     Timeout(#[from] Timeout<NID>),
 
@@ -270,14 +296,30 @@ pub enum RPCError<NID: NodeId, N: Node, T: Error> {
     Network(#[from] NetworkError),
 
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<NID, N, T>),
+    RemoteError(#[from] RemoteError<NID, N, E>),
+}
+
+impl<NID, N, E> RPCError<NID, N, RaftError<NID, E>>
+where
+    NID: NodeId,
+    N: Node,
+    E: Error,
+{
+    /// Return a reference to ForwardToLeader error if Self::RemoteError contains one.
+    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<NID, N>>
+    where E: TryAsRef<ForwardToLeader<NID, N>> {
+        match self {
+            RPCError::Timeout(_) => None,
+            RPCError::Network(_) => None,
+            RPCError::RemoteError(remote_err) => remote_err.source.forward_to_leader(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("error occur on remote peer {target}: {source}")]
 pub struct RemoteError<NID: NodeId, N: Node, T: std::error::Error> {
-    // #[serde(bound = "")]
     #[cfg_attr(feature = "serde", serde(bound = ""))]
     pub target: NID,
     #[cfg_attr(feature = "serde", serde(bound = ""))]
@@ -425,11 +467,6 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("initializing log entry has to be a membership config entry")]
-pub struct NotAMembershipEntry {}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("new membership can not be empty")]
 pub struct EmptyMembership {}
@@ -438,6 +475,12 @@ pub struct EmptyMembership {}
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[error("infallible")]
 pub enum Infallible {}
+
+/// A place holder to mark RaftError won't have a ForwardToLeader variant.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[error("no-forward")]
+pub enum NoForward {}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]

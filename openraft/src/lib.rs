@@ -62,6 +62,7 @@ mod runtime;
 pub mod storage;
 pub mod testing;
 pub mod timer;
+mod try_as_ref;
 pub(crate) mod validate;
 pub mod versioned;
 
@@ -71,6 +72,7 @@ pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
 pub use metrics::ReplicationTargetMetrics;
+pub use try_as_ref::TryAsRef;
 
 pub use crate::change_members::ChangeMembers;
 pub use crate::config::Config;

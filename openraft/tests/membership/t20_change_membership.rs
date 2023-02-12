@@ -113,8 +113,9 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
     tracing::info!("--- change membership without adding-learner, allow_lagging=true");
     {
         let res = leader.change_membership(btreeset! {0,1}, true, false).await;
-        match res {
-            Err(ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err))) => {
+        let raft_err = res.unwrap_err();
+        match raft_err.api_error().unwrap() {
+            ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err)) => {
                 assert_eq!(1, err.node_id);
             }
             _ => {
@@ -126,8 +127,9 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
     tracing::info!("--- change membership without adding-learner, allow_lagging=false");
     {
         let res = leader.change_membership(btreeset! {0,1}, false, false).await;
-        match res {
-            Err(ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err))) => {
+        let raft_err = res.unwrap_err();
+        match raft_err.api_error().unwrap() {
+            ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err)) => {
                 assert_eq!(1, err.node_id);
             }
             _ => {
@@ -178,7 +180,7 @@ async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
         tracing::info!("--- got res: {:?}", res);
 
         let err = res.unwrap_err();
-        let err: ChangeMembershipError<MemNodeId> = err.try_into().unwrap();
+        let err: ChangeMembershipError<MemNodeId> = err.into_api_error().unwrap().try_into().unwrap();
 
         match err {
             ChangeMembershipError::LearnerIsLagging(e) => {

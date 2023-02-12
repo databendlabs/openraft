@@ -2,12 +2,11 @@ use std::any::Any;
 use std::fmt::Display;
 
 use async_trait::async_trait;
-use openraft::error::AppendEntriesError;
 use openraft::error::InstallSnapshotError;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
+use openraft::error::RaftError;
 use openraft::error::RemoteError;
-use openraft::error::VoteError;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
 use openraft::raft::InstallSnapshotRequest;
@@ -100,10 +99,8 @@ impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
     async fn send_append_entries(
         &mut self,
         req: AppendEntriesRequest<ExampleTypeConfig>,
-    ) -> Result<
-        AppendEntriesResponse<ExampleNodeId>,
-        RPCError<ExampleNodeId, ExampleNode, AppendEntriesError<ExampleNodeId>>,
-    > {
+    ) -> Result<AppendEntriesResponse<ExampleNodeId>, RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId>>>
+    {
         self.c().await?.raft().append(req).await.map_err(|e| to_error(e, self.target))
     }
 
@@ -112,7 +109,7 @@ impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
         req: InstallSnapshotRequest<ExampleTypeConfig>,
     ) -> Result<
         InstallSnapshotResponse<ExampleNodeId>,
-        RPCError<ExampleNodeId, ExampleNode, InstallSnapshotError<ExampleNodeId>>,
+        RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, InstallSnapshotError>>,
     > {
         self.c().await?.raft().snapshot(req).await.map_err(|e| to_error(e, self.target))
     }
@@ -120,7 +117,7 @@ impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
     async fn send_vote(
         &mut self,
         req: VoteRequest<ExampleNodeId>,
-    ) -> Result<VoteResponse<ExampleNodeId>, RPCError<ExampleNodeId, ExampleNode, VoteError<ExampleNodeId>>> {
+    ) -> Result<VoteResponse<ExampleNodeId>, RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId>>> {
         self.c().await?.raft().vote(req).await.map_err(|e| to_error(e, self.target))
     }
 }

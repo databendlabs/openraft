@@ -4,6 +4,7 @@ use actix_web::web::Data;
 use actix_web::Responder;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::Infallible;
+use openraft::error::RaftError;
 use openraft::BasicNode;
 use web::Json;
 
@@ -46,7 +47,8 @@ pub async fn consistent_read(app: Data<ExampleApp>, req: Json<String>) -> actix_
             let key = req.0;
             let value = state_machine.data.get(&key).cloned();
 
-            let res: Result<String, CheckIsLeaderError<ExampleNodeId, BasicNode>> = Ok(value.unwrap_or_default());
+            let res: Result<String, RaftError<ExampleNodeId, CheckIsLeaderError<ExampleNodeId, BasicNode>>> =
+                Ok(value.unwrap_or_default());
             Ok(Json(res))
         }
         Err(e) => Ok(Json(Err(e))),

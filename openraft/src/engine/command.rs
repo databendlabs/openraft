@@ -4,10 +4,9 @@ use std::sync::Arc;
 
 use tokio::sync::oneshot;
 
-use crate::error::AppendEntriesError;
+use crate::error::Infallible;
 use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
-use crate::error::VoteError;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::AppendEntriesResponse;
@@ -132,19 +131,19 @@ where
     // ---
     /// Send vote result `res` to its caller via `tx`
     SendVoteResult {
-        send: SendResult<Result<VoteResponse<NID>, VoteError<NID>>>,
+        send: SendResult<Result<VoteResponse<NID>, Infallible>>,
     },
 
     /// Send append-entries result `res` to its caller via `tx`
     SendAppendEntriesResult {
-        send: SendResult<Result<AppendEntriesResponse<NID>, AppendEntriesError<NID>>>,
+        send: SendResult<Result<AppendEntriesResponse<NID>, Infallible>>,
     },
 
     // TODO: use it
     #[allow(dead_code)]
     /// Send install-snapshot result `res` to its caller via `tx`
     SendInstallSnapshotResult {
-        send: SendResult<Result<InstallSnapshotResponse<NID>, InstallSnapshotError<NID>>>,
+        send: SendResult<Result<InstallSnapshotResponse<NID>, InstallSnapshotError>>,
     },
 
     /// Send install-snapshot result `res` to its caller via `tx`

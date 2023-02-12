@@ -160,7 +160,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
         Ok(_) => {
             unreachable!("expect error");
         }
-        Err(cli_err) => match cli_err {
+        Err(cli_err) => match cli_err.api_error().unwrap() {
             ClientWriteError::ForwardToLeader(fwd) => {
                 assert!(fwd.leader_id.is_none());
                 assert!(fwd.leader_node.is_none());

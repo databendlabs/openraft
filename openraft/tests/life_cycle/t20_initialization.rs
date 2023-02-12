@@ -190,7 +190,7 @@ async fn initialize_err_target_not_include_target() -> anyhow::Result<()> {
                 node_id,
                 membership: Membership::new(vec![btreeset! {9}], None)
             }),
-            err
+            err.into_api_error().unwrap()
         );
     }
 
@@ -233,7 +233,7 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
                 }),
                 vote: Vote::new_committed(1, 0)
             }),
-            err
+            err.into_api_error().unwrap()
         );
     }
 
