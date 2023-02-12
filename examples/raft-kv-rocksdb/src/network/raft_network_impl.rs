@@ -32,16 +32,11 @@ pub struct ExampleNetwork {}
 #[async_trait]
 impl RaftNetworkFactory<ExampleTypeConfig> for ExampleNetwork {
     type Network = ExampleNetworkConnection;
-    type ConnectionError = NetworkError;
 
-    async fn new_client(
-        &mut self,
-        target: ExampleNodeId,
-        node: &ExampleNode,
-    ) -> Result<Self::Network, Self::ConnectionError> {
+    async fn new_client(&mut self, target: ExampleNodeId, node: &ExampleNode) -> Self::Network {
         let addr = format!("ws://{}", node.rpc_addr);
         let client = Client::dial_websocket(&addr).await.ok();
-        Ok(ExampleNetworkConnection { addr, client, target })
+        ExampleNetworkConnection { addr, client, target }
     }
 }
 

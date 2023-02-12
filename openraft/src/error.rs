@@ -209,10 +209,6 @@ where
 {
     #[error(transparent)]
     ForwardToLeader(#[from] ForwardToLeader<NID, N>),
-
-    // TODO: do we really need this error? An app may check an target node if it wants to.
-    #[error(transparent)]
-    NetworkError(#[from] NetworkError),
 }
 
 impl<NID, N> TryAsRef<ForwardToLeader<NID, N>> for AddLearnerError<NID, N>
@@ -223,7 +219,6 @@ where
     fn try_as_ref(&self) -> Option<&ForwardToLeader<NID, N>> {
         match self {
             Self::ForwardToLeader(f) => Some(f),
-            _ => None,
         }
     }
 }
@@ -236,10 +231,8 @@ where
     type Error = AddLearnerError<NID, N>;
 
     fn try_from(value: AddLearnerError<NID, N>) -> Result<Self, Self::Error> {
-        if let AddLearnerError::ForwardToLeader(e) = value {
-            return Ok(e);
-        }
-        Err(value)
+        let AddLearnerError::ForwardToLeader(e) = value;
+        Ok(e)
     }
 }
 

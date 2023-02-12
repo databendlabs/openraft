@@ -36,7 +36,7 @@ async fn append_sees_higher_vote() -> Result<()> {
     {
         router
             .new_client(1, &())
-            .await?
+            .await
             .send_vote(VoteRequest {
                 vote: Vote::new(10, 1),
                 last_log_id: Some(LogId::new(LeaderId::new(10, 1), 5)),

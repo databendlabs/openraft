@@ -955,20 +955,12 @@ where
     S: Default + Clone,
 {
     type Network = RaftRouterNetwork<C, S>;
-    type ConnectionError = NetworkError;
 
-    async fn new_client(&mut self, target: C::NodeId, _node: &C::Node) -> Result<Self::Network, NetworkError> {
-        {
-            let unreachable = self.unconnectable.lock().unwrap();
-            if unreachable.contains(&target) {
-                let e = NetworkError::new(&AnyError::error(format!("failed to connect: {}", target)));
-                return Err(e);
-            }
-        }
-        Ok(RaftRouterNetwork {
+    async fn new_client(&mut self, target: C::NodeId, _node: &C::Node) -> Self::Network {
+        RaftRouterNetwork {
             target,
             owner: self.clone(),
-        })
+        }
     }
 }
 
