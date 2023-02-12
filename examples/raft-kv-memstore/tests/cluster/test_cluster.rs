@@ -1,4 +1,6 @@
+use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
+use std::panic::PanicInfo;
 use std::thread;
 use std::time::Duration;
 
@@ -11,6 +13,38 @@ use raft_kv_memstore::store::ExampleRequest;
 use tokio::runtime::Runtime;
 use tracing_subscriber::EnvFilter;
 
+pub fn log_panic(panic: &PanicInfo) {
+    let backtrace = {
+        format!("{:?}", Backtrace::force_capture())
+        // #[cfg(feature = "bt")]
+        // {
+        //     format!("{:?}", Backtrace::force_capture())
+        // }
+        //
+        // #[cfg(not(feature = "bt"))]
+        // {
+        //     "backtrace is disabled without --features 'bt'".to_string()
+        // }
+    };
+
+    eprintln!("{}", panic);
+
+    if let Some(location) = panic.location() {
+        tracing::error!(
+            message = %panic,
+            backtrace = %backtrace,
+            panic.file = location.file(),
+            panic.line = location.line(),
+            panic.column = location.column(),
+        );
+        eprintln!("{}:{}:{}", location.file(), location.line(), location.column());
+    } else {
+        tracing::error!(message = %panic, backtrace = %backtrace);
+    }
+
+    eprintln!("{}", backtrace);
+}
+
 /// Setup a cluster of 3 nodes.
 /// Write to it and read from it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -19,6 +53,10 @@ async fn test_cluster() -> anyhow::Result<()> {
     //     Thus we need a supporting component to provide mapping from node id to node address.
     //     This is only used by the client. A raft node in this example stores node addresses in its
     // store.
+
+    std::panic::set_hook(Box::new(|panic| {
+        log_panic(panic);
+    }));
 
     tracing_subscriber::fmt()
         .with_target(true)

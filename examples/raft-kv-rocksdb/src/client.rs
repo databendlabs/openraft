@@ -6,14 +6,15 @@ use openraft::error::AddLearnerError;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::ForwardToLeader;
-use openraft::error::Infallible;
 use openraft::error::InitializeError;
 use openraft::error::NetworkError;
 use openraft::error::RPCError;
+use openraft::error::RaftError;
 use openraft::error::RemoteError;
 use openraft::raft::AddLearnerResponse;
 use openraft::raft::ClientWriteResponse;
 use openraft::RaftMetrics;
+use openraft::TryAsRef;
 use reqwest::Client;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -58,7 +59,7 @@ impl ExampleClient {
         req: &ExampleRequest,
     ) -> Result<
         ClientWriteResponse<ExampleTypeConfig>,
-        RPCError<ExampleNodeId, ExampleNode, ClientWriteError<ExampleNodeId, ExampleNode>>,
+        RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, ClientWriteError<ExampleNodeId, ExampleNode>>>,
     > {
         self.send_rpc_to_leader("api/write", Some(req)).await
     }
@@ -66,7 +67,10 @@ impl ExampleClient {
     /// Read value by key, in an inconsistent mode.
     ///
     /// This method may return stale value because it does not force to read on a legal leader.
-    pub async fn read(&self, req: &String) -> Result<String, RPCError<ExampleNodeId, ExampleNode, Infallible>> {
+    pub async fn read(
+        &self,
+        req: &String,
+    ) -> Result<String, RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId>>> {
         self.do_send_rpc_to_leader("api/read", Some(req)).await
     }
 
@@ -76,7 +80,10 @@ impl ExampleClient {
     pub async fn consistent_read(
         &self,
         req: &String,
-    ) -> Result<String, RPCError<ExampleNodeId, ExampleNode, CheckIsLeaderError<ExampleNodeId, ExampleNode>>> {
+    ) -> Result<
+        String,
+        RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, CheckIsLeaderError<ExampleNodeId, ExampleNode>>>,
+    > {
         self.do_send_rpc_to_leader("api/consistent_read", Some(req)).await
     }
 
@@ -90,7 +97,10 @@ impl ExampleClient {
     /// Then make the new node a member with [`change_membership`].
     pub async fn init(
         &self,
-    ) -> Result<(), RPCError<ExampleNodeId, ExampleNode, InitializeError<ExampleNodeId, ExampleNode>>> {
+    ) -> Result<
+        (),
+        RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, InitializeError<ExampleNodeId, ExampleNode>>>,
+    > {
         self.do_send_rpc_to_leader("cluster/init", Some(&Empty {})).await
     }
 
@@ -102,7 +112,7 @@ impl ExampleClient {
         req: (ExampleNodeId, String, String),
     ) -> Result<
         AddLearnerResponse<ExampleNodeId>,
-        RPCError<ExampleNodeId, ExampleNode, AddLearnerError<ExampleNodeId, ExampleNode>>,
+        RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, AddLearnerError<ExampleNodeId, ExampleNode>>>,
     > {
         self.send_rpc_to_leader("cluster/add-learner", Some(&req)).await
     }
@@ -116,7 +126,7 @@ impl ExampleClient {
         req: &BTreeSet<ExampleNodeId>,
     ) -> Result<
         ClientWriteResponse<ExampleTypeConfig>,
-        RPCError<ExampleNodeId, ExampleNode, ClientWriteError<ExampleNodeId, ExampleNode>>,
+        RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, ClientWriteError<ExampleNodeId, ExampleNode>>>,
     > {
         self.send_rpc_to_leader("cluster/change-membership", Some(req)).await
     }
@@ -128,7 +138,8 @@ impl ExampleClient {
     /// See [`RaftMetrics`].
     pub async fn metrics(
         &self,
-    ) -> Result<RaftMetrics<ExampleNodeId, ExampleNode>, RPCError<ExampleNodeId, ExampleNode, Infallible>> {
+    ) -> Result<RaftMetrics<ExampleNodeId, ExampleNode>, RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId>>>
+    {
         self.do_send_rpc_to_leader("cluster/metrics", None::<&()>).await
     }
 
@@ -188,21 +199,21 @@ impl ExampleClient {
         &self,
         uri: &str,
         req: Option<&Req>,
-    ) -> Result<Resp, RPCError<ExampleNodeId, ExampleNode, Err>>
+    ) -> Result<Resp, RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, Err>>>
     where
         Req: Serialize + 'static,
         Resp: Serialize + DeserializeOwned,
         Err: std::error::Error
             + Serialize
             + DeserializeOwned
-            + TryInto<ForwardToLeader<ExampleNodeId, ExampleNode>>
+            + TryAsRef<ForwardToLeader<ExampleNodeId, ExampleNode>>
             + Clone,
     {
         // Retry at most 3 times to find a valid leader.
         let mut n_retry = 3;
 
         loop {
-            let res: Result<Resp, RPCError<ExampleNodeId, ExampleNode, Err>> =
+            let res: Result<Resp, RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, Err>>> =
                 self.do_send_rpc_to_leader(uri, req).await;
 
             let rpc_err = match res {
@@ -211,20 +222,19 @@ impl ExampleClient {
             };
 
             if let RPCError::RemoteError(remote_err) = &rpc_err {
-                let forward_err_res =
-                    <Err as TryInto<ForwardToLeader<ExampleNodeId, ExampleNode>>>::try_into(remote_err.source.clone());
+                let raft_err: &RaftError<ExampleNodeId, _> = &remote_err.source;
 
-                if let Ok(ForwardToLeader {
+                if let Some(ForwardToLeader {
                     leader_id: Some(leader_id),
                     leader_node: Some(leader_node),
                     ..
-                }) = forward_err_res
+                }) = raft_err.forward_to_leader()
                 {
                     // Update target to the new leader.
                     {
                         let mut t = self.leader.lock().unwrap();
                         let api_addr = leader_node.api_addr.clone();
-                        *t = (leader_id, api_addr);
+                        *t = (*leader_id, api_addr);
                     }
 
                     n_retry -= 1;

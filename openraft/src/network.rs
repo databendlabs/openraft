@@ -5,10 +5,9 @@ use std::fmt::Formatter;
 
 use async_trait::async_trait;
 
-use crate::error::AppendEntriesError;
 use crate::error::InstallSnapshotError;
 use crate::error::RPCError;
-use crate::error::VoteError;
+use crate::error::RaftError;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::InstallSnapshotRequest;
@@ -49,19 +48,22 @@ where C: RaftTypeConfig
     async fn send_append_entries(
         &mut self,
         rpc: AppendEntriesRequest<C>,
-    ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, AppendEntriesError<C::NodeId>>>;
+    ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
 
     /// Send an InstallSnapshot RPC to the target Raft node (§7).
     async fn send_install_snapshot(
         &mut self,
         rpc: InstallSnapshotRequest<C>,
-    ) -> Result<InstallSnapshotResponse<C::NodeId>, RPCError<C::NodeId, C::Node, InstallSnapshotError<C::NodeId>>>;
+    ) -> Result<
+        InstallSnapshotResponse<C::NodeId>,
+        RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>>,
+    >;
 
     /// Send a RequestVote RPC to the target Raft node (§5).
     async fn send_vote(
         &mut self,
         rpc: VoteRequest<C::NodeId>,
-    ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, VoteError<C::NodeId>>>;
+    ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>>;
 }
 
 /// A trait defining the interface for a Raft network factory to create connections between cluster
