@@ -1354,12 +1354,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     tracing::warn!("leader has removed target: {}", target);
                 };
             } else {
-                unreachable!("no longer a leader, received message from previous leader");
+                // TODO: A leader may have stepped down.
             }
         }
 
-        self.engine.replication_handler().update_progress(target, id, result);
-        self.run_engine_commands::<Entry<C>>(&[]).await?;
+        // TODO: A leader may have stepped down.
+        if self.engine.internal_server_state.is_leading() {
+            self.engine.replication_handler().update_progress(target, id, result);
+            self.run_engine_commands::<Entry<C>>(&[]).await?;
+        }
 
         Ok(())
     }
