@@ -44,7 +44,6 @@ use crate::error::ChangeMembershipError;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::EmptyMembership;
-use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InProgress;
@@ -234,7 +233,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn handle_check_is_leader_request(
         &mut self,
         tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId, C::Node>>,
-    ) {
+    ) -> Result<(), StorageError<C::NodeId>> {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let em = self.engine.state.membership_state.effective();
@@ -242,20 +241,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         if em.is_quorum(granted.iter()) {
             let _ = tx.send(Ok(()));
-            return;
+            return Ok(());
         }
 
         // Spawn parallel requests, all with the standard timeout for heartbeats.
         let mut pending = FuturesUnordered::new();
 
-        let voter_progresses = if let Some(l) = &self.engine.internal_server_state.leading() {
+        let voter_progresses = {
+            let l = &self.engine.internal_server_state.leading().unwrap();
             l.progress
                 .iter()
                 .filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
                 .copied()
                 .collect::<Vec<_>>()
-        } else {
-            unreachable!("it has to be a leader!!!");
         };
 
         for (target, progress) in voter_progresses {
@@ -329,10 +327,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             // request.
             if let AppendEntriesResponse::HigherVote(vote) = data {
                 let res = self.engine.vote_handler().handle_message_vote(&vote);
-                if let Err(e) = self.run_engine_commands::<Entry<C>>(&[]).await.extract_fatal() {
-                    let _ = tx.send(Err(e.into()));
-                    return;
-                }
+                self.run_engine_commands::<Entry<C>>(&[]).await?;
+
                 if let Err(e) = res {
                     // simply ignore stale responses
                     tracing::warn!(target = display(target), "vote {vote} rejected: {e}");
@@ -341,7 +337,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 // we are no longer leader so error out early
                 if !self.engine.state.is_leader(&self.engine.config.id) {
                     self.reject_with_forward_to_leader(tx);
-                    return;
+                    return Ok(());
                 }
             }
 
@@ -350,7 +346,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             let mem = &self.engine.state.membership_state.effective();
             if mem.is_quorum(granted.iter()) {
                 let _ = tx.send(Ok(()));
-                return;
+                return Ok(());
             }
         }
 
@@ -362,6 +358,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             got: granted,
         }
         .into()));
+        Ok(())
     }
 
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
@@ -1193,7 +1190,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {
-                    self.handle_check_is_leader_request(tx).await;
+                    self.handle_check_is_leader_request(tx).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }

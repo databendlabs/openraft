@@ -33,34 +33,6 @@ where NID: NodeId
     Stopped,
 }
 
-/// Extract Fatal from a Result.
-///
-/// Fatal will shutdown the raft and needs to be dealt separately,
-/// such as StorageError.
-pub trait ExtractFatal<NID>
-where
-    Self: Sized,
-    NID: NodeId,
-{
-    fn extract_fatal(self) -> Result<Self, Fatal<NID>>;
-}
-
-impl<NID, T, E> ExtractFatal<NID> for Result<T, E>
-where
-    NID: NodeId,
-    E: TryInto<Fatal<NID>> + Clone,
-{
-    fn extract_fatal(self) -> Result<Self, Fatal<NID>> {
-        if let Err(e) = &self {
-            let fatal = e.clone().try_into();
-            if let Ok(f) = fatal {
-                return Err(f);
-            }
-        }
-        Ok(self)
-    }
-}
-
 // TODO: not used, remove
 #[derive(Debug, Clone, thiserror::Error, derive_more::TryInto)]
 #[derive(PartialEq, Eq)]
