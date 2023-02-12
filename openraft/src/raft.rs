@@ -176,6 +176,7 @@ struct RaftInner<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>>
 /// `shutdown` method should be called on this type to await the shutdown of the node. If the parent
 /// application needs to shutdown the Raft node for any reason, calling `shutdown` will do the
 /// trick.
+#[derive(Clone)]
 pub struct Raft<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
     inner: Arc<RaftInner<C, N, S>>,
 }
@@ -836,14 +837,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     }
 }
 
-impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Clone for Raft<C, N, S> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 pub(crate) type RaftRespRx<T, E> = oneshot::Receiver<Result<T, E>>;
 
@@ -878,10 +871,12 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         rpc: AppendEntriesRequest<C>,
         tx: AppendEntriesTx<C::NodeId>,
     },
+
     RequestVote {
         rpc: VoteRequest<C::NodeId>,
         tx: VoteTx<C::NodeId>,
     },
+
     VoteResponse {
         target: C::NodeId,
         resp: VoteResponse<C::NodeId>,
@@ -889,6 +884,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         /// Which ServerState sent this message. It is also the requested vote.
         vote: Vote<C::NodeId>,
     },
+
     InstallSnapshot {
         rpc: InstallSnapshotRequest<C>,
         tx: InstallSnapshotTx<C::NodeId>,
@@ -904,6 +900,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         payload: EntryPayload<C>,
         tx: ClientWriteTx<C, C::NodeId, C::Node>,
     },
+
     CheckIsLeaderRequest {
         tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId, C::Node>>,
     },
@@ -912,6 +909,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         members: BTreeMap<C::NodeId, C::Node>,
         tx: RaftRespTx<(), InitializeError<C::NodeId, C::Node>>,
     },
+
     /// Request raft core to setup a new replication to a learner.
     AddLearner {
         id: C::NodeId,
@@ -921,6 +919,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         /// Send the log id when the replication becomes line-rate.
         tx: RaftAddLearnerTx<C::NodeId, C::Node>,
     },
+
     ChangeMembership {
         changes: ChangeMembers<C::NodeId>,
 
