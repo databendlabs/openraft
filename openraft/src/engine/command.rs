@@ -1,18 +1,19 @@
+use std::fmt::Debug;
 use std::ops::Range;
 use std::sync::Arc;
 
+use tokio::sync::oneshot;
+
 use crate::error::AppendEntriesError;
+use crate::error::InitializeError;
 use crate::error::InstallSnapshotError;
 use crate::error::VoteError;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::AppendEntriesResponse;
-use crate::raft::AppendEntriesTx;
 use crate::raft::InstallSnapshotResponse;
-use crate::raft::InstallSnapshotTx;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::raft::VoteTx;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::MetricsChangeFlags;
@@ -22,9 +23,8 @@ use crate::SnapshotMeta;
 use crate::Vote;
 
 /// Commands to send to `RaftRuntime` to execute, to update the application state.
-#[derive(derivative::Derivative)]
-#[derivative(PartialEq)]
 #[derive(Debug)]
+#[derive(PartialEq, Eq)]
 pub(crate) enum Command<NID, N>
 where
     N: Node,
@@ -132,25 +132,24 @@ where
     // ---
     /// Send vote result `res` to its caller via `tx`
     SendVoteResult {
-        res: Result<VoteResponse<NID>, VoteError<NID>>,
-        #[derivative(PartialEq = "ignore")]
-        tx: VoteTx<NID>,
+        send: SendResult<Result<VoteResponse<NID>, VoteError<NID>>>,
     },
 
     /// Send append-entries result `res` to its caller via `tx`
     SendAppendEntriesResult {
-        res: Result<AppendEntriesResponse<NID>, AppendEntriesError<NID>>,
-        #[derivative(PartialEq = "ignore")]
-        tx: AppendEntriesTx<NID>,
+        send: SendResult<Result<AppendEntriesResponse<NID>, AppendEntriesError<NID>>>,
     },
 
     // TODO: use it
     #[allow(dead_code)]
     /// Send install-snapshot result `res` to its caller via `tx`
     SendInstallSnapshotResult {
-        res: Result<InstallSnapshotResponse<NID>, InstallSnapshotError<NID>>,
-        #[derivative(PartialEq = "ignore")]
-        tx: InstallSnapshotTx<NID>,
+        send: SendResult<Result<InstallSnapshotResponse<NID>, InstallSnapshotError<NID>>>,
+    },
+
+    /// Send install-snapshot result `res` to its caller via `tx`
+    SendInitializeResult {
+        send: SendResult<Result<(), InitializeError<NID, N>>>,
     },
 
     //
@@ -159,13 +158,6 @@ where
     // TODO:
     #[allow(dead_code)]
     BuildSnapshot {},
-}
-
-impl<NID, N> Eq for Command<NID, N>
-where
-    N: Node,
-    NID: NodeId,
-{
 }
 
 impl<NID, N> Command<NID, N>
@@ -199,6 +191,37 @@ where
             Command::SendVoteResult { .. } => {}
             Command::SendAppendEntriesResult { .. } => {}
             Command::SendInstallSnapshotResult { .. } => {}
+            Command::SendInitializeResult { .. } => {}
         }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct SendResult<T>
+where T: Debug + PartialEq + Eq
+{
+    res: T,
+    tx: oneshot::Sender<T>,
+}
+
+impl<T> PartialEq for SendResult<T>
+where T: Debug + PartialEq + Eq
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.res == other.res
+    }
+}
+
+impl<T> Eq for SendResult<T> where T: Debug + PartialEq + Eq {}
+
+impl<T> SendResult<T>
+where T: Debug + PartialEq + Eq
+{
+    pub(crate) fn new(res: T, tx: oneshot::Sender<T>) -> Self {
+        Self { res, tx }
+    }
+
+    pub(crate) fn send(self) {
+        let _ = self.tx.send(self.res);
     }
 }

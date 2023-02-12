@@ -37,6 +37,7 @@ use crate::core::SnapshotState;
 use crate::core::VoteWiseTime;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::SendResult;
 use crate::entry::EntryRef;
 use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
@@ -672,12 +673,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) async fn handle_initialize(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, C::Node>,
-    ) -> Result<(), InitializeError<C::NodeId, C::Node>> {
+        tx: RaftRespTx<(), InitializeError<C::NodeId, C::Node>>,
+    ) -> Result<(), StorageError<C::NodeId>> {
         let membership = Membership::from(member_nodes);
         let payload = EntryPayload::<C>::Membership(membership);
 
         let mut entry_refs = [EntryRef::new(&payload)];
-        self.engine.initialize(&mut entry_refs)?;
+        let res = self.engine.initialize(&mut entry_refs);
+        self.engine.output.push_command(Command::SendInitializeResult {
+            send: SendResult::new(res, tx),
+        });
+
         self.run_engine_commands(&entry_refs).await?;
 
         Ok(())
@@ -1116,7 +1122,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
-        self.engine.output.push_command(Command::SendVoteResult { res: Ok(resp), tx });
+        self.engine.output.push_command(Command::SendVoteResult {
+            send: SendResult::new(Ok(resp), tx),
+        });
 
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
@@ -1153,7 +1161,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_append_entries_req(&req.vote, req.prev_log_id, &req.entries, req.leader_commit);
-        self.engine.output.push_command(Command::SendAppendEntriesResult { res: Ok(resp), tx });
+        self.engine.output.push_command(Command::SendAppendEntriesResult {
+            send: SendResult::new(Ok(resp), tx),
+        });
 
         self.run_engine_commands(req.entries.as_slice()).await?;
         Ok(())
@@ -1196,7 +1206,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
             RaftMsg::Initialize { members, tx } => {
-                let _ = tx.send(self.handle_initialize(members).await.extract_fatal()?);
+                self.handle_initialize(members, tx).await?;
             }
             RaftMsg::AddLearner { id, node, tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {
@@ -1576,14 +1586,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     unreachable!("buffered snapshot not found: snapshot meta: {:?}", snapshot_meta)
                 }
             }
-            Command::SendVoteResult { res, tx } => {
-                let _ = tx.send(res);
+            Command::SendVoteResult { send } => {
+                send.send();
             }
-            Command::SendAppendEntriesResult { res, tx } => {
-                let _ = tx.send(res);
+            Command::SendAppendEntriesResult { send } => {
+                send.send();
             }
-            Command::SendInstallSnapshotResult { res, tx } => {
-                let _ = tx.send(res);
+            Command::SendInstallSnapshotResult { send } => {
+                send.send();
+            }
+            Command::SendInitializeResult { send } => {
+                send.send();
             }
         }
 
