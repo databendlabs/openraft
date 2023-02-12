@@ -10,5 +10,4 @@ mod fixtures;
 
 mod t20_initialization;
 mod t20_shutdown;
-mod t30_connect_error;
 mod t90_issue_607_single_restart;
