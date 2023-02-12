@@ -44,6 +44,7 @@ mod log_id_list;
 #[cfg(test)] mod update_progress_test;
 
 pub(crate) use command::Command;
+pub(crate) use command::SendResult;
 pub(crate) use engine_impl::Engine;
 pub(crate) use engine_impl::EngineConfig;
 pub use log_id_list::LogIdList;

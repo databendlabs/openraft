@@ -37,13 +37,13 @@ use crate::core::SnapshotState;
 use crate::core::VoteWiseTime;
 use crate::engine::Command;
 use crate::engine::Engine;
+use crate::engine::SendResult;
 use crate::entry::EntryRef;
 use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::EmptyMembership;
-use crate::error::ExtractFatal;
 use crate::error::Fatal;
 use crate::error::ForwardToLeader;
 use crate::error::InProgress;
@@ -233,7 +233,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(super) async fn handle_check_is_leader_request(
         &mut self,
         tx: RaftRespTx<(), CheckIsLeaderError<C::NodeId, C::Node>>,
-    ) {
+    ) -> Result<(), StorageError<C::NodeId>> {
         // Setup sentinel values to track when we've received majority confirmation of leadership.
 
         let em = self.engine.state.membership_state.effective();
@@ -241,20 +241,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         if em.is_quorum(granted.iter()) {
             let _ = tx.send(Ok(()));
-            return;
+            return Ok(());
         }
 
         // Spawn parallel requests, all with the standard timeout for heartbeats.
         let mut pending = FuturesUnordered::new();
 
-        let voter_progresses = if let Some(l) = &self.engine.internal_server_state.leading() {
+        let voter_progresses = {
+            let l = &self.engine.internal_server_state.leading().unwrap();
             l.progress
                 .iter()
                 .filter(|(id, _v)| l.progress.is_voter(id) == Some(true))
                 .copied()
                 .collect::<Vec<_>>()
-        } else {
-            unreachable!("it has to be a leader!!!");
         };
 
         for (target, progress) in voter_progresses {
@@ -328,10 +327,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             // request.
             if let AppendEntriesResponse::HigherVote(vote) = data {
                 let res = self.engine.vote_handler().handle_message_vote(&vote);
-                if let Err(e) = self.run_engine_commands::<Entry<C>>(&[]).await.extract_fatal() {
-                    let _ = tx.send(Err(e.into()));
-                    return;
-                }
+                self.run_engine_commands::<Entry<C>>(&[]).await?;
+
                 if let Err(e) = res {
                     // simply ignore stale responses
                     tracing::warn!(target = display(target), "vote {vote} rejected: {e}");
@@ -340,7 +337,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 // we are no longer leader so error out early
                 if !self.engine.state.is_leader(&self.engine.config.id) {
                     self.reject_with_forward_to_leader(tx);
-                    return;
+                    return Ok(());
                 }
             }
 
@@ -349,7 +346,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             let mem = &self.engine.state.membership_state.effective();
             if mem.is_quorum(granted.iter()) {
                 let _ = tx.send(Ok(()));
-                return;
+                return Ok(());
             }
         }
 
@@ -361,6 +358,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             got: granted,
         }
         .into()));
+        Ok(())
     }
 
     /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
@@ -672,12 +670,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub(crate) async fn handle_initialize(
         &mut self,
         member_nodes: BTreeMap<C::NodeId, C::Node>,
-    ) -> Result<(), InitializeError<C::NodeId, C::Node>> {
+        tx: RaftRespTx<(), InitializeError<C::NodeId, C::Node>>,
+    ) -> Result<(), StorageError<C::NodeId>> {
         let membership = Membership::from(member_nodes);
         let payload = EntryPayload::<C>::Membership(membership);
 
         let mut entry_refs = [EntryRef::new(&payload)];
-        self.engine.initialize(&mut entry_refs)?;
+        let res = self.engine.initialize(&mut entry_refs);
+        self.engine.output.push_command(Command::SendInitializeResult {
+            send: SendResult::new(res, tx),
+        });
+
         self.run_engine_commands(&entry_refs).await?;
 
         Ok(())
@@ -1116,7 +1119,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_vote_req(req);
-        self.engine.output.push_command(Command::SendVoteResult { res: Ok(resp), tx });
+        self.engine.output.push_command(Command::SendVoteResult {
+            send: SendResult::new(Ok(resp), tx),
+        });
 
         self.run_engine_commands::<Entry<C>>(&[]).await?;
 
@@ -1153,7 +1158,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(req = display(req.summary()), func = func_name!());
 
         let resp = self.engine.handle_append_entries_req(&req.vote, req.prev_log_id, &req.entries, req.leader_commit);
-        self.engine.output.push_command(Command::SendAppendEntriesResult { res: Ok(resp), tx });
+        self.engine.output.push_command(Command::SendAppendEntriesResult {
+            send: SendResult::new(Ok(resp), tx),
+        });
 
         self.run_engine_commands(req.entries.as_slice()).await?;
         Ok(())
@@ -1183,7 +1190,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
             RaftMsg::CheckIsLeaderRequest { tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {
-                    self.handle_check_is_leader_request(tx).await;
+                    self.handle_check_is_leader_request(tx).await?;
                 } else {
                     self.reject_with_forward_to_leader(tx);
                 }
@@ -1196,7 +1203,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
             RaftMsg::Initialize { members, tx } => {
-                let _ = tx.send(self.handle_initialize(members).await.extract_fatal()?);
+                self.handle_initialize(members, tx).await?;
             }
             RaftMsg::AddLearner { id, node, tx } => {
                 if self.engine.state.is_leader(&self.engine.config.id) {
@@ -1576,14 +1583,17 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     unreachable!("buffered snapshot not found: snapshot meta: {:?}", snapshot_meta)
                 }
             }
-            Command::SendVoteResult { res, tx } => {
-                let _ = tx.send(res);
+            Command::SendVoteResult { send } => {
+                send.send();
             }
-            Command::SendAppendEntriesResult { res, tx } => {
-                let _ = tx.send(res);
+            Command::SendAppendEntriesResult { send } => {
+                send.send();
             }
-            Command::SendInstallSnapshotResult { res, tx } => {
-                let _ = tx.send(res);
+            Command::SendInstallSnapshotResult { send } => {
+                send.send();
+            }
+            Command::SendInitializeResult { send } => {
+                send.send();
             }
         }
 
