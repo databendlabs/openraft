@@ -51,6 +51,7 @@ where
         }
     }
 
+    /// Try to convert self to APIError.
     pub fn into_api_error(self) -> Option<E> {
         match self {
             RaftError::APIError(e) => Some(e),
@@ -66,6 +67,7 @@ where
         }
     }
 
+    /// Try to convert self to Fatal error.
     pub fn into_fatal(self) -> Option<Fatal<NID>> {
         match self {
             RaftError::APIError(_) => None,
@@ -85,6 +87,7 @@ where
         }
     }
 
+    /// Try to convert self to ForwardToLeader error if APIError is a ForwardToLeader error.
     pub fn into_forward_to_leader<N>(self) -> Option<ForwardToLeader<NID, N>>
     where
         N: Node,
@@ -283,9 +286,9 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(serde::Deserialize, serde::Serialize),
-    serde(bound = "T:serde::Serialize + for <'d> serde::Deserialize<'d>")
+    serde(bound = "E:serde::Serialize + for <'d> serde::Deserialize<'d>")
 )]
-pub enum RPCError<NID: NodeId, N: Node, T: Error> {
+pub enum RPCError<NID: NodeId, N: Node, E: Error> {
     #[error(transparent)]
     Timeout(#[from] Timeout<NID>),
 
@@ -293,7 +296,24 @@ pub enum RPCError<NID: NodeId, N: Node, T: Error> {
     Network(#[from] NetworkError),
 
     #[error(transparent)]
-    RemoteError(#[from] RemoteError<NID, N, T>),
+    RemoteError(#[from] RemoteError<NID, N, E>),
+}
+
+impl<NID, N, E> RPCError<NID, N, RaftError<NID, E>>
+where
+    NID: NodeId,
+    N: Node,
+    E: Error,
+{
+    /// Return a reference to ForwardToLeader error if Self::RemoteError contains one.
+    pub fn forward_to_leader(&self) -> Option<&ForwardToLeader<NID, N>>
+    where E: TryAsRef<ForwardToLeader<NID, N>> {
+        match self {
+            RPCError::Timeout(_) => None,
+            RPCError::Network(_) => None,
+            RPCError::RemoteError(remote_err) => remote_err.source.forward_to_leader(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
