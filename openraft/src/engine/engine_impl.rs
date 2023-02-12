@@ -8,7 +8,6 @@ use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
 use crate::entry::RaftEntry;
 use crate::error::InitializeError;
-use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::internal_server_state::InternalServerState;
@@ -183,21 +182,18 @@ where
         self.output.push_command(Command::AppendInputEntries { range: 0..l });
 
         let entry = &mut entries[0];
-        if let Some(m) = entry.get_membership() {
-            self.check_members_contain_me(m)?;
-        } else {
-            Err(NotAMembershipEntry {})?;
-        }
+        let m = entry.get_membership().expect("the only log entry for initializing has to be membership log");
+        self.check_members_contain_me(m)?;
 
-        if let Some(m) = entry.get_membership() {
-            let log_id = entry.get_log_id();
-            tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
+        let log_id = entry.get_log_id();
+        tracing::debug!("update effective membership: log_id:{} {}", log_id, m.summary());
 
-            let em = EffectiveMembership::new_arc(Some(*log_id), m.clone());
-            self.state.membership_state.append(em.clone());
-            self.output.push_command(Command::UpdateMembership { membership: em });
-            self.server_state_handler().update_server_state_if_changed();
-        }
+        let em = EffectiveMembership::new_arc(Some(*log_id), m.clone());
+        self.state.membership_state.append(em.clone());
+
+        self.output.push_command(Command::UpdateMembership { membership: em });
+
+        self.server_state_handler().update_server_state_if_changed();
 
         self.output.push_command(Command::MoveInputCursorBy { n: l });
 

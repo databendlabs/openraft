@@ -8,7 +8,6 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::entry::EntryRef;
 use crate::error::InitializeError;
-use crate::error::NotAMembershipEntry;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
@@ -239,19 +238,6 @@ fn test_initialize() -> anyhow::Result<()> {
                 node_id: 0,
                 membership: m12()
             })),
-            eng.initialize(&mut entries)
-        );
-    }
-
-    tracing::info!("--- log entry is not a membership entry");
-    {
-        let mut eng = eng();
-
-        let payload = EntryPayload::<Config>::Blank;
-        let mut entries = [EntryRef::new(&payload)];
-
-        assert_eq!(
-            Err(InitializeError::NotAMembershipEntry(NotAMembershipEntry {})),
             eng.initialize(&mut entries)
         );
     }

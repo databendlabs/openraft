@@ -172,9 +172,6 @@ where
     NotInMembers(#[from] NotInMembers<NID, N>),
 
     #[error(transparent)]
-    NotAMembershipEntry(#[from] NotAMembershipEntry),
-
-    #[error(transparent)]
     Fatal(#[from] Fatal<NID>),
 }
 
@@ -423,11 +420,6 @@ where
     pub node_id: NID,
     pub membership: Membership<NID, N>,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("initializing log entry has to be a membership config entry")]
-pub struct NotAMembershipEntry {}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
