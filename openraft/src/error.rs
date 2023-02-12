@@ -217,9 +217,8 @@ where
     N: Node,
 {
     fn try_as_ref(&self) -> Option<&ForwardToLeader<NID, N>> {
-        match self {
-            Self::ForwardToLeader(f) => Some(f),
-        }
+        let Self::ForwardToLeader(f) = self;
+        Some(f)
     }
 }
 
