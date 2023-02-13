@@ -1,6 +1,5 @@
 //! The Raft network interface.
 
-use std::error::Error;
 use std::fmt::Formatter;
 
 use async_trait::async_trait;
@@ -81,22 +80,14 @@ where C: RaftTypeConfig
     /// Actual type of the network handling a single connection.
     type Network: RaftNetwork<C>;
 
-    /// The error that an implementation returns when `connect()` fails.
-    // TODO: renaming it to `create()` would be better?
-    type ConnectionError: Error + Send + Sync;
-
     /// Create a new network instance sending RPCs to the target node.
     ///
     /// This function should **not** create a connection but rather a client that will connect when
-    /// required
+    /// required. Therefore there is chance it will build a client that is unable to send out
+    /// anything, e.g., in case the Node network address is configured incorrectly. But this method
+    /// does not return an error because openraft can only ignore it.
     ///
     /// The method is intentionally async to give the implementation a chance to use asynchronous
     /// sync primitives to serialize access to the common internal object, if needed.
-    ///
-    /// # Errors
-    /// When this function errors, it indicates a non-recoverable error in the network, no retries
-    /// will be attempted, and the corresponding node will be constantly unavailable.
-    /// Any recoverable error (such as unreachable host) should be returned as `Ok` with a client
-    /// that will perform the reconnect
-    async fn new_client(&mut self, target: C::NodeId, node: &C::Node) -> Result<Self::Network, Self::ConnectionError>;
+    async fn new_client(&mut self, target: C::NodeId, node: &C::Node) -> Self::Network;
 }

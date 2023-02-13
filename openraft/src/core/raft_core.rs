@@ -39,7 +39,6 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::SendResult;
 use crate::entry::EntryRef;
-use crate::error::AddLearnerError;
 use crate::error::ChangeMembershipError;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
@@ -50,7 +49,6 @@ use crate::error::InProgress;
 use crate::error::InitializeError;
 use crate::error::LearnerIsLagging;
 use crate::error::LearnerNotFound;
-use crate::error::NetworkError;
 use crate::error::QuorumNotEnough;
 use crate::error::RPCError;
 use crate::error::Timeout;
@@ -271,13 +269,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             let my_id = self.id;
             // Safe unwrap(): target is in membership
             let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let mut client = match self.network.new_client(target, &target_node).await {
-                Ok(n) => n,
-                Err(e) => {
-                    tracing::error!(target = display(target), "Failed to create client, this is a non recoverable error, the node will be permanently ignored! {}", e);
-                    continue;
-                }
-            };
+            let mut client = self.network.new_client(target, &target_node).await;
 
             let ttl = Duration::from_millis(self.config.heartbeat_interval);
 
@@ -411,13 +403,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 membership_log_id: self.engine.state.membership_state.effective().log_id,
                 matched: matching.matching,
             }));
-            return Ok(());
-        }
-
-        // Ensure the a client can successfully be created
-        if let Err(e) = self.network.new_client(target, &node).await {
-            let net_err = NetworkError::new(&anyerror::AnyError::new(&e));
-            let _ = tx.send(Err(AddLearnerError::NetworkError(net_err)));
             return Ok(());
         }
 
@@ -934,16 +919,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         target: C::NodeId,
         progress_entry: ProgressEntry<C::NodeId>,
-    ) -> Result<ReplicationHandle<C::NodeId, C::Node, S::SnapshotData>, N::ConnectionError> {
+    ) -> ReplicationHandle<C::NodeId, C::Node, S::SnapshotData> {
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
 
         let membership_log_id = self.engine.state.membership_state.effective().log_id;
-        let network = self.network.new_client(target, target_node).await?;
+        let network = self.network.new_client(target, target_node).await;
 
         let session_id = ReplicationSessionId::new(*self.engine.state.get_vote(), membership_log_id);
 
-        Ok(ReplicationCore::<C, N, S>::spawn(
+        ReplicationCore::<C, N, S>::spawn(
             target,
             session_id,
             self.config.clone(),
@@ -953,7 +938,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             self.storage.get_log_reader().await,
             self.tx_api.clone(),
             tracing::span!(parent: &self.span, Level::DEBUG, "replication", id=display(self.id), target=display(target)),
-        ))
+        )
     }
 
     /// Remove all replication.
@@ -1063,13 +1048,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
             // Safe unwrap(): target must be in membership
             let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap().clone();
-            let mut client = match self.network.new_client(target, &target_node).await {
-                Ok(n) => n,
-                Err(err) => {
-                    tracing::error!({error=%err, target=display(target)}, "while requesting vote");
-                    continue;
-                }
-            };
+            let mut client = self.network.new_client(target, &target_node).await;
 
             let tx = self.tx_api.clone();
 
@@ -1551,19 +1530,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                 self.remove_all_replication().await;
 
                 for (target, matching) in targets.iter() {
-                    match self.spawn_replication_stream(*target, *matching).await {
-                        Ok(state) => {
-                            if let Some(l) = &mut self.leader_data {
-                                l.nodes.insert(*target, state);
-                            } else {
-                                unreachable!("it has to be a leader!!!");
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!({node = % target}, "cannot connect to {:?}", e);
-                            // cannot return Err, or raft fail completely
-                        }
-                    };
+                    let handle = self.spawn_replication_stream(*target, *matching).await;
+
+                    if let Some(l) = &mut self.leader_data {
+                        l.nodes.insert(*target, handle);
+                    } else {
+                        unreachable!("it has to be a leader!!!");
+                    }
                 }
             }
             Command::UpdateProgressMetrics { target, matching } => {
