@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
@@ -46,7 +46,10 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         leader.trigger_snapshot().await?;
         leader
             .wait(timeout())
-            .snapshot(LogId::new(LeaderId::new(1, 0), log_index), "building 1st snapshot")
+            .snapshot(
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                "building 1st snapshot",
+            )
             .await?;
         let mut sto0 = router.get_storage_handle(&0)?;
         let logs = sto0.try_get_log_entries(..).await?;
@@ -65,7 +68,10 @@ async fn purge_in_snapshot_logs() -> Result<()> {
         leader.trigger_snapshot().await?;
         leader
             .wait(timeout())
-            .snapshot(LogId::new(LeaderId::new(1, 0), log_index), "building 2nd snapshot")
+            .snapshot(
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                "building 2nd snapshot",
+            )
             .await?;
     }
 
@@ -79,7 +85,10 @@ async fn purge_in_snapshot_logs() -> Result<()> {
 
         learner
             .wait(timeout())
-            .snapshot(LogId::new(LeaderId::new(1, 0), log_index), "learner install snapshot")
+            .snapshot(
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
+                "learner install snapshot",
+            )
             .await?;
 
         let mut sto1 = router.get_storage_handle(&1)?;

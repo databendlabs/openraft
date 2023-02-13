@@ -5,8 +5,8 @@ use anyhow::Result;
 use maplit::btreeset;
 use memstore::ClientRequest;
 use openraft::raft::VoteRequest;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
@@ -39,7 +39,7 @@ async fn append_sees_higher_vote() -> Result<()> {
             .await
             .send_vote(VoteRequest {
                 vote: Vote::new(10, 1),
-                last_log_id: Some(LogId::new(LeaderId::new(10, 1), 5)),
+                last_log_id: Some(LogId::new(CommittedLeaderId::new(10, 1), 5)),
             })
             .await?;
     }

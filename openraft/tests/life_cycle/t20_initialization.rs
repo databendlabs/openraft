@@ -7,10 +7,10 @@ use maplit::btreeset;
 use openraft::error::InitializeError;
 use openraft::error::NotAllowed;
 use openraft::error::NotInMembers;
+use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::EntryPayload;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
@@ -92,7 +92,7 @@ async fn initialization() -> anyhow::Result<()> {
     for node_id in [0, 1, 2] {
         router.external_request(node_id, move |s, _sto, _net| {
             let want = EffectiveMembership::new(
-                Some(LogId::new(LeaderId::new(0, 0), 0)),
+                Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
                 Membership::new(vec![btreeset! {0,1,2}], None),
             );
             let want = Arc::new(want);
@@ -127,7 +127,7 @@ async fn initialization() -> anyhow::Result<()> {
         let sm_mem = sto.last_applied_state().await?.1;
         assert_eq!(
             EffectiveMembership::new(
-                Some(LogId::new(LeaderId::new(0, 0), 0)),
+                Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
                 Membership::new(vec![btreeset! {0,1,2}], None)
             ),
             sm_mem
@@ -228,7 +228,7 @@ async fn initialize_err_not_allowed() -> anyhow::Result<()> {
         assert_eq!(
             InitializeError::NotAllowed(NotAllowed {
                 last_log_id: Some(LogId {
-                    leader_id: LeaderId::new(1, 0),
+                    leader_id: CommittedLeaderId::new(1, 0),
                     index: 1
                 }),
                 vote: Vote::new_committed(1, 0)

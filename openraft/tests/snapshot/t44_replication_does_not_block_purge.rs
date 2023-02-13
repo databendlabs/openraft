@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftLogReader;
 use tokio::time::sleep;
@@ -49,7 +49,7 @@ async fn replication_does_not_block_purge() -> Result<()> {
         leader.trigger_snapshot().await?;
         leader
             .wait(timeout())
-            .snapshot(LogId::new(LeaderId::new(1, 0), log_index), "built snapshot")
+            .snapshot(LogId::new(CommittedLeaderId::new(1, 0), log_index), "built snapshot")
             .await?;
 
         sleep(Duration::from_millis(500)).await;

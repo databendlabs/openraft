@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
@@ -66,7 +66,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId::new(LeaderId::new(1, 0), log_index),
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
                 timeout(),
                 "1st snapshot",
             )
@@ -99,7 +99,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId::new(LeaderId::new(1, 0), log_index),
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
                 None,
                 "2nd snapshot",
             )

@@ -36,6 +36,7 @@ anyhow             = { workspace = true }
 async-entry        = { workspace = true }
 lazy_static        = { workspace = true }
 pretty_assertions  = { workspace = true }
+serde_json         = { workspace = true }
 tracing-appender   = { workspace = true }
 tracing-subscriber = { workspace = true }
 
@@ -57,6 +58,21 @@ bt  = ["anyerror/backtrace", "anyhow/backtrace"]
 # Add serde::Serialize and serde:Deserialize bound to data types.
 # If you'd like to use `serde` to serialize messages.
 serde = ["dep:serde"]
+
+# Turn on this feature it allows at most ONE quorum-granted leader for each term.
+# This is the way standard raft does, by making the LeaderId a partial order value.
+#
+# - With this feature on:
+#   It is more likely to conflict during election. But every log only needs to store one `term` in it.
+#
+# - With this feature off:
+#   Election conflict rate will be reduced, but every log has to store a `LeaderId{ term, node_id}`,
+#   which may be costly if an application uses a big NodeId type.
+#
+# This feature is disabled by default.
+single-term-leader = []
+
+# default = ["single-term-leader"]
 
 [package.metadata.docs.rs]
 features = ["docinclude"] # Activate `docinclude` during docs.rs build.

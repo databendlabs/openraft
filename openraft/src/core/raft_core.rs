@@ -318,6 +318,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             // If we receive a response with a greater term, then revert to follower and abort this
             // request.
             if let AppendEntriesResponse::HigherVote(vote) = data {
+                debug_assert!(
+                    &vote > self.engine.state.get_vote(),
+                    "committed vote({}) has total order relation with other votes({})",
+                    self.engine.state.get_vote(),
+                    vote
+                );
+
                 let res = self.engine.vote_handler().handle_message_vote(&vote);
                 self.run_engine_commands::<Entry<C>>(&[]).await?;
 
@@ -617,7 +624,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             id: self.id,
 
             // --- data ---
-            current_term: self.engine.state.get_vote().term,
+            current_term: self.engine.state.get_vote().leader_id().get_term(),
             last_log_index: self.engine.state.last_log_id().index(),
             last_applied: self.engine.state.committed().copied(),
             snapshot: self.engine.state.snapshot_meta.last_log_id,
@@ -810,11 +817,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             "get current_leader"
         );
 
-        if !self.engine.state.get_vote().committed {
+        let vote = self.engine.state.get_vote();
+
+        if !vote.is_committed() {
             return None;
         }
 
-        let id = self.engine.state.get_vote().node_id;
+        // Safe unwrap(): vote that is committed has to already have voted for some node.
+        let id = vote.leader_id().voted_for().unwrap();
 
         // TODO: `is_voter()` is slow, maybe cache `current_leader`,
         //       e.g., only update it when membership or vote changes

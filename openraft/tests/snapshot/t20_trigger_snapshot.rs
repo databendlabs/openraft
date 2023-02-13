@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -32,7 +32,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
 
         router
             .wait(&1, timeout())
-            .snapshot(LogId::new(LeaderId::new(1, 0), log_index), "node-1 snapshot")
+            .snapshot(LogId::new(CommittedLeaderId::new(1, 0), log_index), "node-1 snapshot")
             .await?;
     }
 
@@ -52,7 +52,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
 
         router
             .wait(&0, timeout())
-            .snapshot(LogId::new(LeaderId::new(1, 0), log_index), "node-0 snapshot")
+            .snapshot(LogId::new(CommittedLeaderId::new(1, 0), log_index), "node-0 snapshot")
             .await?;
     }
 

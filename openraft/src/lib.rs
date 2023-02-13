@@ -3,6 +3,7 @@
 #![cfg_attr(feature = "bt", feature(provide_any))]
 #![cfg_attr(feature = "bench", feature(test))]
 #![allow(clippy::bool_assert_comparison, clippy::type_complexity)]
+// #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
 //! # Feature flags
 //!
@@ -38,6 +39,7 @@ mod defensive;
 mod entry;
 mod membership;
 mod node;
+mod potime;
 mod progress;
 mod quorum;
 mod raft_types;
@@ -72,6 +74,7 @@ pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
 pub use metrics::ReplicationTargetMetrics;
+pub use potime::PoTime;
 pub use try_as_ref::TryAsRef;
 
 pub use crate::change_members::ChangeMembers;
@@ -119,6 +122,7 @@ pub use crate::storage_error::Violation;
 pub use crate::store_ext::StoreExt;
 pub use crate::store_wrapper::Wrapper;
 pub use crate::summary::MessageSummary;
+pub use crate::vote::CommittedLeaderId;
 pub use crate::vote::LeaderId;
 pub use crate::vote::Vote;
 

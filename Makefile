@@ -10,6 +10,7 @@ test:
 	cargo test
 	cargo test --features bt
 	cargo test --features serde
+	cargo test --features single-term-leader
 	cargo test --manifest-path examples/raft-kv-memstore/Cargo.toml
 	cargo test --manifest-path examples/raft-kv-rocksdb/Cargo.toml
 

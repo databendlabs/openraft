@@ -10,7 +10,7 @@ use crate::membership::EffectiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::raft_types::LogIdOptionExt;
-use crate::LeaderId;
+use crate::vote::CommittedLeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::Node;
@@ -44,7 +44,7 @@ async fn test_wait() -> anyhow::Result<()> {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
             update.last_log_index = Some(3);
-            update.last_applied = Some(LogId::new(LeaderId::new(1, 0), 3));
+            update.last_applied = Some(LogId::new(CommittedLeaderId::new(1, 0), 3));
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
@@ -111,14 +111,14 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.snapshot = Some(LogId::new(LeaderId::new(1, 0), 2));
+            update.snapshot = Some(LogId::new(CommittedLeaderId::new(1, 0), 2));
             let rst = tx.send(update);
             assert!(rst.is_ok());
         });
-        let got = w.snapshot(LogId::new(LeaderId::new(1, 0), 2), "snapshot").await?;
+        let got = w.snapshot(LogId::new(CommittedLeaderId::new(1, 0), 2), "snapshot").await?;
         h.await?;
 
-        assert_eq!(Some(LogId::new(LeaderId::new(1, 0), 2)), got.snapshot);
+        assert_eq!(Some(LogId::new(CommittedLeaderId::new(1, 0), 2)), got.snapshot);
     }
 
     tracing::info!("--- wait for snapshot, only index matches");
@@ -128,13 +128,13 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.snapshot = Some(LogId::new(LeaderId::new(3, 0), 2));
+            update.snapshot = Some(LogId::new(CommittedLeaderId::new(3, 0), 2));
             let rst = tx.send(update);
             assert!(rst.is_ok());
             // delay otherwise the channel will be closed thus the error is shutdown.
             sleep(Duration::from_millis(200)).await;
         });
-        let got = w.snapshot(LogId::new(LeaderId::new(1, 0), 2), "snapshot").await;
+        let got = w.snapshot(LogId::new(CommittedLeaderId::new(1, 0), 2), "snapshot").await;
         h.await?;
         match got.unwrap_err() {
             WaitError::Timeout(t, _) => {

@@ -1066,7 +1066,7 @@ where
                 ref vote,
             } => {
                 format!(
-                    "RevertToFollower: target: {}, vote: {}, server_state_vote: {}",
+                    "Seen a higher vote: target: {}, vote: {}, server_state_vote: {}",
                     target, new_vote, vote
                 )
             }
@@ -1146,6 +1146,9 @@ impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntrie
 pub enum AppendEntriesResponse<NID: NodeId> {
     Success,
     Conflict,
+    /// Seen a vote `v` that does not hold `mine_vote >= v`.
+    /// And a leader's vote(committed vote) must be total order with other vote.
+    /// Therefore it has to be a higher vote: `mine_vote < v`
     HigherVote(Vote<NID>),
 }
 

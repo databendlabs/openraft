@@ -3,10 +3,10 @@ use std::sync::Arc;
 use anyhow::Result;
 use memstore::ClientRequest;
 use openraft::raft::AppendEntriesRequest;
+use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
@@ -52,9 +52,9 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     let rpc = AppendEntriesRequest::<memstore::Config> {
         vote: Vote::new_committed(1, 1),
-        prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 5)),
+        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
         entries: vec![],
-        leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
+        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
     };
 
     let resp = router.new_client(0, &()).await.send_append_entries(rpc).await?;
@@ -67,14 +67,14 @@ async fn conflict_with_empty_entries() -> Result<()> {
         vote: Vote::new_committed(1, 1),
         prev_log_id: None,
         entries: vec![blank(0, 0), blank(1, 1), Entry {
-            log_id: LogId::new(LeaderId::new(1, 0), 2),
+            log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
             payload: EntryPayload::Normal(ClientRequest {
                 client: "foo".to_string(),
                 serial: 1,
                 status: "bar".to_string(),
             }),
         }],
-        leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
+        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
     };
 
     let resp = router.new_client(0, &()).await.send_append_entries(rpc).await?;
@@ -85,9 +85,9 @@ async fn conflict_with_empty_entries() -> Result<()> {
 
     let rpc = AppendEntriesRequest::<memstore::Config> {
         vote: Vote::new_committed(1, 1),
-        prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 3)),
+        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 3)),
         entries: vec![],
-        leader_commit: Some(LogId::new(LeaderId::new(1, 0), 5)),
+        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 5)),
     };
 
     let resp = router.new_client(0, &()).await.send_append_entries(rpc).await?;

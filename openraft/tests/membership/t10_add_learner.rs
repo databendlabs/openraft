@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
@@ -37,7 +37,7 @@ async fn add_learner_basic() -> Result<()> {
     tracing::info!("--- re-adding leader does nothing");
     {
         let res = router.add_learner(0, 0).await?;
-        assert_eq!(Some(LogId::new(LeaderId::new(1, 0), log_index)), res.matched);
+        assert_eq!(Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)), res.matched);
     }
 
     tracing::info!("--- add new node node-1");
@@ -74,7 +74,7 @@ async fn add_learner_basic() -> Result<()> {
     tracing::info!("--- re-add node-1, nothing changes");
     {
         let res = router.add_learner(0, 1).await?;
-        assert_eq!(Some(LogId::new(LeaderId::new(1, 0), log_index)), res.matched);
+        assert_eq!(Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)), res.matched);
     }
 
     Ok(())
@@ -122,6 +122,8 @@ async fn add_learner_non_blocking() -> Result<()> {
 /// check after new leader come, the learner can receive new log.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn check_learner_after_leader_transferred() -> Result<()> {
+    // TODO(1): flaky with --features single-term-leader
+
     // Setup test dependencies.
     let config = Arc::new(
         Config {

@@ -287,10 +287,10 @@ where
     /// The node is candidate(leadership is not granted by a quorum) or leader(leadership is granted
     /// by a quorum)
     pub(crate) fn is_leading(&self, id: &NID) -> bool {
-        &self.vote.node_id == id
+        self.vote.leader_id().voted_for().as_ref() == Some(id)
     }
 
     pub(crate) fn is_leader(&self, id: &NID) -> bool {
-        &self.vote.node_id == id && self.vote.committed
+        self.vote.leader_id().voted_for().as_ref() == Some(id) && self.vote.is_committed()
     }
 }

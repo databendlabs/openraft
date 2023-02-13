@@ -206,7 +206,7 @@ where
     /// Start to elect this node as leader
     #[tracing::instrument(level = "debug", skip(self))]
     pub(crate) fn elect(&mut self) {
-        let v = Vote::new(self.state.get_vote().term + 1, self.config.id);
+        let v = Vote::new(self.state.get_vote().leader_id().term + 1, self.config.id);
         // Safe unwrap(): it won't reject itself ˙–˙
         self.vote_handler().handle_message_vote(&v).unwrap();
 
@@ -572,7 +572,10 @@ where
     }
 
     fn assign_log_ids<'a, Ent: RaftEntry<NID, N> + 'a>(&mut self, entries: impl Iterator<Item = &'a mut Ent>) {
-        let mut log_id = LogId::new(self.state.get_vote().leader_id(), self.state.last_log_id().next_index());
+        let mut log_id = LogId::new(
+            self.state.get_vote().committed_leader_id().unwrap(),
+            self.state.last_log_id().next_index(),
+        );
         for entry in entries {
             entry.set_log_id(&log_id);
             tracing::debug!("assign log id: {}", log_id);

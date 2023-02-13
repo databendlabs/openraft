@@ -62,8 +62,8 @@ mod tests {
 
     use crate::engine::Command;
     use crate::engine::Engine;
+    use crate::CommittedLeaderId;
     use crate::EffectiveMembership;
-    use crate::LeaderId;
     use crate::LogId;
     use crate::Membership;
     use crate::MembershipState;
@@ -72,7 +72,7 @@ mod tests {
 
     fn log_id(term: u64, index: u64) -> LogId<u64> {
         LogId::<u64> {
-            leader_id: LeaderId { term, node_id: 1 },
+            leader_id: CommittedLeaderId::new(term, 1),
             index,
         }
     }

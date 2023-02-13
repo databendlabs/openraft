@@ -41,10 +41,10 @@ where
     /// - Voting is not in the hot path, thus no performance penalty.
     /// - Leadership won't be lost if a leader restarted quick enough.
     pub(crate) fn commit_vote(&mut self) {
-        debug_assert!(!self.state.get_vote().committed);
+        debug_assert!(!self.state.get_vote().is_committed());
         debug_assert_eq!(
-            self.state.get_vote().node_id,
-            self.config.id,
+            self.state.get_vote().leader_id().voted_for(),
+            Some(self.config.id),
             "it can only commit its own vote"
         );
 
@@ -88,7 +88,7 @@ where
 
     /// Enter leading or following state by checking `vote`.
     pub(crate) fn update_internal_server_state(&mut self) {
-        if self.state.get_vote().node_id == self.config.id {
+        if self.state.get_vote().leader_id().voted_for() == Some(self.config.id) {
             self.become_leading();
         } else {
             self.become_following();
@@ -138,7 +138,7 @@ where
         // timeout.
 
         debug_assert!(
-            self.state.get_vote().node_id != self.config.id
+            self.state.get_vote().leader_id().voted_for() != Some(self.config.id)
                 || !self.state.membership_state.effective().contains(&self.config.id),
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );
@@ -147,7 +147,7 @@ where
 
         // TODO: installing election timer should be driven by change of last-log-id
         // TODO: `can_be_leader` should consider if this node is in a voter.
-        if vote.committed {
+        if vote.is_committed() {
             // There is an active leader.
             // Do not elect for a longer while.
             // TODO: Installing a timer should not be part of the Engine's job.
@@ -189,8 +189,8 @@ mod tests {
     use crate::engine::LogIdList;
     use crate::error::RejectVoteRequest;
     use crate::raft_state::VoteStateReader;
+    use crate::CommittedLeaderId;
     use crate::EffectiveMembership;
-    use crate::LeaderId;
     use crate::LogId;
     use crate::Membership;
     use crate::MetricsChangeFlags;
@@ -198,7 +198,7 @@ mod tests {
 
     fn log_id(term: u64, index: u64) -> LogId<u64> {
         LogId::<u64> {
-            leader_id: LeaderId { term, node_id: 1 },
+            leader_id: CommittedLeaderId::new(term, 1),
             index,
         }
     }

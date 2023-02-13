@@ -43,11 +43,11 @@ use openraft::raft::VoteRequest;
 use openraft::raft::VoteResponse;
 use openraft::storage::RaftLogReader;
 use openraft::storage::RaftStorage;
+use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::DefensiveCheckBase;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::LogIdOptionExt;
 use openraft::MessageSummary;
@@ -817,16 +817,22 @@ where
         let vote = storage.read_vote().await?.unwrap_or_else(|| panic!("no hard state found for node {}", id));
 
         assert_eq!(
-            vote.term, expect_term,
+            vote.leader_id().get_term(),
+            expect_term,
             "expected node {} to have term {}, got {:?}",
-            id, expect_term, vote
+            id,
+            expect_term,
+            vote
         );
 
         if let Some(voted_for) = &expect_voted_for {
             assert_eq!(
-                vote.node_id, *voted_for,
+                vote.leader_id().voted_for(),
+                Some(*voted_for),
                 "expected node {} to have voted for {}, got {:?}",
-                id, voted_for, vote
+                id,
+                voted_for,
+                vote
             );
         }
 
@@ -966,7 +972,7 @@ where
         rpc: AppendEntriesRequest<C>,
     ) -> Result<AppendEntriesResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
         tracing::debug!("append_entries to id={} {}", self.target, rpc.summary());
-        self.owner.check_reachable(rpc.vote.node_id, self.target)?;
+        self.owner.check_reachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
@@ -986,7 +992,7 @@ where
         InstallSnapshotResponse<C::NodeId>,
         RPCError<C::NodeId, C::Node, RaftError<C::NodeId, InstallSnapshotError>>,
     > {
-        self.owner.check_reachable(rpc.vote.node_id, self.target)?;
+        self.owner.check_reachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
@@ -1001,7 +1007,7 @@ where
         &mut self,
         rpc: VoteRequest<C::NodeId>,
     ) -> Result<VoteResponse<C::NodeId>, RPCError<C::NodeId, C::Node, RaftError<C::NodeId>>> {
-        self.owner.check_reachable(rpc.vote.node_id, self.target)?;
+        self.owner.check_reachable(rpc.vote.leader_id().voted_for().unwrap(), self.target)?;
         self.owner.rand_send_delay().await;
 
         let node = self.owner.get_raft_handle(&self.target)?;
@@ -1037,7 +1043,7 @@ fn timeout() -> Option<Duration> {
 pub fn blank<C: RaftTypeConfig>(term: u64, index: u64) -> Entry<C>
 where C::NodeId: From<u64> {
     Entry {
-        log_id: LogId::new(LeaderId::new(term, 0.into()), index),
+        log_id: LogId::new(CommittedLeaderId::new(term, 0.into()), index),
         payload: EntryPayload::Blank,
     }
 }

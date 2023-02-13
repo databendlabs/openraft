@@ -397,10 +397,10 @@ mod tests {
         use crate::engine::Command;
         use crate::engine::Engine;
         use crate::raft_state::LogStateReader;
+        use crate::CommittedLeaderId;
         use crate::EffectiveMembership;
         use crate::Entry;
         use crate::EntryPayload;
-        use crate::LeaderId;
         use crate::LogId;
         use crate::Membership;
         use crate::MembershipState;
@@ -412,7 +412,7 @@ mod tests {
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
             LogId::<u64> {
-                leader_id: LeaderId { term, node_id: 1 },
+                leader_id: CommittedLeaderId::new(term, 1),
                 index,
             }
         }
@@ -587,10 +587,10 @@ mod tests {
         use crate::engine::Command;
         use crate::engine::Engine;
         use crate::raft_state::LogStateReader;
+        use crate::CommittedLeaderId;
         use crate::EffectiveMembership;
         use crate::Entry;
         use crate::EntryPayload;
-        use crate::LeaderId;
         use crate::LogId;
         use crate::Membership;
         use crate::MembershipState;
@@ -602,7 +602,7 @@ mod tests {
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
             LogId::<u64> {
-                leader_id: LeaderId { term, node_id: 1 },
+                leader_id: CommittedLeaderId::new(term, 1),
                 index,
             }
         }
@@ -890,8 +890,8 @@ mod tests {
         use crate::engine::Engine;
         use crate::engine::LogIdList;
         use crate::raft_state::LogStateReader;
+        use crate::CommittedLeaderId;
         use crate::EffectiveMembership;
-        use crate::LeaderId;
         use crate::LogId;
         use crate::Membership;
         use crate::MembershipState;
@@ -900,7 +900,7 @@ mod tests {
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
             LogId::<u64> {
-                leader_id: LeaderId { term, node_id: 1 },
+                leader_id: CommittedLeaderId::new(term, 1),
                 index,
             }
         }
@@ -1158,8 +1158,8 @@ mod tests {
         use crate::core::ServerState;
         use crate::engine::Command;
         use crate::engine::Engine;
+        use crate::CommittedLeaderId;
         use crate::EffectiveMembership;
-        use crate::LeaderId;
         use crate::LogId;
         use crate::Membership;
         use crate::MembershipState;
@@ -1171,7 +1171,7 @@ mod tests {
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
             LogId::<u64> {
-                leader_id: LeaderId { term, node_id: 1 },
+                leader_id: CommittedLeaderId::new(term, 1),
                 index,
             }
         }
@@ -1248,8 +1248,8 @@ mod tests {
         use crate::engine::Engine;
         use crate::engine::LogIdList;
         use crate::raft_state::LogStateReader;
+        use crate::CommittedLeaderId;
         use crate::EffectiveMembership;
-        use crate::LeaderId;
         use crate::LogId;
         use crate::Membership;
         use crate::MetricsChangeFlags;
@@ -1257,7 +1257,7 @@ mod tests {
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
             LogId::<u64> {
-                leader_id: LeaderId { term, node_id: 1 },
+                leader_id: CommittedLeaderId::new(term, 1),
                 index,
             }
         }

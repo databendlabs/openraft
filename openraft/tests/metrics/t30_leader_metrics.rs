@@ -6,8 +6,8 @@ use futures::stream::StreamExt;
 use maplit::btreemap;
 use maplit::btreeset;
 use openraft::metrics::ReplicationTargetMetrics;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::ServerState;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
@@ -105,7 +105,7 @@ async fn leader_metrics() -> Result<()> {
 
     router.assert_stable_cluster(Some(1), Some(log_index)); // Still in term 1, so leader is still node 0.
 
-    let ww = ReplicationTargetMetrics::new(LogId::new(LeaderId::new(1, 0), log_index));
+    let ww = ReplicationTargetMetrics::new(LogId::new(CommittedLeaderId::new(1, 0), log_index));
     let want_repl = btreemap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone(), 4=>ww.clone(), };
     router
         .wait_for_metrics(
@@ -144,7 +144,7 @@ async fn leader_metrics() -> Result<()> {
 
     tracing::info!("--- replication metrics should reflect the replication state");
     {
-        let ww = ReplicationTargetMetrics::new(LogId::new(LeaderId::new(1, 0), log_index));
+        let ww = ReplicationTargetMetrics::new(LogId::new(CommittedLeaderId::new(1, 0), log_index));
         let want_repl = btreemap! { 1=>ww.clone(), 2=>ww.clone(), 3=>ww.clone()};
         router
             .wait_for_metrics(

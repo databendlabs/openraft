@@ -190,12 +190,13 @@ mod tests {
     use crate::log_id_range::LogIdRange;
     use crate::progress::Inflight;
     use crate::validate::Validate;
+    use crate::CommittedLeaderId;
     use crate::LeaderId;
     use crate::LogId;
 
     fn log_id(index: u64) -> LogId<u64> {
         LogId {
-            leader_id: LeaderId { term: 1, node_id: 1 },
+            leader_id: CommittedLeaderId::new(1, 1),
             index,
         }
     }

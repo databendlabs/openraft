@@ -3,10 +3,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftLogReader;
 use openraft::RaftStorage;
@@ -60,30 +60,20 @@ async fn append_inconsistent_log() -> Result<()> {
 
     for i in log_index + 1..=100 {
         sto0.append_to_log(&[&Entry {
-            log_id: LogId::new(LeaderId::new(2, 0), i),
+            log_id: LogId::new(CommittedLeaderId::new(2, 0), i),
             payload: EntryPayload::Blank,
         }])
         .await?;
 
         sto2.append_to_log(&[&Entry {
-            log_id: LogId::new(LeaderId::new(3, 0), i),
+            log_id: LogId::new(CommittedLeaderId::new(3, 0), i),
             payload: EntryPayload::Blank,
         }])
         .await?;
     }
 
-    sto0.save_vote(&Vote {
-        term: 2,
-        node_id: 0,
-        committed: false,
-    })
-    .await?;
-    sto2.save_vote(&Vote {
-        term: 3,
-        node_id: 0,
-        committed: false,
-    })
-    .await?;
+    sto0.save_vote(&Vote::new(2, 0)).await?;
+    sto2.save_vote(&Vote::new(3, 0)).await?;
 
     log_index = 100;
 

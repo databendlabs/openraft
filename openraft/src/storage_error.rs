@@ -118,7 +118,7 @@ pub enum ErrorVerb {
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub enum Violation<NID: NodeId> {
     #[error("term can only be change to a greater value, current: {curr}, change to {to}")]
-    TermNotAscending { curr: u64, to: u64 },
+    VoteNotAscending { curr: Vote<NID>, to: Vote<NID> },
 
     #[error("voted_for can not change from Some() to other Some(), current: {curr:?}, change to {to:?}")]
     NonIncrementalVote { curr: Vote<NID>, to: Vote<NID> },

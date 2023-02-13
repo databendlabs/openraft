@@ -4,8 +4,8 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::InstallSnapshotRequest;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::ServerState;
 use openraft::SnapshotMeta;
@@ -54,7 +54,7 @@ async fn snapshot_arguments() -> Result<()> {
         meta: SnapshotMeta {
             snapshot_id: "ss1".into(),
             last_log_id: Some(LogId {
-                leader_id: LeaderId::new(1, 0),
+                leader_id: CommittedLeaderId::new(1, 0),
                 index: 0,
             }),
             last_membership: Default::default(),

@@ -6,8 +6,8 @@ use maplit::btreeset;
 use memstore::ClientRequest;
 use memstore::IntoMemClientRequest;
 use openraft::error::ClientWriteError;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::ServerState;
 
@@ -20,6 +20,8 @@ use crate::fixtures::RaftRouter;
 /// - Check logs on other node.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn remove_leader() -> Result<()> {
+    // TODO(1): flaky with --features single-term-leader
+
     // Setup test dependencies.
     let config = Arc::new(
         Config {
@@ -98,7 +100,7 @@ async fn remove_leader() -> Result<()> {
         assert!(metrics.state != ServerState::Leader);
         assert_eq!(metrics.current_term, 1);
         assert_eq!(metrics.last_log_index, Some(8));
-        assert_eq!(metrics.last_applied, Some(LogId::new(LeaderId::new(1, 0), 8)));
+        assert_eq!(metrics.last_applied, Some(LogId::new(CommittedLeaderId::new(1, 0), 8)));
         assert_eq!(metrics.membership_config.get_joint_config().clone(), vec![vec![
             1, 2, 3
         ]]);

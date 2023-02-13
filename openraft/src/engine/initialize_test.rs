@@ -12,8 +12,8 @@ use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
+use crate::vote::CommittedLeaderId;
 use crate::EntryPayload;
-use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
@@ -30,12 +30,12 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
     };
 
     let log_id0 = LogId {
-        leader_id: LeaderId::new(0, 0),
+        leader_id: CommittedLeaderId::new(0, 0),
         index: 0,
     };
 
     let log_id = |term, index| LogId {
-        leader_id: LeaderId::new(term, 1),
+        leader_id: CommittedLeaderId::new(term, 1),
         index,
     };
 
@@ -78,40 +78,30 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
                 // But when initializing, it will switch to Candidate at once, in the last output
                 // command.
                 Command::MoveInputCursorBy { n: 1 },
-                Command::SaveVote {
-                    vote: Vote {
-                        term: 1,
-                        node_id: 1,
-                        committed: false,
-                    },
-                },
+                Command::SaveVote { vote: Vote::new(1, 1) },
                 // TODO: duplicated SaveVote: one is emitted by elect(), the second is emitted when
                 // the node becomes       leader.
                 Command::SaveVote {
-                    vote: Vote {
-                        term: 1,
-                        node_id: 1,
-                        committed: true,
-                    },
+                    vote: Vote::new_committed(1, 1),
                 },
                 Command::BecomeLeader,
                 Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendBlankLog {
                     log_id: LogId {
-                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(1, 1),
                         index: 1,
                     },
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
-                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(1, 1),
                         index: 1,
                     },),
                 },
                 Command::LeaderCommit {
                     already_committed: None,
                     upto: LogId {
-                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(1, 1),
                         index: 1,
                     },
                 },
@@ -133,10 +123,9 @@ fn test_initialize() -> anyhow::Result<()> {
     };
 
     let log_id0 = LogId {
-        leader_id: LeaderId::new(0, 0),
+        leader_id: CommittedLeaderId::new(0, 0),
         index: 0,
     };
-    let vote0 = Vote::new(0, 0);
 
     let m12 = || Membership::<u64, ()>::new(vec![btreeset! {1,2}], None);
     let payload = EntryPayload::<Config>::Membership(m12());
@@ -175,22 +164,12 @@ fn test_initialize() -> anyhow::Result<()> {
                 // But when initializing, it will switch to Candidate at once, in the last output
                 // command.
                 Command::MoveInputCursorBy { n: 1 },
-                Command::SaveVote {
-                    vote: Vote {
-                        term: 1,
-                        node_id: 1,
-                        committed: false,
-                    },
-                },
+                Command::SaveVote { vote: Vote::new(1, 1) },
                 Command::SendVote {
                     vote_req: VoteRequest {
-                        vote: Vote {
-                            term: 1,
-                            node_id: 1,
-                            committed: false,
-                        },
+                        vote: Vote::new(1, 1),
                         last_log_id: Some(LogId {
-                            leader_id: LeaderId { term: 0, node_id: 0 },
+                            leader_id: CommittedLeaderId::new(0, 0),
                             index: 0,
                         },),
                     },
@@ -209,7 +188,7 @@ fn test_initialize() -> anyhow::Result<()> {
         assert_eq!(
             Err(InitializeError::NotAllowed(NotAllowed {
                 last_log_id: Some(log_id0),
-                vote: vote0,
+                vote: Vote::default(),
             })),
             eng.initialize(&mut entries)
         );

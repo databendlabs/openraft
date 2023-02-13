@@ -4,8 +4,8 @@ use maplit::btreeset;
 
 use crate::engine::LogIdList;
 use crate::raft_state::LogStateReader;
+use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
-use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
@@ -13,7 +13,7 @@ use crate::RaftState;
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
-        leader_id: LeaderId { term, node_id: 0 },
+        leader_id: CommittedLeaderId::new(term, 0),
         index,
     }
 }

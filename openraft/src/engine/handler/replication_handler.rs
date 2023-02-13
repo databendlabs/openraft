@@ -51,7 +51,10 @@ where
     /// It is used by the leader when leadership is established.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_blank_log(&mut self) {
-        let log_id = LogId::new(self.state.get_vote().leader_id(), self.state.last_log_id().next_index());
+        let log_id = LogId::new(
+            self.state.get_vote().committed_leader_id().unwrap(),
+            self.state.last_log_id().next_index(),
+        );
         self.state.log_ids.append(log_id);
         self.output.push_command(Command::AppendBlankLog { log_id });
 
@@ -163,7 +166,7 @@ where
     pub(crate) fn try_commit_granted(&mut self, granted: Option<LogId<NID>>) {
         // Only when the log id is proposed by current leader, it is committed.
         if let Some(c) = granted {
-            if c.leader_id.term != self.state.get_vote().term || c.leader_id.node_id != self.state.get_vote().node_id {
+            if !self.state.get_vote().is_same_leader(c.committed_leader_id()) {
                 return;
             }
         }
@@ -396,8 +399,8 @@ mod tests {
         use crate::progress::Inflight;
         use crate::progress::Progress;
         use crate::raft_state::LogStateReader;
+        use crate::CommittedLeaderId;
         use crate::EffectiveMembership;
-        use crate::LeaderId;
         use crate::LogId;
         use crate::Membership;
         use crate::MembershipState;
@@ -405,7 +408,7 @@ mod tests {
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
             LogId::<u64> {
-                leader_id: LeaderId { term, node_id: 1 },
+                leader_id: CommittedLeaderId::new(term, 1),
                 index,
             }
         }
@@ -554,8 +557,8 @@ mod tests {
         use crate::progress::entry::ProgressEntry;
         use crate::progress::Inflight;
         use crate::progress::Progress;
+        use crate::CommittedLeaderId;
         use crate::EffectiveMembership;
-        use crate::LeaderId;
         use crate::LogId;
         use crate::Membership;
         use crate::MembershipState;
@@ -568,7 +571,7 @@ mod tests {
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
             LogId::<u64> {
-                leader_id: LeaderId { term, node_id: 1 },
+                leader_id: CommittedLeaderId::new(term, 1),
                 index,
             }
         }
@@ -666,7 +669,8 @@ mod tests {
             // learner or vice versa.
 
             let mut eng = eng();
-            eng.state.log_ids = LogIdList::new([LogId::new(LeaderId::new(0, 0), 0), log_id(1, 1), log_id(5, 10)]);
+            eng.state.log_ids =
+                LogIdList::new([LogId::new(CommittedLeaderId::new(0, 0), 0), log_id(1, 1), log_id(5, 10)]);
 
             eng.state.server_state = ServerState::Leader;
             // Make it a real leader: voted for itself and vote is committed.

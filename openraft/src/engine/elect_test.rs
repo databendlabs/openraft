@@ -9,8 +9,8 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft::VoteRequest;
 use crate::raft_state::VoteStateReader;
+use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
-use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
@@ -18,7 +18,7 @@ use crate::Vote;
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
-        leader_id: LeaderId { term, node_id: 1 },
+        leader_id: CommittedLeaderId::new(term, 1),
         index,
     }
 }
@@ -33,7 +33,7 @@ fn m12() -> Membership<u64, ()> {
 
 fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::default();
-    eng.state.log_ids = LogIdList::new([LogId::new(LeaderId::new(0, 0), 0)]);
+    eng.state.log_ids = LogIdList::new([LogId::new(CommittedLeaderId::new(0, 0), 0)]);
     eng.state.enable_validate = false; // Disable validation for incomplete state
     eng
 }
@@ -76,20 +76,20 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendBlankLog {
                     log_id: LogId {
-                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(1, 1),
                         index: 1,
                     },
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
-                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(1, 1),
                         index: 1,
                     },),
                 },
                 Command::LeaderCommit {
                     already_committed: None,
                     upto: LogId {
-                        leader_id: LeaderId { term: 1, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(1, 1),
                         index: 1,
                     },
                 },
@@ -139,20 +139,20 @@ fn test_elect() -> anyhow::Result<()> {
                 Command::RebuildReplicationStreams { targets: vec![] },
                 Command::AppendBlankLog {
                     log_id: LogId {
-                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(2, 1),
                         index: 1,
                     },
                 },
                 Command::ReplicateCommitted {
                     committed: Some(LogId {
-                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(2, 1),
                         index: 1,
                     },),
                 },
                 Command::LeaderCommit {
                     already_committed: None,
                     upto: LogId {
-                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(2, 1),
                         index: 1,
                     },
                 },
