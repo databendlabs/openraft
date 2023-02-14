@@ -1362,7 +1362,7 @@ where
 
         tracing::info!("--- lower node_id is rejected");
         {
-            let res = store.save_vote(&Vote::new(10, 9.into())).await;
+            let res = store.save_vote(&Vote::new(9, 9.into())).await;
 
             let e = res.unwrap_err().into_defensive().unwrap();
             if let DefensiveError {

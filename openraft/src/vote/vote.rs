@@ -183,6 +183,7 @@ mod tests {
         }
 
         #[test]
+        #[allow(clippy::neg_cmp_op_on_partial_ord)]
         fn test_vote_partial_order() -> anyhow::Result<()> {
             #[allow(clippy::redundant_closure)]
             let vote = |term, node_id| Vote::<u64>::new(term, node_id);
@@ -203,11 +204,12 @@ mod tests {
             assert!(vote(2, 2) > none(2));
             assert!(none(2) < vote(2, 2));
 
-            // Committed greater than non-committed
+            // Committed greater than non-committed if leader_id is incomparable
             assert!(committed(2, 2) > vote(2, 2));
+            assert!(committed(2, 1) > vote(2, 2));
 
-            // Committed is also partial order
-            assert!(!(committed(2, 3) > vote(2, 2)));
+            // Lower term committed is not greater
+            assert!(!(committed(1, 1) > vote(2, 1)));
 
             // Equal
             assert!(vote(2, 2) == vote(2, 2));

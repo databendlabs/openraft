@@ -104,6 +104,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn test_leader_id_partial_order() -> anyhow::Result<()> {
         #[allow(clippy::redundant_closure)]
         let lid = |term, node_id| LeaderId::<u64>::new(term, node_id);
