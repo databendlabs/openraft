@@ -33,6 +33,18 @@ impl<NID: NodeId> LeaderId<NID> {
     pub fn voted_for(&self) -> Option<NID> {
         Some(self.node_id)
     }
+
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_committed(&self) -> CommittedLeaderId<NID> {
+        *self
+    }
+
+    /// Return if it is the same leader as the committed leader id.
+    ///
+    /// A committed leader may have less info than a non-committed.
+    pub(crate) fn is_same_as_committed(&self, other: &CommittedLeaderId<NID>) -> bool {
+        self == other
+    }
 }
 
 impl<NID: NodeId> std::fmt::Display for LeaderId<NID> {

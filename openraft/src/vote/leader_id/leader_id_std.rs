@@ -18,7 +18,7 @@ impl<NID: NodeId> PartialOrd for LeaderId<NID> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match PartialOrd::partial_cmp(&self.term, &other.term) {
-            Option::Some(Ordering::Equal) => {
+            Some(Ordering::Equal) => {
                 //
                 match (&self.voted_for, &other.voted_for) {
                     (None, None) => Some(Ordering::Equal),
@@ -52,6 +52,18 @@ impl<NID: NodeId> LeaderId<NID> {
 
     pub fn voted_for(&self) -> Option<NID> {
         self.voted_for
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    pub(crate) fn to_committed(&self) -> CommittedLeaderId<NID> {
+        CommittedLeaderId::new(self.term, NID::default())
+    }
+
+    /// Return if it is the same leader as the committed leader id.
+    ///
+    /// A committed leader may have less info than a non-committed.
+    pub(crate) fn is_same_as_committed(&self, other: &CommittedLeaderId<NID>) -> bool {
+        self.term == other.term
     }
 }
 

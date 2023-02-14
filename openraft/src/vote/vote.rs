@@ -85,38 +85,17 @@ impl<NID: NodeId> Vote<NID> {
     }
 
     /// Return a [`CommittedLeaderId`], which is granted by a quorum.
-    pub fn committed_leader_id(&self) -> Option<CommittedLeaderId<NID>> {
-        #[cfg(not(feature = "single-term-leader"))]
-        #[allow(clippy::if_same_then_else)]
-        if self.is_committed() {
-            Some(*self.leader_id())
-        } else if self.leader_id.term == 0 {
-            // Special case: when initalizing the first log does not need vote to be committed.
-            Some(*self.leader_id())
-        } else {
-            None
-        }
-
-        #[cfg(feature = "single-term-leader")]
-        #[allow(clippy::if_same_then_else)]
-        if self.is_committed() {
-            Some(CommittedLeaderId::new(self.leader_id.term, NID::default()))
-        } else if self.leader_id.term == 0 {
-            // Special case: when initalizing the first log does not need vote to be committed.
-            Some(CommittedLeaderId::new(self.leader_id.term, NID::default()))
+    pub(crate) fn committed_leader_id(&self) -> Option<CommittedLeaderId<NID>> {
+        // Special case (term==0): when initializing the first log does not need vote to be committed.
+        if self.is_committed() || self.leader_id().term == 0 {
+            Some(self.leader_id().to_committed())
         } else {
             None
         }
     }
 
-    #[cfg(not(feature = "single-term-leader"))]
-    pub fn is_same_leader(&self, leader_id: &CommittedLeaderId<NID>) -> bool {
-        self.leader_id() == leader_id
-    }
-
-    #[cfg(feature = "single-term-leader")]
-    pub fn is_same_leader(&self, leader_id: &CommittedLeaderId<NID>) -> bool {
-        self.leader_id().term == leader_id.term
+    pub(crate) fn is_same_leader(&self, leader_id: &CommittedLeaderId<NID>) -> bool {
+        self.leader_id().is_same_as_committed(leader_id)
     }
 }
 
