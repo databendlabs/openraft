@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">5.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">5.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">5.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="log-data-layout.html"><strong aria-hidden="true">5.3.</strong> Log data layout</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">5.4.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html" class="active"><strong aria-hidden="true">5.5.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">5.6.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">5.6.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html"><strong aria-hidden="true">5.7.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">5.8.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">6.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">6.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="feature-flags.html"><strong aria-hidden="true">5.</strong> Feature flags</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">6.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">6.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">6.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="log-data-layout.html"><strong aria-hidden="true">6.3.</strong> Log data layout</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">6.4.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html" class="active"><strong aria-hidden="true">6.5.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">6.6.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">6.6.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html"><strong aria-hidden="true">6.7.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">6.8.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">7.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">7.1.</strong> Upgrade from 0.6 to 0.7</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -140,9 +140,24 @@
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>struct Vote&lt;NID: NodeId&gt; {
-    term: u64,
-    node_id: NID,
+    leader_id: LeaderId&lt;NID&gt;
     committed: bool
+}
+
+// Advanced mode(default):
+#[cfg(not(feature = &quot;single-term-leader&quot;))]
+pub struct LeaderId&lt;NID: NodeId&gt;
+{
+    pub term: u64,
+    pub node_id: NID,
+}
+
+// Standard raft mode:
+#[cfg(feature = &quot;single-term-leader&quot;)]
+pub struct LeaderId&lt;NID: NodeId&gt;
+{
+    pub term: u64,
+    pub voted_for: Option&lt;NID&gt;,
 }
 <span class="boring">}
 </span></code></pre></pre>
@@ -151,6 +166,20 @@ Each <code>vote</code> can be thought as unique time point(in paxos the pseudo t
 <p>In a standard raft, the corresponding concept is <code>term</code>.
 Although in standard raft a single <code>term</code> is not enough to define a <strong>time
 point</strong>.</p>
+<p>In openraft, RPC validity checking(such as when handling vote request, or
+append-entries request) is very simple: <strong>A node grants a <code>Vote</code> which is greater than its last seen <code>Vote</code></strong>:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>fn handle_vote(vote: Vote) {
+    if !(vote &gt;= self.vote) {
+        return Err(())
+    }
+    save_vote(vote);
+    Ok(())
+}
+<span class="boring">}
+</span></code></pre></pre>
 <p>Every server state(leader, candidate, follower or learner) has a unique
 corresponding <code>vote</code>, thus <code>vote</code> can be used to identify different server
 states, i.e, if the <code>vote</code> changes, the server state must have changed.</p>
@@ -175,6 +204,72 @@ state for node-3.</p>
 <li>
 <p>A vote <code>(term=1, node_id=1, committed=false|true)</code> is in another different
 follower/learner state for node-3.</p>
+</li>
+</ul>
+<h2 id="partial-order"><a class="header" href="#partial-order">Partial order</a></h2>
+<p><code>Vote</code> in openraft is partially ordered value,
+i.e., it is legal that <code>!(vote_a =&gt; vote_b) &amp;&amp; !(vote_a &lt;= vote_b)</code>.
+Because <code>Vote.leader_id</code> may be a partial order value:</p>
+<h2 id="leaderid-advanced-mode-and-standard-mode"><a class="header" href="#leaderid-advanced-mode-and-standard-mode">LeaderId: advanced mode and standard mode</a></h2>
+<p>Openraft provides two <code>LeaderId</code> type, which can be switched with feature
+<code>single-term-leader</code>:</p>
+<ul>
+<li>
+<p><code>cargo build</code> without <code>single-term-leader</code>, is the advanced mode, the default mode:
+It builds openraft with <code>LeaderId:(term, node_id)</code>, which is totally ordered.
+Which means, in a single <code>term</code>, there could be more than one leaders
+elected(although only the last is valid and can commit logs).</p>
+<ul>
+<li>
+<p>Pros: election conflict is minimized,</p>
+</li>
+<li>
+<p>Cons: <code>LogId</code> becomes larger: every log has to store an additional <code>NodeId</code> in <code>LogId</code>:
+<code>LogId: {{term, NodeId}, index}</code>.
+If an application uses a big <code>NodeId</code> type, e.g., UUID, the penalty may not
+be negligible.</p>
+</li>
+</ul>
+</li>
+<li>
+<p><code>cargo build --features &quot;single-term-leader&quot;</code> builds openraft in standard raft mode with:
+<code>LeaderId:(term, voted_for:Option&lt;NodeId&gt;)</code>, which makes <code>LeaderId</code> and <code>Vote</code>
+<strong>partially-ordered</strong> values. In this mode, only one leader can be elected in
+each <code>term</code>.</p>
+<p>The partial order relation of <code>LeaderId</code>:</p>
+<pre><code>LeaderId(3, None)    &gt;  LeaderId(2, None):    true
+LeaderId(3, None)    &gt;  LeaderId(2, Some(y)): true
+LeaderId(3, None)    == LeaderId(3, None):    true
+LeaderId(3, Some(x)) &gt;  LeaderId(2, Some(y)): true
+LeaderId(3, Some(x)) &gt;  LeaderId(3, None):    true
+LeaderId(3, Some(x)) == LeaderId(3, Some(x)): true
+LeaderId(3, Some(x)) &gt;  LeaderId(3, Some(y)): false
+</code></pre>
+<p>The partial order between <code>Vote</code> is defined as:
+Given two <code>Vote</code> <code>a</code> and <code>b</code>:
+<code>a &gt; b</code> iff:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>a.leader_id &gt; b.leader_id || (
+  !(a.leader_id &lt; b.leader_id) &amp;&amp; a.committed &gt; b.committed
+)
+<span class="boring">}
+</span></code></pre></pre>
+<p>In other words, if <code>a.leader_id</code> and <code>b.leader_id</code> is not
+comparable(<code>!(a.leader_id&gt;=b.leader_id) &amp;&amp; !(a.leader_id&lt;=b.leader_id)</code>), use
+field <code>committed</code> to determine the order between <code>a</code> and <code>b</code>.</p>
+<p>Because a leader must be granted by a quorum before committing any log, two
+incomparable <code>leader_id</code> can not both be granted.
+So let a committed <code>Vote</code> override a incomparable non-committed is safe.</p>
+<ul>
+<li>
+<p>Pros: <code>LogId</code> just store a <code>term</code>.</p>
+</li>
+<li>
+<p>Cons: election conflicting rate may increase.</p>
+</li>
+</ul>
 </li>
 </ul>
 
