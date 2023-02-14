@@ -399,19 +399,11 @@ mod tests {
         use crate::progress::Inflight;
         use crate::progress::Progress;
         use crate::raft_state::LogStateReader;
-        use crate::CommittedLeaderId;
+        use crate::testing::log_id;
         use crate::EffectiveMembership;
-        use crate::LogId;
         use crate::Membership;
         use crate::MembershipState;
         use crate::Vote;
-
-        fn log_id(term: u64, index: u64) -> LogId<u64> {
-            LogId::<u64> {
-                leader_id: CommittedLeaderId::new(term, 1),
-                index,
-            }
-        }
 
         fn m01() -> Membership<u64, ()> {
             Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)
@@ -569,12 +561,7 @@ mod tests {
             pub(crate) Foo: D=(), R=(), NodeId=u64, Node=()
         );
 
-        fn log_id(term: u64, index: u64) -> LogId<u64> {
-            LogId::<u64> {
-                leader_id: CommittedLeaderId::new(term, 1),
-                index,
-            }
-        }
+        use crate::testing::log_id;
 
         fn m01() -> Membership<u64, ()> {
             Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)

@@ -115,15 +115,7 @@ mod tests {
         use crate::engine::Engine;
         use crate::engine::LogIdList;
         use crate::raft_state::LogStateReader;
-        use crate::CommittedLeaderId;
-        use crate::LogId;
-
-        fn log_id(term: u64, index: u64) -> LogId<u64> {
-            LogId::<u64> {
-                leader_id: CommittedLeaderId::new(term, 1),
-                index,
-            }
-        }
+        use crate::testing::log_id;
 
         fn eng() -> Engine<u64, ()> {
             let mut eng = Engine::<u64, ()>::default();

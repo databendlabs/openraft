@@ -62,20 +62,12 @@ mod tests {
 
     use crate::engine::Command;
     use crate::engine::Engine;
-    use crate::CommittedLeaderId;
+    use crate::testing::log_id;
     use crate::EffectiveMembership;
-    use crate::LogId;
     use crate::Membership;
     use crate::MembershipState;
     use crate::ServerState;
     use crate::Vote;
-
-    fn log_id(term: u64, index: u64) -> LogId<u64> {
-        LogId::<u64> {
-            leader_id: CommittedLeaderId::new(term, 1),
-            index,
-        }
-    }
 
     fn m01() -> Membership<u64, ()> {
         Membership::<u64, ()>::new(vec![btreeset! {0,1}], None)

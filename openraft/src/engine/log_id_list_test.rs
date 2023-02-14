@@ -1,6 +1,4 @@
 use crate::engine::LogIdList;
-use crate::CommittedLeaderId;
-use crate::LogId;
 
 #[test]
 fn test_log_id_list_extend_from_same_leader() -> anyhow::Result<()> {
@@ -340,9 +338,4 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
 
     Ok(())
 }
-fn log_id(term: u64, index: u64) -> LogId<u64> {
-    LogId::<u64> {
-        leader_id: CommittedLeaderId::new(term, 1),
-        index,
-    }
-}
+use crate::testing::log_id;

@@ -25,12 +25,7 @@ crate::declare_raft_types!(
     pub(crate) Foo: D=(), R=(), NodeId=u64, Node=()
 );
 
-fn log_id(term: u64, index: u64) -> LogId<u64> {
-    LogId::<u64> {
-        leader_id: CommittedLeaderId::new(term, 1),
-        index,
-    }
-}
+use crate::testing::log_id;
 
 fn blank(term: u64, index: u64) -> Entry<Foo> {
     Entry {

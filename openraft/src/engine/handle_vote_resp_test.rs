@@ -11,19 +11,13 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::VoteResponse;
 use crate::raft_state::VoteStateReader;
+use crate::testing::log_id;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
 use crate::Vote;
-
-fn log_id(term: u64, index: u64) -> LogId<u64> {
-    LogId::<u64> {
-        leader_id: CommittedLeaderId::new(term, 1),
-        index,
-    }
-}
 
 fn m12() -> Membership<u64, ()> {
     Membership::<u64, ()>::new(vec![btreeset! {1,2}], None)
