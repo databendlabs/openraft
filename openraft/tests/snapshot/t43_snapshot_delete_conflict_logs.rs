@@ -6,10 +6,10 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::InstallSnapshotRequest;
+use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
@@ -60,7 +60,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         sto0.append_to_log(&[
             // manually insert the initializing log
             &Entry {
-                log_id: LogId::new(LeaderId::new(0, 0), 0),
+                log_id: LogId::new(CommittedLeaderId::new(0, 0), 0),
                 payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
             },
         ])
@@ -81,7 +81,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         router.wait(&0, timeout()).log(Some(log_index), "trigger snapshot").await?;
         router
             .wait(&0, timeout())
-            .snapshot(LogId::new(LeaderId::new(5, 0), log_index), "build snapshot")
+            .snapshot(LogId::new(CommittedLeaderId::new(5, 0), log_index), "build snapshot")
             .await?;
     }
 
@@ -97,7 +97,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
                 blank(1, 1),
                 // conflict membership will be replaced with membership in snapshot
                 Entry {
-                    log_id: LogId::new(LeaderId::new(1, 0), 2),
+                    log_id: LogId::new(CommittedLeaderId::new(1, 0), 2),
                     payload: EntryPayload::Membership(Membership::new(vec![btreeset! {2,3}], None)),
                 },
                 blank(1, 3),
@@ -110,11 +110,11 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
                 blank(1, 10),
                 // another conflict membership, will be removed
                 Entry {
-                    log_id: LogId::new(LeaderId::new(1, 0), 11),
+                    log_id: LogId::new(CommittedLeaderId::new(1, 0), 11),
                     payload: EntryPayload::Membership(Membership::new(vec![btreeset! {4,5}], None)),
                 },
             ],
-            leader_commit: Some(LogId::new(LeaderId::new(1, 0), 2)),
+            leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
         };
         router.new_client(1, &()).await.send_append_entries(req).await?;
 
@@ -152,7 +152,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         router
             .wait(&1, timeout())
-            .snapshot(LogId::new(LeaderId::new(5, 0), log_index), "node-1 snapshot")
+            .snapshot(LogId::new(CommittedLeaderId::new(5, 0), log_index), "node-1 snapshot")
             .await?;
     }
 
@@ -176,12 +176,12 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
 
         let log_st = sto1.get_log_state().await?;
         assert_eq!(
-            Some(LogId::new(LeaderId::new(5, 0), snapshot_threshold - 1)),
+            Some(LogId::new(CommittedLeaderId::new(5, 0), snapshot_threshold - 1)),
             log_st.last_purged_log_id,
             "purge up to last log id in snapshot"
         );
         assert_eq!(
-            Some(LogId::new(LeaderId::new(5, 0), snapshot_threshold - 1)),
+            Some(LogId::new(CommittedLeaderId::new(5, 0), snapshot_threshold - 1)),
             log_st.last_log_id,
             "reverted to last log id in snapshot"
         );

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
@@ -31,15 +31,21 @@ async fn append_entries_with_bigger_term() -> Result<()> {
 
     // before append entries, check hard state in term 1 and vote for node 0
     router
-        .assert_storage_state(1, log_index, Some(0), LogId::new(LeaderId::new(1, 0), log_index), None)
+        .assert_storage_state(
+            1,
+            log_index,
+            Some(0),
+            LogId::new(CommittedLeaderId::new(1, 0), log_index),
+            None,
+        )
         .await?;
 
     // append entries with term 2 and leader_id, this MUST cause hard state changed in node 0
     let req = AppendEntriesRequest::<memstore::Config> {
         vote: Vote::new_committed(2, 1),
-        prev_log_id: Some(LogId::new(LeaderId::new(1, 0), log_index)),
+        prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)),
         entries: vec![],
-        leader_commit: Some(LogId::new(LeaderId::new(1, 0), log_index)),
+        leader_commit: Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)),
     };
 
     let resp = router.new_client(0, &()).await.send_append_entries(req).await?;
@@ -55,7 +61,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
             2,
             log_index,
             Some(1),
-            LogId::new(LeaderId::new(1, 0), log_index),
+            LogId::new(CommittedLeaderId::new(1, 0), log_index),
             &None,
         )
         .await?;

@@ -241,12 +241,12 @@ mod tests {
     use crate::progress::entry::ProgressEntry;
     use crate::progress::inflight::Inflight;
     use crate::raft_state::LogStateReader;
-    use crate::LeaderId;
+    use crate::CommittedLeaderId;
     use crate::LogId;
 
     fn log_id(index: u64) -> LogId<u64> {
         LogId {
-            leader_id: LeaderId { term: 1, node_id: 1 },
+            leader_id: CommittedLeaderId::new(1, 1),
             index,
         }
     }

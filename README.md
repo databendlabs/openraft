@@ -63,12 +63,13 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 # Roadmap
 
-- [x] [Extended joint membership](https://datafuselabs.github.io/openraft/extended-membership)
+- [x] **2022-10-31** [Extended joint membership](https://datafuselabs.github.io/openraft/extended-membership)
+
+- [x] **2023-02-14** Reduce confliction rate when electing;
+  See: [Openraft Vote design](https://datafuselabs.github.io/openraft/vote);
+  Or use standard raft mode with [feature flag `single-term-leader`](https://datafuselabs.github.io/openraft/feature-flags).
 
 - [ ] Reduce the complexity of vote and pre-vote: [get rid of pre-vote RPC](https://github.com/datafuselabs/openraft/discussions/15);
-
-- [ ] Reduce confliction rate when electing;
-  Allow leadership to be taken in one term by a node with greater node-id.
 
 - [ ] Support flexible quorum, e.g.:[Hierarchical Quorums](https://zookeeper.apache.org/doc/r3.5.9/zookeeperHierarchicalQuorums.html)
 

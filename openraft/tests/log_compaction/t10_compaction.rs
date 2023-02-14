@@ -5,10 +5,10 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
+use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
@@ -76,7 +76,7 @@ async fn compaction() -> Result<()> {
     router
         .wait_for_snapshot(
             &btreeset![0],
-            LogId::new(LeaderId::new(1, 0), log_index),
+            LogId::new(CommittedLeaderId::new(1, 0), log_index),
             None,
             "snapshot",
         )
@@ -87,7 +87,7 @@ async fn compaction() -> Result<()> {
             1,
             log_index,
             Some(0),
-            LogId::new(LeaderId::new(1, 0), log_index),
+            LogId::new(CommittedLeaderId::new(1, 0), log_index),
             Some((log_index.into(), 1)),
         )
         .await?;
@@ -95,7 +95,7 @@ async fn compaction() -> Result<()> {
     // Add a new node and assert that it received the same snapshot.
     let mut sto1 = router.new_store();
     sto1.append_to_log(&[&blank(0, 0), &Entry {
-        log_id: LogId::new(LeaderId::new(1, 0), 1),
+        log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
         payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
     }])
     .await?;
@@ -117,7 +117,7 @@ async fn compaction() -> Result<()> {
         let mut sto = router.get_storage_handle(&1)?;
         let logs = sto.get_log_entries(..).await?;
         assert_eq!(2, logs.len());
-        assert_eq!(LogId::new(LeaderId::new(1, 0), log_index - 1), logs[0].log_id)
+        assert_eq!(LogId::new(CommittedLeaderId::new(1, 0), log_index - 1), logs[0].log_id)
     }
 
     // log 0 counts
@@ -127,7 +127,7 @@ async fn compaction() -> Result<()> {
             1,
             log_index,
             None, /* learner does not vote */
-            LogId::new(LeaderId::new(1, 0), log_index),
+            LogId::new(CommittedLeaderId::new(1, 0), log_index),
             expected_snap,
         )
         .await?;
@@ -141,9 +141,9 @@ async fn compaction() -> Result<()> {
             .await
             .send_append_entries(AppendEntriesRequest {
                 vote: Vote::new_committed(1, 0),
-                prev_log_id: Some(LogId::new(LeaderId::new(1, 0), 2)),
+                prev_log_id: Some(LogId::new(CommittedLeaderId::new(1, 0), 2)),
                 entries: vec![],
-                leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
+                leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
             })
             .await?;
 

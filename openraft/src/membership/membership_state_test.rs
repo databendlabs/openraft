@@ -2,15 +2,15 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
+use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
-use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
-        leader_id: LeaderId { term, node_id: 1 },
+        leader_id: CommittedLeaderId::new(term, 1),
         index,
     }
 }

@@ -115,12 +115,12 @@ mod tests {
         use crate::engine::Engine;
         use crate::engine::LogIdList;
         use crate::raft_state::LogStateReader;
-        use crate::LeaderId;
+        use crate::CommittedLeaderId;
         use crate::LogId;
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
             LogId::<u64> {
-                leader_id: LeaderId { term, node_id: 1 },
+                leader_id: CommittedLeaderId::new(term, 1),
                 index,
             }
         }
@@ -272,12 +272,12 @@ mod tests {
     mod calc_purge_upto_test {
         use crate::engine::Engine;
         use crate::engine::LogIdList;
-        use crate::LeaderId;
+        use crate::CommittedLeaderId;
         use crate::LogId;
 
         fn log_id(term: u64, index: u64) -> LogId<u64> {
             LogId::<u64> {
-                leader_id: LeaderId { term, node_id: 0 },
+                leader_id: CommittedLeaderId::new(term, 0),
                 index,
             }
         }

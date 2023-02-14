@@ -1,5 +1,5 @@
 use crate::engine::LogIdList;
-use crate::LeaderId;
+use crate::CommittedLeaderId;
 use crate::LogId;
 
 #[test]
@@ -342,7 +342,7 @@ fn test_log_id_list_get_log_id() -> anyhow::Result<()> {
 }
 fn log_id(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
-        leader_id: LeaderId { term, node_id: 1 },
+        leader_id: CommittedLeaderId::new(term, 1),
         index,
     }
 }

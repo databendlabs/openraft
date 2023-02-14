@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::versioned::Update;
 use crate::versioned::UpdateError;
-use crate::LeaderId;
+use crate::vote::CommittedLeaderId;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -80,7 +80,7 @@ impl<NID: NodeId> Update<ReplicationMetrics<NID>> for RemoveTarget<NID> {
 #[derive(Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct ReplicationTargetMetrics<NID: NodeId> {
-    pub(crate) matched_leader_id: LeaderId<NID>,
+    pub(crate) matched_leader_id: CommittedLeaderId<NID>,
     pub(crate) matched_index: AtomicU64,
 }
 

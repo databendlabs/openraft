@@ -99,19 +99,15 @@ where
 
         let curr = h.unwrap_or_default();
 
-        if vote.term < curr.term {
-            return Err(DefensiveError::new(ErrorSubject::Vote, Violation::TermNotAscending {
-                curr: curr.term,
-                to: vote.term,
-            })
-            .into());
+        if vote >= &curr {
+            // OK
+        } else {
+            return Err(
+                DefensiveError::new(ErrorSubject::Vote, Violation::VoteNotAscending { curr, to: *vote }).into(),
+            );
         }
 
-        if vote >= &curr {
-            Ok(())
-        } else {
-            Err(DefensiveError::new(ErrorSubject::Vote, Violation::NonIncrementalVote { curr, to: *vote }).into())
-        }
+        Ok(())
     }
 
     /// The log entries fed into a store must be consecutive otherwise it is a bug.

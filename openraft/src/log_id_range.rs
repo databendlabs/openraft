@@ -49,12 +49,12 @@ impl<NID: NodeId> LogIdRange<NID> {
 mod tests {
     use crate::log_id_range::LogIdRange;
     use crate::validate::Valid;
-    use crate::LeaderId;
+    use crate::CommittedLeaderId;
     use crate::LogId;
 
     fn log_id(index: u64) -> LogId<u64> {
         LogId {
-            leader_id: LeaderId { term: 1, node_id: 1 },
+            leader_id: CommittedLeaderId::new(1, 1),
             index,
         }
     }

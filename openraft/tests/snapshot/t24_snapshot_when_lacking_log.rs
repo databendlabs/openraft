@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 
@@ -45,7 +45,7 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId::new(LeaderId::new(1, 0), log_index),
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
                 None,
                 "snapshot",
             )
@@ -55,7 +55,7 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
                 1,
                 log_index,
                 Some(0),
-                LogId::new(LeaderId::new(1, 0), log_index),
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
                 Some((log_index.into(), 1)),
             )
             .await?;
@@ -77,7 +77,7 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![1],
-                LogId::new(LeaderId::new(1, 0), snapshot_threshold - 1),
+                LogId::new(CommittedLeaderId::new(1, 0), snapshot_threshold - 1),
                 None,
                 "",
             )
@@ -88,7 +88,7 @@ async fn switch_to_snapshot_replication_when_lacking_log() -> Result<()> {
                 1,
                 log_index,
                 None, /* learner does not vote */
-                LogId::new(LeaderId::new(1, 0), log_index),
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
                 expected_snap,
             )
             .await?;

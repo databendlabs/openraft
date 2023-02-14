@@ -6,11 +6,11 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::raft::AppendEntriesRequest;
 use openraft::storage::StorageHelper;
+use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftNetwork;
@@ -65,7 +65,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
         router
             .wait_for_snapshot(
                 &btreeset![0],
-                LogId::new(LeaderId::new(1, 0), log_index),
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
                 timeout(),
                 "snapshot",
             )
@@ -75,7 +75,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 1,
                 log_index,
                 Some(0),
-                LogId::new(LeaderId::new(1, 0), log_index),
+                LogId::new(CommittedLeaderId::new(1, 0), log_index),
                 Some((log_index.into(), 1)),
             )
             .await?;
@@ -93,10 +93,10 @@ async fn snapshot_overrides_membership() -> Result<()> {
                 vote: Vote::new_committed(1, 0),
                 prev_log_id: None,
                 entries: vec![blank(0, 0), Entry {
-                    log_id: LogId::new(LeaderId::new(1, 0), 1),
+                    log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
                     payload: EntryPayload::Membership(Membership::new(vec![btreeset! {2,3}], None)),
                 }],
-                leader_commit: Some(LogId::new(LeaderId::new(0, 0), 0)),
+                leader_commit: Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
             };
             router.new_client(1, &()).await.send_append_entries(req).await?;
 
@@ -122,7 +122,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
             router
                 .wait_for_snapshot(
                     &btreeset![1],
-                    LogId::new(LeaderId::new(1, 0), snapshot_index),
+                    LogId::new(CommittedLeaderId::new(1, 0), snapshot_index),
                     timeout(),
                     "",
                 )
@@ -135,7 +135,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
                     1,
                     log_index,
                     None, /* learner does not vote */
-                    LogId::new(LeaderId::new(1, 0), log_index),
+                    LogId::new(CommittedLeaderId::new(1, 0), log_index),
                     expected_snap,
                 )
                 .await?;

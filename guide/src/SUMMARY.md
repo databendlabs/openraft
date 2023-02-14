@@ -13,6 +13,8 @@
 
 - [Metrics](./metrics.md)
 
+- [Feature flags](./feature-flags.md)
+
 - [Internal](./internal.md)
     - [Architecture](./architecture.md)
     - [Threads](./threading.md)

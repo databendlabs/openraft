@@ -3,8 +3,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures::prelude::*;
 use maplit::btreeset;
+use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LeaderId;
 use openraft::LogId;
 use openraft::SnapshotPolicy;
 
@@ -58,7 +58,7 @@ async fn client_writes() -> Result<()> {
             1,
             log_index,
             Some(0),
-            LogId::new(LeaderId::new(1, 0), log_index),
+            LogId::new(CommittedLeaderId::new(1, 0), log_index),
             Some(((499..600).into(), 1)),
         )
         .await?;

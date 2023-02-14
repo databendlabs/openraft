@@ -119,6 +119,7 @@ pub use crate::storage_error::Violation;
 pub use crate::store_ext::StoreExt;
 pub use crate::store_wrapper::Wrapper;
 pub use crate::summary::MessageSummary;
+pub use crate::vote::CommittedLeaderId;
 pub use crate::vote::LeaderId;
 pub use crate::vote::Vote;
 

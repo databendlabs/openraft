@@ -1,7 +1,7 @@
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use crate::LeaderId;
+use crate::vote::CommittedLeaderId;
 use crate::MessageSummary;
 use crate::NodeId;
 
@@ -10,11 +10,15 @@ use crate::NodeId;
 #[derive(Debug, Default, Copy, Clone, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct LogId<NID: NodeId> {
-    pub leader_id: LeaderId<NID>,
+    pub leader_id: CommittedLeaderId<NID>,
     pub index: u64,
 }
 
 pub trait RaftLogId<NID: NodeId> {
+    fn leader_id(&self) -> &CommittedLeaderId<NID> {
+        self.get_log_id().committed_leader_id()
+    }
+
     fn get_log_id(&self) -> &LogId<NID>;
 
     fn set_log_id(&mut self, log_id: &LogId<NID>);
@@ -43,16 +47,11 @@ impl<NID: NodeId> MessageSummary<LogId<NID>> for LogId<NID> {
 }
 
 impl<NID: NodeId> LogId<NID> {
-    pub fn new(leader_id: LeaderId<NID>, index: u64) -> Self {
+    pub fn new(leader_id: CommittedLeaderId<NID>, index: u64) -> Self {
         if leader_id.term == 0 || index == 0 {
             assert_eq!(
-                leader_id.term, 0,
-                "zero-th log entry must be (0,0,0), but {} {}",
-                leader_id, index
-            );
-            assert_eq!(
-                leader_id.node_id,
-                NID::default(),
+                leader_id,
+                CommittedLeaderId::default(),
                 "zero-th log entry must be (0,0,0), but {} {}",
                 leader_id,
                 index
@@ -64,6 +63,10 @@ impl<NID: NodeId> LogId<NID> {
             );
         }
         LogId { leader_id, index }
+    }
+
+    pub fn committed_leader_id(&self) -> &CommittedLeaderId<NID> {
+        &self.leader_id
     }
 }
 

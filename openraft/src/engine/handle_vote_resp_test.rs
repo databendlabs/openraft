@@ -11,8 +11,8 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::raft::VoteResponse;
 use crate::raft_state::VoteStateReader;
+use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
-use crate::LeaderId;
 use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
@@ -20,7 +20,7 @@ use crate::Vote;
 
 fn log_id(term: u64, index: u64) -> LogId<u64> {
     LogId::<u64> {
-        leader_id: LeaderId { term, node_id: 1 },
+        leader_id: CommittedLeaderId::new(term, 1),
         index,
     }
 }
@@ -37,7 +37,7 @@ fn eng() -> Engine<u64, ()> {
     let mut eng = Engine::<u64, ()>::default();
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
-    eng.state.log_ids = LogIdList::new([LogId::new(LeaderId::new(0, 0), 0)]);
+    eng.state.log_ids = LogIdList::new([LogId::new(CommittedLeaderId::new(0, 0), 0)]);
     eng
 }
 
@@ -128,12 +128,12 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         eng.state.server_state = ServerState::Candidate;
 
         eng.handle_vote_resp(2, VoteResponse {
-            vote: Vote::new(2, 2),
+            vote: Vote::new(3, 2),
             vote_granted: false,
             last_log_id: Some(log_id(2, 2)),
         });
 
-        assert_eq!(Vote::new(2, 2), *eng.state.get_vote());
+        assert_eq!(Vote::new(3, 2), *eng.state.get_vote());
         assert!(eng.internal_server_state.is_leading());
 
         assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -148,7 +148,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
 
         assert_eq!(
             vec![
-                Command::SaveVote { vote: Vote::new(2, 2) },
+                Command::SaveVote { vote: Vote::new(3, 2) },
                 Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.output.commands
@@ -277,7 +277,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
                 },
                 Command::AppendBlankLog {
                     log_id: LogId {
-                        leader_id: LeaderId { term: 2, node_id: 1 },
+                        leader_id: CommittedLeaderId::new(2, 1),
                         index: 1,
                     },
                 },

@@ -259,7 +259,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         let append_res = res.map_err(|_e| {
             let to = Timeout {
                 action: RPCTypes::AppendEntries,
-                id: self.session_id.vote.node_id,
+                id: self.session_id.vote.leader_id().voted_for().unwrap(),
                 target: self.target,
                 timeout: the_timeout,
             };
@@ -275,9 +275,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 Ok(())
             }
             AppendEntriesResponse::HigherVote(vote) => {
-                assert!(
+                debug_assert!(
                     vote > self.session_id.vote,
-                    "higher vote should be greater than leader's vote"
+                    "higher vote({}) should be greater than leader's vote({})",
+                    vote,
+                    self.session_id.vote,
                 );
                 tracing::debug!(%vote, "append entries failed. converting to follower");
 
