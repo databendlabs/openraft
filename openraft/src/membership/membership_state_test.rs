@@ -2,18 +2,10 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 
-use crate::CommittedLeaderId;
+use crate::testing::log_id;
 use crate::EffectiveMembership;
-use crate::LogId;
 use crate::Membership;
 use crate::MembershipState;
-
-fn log_id(term: u64, index: u64) -> LogId<u64> {
-    LogId::<u64> {
-        leader_id: CommittedLeaderId::new(term, 1),
-        index,
-    }
-}
 
 /// Create an Arc<EffectiveMembership>
 fn effmem(term: u64, index: u64, m: Membership<u64, ()>) -> Arc<EffectiveMembership<u64, ()>> {

@@ -51,19 +51,11 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::engine::Engine;
-    use crate::CommittedLeaderId;
+    use crate::testing::log_id;
     use crate::EffectiveMembership;
-    use crate::LogId;
     use crate::Membership;
     use crate::MetricsChangeFlags;
     use crate::SnapshotMeta;
-
-    fn log_id(term: u64, index: u64) -> LogId<u64> {
-        LogId::<u64> {
-            leader_id: CommittedLeaderId::new(term, 1),
-            index,
-        }
-    }
 
     fn m12() -> Membership<u64, ()> {
         Membership::<u64, ()>::new(vec![btreeset! {1,2}], None)
