@@ -398,6 +398,26 @@ where
     pub leader_node: Option<N>,
 }
 
+impl<NID, N> ForwardToLeader<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    pub const fn empty() -> Self {
+        Self {
+            leader_id: None,
+            leader_node: None,
+        }
+    }
+
+    pub fn new(leader_id: NID, node: N) -> Self {
+        Self {
+            leader_id: Some(leader_id),
+            leader_node: Some(node),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 #[error("snapshot segment id mismatch, expect: {expect}, got: {got}")]

@@ -23,7 +23,6 @@ use crate::raft_state::VoteStateReader;
 use crate::summary::MessageSummary;
 use crate::validate::Valid;
 use crate::LogId;
-use crate::LogIdOptionExt;
 use crate::Membership;
 use crate::MetricsChangeFlags;
 use crate::NodeId;
@@ -176,7 +175,7 @@ where
 
         self.check_initialize()?;
 
-        self.assign_log_ids(entries.iter_mut());
+        self.state.assign_log_ids(entries.iter_mut());
         self.state.extend_log_ids_from_same_leader(entries);
 
         self.output.push_command(Command::AppendInputEntries { range: 0..l });
@@ -362,7 +361,7 @@ where
             return;
         }
 
-        self.assign_log_ids(entries.iter_mut());
+        self.state.assign_log_ids(entries.iter_mut());
         self.state.extend_log_ids_from_same_leader(entries);
 
         self.output.push_command(Command::AppendInputEntries { range: 0..l });
@@ -568,18 +567,6 @@ where
             Err(e)
         } else {
             Ok(())
-        }
-    }
-
-    fn assign_log_ids<'a, Ent: RaftEntry<NID, N> + 'a>(&mut self, entries: impl Iterator<Item = &'a mut Ent>) {
-        let mut log_id = LogId::new(
-            self.state.get_vote().committed_leader_id().unwrap(),
-            self.state.last_log_id().next_index(),
-        );
-        for entry in entries {
-            entry.set_log_id(&log_id);
-            tracing::debug!("assign log id: {}", log_id);
-            log_id.index += 1;
         }
     }
 
