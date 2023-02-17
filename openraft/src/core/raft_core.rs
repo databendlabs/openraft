@@ -530,7 +530,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         payload: EntryPayload<C>,
         resp_tx: Option<ClientWriteTx<C>>,
-    ) -> Result<LogId<C::NodeId>, Fatal<C::NodeId>> {
+    ) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!(payload = display(payload.summary()), "write_entry");
 
         let mut entry_refs = [EntryRef::new(&payload)];
@@ -547,7 +547,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.run_engine_commands(&entry_refs).await?;
 
-        Ok(*entry_refs[0].get_log_id())
+        Ok(())
     }
 
     /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
@@ -1193,8 +1193,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     }
                     ExternalCommand::Heartbeat => {
                         // TODO: reject if it is not leader?
-                        let log_id = self.write_entry(EntryPayload::Blank, None).await?;
-                        tracing::debug!(log_id = display(&log_id), "ExternalCommand: sent heartbeat log");
+                        self.write_entry(EntryPayload::Blank, None).await?;
+                        let log_id = self.engine.state.last_log_id();
+                        tracing::debug!(
+                            log_id = display(log_id.summary()),
+                            "ExternalCommand: sent heartbeat log"
+                        );
                     }
                     ExternalCommand::Snapshot => self.trigger_snapshot_if_needed(true).await,
                 }
@@ -1235,8 +1239,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
                             // heartbeat by sending a blank log
                             // TODO: use Engine::append_blank_log
-                            let log_id = self.write_entry(EntryPayload::Blank, None).await?;
-                            tracing::debug!(log_id = display(&log_id), "sent heartbeat log");
+                            self.write_entry(EntryPayload::Blank, None).await?;
+                            let log_id = self.engine.state.last_log_id();
+                            tracing::debug!(log_id = display(log_id.summary()), "sent heartbeat log");
                         }
 
                         // Install next heartbeat
