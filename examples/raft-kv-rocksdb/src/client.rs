@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use openraft::error::AddLearnerError;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::ForwardToLeader;
@@ -11,7 +10,6 @@ use openraft::error::NetworkError;
 use openraft::error::RPCError;
 use openraft::error::RaftError;
 use openraft::error::RemoteError;
-use openraft::raft::AddLearnerResponse;
 use openraft::raft::ClientWriteResponse;
 use openraft::RaftMetrics;
 use openraft::TryAsRef;
@@ -111,8 +109,8 @@ impl ExampleClient {
         &self,
         req: (ExampleNodeId, String, String),
     ) -> Result<
-        AddLearnerResponse<ExampleNodeId>,
-        RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, AddLearnerError<ExampleNodeId, ExampleNode>>>,
+        ClientWriteResponse<ExampleTypeConfig>,
+        RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, ClientWriteError<ExampleNodeId, ExampleNode>>>,
     > {
         self.send_rpc_to_leader("cluster/add-learner", Some(&req)).await
     }

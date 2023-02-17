@@ -3,12 +3,11 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::StorageHelper;
+use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -34,10 +33,13 @@ async fn add_learner_basic() -> Result<()> {
 
     let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
 
-    tracing::info!("--- re-adding leader does nothing");
+    tracing::info!("--- re-adding leader commits a new log but does nothing");
     {
         let res = router.add_learner(0, 0).await?;
-        assert_eq!(Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)), res.matched);
+        log_index += 1;
+
+        assert_eq!(log_index, res.log_id.index);
+        router.wait(&0, timeout()).log(Some(log_index), "commit re-adding leader log").await?;
     }
 
     tracing::info!("--- add new node node-1");
@@ -74,7 +76,14 @@ async fn add_learner_basic() -> Result<()> {
     tracing::info!("--- re-add node-1, nothing changes");
     {
         let res = router.add_learner(0, 1).await?;
-        assert_eq!(Some(LogId::new(CommittedLeaderId::new(1, 0), log_index)), res.matched);
+        log_index += 1;
+
+        assert_eq!(log_index, res.log_id.index);
+        router.wait(&0, timeout()).log(Some(log_index), "commit re-adding node-1 log").await?;
+
+        let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
+        let node_ids = metrics.membership_config.membership.nodes().map(|x| *x.0).collect::<Vec<_>>();
+        assert_eq!(vec![0, 1], node_ids);
     }
 
     Ok(())
@@ -109,10 +118,19 @@ async fn add_learner_non_blocking() -> Result<()> {
         router.wait(&0, timeout()).log(Some(log_index), "received 100 logs").await?;
 
         router.new_raft_node(1).await;
-        let raft = router.get_raft_handle(&0)?;
-        let res = raft.add_learner(1, (), false).await?;
 
-        assert_eq!(None, res.matched);
+        // Replication problem should not block adding-learner in non-blocking mode.
+        router.isolate_node(1);
+
+        let raft = router.get_raft_handle(&0)?;
+        raft.add_learner(1, (), false).await?;
+
+        sleep(Duration::from_millis(500)).await;
+
+        let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
+        let repl = metrics.replication.as_ref().unwrap();
+        let n1_repl = repl.data().replication.get(&1);
+        assert_eq!(None, n1_repl);
     }
 
     Ok(())

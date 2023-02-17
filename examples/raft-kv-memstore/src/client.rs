@@ -88,7 +88,7 @@ impl ExampleClient {
     pub async fn add_learner(
         &self,
         req: (ExampleNodeId, String),
-    ) -> Result<typ::AddLearnerResponse, typ::RPCError<typ::AddLearnerError>> {
+    ) -> Result<typ::ClientWriteResponse, typ::RPCError<typ::ClientWriteError>> {
         self.send_rpc_to_leader("add-learner", Some(&req)).await
     }
 

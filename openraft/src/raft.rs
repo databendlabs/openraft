@@ -30,7 +30,6 @@ use crate::core::TickHandle;
 use crate::core::VoteWiseTime;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
-use crate::error::AddLearnerError;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
@@ -495,7 +494,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         id: C::NodeId,
         node: C::Node,
         blocking: bool,
-    ) -> Result<AddLearnerResponse<C::NodeId>, RaftError<C::NodeId, AddLearnerError<C::NodeId, C::Node>>> {
+    ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
         let (tx, rx) = oneshot::channel();
         let resp = self.call_core(RaftMsg::AddLearner { id, node, tx }, rx).await?;
 
@@ -510,19 +509,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         // Otherwise, blocks until the replication to the new learner becomes up to date.
 
         // The log id of the membership that contains the added learner.
-        let membership_log_id = resp.membership_log_id;
-
-        let res0 = Arc::new(std::sync::Mutex::new(resp));
-        let res = res0.clone();
+        let membership_log_id = resp.log_id;
 
         let wait_res = self
             .wait(None)
             .metrics(
-                |metrics| match self.check_replication_upto_date(metrics, id, membership_log_id) {
-                    Ok(matched) => {
-                        res.lock().unwrap().matched = matched;
-                        true
-                    }
+                |metrics| match self.check_replication_upto_date(metrics, id, Some(membership_log_id)) {
+                    Ok(_matching) => true,
                     // keep waiting
                     Err(_) => false,
                 },
@@ -532,11 +525,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
         tracing::info!(wait_res = debug(&wait_res), "waiting for replication to new learner");
 
-        let r = {
-            let x = res0.lock().unwrap();
-            x.clone()
-        };
-        Ok(r)
+        Ok(resp)
     }
 
     /// Returns Ok() with the latest known matched log id if it should quit waiting: leader change,
@@ -850,19 +839,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
 pub(crate) type RaftRespTx<T, E> = oneshot::Sender<Result<T, E>>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub struct AddLearnerResponse<NID: NodeId> {
-    /// The log id of the membership that contains the added learner.
-    pub membership_log_id: Option<LogId<NID>>,
-
-    /// The last log id that matches leader log.
-    pub matched: Option<LogId<NID>>,
-}
-
-/// TX for Add Learner Response
-pub(crate) type RaftAddLearnerTx<NID, N> = RaftRespTx<AddLearnerResponse<NID>, AddLearnerError<NID, N>>;
-
 /// TX for Install Snapshot Response
 pub(crate) type InstallSnapshotTx<NID> = RaftRespTx<InstallSnapshotResponse<NID>, InstallSnapshotError>;
 
@@ -873,7 +849,8 @@ pub(crate) type VoteTx<NID> = RaftRespTx<VoteResponse<NID>, Infallible>;
 pub(crate) type AppendEntriesTx<NID> = RaftRespTx<AppendEntriesResponse<NID>, Infallible>;
 
 /// TX for Client Write Response
-pub(crate) type ClientWriteTx<C, NID, N> = RaftRespTx<ClientWriteResponse<C>, ClientWriteError<NID, N>>;
+pub(crate) type ClientWriteTx<C> =
+    RaftRespTx<ClientWriteResponse<C>, ClientWriteError<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>;
 
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
@@ -908,7 +885,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
 
     ClientWriteRequest {
         payload: EntryPayload<C>,
-        tx: ClientWriteTx<C, C::NodeId, C::Node>,
+        tx: ClientWriteTx<C>,
     },
 
     CheckIsLeaderRequest {
@@ -927,7 +904,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         node: C::Node,
 
         /// Send the log id when the replication becomes line-rate.
-        tx: RaftAddLearnerTx<C::NodeId, C::Node>,
+        tx: ClientWriteTx<C>,
     },
 
     ChangeMembership {

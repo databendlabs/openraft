@@ -59,14 +59,12 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::quorum::QuorumSet;
-use crate::raft::AddLearnerResponse;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::AppendEntriesTx;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteTx;
 use crate::raft::ExternalCommand;
-use crate::raft::RaftAddLearnerTx;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
@@ -108,7 +106,7 @@ pub(crate) struct LeaderData<C: RaftTypeConfig, SD>
 where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
     /// Channels to send result back to client when logs are committed.
-    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C, C::NodeId, C::Node>>,
+    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C>>,
 
     /// A mapping of node IDs the replication state of the target node.
     // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
@@ -377,7 +375,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         target: C::NodeId,
         node: C::Node,
-        tx: RaftAddLearnerTx<C::NodeId, C::Node>,
+        tx: ClientWriteTx<C>,
     ) -> Result<(), Fatal<C::NodeId>> {
         if let Some(l) = &self.leader_data {
             tracing::debug!(
@@ -389,47 +387,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             unreachable!("it has to be a leader!!!");
         }
 
-        // Ensure the node doesn't already exist in the current config,
-        // in the set of new nodes already being synced, or in the nodes being removed.
-
-        let curr = &self.engine.state.membership_state.effective();
-        if curr.contains(&target) {
-            let matching = if let Some(l) = &self.engine.internal_server_state.leading() {
-                *l.progress.get(&target)
-            } else {
-                unreachable!("it has to be a leader!!!");
-            };
-
-            tracing::debug!(
-                "target {:?} already member or learner, can't add; matching:{:?}",
-                target,
-                matching
-            );
-
-            let _ = tx.send(Ok(AddLearnerResponse {
-                membership_log_id: self.engine.state.membership_state.effective().log_id,
-                matched: matching.matching,
-            }));
-            return Ok(());
-        }
-
         let curr = &self.engine.state.membership_state.effective().membership;
         let new_membership = curr.add_learner(target, node);
 
         tracing::debug!(?new_membership, "new_membership with added learner: {}", target);
 
-        let log_id = self.write_entry(EntryPayload::Membership(new_membership), None).await?;
-
-        tracing::debug!(
-            "after add target node {} as learner; last_log_id: {:?}",
-            target,
-            self.engine.state.last_log_id()
-        );
-
-        let _ = tx.send(Ok(AddLearnerResponse {
-            membership_log_id: Some(log_id),
-            matched: None,
-        }));
+        self.write_entry(EntryPayload::Membership(new_membership), Some(tx)).await?;
 
         Ok(())
     }
@@ -566,8 +529,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub async fn write_entry(
         &mut self,
         payload: EntryPayload<C>,
-        resp_tx: Option<ClientWriteTx<C, C::NodeId, C::Node>>,
-    ) -> Result<LogId<C::NodeId>, Fatal<C::NodeId>> {
+        resp_tx: Option<ClientWriteTx<C>>,
+    ) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!(payload = display(payload.summary()), "write_entry");
 
         let mut entry_refs = [EntryRef::new(&payload)];
@@ -584,7 +547,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         self.run_engine_commands(&entry_refs).await?;
 
-        Ok(*entry_refs[0].get_log_id())
+        Ok(())
     }
 
     /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
@@ -895,7 +858,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn send_response(entry: &Entry<C>, resp: C::R, tx: Option<ClientWriteTx<C, C::NodeId, C::Node>>) {
+    pub(super) fn send_response(entry: &Entry<C>, resp: C::R, tx: Option<ClientWriteTx<C>>) {
         tracing::debug!(entry = display(entry.summary()), "send_response");
 
         let tx = match tx {
@@ -1230,8 +1193,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     }
                     ExternalCommand::Heartbeat => {
                         // TODO: reject if it is not leader?
-                        let log_id = self.write_entry(EntryPayload::Blank, None).await?;
-                        tracing::debug!(log_id = display(&log_id), "ExternalCommand: sent heartbeat log");
+                        self.write_entry(EntryPayload::Blank, None).await?;
+                        let log_id = self.engine.state.last_log_id();
+                        tracing::debug!(
+                            log_id = display(log_id.summary()),
+                            "ExternalCommand: sent heartbeat log"
+                        );
                     }
                     ExternalCommand::Snapshot => self.trigger_snapshot_if_needed(true).await,
                 }
@@ -1272,8 +1239,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
                             // heartbeat by sending a blank log
                             // TODO: use Engine::append_blank_log
-                            let log_id = self.write_entry(EntryPayload::Blank, None).await?;
-                            tracing::debug!(log_id = display(&log_id), "sent heartbeat log");
+                            self.write_entry(EntryPayload::Blank, None).await?;
+                            let log_id = self.engine.state.last_log_id();
+                            tracing::debug!(log_id = display(log_id.summary()), "sent heartbeat log");
                         }
 
                         // Install next heartbeat
