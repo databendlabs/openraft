@@ -1,7 +1,9 @@
 use std::error::Error;
 
 use crate::engine::LogIdList;
+use crate::entry::RaftEntry;
 use crate::equal;
+use crate::error::ForwardToLeader;
 use crate::less_equal;
 use crate::node::Node;
 use crate::raft_types::RaftLogId;
@@ -292,5 +294,43 @@ where
 
     pub(crate) fn is_leader(&self, id: &NID) -> bool {
         self.vote.leader_id().voted_for().as_ref() == Some(id) && self.vote.is_committed()
+    }
+
+    pub(crate) fn assign_log_ids<'a, Ent: RaftEntry<NID, N> + 'a>(
+        &mut self,
+        entries: impl Iterator<Item = &'a mut Ent>,
+    ) {
+        let mut log_id = LogId::new(
+            self.get_vote().committed_leader_id().unwrap(),
+            self.last_log_id().next_index(),
+        );
+        for entry in entries {
+            entry.set_log_id(&log_id);
+            tracing::debug!("assign log id: {}", log_id);
+            log_id.index += 1;
+        }
+    }
+
+    /// Build a ForwardToLeader error that contains the leader id and node it knows.
+    // TODO: This will be used in next PR. delete this attr
+    #[allow(dead_code)]
+    pub(crate) fn forward_to_leader(&self) -> ForwardToLeader<NID, N> {
+        let vote = self.get_vote();
+
+        if vote.is_committed() {
+            // Safe unwrap(): vote that is committed has to already have voted for some node.
+            let id = vote.leader_id().voted_for().unwrap();
+
+            // leader may not step down after being removed from `voters`.
+            // It does not have to be a voter, being in membership is just enough
+            let node = self.membership_state.effective().get_node(&id);
+            if let Some(n) = node {
+                return ForwardToLeader::new(id, n.clone());
+            } else {
+                tracing::debug!("id={} is not in membership, when getting leader id", id);
+            }
+        };
+
+        ForwardToLeader::empty()
     }
 }
