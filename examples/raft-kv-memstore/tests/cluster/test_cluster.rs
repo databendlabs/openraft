@@ -175,7 +175,7 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     // --- Wait for a while to let the replication get done.
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::sleep(Duration::from_millis(1_000)).await;
 
     // --- Read it on every node.
 
@@ -203,7 +203,7 @@ async fn test_cluster() -> anyhow::Result<()> {
         })
         .await?;
 
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(1_000)).await;
 
     // --- Read it on every node.
 
