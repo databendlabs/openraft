@@ -33,9 +33,11 @@ pub struct ExampleNetwork {}
 impl RaftNetworkFactory<ExampleTypeConfig> for ExampleNetwork {
     type Network = ExampleNetworkConnection;
 
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn new_client(&mut self, target: ExampleNodeId, node: &ExampleNode) -> Self::Network {
         let addr = format!("ws://{}", node.rpc_addr);
         let client = Client::dial_websocket(&addr).await.ok();
+        tracing::debug!("new_client: is_none: {}", client.is_none());
         ExampleNetworkConnection { addr, client, target }
     }
 }
@@ -91,14 +93,24 @@ fn to_error<E: std::error::Error + 'static + Clone>(
 
 #[async_trait]
 impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
+    #[tracing::instrument(level = "debug", skip_all, err(Debug))]
     async fn send_append_entries(
         &mut self,
         req: AppendEntriesRequest<ExampleTypeConfig>,
     ) -> Result<AppendEntriesResponse<ExampleNodeId>, RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId>>>
     {
-        self.c().await?.raft().append(req).await.map_err(|e| to_error(e, self.target))
+        tracing::debug!(req = debug(&req), "send_append_entries");
+
+        let c = self.c().await?;
+        tracing::debug!("got connection");
+
+        let raft = c.raft();
+        tracing::debug!("got raft");
+
+        raft.append(req).await.map_err(|e| to_error(e, self.target))
     }
 
+    #[tracing::instrument(level = "debug", skip_all, err(Debug))]
     async fn send_install_snapshot(
         &mut self,
         req: InstallSnapshotRequest<ExampleTypeConfig>,
@@ -106,13 +118,16 @@ impl RaftNetwork<ExampleTypeConfig> for ExampleNetworkConnection {
         InstallSnapshotResponse<ExampleNodeId>,
         RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId, InstallSnapshotError>>,
     > {
+        tracing::debug!(req = debug(&req), "send_install_snapshot");
         self.c().await?.raft().snapshot(req).await.map_err(|e| to_error(e, self.target))
     }
 
+    #[tracing::instrument(level = "debug", skip_all, err(Debug))]
     async fn send_vote(
         &mut self,
         req: VoteRequest<ExampleNodeId>,
     ) -> Result<VoteResponse<ExampleNodeId>, RPCError<ExampleNodeId, ExampleNode, RaftError<ExampleNodeId>>> {
+        tracing::debug!(req = debug(&req), "send_vote");
         self.c().await?.raft().vote(req).await.map_err(|e| to_error(e, self.target))
     }
 }

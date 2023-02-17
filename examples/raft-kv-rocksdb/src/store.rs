@@ -91,10 +91,11 @@ pub struct SerializableExampleStateMachine {
 impl From<&ExampleStateMachine> for SerializableExampleStateMachine {
     fn from(state: &ExampleStateMachine) -> Self {
         let mut data = BTreeMap::new();
-        for (key, value) in state.db.iterator_cf(
+        for res in state.db.iterator_cf(
             state.db.cf_handle("data").expect("cf_handle"),
             rocksdb::IteratorMode::Start,
         ) {
+            let (key, value) = res.unwrap();
             let key: &[u8] = &key;
             let value: &[u8] = &value;
             data.insert(
@@ -328,11 +329,10 @@ impl ExampleStore {
 #[async_trait]
 impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
     async fn get_log_state(&mut self) -> StorageResult<LogState<ExampleTypeConfig>> {
-        let last = self
-            .db
-            .iterator_cf(self.logs(), rocksdb::IteratorMode::End)
-            .next()
-            .and_then(|(_, ent)| Some(serde_json::from_slice::<Entry<ExampleTypeConfig>>(&ent).ok()?.log_id));
+        let last = self.db.iterator_cf(self.logs(), rocksdb::IteratorMode::End).next().and_then(|res| {
+            let (_, ent) = res.unwrap();
+            Some(serde_json::from_slice::<Entry<ExampleTypeConfig>>(&ent).ok()?.log_id)
+        });
 
         let last_purged_log_id = self.get_last_purged_()?;
 
@@ -357,7 +357,8 @@ impl RaftLogReader<ExampleTypeConfig> for Arc<ExampleStore> {
         };
         self.db
             .iterator_cf(self.logs(), rocksdb::IteratorMode::From(&start, Direction::Forward))
-            .map(|(id, val)| {
+            .map(|res| {
+                let (id, val) = res.unwrap();
                 let entry: StorageResult<Entry<_>> = serde_json::from_slice(&val).map_err(|e| StorageError::IO {
                     source: StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Read, AnyError::new(&e)),
                 });
