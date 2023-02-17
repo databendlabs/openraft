@@ -45,12 +45,10 @@ pub mod typ {
         openraft::error::RPCError<ExampleNodeId, BasicNode, RaftError<E>>;
 
     pub type ClientWriteError = openraft::error::ClientWriteError<ExampleNodeId, BasicNode>;
-    pub type AddLearnerError = openraft::error::AddLearnerError<ExampleNodeId, BasicNode>;
     pub type CheckIsLeaderError = openraft::error::CheckIsLeaderError<ExampleNodeId, BasicNode>;
     pub type ForwardToLeader = openraft::error::ForwardToLeader<ExampleNodeId, BasicNode>;
     pub type InitializeError = openraft::error::InitializeError<ExampleNodeId, BasicNode>;
 
-    pub type AddLearnerResponse = openraft::raft::AddLearnerResponse<ExampleNodeId>;
     pub type ClientWriteResponse = openraft::raft::ClientWriteResponse<ExampleTypeConfig>;
 }
 

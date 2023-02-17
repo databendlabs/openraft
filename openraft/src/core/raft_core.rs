@@ -59,14 +59,12 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::quorum::QuorumSet;
-use crate::raft::AddLearnerResponse;
 use crate::raft::AppendEntriesRequest;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::AppendEntriesTx;
 use crate::raft::ClientWriteResponse;
 use crate::raft::ClientWriteTx;
 use crate::raft::ExternalCommand;
-use crate::raft::RaftAddLearnerTx;
 use crate::raft::RaftMsg;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
@@ -377,7 +375,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         target: C::NodeId,
         node: C::Node,
-        tx: RaftAddLearnerTx<C::NodeId, C::Node>,
+        tx: ClientWriteTx<C, C::NodeId, C::Node>,
     ) -> Result<(), Fatal<C::NodeId>> {
         if let Some(l) = &self.leader_data {
             tracing::debug!(
@@ -389,47 +387,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             unreachable!("it has to be a leader!!!");
         }
 
-        // Ensure the node doesn't already exist in the current config,
-        // in the set of new nodes already being synced, or in the nodes being removed.
-
-        let curr = &self.engine.state.membership_state.effective();
-        if curr.contains(&target) {
-            let matching = if let Some(l) = &self.engine.internal_server_state.leading() {
-                *l.progress.get(&target)
-            } else {
-                unreachable!("it has to be a leader!!!");
-            };
-
-            tracing::debug!(
-                "target {:?} already member or learner, can't add; matching:{:?}",
-                target,
-                matching
-            );
-
-            let _ = tx.send(Ok(AddLearnerResponse {
-                membership_log_id: self.engine.state.membership_state.effective().log_id,
-                matched: matching.matching,
-            }));
-            return Ok(());
-        }
-
         let curr = &self.engine.state.membership_state.effective().membership;
         let new_membership = curr.add_learner(target, node);
 
         tracing::debug!(?new_membership, "new_membership with added learner: {}", target);
 
-        let log_id = self.write_entry(EntryPayload::Membership(new_membership), None).await?;
-
-        tracing::debug!(
-            "after add target node {} as learner; last_log_id: {:?}",
-            target,
-            self.engine.state.last_log_id()
-        );
-
-        let _ = tx.send(Ok(AddLearnerResponse {
-            membership_log_id: Some(log_id),
-            matched: None,
-        }));
+        self.write_entry(EntryPayload::Membership(new_membership), Some(tx)).await?;
 
         Ok(())
     }

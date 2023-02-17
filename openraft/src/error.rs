@@ -200,41 +200,6 @@ pub enum ChangeMembershipError<NID: NodeId> {
     LearnerIsLagging(#[from] LearnerIsLagging<NID>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-pub enum AddLearnerError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    #[error(transparent)]
-    ForwardToLeader(#[from] ForwardToLeader<NID, N>),
-}
-
-impl<NID, N> TryAsRef<ForwardToLeader<NID, N>> for AddLearnerError<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn try_as_ref(&self) -> Option<&ForwardToLeader<NID, N>> {
-        let Self::ForwardToLeader(f) = self;
-        Some(f)
-    }
-}
-
-impl<NID, N> TryFrom<AddLearnerError<NID, N>> for ForwardToLeader<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    type Error = AddLearnerError<NID, N>;
-
-    fn try_from(value: AddLearnerError<NID, N>) -> Result<Self, Self::Error> {
-        let AddLearnerError::ForwardToLeader(e) = value;
-        Ok(e)
-    }
-}
-
 /// The set of errors which may take place when initializing a pristine Raft node.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, derive_more::TryInto)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]

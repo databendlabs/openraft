@@ -25,7 +25,6 @@ use memstore::Config as MemConfig;
 use memstore::IntoMemClientRequest;
 use memstore::MemStore;
 use openraft::async_trait::async_trait;
-use openraft::error::AddLearnerError;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
 use openraft::error::InstallSnapshotError;
@@ -34,9 +33,9 @@ use openraft::error::RPCError;
 use openraft::error::RaftError;
 use openraft::error::RemoteError;
 use openraft::metrics::Wait;
-use openraft::raft::AddLearnerResponse;
 use openraft::raft::AppendEntriesRequest;
 use openraft::raft::AppendEntriesResponse;
+use openraft::raft::ClientWriteResponse;
 use openraft::raft::InstallSnapshotRequest;
 use openraft::raft::InstallSnapshotResponse;
 use openraft::raft::VoteRequest;
@@ -556,7 +555,7 @@ where
         &self,
         leader: C::NodeId,
         target: C::NodeId,
-    ) -> Result<AddLearnerResponse<C::NodeId>, AddLearnerError<C::NodeId, C::Node>> {
+    ) -> Result<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>> {
         let node = self.get_raft_handle(&leader).unwrap();
         node.add_learner(target, C::Node::default(), true).await.map_err(|e| e.into_api_error().unwrap())
     }
