@@ -31,6 +31,7 @@ impl Raft {
         &self,
         req: AppendEntriesRequest<ExampleTypeConfig>,
     ) -> Result<AppendEntriesResponse<u64>, toy_rpc::Error> {
+        tracing::debug!("handle append");
         self.app.raft.append_entries(req).await.map_err(|e| toy_rpc::Error::Internal(Box::new(e)))
     }
     #[export_method]

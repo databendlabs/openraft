@@ -1,4 +1,6 @@
+use std::backtrace::Backtrace;
 use std::collections::BTreeMap;
+use std::panic::PanicInfo;
 use std::thread;
 use std::time::Duration;
 
@@ -9,6 +11,28 @@ use raft_kv_rocksdb::client::ExampleClient;
 use raft_kv_rocksdb::start_example_raft_node;
 use raft_kv_rocksdb::store::ExampleRequest;
 use raft_kv_rocksdb::ExampleNode;
+use tracing_subscriber::EnvFilter;
+
+pub fn log_panic(panic: &PanicInfo) {
+    let backtrace = { format!("{:?}", Backtrace::force_capture()) };
+
+    eprintln!("{}", panic);
+
+    if let Some(location) = panic.location() {
+        tracing::error!(
+            message = %panic,
+            backtrace = %backtrace,
+            panic.file = location.file(),
+            panic.line = location.line(),
+            panic.column = location.column(),
+        );
+        eprintln!("{}:{}:{}", location.file(), location.line(), location.column());
+    } else {
+        tracing::error!(message = %panic, backtrace = %backtrace);
+    }
+
+    eprintln!("{}", backtrace);
+}
 
 /// Setup a cluster of 3 nodes.
 /// Write to it and read from it.
@@ -18,6 +42,18 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     //     Thus we need a supporting component to provide mapping from node id to node address.
     //     This is only used by the client. A raft node in this example stores node addresses in its
     // store.
+
+    std::panic::set_hook(Box::new(|panic| {
+        log_panic(panic);
+    }));
+
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_level(true)
+        .with_ansi(false)
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
 
     fn get_addr(node_id: u32) -> String {
         match node_id {
