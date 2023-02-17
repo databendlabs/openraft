@@ -106,7 +106,7 @@ pub(crate) struct LeaderData<C: RaftTypeConfig, SD>
 where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
 {
     /// Channels to send result back to client when logs are committed.
-    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C, C::NodeId, C::Node>>,
+    pub(crate) client_resp_channels: BTreeMap<u64, ClientWriteTx<C>>,
 
     /// A mapping of node IDs the replication state of the target node.
     // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
@@ -375,7 +375,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         &mut self,
         target: C::NodeId,
         node: C::Node,
-        tx: ClientWriteTx<C, C::NodeId, C::Node>,
+        tx: ClientWriteTx<C>,
     ) -> Result<(), Fatal<C::NodeId>> {
         if let Some(l) = &self.leader_data {
             tracing::debug!(
@@ -529,7 +529,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub async fn write_entry(
         &mut self,
         payload: EntryPayload<C>,
-        resp_tx: Option<ClientWriteTx<C, C::NodeId, C::Node>>,
+        resp_tx: Option<ClientWriteTx<C>>,
     ) -> Result<LogId<C::NodeId>, Fatal<C::NodeId>> {
         tracing::debug!(payload = display(payload.summary()), "write_entry");
 
@@ -858,7 +858,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn send_response(entry: &Entry<C>, resp: C::R, tx: Option<ClientWriteTx<C, C::NodeId, C::Node>>) {
+    pub(super) fn send_response(entry: &Entry<C>, resp: C::R, tx: Option<ClientWriteTx<C>>) {
         tracing::debug!(entry = display(entry.summary()), "send_response");
 
         let tx = match tx {

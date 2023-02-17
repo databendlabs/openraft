@@ -849,7 +849,8 @@ pub(crate) type VoteTx<NID> = RaftRespTx<VoteResponse<NID>, Infallible>;
 pub(crate) type AppendEntriesTx<NID> = RaftRespTx<AppendEntriesResponse<NID>, Infallible>;
 
 /// TX for Client Write Response
-pub(crate) type ClientWriteTx<C, NID, N> = RaftRespTx<ClientWriteResponse<C>, ClientWriteError<NID, N>>;
+pub(crate) type ClientWriteTx<C> =
+    RaftRespTx<ClientWriteResponse<C>, ClientWriteError<<C as RaftTypeConfig>::NodeId, <C as RaftTypeConfig>::Node>>;
 
 /// A message coming from the Raft API.
 pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> {
@@ -884,7 +885,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
 
     ClientWriteRequest {
         payload: EntryPayload<C>,
-        tx: ClientWriteTx<C, C::NodeId, C::Node>,
+        tx: ClientWriteTx<C>,
     },
 
     CheckIsLeaderRequest {
@@ -903,7 +904,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
         node: C::Node,
 
         /// Send the log id when the replication becomes line-rate.
-        tx: ClientWriteTx<C, C::NodeId, C::Node>,
+        tx: ClientWriteTx<C>,
     },
 
     ChangeMembership {
