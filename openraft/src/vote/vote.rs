@@ -27,7 +27,14 @@ impl<NID: NodeId> PartialOrd for Vote<NID> {
             None => {
                 // If two leader_id are not comparable, they won't both be granted(committed).
                 // Therefore use `committed` to determine greatness to minimize election conflict.
-                PartialOrd::partial_cmp(&self.committed, &other.committed)
+                match (self.committed, other.committed) {
+                    (false, false) => None,
+                    (true, false) => Some(Ordering::Greater),
+                    (false, true) => Some(Ordering::Less),
+                    (true, true) => {
+                        unreachable!("two incomparable leaders can not be both committed: {} {}", self, other)
+                    }
+                }
             }
             cmp => cmp,
         }
@@ -146,6 +153,8 @@ mod tests {
 
     #[cfg(feature = "single-term-leader")]
     mod feature_single_term_leader {
+        use std::panic::UnwindSafe;
+
         use crate::LeaderId;
         use crate::Vote;
 
@@ -177,18 +186,30 @@ mod tests {
 
             // Compare term first
             assert!(vote(2, 2) > vote(1, 2));
+            assert!(vote(2, 2) >= vote(1, 2));
             assert!(vote(1, 2) < vote(2, 2));
+            assert!(vote(1, 2) <= vote(2, 2));
 
             // Equal term, Some > None
             assert!(vote(2, 2) > none(2));
+            assert!(vote(2, 2) >= none(2));
             assert!(none(2) < vote(2, 2));
+            assert!(none(2) <= vote(2, 2));
 
             // Committed greater than non-committed if leader_id is incomparable
             assert!(committed(2, 2) > vote(2, 2));
+            assert!(committed(2, 2) >= vote(2, 2));
             assert!(committed(2, 1) > vote(2, 2));
+            assert!(committed(2, 1) >= vote(2, 2));
 
             // Lower term committed is not greater
             assert!(!(committed(1, 1) > vote(2, 1)));
+            assert!(!(committed(1, 1) >= vote(2, 1)));
+
+            // Compare to itself
+            assert!(committed(1, 1) >= committed(1, 1));
+            assert!(committed(1, 1) <= committed(1, 1));
+            assert!(committed(1, 1) == committed(1, 1));
 
             // Equal
             assert!(vote(2, 2) == vote(2, 2));
@@ -197,13 +218,22 @@ mod tests {
 
             // Incomparable
             assert!(!(vote(2, 2) > vote(2, 3)));
+            assert!(!(vote(2, 2) >= vote(2, 3)));
             assert!(!(vote(2, 2) < vote(2, 3)));
+            assert!(!(vote(2, 2) <= vote(2, 3)));
             assert!(!(vote(2, 2) == vote(2, 3)));
 
             // Incomparable committed
-            assert!(!(committed(2, 2) > committed(2, 3)));
-            assert!(!(committed(2, 2) < committed(2, 3)));
-            assert!(!(committed(2, 2) == committed(2, 3)));
+            {
+                fn assert_panic<T, F: FnOnce() -> T + UnwindSafe>(f: F) {
+                    let res = std::panic::catch_unwind(f);
+                    assert!(res.is_err());
+                }
+                assert_panic(|| (committed(2, 2) > committed(2, 3)));
+                assert_panic(|| (committed(2, 2) >= committed(2, 3)));
+                assert_panic(|| (committed(2, 2) < committed(2, 3)));
+                assert_panic(|| (committed(2, 2) <= committed(2, 3)));
+            }
 
             Ok(())
         }
