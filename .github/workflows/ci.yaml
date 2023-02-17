@@ -179,8 +179,7 @@ jobs:
           - "nightly"
         example:
           - "raft-kv-memstore"
-          # 2023-02-17: this test blocks forever
-          # - "raft-kv-rocksdb"
+          - "raft-kv-rocksdb"
 
     steps:
       - uses: actions/checkout@v2
