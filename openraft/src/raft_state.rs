@@ -210,11 +210,6 @@ where
         self.log_ids.extend(new_log_id)
     }
 
-    /// Return true if the currently effective membership is committed.
-    pub(crate) fn is_membership_committed(&self) -> bool {
-        self.committed() >= self.membership_state.effective().log_id.as_ref()
-    }
-
     /// Update field `committed` if the input is greater.
     /// If updated, it returns the previous value in a `Some()`.
     #[tracing::instrument(level = "debug", skip_all)]

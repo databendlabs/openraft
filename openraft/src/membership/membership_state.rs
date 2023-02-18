@@ -1,12 +1,18 @@
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::error::ChangeMembershipError;
+use crate::error::EmptyMembership;
+use crate::error::InProgress;
+use crate::error::LearnerNotFound;
 use crate::less_equal;
 use crate::node::Node;
 use crate::validate::Validate;
+use crate::ChangeMembers;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
+use crate::Membership;
 use crate::MessageSummary;
 use crate::NodeId;
 
@@ -75,7 +81,47 @@ where
         self.effective.membership.is_voter(id)
     }
 
-    // ---
+    /// Build a new membership config by applying changes to the current config.
+    ///
+    /// The removed voter is left in membership config as learner if `removed_to_learner` is true.
+    pub(crate) fn next_membership(
+        &self,
+        changes: ChangeMembers<NID>,
+        removed_to_learner: bool,
+    ) -> Result<Membership<NID, N>, ChangeMembershipError<NID>> {
+        let effective = self.effective();
+        let committed = self.committed();
+
+        let last = effective.membership.get_joint_config().last().unwrap();
+        let new_voter_ids = changes.apply_to(last);
+
+        // Ensure cluster will have at least one voter.
+        if new_voter_ids.is_empty() {
+            return Err(EmptyMembership {}.into());
+        }
+
+        // There has to be corresponding `Node` for every voter_id
+        for node_id in new_voter_ids.iter() {
+            if !effective.contains(node_id) {
+                return Err(LearnerNotFound { node_id: *node_id }.into());
+            }
+        }
+
+        if committed.log_id == effective.log_id {
+            // Ok: last membership(effective) is committed
+        } else {
+            return Err(InProgress {
+                committed: committed.log_id,
+                membership_log_id: effective.log_id,
+            }
+            .into());
+        }
+
+        let new_membership = effective.membership.next_safe(new_voter_ids, removed_to_learner);
+
+        tracing::debug!(?new_membership, "new membership config");
+        Ok(new_membership)
+    }
 
     /// Update membership state if the specified committed_log_id is greater than `self.effective`
     pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<NID>>) {

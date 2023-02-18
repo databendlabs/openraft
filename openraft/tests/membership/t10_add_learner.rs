@@ -169,7 +169,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
     router.wait_for_log(&btreeset![0, 1], Some(log_index), timeout(), "add learner").await?;
 
     let node = router.get_raft_handle(&orig_leader_id)?;
-    node.change_membership(btreeset![1, 3, 4], true, false).await?;
+    node.change_membership(btreeset![1, 3, 4], false).await?;
     log_index += 2; // 2 change_membership log
 
     tracing::info!("--- old leader commits 2 membership log");

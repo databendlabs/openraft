@@ -29,7 +29,7 @@
 
 mod command;
 mod engine_impl;
-mod handler;
+pub(crate) mod handler;
 mod log_id_list;
 
 #[cfg(test)] mod elect_test;
@@ -37,7 +37,6 @@ mod log_id_list;
 #[cfg(test)] mod handle_vote_req_test;
 #[cfg(test)] mod handle_vote_resp_test;
 #[cfg(test)] mod initialize_test;
-#[cfg(test)] mod leader_append_entries_test;
 #[cfg(test)] mod log_id_list_test;
 #[cfg(test)] mod startup_test;
 #[cfg(test)] mod testing;

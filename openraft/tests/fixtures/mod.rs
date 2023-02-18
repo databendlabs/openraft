@@ -293,7 +293,7 @@ where
             tracing::info!("--- change membership to setup voters: {:?}", node_ids);
 
             let node = self.get_raft_handle(&C::NodeId::default())?;
-            node.change_membership(node_ids.clone(), true, false).await?;
+            node.change_membership(node_ids.clone(), false).await?;
             log_index += 2;
 
             self.wait_for_log(

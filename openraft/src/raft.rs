@@ -21,7 +21,6 @@ use tracing::Level;
 use crate::config::Config;
 use crate::config::RuntimeConfig;
 use crate::core::replication_lag;
-use crate::core::Expectation;
 use crate::core::RaftCore;
 use crate::core::SnapshotResult;
 use crate::core::SnapshotState;
@@ -609,27 +608,15 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn change_membership(
         &self,
         members: impl Into<ChangeMembers<C::NodeId>>,
-        allow_lagging: bool,
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
         let changes: ChangeMembers<C::NodeId> = members.into();
 
         tracing::info!(
             changes = debug(&changes),
-            allow_lagging = display(allow_lagging),
             turn_to_learner = display(turn_to_learner),
             "change_membership: start to commit joint config"
         );
-
-        let when = if allow_lagging {
-            None
-        } else {
-            match &changes {
-                // Removing voters will never be blocked by replication.
-                ChangeMembers::Remove(_) => None,
-                _ => Some(Expectation::AtLineRate),
-            }
-        };
 
         let (tx, rx) = oneshot::channel();
         // res is error if membership can not be changed.
@@ -638,7 +625,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes: changes.clone(),
-                    when: when.clone(),
                     turn_to_learner,
                     tx,
                 },
@@ -662,7 +648,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes,
-                    when,
                     turn_to_learner,
                     tx,
                 },
@@ -910,10 +895,6 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     ChangeMembership {
         changes: ChangeMembers<C::NodeId>,
 
-        /// Defines what conditions the replication states has to satisfy before change membership.
-        /// If expectation is not satisfied, a corresponding error will return.
-        when: Option<Expectation>,
-
         /// If `turn_to_learner` is `true`, then all the members which do not exist in the new
         /// membership will be turned into learners, otherwise they will be removed.
         turn_to_learner: bool,
@@ -1010,13 +991,12 @@ where
             }
             RaftMsg::ChangeMembership {
                 changes: members,
-                when,
                 turn_to_learner,
                 ..
             } => {
                 format!(
-                    "ChangeMembership: members: {:?}, when: {:?}, turn_to_learner: {}",
-                    members, when, turn_to_learner,
+                    "ChangeMembership: members: {:?}, turn_to_learner: {}",
+                    members, turn_to_learner,
                 )
             }
             RaftMsg::ExternalRequest { .. } => "External Request".to_string(),

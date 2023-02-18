@@ -1,4 +1,5 @@
 pub(crate) mod following_handler;
+pub(crate) mod leader_handler;
 pub(crate) mod log_handler;
 pub(crate) mod replication_handler;
 pub(crate) mod server_state_handler;

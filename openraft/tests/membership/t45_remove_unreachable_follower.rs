@@ -36,7 +36,7 @@ async fn stop_replication_to_removed_unreachable_follower_network_failure() -> R
     tracing::info!("--- changing config to 0,1,2");
     {
         let node = router.get_raft_handle(&0)?;
-        node.change_membership(btreeset![0, 1, 2], true, false).await?;
+        node.change_membership(btreeset![0, 1, 2], false).await?;
         log_index += 2;
 
         for i in &[0, 1, 2] {

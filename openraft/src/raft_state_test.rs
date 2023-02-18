@@ -162,50 +162,6 @@ fn test_raft_state_last_purged_log_id() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_raft_state_is_membership_committed() -> anyhow::Result<()> {
-    //
-    let rs = RaftState {
-        committed: None,
-        membership_state: MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
-        ),
-        ..Default::default()
-    };
-
-    assert!(
-        !rs.is_membership_committed(),
-        "committed == effective, but not consider this"
-    );
-
-    let rs = RaftState {
-        committed: Some(log_id(2, 2)),
-        membership_state: MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
-            Arc::new(EffectiveMembership::new(Some(log_id(2, 2)), m12())),
-        ),
-        ..Default::default()
-    };
-
-    assert!(
-        rs.is_membership_committed(),
-        "committed != effective, but rs.committed == effective.log_id"
-    );
-
-    let rs = RaftState {
-        committed: Some(log_id(2, 2)),
-        membership_state: MembershipState::new(
-            Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())),
-            Arc::new(EffectiveMembership::new(Some(log_id(3, 3)), m12())),
-        ),
-        ..Default::default()
-    };
-
-    assert!(!rs.is_membership_committed(), "rs.committed < effective.log_id");
-    Ok(())
-}
-
-#[test]
 fn test_forward_to_leader_vote_not_committed() {
     let rs = RaftState {
         vote: Vote::new(1, 2),

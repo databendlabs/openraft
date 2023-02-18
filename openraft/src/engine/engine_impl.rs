@@ -1,5 +1,6 @@
 use crate::core::ServerState;
 use crate::engine::handler::following_handler::FollowingHandler;
+use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
@@ -7,6 +8,7 @@ use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
 use crate::engine::Command;
 use crate::entry::RaftEntry;
+use crate::error::ForwardToLeader;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
@@ -15,6 +17,7 @@ use crate::membership::EffectiveMembership;
 use crate::membership::NodeRole;
 use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
+use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::LogStateReader;
@@ -232,6 +235,34 @@ where
         self.output.push_command(Command::InstallElectionTimer { can_be_leader: true });
     }
 
+    /// Get a LeaderHandler for handling leader's operation. If it is not a leader, it send back a
+    /// ForwardToLeader error through the tx.
+    ///
+    /// If tx is None, no response will be sent.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub(crate) fn get_leader_handler_or_reject<T, E>(
+        &mut self,
+        tx: Option<RaftRespTx<T, E>>,
+    ) -> Option<(LeaderHandler<NID, N>, Option<RaftRespTx<T, E>>)>
+    where
+        E: From<ForwardToLeader<NID, N>>,
+    {
+        let res = self.leader_handler();
+        let forward_err = match res {
+            Ok(lh) => {
+                tracing::debug!("this node is a leader");
+                return Some((lh, tx));
+            }
+            Err(forward_err) => forward_err,
+        };
+
+        if let Some(tx) = tx {
+            let _ = tx.send(Err(forward_err.into()));
+        }
+
+        None
+    }
+
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<NID>) -> VoteResponse<NID> {
         tracing::info!(req = display(req.summary()), "Engine::handle_vote_req");
@@ -342,83 +373,6 @@ where
         // Candidate loop, follower loop and learner loop are totally the same.
         //
         // The only thing that needs to do is update election timer.
-    }
-
-    /// Append new log entries by a leader.
-    ///
-    /// Also Update effective membership if the payload contains
-    /// membership config.
-    ///
-    /// If there is a membership config log entry, the caller has to guarantee the previous one is
-    /// committed.
-    ///
-    /// TODO(xp): metrics flag needs to be dealt with.
-    /// TODO(xp): if vote indicates this node is not the leader, refuse append
-    #[tracing::instrument(level = "debug", skip(self, entries))]
-    pub(crate) fn leader_append_entries<'a, Ent: RaftEntry<NID, N> + 'a>(&mut self, entries: &mut [Ent]) {
-        let l = entries.len();
-        if l == 0 {
-            return;
-        }
-
-        self.state.assign_log_ids(entries.iter_mut());
-        self.state.extend_log_ids_from_same_leader(entries);
-
-        self.output.push_command(Command::AppendInputEntries { range: 0..l });
-
-        // Fast commit:
-        // If the cluster has only one voter, then an entry will be committed as soon as it is
-        // appended. But if there is a membership log in the middle of the input entries,
-        // the condition to commit will change. Thus we have to deal with entries before and
-        // after a membership entry differently:
-        //
-        // When a membership entry is seen, update progress for all former entries.
-        // Then upgrade the quorum set for the Progress.
-        //
-        // E.g., if the input entries are `2..6`, entry 4 changes membership from `a` to `abc`.
-        // Then it will output a LeaderCommit command to commit entries `2,3`.
-        // ```text
-        // 1 2 3 4 5 6
-        // a x x a y y
-        //       b
-        //       c
-        // ```
-        //
-        // If the input entries are `2..6`, entry 4 changes membership from `abc` to `a`.
-        // Then it will output a LeaderCommit command to commit entries `2,3,4,5,6`.
-        // ```text
-        // 1 2 3 4 5 6
-        // a x x a y y
-        // b
-        // c
-        // ```
-
-        let mut rh = self.replication_handler();
-
-        for entry in entries.iter() {
-            if let Some(m) = entry.get_membership() {
-                let log_index = entry.get_log_id().index;
-
-                if log_index > 0 {
-                    let prev_log_id = rh.state.get_log_id(log_index - 1);
-                    rh.update_local_progress(prev_log_id);
-                }
-
-                // since this entry, the condition to commit has been changed.
-                rh.append_membership(entry.get_log_id(), m);
-            }
-        }
-
-        let last_log_id = {
-            // Safe unwrap(): entries.len() > 0
-            let last = entries.last().unwrap();
-            Some(*last.get_log_id())
-        };
-
-        rh.update_local_progress(last_log_id);
-        rh.initiate_replication();
-
-        self.output.push_command(Command::MoveInputCursorBy { n: l });
     }
 
     /// Append entries to follower/learner.
@@ -600,6 +554,27 @@ where
             state: &mut self.state,
             output: &mut self.output,
         }
+    }
+
+    pub(crate) fn leader_handler(&mut self) -> Result<LeaderHandler<NID, N>, ForwardToLeader<NID, N>> {
+        let leader = match self.internal_server_state.leading_mut() {
+            None => {
+                tracing::debug!("this node is NOT a leader: {:?}", self.state.server_state);
+                return Err(self.state.forward_to_leader());
+            }
+            Some(x) => x,
+        };
+
+        if !self.state.is_leader(&self.config.id) {
+            return Err(self.state.forward_to_leader());
+        }
+
+        Ok(LeaderHandler {
+            config: &mut self.config,
+            leader,
+            state: &mut self.state,
+            output: &mut self.output,
+        })
     }
 
     pub(crate) fn replication_handler(&mut self) -> ReplicationHandler<NID, N> {

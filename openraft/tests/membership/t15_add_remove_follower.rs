@@ -43,7 +43,7 @@ async fn add_remove_voter() -> Result<()> {
     tracing::info!("--- remove n{}", 4);
     {
         let node = router.get_raft_handle(&0)?;
-        node.change_membership(c0123.clone(), true, false).await?;
+        node.change_membership(c0123.clone(), false).await?;
         log_index += 2; // two member-change logs
 
         router.wait_for_log(&c0123, Some(log_index), timeout(), "removed node-4 from membership").await?;

@@ -195,9 +195,6 @@ pub enum ChangeMembershipError<NID: NodeId> {
 
     #[error(transparent)]
     LearnerNotFound(#[from] LearnerNotFound<NID>),
-
-    #[error(transparent)]
-    LearnerIsLagging(#[from] LearnerIsLagging<NID>),
 }
 
 /// The set of errors which may take place when initializing a pristine Raft node.
@@ -401,7 +398,7 @@ pub struct QuorumNotEnough<NID: NodeId> {
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("the cluster is already undergoing a configuration change at log {membership_log_id:?}, committed log id: {committed:?}")]
+#[error("the cluster is already undergoing a configuration change at log {membership_log_id:?}, last committed membership log id: {committed:?}")]
 pub struct InProgress<NID: NodeId> {
     pub committed: Option<LogId<NID>>,
     pub membership_log_id: Option<LogId<NID>>,
@@ -412,15 +409,6 @@ pub struct InProgress<NID: NodeId> {
 #[error("Learner {node_id} not found: add it as learner before adding it as a voter")]
 pub struct LearnerNotFound<NID: NodeId> {
     pub node_id: NID,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
-#[error("replication to learner {node_id} is lagging {distance}, matched: {matched:?}, can not add as member")]
-pub struct LearnerIsLagging<NID: NodeId> {
-    pub node_id: NID,
-    pub matched: Option<LogId<NID>>,
-    pub distance: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

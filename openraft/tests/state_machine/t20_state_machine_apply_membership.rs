@@ -83,7 +83,7 @@ async fn state_machine_apply_membership() -> Result<()> {
 
     tracing::info!("--- changing cluster config");
     let node = router.get_raft_handle(&0)?;
-    node.change_membership(btreeset![0, 1, 2], true, false).await?;
+    node.change_membership(btreeset![0, 1, 2], false).await?;
 
     log_index += 2;
 
