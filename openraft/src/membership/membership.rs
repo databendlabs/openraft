@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 
 use maplit::btreemap;
 
+use crate::error::LearnerNotFound;
 use crate::membership::NodeRole;
 use crate::node::Node;
 use crate::quorum::AsJoint;
@@ -18,6 +19,8 @@ where
     N: Node,
     NID: NodeId,
 {
+    fn has_nodes(&self) -> bool;
+    fn node_ids(&self) -> Vec<NID>;
     fn into_nodes(self) -> BTreeMap<NID, N>;
 }
 
@@ -26,6 +29,14 @@ where
     N: Node,
     NID: NodeId,
 {
+    fn has_nodes(&self) -> bool {
+        false
+    }
+
+    fn node_ids(&self) -> Vec<NID> {
+        vec![]
+    }
+
     fn into_nodes(self) -> BTreeMap<NID, N> {
         btreemap! {}
     }
@@ -36,6 +47,14 @@ where
     N: Node,
     NID: NodeId,
 {
+    fn has_nodes(&self) -> bool {
+        false
+    }
+
+    fn node_ids(&self) -> Vec<NID> {
+        self.iter().copied().collect()
+    }
+
     fn into_nodes(self) -> BTreeMap<NID, N> {
         self.into_iter().map(|node_id| (node_id, N::default())).collect()
     }
@@ -46,6 +65,19 @@ where
     N: Node,
     NID: NodeId,
 {
+    fn has_nodes(&self) -> bool {
+        true
+    }
+
+    fn node_ids(&self) -> Vec<NID> {
+        match self {
+            None => {
+                vec![]
+            }
+            Some(bs) => bs.iter().copied().collect(),
+        }
+    }
+
     fn into_nodes(self) -> BTreeMap<NID, N> {
         match self {
             None => BTreeMap::new(),
@@ -59,6 +91,14 @@ where
     N: Node,
     NID: NodeId,
 {
+    fn has_nodes(&self) -> bool {
+        true
+    }
+
+    fn node_ids(&self) -> Vec<NID> {
+        self.keys().copied().collect()
+    }
+
     fn into_nodes(self) -> BTreeMap<NID, N> {
         self
     }
@@ -304,11 +344,28 @@ where
     ///     curr = next;
     /// }
     /// ```
-    pub(crate) fn next_safe<T>(&self, goal: T, removed_to_learner: bool) -> Self
+    pub(crate) fn next_safe<T>(&self, goal: T, removed_to_learner: bool) -> Result<Self, LearnerNotFound<NID>>
     where T: IntoNodes<NID, N> {
-        let goal = goal.into_nodes();
+        let goal = if goal.has_nodes() {
+            goal.into_nodes()
+        } else {
+            // If `goal` does not contains Node, inherit them from current config.
 
-        let goal_ids = goal.keys().cloned().collect::<BTreeSet<_>>();
+            let mut voters_map = BTreeMap::new();
+
+            // There has to be corresponding `Node` for every voter_id
+            for node_id in goal.node_ids().iter() {
+                let n = self.get_node(node_id);
+                if let Some(n) = n {
+                    voters_map.insert(*node_id, n.clone());
+                } else {
+                    return Err(LearnerNotFound { node_id: *node_id });
+                }
+            }
+            voters_map
+        };
+
+        let goal_ids = goal.keys().copied().collect::<BTreeSet<_>>();
 
         let config = Joint::from(self.configs.clone()).find_coherent(goal_ids).children().clone();
 
@@ -323,7 +380,7 @@ where
             }
         };
 
-        Membership::with_nodes(config, nodes)
+        Ok(Membership::with_nodes(config, nodes))
     }
 
     /// Build a QuorumSet from current joint config
