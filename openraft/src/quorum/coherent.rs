@@ -1,7 +1,8 @@
 use crate::quorum::QuorumSet;
 
 /// **Coherent** quorum set A and B is defined as: `∀ qᵢ ∈ A, ∀ qⱼ ∈ B: qᵢ ∩ qⱼ != ø`, i.e., `A ~
-/// B`. A distributed consensus protocol such as openraft is only allowed to switch membership
+/// B`.
+/// A distributed consensus protocol such as openraft is only allowed to switch membership
 /// between two **coherent** quorum sets. Being coherent is one of the two restrictions. The other
 /// restriction is to disable other smaller candidate to elect.
 pub(crate) trait Coherent<ID, Other>
@@ -10,8 +11,8 @@ where
     Self: QuorumSet<ID>,
     Other: QuorumSet<ID>,
 {
-    /// Returns if two QuorumSet are coherent.
-    fn is_coherent(&self, other: &Other) -> bool;
+    /// Returns `true` if this QuorumSet is coherent with the other quorum set.
+    fn is_coherent_with(&self, other: &Other) -> bool;
 }
 
 pub(crate) trait FindCoherent<ID, Other>

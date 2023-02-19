@@ -112,6 +112,8 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
     {
         let res = leader.change_membership(btreeset! {0,1}, false).await;
         let raft_err = res.unwrap_err();
+        tracing::debug!("raft_err: {:?}", raft_err);
+
         match raft_err.api_error().unwrap() {
             ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err)) => {
                 assert_eq!(1, err.node_id);

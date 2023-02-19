@@ -1,3 +1,4 @@
+mod change_handler;
 mod effective_membership;
 #[allow(clippy::module_inception)] mod membership;
 mod membership_state;
@@ -11,6 +12,7 @@ mod bench;
 #[cfg(test)] mod membership_state_test;
 #[cfg(test)] mod membership_test;
 
+pub(crate) use change_handler::ChangeHandler;
 pub use effective_membership::EffectiveMembership;
 pub use membership::IntoNodes;
 pub use membership::Membership;

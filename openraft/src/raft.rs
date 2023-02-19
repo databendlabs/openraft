@@ -607,10 +607,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     #[tracing::instrument(level = "info", skip_all)]
     pub async fn change_membership(
         &self,
-        members: impl Into<ChangeMembers<C::NodeId>>,
+        members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
         turn_to_learner: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
-        let changes: ChangeMembers<C::NodeId> = members.into();
+        let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
 
         tracing::info!(
             changes = debug(&changes),
@@ -625,7 +625,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes: changes.clone(),
-                    turn_to_learner,
+                    retain: turn_to_learner,
                     tx,
                 },
                 rx,
@@ -648,7 +648,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes,
-                    turn_to_learner,
+                    retain: turn_to_learner,
                     tx,
                 },
                 rx,
@@ -893,11 +893,11 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     ChangeMembership {
-        changes: ChangeMembers<C::NodeId>,
+        changes: ChangeMembers<C::NodeId, C::Node>,
 
-        /// If `turn_to_learner` is `true`, then all the members which do not exist in the new
-        /// membership will be turned into learners, otherwise they will be removed.
-        turn_to_learner: bool,
+        /// If `retain` is `true`, then the voters that are not in the new
+        /// config will be converted into learners, otherwise they will be removed.
+        retain: bool,
 
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     },
@@ -991,7 +991,7 @@ where
             }
             RaftMsg::ChangeMembership {
                 changes: members,
-                turn_to_learner,
+                retain: turn_to_learner,
                 ..
             } => {
                 format!(

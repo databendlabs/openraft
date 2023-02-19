@@ -3,7 +3,12 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
+use openraft::error::ChangeMembershipError;
+use openraft::error::ClientWriteError;
+use openraft::error::InProgress;
+use openraft::CommittedLeaderId;
 use openraft::Config;
+use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftLogReader;
 use openraft::StorageHelper;
@@ -136,6 +141,56 @@ async fn add_learner_non_blocking() -> Result<()> {
     Ok(())
 }
 
+/// When the previous membership is not yet committed, add-learner should fail.
+///
+/// Because adding learner is also a change-membership operation, a new membership config log will
+/// let raft consider the previous membership config log as committed, which is actually not.
+#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
+async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
+    let config = Arc::new(
+        Config {
+            enable_tick: false,
+            ..Default::default()
+        }
+        .validate()?,
+    );
+    let mut router = RaftRouter::new(config.clone());
+
+    let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+
+    tracing::info!("--- block replication to prevent committing any log");
+    {
+        router.isolate_node(1);
+
+        let node = router.get_raft_handle(&0)?;
+        tokio::spawn(async move {
+            let res = node.change_membership(btreeset![0, 1], false).await;
+            tracing::info!("do not expect res: {:?}", res);
+            unreachable!("do not expect any res");
+        });
+
+        sleep(Duration::from_millis(500)).await;
+    }
+
+    tracing::info!("--- add new node node-1, in non blocking mode");
+    {
+        let node = router.get_raft_handle(&0)?;
+        let res = node.add_learner(2, (), true).await;
+        tracing::debug!("res: {:?}", res);
+
+        let err = res.unwrap_err().into_api_error().unwrap();
+        assert_eq!(
+            ClientWriteError::ChangeMembershipError(ChangeMembershipError::InProgress(InProgress {
+                committed: Some(log_id(1, 0, 2)),
+                membership_log_id: Some(log_id(1, 0, log_index + 1))
+            })),
+            err
+        );
+    }
+
+    Ok(())
+}
+
 /// add a learner, then shutdown the leader to make leader transferred,
 /// check after new leader come, the learner can receive new log.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
@@ -231,4 +286,11 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
 
 fn timeout() -> Option<Duration> {
     Some(Duration::from_millis(3_000))
+}
+
+pub fn log_id(term: u64, node_id: u64, index: u64) -> LogId<u64> {
+    LogId::<u64> {
+        leader_id: CommittedLeaderId::new(term, node_id),
+        index,
+    }
 }
