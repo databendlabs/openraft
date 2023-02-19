@@ -391,7 +391,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         turn_to_learner: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     ) -> Result<(), Fatal<C::NodeId>> {
-        let res = self.engine.state.membership_state.next_membership(changes, turn_to_learner);
+        let res = self.engine.state.membership_state.create_updated_membership(changes, turn_to_learner);
         let new_membership = match res {
             Ok(x) => x,
             Err(e) => {
