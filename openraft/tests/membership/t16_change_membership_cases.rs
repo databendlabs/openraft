@@ -138,7 +138,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
         }
 
         let node = router.get_raft_handle(&0)?;
-        node.change_membership(new.clone(), true, false).await?;
+        node.change_membership(new.clone(), false).await?;
         log_index += 1;
         if new != old {
             // Two member-change logs.
@@ -285,7 +285,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
     tracing::info!("--- change: {:?}", change);
     {
         let node = router.get_raft_handle(&0)?;
-        node.change_membership(change, true, false).await?;
+        node.change_membership(change, false).await?;
         log_index += 1;
         if new != old {
             log_index += 1; // two member-change logs
@@ -344,7 +344,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
     tracing::info!("--- change {:?}", &change);
     {
         let node = router.get_raft_handle(&0)?;
-        node.change_membership(change.clone(), true, false).await?;
+        node.change_membership(change.clone(), false).await?;
         log_index += 1;
         if new != old {
             // Two member-change logs

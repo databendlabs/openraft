@@ -6,7 +6,6 @@
 
 mod install_snapshot;
 mod raft_core;
-mod replication_expectation;
 mod replication_state;
 mod server_state;
 mod snapshot_state;
@@ -14,7 +13,6 @@ mod streaming_state;
 mod tick;
 
 pub use raft_core::RaftCore;
-pub(crate) use replication_expectation::Expectation;
 pub(crate) use replication_state::replication_lag;
 pub use server_state::ServerState;
 pub(crate) use snapshot_state::SnapshotResult;

@@ -39,7 +39,7 @@ async fn add_learner(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
 /// Changes specified learners to members, or remove members.
 async fn change_membership(mut req: Request<Arc<ExampleApp>>) -> tide::Result {
     let body: BTreeSet<ExampleNodeId> = req.body_json().await?;
-    let res = req.state().raft.change_membership(body, true, false).await;
+    let res = req.state().raft.change_membership(body, false).await;
     Ok(Response::builder(StatusCode::Ok).body(Body::from_json(&res)?).build())
 }
 

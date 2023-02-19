@@ -98,7 +98,7 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!("--- changing cluster config to 01234");
 
     let node = router.get_raft_handle(&0)?;
-    node.change_membership(c01234.clone(), true, false).await?;
+    node.change_membership(c01234.clone(), false).await?;
     log_index += 2; // 2 member-change logs
 
     router.wait_for_log(&c01234, Some(log_index), timeout(), "change members to 0,1,2,3,4").await?;
@@ -129,7 +129,7 @@ async fn leader_metrics() -> Result<()> {
     tracing::info!("--- remove n{}", 4);
     {
         let node = router.get_raft_handle(&0)?;
-        node.change_membership(c0123.clone(), true, false).await?;
+        node.change_membership(c0123.clone(), false).await?;
         log_index += 2; // two member-change logs
 
         router

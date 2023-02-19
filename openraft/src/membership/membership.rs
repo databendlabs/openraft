@@ -304,7 +304,7 @@ where
     ///     curr = next;
     /// }
     /// ```
-    pub(crate) fn next_safe<T>(&self, goal: T, turn_to_learner: bool) -> Self
+    pub(crate) fn next_safe<T>(&self, goal: T, removed_to_learner: bool) -> Self
     where T: IntoNodes<NID, N> {
         let goal = goal.into_nodes();
 
@@ -314,7 +314,7 @@ where
 
         let mut nodes = Self::extend_nodes(self.nodes.clone(), &goal);
 
-        if !turn_to_learner {
+        if !removed_to_learner {
             let old_voter_ids = self.configs.as_joint().ids().collect::<BTreeSet<_>>();
             let new_voter_ids = config.as_joint().ids().collect::<BTreeSet<_>>();
 

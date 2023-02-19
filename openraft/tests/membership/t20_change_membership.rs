@@ -1,9 +1,7 @@
-use std::convert::TryInto;
 use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use memstore::MemNodeId;
 use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
 use openraft::Config;
@@ -31,7 +29,7 @@ async fn update_membership_state() -> anyhow::Result<()> {
     tracing::info!("--- change membership from 012 to 01234");
     {
         let leader = router.get_raft_handle(&0)?;
-        let res = leader.change_membership(btreeset! {0,1,2,3,4}, true, false).await?;
+        let res = leader.change_membership(btreeset! {0,1,2,3,4}, false).await?;
         log_index += 2;
 
         tracing::info!("--- change_membership blocks until success: {:?}", res);
@@ -83,7 +81,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
         router.wait_for_log(&btreeset![0], Some(log_index), timeout(), "add learner").await?;
 
         let node = router.get_raft_handle(&0)?;
-        let res = node.change_membership(btreeset! {0,1}, true, false).await?;
+        let res = node.change_membership(btreeset! {0,1}, false).await?;
         log_index += 2;
         tracing::info!("--- change_membership blocks until success: {:?}", res);
 
@@ -112,7 +110,7 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
 
     tracing::info!("--- change membership without adding-learner, allow_lagging=true");
     {
-        let res = leader.change_membership(btreeset! {0,1}, true, false).await;
+        let res = leader.change_membership(btreeset! {0,1}, false).await;
         let raft_err = res.unwrap_err();
         match raft_err.api_error().unwrap() {
             ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err)) => {
@@ -124,9 +122,9 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
         }
     }
 
-    tracing::info!("--- change membership without adding-learner, allow_lagging=false");
+    tracing::info!("--- change membership without adding-learner");
     {
-        let res = leader.change_membership(btreeset! {0,1}, false, false).await;
+        let res = leader.change_membership(btreeset! {0,1}, false).await;
         let raft_err = res.unwrap_err();
         match raft_err.api_error().unwrap() {
             ClientWriteError::ChangeMembershipError(ChangeMembershipError::LearnerNotFound(err)) => {
@@ -134,63 +132,6 @@ async fn change_without_adding_learner() -> anyhow::Result<()> {
             }
             _ => {
                 unreachable!("expect LearnerNotFound")
-            }
-        }
-    }
-
-    Ok(())
-}
-
-#[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
-async fn change_with_lagging_learner_non_blocking() -> anyhow::Result<()> {
-    // Add a learner into membership config, expect error NonVoterIsLagging.
-
-    let lag_threshold = 1;
-
-    let config = Arc::new(
-        Config {
-            replication_lag_threshold: lag_threshold,
-            enable_heartbeat: false,
-            ..Default::default()
-        }
-        .validate()?,
-    );
-    let mut router = RaftRouter::new(config.clone());
-
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
-
-    tracing::info!("--- stop replication by isolating node 1");
-    {
-        router.isolate_node(1);
-    }
-
-    tracing::info!("--- write up to 500 logs");
-    {
-        router.client_request_many(0, "non_voter_add", 500 - log_index as usize).await?;
-        log_index = 500;
-
-        router.wait(&0, timeout()).log(Some(log_index), "received 500 logs").await?;
-    }
-
-    tracing::info!("--- changing membership expects LearnerIsLagging");
-    {
-        let node = router.get_raft_handle(&0)?;
-        let res = node.change_membership(btreeset! {0,1}, false, false).await;
-
-        tracing::info!("--- got res: {:?}", res);
-
-        let err = res.unwrap_err();
-        let err: ChangeMembershipError<MemNodeId> = err.into_api_error().unwrap().try_into().unwrap();
-
-        match err {
-            ChangeMembershipError::LearnerIsLagging(e) => {
-                tracing::info!(e.distance, "--- distance");
-                assert_eq!(1, e.node_id);
-                assert!(e.distance >= lag_threshold);
-                assert!(e.distance < 500);
-            }
-            _ => {
-                panic!("expect ChangeMembershipError::NonVoterNotFound");
             }
         }
     }
@@ -224,7 +165,7 @@ async fn change_with_turn_removed_voter_to_learner() -> anyhow::Result<()> {
 
     {
         let node = router.get_raft_handle(&0)?;
-        node.change_membership(btreeset![0, 1], true, true).await?;
+        node.change_membership(btreeset![0, 1], true).await?;
         // 2 for change_membership
         log_index += 2;
 

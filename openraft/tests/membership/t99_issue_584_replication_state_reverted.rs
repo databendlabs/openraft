@@ -40,7 +40,7 @@ async fn t99_issue_584_replication_state_reverted() -> Result<()> {
     tracing::info!("--- change-membership: make learner node-1 a voter. This should not panic");
     {
         let leader = router.get_raft_handle(&0)?;
-        leader.change_membership(btreeset![0, 1], true, false).await?;
+        leader.change_membership(btreeset![0, 1], false).await?;
         log_index += 2; // 2 change_membership log
 
         let _ = log_index;
