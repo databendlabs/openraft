@@ -11,6 +11,7 @@ use futures::future::Either;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use futures::TryFutureExt;
+use maplit::btreemap;
 use maplit::btreeset;
 use pin_utils::pin_mut;
 use tokio::io::AsyncRead;
@@ -350,48 +351,31 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(())
     }
 
-    /// Add a new node to the cluster as a learner, bringing it up-to-speed, and then responding
-    /// on the given channel.
+    /// Submit change-membership by writing a Membership log entry.
     ///
-    /// Adding a learner does not affect election, thus it does not need to enter joint consensus.
-    ///
-    /// TODO: It has to wait for the previous membership to commit.
-    /// TODO: Otherwise a second proposed membership implies the previous one is committed.
-    /// TODO: Test it.
-    /// TODO: This limit can be removed if membership_state is replaced by a list of membership
-    /// logs. TODO: Because allowing this requires the engine to be able to store more than 2
-    /// membership logs. And it does not need to wait for the previous membership log to commit
-    /// to propose the new membership log.
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) async fn add_learner(
-        &mut self,
-        target: C::NodeId,
-        node: C::Node,
-        tx: ClientWriteTx<C>,
-    ) -> Result<(), Fatal<C::NodeId>> {
-        // TODO: move these logic to Engine?
-        let curr = &self.engine.state.membership_state.effective().membership;
-        let new_membership = curr.add_learner(target, node);
-
-        tracing::debug!(?new_membership, "new_membership with added learner: {}", target);
-
-        self.write_entry(EntryPayload::Membership(new_membership), Some(tx)).await?;
-
-        Ok(())
-    }
-
-    /// Submit change-membership by writing a Membership log entry, if the `expect` is satisfied.
-    ///
-    /// If `turn_to_learner` is `true`, removed `voter` will becomes `learner`. Otherwise they will
+    /// If `retain` is `true`, removed `voter` will becomes `learner`. Otherwise they will
     /// be just removed.
+    ///
+    /// Changing membership includes changing voters config or adding/removing learners:
+    ///
+    /// - To change voters config, it will build a new **joint** config. If it already a joint
+    ///   config, it returns the final uniform config.
+    /// - Adding a learner does not affect election, thus it does not need to enter joint consensus.
+    ///   But it still has to wait for the previous membership to commit. Otherwise a second
+    ///   proposed membership implies the previous one is committed.
+    // ---
+    // TODO: This limit can be removed if membership_state is replaced by a list of membership logs.
+    //       Because allowing this requires the engine to be able to store more than 2
+    //       membership logs. And it does not need to wait for the previous membership log to commit
+    //       to propose the new membership log.
     #[tracing::instrument(level = "debug", skip(self, tx))]
     pub(super) async fn change_membership(
         &mut self,
-        changes: ChangeMembers<C::NodeId>,
-        turn_to_learner: bool,
+        changes: ChangeMembers<C::NodeId, C::Node>,
+        retain: bool,
         tx: RaftRespTx<ClientWriteResponse<C>, ClientWriteError<C::NodeId, C::Node>>,
     ) -> Result<(), Fatal<C::NodeId>> {
-        let res = self.engine.state.membership_state.create_updated_membership(changes, turn_to_learner);
+        let res = self.engine.state.membership_state.change_handler().apply(changes, retain);
         let new_membership = match res {
             Ok(x) => x,
             Err(e) => {
@@ -1046,18 +1030,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.handle_initialize(members, tx).await?;
             }
             RaftMsg::AddLearner { id, node, tx } => {
-                if self.engine.state.is_leader(&self.engine.config.id) {
-                    self.add_learner(id, node, tx).await?;
-                } else {
-                    self.reject_with_forward_to_leader(tx);
-                }
+                self.change_membership(ChangeMembers::AddNodes(btreemap! {id=>node}), true, tx).await?;
             }
-            RaftMsg::ChangeMembership {
-                changes,
-                turn_to_learner,
-                tx,
-            } => {
-                self.change_membership(changes, turn_to_learner, tx).await?;
+            RaftMsg::ChangeMembership { changes, retain, tx } => {
+                self.change_membership(changes, retain, tx).await?;
             }
             RaftMsg::ExternalRequest { req } => {
                 req(&self.engine.state, &mut self.storage, &mut self.network);

@@ -16,25 +16,25 @@ fn test_is_coherent_vec() -> anyhow::Result<()> {
     let j123_345 = Joint::from(vec![s123(), s345()]);
     let j345_789 = Joint::from(vec![s345(), s789()]);
 
-    assert!(j123.is_coherent(&j123));
-    assert!(!j123.is_coherent(&j345));
-    assert!(j123.is_coherent(&j123_345));
-    assert!(!j123.is_coherent(&j345_789));
+    assert!(j123.is_coherent_with(&j123));
+    assert!(!j123.is_coherent_with(&j345));
+    assert!(j123.is_coherent_with(&j123_345));
+    assert!(!j123.is_coherent_with(&j345_789));
 
-    assert!(!j345.is_coherent(&j123));
-    assert!(j345.is_coherent(&j345));
-    assert!(j345.is_coherent(&j123_345));
-    assert!(j345.is_coherent(&j345_789));
+    assert!(!j345.is_coherent_with(&j123));
+    assert!(j345.is_coherent_with(&j345));
+    assert!(j345.is_coherent_with(&j123_345));
+    assert!(j345.is_coherent_with(&j345_789));
 
-    assert!(j123_345.is_coherent(&j123));
-    assert!(j123_345.is_coherent(&j345));
-    assert!(j123_345.is_coherent(&j123_345));
-    assert!(j123_345.is_coherent(&j345_789));
+    assert!(j123_345.is_coherent_with(&j123));
+    assert!(j123_345.is_coherent_with(&j345));
+    assert!(j123_345.is_coherent_with(&j123_345));
+    assert!(j123_345.is_coherent_with(&j345_789));
 
-    assert!(!j345_789.is_coherent(&j123));
-    assert!(j345_789.is_coherent(&j345));
-    assert!(j345_789.is_coherent(&j123_345));
-    assert!(j345_789.is_coherent(&j345_789));
+    assert!(!j345_789.is_coherent_with(&j123));
+    assert!(j345_789.is_coherent_with(&j345));
+    assert!(j345_789.is_coherent_with(&j123_345));
+    assert!(j345_789.is_coherent_with(&j345_789));
 
     Ok(())
 }
@@ -55,25 +55,25 @@ fn test_is_coherent_slice() -> anyhow::Result<()> {
     let j123_345 = v123_345.as_joint();
     let j345_789 = v345_789.as_joint();
 
-    assert!(j123.is_coherent(&j123));
-    assert!(!j123.is_coherent(&j345));
-    assert!(j123.is_coherent(&j123_345));
-    assert!(!j123.is_coherent(&j345_789));
+    assert!(j123.is_coherent_with(&j123));
+    assert!(!j123.is_coherent_with(&j345));
+    assert!(j123.is_coherent_with(&j123_345));
+    assert!(!j123.is_coherent_with(&j345_789));
 
-    assert!(!j345.is_coherent(&j123));
-    assert!(j345.is_coherent(&j345));
-    assert!(j345.is_coherent(&j123_345));
-    assert!(j345.is_coherent(&j345_789));
+    assert!(!j345.is_coherent_with(&j123));
+    assert!(j345.is_coherent_with(&j345));
+    assert!(j345.is_coherent_with(&j123_345));
+    assert!(j345.is_coherent_with(&j345_789));
 
-    assert!(j123_345.is_coherent(&j123));
-    assert!(j123_345.is_coherent(&j345));
-    assert!(j123_345.is_coherent(&j123_345));
-    assert!(j123_345.is_coherent(&j345_789));
+    assert!(j123_345.is_coherent_with(&j123));
+    assert!(j123_345.is_coherent_with(&j345));
+    assert!(j123_345.is_coherent_with(&j123_345));
+    assert!(j123_345.is_coherent_with(&j345_789));
 
-    assert!(!j345_789.is_coherent(&j123));
-    assert!(j345_789.is_coherent(&j345));
-    assert!(j345_789.is_coherent(&j123_345));
-    assert!(j345_789.is_coherent(&j345_789));
+    assert!(!j345_789.is_coherent_with(&j123));
+    assert!(j345_789.is_coherent_with(&j345));
+    assert!(j345_789.is_coherent_with(&j123_345));
+    assert!(j345_789.is_coherent_with(&j345_789));
 
     Ok(())
 }

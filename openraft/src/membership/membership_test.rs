@@ -5,8 +5,8 @@ use std::fmt::Formatter;
 use maplit::btreemap;
 use maplit::btreeset;
 
-use crate::error::LearnerNotFound;
 use crate::membership::IntoNodes;
+use crate::ChangeMembers;
 use crate::Membership;
 use crate::MessageSummary;
 
@@ -42,7 +42,7 @@ fn test_membership_summary() -> anyhow::Result<()> {
     let m = Membership::<u64, ()>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
     assert_eq!("members:[{1:{()},2:{()}},{3:{()}}],learners:[4:{()}]", m.summary());
 
-    let m = Membership::<u64, TestNode>::with_nodes(vec![btreeset! {1,2}, btreeset! {3}], btreemap! {
+    let m = Membership::<u64, TestNode>::new_with_nodes(vec![btreeset! {1,2}, btreeset! {3}], btreemap! {
         1=>node("127.0.0.1", "k1"),
         2=>node("127.0.0.2", "k2"),
         3=>node("127.0.0.3", "k3"),
@@ -91,7 +91,7 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
     // test multi membership with learners
     {
         let m1_2 = Membership::<u64, ()>::new(vec![btreeset! {1}], Some(btreeset! {2}));
-        let m1_23 = m1_2.add_learner(3, ());
+        let m1_23 = m1_2.clone().change(ChangeMembers::AddNodes(btreemap! {3=>()}), true)?;
 
         // test learner and membership
         assert_eq!(vec![1], m1_2.voter_ids().collect::<Vec<_>>());
@@ -102,12 +102,13 @@ fn test_membership_with_learners() -> anyhow::Result<()> {
 
         // Adding a member as learner has no effect:
 
-        let m = m1_23.add_learner(1, ());
+        let m = m1_23.clone().change(ChangeMembers::AddNodes(btreemap! {1=>()}), true)?;
+        // let m = m1_23.add_learner(1, ());
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
 
         // Adding a existent learner has no effect:
 
-        let m = m1_23.add_learner(3, ());
+        let m = m1_23.change(ChangeMembers::AddNodes(btreemap! {3=>()}), true)?;
         assert_eq!(vec![1], m.voter_ids().collect::<Vec<_>>());
         assert_eq!(btreeset! {2,3}, m.learner_ids().collect());
     }
@@ -129,21 +130,21 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
         data: Default::default(),
     };
 
-    let m_1_2 = Membership::<u64, TestNode>::with_nodes(
+    let m_1_2 = Membership::<u64, TestNode>::new_with_nodes(
         vec![btreeset! {1}, btreeset! {2}],
         btreemap! {1=>node("1"), 2=>node("2")},
     );
 
     // Add learner that presents in old cluster has no effect.
 
-    let res = m_1_2.add_learner(1, node("3"));
+    let res = m_1_2.clone().change(ChangeMembers::AddNodes(btreemap! {1=>node("3")}), true)?;
     assert_eq!(m_1_2, res);
 
     // Success to add a learner
 
-    let m_1_2_3 = m_1_2.add_learner(3, node("3"));
+    let m_1_2_3 = m_1_2.change(ChangeMembers::AddNodes(btreemap! {3=>node("3")}), true)?;
     assert_eq!(
-        Membership::<u64, TestNode>::with_nodes(
+        Membership::<u64, TestNode>::new_with_nodes(
             vec![btreeset! {1}, btreeset! {2}],
             btreemap! {1=>node("1"), 2=>node("2"), 3=>node("3")}
         ),
@@ -180,7 +181,7 @@ fn test_membership_extend_nodes() -> anyhow::Result<()> {
 #[test]
 fn test_membership_with_nodes() -> anyhow::Result<()> {
     let node = TestNode::default;
-    let with_nodes = |nodes| Membership::<u64, TestNode>::with_nodes(vec![btreeset! {1}, btreeset! {2}], nodes);
+    let with_nodes = |nodes| Membership::<u64, TestNode>::new_with_nodes(vec![btreeset! {1}, btreeset! {2}], nodes);
 
     let res = with_nodes(btreemap! {1=>node(), 2=>node()});
     assert_eq!(
@@ -197,17 +198,8 @@ fn test_membership_with_nodes() -> anyhow::Result<()> {
     Ok(())
 }
 
-// TODO: rename
 #[test]
-#[should_panic]
-fn test_membership_with_nodes_panic() {
-    // Panic if debug_assertions is enabled:
-    // voter ids set is {1,2}, while the nodes set is {1}
-    Membership::<u64, TestNode>::with_nodes(vec![btreeset! {1}, btreeset! {2}], btreemap! {1=>TestNode::default()});
-}
-
-#[test]
-fn test_membership_next_safe() -> anyhow::Result<()> {
+fn test_membership_next_coherent() -> anyhow::Result<()> {
     let nodes = || btreeset! {1,2,3,4,5,6,7,8,9}.into_nodes();
     let c1 = || btreeset! {1,2,3};
     let c2 = || btreeset! {3,4,5};
@@ -219,19 +211,19 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
     let m1 = new_mem(vec![c1()], nodes());
     let m12 = new_mem(vec![c1(), c2()], nodes());
 
-    assert_eq!(m1, m1.next_safe(c1(), false)?);
-    assert_eq!(m12, m1.next_safe(c2(), false)?);
+    assert_eq!(m1, m1.next_coherent(c1(), false));
+    assert_eq!(m12, m1.next_coherent(c2(), false));
     assert_eq!(
         new_mem(vec![c1()], btreeset! {1,2,3,6,7,8,9}.into_nodes()),
-        m12.next_safe(c1(), false)?
+        m12.next_coherent(c1(), false)
     );
     assert_eq!(
         new_mem(vec![c2()], btreeset! {3,4,5,6,7,8,9}.into_nodes()),
-        m12.next_safe(c2(), false)?
+        m12.next_coherent(c2(), false)
     );
     assert_eq!(
         new_mem(vec![c2(), c3()], btreeset! {3,4,5,6,7,8,9}.into_nodes()),
-        m12.next_safe(c3(), false)?
+        m12.next_coherent(c3(), false)
     );
 
     // Turn removed members to learners
@@ -240,30 +232,13 @@ fn test_membership_next_safe() -> anyhow::Result<()> {
     let learners = || btreeset! {1, 2, 3, 4, 5};
     let m23_with_learners_old = Membership::<u64, ()>::new(vec![c2(), c3()], Some(old_learners()));
     let m23_with_learners_new = Membership::<u64, ()>::new(vec![c3()], Some(learners()));
-    assert_eq!(m23_with_learners_new, m23_with_learners_old.next_safe(c3(), true)?);
+    assert_eq!(m23_with_learners_new, m23_with_learners_old.next_coherent(c3(), true));
 
     Ok(())
 }
 
 #[test]
-fn test_membership_next_safe_learner_not_found() -> anyhow::Result<()> {
-    let c1 = || btreeset! {1,2,3};
-    let c2 = || btreeset! {3,4,5};
-    let c3 = || btreeset! {7};
-
-    #[allow(clippy::redundant_closure)]
-    let new_mem = |voter_ids, ns| Membership::<u64, ()>::new(voter_ids, ns);
-
-    let m12 = new_mem(vec![c1(), c2()], None);
-
-    let res = m12.next_safe(c3(), false);
-    assert_eq!(Err(LearnerNotFound { node_id: 7 }), res);
-
-    Ok(())
-}
-
-#[test]
-fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
+fn test_membership_next_coherent_with_nodes() -> anyhow::Result<()> {
     let node = |s: &str| TestNode {
         addr: s.to_string(),
         data: Default::default(),
@@ -272,11 +247,11 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
     let c1 = || btreeset! {1};
     let c2 = || btreeset! {2};
 
-    let initial = Membership::<u64, TestNode>::with_nodes(vec![c1(), c2()], btreemap! {1=>node("1"), 2=>node("2")});
+    let initial = Membership::<u64, TestNode>::new_with_nodes(vec![c1(), c2()], btreemap! {1=>node("1"), 2=>node("2")});
 
     // joint [{2}, {1,2}]
 
-    let res = initial.next_safe(btreeset! {1,2}, false)?;
+    let res = initial.next_coherent(btreeset! {1,2}, false);
     assert_eq!(
         btreemap! {1=>node("1"), 2=>node("2")},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()
@@ -284,7 +259,7 @@ fn test_membership_next_safe_with_nodes() -> anyhow::Result<()> {
 
     // Removed to learner
 
-    let res = initial.next_safe(btreeset! {1}, true)?;
+    let res = initial.next_coherent(btreeset! {1}, true);
     assert_eq!(
         btreemap! {1=>node("1"), 2=>node("2")},
         res.nodes().map(|(nid, n)| (*nid, n.clone())).collect::<BTreeMap<_, _>>()

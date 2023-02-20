@@ -12,7 +12,7 @@ where
     ///
     /// Read more about:
     /// [safe-membership-change](https://datafuselabs.github.io/openraft/dynamic-membership.html#the-safe-to-relation)
-    fn is_coherent(&self, other: &Joint<ID, QS, Vec<QS>>) -> bool {
+    fn is_coherent_with(&self, other: &Joint<ID, QS, Vec<QS>>) -> bool {
         for a in self.children() {
             for b in other.children() {
                 if a == b {
@@ -30,7 +30,7 @@ where
     ID: PartialOrd + Ord + 'static,
     QS: QuorumSet<ID> + PartialEq,
 {
-    fn is_coherent(&self, other: &Joint<ID, QS, &[QS]>) -> bool {
+    fn is_coherent_with(&self, other: &Joint<ID, QS, &[QS]>) -> bool {
         for a in self.children().iter() {
             for b in other.children().iter() {
                 if a == b {
@@ -48,7 +48,7 @@ where
     ID: PartialOrd + Ord + 'static,
     QS: QuorumSet<ID> + PartialEq,
 {
-    fn is_coherent(&self, other: &QS) -> bool {
+    fn is_coherent_with(&self, other: &QS) -> bool {
         for a in self.children().iter() {
             if a == other {
                 return true;
@@ -66,7 +66,7 @@ where
     QS: QuorumSet<ID> + PartialEq + Clone,
 {
     fn find_coherent(&self, other: QS) -> Self {
-        if self.is_coherent(&other) {
+        if self.is_coherent_with(&other) {
             Joint::from(vec![other])
         } else {
             Joint::from(vec![self.children().last().unwrap().clone(), other])

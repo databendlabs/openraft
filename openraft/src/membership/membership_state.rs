@@ -1,17 +1,13 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use crate::error::ChangeMembershipError;
-use crate::error::EmptyMembership;
-use crate::error::InProgress;
 use crate::less_equal;
+use crate::membership::ChangeHandler;
 use crate::node::Node;
 use crate::validate::Validate;
-use crate::ChangeMembers;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::Membership;
 use crate::MessageSummary;
 use crate::NodeId;
 
@@ -78,59 +74,6 @@ where
 
     pub(crate) fn is_voter(&self, id: &NID) -> bool {
         self.effective.membership.is_voter(id)
-    }
-
-    /// Builds a new membership configuration by applying changes to the current configuration.
-    ///
-    /// * `changes`: The changes to apply to the current membership configuration.
-    /// * `convert_removed_to_learner`: Indicates whether the removed voter should be left in the
-    ///   membership configuration as a learner.
-    ///
-    /// A Result containing the new membership configuration if the operation succeeds, or a
-    /// `ChangeMembershipError` if an error occurs.
-    ///
-    /// This function ensures that the cluster will have at least one voter in the new membership
-    /// configuration.
-    pub(crate) fn create_updated_membership(
-        &self,
-        changes: ChangeMembers<NID>,
-        convert_removed_to_learner: bool,
-    ) -> Result<Membership<NID, N>, ChangeMembershipError<NID>> {
-        let effective = self.effective();
-
-        self.ensure_last_membership_committed()?;
-
-        let last = effective.membership.get_joint_config().last().unwrap();
-        let new_voter_ids = changes.apply_to(last);
-
-        // Ensure cluster will have at least one voter.
-        if new_voter_ids.is_empty() {
-            return Err(EmptyMembership {}.into());
-        }
-
-        let new_membership = effective.membership.next_safe(new_voter_ids, convert_removed_to_learner)?;
-
-        tracing::debug!(?new_membership, "new membership config");
-        Ok(new_membership)
-    }
-
-    /// Ensures that the latest membership configuration has been committed.
-    ///
-    /// Returns Ok if the last membership configuration is committed, or an InProgress error
-    /// otherwise.
-    pub(crate) fn ensure_last_membership_committed(&self) -> Result<(), InProgress<NID>> {
-        let effective = self.effective();
-        let committed = self.committed();
-
-        if self.committed().log_id == self.effective().log_id {
-            // Ok: last membership(effective) is committed
-            Ok(())
-        } else {
-            Err(InProgress {
-                committed: committed.log_id,
-                membership_log_id: effective.log_id,
-            })
-        }
     }
 
     /// Update membership state if the specified committed_log_id is greater than `self.effective`
@@ -255,6 +198,10 @@ where
 
     pub fn effective(&self) -> &Arc<EffectiveMembership<NID, N>> {
         &self.effective
+    }
+
+    pub(crate) fn change_handler(&self) -> ChangeHandler<NID, N> {
+        ChangeHandler { state: self }
     }
 }
 

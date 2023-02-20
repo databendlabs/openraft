@@ -15,47 +15,47 @@ use crate::fixtures::RaftRouter;
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn m0_change_m12() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1,2})).await
+    change_from_to(btreeset! {0}, btreeset! {1,2}).await
 }
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn m0_change_m123() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0}, ChangeMembers::Replace(btreeset! {1,2,3})).await
+    change_from_to(btreeset! {0}, btreeset! {1,2,3}).await
 }
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn m01_change_m12() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {1,2})).await
+    change_from_to(btreeset! {0, 1}, btreeset! {1,2}).await
 }
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn m01_change_m1() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {1})).await
+    change_from_to(btreeset! {0, 1}, btreeset! {1}).await
 }
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn m01_change_m2() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {2})).await
+    change_from_to(btreeset! {0, 1}, btreeset! {2}).await
 }
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn m01_change_m3() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1}, ChangeMembers::Replace(btreeset! {3})).await
+    change_from_to(btreeset! {0, 1}, btreeset! {3}).await
 }
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn m012_change_m4() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1, 2}, ChangeMembers::Replace(btreeset! {4})).await
+    change_from_to(btreeset! {0, 1, 2}, btreeset! {4}).await
 }
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn m012_change_m456() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1, 2}, ChangeMembers::Replace(btreeset! {4,5,6})).await
+    change_from_to(btreeset! {0, 1, 2}, btreeset! {4,5,6}).await
 }
 
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn m01234_change_m0123() -> anyhow::Result<()> {
-    change_from_to(btreeset! {0, 1, 2, 3, 4}, ChangeMembers::Replace(btreeset! {0,1,2,3})).await
+    change_from_to(btreeset! {0, 1, 2, 3, 4}, btreeset! {0,1,2,3}).await
 }
 
 // --- add ---
@@ -98,8 +98,8 @@ async fn m012_remove_m13() -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(level = "debug")]
-async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<MemNodeId>) -> anyhow::Result<()> {
-    let new = change_members.apply_to(&old);
+async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNodeId>) -> anyhow::Result<()> {
+    let new = change_members;
 
     let mes = format!("from {:?} to {:?}", old, new);
 
@@ -244,11 +244,11 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: ChangeMembers<
 /// Test change-membership by adding voters.
 #[tracing::instrument(level = "debug")]
 async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::Result<()> {
-    let change = ChangeMembers::Add(add.iter().copied().collect());
+    let change = ChangeMembers::AddVoter(add.iter().copied().collect());
 
     let mes = format!("from {:?} {:?}", old, change);
 
-    let new = change.clone().apply_to(&old);
+    let new = old.clone().union(&add.iter().copied().collect()).copied().collect::<BTreeSet<_>>();
     let only_in_new = new.difference(&old);
 
     let config = Arc::new(
@@ -312,11 +312,11 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
 
 #[tracing::instrument(level = "debug")]
 async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> anyhow::Result<()> {
-    let change = ChangeMembers::Remove(remove.iter().copied().collect());
+    let change = ChangeMembers::RemoveVoter(remove.iter().copied().collect());
 
     let mes = format!("from {:?} {:?}", old, change);
 
-    let new = change.clone().apply_to(&old);
+    let new = old.clone().difference(&remove.iter().copied().collect()).copied().collect::<BTreeSet<_>>();
     let only_in_old = old.difference(&new);
 
     let config = Arc::new(
