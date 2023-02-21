@@ -6,8 +6,8 @@ use openraft::error::ChangeMembershipError;
 use openraft::error::ClientWriteError;
 use openraft::Config;
 use openraft::LogIdOptionExt;
-use openraft::RaftLogReader;
 use openraft::ServerState;
+use openraft::StorageHelper;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -87,7 +87,7 @@ async fn change_with_new_learner_blocking() -> anyhow::Result<()> {
 
         for node_id in 0..2 {
             let mut sto = router.get_storage_handle(&node_id)?;
-            let logs = sto.get_log_entries(..).await?;
+            let logs = StorageHelper::new(&mut sto).get_log_entries(..).await?;
             assert_eq!(log_index, logs[logs.len() - 1].log_id.index, "node: {}", node_id);
             // 0-th log
             assert_eq!(log_index + 1, logs.len() as u64, "node: {}", node_id);

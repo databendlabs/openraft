@@ -10,7 +10,6 @@ use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::Membership;
-use openraft::RaftLogReader;
 use openraft::StorageHelper;
 use tokio::time::sleep;
 
@@ -68,7 +67,7 @@ async fn add_learner_basic() -> Result<()> {
         {
             let mut sto1 = router.get_storage_handle(&1)?;
 
-            let logs = sto1.get_log_entries(..).await?;
+            let logs = StorageHelper::new(&mut sto1).get_log_entries(..).await?;
 
             assert_eq!(log_index, logs[logs.len() - 1].log_id.index);
             // 0-th log

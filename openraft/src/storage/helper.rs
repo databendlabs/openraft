@@ -1,8 +1,12 @@
+use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::ops::RangeBounds;
 use std::sync::Arc;
 
+use crate::defensive::check_range_matches_entries;
 use crate::engine::LogIdList;
 use crate::EffectiveMembership;
+use crate::Entry;
 use crate::EntryPayload;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -85,7 +89,7 @@ where
             return Ok(st.last_purged_log_id.unwrap());
         }
 
-        let entries = self.sto.get_log_entries(log_index..=log_index).await?;
+        let entries = self.get_log_entries(log_index..=log_index).await?;
 
         Ok(entries[0].log_id)
     }
@@ -167,6 +171,29 @@ where
 
             end = end.saturating_sub(step);
         }
+
+        Ok(res)
+    }
+
+    /// Try to get an log entry.
+    ///
+    /// It does not return an error if the log entry at `log_index` is not found.
+    pub async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<Entry<C>>, StorageError<C::NodeId>> {
+        let mut res = self.sto.try_get_log_entries(log_index..(log_index + 1)).await?;
+        Ok(res.pop())
+    }
+
+    /// Get a series of log entries from storage.
+    ///
+    /// Similar to `try_get_log_entries` except an error will be returned if there is an entry not
+    /// found in the specified range.
+    pub async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
+        &mut self,
+        range: RB,
+    ) -> Result<Vec<Entry<C>>, StorageError<C::NodeId>> {
+        let res = self.sto.try_get_log_entries(range.clone()).await?;
+
+        check_range_matches_entries(range, &res)?;
 
         Ok(res)
     }
