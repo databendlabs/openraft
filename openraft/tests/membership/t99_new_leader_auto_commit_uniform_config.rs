@@ -70,7 +70,7 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     //     )
     //     .await?;
     //
-    // let final_log = sto.get_log_entries(want..=want).await?[0].clone();
+    // let final_log = StorageHelper::new(&mut sto).get_log_entries(want..=want).await?[0].clone();
     //
     // let m = match final_log.payload {
     //     EntryPayload::Membership(ref m) => m.membership.clone(),

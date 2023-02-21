@@ -89,6 +89,7 @@ use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::SnapshotId;
 use crate::StorageError;
+use crate::StorageHelper;
 use crate::Update;
 use crate::Vote;
 
@@ -705,7 +706,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(());
         }
 
-        let entries = self.storage.get_log_entries(since..end).await?;
+        let entries = StorageHelper::new(&mut self.storage).get_log_entries(since..end).await?;
         tracing::debug!(entries=%entries.as_slice().summary(), "about to apply");
 
         let entry_refs = entries.iter().collect::<Vec<_>>();

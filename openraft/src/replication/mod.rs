@@ -233,7 +233,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
         let logs = if start == end {
             vec![]
         } else {
-            self.log_reader.get_log_entries(start..end).await?
+            let logs = self.log_reader.try_get_log_entries(start..end).await?;
+            debug_assert_eq!(
+                logs.len(),
+                (end - start) as usize,
+                "expect logs {}..{} but got only {} entries",
+                start,
+                end,
+                logs.len()
+            );
+            logs
         };
 
         // Build the heartbeat frame to be sent to the follower.

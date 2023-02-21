@@ -699,13 +699,13 @@ where
 
         tracing::info!("--- get start == stop");
         {
-            let logs = store.get_log_entries(3..3).await?;
+            let logs = StorageHelper::new(&mut store).get_log_entries(3..3).await?;
             assert_eq!(logs.len(), 0, "expected no logs to be returned");
         }
 
         tracing::info!("--- get start < stop");
         {
-            let logs = store.get_log_entries(5..7).await?;
+            let logs = StorageHelper::new(&mut store).get_log_entries(5..7).await?;
 
             assert_eq!(logs.len(), 2);
             assert_eq!(logs[0].log_id, LogId::new(CommittedLeaderId::new(1, NODE_ID.into()), 5));
@@ -720,23 +720,26 @@ where
 
         store.purge_logs_upto(LogId::new(CommittedLeaderId::new(0, C::NodeId::default()), 0)).await?;
 
-        let ent = store.try_get_log_entry(3).await?;
+        let mut sh = StorageHelper::new(&mut store);
+
+        let ent = sh.try_get_log_entry(3).await?;
         assert_eq!(
             Some(LogId::new(CommittedLeaderId::new(1, NODE_ID.into()), 3)),
             ent.map(|x| x.log_id)
         );
 
-        let ent = store.try_get_log_entry(0).await?;
+        let ent = sh.try_get_log_entry(0).await?;
         assert_eq!(None, ent.map(|x| x.log_id));
 
-        let ent = store.try_get_log_entry(11).await?;
+        let ent = sh.try_get_log_entry(11).await?;
         assert_eq!(None, ent.map(|x| x.log_id));
 
         Ok(())
     }
 
     pub async fn initial_logs(mut store: S) -> Result<(), StorageError<C::NodeId>> {
-        let ent = store.try_get_log_entry(0).await?;
+        let mut sh = StorageHelper::new(&mut store);
+        let ent = sh.try_get_log_entry(0).await?;
         assert!(ent.is_none(), "store initialized");
 
         Ok(())
@@ -1390,14 +1393,14 @@ where
 
         store.purge_logs_upto(LogId::new(CommittedLeaderId::new(0, C::NodeId::default()), 0)).await?;
 
-        store.get_log_entries(..).await?;
-        store.get_log_entries(5..).await?;
-        store.get_log_entries(..5).await?;
-        store.get_log_entries(5..7).await?;
+        StorageHelper::new(&mut store).get_log_entries(..).await?;
+        StorageHelper::new(&mut store).get_log_entries(5..).await?;
+        StorageHelper::new(&mut store).get_log_entries(..5).await?;
+        StorageHelper::new(&mut store).get_log_entries(5..7).await?;
 
         // mismatched bound.
 
-        let res = store.get_log_entries(11..).await;
+        let res = StorageHelper::new(&mut store).get_log_entries(11..).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::LogIndex(11),
@@ -1405,7 +1408,7 @@ where
             ..
         }));
 
-        let res = store.get_log_entries(1..1).await;
+        let res = StorageHelper::new(&mut store).get_log_entries(1..1).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::Logs,
@@ -1416,7 +1419,7 @@ where
             ..
         }));
 
-        let res = store.get_log_entries(0..1).await;
+        let res = StorageHelper::new(&mut store).get_log_entries(0..1).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::LogIndex(0),
@@ -1424,7 +1427,7 @@ where
             ..
         }));
 
-        let res = store.get_log_entries(0..2).await;
+        let res = StorageHelper::new(&mut store).get_log_entries(0..2).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::LogIndex(0),
@@ -1432,7 +1435,7 @@ where
             ..
         }));
 
-        let res = store.get_log_entries(10..12).await;
+        let res = StorageHelper::new(&mut store).get_log_entries(10..12).await;
         let e = res.unwrap_err().into_defensive().unwrap();
         assert!(matches!(e, DefensiveError {
             subject: ErrorSubject::LogIndex(11),

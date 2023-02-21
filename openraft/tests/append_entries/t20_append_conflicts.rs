@@ -12,6 +12,7 @@ use openraft::MessageSummary;
 use openraft::RaftStorage;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
+use openraft::StorageHelper;
 use openraft::Vote;
 
 use crate::fixtures::blank;
@@ -222,7 +223,7 @@ where
     C: RaftTypeConfig,
     Sto: RaftStorage<C>,
 {
-    let logs = sto.get_log_entries(..).await?;
+    let logs = StorageHelper::new(sto).get_log_entries(..).await?;
     let skip = 0;
     let want: Vec<Entry<memstore::Config>> = terms
         .iter()

@@ -8,9 +8,9 @@ use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::LogId;
-use openraft::RaftLogReader;
 use openraft::RaftStorage;
 use openraft::ServerState;
+use openraft::StorageHelper;
 use openraft::Vote;
 
 use crate::fixtures::init_default_ut_tracing;
@@ -119,7 +119,7 @@ async fn append_inconsistent_log() -> Result<()> {
         .log_at_least(Some(log_index), "sync log to node 0")
         .await?;
 
-    let logs = sto0.get_log_entries(60..=60).await?;
+    let logs = StorageHelper::new(&mut sto0).get_log_entries(60..=60).await?;
     assert_eq!(
         3,
         logs.first().unwrap().log_id.leader_id.term,

@@ -12,7 +12,6 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
-use crate::defensive::check_range_matches_entries;
 use crate::membership::EffectiveMembership;
 use crate::node::Node;
 use crate::raft_types::SnapshotId;
@@ -116,29 +115,6 @@ pub struct LogState<C: RaftTypeConfig> {
 pub trait RaftLogReader<C>: Send + Sync + 'static
 where C: RaftTypeConfig
 {
-    /// Get a series of log entries from storage.
-    ///
-    /// Similar to `try_get_log_entries` except an error will be returned if there is an entry not
-    /// found in the specified range.
-    async fn get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
-        &mut self,
-        range: RB,
-    ) -> Result<Vec<Entry<C>>, StorageError<C::NodeId>> {
-        let res = self.try_get_log_entries(range.clone()).await?;
-
-        check_range_matches_entries(range, &res)?;
-
-        Ok(res)
-    }
-
-    /// Try to get an log entry.
-    ///
-    /// It does not return an error if the log entry at `log_index` is not found.
-    async fn try_get_log_entry(&mut self, log_index: u64) -> Result<Option<Entry<C>>, StorageError<C::NodeId>> {
-        let mut res = self.try_get_log_entries(log_index..(log_index + 1)).await?;
-        Ok(res.pop())
-    }
-
     /// Returns the last deleted log id and the last log id.
     ///
     /// The impl should not consider the applied log id in state machine.
