@@ -1,7 +1,17 @@
 [package]
-name = "rocksstore"
-version = "0.1.0"
-edition = "2021"
+name = "openraft-rocksstore"
+description = "An rocksdb based implementation of the `openraft::RaftStorage` trait."
+documentation = "https://docs.rs/openraft-memstore"
+readme = "README.md"
+
+version       = { workspace = true }
+edition       = { workspace = true }
+authors       = { workspace = true }
+categories    = { workspace = true }
+homepage      = { workspace = true }
+keywords      = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

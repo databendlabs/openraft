@@ -1,19 +1,18 @@
 [package]
 name = "openraft-memstore"
-version = "0.7.3"
-edition = "2021"
-authors = [
-    "Databend Authors <opensource@datafuselabs.com>",
-    "Anthony Dodd <Dodd.AnthonyJosiah@gmail.com>"
-]
-categories = ["algorithms", "asynchronous", "data-structures"]
 description = "An in-memory implementation of the `openraft::RaftStorage` trait."
 documentation = "https://docs.rs/openraft-memstore"
-homepage = "https://github.com/datafuselabs/openraft"
-keywords = ["raft", "consensus"]
-license = "MIT/Apache-2.0"
-repository = "https://github.com/datafuselabs/openraft"
 readme = "README.md"
+
+version       = { workspace = true }
+edition       = { workspace = true }
+authors       = { workspace = true }
+categories    = { workspace = true }
+homepage      = { workspace = true }
+keywords      = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+
 
 [dependencies]
 anyerror = { version = "0.1.6", features = ["anyhow"]}
