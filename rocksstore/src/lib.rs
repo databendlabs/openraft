@@ -98,10 +98,7 @@ impl From<&RocksStateMachine> for SerializableRocksStateMachine {
     fn from(state: &RocksStateMachine) -> Self {
         let mut data = BTreeMap::new();
 
-        let it = state.db.iterator_cf(
-            state.db.cf_handle("data").expect("cf_handle"),
-            rocksdb::IteratorMode::Start,
-        );
+        let it = state.db.iterator_cf(state.cf_sm_data(), rocksdb::IteratorMode::Start);
 
         for item in it {
             let (key, value) = item.expect("invalid kv record");
@@ -135,54 +132,60 @@ fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<RocksNodeId> {
 }
 
 impl RocksStateMachine {
-    fn get_last_membership(&self) -> StorageResult<EffectiveMembership<RocksNodeId, BasicNode>> {
-        self.db
-            .get_cf(
-                self.db.cf_handle("state_machine").expect("cf_handle"),
-                "last_membership".as_bytes(),
-            )
-            .map_err(sm_r_err)
-            .and_then(|value| {
-                value
-                    .map(|v| serde_json::from_slice(&v).map_err(sm_r_err))
-                    .unwrap_or_else(|| Ok(EffectiveMembership::default()))
-            })
+    fn cf_sm_meta(&self) -> &ColumnFamily {
+        self.db.cf_handle("sm_meta").unwrap()
     }
+
+    fn cf_sm_data(&self) -> &ColumnFamily {
+        self.db.cf_handle("sm_data").unwrap()
+    }
+
+    fn get_last_membership(&self) -> StorageResult<EffectiveMembership<RocksNodeId, BasicNode>> {
+        self.db.get_cf(self.cf_sm_meta(), "last_membership".as_bytes()).map_err(sm_r_err).and_then(|value| {
+            value
+                .map(|v| serde_json::from_slice(&v).map_err(sm_r_err))
+                .unwrap_or_else(|| Ok(EffectiveMembership::default()))
+        })
+    }
+
     fn set_last_membership(&self, membership: EffectiveMembership<RocksNodeId, BasicNode>) -> StorageResult<()> {
         self.db
             .put_cf(
-                self.db.cf_handle("state_machine").expect("cf_handle"),
+                self.cf_sm_meta(),
                 "last_membership".as_bytes(),
                 serde_json::to_vec(&membership).map_err(sm_w_err)?,
             )
             .map_err(sm_w_err)
     }
+
     fn get_last_applied_log(&self) -> StorageResult<Option<LogId<RocksNodeId>>> {
         self.db
-            .get_cf(
-                self.db.cf_handle("state_machine").expect("cf_handle"),
-                "last_applied_log".as_bytes(),
-            )
+            .get_cf(self.cf_sm_meta(), "last_applied_log".as_bytes())
             .map_err(sm_r_err)
             .and_then(|value| value.map(|v| serde_json::from_slice(&v).map_err(sm_r_err)).transpose())
     }
+
     fn set_last_applied_log(&self, log_id: LogId<RocksNodeId>) -> StorageResult<()> {
         self.db
             .put_cf(
-                self.db.cf_handle("state_machine").expect("cf_handle"),
+                self.cf_sm_meta(),
                 "last_applied_log".as_bytes(),
                 serde_json::to_vec(&log_id).map_err(sm_w_err)?,
             )
             .map_err(sm_w_err)
     }
+
     fn from_serializable(sm: SerializableRocksStateMachine, db: Arc<rocksdb::DB>) -> StorageResult<Self> {
-        for (key, value) in sm.data {
-            db.put_cf(db.cf_handle("data").unwrap(), key.as_bytes(), value.as_bytes()).map_err(sm_w_err)?;
-        }
         let r = Self { db };
+
+        for (key, value) in sm.data {
+            r.db.put_cf(r.cf_sm_data(), key.as_bytes(), value.as_bytes()).map_err(sm_w_err)?;
+        }
+
         if let Some(log_id) = sm.last_applied_log {
             r.set_last_applied_log(log_id)?;
         }
+
         r.set_last_membership(sm.last_membership)?;
 
         Ok(r)
@@ -191,15 +194,17 @@ impl RocksStateMachine {
     fn new(db: Arc<rocksdb::DB>) -> RocksStateMachine {
         Self { db }
     }
+
     fn insert(&self, key: String, value: String) -> StorageResult<()> {
         self.db
-            .put_cf(self.db.cf_handle("data").unwrap(), key.as_bytes(), value.as_bytes())
+            .put_cf(self.cf_sm_data(), key.as_bytes(), value.as_bytes())
             .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Write, AnyError::new(&e)).into())
     }
+
     pub fn get(&self, key: &str) -> StorageResult<Option<String>> {
         let key = key.as_bytes();
         self.db
-            .get_cf(self.db.cf_handle("data").unwrap(), key)
+            .get_cf(self.cf_sm_data(), key)
             .map(|value| value.map(|v| String::from_utf8(v).expect("invalid data")))
             .map_err(|e| StorageIOError::new(ErrorSubject::Store, ErrorVerb::Read, AnyError::new(&e)).into())
     }
@@ -289,10 +294,11 @@ mod meta {
 }
 
 impl RocksStore {
-    fn store(&self) -> &ColumnFamily {
-        self.db.cf_handle("store").unwrap()
+    fn cf_meta(&self) -> &ColumnFamily {
+        self.db.cf_handle("meta").unwrap()
     }
-    fn logs(&self) -> &ColumnFamily {
+
+    fn cf_logs(&self) -> &ColumnFamily {
         self.db.cf_handle("logs").unwrap()
     }
 
@@ -302,7 +308,7 @@ impl RocksStore {
     fn get_meta<M: meta::StoreMeta>(&self) -> Result<Option<M::Value>, StorageError<RocksNodeId>> {
         let v = self
             .db
-            .get_cf(self.store(), M::KEY)
+            .get_cf(self.cf_meta(), M::KEY)
             .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?;
 
         let t = match v {
@@ -321,7 +327,7 @@ impl RocksStore {
             .map_err(|e| StorageIOError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
 
         self.db
-            .put_cf(self.store(), M::KEY, json_value)
+            .put_cf(self.cf_meta(), M::KEY, json_value)
             .map_err(|e| StorageIOError::new(M::subject(Some(value)), ErrorVerb::Write, AnyError::new(&e)))?;
 
         Ok(())
@@ -331,7 +337,7 @@ impl RocksStore {
 #[async_trait]
 impl RaftLogReader<Config> for Arc<RocksStore> {
     async fn get_log_state(&mut self) -> StorageResult<LogState<Config>> {
-        let last = self.db.iterator_cf(self.logs(), rocksdb::IteratorMode::End).next();
+        let last = self.db.iterator_cf(self.cf_logs(), rocksdb::IteratorMode::End).next();
 
         let last_log_id = match last {
             None => None,
@@ -367,7 +373,7 @@ impl RaftLogReader<Config> for Arc<RocksStore> {
 
         let mut res = Vec::new();
 
-        let it = self.db.iterator_cf(self.logs(), rocksdb::IteratorMode::From(&start, Direction::Forward));
+        let it = self.db.iterator_cf(self.cf_logs(), rocksdb::IteratorMode::From(&start, Direction::Forward));
         for item_res in it {
             let (id, val) = item_res.map_err(read_logs_err)?;
 
@@ -458,7 +464,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
             assert_eq!(bin_to_id(&id), entry.log_id.index);
             self.db
                 .put_cf(
-                    self.logs(),
+                    self.cf_logs(),
                     id,
                     serde_json::to_vec(entry)
                         .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)))?,
@@ -475,7 +481,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
         let from = id_to_bin(log_id.index);
         let to = id_to_bin(0xff_ff_ff_ff_ff_ff_ff_ff);
         self.db
-            .delete_range_cf(self.logs(), &from, &to)
+            .delete_range_cf(self.cf_logs(), &from, &to)
             .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)).into())
     }
 
@@ -488,7 +494,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
         let from = id_to_bin(0);
         let to = id_to_bin(log_id.index + 1);
         self.db
-            .delete_range_cf(self.logs(), &from, &to)
+            .delete_range_cf(self.cf_logs(), &from, &to)
             .map_err(|e| StorageIOError::new(ErrorSubject::Logs, ErrorVerb::Write, AnyError::new(&e)).into())
     }
 
@@ -612,12 +618,12 @@ impl RocksStore {
         db_opts.create_missing_column_families(true);
         db_opts.create_if_missing(true);
 
-        let store = ColumnFamilyDescriptor::new("store", Options::default());
-        let state_machine = ColumnFamilyDescriptor::new("state_machine", Options::default());
-        let data = ColumnFamilyDescriptor::new("data", Options::default());
+        let meta = ColumnFamilyDescriptor::new("meta", Options::default());
+        let sm_meta = ColumnFamilyDescriptor::new("sm_meta", Options::default());
+        let sm_data = ColumnFamilyDescriptor::new("sm_data", Options::default());
         let logs = ColumnFamilyDescriptor::new("logs", Options::default());
 
-        let db = DB::open_cf_descriptors(&db_opts, db_path, vec![store, state_machine, data, logs]).unwrap();
+        let db = DB::open_cf_descriptors(&db_opts, db_path, vec![meta, sm_meta, sm_data, logs]).unwrap();
 
         let db = Arc::new(db);
         let state_machine = RwLock::new(RocksStateMachine::new(db.clone()));
