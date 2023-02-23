@@ -16,8 +16,6 @@ use openraft::storage::HardState;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
-use openraft::AppData;
-use openraft::AppDataResponse;
 use openraft::EffectiveMembership;
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
@@ -50,13 +48,9 @@ pub struct ClientRequest {
     pub status: String,
 }
 
-impl AppData for ClientRequest {}
-
 /// The application data response type which the `MemStore` works with.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClientResponse(Option<String>);
-
-impl AppDataResponse for ClientResponse {}
 
 /// The application snapshot type which the `MemStore` works with.
 #[derive(Debug)]

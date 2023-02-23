@@ -14,6 +14,8 @@ pub type NodeId = u64;
 /// to do a preliminary deserialization.
 pub trait AppData: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
 
+impl<T> AppData for T where T: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
+
 /// A trait defining application specific response data.
 ///
 /// The intention of this trait is that applications which are using this crate will be able to
@@ -28,3 +30,5 @@ pub trait AppData: Clone + Send + Sync + Serialize + DeserializeOwned + 'static 
 /// enforcing of data constraints, and anything of that nature — are expressly out of the realm of
 /// the Raft consensus protocol.
 pub trait AppDataResponse: Clone + Send + Sync + Serialize + DeserializeOwned + 'static {}
+
+impl<T> AppDataResponse for T where T: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}

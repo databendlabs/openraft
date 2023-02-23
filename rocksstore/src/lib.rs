@@ -17,8 +17,6 @@ use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
-use openraft::AppData;
-use openraft::AppDataResponse;
 use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
@@ -52,8 +50,6 @@ pub enum RocksRequest {
     Set { key: String, value: String },
 }
 
-impl AppData for RocksRequest {}
-
 /**
  * Here you will defined what type of answer you expect from reading the data of a node.
  * In this example it will return a optional value from a given key in
@@ -66,8 +62,6 @@ impl AppData for RocksRequest {}
 pub struct RocksResponse {
     pub value: Option<String>,
 }
-
-impl AppDataResponse for RocksResponse {}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RocksSnapshot {
