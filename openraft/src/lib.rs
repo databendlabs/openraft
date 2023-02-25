@@ -48,23 +48,27 @@ mod store_wrapper;
 mod summary;
 mod vote;
 
-pub(crate) mod log_id_range;
+#[cfg(feature = "compat")] pub mod compat;
+#[cfg(feature = "compat-07")] pub use or07;
 
-mod engine;
 pub mod error;
-mod internal_server_state;
-mod leader;
 pub mod metrics;
 pub mod network;
 pub mod raft;
-mod raft_state;
-mod runtime;
 pub mod storage;
 pub mod testing;
 pub mod timer;
-mod try_as_ref;
-pub(crate) mod validate;
 pub mod versioned;
+
+pub(crate) mod log_id_range;
+pub(crate) mod validate;
+
+mod engine;
+mod internal_server_state;
+mod leader;
+mod raft_state;
+mod runtime;
+mod try_as_ref;
 
 #[cfg(test)] mod raft_state_test;
 
@@ -93,6 +97,7 @@ pub use crate::network::RPCTypes;
 pub use crate::network::RaftNetwork;
 pub use crate::network::RaftNetworkFactory;
 pub use crate::node::BasicNode;
+pub use crate::node::EmptyNode;
 pub use crate::node::Node;
 pub use crate::node::NodeId;
 pub use crate::raft::Raft;
@@ -104,10 +109,12 @@ pub(crate) use crate::raft_types::MetricsChangeFlags;
 pub use crate::raft_types::SnapshotId;
 pub use crate::raft_types::SnapshotSegmentId;
 pub use crate::raft_types::Update;
+pub use crate::storage::LogState;
 pub use crate::storage::RaftLogReader;
 pub use crate::storage::RaftSnapshotBuilder;
 pub use crate::storage::RaftStorage;
 pub use crate::storage::RaftStorageDebug;
+pub use crate::storage::Snapshot;
 pub use crate::storage::SnapshotMeta;
 pub use crate::storage::StorageHelper;
 pub use crate::storage_error::DefensiveError;

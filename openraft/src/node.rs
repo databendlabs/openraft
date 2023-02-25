@@ -63,6 +63,25 @@ pub trait Node: NodeEssential {}
 #[cfg(not(feature = "serde"))]
 impl<T> Node for T where T: NodeEssential {}
 
+/// Empty Node.
+///
+/// Such a node store nothing but is just a place holder.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+pub struct EmptyNode {}
+
+impl EmptyNode {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Display for EmptyNode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{}}")
+    }
+}
+
 /// Minimal node information.
 ///
 /// The most common usage is to store the connecting address of a node.

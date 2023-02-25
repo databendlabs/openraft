@@ -1,5 +1,22 @@
 #![deny(unused_crate_dependencies)]
 
+//! This is an example implementation of the [`RaftStorage`] trait for an application that
+//! needs to upgrade from openraft v0.7 to v0.8.
+//!
+//! Openraft v0.8 introduced several changes to the data types related to persistent data. This
+//! example demonstrates how to upgrade the implementation of the storage without requiring any
+//! modifications to the on-disk data, using the [`openraft::compat`] compatibility layer.
+//!
+//! This is a modified version of rocksstore that tries to
+//! deserialize data into a compatible type, such as [`compat07::LogId`], when reading data from
+//! rocksdb, and then upgrade it to the latest format. You can find usages of `compat07::*` that are
+//! used in this implementation to provide compatibility with older data.
+//!
+//! [`RaftStorage`]: openraft::RaftStorage
+//! [`openraft::compat`]: openraft::compat
+//! [`compat07::LogId`]: openraft::compat07::LogId
+
+#[cfg(test)] mod compatibility_test;
 #[cfg(test)] mod test;
 
 use std::collections::BTreeMap;
@@ -15,18 +32,20 @@ use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use openraft::async_trait::async_trait;
-use openraft::storage::LogState;
-use openraft::storage::Snapshot;
+use openraft::compat::compat07;
+use openraft::compat::Upgrade;
 use openraft::AnyError;
-use openraft::BasicNode;
+use openraft::EmptyNode;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorSubject;
 use openraft::ErrorVerb;
 use openraft::LogId;
+use openraft::LogState;
 use openraft::RaftLogReader;
 use openraft::RaftSnapshotBuilder;
 use openraft::RaftStorage;
+use openraft::Snapshot;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
@@ -44,28 +63,14 @@ pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode
+    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = EmptyNode
 );
 
-/**
- * Here you will set the types of request that will interact with the raft nodes.
- * For example the `Set` will be used to write data (key and value) to the raft database.
- * The `AddNode` will append a new node to the current existing shared list of nodes.
- * You will want to add any request that can write data in all nodes here.
- */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RocksRequest {
     Set { key: String, value: String },
 }
 
-/**
- * Here you will defined what type of answer you expect from reading the data of a node.
- * In this example it will return a optional value from a given key in
- * the `RocksRequest.Set`.
- *
- * TODO: SHould we explain how to create multiple `AppDataResponse`?
- *
- */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RocksResponse {
     pub value: Option<String>,
@@ -73,25 +78,20 @@ pub struct RocksResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RocksSnapshot {
-    pub meta: SnapshotMeta<RocksNodeId, BasicNode>,
-
-    /// The data of the state machine at the time of this snapshot.
+    pub meta: SnapshotMeta<RocksNodeId, EmptyNode>,
     pub data: Vec<u8>,
 }
 
-/**
- * Here defines a state machine of the raft, this state represents a copy of the data
- * between each node. Note that we are using `serde` to serialize the `data`, which has
- * a implementation to be serialized. Note that for this test we set both the key and
- * value as String, but you could set any type of value that has the serialization impl.
- */
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RocksSnapshotCompat {
+    pub meta: compat07::SnapshotMeta,
+    pub data: Vec<u8>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct SerializableRocksStateMachine {
     pub last_applied_log: Option<LogId<RocksNodeId>>,
-
-    pub last_membership: StoredMembership<RocksNodeId, BasicNode>,
-
-    /// Application data.
+    pub last_membership: StoredMembership<RocksNodeId, EmptyNode>,
     pub data: BTreeMap<String, String>,
 }
 
@@ -141,29 +141,38 @@ impl RocksStateMachine {
         self.db.cf_handle("sm_data").unwrap()
     }
 
-    fn get_last_membership(&self) -> StorageResult<StoredMembership<RocksNodeId, BasicNode>> {
-        self.db.get_cf(self.cf_sm_meta(), "last_membership".as_bytes()).map_err(sm_r_err).and_then(|value| {
-            value
-                .map(|v| serde_json::from_slice(&v).map_err(sm_r_err))
-                .unwrap_or_else(|| Ok(StoredMembership::default()))
-        })
+    fn get_last_membership(&self) -> StorageResult<StoredMembership<RocksNodeId, EmptyNode>> {
+        let bs = self.db.get_cf(self.cf_sm_meta(), b"last_membership").map_err(sm_r_err)?;
+        let bs = if let Some(x) = bs {
+            x
+        } else {
+            return Ok(StoredMembership::default());
+        };
+
+        let em = serde_json::from_slice::<compat07::StoredMembership>(&bs).map_err(sm_r_err)?;
+        Ok(em.upgrade())
     }
 
-    fn set_last_membership(&self, membership: StoredMembership<RocksNodeId, BasicNode>) -> StorageResult<()> {
+    fn set_last_membership(&self, membership: StoredMembership<RocksNodeId, EmptyNode>) -> StorageResult<()> {
         self.db
             .put_cf(
                 self.cf_sm_meta(),
-                "last_membership".as_bytes(),
+                b"last_membership",
                 serde_json::to_vec(&membership).map_err(sm_w_err)?,
             )
             .map_err(sm_w_err)
     }
 
     fn get_last_applied_log(&self) -> StorageResult<Option<LogId<RocksNodeId>>> {
-        self.db
-            .get_cf(self.cf_sm_meta(), "last_applied_log".as_bytes())
-            .map_err(sm_r_err)
-            .and_then(|value| value.map(|v| serde_json::from_slice(&v).map_err(sm_r_err)).transpose())
+        let bs = self.db.get_cf(self.cf_sm_meta(), b"last_applied_log").map_err(sm_r_err)?;
+        let bs = if let Some(x) = bs {
+            x
+        } else {
+            return Ok(None);
+        };
+
+        let log_id = serde_json::from_slice::<compat07::LogId>(&bs).map_err(sm_r_err)?;
+        Ok(Some(log_id.upgrade()))
     }
 
     fn set_last_applied_log(&self, log_id: LogId<RocksNodeId>) -> StorageResult<()> {
@@ -179,8 +188,9 @@ impl RocksStateMachine {
     fn from_serializable(sm: SerializableRocksStateMachine, db: Arc<rocksdb::DB>) -> StorageResult<Self> {
         let r = Self { db };
 
+        let cf = r.cf_sm_data();
         for (key, value) in sm.data {
-            r.db.put_cf(r.cf_sm_data(), key.as_bytes(), value.as_bytes()).map_err(sm_w_err)?;
+            r.db.put_cf(cf, key.as_bytes(), value.as_bytes()).map_err(sm_w_err)?;
         }
 
         if let Some(log_id) = sm.last_applied_log {
@@ -257,6 +267,7 @@ mod meta {
 
     pub(crate) struct LastPurged {}
     pub(crate) struct SnapshotIndex {}
+    pub(crate) struct HardState {}
     pub(crate) struct Vote {}
     pub(crate) struct Snapshot {}
 
@@ -276,8 +287,17 @@ mod meta {
             ErrorSubject::Store
         }
     }
+    impl StoreMeta for HardState {
+        const KEY: &'static str = "hard_state";
+        type Value = ();
+
+        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
+            ErrorSubject::Vote
+        }
+    }
     impl StoreMeta for Vote {
-        const KEY: &'static str = "vote";
+        // hard_state is renamed to vote, to hold compatibility, store them by the same key.
+        const KEY: &'static str = "hard_state";
         type Value = openraft::Vote<RocksNodeId>;
 
         fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
@@ -288,8 +308,8 @@ mod meta {
         const KEY: &'static str = "snapshot";
         type Value = RocksSnapshot;
 
-        fn subject(v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
-            ErrorSubject::Snapshot(v.unwrap().meta.signature())
+        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<RocksNodeId> {
+            ErrorSubject::None
         }
     }
 }
@@ -322,6 +342,15 @@ impl RocksStore {
         Ok(t)
     }
 
+    fn get_meta_vec<M: meta::StoreMeta>(&self) -> Result<Option<Vec<u8>>, StorageError<RocksNodeId>> {
+        let v = self
+            .db
+            .get_cf(self.cf_meta(), M::KEY)
+            .map_err(|e| StorageIOError::new(M::subject(None), ErrorVerb::Read, AnyError::new(&e)))?;
+
+        Ok(v)
+    }
+
     /// Save a store metadata.
     fn put_meta<M: meta::StoreMeta>(&self, value: &M::Value) -> Result<(), StorageError<RocksNodeId>> {
         let json_value = serde_json::to_vec(value)
@@ -344,12 +373,21 @@ impl RaftLogReader<Config> for Arc<RocksStore> {
             None => None,
             Some(res) => {
                 let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
-                let ent = serde_json::from_slice::<Entry<Config>>(&entry_bytes).map_err(read_logs_err)?;
+
+                let ent = serde_json::from_slice::<compat07::Entry<Config>>(&entry_bytes).map_err(read_logs_err)?;
+                let ent = ent.upgrade();
                 Some(ent.log_id)
             }
         };
 
-        let last_purged_log_id = self.get_meta::<meta::LastPurged>()?;
+        let last_purged_log_id = self.get_meta_vec::<meta::LastPurged>()?;
+        let last_purged_log_id = match last_purged_log_id {
+            None => None,
+            Some(bs) => {
+                let log_id = serde_json::from_slice::<compat07::LogId>(&bs).map_err(read_logs_err)?;
+                Some(log_id.upgrade())
+            }
+        };
 
         let last_log_id = match last_log_id {
             None => last_purged_log_id,
@@ -383,7 +421,8 @@ impl RaftLogReader<Config> for Arc<RocksStore> {
                 break;
             }
 
-            let entry: Entry<_> = serde_json::from_slice(&val).map_err(read_logs_err)?;
+            let entry = serde_json::from_slice::<compat07::Entry<Config>>(&val).map_err(read_logs_err)?;
+            let entry = entry.upgrade();
 
             assert_eq!(id, entry.log_id.index);
 
@@ -398,7 +437,7 @@ impl RaftSnapshotBuilder<Config, Cursor<Vec<u8>>> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn build_snapshot(
         &mut self,
-    ) -> Result<Snapshot<RocksNodeId, BasicNode, Cursor<Vec<u8>>>, StorageError<RocksNodeId>> {
+    ) -> Result<Snapshot<RocksNodeId, EmptyNode, Cursor<Vec<u8>>>, StorageError<RocksNodeId>> {
         let data;
         let last_applied_log;
         let last_membership;
@@ -455,7 +494,20 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     }
 
     async fn read_vote(&mut self) -> Result<Option<Vote<RocksNodeId>>, StorageError<RocksNodeId>> {
-        self.get_meta::<meta::Vote>()
+        // TODO: ?
+        // Read by old key
+        let bs = self.get_meta_vec::<meta::HardState>()?;
+        let bs = if let Some(bs) = bs {
+            bs
+        } else {
+            return Ok(None);
+        };
+
+        let hs = serde_json::from_slice::<compat07::Vote>(&bs)
+            .map_err(|e| StorageIOError::new(ErrorSubject::Vote, ErrorVerb::Read, AnyError::new(&e)))?;
+
+        let vote = hs.upgrade();
+        Ok(Some(vote))
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
@@ -501,7 +553,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<RocksNodeId, BasicNode>), StorageError<RocksNodeId>> {
+    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<RocksNodeId, EmptyNode>), StorageError<RocksNodeId>> {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.get_last_applied_log()?,
@@ -553,7 +605,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self, snapshot))]
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<RocksNodeId, BasicNode>,
+        meta: &SnapshotMeta<RocksNodeId, EmptyNode>,
         snapshot: Box<Self::SnapshotData>,
     ) -> Result<(), StorageError<RocksNodeId>> {
         tracing::info!(
@@ -588,19 +640,32 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self))]
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<RocksNodeId, BasicNode, Self::SnapshotData>>, StorageError<RocksNodeId>> {
-        let curr_snap = self.get_meta::<meta::Snapshot>()?;
+    ) -> Result<Option<Snapshot<RocksNodeId, EmptyNode, Self::SnapshotData>>, StorageError<RocksNodeId>> {
+        let curr_snap = self.get_meta_vec::<meta::Snapshot>()?;
+        let bs = if let Some(x) = curr_snap {
+            x
+        } else {
+            return Ok(None);
+        };
 
-        match curr_snap {
-            Some(snapshot) => {
-                let data = snapshot.data.clone();
-                Ok(Some(Snapshot {
-                    meta: snapshot.meta,
-                    snapshot: Box::new(Cursor::new(data)),
-                }))
+        let curr_snap = serde_json::from_slice::<RocksSnapshotCompat>(&bs)
+            .map_err(|e| StorageIOError::new(ErrorSubject::None, ErrorVerb::Read, AnyError::new(&e)))?;
+
+        let d = curr_snap.data;
+
+        let meta = match curr_snap.meta {
+            compat07::SnapshotMeta::Old(_o) => {
+                // SnapshotMeta can not be upgrade.
+                // It does not have `last_membership` field and can not be installed by a follower.
+                return Ok(None);
             }
-            None => Ok(None),
-        }
+            compat07::SnapshotMeta::New(meta) => meta,
+        };
+
+        Ok(Some(Snapshot {
+            meta,
+            snapshot: Box::new(Cursor::new(d)),
+        }))
     }
 
     async fn get_log_reader(&mut self) -> Self::LogReader {
