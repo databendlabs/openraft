@@ -1,3 +1,35 @@
+## v0.7.4
+
+### Changed:
+
+-   Changed: [1bd22edc](https://github.com/datafuselabs/openraft/commit/1bd22edc0a8dc7a9c314341370b3dfeb357411b5) remove AddLearnerError::Exists, which is not actually used; by 张炎泼; 2022-09-30
+
+-   Changed: [c6fe29d4](https://github.com/datafuselabs/openraft/commit/c6fe29d4a53b47f6c43d83a24e1610788a4c0166) change-membership does not return error when replication lags; by 张炎泼; 2022-10-22
+
+    If `blocking` is `true`, `Raft::change_membership(..., blocking)` will
+    block until repliication to new nodes become upto date.
+    But it won't return an error when proposing change-membership log.
+
+    - Change: remove two errors: `LearnerIsLagging` and `LearnerNotFound`.
+
+    - Fix: #581
+
+### Fixed:
+
+-   Fixed: [2896b98e](https://github.com/datafuselabs/openraft/commit/2896b98e34825a8623ec4650da405c79827ecbee) changing membership should not remove replication to all learners; by 张炎泼; 2022-09-30
+
+    When changing membership, replications to the learners(non-voters) that
+    are not added as voter should be kept.
+
+    E.g.: with a cluster of voters `{0}` and learners `{1, 2, 3}`, changing
+    membership to `{0, 1, 2}` should not remove replication to node `3`.
+
+    Only replications to removed members should be removed.
+
+### Added:
+
+-   Added: [9a22bb03](https://github.com/datafuselabs/openraft/commit/9a22bb035b1d456ab2949c8b3abdbaa630622c63) add rocks-store as a `RaftStorage` implementation based on rocks-db; by 张炎泼; 2023-02-22
+
 ## v0.7.3
 
 ### Changed:
