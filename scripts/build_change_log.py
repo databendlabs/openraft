@@ -284,6 +284,13 @@ def load_cargo_version():
 
     t = toml.loads(cargo)
     ver = t['package']['version']
+
+    if ver == {'workspace': True}:
+        with open('./Cargo.toml',  'r') as f:
+            cargo = f.read()
+        t = toml.loads(cargo)
+        ver = t['workspace']['package']['version']
+
     print("--- openraft/Cargo.toml version is",  ver)
     return ver
 
