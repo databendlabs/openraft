@@ -116,7 +116,7 @@ where
         let em = &self.state.membership_state.effective();
         let mut leader = Leader::new(
             *self.state.get_vote(),
-            em.membership.to_quorum_set(),
+            em.membership().to_quorum_set(),
             em.learner_ids(),
             self.state.last_log_id().index(),
         );

@@ -17,6 +17,7 @@ use crate::Node;
 use crate::NodeId;
 use crate::RaftState;
 use crate::SnapshotMeta;
+use crate::StoredMembership;
 
 /// Receive replication request and deal with them.
 ///
@@ -204,7 +205,7 @@ where
                 "applying {}-th new membership configs received from leader",
                 i
             );
-            self.state.membership_state.append(Arc::new(m));
+            self.state.membership_state.append(Arc::new(EffectiveMembership::new_from_stored_membership(m)));
         }
 
         tracing::debug!(
@@ -316,7 +317,9 @@ where
         }
 
         self.state.committed = Some(snap_last_log_id);
-        self.update_committed_membership(meta.last_membership.clone());
+        self.update_committed_membership(EffectiveMembership::new_from_stored_membership(
+            meta.last_membership.clone(),
+        ));
 
         // TODO: There should be two separate commands for installing snapshot:
         //       - Replace state machine with snapshot and replace the `current_snapshot` in the store.
@@ -342,17 +345,15 @@ where
     ///
     /// A follower/learner reverts the effective membership to the previous one,
     /// when conflicting logs are found.
-    ///
-    /// See: [Effective-membership](https://datafuselabs.github.io/openraft/effective-membership.html)
     fn last_two_memberships<'a, Ent: RaftEntry<NID, N> + 'a>(
         entries: impl DoubleEndedIterator<Item = &'a Ent>,
-    ) -> Vec<EffectiveMembership<NID, N>> {
+    ) -> Vec<StoredMembership<NID, N>> {
         let mut memberships = vec![];
 
         // Find the last 2 membership config entries: the committed and the effective.
         for ent in entries.rev() {
             if let Some(m) = ent.get_membership() {
-                memberships.insert(0, EffectiveMembership::new(Some(*ent.get_log_id()), m.clone()));
+                memberships.insert(0, StoredMembership::new(Some(*ent.get_log_id()), m.clone()));
                 if memberships.len() == 2 {
                     break;
                 }
@@ -1224,6 +1225,7 @@ mod tests {
         use crate::Membership;
         use crate::MetricsChangeFlags;
         use crate::SnapshotMeta;
+        use crate::StoredMembership;
 
         fn m12() -> Membership<u64, ()> {
             Membership::<u64, ()>::new(vec![btreeset! {1,2}], None)
@@ -1247,7 +1249,7 @@ mod tests {
             ]);
             eng.state.snapshot_meta = SnapshotMeta {
                 last_log_id: Some(log_id(2, 2)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+                last_membership: StoredMembership::new(Some(log_id(1, 1)), m12()),
                 snapshot_id: "1-2-3-4".to_string(),
             };
             eng.state.server_state = eng.calc_server_state();
@@ -1263,14 +1265,14 @@ mod tests {
 
             eng.following_handler().install_snapshot(SnapshotMeta {
                 last_log_id: Some(log_id(2, 2)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             });
 
             assert_eq!(
                 SnapshotMeta {
                     last_log_id: Some(log_id(2, 2)),
-                    last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+                    last_membership: StoredMembership::new(Some(log_id(1, 1)), m12()),
                     snapshot_id: "1-2-3-4".to_string(),
                 },
                 eng.state.snapshot_meta
@@ -1289,7 +1291,7 @@ mod tests {
                 vec![Command::CancelSnapshot {
                     snapshot_meta: SnapshotMeta {
                         last_log_id: Some(log_id(2, 2)),
-                        last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                        last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     }
                 }],
@@ -1309,14 +1311,14 @@ mod tests {
 
             eng.following_handler().install_snapshot(SnapshotMeta {
                 last_log_id: Some(log_id(4, 5)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             });
 
             assert_eq!(
                 SnapshotMeta {
                     last_log_id: Some(log_id(2, 2)),
-                    last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+                    last_membership: StoredMembership::new(Some(log_id(1, 1)), m12()),
                     snapshot_id: "1-2-3-4".to_string(),
                 },
                 eng.state.snapshot_meta
@@ -1335,7 +1337,7 @@ mod tests {
                 vec![Command::CancelSnapshot {
                     snapshot_meta: SnapshotMeta {
                         last_log_id: Some(log_id(4, 5)),
-                        last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                        last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                         snapshot_id: "1-2-3-4".to_string(),
                     }
                 }],
@@ -1352,14 +1354,14 @@ mod tests {
 
             eng.following_handler().install_snapshot(SnapshotMeta {
                 last_log_id: Some(log_id(4, 6)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             });
 
             assert_eq!(
                 SnapshotMeta {
                     last_log_id: Some(log_id(4, 6)),
-                    last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                    last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                     snapshot_id: "1-2-3-4".to_string(),
                 },
                 eng.state.snapshot_meta
@@ -1389,7 +1391,7 @@ mod tests {
                     Command::InstallSnapshot {
                         snapshot_meta: SnapshotMeta {
                             last_log_id: Some(log_id(4, 6)),
-                            last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                            last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                             snapshot_id: "1-2-3-4".to_string(),
                         }
                     },
@@ -1420,7 +1422,7 @@ mod tests {
 
                 eng.state.snapshot_meta = SnapshotMeta {
                     last_log_id: Some(log_id(2, 2)),
-                    last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+                    last_membership: StoredMembership::new(Some(log_id(1, 1)), m12()),
                     snapshot_id: "1-2-3-4".to_string(),
                 };
 
@@ -1431,14 +1433,14 @@ mod tests {
 
             eng.following_handler().install_snapshot(SnapshotMeta {
                 last_log_id: Some(log_id(5, 6)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             });
 
             assert_eq!(
                 SnapshotMeta {
                     last_log_id: Some(log_id(5, 6)),
-                    last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                    last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                     snapshot_id: "1-2-3-4".to_string(),
                 },
                 eng.state.snapshot_meta
@@ -1469,7 +1471,7 @@ mod tests {
                     Command::InstallSnapshot {
                         snapshot_meta: SnapshotMeta {
                             last_log_id: Some(log_id(5, 6)),
-                            last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                            last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                             snapshot_id: "1-2-3-4".to_string(),
                         }
                     },
@@ -1488,14 +1490,14 @@ mod tests {
 
             eng.following_handler().install_snapshot(SnapshotMeta {
                 last_log_id: Some(log_id(100, 100)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             });
 
             assert_eq!(
                 SnapshotMeta {
                     last_log_id: Some(log_id(100, 100)),
-                    last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                    last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                     snapshot_id: "1-2-3-4".to_string(),
                 },
                 eng.state.snapshot_meta
@@ -1529,7 +1531,7 @@ mod tests {
                     Command::InstallSnapshot {
                         snapshot_meta: SnapshotMeta {
                             last_log_id: Some(log_id(100, 100)),
-                            last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+                            last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
                             snapshot_id: "1-2-3-4".to_string(),
                         }
                     },

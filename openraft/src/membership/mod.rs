@@ -3,6 +3,7 @@ mod effective_membership;
 #[allow(clippy::module_inception)] mod membership;
 mod membership_state;
 mod node_type;
+mod stored_membership;
 
 #[cfg(feature = "bench")]
 #[cfg(test)]
@@ -18,3 +19,4 @@ pub use membership::IntoNodes;
 pub use membership::Membership;
 pub use membership_state::MembershipState;
 pub(crate) use node_type::NodeRole;
+pub use stored_membership::StoredMembership;

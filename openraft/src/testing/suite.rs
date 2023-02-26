@@ -27,6 +27,7 @@ use crate::RaftSnapshotBuilder;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::StoredMembership;
 use crate::Violation;
 use crate::Vote;
 
@@ -160,12 +161,12 @@ where
             let mem = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
             assert_eq!(1, mem.len());
             let mem = mem[0].clone();
-            assert_eq!(Membership::new(vec![btreeset! {1, 2, 3}], None), mem.membership,);
+            assert_eq!(&Membership::new(vec![btreeset! {1, 2, 3}], None), mem.membership(),);
 
             let mem = StorageHelper::new(&mut store).last_membership_in_log(1).await?;
             assert_eq!(1, mem.len());
             let mem = mem[0].clone();
-            assert_eq!(Membership::new(vec![btreeset! {1, 2, 3}], None), mem.membership,);
+            assert_eq!(&Membership::new(vec![btreeset! {1, 2, 3}], None), mem.membership(),);
 
             let mem = StorageHelper::new(&mut store).last_membership_in_log(2).await?;
             assert!(mem.is_empty());
@@ -194,10 +195,10 @@ where
             assert_eq!(2, mems.len());
 
             let mem = mems[0].clone();
-            assert_eq!(Membership::new(vec![btreeset! {1,2,3}], None), mem.membership,);
+            assert_eq!(&Membership::new(vec![btreeset! {1,2,3}], None), mem.membership(),);
 
             let mem = mems[1].clone();
-            assert_eq!(Membership::new(vec![btreeset! {7,8,9}], None), mem.membership,);
+            assert_eq!(&Membership::new(vec![btreeset! {7,8,9}], None), mem.membership(),);
         }
 
         tracing::info!("--- membership presents in log and > sm.last_applied, read from log but since_index is greater than the last");
@@ -219,10 +220,10 @@ where
             assert_eq!(2, mems.len());
 
             let mem = mems[0].clone();
-            assert_eq!(Membership::new(vec![btreeset! {7,8,9}], None), mem.membership,);
+            assert_eq!(&Membership::new(vec![btreeset! {7,8,9}], None), mem.membership(),);
 
             let mem = mems[1].clone();
-            assert_eq!(Membership::new(vec![btreeset! {10,11}], None), mem.membership,);
+            assert_eq!(&Membership::new(vec![btreeset! {10,11}], None), mem.membership(),);
         }
 
         Ok(())
@@ -259,10 +260,10 @@ where
             let mems = StorageHelper::new(&mut store).last_membership_in_log(0).await?;
             assert_eq!(2, mems.len());
             let mem = mems[0].clone();
-            assert_eq!(Membership::new(vec![btreeset! {3,4,5}], None), mem.membership,);
+            assert_eq!(&Membership::new(vec![btreeset! {3,4,5}], None), mem.membership(),);
 
             let mem = mems[1].clone();
-            assert_eq!(Membership::new(vec![btreeset! {5,6,7}], None), mem.membership,);
+            assert_eq!(&Membership::new(vec![btreeset! {5,6,7}], None), mem.membership(),);
         }
 
         Ok(())
@@ -293,8 +294,8 @@ where
 
             assert_eq!(&EffectiveMembership::default(), mem_state.committed().as_ref());
             assert_eq!(
-                Membership::new(vec![btreeset! {1,2,3}], None),
-                mem_state.effective().membership,
+                &Membership::new(vec![btreeset! {1,2,3}], None),
+                mem_state.effective().membership(),
             );
         }
 
@@ -320,12 +321,12 @@ where
             let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
             assert_eq!(
-                Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.committed().membership,
+                &Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.committed().membership(),
             );
             assert_eq!(
-                Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.effective().membership,
+                &Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.effective().membership(),
             );
         }
 
@@ -341,12 +342,12 @@ where
             let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
             assert_eq!(
-                Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.committed().membership,
+                &Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.committed().membership(),
             );
             assert_eq!(
-                Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.effective().membership,
+                &Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.effective().membership(),
             );
         }
 
@@ -368,12 +369,12 @@ where
             let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
             assert_eq!(
-                Membership::new(vec![btreeset! {3,4,5}], None),
-                mem_state.committed().membership,
+                &Membership::new(vec![btreeset! {3,4,5}], None),
+                mem_state.committed().membership(),
             );
             assert_eq!(
-                Membership::new(vec![btreeset! {7,8,9}], None),
-                mem_state.effective().membership,
+                &Membership::new(vec![btreeset! {7,8,9}], None),
+                mem_state.effective().membership(),
             );
         }
 
@@ -395,12 +396,12 @@ where
             let mem_state = StorageHelper::new(&mut store).get_membership().await?;
 
             assert_eq!(
-                Membership::new(vec![btreeset! {7,8,9}], None),
-                mem_state.committed().membership,
+                &Membership::new(vec![btreeset! {7,8,9}], None),
+                mem_state.committed().membership(),
             );
             assert_eq!(
-                Membership::new(vec![btreeset! {10,11}], None),
-                mem_state.effective().membership,
+                &Membership::new(vec![btreeset! {10,11}], None),
+                mem_state.effective().membership(),
             );
         }
 
@@ -475,8 +476,8 @@ where
             let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
             assert_eq!(
-                Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.membership_state.effective().membership,
+                &Membership::new(vec![btreeset! {3,4,5}], None),
+                initial.membership_state.effective().membership(),
             );
         }
 
@@ -492,8 +493,8 @@ where
             let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
             assert_eq!(
-                Membership::new(vec![btreeset! {3,4,5}], None),
-                initial.membership_state.effective().membership,
+                &Membership::new(vec![btreeset! {3,4,5}], None),
+                initial.membership_state.effective().membership(),
             );
         }
 
@@ -509,8 +510,8 @@ where
             let initial = StorageHelper::new(&mut store).get_initial_state().await?;
 
             assert_eq!(
-                Membership::new(vec![btreeset! {1,2,3}], None),
-                initial.membership_state.effective().membership,
+                &Membership::new(vec![btreeset! {1,2,3}], None),
+                initial.membership_state.effective().membership(),
             );
         }
 
@@ -869,7 +870,7 @@ where
     pub async fn last_applied_state(mut store: S) -> Result<(), StorageError<C::NodeId>> {
         let (applied, membership) = store.last_applied_state().await?;
         assert_eq!(None, applied);
-        assert_eq!(EffectiveMembership::default(), membership);
+        assert_eq!(StoredMembership::default(), membership);
 
         tracing::info!("--- with last_applied and last_membership");
         {
@@ -883,7 +884,7 @@ where
             let (applied, membership) = store.last_applied_state().await?;
             assert_eq!(Some(LogId::new(CommittedLeaderId::new(1, NODE_ID.into()), 3)), applied);
             assert_eq!(
-                EffectiveMembership::new(
+                StoredMembership::new(
                     Some(LogId::new(CommittedLeaderId::new(1, NODE_ID.into()), 3)),
                     Membership::new(vec![btreeset! {1,2}], None)
                 ),
@@ -903,7 +904,7 @@ where
             let (applied, membership) = store.last_applied_state().await?;
             assert_eq!(Some(LogId::new(CommittedLeaderId::new(1, NODE_ID.into()), 5)), applied);
             assert_eq!(
-                EffectiveMembership::new(
+                StoredMembership::new(
                     Some(LogId::new(CommittedLeaderId::new(1, NODE_ID.into()), 3)),
                     Membership::new(vec![btreeset! {1,2}], None)
                 ),
@@ -1053,10 +1054,10 @@ where
             let snap = b.build_snapshot().await?;
             let meta = snap.meta;
             assert_eq!(Some(log_id(0, 0)), meta.last_log_id);
-            assert_eq!(Some(log_id(0, 0)), meta.last_membership.log_id);
+            assert_eq!(&Some(log_id(0, 0)), meta.last_membership.log_id());
             assert_eq!(
-                Membership::new(vec![btreeset! {1,2}], None),
-                meta.last_membership.membership
+                &Membership::new(vec![btreeset! {1,2}], None),
+                meta.last_membership.membership()
             );
         }
 
@@ -1077,10 +1078,10 @@ where
             let snap = b.build_snapshot().await?;
             let meta = snap.meta;
             assert_eq!(Some(log_id(2, 2)), meta.last_log_id);
-            assert_eq!(Some(log_id(2, 2)), meta.last_membership.log_id);
+            assert_eq!(&Some(log_id(2, 2)), meta.last_membership.log_id());
             assert_eq!(
-                Membership::new(vec![btreeset! {3,4}], None),
-                meta.last_membership.membership
+                &Membership::new(vec![btreeset! {3,4}], None),
+                meta.last_membership.membership()
             );
         }
 

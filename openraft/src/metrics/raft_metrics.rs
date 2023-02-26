@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use crate::core::ServerState;
 use crate::error::Fatal;
-use crate::membership::EffectiveMembership;
 use crate::metrics::ReplicationMetrics;
 use crate::node::Node;
 use crate::summary::MessageSummary;
 use crate::versioned::Versioned;
 use crate::LogId;
 use crate::NodeId;
+use crate::StoredMembership;
 
 /// A set of metrics describing the current state of a Raft node.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,7 +49,7 @@ where
     pub current_leader: Option<NID>,
 
     /// The current membership config of the cluster.
-    pub membership_config: Arc<EffectiveMembership<NID, N>>,
+    pub membership_config: Arc<StoredMembership<NID, N>>,
 
     // ---
     // --- replication ---
@@ -92,7 +92,7 @@ where
             last_log_index: None,
             last_applied: None,
             current_leader: None,
-            membership_config: Arc::new(EffectiveMembership::default()),
+            membership_config: Arc::new(StoredMembership::default()),
             snapshot: None,
             replication: None,
         }

@@ -14,7 +14,6 @@ use openraft::async_trait::async_trait;
 use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
-use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorSubject;
@@ -26,6 +25,7 @@ use openraft::RaftStorage;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
+use openraft::StoredMembership;
 use openraft::Vote;
 use rocksdb::ColumnFamily;
 use rocksdb::ColumnFamilyDescriptor;
@@ -82,7 +82,7 @@ pub struct SerializableExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
     // TODO: it should not be Option.
-    pub last_membership: EffectiveMembership<ExampleNodeId, ExampleNode>,
+    pub last_membership: StoredMembership<ExampleNodeId, ExampleNode>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -127,7 +127,7 @@ fn sm_w_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
 }
 
 impl ExampleStateMachine {
-    fn get_last_membership(&self) -> StorageResult<EffectiveMembership<ExampleNodeId, ExampleNode>> {
+    fn get_last_membership(&self) -> StorageResult<StoredMembership<ExampleNodeId, ExampleNode>> {
         self.db
             .get_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -137,10 +137,10 @@ impl ExampleStateMachine {
             .and_then(|value| {
                 value
                     .map(|v| serde_json::from_slice(&v).map_err(sm_r_err))
-                    .unwrap_or_else(|| Ok(EffectiveMembership::default()))
+                    .unwrap_or_else(|| Ok(StoredMembership::default()))
             })
     }
-    fn set_last_membership(&self, membership: EffectiveMembership<ExampleNodeId, ExampleNode>) -> StorageResult<()> {
+    fn set_last_membership(&self, membership: StoredMembership<ExampleNodeId, ExampleNode>) -> StorageResult<()> {
         self.db
             .put_cf(
                 self.db.cf_handle("state_machine").expect("cf_handle"),
@@ -484,7 +484,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     ) -> Result<
         (
             Option<LogId<ExampleNodeId>>,
-            EffectiveMembership<ExampleNodeId, ExampleNode>,
+            StoredMembership<ExampleNodeId, ExampleNode>,
         ),
         StorageError<ExampleNodeId>,
     > {
@@ -520,7 +520,8 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
-                    sm.set_last_membership(EffectiveMembership::new(Some(entry.log_id), mem.clone()))?;
+                    sm.set_last_membership(StoredMembership::new(Some(entry.log_id), mem.clone()))?;
+
                     res.push(ExampleResponse { value: None })
                 }
             };

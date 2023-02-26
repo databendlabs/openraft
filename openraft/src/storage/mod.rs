@@ -12,7 +12,6 @@ use tokio::io::AsyncRead;
 use tokio::io::AsyncSeek;
 use tokio::io::AsyncWrite;
 
-use crate::membership::EffectiveMembership;
 use crate::node::Node;
 use crate::raft_types::SnapshotId;
 use crate::Entry;
@@ -21,6 +20,7 @@ use crate::MessageSummary;
 use crate::NodeId;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::StoredMembership;
 use crate::Vote;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -34,7 +34,7 @@ where
     pub last_log_id: Option<LogId<NID>>,
 
     /// The last applied membership config.
-    pub last_membership: EffectiveMembership<NID, N>,
+    pub last_membership: StoredMembership<NID, N>,
 
     /// To identify a snapshot when transferring.
     /// Caveat: even when two snapshot is built with the same `last_log_id`, they still could be
@@ -65,7 +65,7 @@ where
     pub fn signature(&self) -> SnapshotSignature<NID> {
         SnapshotSignature {
             last_log_id: self.last_log_id,
-            last_membership_log_id: self.last_membership.log_id,
+            last_membership_log_id: *self.last_membership.log_id(),
             snapshot_id: self.snapshot_id.clone(),
         }
     }
@@ -228,7 +228,7 @@ where C: RaftTypeConfig
     // like.
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<C::NodeId>>, EffectiveMembership<C::NodeId, C::Node>), StorageError<C::NodeId>>;
+    ) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C::NodeId, C::Node>), StorageError<C::NodeId>>;
 
     /// Apply the given payload of entries to the state machine.
     ///

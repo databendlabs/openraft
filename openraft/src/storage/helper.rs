@@ -15,6 +15,7 @@ use crate::RaftState;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
 use crate::StorageError;
+use crate::StoredMembership;
 
 /// StorageHelper provides additional methods to access a RaftStorage implementation.
 pub struct StorageHelper<'a, C, Sto>
@@ -113,7 +114,7 @@ where
     pub async fn get_membership(&mut self) -> Result<MembershipState<C::NodeId, C::Node>, StorageError<C::NodeId>> {
         let (_, sm_mem) = self.sto.last_applied_state().await?;
 
-        let sm_mem_next_index = sm_mem.log_id.next_index();
+        let sm_mem_next_index = sm_mem.log_id().next_index();
 
         let log_mem = self.last_membership_in_log(sm_mem_next_index).await?;
         tracing::debug!(membership_in_sm=?sm_mem, membership_in_log=?log_mem, "RaftStorage::get_membership");
@@ -121,18 +122,21 @@ where
         // There 2 membership configs in logs.
         if log_mem.len() == 2 {
             return Ok(MembershipState::new(
-                Arc::new(log_mem[0].clone()),
-                Arc::new(log_mem[1].clone()),
+                Arc::new(EffectiveMembership::new_from_stored_membership(log_mem[0].clone())),
+                Arc::new(EffectiveMembership::new_from_stored_membership(log_mem[1].clone())),
             ));
         }
 
         let effective = if log_mem.is_empty() {
-            sm_mem.clone()
+            EffectiveMembership::new_from_stored_membership(sm_mem.clone())
         } else {
-            log_mem[0].clone()
+            EffectiveMembership::new_from_stored_membership(log_mem[0].clone())
         };
 
-        let res = MembershipState::new(Arc::new(sm_mem), Arc::new(effective));
+        let res = MembershipState::new(
+            Arc::new(EffectiveMembership::new_from_stored_membership(sm_mem)),
+            Arc::new(effective),
+        );
 
         Ok(res)
     }
@@ -146,7 +150,7 @@ where
     pub async fn last_membership_in_log(
         &mut self,
         since_index: u64,
-    ) -> Result<Vec<EffectiveMembership<C::NodeId, C::Node>>, StorageError<C::NodeId>> {
+    ) -> Result<Vec<StoredMembership<C::NodeId, C::Node>>, StorageError<C::NodeId>> {
         let st = self.sto.get_log_state().await?;
 
         let mut end = st.last_log_id.next_index();
@@ -161,7 +165,7 @@ where
 
             for ent in entries.iter().rev() {
                 if let EntryPayload::Membership(ref mem) = ent.payload {
-                    let em = EffectiveMembership::new(Some(ent.log_id), mem.clone());
+                    let em = StoredMembership::new(Some(ent.log_id), mem.clone());
                     res.insert(0, em);
                     if res.len() == 2 {
                         return Ok(res);

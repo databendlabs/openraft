@@ -73,13 +73,13 @@ where
     }
 
     pub(crate) fn is_voter(&self, id: &NID) -> bool {
-        self.effective.membership.is_voter(id)
+        self.effective.membership().is_voter(id)
     }
 
     /// Update membership state if the specified committed_log_id is greater than `self.effective`
     pub(crate) fn commit(&mut self, committed_log_id: &Option<LogId<NID>>) {
-        if committed_log_id >= &self.effective().log_id {
-            debug_assert!(committed_log_id.index() >= self.effective().log_id.index());
+        if committed_log_id >= self.effective().log_id() {
+            debug_assert!(committed_log_id.index() >= self.effective().log_id().index());
             self.committed = self.effective.clone();
         }
     }
@@ -99,8 +99,8 @@ where
         // Thus it has to compare by log-index, e.g.:
         //   membership.log_id       = (10, 5);
         //   local_effective.log_id = (2, 10);
-        if c.log_id.index() >= self.effective.log_id.index() {
-            changed = c.membership != self.effective.membership;
+        if c.log_id().index() >= self.effective.log_id().index() {
+            changed = c.membership() != self.effective.membership();
 
             // The effective may override by a new leader with a different one.
             self.effective = c.clone()
@@ -108,15 +108,16 @@ where
 
         #[allow(clippy::collapsible_if)]
         if cfg!(debug_assertions) {
-            if c.log_id == self.committed.log_id {
+            if c.log_id() == self.committed.log_id() {
                 debug_assert_eq!(
-                    c.membership, self.committed.membership,
+                    c.membership(),
+                    self.committed.membership(),
                     "the same log id implies the same membership"
                 );
             }
         }
 
-        if c.log_id > self.committed.log_id {
+        if c.log_id() > self.committed.log_id() {
             self.committed = c
         }
 
@@ -135,11 +136,11 @@ where
     ///   received from the leader.
     pub(crate) fn append(&mut self, m: Arc<EffectiveMembership<NID, N>>) {
         debug_assert!(
-            m.log_id > self.effective.log_id,
+            m.log_id() > self.effective.log_id(),
             "new membership has to have a greater log_id"
         );
         debug_assert!(
-            m.log_id.index() > self.effective.log_id.index(),
+            m.log_id().index() > self.effective.log_id().index(),
             "new membership has to have a greater index"
         );
 
@@ -169,11 +170,11 @@ where
     /// ```
     pub(crate) fn truncate(&mut self, since: u64) -> Option<Arc<EffectiveMembership<NID, N>>> {
         debug_assert!(
-            since >= self.committed().log_id.next_index(),
+            since >= self.committed().log_id().next_index(),
             "committed log should never be truncated: committed membership can not conflict with the leader"
         );
 
-        if Some(since) <= self.effective().log_id.index() {
+        if Some(since) <= self.effective().log_id().index() {
             tracing::debug!(
                 effective = display(self.effective().summary()),
                 committed = display(self.committed().summary()),
@@ -211,8 +212,8 @@ where
     N: Node,
 {
     fn validate(&self) -> Result<(), Box<dyn Error>> {
-        less_equal!(self.committed.log_id, self.effective.log_id);
-        less_equal!(self.committed.log_id.index(), self.effective.log_id.index());
+        less_equal!(self.committed.log_id(), self.effective.log_id());
+        less_equal!(self.committed.log_id().index(), self.effective.log_id().index());
         Ok(())
     }
 }

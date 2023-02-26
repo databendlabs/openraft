@@ -12,7 +12,6 @@ use tokio::time::sleep;
 
 use crate::async_trait::async_trait;
 use crate::defensive::DefensiveCheckBase;
-use crate::membership::EffectiveMembership;
 use crate::storage::LogState;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftSnapshotBuilder;
@@ -26,6 +25,7 @@ use crate::RaftStorageDebug;
 use crate::RaftTypeConfig;
 use crate::SnapshotMeta;
 use crate::StorageError;
+use crate::StoredMembership;
 use crate::Vote;
 use crate::Wrapper;
 
@@ -182,7 +182,7 @@ where
     #[tracing::instrument(level = "trace", skip(self))]
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<C::NodeId>>, EffectiveMembership<C::NodeId, C::Node>), StorageError<C::NodeId>> {
+    ) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C::NodeId, C::Node>), StorageError<C::NodeId>> {
         self.inner().last_applied_state().await
     }
 

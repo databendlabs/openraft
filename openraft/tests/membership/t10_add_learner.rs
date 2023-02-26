@@ -86,7 +86,7 @@ async fn add_learner_basic() -> Result<()> {
         router.wait(&0, timeout()).log(Some(log_index), "commit re-adding node-1 log").await?;
 
         let metrics = router.get_raft_handle(&0)?.metrics().borrow().clone();
-        let node_ids = metrics.membership_config.membership.nodes().map(|x| *x.0).collect::<Vec<_>>();
+        let node_ids = metrics.membership_config.membership().nodes().map(|x| *x.0).collect::<Vec<_>>();
         assert_eq!(vec![0, 1], node_ids);
     }
 
@@ -258,13 +258,13 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
         // new membership is applied, thus get_membership() only returns one entry.
 
         assert_eq!(
-            Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),
-            m.committed().membership,
+            &Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),
+            m.committed().membership(),
             "membership should be overridden by the snapshot"
         );
         assert_eq!(
-            Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),
-            m.effective().membership,
+            &Membership::new(vec![btreeset! {1,3,4}], Some(btreeset! {2})),
+            m.effective().membership(),
             "membership should be overridden by the snapshot"
         );
     }

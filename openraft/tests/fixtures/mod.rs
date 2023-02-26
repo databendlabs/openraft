@@ -697,7 +697,7 @@ where
             assert_eq!(0, nodes_count, "expected empty configs, got: {:?}", nodes_count);
 
             assert!(
-                !node.membership_config.membership.is_in_joint_consensus(),
+                !node.membership_config.membership().is_in_joint_consensus(),
                 "node {} is in joint consensus, expected uniform consensus",
                 node.id
             );
@@ -784,7 +784,7 @@ where
                 node.id, members, all_nodes
             );
             assert!(
-                !node.membership_config.membership.is_in_joint_consensus(),
+                !node.membership_config.membership().is_in_joint_consensus(),
                 "node {} was not in uniform consensus state",
                 node.id
             );

@@ -54,8 +54,8 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
         let mut x = new();
         let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
         assert!(res.is_none());
-        assert_eq!(Some(log_id(2, 2)), x.committed().log_id);
-        assert_eq!(Some(log_id(3, 4)), x.effective().log_id);
+        assert_eq!(&Some(log_id(2, 2)), x.committed().log_id());
+        assert_eq!(&Some(log_id(3, 4)), x.effective().log_id());
     }
 
     // Update committed, not effective.
@@ -63,8 +63,8 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
         let mut x = new();
         let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m12())));
         assert!(res.is_none());
-        assert_eq!(Some(log_id(2, 3)), x.committed().log_id);
-        assert_eq!(Some(log_id(3, 4)), x.effective().log_id);
+        assert_eq!(&Some(log_id(2, 3)), x.committed().log_id());
+        assert_eq!(&Some(log_id(3, 4)), x.effective().log_id());
     }
 
     // Update both
@@ -72,9 +72,9 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
         let mut x = new();
         let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(3, 4)), m12())));
         assert_eq!(Some(x.effective().clone()), res);
-        assert_eq!(Some(log_id(3, 4)), x.committed().log_id);
-        assert_eq!(Some(log_id(3, 4)), x.effective().log_id);
-        assert_eq!(m12(), x.effective().membership);
+        assert_eq!(&Some(log_id(3, 4)), x.committed().log_id());
+        assert_eq!(&Some(log_id(3, 4)), x.effective().log_id());
+        assert_eq!(&m12(), x.effective().membership());
     }
 
     // Update both, greater log_id.index should update the effective.
@@ -83,9 +83,9 @@ fn test_membership_state_update_committed() -> anyhow::Result<()> {
         let mut x = new();
         let res = x.update_committed(Arc::new(EffectiveMembership::new(Some(log_id(2, 5)), m12())));
         assert_eq!(Some(x.effective().clone()), res);
-        assert_eq!(Some(log_id(2, 5)), x.committed().log_id);
-        assert_eq!(Some(log_id(2, 5)), x.effective().log_id);
-        assert_eq!(m12(), x.effective().membership);
+        assert_eq!(&Some(log_id(2, 5)), x.committed().log_id());
+        assert_eq!(&Some(log_id(2, 5)), x.effective().log_id());
+        assert_eq!(&m12(), x.effective().membership());
     }
 
     Ok(())
@@ -98,9 +98,9 @@ fn test_membership_state_append() -> anyhow::Result<()> {
     let mut ms = new();
     ms.append(effmem(4, 5, m12()));
 
-    assert_eq!(Some(log_id(3, 4)), ms.committed().log_id);
-    assert_eq!(Some(log_id(4, 5)), ms.effective().log_id);
-    assert_eq!(m12(), ms.effective().membership);
+    assert_eq!(&Some(log_id(3, 4)), ms.committed().log_id());
+    assert_eq!(&Some(log_id(4, 5)), ms.effective().log_id());
+    assert_eq!(&m12(), ms.effective().membership());
 
     Ok(())
 }
@@ -113,32 +113,32 @@ fn test_membership_state_commit() -> anyhow::Result<()> {
     {
         let mut ms = new();
         ms.commit(&Some(log_id(1, 1)));
-        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
-        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+        assert_eq!(&Some(log_id(2, 2)), ms.committed().log_id());
+        assert_eq!(&Some(log_id(3, 4)), ms.effective().log_id());
     }
 
     // Equal committed
     {
         let mut ms = new();
         ms.commit(&Some(log_id(2, 2)));
-        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
-        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+        assert_eq!(&Some(log_id(2, 2)), ms.committed().log_id());
+        assert_eq!(&Some(log_id(3, 4)), ms.effective().log_id());
     }
 
     // Greater than committed, smaller than effective
     {
         let mut ms = new();
         ms.commit(&Some(log_id(2, 3)));
-        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
-        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+        assert_eq!(&Some(log_id(2, 2)), ms.committed().log_id());
+        assert_eq!(&Some(log_id(3, 4)), ms.effective().log_id());
     }
 
     // Greater than committed, equal effective
     {
         let mut ms = new();
         ms.commit(&Some(log_id(3, 4)));
-        assert_eq!(Some(log_id(3, 4)), ms.committed().log_id);
-        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+        assert_eq!(&Some(log_id(3, 4)), ms.committed().log_id());
+        assert_eq!(&Some(log_id(3, 4)), ms.effective().log_id());
     }
 
     Ok(())
@@ -152,24 +152,24 @@ fn test_membership_state_truncate() -> anyhow::Result<()> {
         let mut ms = new();
         let res = ms.truncate(5);
         assert!(res.is_none());
-        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
-        assert_eq!(Some(log_id(3, 4)), ms.effective().log_id);
+        assert_eq!(&Some(log_id(2, 2)), ms.committed().log_id());
+        assert_eq!(&Some(log_id(3, 4)), ms.effective().log_id());
     }
 
     {
         let mut ms = new();
         let res = ms.truncate(4);
-        assert_eq!(Some(log_id(2, 2)), res.unwrap().log_id);
-        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
-        assert_eq!(Some(log_id(2, 2)), ms.effective().log_id);
+        assert_eq!(&Some(log_id(2, 2)), res.unwrap().log_id());
+        assert_eq!(&Some(log_id(2, 2)), ms.committed().log_id());
+        assert_eq!(&Some(log_id(2, 2)), ms.effective().log_id());
     }
 
     {
         let mut ms = new();
         let res = ms.truncate(3);
-        assert_eq!(Some(log_id(2, 2)), res.unwrap().log_id);
-        assert_eq!(Some(log_id(2, 2)), ms.committed().log_id);
-        assert_eq!(Some(log_id(2, 2)), ms.effective().log_id);
+        assert_eq!(&Some(log_id(2, 2)), res.unwrap().log_id());
+        assert_eq!(&Some(log_id(2, 2)), ms.committed().log_id());
+        assert_eq!(&Some(log_id(2, 2)), ms.effective().log_id());
     }
 
     Ok(())
