@@ -87,7 +87,6 @@ pub struct RocksSnapshot {
 pub struct SerializableRocksStateMachine {
     pub last_applied_log: Option<LogId<RocksNodeId>>,
 
-    // TODO: it should not be Option.
     pub last_membership: StoredMembership<RocksNodeId, BasicNode>,
 
     /// Application data.

@@ -81,7 +81,6 @@ pub struct ExampleSnapshot {
 pub struct SerializableExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
-    // TODO: it should not be Option.
     pub last_membership: StoredMembership<ExampleNodeId, ExampleNode>,
 
     /// Application data.
@@ -113,8 +112,6 @@ impl From<&ExampleStateMachine> for SerializableExampleStateMachine {
 
 #[derive(Debug, Clone)]
 pub struct ExampleStateMachine {
-    // TODO: it should not be Option.
-    // pub last_membership: EffectiveMembership<ExampleNodeId, NodeData>,
     /// Application data.
     pub db: Arc<rocksdb::DB>,
 }
