@@ -72,7 +72,6 @@ pub struct ExampleSnapshot {
 pub struct ExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
-    // TODO: it should not be Option.
     pub last_membership: StoredMembership<ExampleNodeId, BasicNode>,
 
     /// Application data.
