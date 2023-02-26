@@ -87,6 +87,7 @@ pub use crate::entry::RaftPayload;
 pub use crate::membership::EffectiveMembership;
 pub use crate::membership::Membership;
 pub use crate::membership::MembershipState;
+pub use crate::membership::StoredMembership;
 pub use crate::metrics::RaftMetrics;
 pub use crate::network::RPCTypes;
 pub use crate::network::RaftNetwork;

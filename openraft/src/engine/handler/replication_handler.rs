@@ -109,7 +109,7 @@ where
         let learner_ids = em.learner_ids().collect::<Vec<_>>();
 
         self.leader.progress =
-            old_progress.upgrade_quorum_set(em.membership.to_quorum_set(), &learner_ids, ProgressEntry::empty(end));
+            old_progress.upgrade_quorum_set(em.membership().to_quorum_set(), &learner_ids, ProgressEntry::empty(end));
     }
 
     /// Update progress when replicated data(logs or snapshot) matches on follower/learner and is

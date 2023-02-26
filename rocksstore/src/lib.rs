@@ -17,7 +17,6 @@ use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
 use openraft::BasicNode;
-use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorSubject;
@@ -29,6 +28,7 @@ use openraft::RaftStorage;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
+use openraft::StoredMembership;
 use openraft::Vote;
 use rocksdb::ColumnFamily;
 use rocksdb::ColumnFamilyDescriptor;
@@ -88,7 +88,7 @@ pub struct SerializableRocksStateMachine {
     pub last_applied_log: Option<LogId<RocksNodeId>>,
 
     // TODO: it should not be Option.
-    pub last_membership: EffectiveMembership<RocksNodeId, BasicNode>,
+    pub last_membership: StoredMembership<RocksNodeId, BasicNode>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -140,15 +140,15 @@ impl RocksStateMachine {
         self.db.cf_handle("sm_data").unwrap()
     }
 
-    fn get_last_membership(&self) -> StorageResult<EffectiveMembership<RocksNodeId, BasicNode>> {
+    fn get_last_membership(&self) -> StorageResult<StoredMembership<RocksNodeId, BasicNode>> {
         self.db.get_cf(self.cf_sm_meta(), "last_membership".as_bytes()).map_err(sm_r_err).and_then(|value| {
             value
                 .map(|v| serde_json::from_slice(&v).map_err(sm_r_err))
-                .unwrap_or_else(|| Ok(EffectiveMembership::default()))
+                .unwrap_or_else(|| Ok(StoredMembership::default()))
         })
     }
 
-    fn set_last_membership(&self, membership: EffectiveMembership<RocksNodeId, BasicNode>) -> StorageResult<()> {
+    fn set_last_membership(&self, membership: StoredMembership<RocksNodeId, BasicNode>) -> StorageResult<()> {
         self.db
             .put_cf(
                 self.cf_sm_meta(),
@@ -500,8 +500,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<RocksNodeId>>, EffectiveMembership<RocksNodeId, BasicNode>), StorageError<RocksNodeId>>
-    {
+    ) -> Result<(Option<LogId<RocksNodeId>>, StoredMembership<RocksNodeId, BasicNode>), StorageError<RocksNodeId>> {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.get_last_applied_log()?,
@@ -534,7 +533,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
-                    sm.set_last_membership(EffectiveMembership::new(Some(entry.log_id), mem.clone()))?;
+                    sm.set_last_membership(StoredMembership::new(Some(entry.log_id), mem.clone()))?;
                     res.push(RocksResponse { value: None })
                 }
             };

@@ -16,7 +16,6 @@ use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
 use openraft::BasicNode;
-use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorSubject;
@@ -28,6 +27,7 @@ use openraft::RaftStorage;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
+use openraft::StoredMembership;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
@@ -83,7 +83,7 @@ pub struct SerializableExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
     // TODO: it should not be Option.
-    pub last_membership: EffectiveMembership<ExampleNodeId, BasicNode>,
+    pub last_membership: StoredMembership<ExampleNodeId, BasicNode>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -157,18 +157,15 @@ fn ct_err<E: Error + 'static>(e: E) -> sled::transaction::ConflictableTransactio
 }
 
 impl ExampleStateMachine {
-    fn get_last_membership(&self) -> StorageResult<EffectiveMembership<ExampleNodeId, BasicNode>> {
+    fn get_last_membership(&self) -> StorageResult<StoredMembership<ExampleNodeId, BasicNode>> {
         let state_machine = state_machine(&self.db);
         state_machine.get(b"last_membership").map_err(m_r_err).and_then(|value| {
             value
                 .map(|v| serde_json::from_slice(&v).map_err(sm_r_err))
-                .unwrap_or_else(|| Ok(EffectiveMembership::default()))
+                .unwrap_or_else(|| Ok(StoredMembership::default()))
         })
     }
-    async fn set_last_membership(
-        &self,
-        membership: EffectiveMembership<ExampleNodeId, BasicNode>,
-    ) -> StorageResult<()> {
+    async fn set_last_membership(&self, membership: StoredMembership<ExampleNodeId, BasicNode>) -> StorageResult<()> {
         let value = serde_json::to_vec(&membership).map_err(sm_w_err)?;
         let state_machine = state_machine(&self.db);
         state_machine.insert(b"last_membership", value).map_err(m_w_err)?;
@@ -178,7 +175,7 @@ impl ExampleStateMachine {
     fn set_last_membership_tx(
         &self,
         tx_state_machine: &sled::transaction::TransactionalTree,
-        membership: EffectiveMembership<ExampleNodeId, BasicNode>,
+        membership: StoredMembership<ExampleNodeId, BasicNode>,
     ) -> Result<(), sled::transaction::ConflictableTransactionError<AnyError>> {
         let value = serde_json::to_vec(&membership).map_err(ct_err)?;
         tx_state_machine.insert(b"last_membership", value).map_err(ct_err)?;
@@ -554,13 +551,8 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<
-        (
-            Option<LogId<ExampleNodeId>>,
-            EffectiveMembership<ExampleNodeId, BasicNode>,
-        ),
-        StorageError<ExampleNodeId>,
-    > {
+    ) -> Result<(Option<LogId<ExampleNodeId>>, StoredMembership<ExampleNodeId, BasicNode>), StorageError<ExampleNodeId>>
+    {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.get_last_applied_log()?,
@@ -595,7 +587,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
                         }
                     },
                     EntryPayload::Membership(ref mem) => {
-                        let membership = EffectiveMembership::new(Some(entry.log_id), mem.clone());
+                        let membership = StoredMembership::new(Some(entry.log_id), mem.clone());
                         sm.set_last_membership_tx(tx_state_machine, membership)?;
                         res.push(ExampleResponse { value: None })
                     }

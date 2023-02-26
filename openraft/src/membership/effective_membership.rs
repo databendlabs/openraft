@@ -12,6 +12,7 @@ use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
 use crate::NodeId;
+use crate::StoredMembership;
 
 /// The currently active membership config.
 ///
@@ -21,20 +22,14 @@ use crate::NodeId;
 ///
 /// An active config is just the last seen config in raft spec.
 #[derive(Clone, Default, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct EffectiveMembership<NID, N>
 where
     N: Node,
     NID: NodeId,
 {
-    /// The id of the log that applies this membership config
-    pub log_id: Option<LogId<NID>>,
-
-    pub membership: Membership<NID, N>,
+    stored_membership: Arc<StoredMembership<NID, N>>,
 
     /// The quorum set built from `membership`.
-    // #[serde(skip_serialize)]
-    // #[serde(deserialize_wit="")]
     quorum_set: Joint<NID, Vec<NID>, Vec<Vec<NID>>>,
 
     /// Cache of union of all members
@@ -48,9 +43,9 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EffectiveMembership")
-            .field("log_id", &self.log_id)
-            .field("membership", &self.membership)
-            .field("all_members", &self.voter_ids)
+            .field("log_id", self.log_id())
+            .field("membership", self.membership())
+            .field("voter_ids", &self.voter_ids)
             .finish()
     }
 }
@@ -61,7 +56,7 @@ where
     NID: NodeId,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.log_id == other.log_id && self.membership == other.membership && self.voter_ids == other.voter_ids
+        self.stored_membership == other.stored_membership && self.voter_ids == other.voter_ids
     }
 }
 
@@ -109,11 +104,26 @@ where
         let quorum_set = Joint::from(joint);
 
         Self {
-            log_id,
-            membership,
+            stored_membership: Arc::new(StoredMembership::new(log_id, membership)),
             quorum_set,
             voter_ids,
         }
+    }
+
+    pub(crate) fn new_from_stored_membership(stored: StoredMembership<NID, N>) -> Self {
+        Self::new(*stored.log_id(), stored.membership().clone())
+    }
+
+    pub(crate) fn stored_membership(&self) -> &Arc<StoredMembership<NID, N>> {
+        &self.stored_membership
+    }
+
+    pub fn log_id(&self) -> &Option<LogId<NID>> {
+        self.stored_membership.log_id()
+    }
+
+    pub fn membership(&self) -> &Membership<NID, N> {
+        self.stored_membership.membership()
     }
 }
 
@@ -136,7 +146,7 @@ where
 
     #[allow(dead_code)]
     pub(crate) fn is_voter(&self, nid: &NID) -> bool {
-        self.membership.is_voter(nid)
+        self.membership().is_voter(nid)
     }
 
     /// Returns an Iterator of all voter node ids. Learners are not included.
@@ -147,22 +157,22 @@ where
     /// Returns an Iterator of all learner node ids. Voters are not included.
     #[allow(dead_code)]
     pub(crate) fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
-        self.membership.learner_ids()
+        self.membership().learner_ids()
     }
 
     /// Returns if a voter or learner exists in this membership.
     pub(crate) fn contains(&self, id: &NID) -> bool {
-        self.membership.contains(id)
+        self.membership().contains(id)
     }
 
     /// Get a the node(either voter or learner) by node id.
     pub fn get_node(&self, node_id: &NID) -> Option<&N> {
-        self.membership.get_node(node_id)
+        self.membership().get_node(node_id)
     }
 
     /// Returns an Iterator of all nodes(voters and learners).
     pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
-        self.membership.nodes()
+        self.membership().nodes()
     }
 
     /// Returns reference to the joint config.
@@ -180,7 +190,11 @@ where
     NID: NodeId,
 {
     fn summary(&self) -> String {
-        format!("{{log_id:{:?} membership:{}}}", self.log_id, self.membership.summary())
+        format!(
+            "{{log_id:{:?} membership:{}}}",
+            self.log_id(),
+            self.membership().summary()
+        )
     }
 }
 

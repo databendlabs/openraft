@@ -95,15 +95,15 @@ async fn remove_leader() -> Result<()> {
     tracing::info!("--- check state of the old leader");
     {
         let metrics = router.get_metrics(&0)?;
-        let cfg = &metrics.membership_config.membership;
+        let cfg = &metrics.membership_config.membership();
 
         assert!(metrics.state != ServerState::Leader);
         assert_eq!(metrics.current_term, 1);
         assert_eq!(metrics.last_log_index, Some(8));
         assert_eq!(metrics.last_applied, Some(LogId::new(CommittedLeaderId::new(1, 0), 8)));
-        assert_eq!(metrics.membership_config.get_joint_config().clone(), vec![vec![
-            1, 2, 3
-        ]]);
+        assert_eq!(metrics.membership_config.membership().get_joint_config().clone(), vec![
+            btreeset![1, 2, 3]
+        ]);
         assert!(!cfg.is_in_joint_consensus());
     }
 

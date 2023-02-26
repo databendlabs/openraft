@@ -52,10 +52,10 @@ mod tests {
 
     use crate::engine::Engine;
     use crate::testing::log_id;
-    use crate::EffectiveMembership;
     use crate::Membership;
     use crate::MetricsChangeFlags;
     use crate::SnapshotMeta;
+    use crate::StoredMembership;
 
     fn m12() -> Membership<u64, ()> {
         Membership::<u64, ()>::new(vec![btreeset! {1,2}], None)
@@ -71,7 +71,7 @@ mod tests {
 
         eng.state.snapshot_meta = SnapshotMeta {
             last_log_id: Some(log_id(2, 2)),
-            last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+            last_membership: StoredMembership::new(Some(log_id(1, 1)), m12()),
             snapshot_id: "1-2-3-4".to_string(),
         };
         eng
@@ -84,7 +84,7 @@ mod tests {
 
         let got = eng.snapshot_handler().update_snapshot(SnapshotMeta {
             last_log_id: Some(log_id(2, 2)),
-            last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m1234()),
+            last_membership: StoredMembership::new(Some(log_id(1, 1)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         });
 
@@ -93,7 +93,7 @@ mod tests {
         assert_eq!(
             SnapshotMeta {
                 last_log_id: Some(log_id(2, 2)),
-                last_membership: EffectiveMembership::new(Some(log_id(1, 1)), m12()),
+                last_membership: StoredMembership::new(Some(log_id(1, 1)), m12()),
                 snapshot_id: "1-2-3-4".to_string(),
             },
             eng.state.snapshot_meta
@@ -120,7 +120,7 @@ mod tests {
 
         let got = eng.snapshot_handler().update_snapshot(SnapshotMeta {
             last_log_id: Some(log_id(2, 3)),
-            last_membership: EffectiveMembership::new(Some(log_id(2, 2)), m1234()),
+            last_membership: StoredMembership::new(Some(log_id(2, 2)), m1234()),
             snapshot_id: "1-2-3-4".to_string(),
         });
 
@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(
             SnapshotMeta {
                 last_log_id: Some(log_id(2, 3)),
-                last_membership: EffectiveMembership::new(Some(log_id(2, 2)), m1234()),
+                last_membership: StoredMembership::new(Some(log_id(2, 2)), m1234()),
                 snapshot_id: "1-2-3-4".to_string(),
             },
             eng.state.snapshot_meta

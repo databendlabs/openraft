@@ -10,7 +10,6 @@ use openraft::storage::LogState;
 use openraft::storage::Snapshot;
 use openraft::AnyError;
 use openraft::BasicNode;
-use openraft::EffectiveMembership;
 use openraft::Entry;
 use openraft::EntryPayload;
 use openraft::ErrorSubject;
@@ -22,6 +21,7 @@ use openraft::RaftStorage;
 use openraft::SnapshotMeta;
 use openraft::StorageError;
 use openraft::StorageIOError;
+use openraft::StoredMembership;
 use openraft::Vote;
 use serde::Deserialize;
 use serde::Serialize;
@@ -73,7 +73,7 @@ pub struct ExampleStateMachine {
     pub last_applied_log: Option<LogId<ExampleNodeId>>,
 
     // TODO: it should not be Option.
-    pub last_membership: EffectiveMembership<ExampleNodeId, BasicNode>,
+    pub last_membership: StoredMembership<ExampleNodeId, BasicNode>,
 
     /// Application data.
     pub data: BTreeMap<String, String>,
@@ -250,13 +250,8 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
 
     async fn last_applied_state(
         &mut self,
-    ) -> Result<
-        (
-            Option<LogId<ExampleNodeId>>,
-            EffectiveMembership<ExampleNodeId, BasicNode>,
-        ),
-        StorageError<ExampleNodeId>,
-    > {
+    ) -> Result<(Option<LogId<ExampleNodeId>>, StoredMembership<ExampleNodeId, BasicNode>), StorageError<ExampleNodeId>>
+    {
         let state_machine = self.state_machine.read().await;
         Ok((state_machine.last_applied_log, state_machine.last_membership.clone()))
     }
@@ -286,7 +281,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
                     }
                 },
                 EntryPayload::Membership(ref mem) => {
-                    sm.last_membership = EffectiveMembership::new(Some(entry.log_id), mem.clone());
+                    sm.last_membership = StoredMembership::new(Some(entry.log_id), mem.clone());
                     res.push(ExampleResponse { value: None })
                 }
             };

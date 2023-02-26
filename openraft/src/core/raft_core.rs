@@ -345,7 +345,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // request failures.
 
         let _ = tx.send(Err(QuorumNotEnough {
-            cluster: self.engine.state.membership_state.effective().membership.summary(),
+            cluster: self.engine.state.membership_state.effective().membership().summary(),
             got: granted,
         }
         .into()));
@@ -472,7 +472,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             // --- cluster ---
             state: self.engine.state.server_state,
             current_leader: self.current_leader(),
-            membership_config: self.engine.state.membership_state.effective().clone(),
+            membership_config: self.engine.state.membership_state.effective().stored_membership().clone(),
 
             // --- replication ---
             replication,
@@ -773,10 +773,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // Safe unwrap(): target must be in membership
         let target_node = self.engine.state.membership_state.effective().get_node(&target).unwrap();
 
-        let membership_log_id = self.engine.state.membership_state.effective().log_id;
+        let membership_log_id = self.engine.state.membership_state.effective().log_id();
         let network = self.network.new_client(target, target_node).await;
 
-        let session_id = ReplicationSessionId::new(*self.engine.state.get_vote(), membership_log_id);
+        let session_id = ReplicationSessionId::new(*self.engine.state.get_vote(), *membership_log_id);
 
         ReplicationCore::<C, N, S>::spawn(
             target,
@@ -1234,11 +1234,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return false;
         }
 
-        if session_id.membership_log_id != self.engine.state.membership_state.effective().log_id {
+        if &session_id.membership_log_id != self.engine.state.membership_state.effective().log_id() {
             tracing::warn!(
                 "membership_log_id changed: msg sent by: {}; curr: {}; ignore when ({})",
                 session_id.membership_log_id.summary(),
-                self.engine.state.membership_state.effective().log_id.summary(),
+                self.engine.state.membership_state.effective().log_id().summary(),
                 msg
             );
             return false;

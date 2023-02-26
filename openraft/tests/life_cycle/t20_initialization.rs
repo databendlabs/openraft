@@ -16,6 +16,7 @@ use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::ServerState;
 use openraft::StorageHelper;
+use openraft::StoredMembership;
 use openraft::Vote;
 use tokio::sync::oneshot;
 
@@ -126,7 +127,7 @@ async fn initialization() -> anyhow::Result<()> {
 
         let sm_mem = sto.last_applied_state().await?.1;
         assert_eq!(
-            EffectiveMembership::new(
+            StoredMembership::new(
                 Some(LogId::new(CommittedLeaderId::new(0, 0), 0)),
                 Membership::new(vec![btreeset! {0,1,2}], None)
             ),

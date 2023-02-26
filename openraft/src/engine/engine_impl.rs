@@ -433,7 +433,7 @@ where
         );
 
         #[allow(clippy::collapsible_if)]
-        if em.log_id.as_ref() <= self.state.committed() {
+        if em.log_id().as_ref() <= self.state.committed() {
             if !em.is_voter(&self.config.id) && self.state.is_leading(&self.config.id) {
                 tracing::debug!("leader {} is stepping down", self.config.id);
                 self.vote_handler().become_following();

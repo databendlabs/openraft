@@ -537,12 +537,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         node_id: C::NodeId,
         membership_log_id: Option<LogId<C::NodeId>>,
     ) -> Result<Option<LogId<C::NodeId>>, ()> {
-        if metrics.membership_config.log_id < membership_log_id {
+        if metrics.membership_config.log_id() < &membership_log_id {
             // Waiting for the latest metrics to report.
             return Err(());
         }
 
-        if !metrics.membership_config.membership.contains(&node_id) {
+        if !metrics.membership_config.membership().contains(&node_id) {
             // This learner has been removed.
             return Ok(None);
         }

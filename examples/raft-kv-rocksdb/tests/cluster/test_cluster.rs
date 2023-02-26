@@ -120,7 +120,7 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== metrics after add-learner");
     let x = leader.metrics().await?;
 
-    assert_eq!(&vec![vec![1]], x.membership_config.get_joint_config());
+    assert_eq!(&vec![btreeset![1]], x.membership_config.membership().get_joint_config());
 
     let nodes_in_cluster =
         x.membership_config.nodes().map(|(nid, node)| (*nid, node.clone())).collect::<BTreeMap<_, _>>();
@@ -155,7 +155,10 @@ async fn test_cluster() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== metrics after change-member");
     let x = leader.metrics().await?;
-    assert_eq!(&vec![vec![1, 2, 3]], x.membership_config.get_joint_config());
+    assert_eq!(
+        &vec![btreeset![1, 2, 3]],
+        x.membership_config.membership().get_joint_config()
+    );
 
     // --- Try to write some application data through the leader.
 

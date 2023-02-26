@@ -6,7 +6,6 @@ use tokio::sync::watch;
 use tokio::time::sleep;
 
 use crate::core::ServerState;
-use crate::membership::EffectiveMembership;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
 use crate::raft_types::LogIdOptionExt;
@@ -16,6 +15,7 @@ use crate::Membership;
 use crate::Node;
 use crate::NodeId;
 use crate::RaftMetrics;
+use crate::StoredMembership;
 
 /// Test wait for different state changes
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
@@ -88,7 +88,7 @@ async fn test_wait() -> anyhow::Result<()> {
         let h = tokio::spawn(async move {
             sleep(Duration::from_millis(10)).await;
             let mut update = init.clone();
-            update.membership_config = Arc::new(EffectiveMembership::new(
+            update.membership_config = Arc::new(StoredMembership::new(
                 None,
                 Membership::new(vec![btreeset! {1,2}], None),
             ));
@@ -100,7 +100,7 @@ async fn test_wait() -> anyhow::Result<()> {
 
         assert_eq!(
             btreeset![1, 2],
-            got.membership_config.membership.get_joint_config().get(0).unwrap().clone()
+            got.membership_config.membership().get_joint_config().get(0).unwrap().clone()
         );
     }
 
@@ -186,10 +186,7 @@ where
         last_log_index: None,
         last_applied: None,
         current_leader: None,
-        membership_config: Arc::new(EffectiveMembership::new(
-            None,
-            Membership::new(vec![btreeset! {}], None),
-        )),
+        membership_config: Arc::new(StoredMembership::new(None, Membership::new(vec![btreeset! {}], None))),
 
         snapshot: None,
         replication: None,

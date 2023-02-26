@@ -37,7 +37,7 @@ where
     ) -> Result<Membership<NID, N>, ChangeMembershipError<NID>> {
         self.ensure_committed()?;
 
-        let new_membership = self.state.effective().membership.clone().change(change, retain)?;
+        let new_membership = self.state.effective().membership().clone().change(change, retain)?;
         Ok(new_membership)
     }
 
@@ -49,13 +49,13 @@ where
         let effective = self.state.effective();
         let committed = self.state.committed();
 
-        if effective.log_id == committed.log_id {
+        if effective.log_id() == committed.log_id() {
             // Ok: last membership(effective) is committed
             Ok(())
         } else {
             Err(InProgress {
-                committed: committed.log_id,
-                membership_log_id: effective.log_id,
+                committed: *committed.log_id(),
+                membership_log_id: *effective.log_id(),
             })
         }
     }
