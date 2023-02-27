@@ -10,9 +10,7 @@ use crate::NodeId;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct Vote<NID: NodeId> {
-    // Flatten it to serialized it into the same structure as before.
     /// The id of the node that tries to become the leader.
-    #[cfg_attr(feature = "serde", serde(flatten))]
     pub leader_id: LeaderId<NID>,
 
     pub committed: bool,
@@ -116,7 +114,7 @@ mod tests {
         fn test_vote_serde() -> anyhow::Result<()> {
             let v = Vote::new(1, 2);
             let s = serde_json::to_string(&v)?;
-            assert_eq!(r#"{"term":1,"node_id":2,"committed":false}"#, s);
+            assert_eq!(r#"{"leader_id":{"term":1,"node_id":2},"committed":false}"#, s);
 
             let v2: Vote<u64> = serde_json::from_str(&s)?;
             assert_eq!(v, v2);
@@ -162,7 +160,7 @@ mod tests {
         fn test_vote_serde() -> anyhow::Result<()> {
             let v = Vote::new(1, 2);
             let s = serde_json::to_string(&v)?;
-            assert_eq!(r#"{"term":1,"voted_for":2,"committed":false}"#, s);
+            assert_eq!(r#"{"leader_id":{"term":1,"voted_for":2},"committed":false}"#, s);
 
             let v2: Vote<u64> = serde_json::from_str(&s)?;
             assert_eq!(v, v2);

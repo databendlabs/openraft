@@ -745,7 +745,7 @@ mod tests {
             payload: or07::EntryPayload::<u64>::Blank,
         };
         let want = crate::Entry {
-            log_id: crate::LogId::new(crate::CommittedLeaderId::new(10, 3), 5),
+            log_id: crate::LogId::new(crate::CommittedLeaderId::new(10, 0), 5),
             payload: crate::EntryPayload::<TestingConfig>::Blank,
         };
 
@@ -769,7 +769,7 @@ mod tests {
             payload: or07::EntryPayload::<u64>::Normal(3),
         };
         let want = crate::Entry {
-            log_id: crate::LogId::new(crate::CommittedLeaderId::new(10, 3), 5),
+            log_id: crate::LogId::new(crate::CommittedLeaderId::new(10, 0), 5),
             payload: crate::EntryPayload::<TestingConfig>::Normal(3),
         };
 
@@ -800,7 +800,7 @@ mod tests {
             payload: or07::EntryPayload::<u64>::Membership(m7()),
         };
         let want = crate::Entry {
-            log_id: crate::LogId::new(crate::CommittedLeaderId::new(10, 3), 5),
+            log_id: crate::LogId::new(crate::CommittedLeaderId::new(10, 0), 5),
             payload: crate::EntryPayload::<TestingConfig>::Membership(m8()),
         };
 
