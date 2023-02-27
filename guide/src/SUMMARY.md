@@ -28,3 +28,4 @@
 
 - [Upgrade Tips](./upgrade-tips.md)
     - [Upgrade from 0.6 to 0.7](./upgrade-v06-v07.md)
+    - [Upgrade from 0.7 to 0.8](./upgrade-v07-v08.md)

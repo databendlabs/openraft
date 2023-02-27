@@ -77,7 +77,7 @@ serde = ["dep:serde"]
 # This feature is disabled by default.
 single-term-leader = []
 
-# Provide compatbile types: TODO
+# Provide basic compatbile types
 compat = []
 
 # Turn on to let openraft provide addtional data types to build v0.7 compatible RaftStorage.
