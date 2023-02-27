@@ -7,7 +7,6 @@
 //!
 //! In v0.7 compatible mode, openraft enables feature flags:
 //! - `serde`: it adds `serde` implementation to types such as `LogId`.
-//! - `single-term-leader`: in every term at most one leader can be elected.
 //! Since generic type `NodeId` and `Node` are introduced in v0.8, the v0.7 compatible mode only
 //! works when `NodeId=u64` and `Node=EmptyNode`.
 //!
