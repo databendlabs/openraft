@@ -116,7 +116,18 @@ def list_tags():
 def changes(frm, to):
     # subject, author time, author name, email.
 
-    commits = cmd(["git", "log", '--format=%H', '--reverse', frm + '..' + to])
+    git_cmd = ["git", 'merge-base', frm, to]
+    common_base = cmd(git_cmd).strip()
+    print("--- Find common base {common_base} of {frm} {to} with: {git_cmd}".format(
+            common_base=common_base,
+            frm=frm,
+            to=to,
+            git_cmd=git_cmd))
+
+    git_cmd = ["git", "log", '--format=%H', '--reverse', common_base + '..' + to]
+    print("--- List commits with: {git_cmd}".format(git_cmd=' '.join(git_cmd)))
+
+    commits = cmd(git_cmd)
     commits = commits.splitlines()
 
     rst = []
