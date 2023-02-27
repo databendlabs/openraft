@@ -11,3 +11,6 @@ By default openraft enables no features.
     This is the standard raft policy, which increases election confliction rate
     but reduce `LogId`(`(term, node_id, index)` to `(term, index)`) size.
     Read more about how it is implemented in [`vote`](./vote.md)
+
+- `compat-07`: provides additional data types to build v0.7 compatible RaftStorage.
+   compat-07 = ["single-term-leader", "serde", "dep:or07"]

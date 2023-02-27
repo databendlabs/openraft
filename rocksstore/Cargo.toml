@@ -1,5 +1,5 @@
 [package]
-name = "rocksstore"
+name = "openraft-rocksstore"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,5 +16,5 @@ async-std = { version = "1.12.0", features = ["attributes", "tokio1"] }
 tracing = "0.1.29"
 
 [dev-dependencies]
-tempdir = "*"
-async-trait = "*"
+async-trait = { version = "0.1.36" }
+tempdir = { version = "0.3.7" }

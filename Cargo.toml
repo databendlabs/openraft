@@ -31,6 +31,7 @@ pretty_assertions = "1.0.0"
 rand = "0.8"
 serde = { version="1.0.114", features=["derive", "rc"]}
 serde_json = "1.0.57"
+tempdir = "0.3.7"
 thiserror = "1.0.33"
 tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1.29"
@@ -38,7 +39,11 @@ tracing-appender = "0.2.0"
 tracing-futures = "0.2.4"
 tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
 
-
 [workspace]
-members = ["openraft", "memstore", "rocksstore", "sledstore"]
+members = [
+    "openraft",
+    "memstore",
+    "rocksstore",
+    "rocksstore-compat07",
+    "sledstore"]
 exclude = ["examples/raft-kv-memstore", "examples/raft-kv-rocksdb"]
