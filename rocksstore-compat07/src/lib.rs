@@ -14,7 +14,7 @@
 //!
 //! [`RaftStorage`]: openraft::RaftStorage
 //! [`openraft::compat`]: openraft::compat
-//! [`compat07::LogId`]: openraft::compat07::LogId
+//! [`compat07::LogId`]: openraft::compat::compat07::LogId
 
 #[cfg(test)] mod compatibility_test;
 #[cfg(test)] mod test;
