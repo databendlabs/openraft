@@ -8,9 +8,5 @@ vendor
 # File Ignores ###############################################################
 **/*.rs.bk
 Cargo.lock
-*log
-perf.data*
-nohup*
-*svg
 .DS_Store
 .vscode
