@@ -13,4 +13,8 @@ By default openraft enables no features.
     Read more about how it is implemented in [`vote`](./vote.md)
 
 - `compat-07`: provides additional data types to build v0.7 compatible RaftStorage.
-   compat-07 = ["single-term-leader", "serde", "dep:or07"]
+
+   ```
+   compat-07 = ["compat", "single-term-leader", "serde", "dep:or07", "compat-07-testing"]
+   compat-07-testing = ["dep:tempdir", "anyhow", "dep:serde_json"]
+   ```

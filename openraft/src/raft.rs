@@ -473,19 +473,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// - Add a node as learner into the cluster.
     /// - Setup replication from leader to it.
     ///
-    /// If blocking is true, this function blocks until the leader believes the logs on the new node
-    /// is up to date, i.e., ready to join the cluster, as a voter, by calling
-    /// `change_membership`. When finished, it returns the last log id on the new node, in a
-    /// `RaftResponse::LogId`.
+    /// If `blocking` is `true`, this function blocks until the leader believes the logs on the new
+    /// node is up to date, i.e., ready to join the cluster, as a voter, by calling
+    /// `change_membership`.
     ///
-    /// If blocking is false, this function returns at once as successfully setting up the
+    /// If blocking is `false`, this function returns at once as successfully setting up the
     /// replication.
     ///
-    /// If the node to add is already a voter or learner, it returns `RaftResponse::NoChange` at
-    /// once.
+    /// If the node to add is already a voter or learner, it will still re-add it.
     ///
-    /// The caller can attach additional info `node` to this node id.
-    /// A `node` can be used to store the network address of a node. Thus an application does not
+    /// A `node` stores the network address of a node. Thus an application does not
     /// need another store for mapping node-id to ip-addr when implementing the RaftNetwork.
     #[tracing::instrument(level = "debug", skip(self, id), fields(target=display(id)))]
     pub async fn add_learner(
@@ -586,20 +583,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     /// - It proposes a **joint** config.
     /// - When the **joint** config is committed, it proposes a uniform config.
     ///
-    /// If `allow_lagging` is true, it will always propose the new membership and wait until
-    /// committed. Otherwise it returns error `ChangeMembershipError::LearnerIsLagging` if there
-    /// is a lagging learner.
-    ///
-    /// If `turn_to_learner` is true, then all the members which not exists in the new membership,
+    /// If `retain` is true, then all the members which not exists in the new membership,
     /// will be turned into learners, otherwise will be removed.
     ///
-    /// Example of `turn_to_learner` usage:
-    /// If the original membership is {"members":{1,2,3}, "learners":{}}, and call
-    /// `change_membership` with `node_list` {3,4,5}, then:
-    ///    - If `turn_to_learner` is true, after commit the new membership is {"members":{3,4,5},
+    /// Example of `retain` usage:
+    /// If the original membership is {"voter":{1,2,3}, "learners":{}}, and call
+    /// `change_membership` with `voters` {3,4,5}, then:
+    ///    - If `retain` is `true`, the committed new membership is {"voters":{3,4,5},
     ///      "learners":{1,2}}.
-    ///    - Otherwise if `turn_to_learner` is false, then the new membership is {"members":{3,4,5},
-    ///      "learners":{}}, in which the members not exists in the new membership just be removed
+    ///    - Otherwise if `retain` is `false`, then the new membership is {"voters":{3,4,5},
+    ///      "learners":{}}, in which the voters not exists in the new membership just be removed
     ///      from the cluster.
     ///
     /// If it loses leadership or crashed before committing the second **uniform** config log, the
@@ -608,13 +601,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     pub async fn change_membership(
         &self,
         members: impl Into<ChangeMembers<C::NodeId, C::Node>>,
-        turn_to_learner: bool,
+        retain: bool,
     ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
         let changes: ChangeMembers<C::NodeId, C::Node> = members.into();
 
         tracing::info!(
             changes = debug(&changes),
-            turn_to_learner = display(turn_to_learner),
+            retain = display(retain),
             "change_membership: start to commit joint config"
         );
 
@@ -625,7 +618,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             .call_core(
                 RaftMsg::ChangeMembership {
                     changes: changes.clone(),
-                    retain: turn_to_learner,
+                    retain,
                     tx,
                 },
                 rx,
@@ -644,16 +637,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         tracing::debug!("the second step is to change to uniform config: {:?}", changes);
 
         let (tx, rx) = oneshot::channel();
-        let res = self
-            .call_core(
-                RaftMsg::ChangeMembership {
-                    changes,
-                    retain: turn_to_learner,
-                    tx,
-                },
-                rx,
-            )
-            .await?;
+        let res = self.call_core(RaftMsg::ChangeMembership { changes, retain, tx }, rx).await?;
 
         tracing::info!("res of second step of do_change_membership: {}", res.summary());
 
@@ -806,6 +790,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
     }
 
     /// Shutdown this Raft node.
+    ///
+    /// It sends a shutdown signal and waits until `RaftCore` returns.
     pub async fn shutdown(&self) -> Result<(), JoinError> {
         if let Some(tx) = self.inner.tx_shutdown.lock().await.take() {
             // A failure to send means the RaftCore is already shutdown. Continue to check the task
@@ -991,13 +977,10 @@ where
             }
             RaftMsg::ChangeMembership {
                 changes: members,
-                retain: turn_to_learner,
+                retain,
                 ..
             } => {
-                format!(
-                    "ChangeMembership: members: {:?}, turn_to_learner: {}",
-                    members, turn_to_learner,
-                )
+                format!("ChangeMembership: members: {:?}, retain: {}", members, retain,)
             }
             RaftMsg::ExternalRequest { .. } => "External Request".to_string(),
             RaftMsg::ExternalCommand { cmd } => {

@@ -1,3 +1,7 @@
+//! This mod provides supporting utilities for compatibility testing.
+//!
+//! An application that tries to be compatible with an older format data must ensure its `RaftStorage` implementation to pass test suite, just like [rocksstore-compat07/compatibility_test.rs](https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs) does
+
 use std::path::Path;
 
 /// Build a latest `RaftStorage` implementation for compatibility test.

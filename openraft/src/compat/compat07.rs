@@ -1,5 +1,73 @@
 //! This mod provides types that can be deserialized from data written by either v0.7 or
 //! the latest openraft.
+//!
+//! This mod is enabled by feature flag `compat-07`. See: [feature-flag-compat-07](https://datafuselabs.github.io/openraft/feature-flags)
+//! Ap application does not needs to enable this feature if it chooses to manually upgrade v0.7
+//! on-disk data.
+//!
+//! In v0.7 compatible mode, openraft enables feature flags:
+//! - `serde`: it adds `serde` implementation to types such as `LogId`.
+//! - `single-term-leader`: in every term at most one leader can be elected.
+//! Since generic type `NodeId` and `Node` are introduced in v0.8, the v0.7 compatible mode only
+//! works when `NodeId=u64` and `Node=EmptyNode`.
+//!
+//! The compatible mode still need an application to upgrade codes, but it does not require
+//! any manual upgrade to the on-disk data.
+//!
+//! An application that tries to upgrade from v0.7 can use types in this mod to replace the
+//! corresponding ones in a `RaftStorage` implementation, so that v0.7 data and v0.8 data can both
+//! be read. [rocksstore-compat07](https://github.com/datafuselabs/openraft/tree/main/rocksstore-compat07) is an example using these type to implement an upgraded RaftStorage
+//!
+//! This mod also provides a testing suite [`testing::Suite07`] to ensure old data will be correctly
+//! read. An application should ensure its storage to pass test suite like [rocksstore-compat07/compatibility_test.rs](https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs) does:
+//! ```ignore
+//! use openraft::compat;
+//!
+//! struct Builder07;
+//! struct BuilderLatest;
+//!
+//! #[async_trait::async_trait]
+//! impl compat::testing::StoreBuilder07 for Builder07 {
+//!     type D = rocksstore07::RocksRequest;
+//!     type R = rocksstore07::RocksResponse;
+//!     type S = Arc<rocksstore07::RocksStore>;
+//!
+//!     async fn build(&self, p: &Path) -> Arc<rocksstore07::RocksStore> {
+//!         rocksstore07::RocksStore::new(p).await
+//!     }
+//!
+//!     fn sample_app_data(&self) -> Self::D {
+//!         rocksstore07::RocksRequest::Set { key: s("foo"), value: s("bar") }
+//!     }
+//! }
+//!
+//! #[async_trait::async_trait]
+//! impl compat::testing::StoreBuilder for BuilderLatest {
+//!     type C = crate::Config;
+//!     type S = Arc<crate::RocksStore>;
+//!
+//!     async fn build(&self, p: &Path) -> Arc<crate::RocksStore> {
+//!         crate::RocksStore::new(p).await
+//!     }
+//!
+//!     fn sample_app_data(&self) -> <<Self as compat::testing::StoreBuilder>::C as openraft::RaftTypeConfig>::D {
+//!         crate::RocksRequest::Set { key: s("foo"), value: s("bar") }
+//!     }
+//! }
+//!
+//! #[tokio::test]
+//! async fn test_compatibility_with_rocksstore_07() -> anyhow::Result<()> {
+//!     compat::testing::Suite07 {
+//!         builder07: Builder07,
+//!         builder_latest: BuilderLatest,
+//!     }.test_all().await?;
+//!     Ok(())
+//! }
+//!
+//! fn s(v: impl ToString) -> String {
+//!     v.to_string()
+//! }
+//! ```
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -72,10 +140,34 @@ impl Upgrade<crate::SnapshotMeta<u64, crate::EmptyNode>> for or07::SnapshotMeta 
     }
 }
 
+/// v0.7 compatible LogId.
+///
+/// To load from either v0.7 or the latest format data and upgrade it to the latest type:
+/// ```ignore
+/// let x:openraft::LogId = serde_json::from_slice::<compat07::LogId>(&serialized_bytes)?.upgrade()
+/// ```
 pub type LogId = Compat<or07::LogId, crate::LogId<u64>>;
+
+/// v0.7 compatible Vote(in v0.7 the corresponding type is `HardState`).
+///
+/// To load from either v0.7 or the latest format data and upgrade it to latest type:
+/// ```ignore
+/// let x: openraft::Vote = serde_json::from_slice::<compat07::Vote>(&serialized_bytes)?.upgrade()
+/// ```
 pub type Vote = Compat<or07::HardState, crate::Vote<u64>>;
+
+/// v0.7 compatible SnapshotMeta.
+///
+/// SnapshotMeta can not be upgraded, an old snapshot should be discarded and a new one should be
+/// re-built.
 pub type SnapshotMeta = Compat<or07::SnapshotMeta, crate::SnapshotMeta<u64, crate::EmptyNode>>;
 
+/// v0.7 compatible Membership.
+///
+/// To load from either v0.7 or the latest format data and upgrade it to the latest type:
+/// ```ignore
+/// let x:openraft::Membership = serde_json::from_slice::<compat07::Membership>(&serialized_bytes)?.upgrade()
+/// ```
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Membership {
     pub configs: Vec<BTreeSet<u64>>,
@@ -93,6 +185,12 @@ impl Upgrade<crate::Membership<u64, crate::EmptyNode>> for Membership {
     }
 }
 
+/// v0.7 compatible StoredMembership.
+///
+/// To load from either v0.7 or the latest format data and upgrade it to the latest type:
+/// ```ignore
+/// let x:openraft::StoredMembership = serde_json::from_slice::<compat07::StoredMembership>(&serialized_bytes)?.upgrade()
+/// ```
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct StoredMembership {
     pub log_id: Option<LogId>,
@@ -109,6 +207,12 @@ impl Upgrade<crate::StoredMembership<u64, crate::EmptyNode>> for StoredMembershi
     }
 }
 
+/// v0.7 compatible EntryPayload.
+///
+/// To load from either v0.7 or the latest format data and upgrade it to the latest type:
+/// ```ignore
+/// let x:openraft::EntryPayload = serde_json::from_slice::<compat07::EntryPayload>(&serialized_bytes)?.upgrade()
+/// ```
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum EntryPayload<C: crate::RaftTypeConfig> {
     Blank,
@@ -128,6 +232,12 @@ impl<C: crate::RaftTypeConfig<NodeId = u64, Node = crate::EmptyNode>> Upgrade<cr
     }
 }
 
+/// v0.7 compatible Entry.
+///
+/// To load from either v0.7 or the latest format data and upgrade it to the latest type:
+/// ```ignore
+/// let x:openraft::Entry = serde_json::from_slice::<compat07::Entry>(&serialized_bytes)?.upgrade()
+/// ```
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(bound = "")]
 pub struct Entry<C: crate::RaftTypeConfig> {
