@@ -811,6 +811,10 @@ This is the standard raft policy, which increases election confliction rate
 but reduce <code>LogId</code>(<code>(term, node_id, index)</code> to <code>(term, index)</code>) size.
 Read more about how it is implemented in <a href="./vote.html"><code>vote</code></a></p>
 </li>
+<li>
+<p><code>compat-07</code>: provides additional data types to build v0.7 compatible RaftStorage.
+compat-07 = [&quot;single-term-leader&quot;, &quot;serde&quot;, &quot;dep:or07&quot;]</p>
+</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="internal"><a class="header" href="#internal">Internal</a></h1>
 <p>In this chapter we explains how openraft internally works.</p>
