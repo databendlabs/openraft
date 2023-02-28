@@ -16,7 +16,7 @@ repository    = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openraft = { path= "../openraft", version="=0.7.4" }
+openraft = { path= "../openraft", version="=0.7.5" }
 
 rocksdb = "0.20.1"
 byteorder = "1.4.3"
