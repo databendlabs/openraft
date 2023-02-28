@@ -180,24 +180,29 @@ Check our <a href="https://github.com/datafuselabs/openraft/blob/main/change-log
 </li>
 <li>
 <p><strong>Branch main</strong> has been under active development.</p>
-<p>The main branch is for the 0.8 release. There won't be big API changes when 0.8 is released.
-Currently, the work is mainly on refactoring the internal structure.</p>
+<p>The main branch is for the 0.8 release.</p>
 <ul>
 <li>The features are almost complete for building an application.</li>
-<li>The performance isn't yet fully optimized. Currently, it's about 44,000 writes per second with a single writer.</li>
-<li>Unit test coverage is 88%.</li>
+<li>The performance isn't yet fully optimized. Currently, it's about 48,000 writes per second with a single writer.</li>
+<li>Unit test coverage is 91%.</li>
 <li>The chaos test is not yet done.</li>
 </ul>
 </li>
 <li>
+<p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.8">release-0.8</a></strong>:
+Latest published: <a href="https://github.com/datafuselabs/openraft/tree/v0.8.0">v0.8.0</a> | <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v080">Change log v0.8.0</a> |
+⬆️  <a href="https://datafuselabs.github.io/openraft/upgrade-v07-v08">0.7 to 0.8 upgrade guide</a> |</p>
+</li>
+<li>
 <p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.7">release-0.7</a></strong>:
-In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.7.1">v0.7.1</a> is the last published version: <a href="https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v071">Change log v0.7</a>.</p>
-<p><a href="https://datafuselabs.github.io/openraft/upgrade-v06-v07">Upgrade guide from 0.6 to 0.7</a></p>
+Latest published: <a href="https://github.com/datafuselabs/openraft/tree/v0.7.4">v0.7.4</a> | <a href="https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v074">Change log v0.7.4</a> |
+⬆️  <a href="https://datafuselabs.github.io/openraft/upgrade-v06-v07">0.6 to 0.7 upgrade guide</a> |
+<code>release-0.7</code> <strong>Won't</strong> accept new features but only bug fixes.</p>
 </li>
 <li>
 <p><strong>Branch <a href="https://github.com/datafuselabs/openraft/tree/release-0.6">release-0.6</a></strong>:
-In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v0.6.8">v0.6.8</a> is the last published version: <a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md">Change log v0.6</a>.</p>
-<p><code>release-0.6</code> won't accept new features but only bug fixes.</p>
+Latest published: <a href="https://github.com/datafuselabs/openraft/tree/v0.6.8">v0.6.8</a> | <a href="https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md">Change log v0.6</a> |
+<code>release-0.6</code> <strong>won't</strong> accept new features but only bug fixes.</p>
 </li>
 </ul>
 <h1 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h1>
@@ -206,7 +211,7 @@ In this release branch, <a href="https://github.com/datafuselabs/openraft/tree/v
 <p><strong>2022-10-31</strong> <a href="https://datafuselabs.github.io/openraft/extended-membership">Extended joint membership</a></p>
 </li>
 <li><input disabled="" type="checkbox" checked=""/>
-<p><strong>2023-02-14</strong> Reduce confliction rate when electing;
+<p><strong>2023-02-14</strong> Minimize confliction rate when electing;
 See: <a href="https://datafuselabs.github.io/openraft/vote">Openraft Vote design</a>;
 Or use standard raft mode with <a href="https://datafuselabs.github.io/openraft/feature-flags">feature flag <code>single-term-leader</code></a>.</p>
 </li>
@@ -227,6 +232,7 @@ improve efficiency with a cluster with an even number of nodes.</p>
 <li>2022 Jul 01: 41,000 put/sec; 23,255 ns/op;</li>
 <li>2022 Jul 07: 43,000 put/sec; 23,218 ns/op; Use <code>Progress</code> to track replication.</li>
 <li>2022 Jul 09: 45,000 put/sec; 21,784 ns/op; Batch purge applied log</li>
+<li>2023 Feb 28: 48,000 put/sec; 20,558 ns/op;</li>
 </ul>
 <p>Run the benchmark: <code>make bench_cluster_of_3</code></p>
 <p>Benchmark setting:</p>
