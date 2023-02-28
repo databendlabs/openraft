@@ -1,0 +1,437 @@
+<!DOCTYPE HTML>
+<html lang="en" class="sidebar-visible no-js light">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Upgrade from 0.7 to 0.8 - openraft</title>
+        <!-- Custom HTML head -->
+        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
+        <meta name="description" content="The openraft user guide.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff" />
+
+        <link rel="icon" href="favicon.svg">
+        <link rel="shortcut icon" href="favicon.png">
+        <link rel="stylesheet" href="css/variables.css">
+        <link rel="stylesheet" href="css/general.css">
+        <link rel="stylesheet" href="css/chrome.css">
+        <link rel="stylesheet" href="css/print.css" media="print">
+        <!-- Fonts -->
+        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="fonts/fonts.css">
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="highlight.css">
+        <link rel="stylesheet" href="tomorrow-night.css">
+        <link rel="stylesheet" href="ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="guide/src/custom.css">
+    </head>
+    <body>
+        <!-- Provide site root to javascript -->
+        <script type="text/javascript">
+            var path_to_root = "";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script type="text/javascript">
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script type="text/javascript">
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            var html = document.querySelector('html');
+            html.classList.remove('no-js')
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add('js');
+        </script>
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script type="text/javascript">
+            var html = document.querySelector('html');
+            var sidebar = 'hidden';
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            }
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <div class="sidebar-scrollbox">
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="feature-flags.html"><strong aria-hidden="true">5.</strong> Feature flags</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">6.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">6.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">6.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="log-data-layout.html"><strong aria-hidden="true">6.3.</strong> Log data layout</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">6.4.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">6.5.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">6.6.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">6.6.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html"><strong aria-hidden="true">6.7.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">6.8.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">7.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">7.1.</strong> Upgrade from 0.6 to 0.7</a></li><li class="chapter-item expanded "><a href="upgrade-v07-v08.html" class="active"><strong aria-hidden="true">7.2.</strong> Upgrade from 0.7 to 0.8</a></li></ol></li></ol>
+            </div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky bordered">
+                    <div class="left-buttons">
+                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </button>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">openraft</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script type="text/javascript">
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="guide-for-upgrading-from-v07-to-v08"><a class="header" href="#guide-for-upgrading-from-v07-to-v08">Guide for upgrading from <a href="https://github.com/datafuselabs/openraft/tree/v0.7.4">v0.7.*</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.8.0">v0.8.*</a>:</a></h1>
+<p><a href="https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v080">Change log v0.8.0</a></p>
+<p>In this chapter, for users who will upgrade openraft 0.7 to openraft 0.8,
+we are going to explain what changes has been made from openraft-0.7 to
+openraft-0.8 and why these changes are made.</p>
+<ul>
+<li><strong>Backup your data before deploying upgraded application</strong>.</li>
+</ul>
+<p>To upgrade:</p>
+<ol>
+<li>
+<p>Update the application to adopt <code>v0.8.*</code> openraft.
+The updated <code>RaftStorage</code> implementation must pass <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/memstore/src/test.rs"><code>RaftStorage</code> test suite</a>,
+and the compatibility test: <a href="https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs">compatibility test</a></p>
+</li>
+<li>
+<p>Then shutdown all <code>v0.7.*</code> nodes and then bring up <code>v0.8.*</code> nodes.</p>
+</li>
+</ol>
+<p><code>v0.7.*</code> and <code>v0.8.*</code> should <strong>NEVER</strong> run in a same cluster, due to the data structure changes.
+Exchanging data between <code>v0.7.*</code> and <code>v0.8.*</code> nodes may lead to data damage.</p>
+<h2 id="upgrade-steps"><a class="header" href="#upgrade-steps">Upgrade steps</a></h2>
+<p>In general, the upgrade includes the following steps:</p>
+<ul>
+<li>
+<p>Keep in mind that v0.8 is compatible with v0.7 only when the application using <code>serde</code> to serialize data.</p>
+</li>
+<li>
+<p>Enable feature flag <code>compat-07</code>.</p>
+</li>
+<li>
+<p>Optionally enable feature flag <code>single-term-leader</code> if the application wants to use standard raft. See <a href="#multisingle-leader-in-each-term">Multi/single leader in each term</a> chapter.</p>
+</li>
+<li>
+<p>Add type config to define what types to use for openraft, See <a href="https://github.com/datafuselabs/openraft/blob/47d6c9f32d9675462ab5d64a1f6a4be7574f1ab2/openraft/src/raft.rs#L81">RaftTypeConfig</a> :</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>openraft::declare_raft_types!(
+    pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode
+);
+<span class="boring">}
+</span></code></pre></pre>
+</li>
+<li>
+<p>Add generics parameter to types such as:
+<code>LogId -&gt; LogId&lt;NID&gt;</code>, <code>Membership -&gt; Membership&lt;NID, N&gt;</code>
+<code>Entry&lt;D&gt; -&gt; Entry&lt;MyTypeConfig&gt;</code></p>
+</li>
+<li>
+<p>Move <code>RaftStorage</code> methods implementation according to the
+<a href="#storage-api-changes">Storage API changes</a> chapter.</p>
+<ul>
+<li>Replace <code>HardState</code> with <code>Vote</code>, and <code>[read/save]_hard_state</code> with <code>[read/write]_vote</code>.</li>
+<li>Replace <code>EffectiveMembership</code> with <code>StoredMembership</code>.</li>
+</ul>
+</li>
+<li>
+<p>Move <code>RaftNetwork</code> methods implementation according to the
+<a href="#network-api-changes">Network-API-changes</a> chapter.</p>
+</li>
+<li>
+<p>Replace types with the ones provided by <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs"><code>openraft::compat::compat07</code></a>.</p>
+</li>
+<li>
+<p>Finally, make sure the <code>RaftStorage</code> implementation passes
+<a href="https://github.com/datafuselabs/openraft/blob/release-0.8/memstore/src/test.rs"><code>RaftStorage</code> test suite</a> and
+<a href="https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs">compatibility test</a></p>
+</li>
+</ul>
+<h1 id="compatibility-with-v07-format-data"><a class="header" href="#compatibility-with-v07-format-data">Compatibility with v0.7 format data</a></h1>
+<p>Openraft v0.8 can be compatible with v0.7 if:</p>
+<ul>
+<li>The application uses <code>serde</code> to serialize data types</li>
+<li>Enabling <code>compat-07</code> feature flags.</li>
+</ul>
+<p>Openraft uses a <code>RaftStorage</code> implementation provided by the application to
+store presistent data. When upgrading from v0.7 to v0.8, it is important to
+ensure that the updated <code>RaftStorage</code> is backward compatible and can read the
+data written by v0.7 openraft, in addition to reading and writing v0.8 openraft data.
+This ensures that the application continues to function smoothly after upgrade.</p>
+<h2 id="openraft-v08-compatible-mode"><a class="header" href="#openraft-v08-compatible-mode">Openraft v0.8 compatible mode</a></h2>
+<p>Compared to v0.7, openraft v0.8 has a more generic design.
+However, it is still possible to build it in a v0.7 compatible mode by enabling
+the feature flag <code>compat-07</code>.
+More information can be found at: <a href="https://datafuselabs.github.io/openraft/feature-flags">feature-flag-compat-07</a>.</p>
+<p>It is worth noting that an application does <strong>NOT</strong> need to enable this feature flag
+if it chooses to manually upgrade the v0.7 format data.</p>
+<p><strong>Generic design in v0.8</strong> includes:</p>
+<ul>
+<li>generic type <code>NodeId</code> and <code>Node</code> were introduced,</li>
+<li><code>serde</code> became an optional.</li>
+</ul>
+<p>Because of these generalization, feature <code>compat-07</code> enables the following feature flags:</p>
+<ul>
+<li><code>serde</code>: it adds <code>serde</code> implementation to types such as <code>LogId</code>.</li>
+</ul>
+<p>And v0.8 will be compatible with v0.7 only when it uses <code>u64</code> as <code>NodeId</code> and <code>openraft::EmptyNode</code> as <code>Node</code>.</p>
+<h2 id="implement-a-compatible-storage-layer"><a class="header" href="#implement-a-compatible-storage-layer">Implement a compatible storage layer</a></h2>
+<p>In addition to enabling <code>compat-07</code> feature flag, openraft provides a compatible layer in
+<a href="https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs"><code>openraft::compat::compat07</code></a> to help application developer to upgrade.
+This mod provides several types that can deserialize from both v0.7 format data and the latest format data.</p>
+<p>An application uses these types to replace the corresponding ones in a
+<code>RaftStorage</code> implementation, so that v0.7 data and v0.8 data can both be read.</p>
+<p>For example, in a compatible storage implementation, reading a <code>LogId</code> should be
+done in the following way:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use openraft::compat::compat07;
+
+fn read_log_id(bs: &amp;[u8]) -&gt; openraft::LogId&lt;u64&gt; {
+    let log_id: compat07::LogId = serde_json::from_slice(&amp;bs).expect(&quot;incompatible&quot;);
+    let latest: openraft::LogId&lt;u64&gt; = log_id.upgrade();
+    latest
+}
+<span class="boring">}
+</span></code></pre></pre>
+<h2 id="example-of-compatible-storage"><a class="header" href="#example-of-compatible-storage">Example of compatible storage</a></h2>
+<p><a href="https://github.com/datafuselabs/openraft/tree/main/rocksstore-compat07">rocksstore-compat07</a>
+is a good example using these compatible type to implement a compatible <code>RaftStorage</code>.</p>
+<p>This is an example <code>RaftStorage</code> implementation that can read persistent
+data written by either v0.7.4 or v0.8 the latest version openraft.</p>
+<p>rocksstore-compat07 is built with openraft 0.8, in the tests, it reads
+data written by rocksstore 0.7.4, which is built with openraft 0.7.4 .</p>
+<p>In this example, it loads data through the compatibility layer:
+<code>openraft::compat::compat07</code>, which defines several compatible types
+that can be deserialized from v0.7 or v0.8 data, such as
+<code>compat07::LogId</code> or <code>compat07::Membership</code>.</p>
+<h2 id="test-compatibility"><a class="header" href="#test-compatibility">Test compatibility</a></h2>
+<p>Openraft also provides a testing suite <a href="https://github.com/datafuselabs/openraft/blob/47d6c9f32d9675462ab5d64a1f6a4be7574f1ab2/openraft/src/compat/compat07.rs#L291"><code>testing::Suite07</code></a> to ensure old data will be correctly read.
+An application should ensure that its storage passes this test suite.
+Just like <a href="https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs">rocksstore-compat07/compatibility_test.rs</a> does.</p>
+<p>To test compatibility of the application storage API:</p>
+<ul>
+<li>Define a builder that builds a v0.7 <code>RaftStorage</code> implementation.</li>
+<li>Define another builder that builds a v0.8 <code>RaftStorage</code> implementation.</li>
+<li>Run tests in <code>compat::testing::Suite07</code> with these two builder. In this test
+suite, it writes data with a v0.7 storage API and then reads them with an
+v0.8 storage API.</li>
+</ul>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use openraft::compat;
+
+struct Builder07;
+struct BuilderLatest;
+
+#[async_trait::async_trait]
+impl compat::testing::StoreBuilder07 for Builder07 {
+    type D = rocksstore07::RocksRequest;
+    type R = rocksstore07::RocksResponse;
+    type S = Arc&lt;rocksstore07::RocksStore&gt;;
+
+    async fn build(&amp;self, p: &amp;Path) -&gt; Arc&lt;rocksstore07::RocksStore&gt; {
+        rocksstore07::RocksStore::new(p).await
+    }
+
+    fn sample_app_data(&amp;self) -&gt; Self::D {
+        rocksstore07::RocksRequest::Set { key: s(&quot;foo&quot;), value: s(&quot;bar&quot;) }
+    }
+}
+
+#[async_trait::async_trait]
+impl compat::testing::StoreBuilder for BuilderLatest {
+    type C = crate::Config;
+    type S = Arc&lt;crate::RocksStore&gt;;
+
+    async fn build(&amp;self, p: &amp;Path) -&gt; Arc&lt;crate::RocksStore&gt; {
+        crate::RocksStore::new(p).await
+    }
+
+    fn sample_app_data(&amp;self) -&gt; &lt;&lt;Self as compat::testing::StoreBuilder&gt;::C as openraft::RaftTypeConfig&gt;::D {
+        crate::RocksRequest::Set { key: s(&quot;foo&quot;), value: s(&quot;bar&quot;) }
+    }
+}
+
+#[tokio::test]
+async fn test_compatibility_with_rocksstore_07() -&gt; anyhow::Result&lt;()&gt; {
+    compat::testing::Suite07 {
+        builder07: Builder07,
+        builder_latest: BuilderLatest,
+    }.test_all().await?;
+    Ok(())
+}
+
+fn s(v: impl ToString) -&gt; String {
+    v.to_string()
+}
+<span class="boring">}
+</span></code></pre></pre>
+<h1 id="summary-of-changes-introduced-in-v08"><a class="header" href="#summary-of-changes-introduced-in-v08">Summary of changes introduced in v0.8</a></h1>
+<h2 id="generic-node"><a class="header" href="#generic-node">Generic Node</a></h2>
+<p>Openraft v0.8 introduces generic type <code>openraft::NodeId</code> and <code>openraft::Node</code>, an application now
+can used any type for a node-id or node object.</p>
+<p>A type that needs <code>NodeId</code> or <code>Node</code> now has generic type parameter in them, 
+e.g, <code>struct Membership {...}</code> became:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>pub struct Membership&lt;NID, N&gt;
+where N: Node, NID: NodeId
+{...}
+<span class="boring">}
+</span></code></pre></pre>
+<h2 id="optional-serde"><a class="header" href="#optional-serde">Optional <code>serde</code></a></h2>
+<p><code>serde</code> in openraft v0.8 became optional. To enable <code>serde</code>, build openraft with
+<code>serde</code> feature flag. See: <a href="https://datafuselabs.github.io/openraft/feature-flags">feature flags</a>.</p>
+<h2 id="multisingle-leader-in-each-term"><a class="header" href="#multisingle-leader-in-each-term">Multi/single leader in each term</a></h2>
+<p>Openraft v0.8 by default allows multiple leaders to be elected in a single <code>term</code>, in order to minimize conflicting during election.
+To run in the standard raft mode, i.e, only one leader can be elected in every
+term, an application builds openraft with feature flag &quot;single-term-leader&quot;.
+See: <a href="https://datafuselabs.github.io/openraft/feature-flags">feature flags</a>.</p>
+<p>With this feature on: only one leader can be elected in each term, but
+it reduces LogId size from <code>LogId:{term, node_id, index}</code> to <code>LogId{term, index}</code>.
+It will be preferred if an application uses a big <code>NodeId</code> type.</p>
+<p>Openraft v0.7 runs in the standard raft mode, i.e., at most one leader per term.
+It is safe to upgrade v0.7 single-term-leader mode to v0.8 multi-term-leader
+mode.</p>
+<h2 id="storage-api-changes"><a class="header" href="#storage-api-changes">Storage API changes</a></h2>
+<h3 id="split-raftstorage"><a class="header" href="#split-raftstorage">Split <code>RaftStorage</code></a></h3>
+<p>Extract <code>RaftLogReader</code>, <code>RaftSnapshotBuilder</code> from <code>RaftStorage</code></p>
+<p><code>RaftStorage</code> is now refactored to:</p>
+<ul>
+<li><code>RaftLogReader</code> to read data from the log in parallel tasks independent of the main Raft loop</li>
+<li><code>RaftStorage</code> to modify the log and the state machine (implements also <code>RaftLogReader</code>) intended to be used in the main Raft loop</li>
+<li><code>RaftSnapshotBuilder</code> to build the snapshot in background independent of the main Raft loop</li>
+</ul>
+<p>The <code>RaftStorage</code> API offers to create new <code>RaftLogReader</code> or <code>RaftSnapshotBuilder</code> on it.</p>
+<h3 id="move-default-implemented-methods-from-raftstorage-to-storagehelper"><a class="header" href="#move-default-implemented-methods-from-raftstorage-to-storagehelper">Move default implemented methods from <code>RaftStorage</code> to <code>StorageHelper</code></a></h3>
+<p>Function <code>get_log_entries()</code> and <code>try_get_log_entry()</code> are provided with default implementations. However, they do not need to be part of this trait and an application does not have to implement them.</p>
+<h2 id="network-api-changes"><a class="header" href="#network-api-changes">Network API changes</a></h2>
+<h3 id="split-raftnetwork-and-raftnetworkfactory"><a class="header" href="#split-raftnetwork-and-raftnetworkfactory">Split <code>RaftNetwork</code> and <code>RaftNetworkFactory</code></a></h3>
+<p><code>RaftNetwork</code> is also refactored to:</p>
+<ul>
+<li><code>RaftNetwork</code> responsible for sending RPCs</li>
+<li><code>RaftNetworkFactory</code> responsible for creating instances of <code>RaftNetwork</code> for sending data to a particular node.</li>
+</ul>
+<h2 id="data-type-changes"><a class="header" href="#data-type-changes">Data type changes</a></h2>
+<ul>
+<li>
+<p>When building a <code>SnapshotMeta</code>, another field is required: <code>last_membership</code>, for storing the last applied membership.</p>
+</li>
+<li>
+<p><code>HardState</code> is replaced with <code>Vote</code>.</p>
+</li>
+<li>
+<p>Add <code>SnapshotSignature</code> to identify a snapshot for transport.</p>
+</li>
+<li>
+<p>Replace usages of <code>EffectiveMembership</code> in <code>RaftStorage</code> with <code>StoredMembership</code>.</p>
+</li>
+<li>
+<p>Introduce generalized types <code>NodeId</code> and <code>Node</code> to let user defines arbitrary
+node-id or node. Openraft v0.8 relies on a <code>RaftTypeConfig</code> for your application to define types that are used by openraft, with the following macro:</p>
+<pre><pre class="playground"><code class="language-rust">
+<span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>openraft::declare_raft_types!(
+    pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode
+);
+<span class="boring">}
+</span></code></pre></pre>
+</li>
+</ul>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="upgrade-v06-v07.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="upgrade-v06-v07.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+        <script type="text/javascript">
+            window.playground_copyable = true;
+        </script>
+        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
+        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
+        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+
+        <!-- Custom JS scripts -->
+    </body>
+</html>
