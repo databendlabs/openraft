@@ -1,3 +1,9 @@
+## v0.8.1
+
+### Added:
+
+-   Added: [b3c2ff7e](https://github.com/datafuselabs/openraft/commit/b3c2ff7e37ce5996f572f43bc574cb50b2d0cdc2) add Membership methods: voter_ids(), learner_ids(), get_node(); by 张炎泼; 2023-02-28
+
 ## v0.8.0
 
 ### Fixed:
