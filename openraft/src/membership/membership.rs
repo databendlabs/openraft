@@ -289,6 +289,26 @@ where
     N: Node,
     NID: NodeId,
 {
+    /// Returns an Iterator of all voter node ids. Learners are not included.
+    pub fn voter_ids(&self) -> impl Iterator<Item = NID> {
+        self.configs.as_joint().ids()
+    }
+
+    /// Returns an Iterator of all learner node ids. Voters are not included.
+    pub fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
+        self.nodes.keys().filter(|x| !self.is_voter(x)).copied()
+    }
+
+    /// Returns an Iterator of all nodes(voters and learners).
+    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
+        self.nodes.iter()
+    }
+
+    /// Get a the node(either voter or learner) by node id.
+    pub fn get_node(&self, node_id: &NID) -> Option<&N> {
+        self.nodes.get(node_id)
+    }
+
     /// Return if a node is a voter or learner, or not in this membership config at all.
     #[allow(dead_code)]
     pub(crate) fn get_node_role(&self, nid: &NID) -> Option<NodeRole> {
@@ -311,30 +331,9 @@ where
         false
     }
 
-    /// Returns an Iterator of all voter node ids. Learners are not included.
-    pub(crate) fn voter_ids(&self) -> impl Iterator<Item = NID> {
-        self.configs.as_joint().ids()
-    }
-
-    /// Returns an Iterator of all learner node ids. Voters are not included.
-    #[allow(dead_code)]
-    pub(crate) fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
-        self.nodes.keys().filter(|x| !self.is_voter(x)).copied()
-    }
-
     /// Returns if a voter or learner exists in this membership.
     pub(crate) fn contains(&self, node_id: &NID) -> bool {
         self.nodes.contains_key(node_id)
-    }
-
-    /// Get a the node(either voter or learner) by node id.
-    pub(crate) fn get_node(&self, node_id: &NID) -> Option<&N> {
-        self.nodes.get(node_id)
-    }
-
-    /// Returns an Iterator of all nodes(voters and learners).
-    pub fn nodes(&self) -> impl Iterator<Item = (&NID, &N)> {
-        self.nodes.iter()
     }
 
     /// Returns reference to the joint config.
