@@ -42,30 +42,31 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 - **Branch main** has been under active development.
 
-    The main branch is for the 0.8 release. There won't be big API changes when 0.8 is released.
-    Currently, the work is mainly on refactoring the internal structure.
+    The main branch is for the 0.8 release.
 
     - The features are almost complete for building an application.
-    - The performance isn't yet fully optimized. Currently, it's about 44,000 writes per second with a single writer.
-    - Unit test coverage is 88%.
+    - The performance isn't yet fully optimized. Currently, it's about 48,000 writes per second with a single writer.
+    - Unit test coverage is 91%.
     - The chaos test is not yet done.
 
+- **Branch [release-0.8](https://github.com/datafuselabs/openraft/tree/release-0.8)**:
+  Latest published: [v0.8.0](https://github.com/datafuselabs/openraft/tree/v0.8.0) | [Change log v0.8.0](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v080) |
+  ⬆️  [0.7 to 0.8 upgrade guide](https://datafuselabs.github.io/openraft/upgrade-v07-v08) |
+
 - **Branch [release-0.7](https://github.com/datafuselabs/openraft/tree/release-0.7)**:
-  In this release branch, [v0.7.1](https://github.com/datafuselabs/openraft/tree/v0.7.1) is the last published version: [Change log v0.7](https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v071).
-
-  [Upgrade guide from 0.6 to 0.7](https://datafuselabs.github.io/openraft/upgrade-v06-v07)
-
+  Latest published: [v0.7.4](https://github.com/datafuselabs/openraft/tree/v0.7.4) | [Change log v0.7.4](https://github.com/datafuselabs/openraft/blob/release-0.7/change-log.md#v074) |
+  ⬆️  [0.6 to 0.7 upgrade guide](https://datafuselabs.github.io/openraft/upgrade-v06-v07) |
+  `release-0.7` **Won't** accept new features but only bug fixes.
 
 - **Branch [release-0.6](https://github.com/datafuselabs/openraft/tree/release-0.6)**:
-  In this release branch, [v0.6.8](https://github.com/datafuselabs/openraft/tree/v0.6.8) is the last published version: [Change log v0.6](https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md).
-
-  `release-0.6` won't accept new features but only bug fixes.
+  Latest published: [v0.6.8](https://github.com/datafuselabs/openraft/tree/v0.6.8) | [Change log v0.6](https://github.com/datafuselabs/openraft/blob/release-0.6/change-log.md) |
+  `release-0.6` **won't** accept new features but only bug fixes.
 
 # Roadmap
 
 - [x] **2022-10-31** [Extended joint membership](https://datafuselabs.github.io/openraft/extended-membership)
 
-- [x] **2023-02-14** Reduce confliction rate when electing;
+- [x] **2023-02-14** Minimize confliction rate when electing;
   See: [Openraft Vote design](https://datafuselabs.github.io/openraft/vote);
   Or use standard raft mode with [feature flag `single-term-leader`](https://datafuselabs.github.io/openraft/feature-flags).
 
@@ -82,6 +83,7 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
     - 2022 Jul 01: 41,000 put/sec; 23,255 ns/op;
     - 2022 Jul 07: 43,000 put/sec; 23,218 ns/op; Use `Progress` to track replication.
     - 2022 Jul 09: 45,000 put/sec; 21,784 ns/op; Batch purge applied log
+    - 2023 Feb 28: 48,000 put/sec; 20,558 ns/op;
 
     Run the benchmark: `make bench_cluster_of_3`
 
