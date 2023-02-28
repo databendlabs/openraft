@@ -225,7 +225,7 @@ where
 {
     let logs = StorageHelper::new(sto).get_log_entries(..).await?;
     let skip = 0;
-    let want: Vec<Entry<memstore::Config>> = terms
+    let want: Vec<Entry<openraft_memstore::Config>> = terms
         .iter()
         .skip(skip)
         .enumerate()

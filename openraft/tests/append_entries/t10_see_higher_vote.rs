@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use memstore::ClientRequest;
 use openraft::raft::VoteRequest;
 use openraft::CommittedLeaderId;
 use openraft::Config;
@@ -12,6 +11,7 @@ use openraft::RaftNetwork;
 use openraft::RaftNetworkFactory;
 use openraft::ServerState;
 use openraft::Vote;
+use openraft_memstore::ClientRequest;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;

@@ -21,9 +21,6 @@ use anyerror::AnyError;
 use anyhow::Context;
 use lazy_static::lazy_static;
 use maplit::btreeset;
-use memstore::Config as MemConfig;
-use memstore::IntoMemClientRequest;
-use memstore::MemStore;
 use openraft::async_trait::async_trait;
 use openraft::error::CheckIsLeaderError;
 use openraft::error::ClientWriteError;
@@ -58,6 +55,9 @@ use openraft::RaftState;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
 use openraft::StoreExt;
+use openraft_memstore::Config as MemConfig;
+use openraft_memstore::IntoMemClientRequest;
+use openraft_memstore::MemStore;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
 #[allow(unused_imports)] use pretty_assertions::assert_ne;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -132,7 +132,7 @@ pub fn log_panic(panic: &PanicInfo) {
 }
 
 /// A type which emulates a network transport and implements the `RaftNetworkFactory` trait.
-pub struct TypedRaftRouter<C: RaftTypeConfig = memstore::Config, S: RaftStorage<C> = Arc<MemStore>>
+pub struct TypedRaftRouter<C: RaftTypeConfig = openraft_memstore::Config, S: RaftStorage<C> = Arc<MemStore>>
 where
     C::D: Debug + IntoMemClientRequest<C::D>,
     C::R: Debug,
@@ -153,7 +153,7 @@ where
 }
 
 /// Default `RaftRouter` for memstore.
-pub type RaftRouter = TypedRaftRouter<memstore::Config, Arc<MemStore>>;
+pub type RaftRouter = TypedRaftRouter<openraft_memstore::Config, Arc<MemStore>>;
 
 pub struct Builder<C: RaftTypeConfig, S: RaftStorage<C>> {
     config: Arc<Config>,

@@ -1,12 +1,22 @@
 [package]
 name = "openraft-rocksstore"
-version = "0.1.0"
-edition = "2021"
+description = "A rocksdb based implementation of the `openraft::RaftStorage` trait."
+documentation = "https://docs.rs/openraft-rocksstore"
+readme = "README.md"
+
+version       = { workspace = true }
+edition       = { workspace = true }
+authors       = { workspace = true }
+categories    = { workspace = true }
+homepage      = { workspace = true }
+keywords      = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openraft = { path = "../openraft", features = ["serde"] }
+openraft = { path= "../openraft", version = "0.8.0", features=["serde"] }
 
 rocksdb = "0.20.1"
 byteorder = "1.4.3"

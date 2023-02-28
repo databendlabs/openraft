@@ -3,13 +3,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use memstore::ClientRequest;
-use memstore::IntoMemClientRequest;
 use openraft::error::ClientWriteError;
 use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::LogId;
 use openraft::ServerState;
+use openraft_memstore::ClientRequest;
+use openraft_memstore::IntoMemClientRequest;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;

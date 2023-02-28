@@ -3,10 +3,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
-use memstore::MemNodeId;
 use openraft::ChangeMembers;
 use openraft::Config;
 use openraft::ServerState;
+use openraft_memstore::MemNodeId;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;

@@ -1,20 +1,20 @@
 [package]
-name = "memstore"
+name = "openraft-memstore"
+description = "A in-memory implementation of the `openraft::RaftStorage` trait."
+documentation = "https://docs.rs/openraft-memstore"
 readme = "README.md"
 
 version       = { workspace = true }
 edition       = { workspace = true }
 authors       = { workspace = true }
 categories    = { workspace = true }
-description   = { workspace = true }
-documentation = { workspace = true }
 homepage      = { workspace = true }
 keywords      = { workspace = true }
 license       = { workspace = true }
 repository    = { workspace = true }
 
 [dependencies]
-openraft = { path= "../openraft", features=["serde"] }
+openraft = { path= "../openraft", version = "0.8.0", features=["serde"] }
 
 serde           = { workspace = true }
 serde_json      = { workspace = true }

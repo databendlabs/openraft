@@ -1,10 +1,21 @@
 [package]
 name = "openraft-rocksstore-compat07"
-version = "0.1.0"
-edition = "2021"
+description = "A example v07 compatible implementation of the `openraft::RaftStorage` trait."
+documentation = "https://docs.rs/openraft-rocksstore-copmat07"
+readme = "README.md"
+
+version       = { workspace = true }
+edition       = { workspace = true }
+authors       = { workspace = true }
+categories    = { workspace = true }
+homepage      = { workspace = true }
+keywords      = { workspace = true }
+license       = { workspace = true }
+repository    = { workspace = true }
+
 
 [dependencies]
-openraft = { path = "../openraft", package = "openraft", features = ["compat-07"] }
+openraft = { path = "../openraft", package = "openraft", version = "0.8.0", features = ["compat-07"] }
 
 async-std = { version = "1.12.0", features = ["attributes", "tokio1"] }
 byteorder = "1.4.3"
