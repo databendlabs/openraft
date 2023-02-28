@@ -1,4 +1,4 @@
-#![doc = include_str!("../../README.md")]
+#![doc = include_str!("../README.md")]
 #![cfg_attr(feature = "bt", feature(error_generic_member_access))]
 #![cfg_attr(feature = "bt", feature(provide_any))]
 #![cfg_attr(feature = "bench", feature(test))]
