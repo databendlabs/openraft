@@ -50,7 +50,7 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
     - The chaos test is not yet done.
 
 - **Branch [release-0.8](https://github.com/datafuselabs/openraft/tree/release-0.8)**:
-  Latest published: [v0.8.0](https://github.com/datafuselabs/openraft/tree/v0.8.0) | [Change log v0.8.0](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v080) |
+  Latest published: [v0.8.1](https://github.com/datafuselabs/openraft/tree/v0.8.1) | [Change log v0.8.1](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v081) |
   ⬆️  [0.7 to 0.8 upgrade guide](https://datafuselabs.github.io/openraft/upgrade-v07-v08) |
 
 - **Branch [release-0.7](https://github.com/datafuselabs/openraft/tree/release-0.7)**:
