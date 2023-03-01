@@ -244,7 +244,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
 /// Test change-membership by adding voters.
 #[tracing::instrument(level = "debug")]
 async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::Result<()> {
-    let change = ChangeMembers::AddVoter(add.iter().copied().collect());
+    let change = ChangeMembers::AddVoterIds(add.iter().copied().collect());
 
     let mes = format!("from {:?} {:?}", old, change);
 
@@ -312,7 +312,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
 
 #[tracing::instrument(level = "debug")]
 async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> anyhow::Result<()> {
-    let change = ChangeMembers::RemoveVoter(remove.iter().copied().collect());
+    let change = ChangeMembers::RemoveVoters(remove.iter().copied().collect());
 
     let mes = format!("from {:?} {:?}", old, change);
 
