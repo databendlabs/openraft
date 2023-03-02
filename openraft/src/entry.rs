@@ -81,6 +81,14 @@ impl<C: RaftTypeConfig> Default for Entry<C> {
     }
 }
 
+impl<C: RaftTypeConfig> PartialEq for Entry<C>
+where C::D: PartialEq
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.log_id == other.log_id && self.payload == other.payload
+    }
+}
+
 impl<C: RaftTypeConfig> AsRef<Entry<C>> for Entry<C> {
     fn as_ref(&self) -> &Entry<C> {
         self
