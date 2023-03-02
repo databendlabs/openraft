@@ -427,6 +427,35 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         Ok(true)
     }
 
+    /// Send a heartbeat message to every followers/learners.
+    ///
+    /// Currently heartbeat is a blank log
+    #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
+    pub async fn send_heartbeat(
+        &mut self,
+        tick: usize,
+        resp_tx: Option<ClientWriteTx<C>>,
+        emitter: impl Display,
+    ) -> Result<(), Fatal<C::NodeId>> {
+        tracing::debug!(tick = display(tick), "send_heartbeat");
+
+        let _ = tick;
+
+        let is_leader = self.write_entry(EntryPayload::Blank, resp_tx).await?;
+        if is_leader {
+            let log_id = self.engine.state.last_log_id();
+            tracing::debug!(
+                log_id = display(log_id.summary()),
+                tick = display(tick),
+                "{} sent heartbeat",
+                emitter
+            );
+        } else {
+            tracing::debug!(tick = display(tick), "{} failed to send heartbeat", emitter);
+        }
+        Ok(())
+    }
+
     /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
     /// Then clear flags about the cached changes, to avoid unnecessary metrics report.
     #[tracing::instrument(level = "debug", skip_all)]
@@ -1052,16 +1081,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         }
                     }
                     ExternalCommand::Heartbeat => {
-                        let is_leader = self.write_entry(EntryPayload::Blank, None).await?;
-                        if is_leader {
-                            let log_id = self.engine.state.last_log_id();
-                            tracing::debug!(
-                                log_id = display(log_id.summary()),
-                                "ExternalCommand: sent heartbeat log"
-                            );
-                        } else {
-                            tracing::warn!("ExternalCommand: failed to send heartbeat log, not a leader");
-                        }
+                        // TODO: use the last tick
+                        self.send_heartbeat(0, None, "ExternalCommand").await?;
                     }
                     ExternalCommand::Snapshot => self.trigger_snapshot_if_needed(true).await,
                 }
@@ -1100,13 +1121,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 if let Some(t) = heartbeat_at {
                     if now >= t {
                         if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
-                            // heartbeat by sending a blank log
-                            // TODO: use Engine::append_blank_log
-                            let is_leader = self.write_entry(EntryPayload::Blank, None).await?;
-                            if is_leader {
-                                let log_id = self.engine.state.last_log_id();
-                                tracing::debug!(log_id = display(log_id.summary()), "sent heartbeat log");
-                            }
+                            self.send_heartbeat(i, None, "tick").await?;
                         }
 
                         // Install next heartbeat
