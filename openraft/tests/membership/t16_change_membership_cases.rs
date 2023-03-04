@@ -116,7 +116,7 @@ async fn change_from_to(old: BTreeSet<MemNodeId>, change_members: BTreeSet<MemNo
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(old.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_cluster(old.clone(), btreeset! {}).await?;
 
     tracing::info!("--- write 10 logs");
     {
@@ -260,7 +260,7 @@ async fn change_by_add(old: BTreeSet<MemNodeId>, add: &[MemNodeId]) -> anyhow::R
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(old.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_cluster(old.clone(), btreeset! {}).await?;
 
     tracing::info!("--- write 10 logs");
     {
@@ -329,7 +329,7 @@ async fn change_by_remove(old: BTreeSet<MemNodeId>, remove: &[MemNodeId]) -> any
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(old.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_cluster(old.clone(), btreeset! {}).await?;
 
     tracing::info!("--- write 10 logs");
     {

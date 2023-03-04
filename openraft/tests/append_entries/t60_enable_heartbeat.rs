@@ -23,7 +23,7 @@ async fn enable_heartbeat() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
     let _ = log_index;
 
     let node0 = router.get_raft_handle(&0)?;

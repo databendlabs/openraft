@@ -244,15 +244,16 @@ where
     }
 
     /// Create a cluster: 0 is the initial leader, others are voters and learners
+    ///
     /// NOTE: it create a single node cluster first, then change it to a multi-voter cluster.
     #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn new_nodes_from_single(
+    pub async fn new_cluster(
         &mut self,
-        node_ids: BTreeSet<C::NodeId>,
+        voter_ids: BTreeSet<C::NodeId>,
         learners: BTreeSet<C::NodeId>,
     ) -> anyhow::Result<u64> {
         let leader_id = C::NodeId::default();
-        assert!(node_ids.contains(&leader_id));
+        assert!(voter_ids.contains(&leader_id));
 
         self.new_raft_node(leader_id).await;
 
@@ -271,7 +272,7 @@ where
         self.wait_for_log(&btreeset![leader_id], Some(log_index), timeout(), "init").await?;
         self.assert_stable_cluster(Some(1), Some(log_index));
 
-        for id in node_ids.iter() {
+        for id in voter_ids.iter() {
             if *id == leader_id {
                 continue;
             }
@@ -282,25 +283,25 @@ where
             log_index += 1;
         }
         self.wait_for_log(
-            &node_ids,
+            &voter_ids,
             Some(log_index),
             timeout(),
-            &format!("learners of {:?}", node_ids),
+            &format!("learners of {:?}", voter_ids),
         )
         .await?;
 
-        if node_ids.len() > 1 {
-            tracing::info!("--- change membership to setup voters: {:?}", node_ids);
+        if voter_ids.len() > 1 {
+            tracing::info!("--- change membership to setup voters: {:?}", voter_ids);
 
             let node = self.get_raft_handle(&C::NodeId::default())?;
-            node.change_membership(node_ids.clone(), false).await?;
+            node.change_membership(voter_ids.clone(), false).await?;
             log_index += 2;
 
             self.wait_for_log(
-                &node_ids,
+                &voter_ids,
                 Some(log_index),
                 timeout(),
-                &format!("cluster of {:?}", node_ids),
+                &format!("cluster of {:?}", voter_ids),
             )
             .await?;
         }

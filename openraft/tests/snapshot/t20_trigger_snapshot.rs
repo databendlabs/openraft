@@ -23,7 +23,7 @@ async fn trigger_snapshot() -> anyhow::Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
 
     tracing::info!("--- trigger snapshot for node-1");
     {

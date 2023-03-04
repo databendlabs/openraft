@@ -35,7 +35,7 @@ async fn client_writes() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
     // Write a bunch of data and assert that the cluster stayes stable.
     let leader = router.leader().expect("leader not found");

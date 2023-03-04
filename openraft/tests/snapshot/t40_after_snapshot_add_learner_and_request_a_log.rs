@@ -29,7 +29,7 @@ async fn after_snapshot_add_learner_and_request_a_log() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
     let snapshot_index;
 
     tracing::info!("--- send just enough logs to trigger snapshot");

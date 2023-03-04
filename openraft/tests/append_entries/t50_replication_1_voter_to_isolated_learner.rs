@@ -26,7 +26,7 @@ async fn replication_1_voter_to_isolated_learner() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
     tracing::info!("--- stop replication to node 1");
     {

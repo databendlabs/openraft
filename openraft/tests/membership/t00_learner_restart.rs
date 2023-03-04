@@ -34,7 +34,7 @@ async fn learner_restart() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing");
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
     router.client_request(0, "foo", 1).await?;
     log_index += 1;

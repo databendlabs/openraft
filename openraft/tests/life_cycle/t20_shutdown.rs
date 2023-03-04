@@ -21,7 +21,7 @@ async fn shutdown() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    let _log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
+    let _log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!("--- performing node shutdowns");
     {
@@ -50,7 +50,7 @@ async fn return_error_after_panic() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
     let _ = log_index; // unused;
 
     tracing::info!("--- panic the RaftCore");
@@ -84,7 +84,7 @@ async fn return_error_after_shutdown() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster");
-    let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
     let _ = log_index; // unused;
 
     tracing::info!("--- shutdown the raft");

@@ -30,7 +30,7 @@ async fn add_remove_voter() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(c01234.clone(), btreeset! {}).await?;
+    let mut log_index = router.new_cluster(c01234.clone(), btreeset! {}).await?;
 
     tracing::info!("--- write 100 logs");
     {

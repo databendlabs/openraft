@@ -27,7 +27,7 @@ async fn append_entries_with_bigger_term() -> Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
     // before append entries, check hard state in term 1 and vote for node 0
     router

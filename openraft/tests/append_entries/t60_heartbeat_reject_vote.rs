@@ -28,7 +28,7 @@ async fn heartbeat_reject_vote() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
 
     let leader_expire_at = Arc::new(Mutex::new(Instant::now()));
     tracing::info!("--- leader lease is set by heartbeat");

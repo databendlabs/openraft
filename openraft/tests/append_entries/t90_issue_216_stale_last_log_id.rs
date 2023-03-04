@@ -34,7 +34,7 @@ async fn stale_last_log_id() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.network_send_delay(5);
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {3,4}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3,4}).await?;
 
     let n_threads = 4;
     let n_ops = 500;

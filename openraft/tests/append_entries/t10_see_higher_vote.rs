@@ -33,7 +33,7 @@ async fn append_sees_higher_vote() -> Result<()> {
 
     let mut router = RaftRouter::new(config.clone());
 
-    let _log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {}).await?;
+    let _log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
 
     tracing::info!("--- upgrade vote on node-1");
     {

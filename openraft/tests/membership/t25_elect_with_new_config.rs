@@ -34,7 +34,7 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster");
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
 
     // Isolate old leader and assert that a new leader takes over.
     tracing::info!("--- isolating leader node 0");

@@ -45,7 +45,7 @@ async fn snapshot_uses_prev_snap_membership() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {}).await?;
 
     let mut sto0 = router.get_storage_handle(&0)?;
 
