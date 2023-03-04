@@ -78,17 +78,17 @@ where
 
 /// The data associated with the current snapshot.
 #[derive(Debug)]
-pub struct Snapshot<NID, N, S>
+pub struct Snapshot<NID, N, SD>
 where
     NID: NodeId,
     N: Node,
-    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     /// metadata of a snapshot
     pub meta: SnapshotMeta<NID, N>,
 
     /// A read handle to the associated snapshot.
-    pub snapshot: Box<S>,
+    pub snapshot: Box<SD>,
 }
 
 /// The state about logs.

@@ -95,7 +95,7 @@ pub(crate) struct ReplicationCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S
     matching: Option<LogId<C::NodeId>>,
 
     /// Next replication action to run.
-    next_action: ReplicationAction<C::NodeId, C::Node, S::SnapshotData>,
+    next_action: Option<Data<C::NodeId, C::Node, S::SnapshotData>>,
 }
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> ReplicationCore<C, N, S> {
@@ -135,7 +135,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
             matching,
             tx_raft_core,
             rx_repl,
-            next_action: ReplicationAction::None,
+            next_action: None,
         };
 
         let join_handle = tokio::spawn(this.main().instrument(span));
@@ -146,19 +146,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     #[tracing::instrument(level="debug", skip(self), fields(session=%self.session_id, target=display(self.target), cluster=%self.config.cluster_name))]
     async fn main(mut self) {
         loop {
-            let action = std::mem::replace(&mut self.next_action, ReplicationAction::None);
+            let action = std::mem::replace(&mut self.next_action, None);
 
             let mut repl_id = 0;
 
             let res = match action {
-                ReplicationAction::None => Ok(()),
-                ReplicationAction::Logs { id, log_id_range } => {
+                None => Ok(()),
+                Some(Data { id, payload: r_action }) => {
                     repl_id = id;
-                    self.send_log_entries(id, log_id_range).await
-                }
-                ReplicationAction::Snapshot { id, snapshot } => {
-                    repl_id = id;
-                    self.stream_snapshot(id, snapshot).await
+                    match r_action {
+                        Payload::Logs(log_id_range) => self.send_log_entries(id, log_id_range).await,
+                        Payload::Snapshot(snapshot) => self.stream_snapshot(id, snapshot).await,
+                    }
                 }
             };
 
@@ -365,18 +364,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
         // No action filled after all events are processed, fill in an action to send committed
         // index.
-        if let ReplicationAction::None = self.next_action {
+        if self.next_action.is_none() {
             let m = &self.matching;
 
             // empty message, just for syncing the committed index
-            self.next_action = ReplicationAction::Logs {
+            self.next_action = Some(Data {
                 // id==0 will be ignored by RaftCore.
                 id: 0,
-                log_id_range: LogIdRange {
+                payload: Payload::Logs(LogIdRange {
                     prev_log_id: *m,
                     last_log_id: *m,
-                },
-            };
+                }),
+            });
         }
 
         Ok(())
@@ -386,7 +385,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
     pub async fn try_drain_events(&mut self) -> Result<(), ReplicationError<C::NodeId, C::Node>> {
         tracing::debug!("try_drain_raft_rx");
 
-        while let ReplicationAction::None = self.next_action {
+        while self.next_action.is_none() {
             let maybe_res = self.rx_repl.recv().now_or_never();
 
             let recv_res = match maybe_res {
@@ -426,38 +425,84 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
                 // something: When all messages are drained,
                 // - if self.next_action is None, it resend an empty AppendEntries request as
                 //   heartbeat.
-                //-  If self.next_action is not None, it will serve as a heartbeat.
+                //-  If self.next_action is not None, next_action will serve as a heartbeat.
             }
-            Replicate::Logs { id, log_id_range } => {
-                if let ReplicationAction::None = self.next_action {
-                    self.next_action = ReplicationAction::Logs { id, log_id_range };
-                } else {
-                    unreachable!("current state is: {:?}, can not accept other state", self.next_action);
-                }
-            }
-            Replicate::Snapshot { id, snapshot } => {
-                if let ReplicationAction::None = self.next_action {
-                    self.next_action = ReplicationAction::Snapshot { id, snapshot };
-                } else {
-                    unreachable!("current state is: {:?}, can not accept other state", self.next_action);
-                }
+            Replicate::Data(d) => {
+                debug_assert!(self.next_action.is_none(),);
+                self.next_action = Some(d);
             }
         }
     }
 }
 
-pub(crate) enum ReplicationAction<NID, N, SD>
+/// Request to replicate a chunk of data, logs or snapshot.
+///
+/// It defines what data to send to a follower/learner and an id to identify who is sending this
+/// data.
+#[derive(Debug)]
+pub(crate) struct Data<NID, N, SD>
 where
     NID: NodeId,
     N: Node,
     SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
-    None,
-    Logs { id: u64, log_id_range: LogIdRange<NID> },
-    Snapshot { id: u64, snapshot: Snapshot<NID, N, SD> },
+    id: u64,
+    payload: Payload<NID, N, SD>,
 }
 
-impl<NID, N, SD> Debug for ReplicationAction<NID, N, SD>
+impl<NID, N, S> MessageSummary<Data<NID, N, S>> for Data<NID, N, S>
+where
+    NID: NodeId,
+    N: Node,
+    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
+    fn summary(&self) -> String {
+        match &self.payload {
+            Payload::Logs(log_id_range) => {
+                format!("Logs{{id={}, {}}}", self.id, log_id_range)
+            }
+            Payload::Snapshot(snapshot) => {
+                format!("Snapshot{{id={}, {}}}", self.id, snapshot.meta.summary())
+            }
+        }
+    }
+}
+
+impl<NID, N, SD> Data<NID, N, SD>
+where
+    NID: NodeId,
+    N: Node,
+    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
+    fn new_logs(id: u64, log_id_range: LogIdRange<NID>) -> Self {
+        Self {
+            id,
+            payload: Payload::Logs(log_id_range),
+        }
+    }
+
+    fn new_snapshot(id: u64, snapshot: Snapshot<NID, N, SD>) -> Self {
+        Self {
+            id,
+            payload: Payload::Snapshot(snapshot),
+        }
+    }
+}
+
+/// The data to replication.
+///
+/// Either a series of logs or a snapshot.
+pub(crate) enum Payload<NID, N, SD>
+where
+    NID: NodeId,
+    N: Node,
+    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
+    Logs(LogIdRange<NID>),
+    Snapshot(Snapshot<NID, N, SD>),
+}
+
+impl<NID, N, SD> Debug for Payload<NID, N, SD>
 where
     NID: NodeId,
     N: Node,
@@ -465,14 +510,11 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReplicationAction::None => {
-                write!(f, "None")
+            Self::Logs(log_id_range) => {
+                write!(f, "Logs({})", log_id_range)
             }
-            ReplicationAction::Logs { id, log_id_range } => {
-                write!(f, "Logs(id={}):{}", id, log_id_range)
-            }
-            ReplicationAction::Snapshot { id, snapshot } => {
-                write!(f, "Snapshot(id={}):{:?}", id, snapshot.meta)
+            Self::Snapshot(snapshot) => {
+                write!(f, "Snapshot({:?})", snapshot.meta)
             }
         }
     }
@@ -485,12 +527,12 @@ pub(crate) enum ReplicationResult<NID: NodeId> {
     Conflict(LogId<NID>),
 }
 
-/// An event from the RaftCore leader state to replication stream, to inform what to replicate.
-pub(crate) enum Replicate<NID, N, S>
+/// A replication request sent by RaftCore leader state to replication stream.
+pub(crate) enum Replicate<NID, N, SD>
 where
     NID: NodeId,
     N: Node,
-    S: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
 {
     /// Inform replication stream to forward the committed log id to followers/learners.
     Committed(Option<LogId<NID>>),
@@ -498,11 +540,23 @@ where
     /// Send an empty AppendEntries RPC as heartbeat.
     Heartbeat,
 
-    /// Inform replication stream to forward the log entries to followers/learners.
-    Logs { id: u64, log_id_range: LogIdRange<NID> },
+    /// Send a chunk of data, e.g., logs or snapshot.
+    Data(Data<NID, N, SD>),
+}
 
-    /// Replicate a snapshot
-    Snapshot { id: u64, snapshot: Snapshot<NID, N, S> },
+impl<NID, N, SD> Replicate<NID, N, SD>
+where
+    NID: NodeId,
+    N: Node,
+    SD: AsyncRead + AsyncSeek + Send + Unpin + 'static,
+{
+    pub(crate) fn logs(id: u64, log_id_range: LogIdRange<NID>) -> Self {
+        Self::Data(Data::new_logs(id, log_id_range))
+    }
+
+    pub(crate) fn snapshot(id: u64, snapshot: Snapshot<NID, N, SD>) -> Self {
+        Self::Data(Data::new_snapshot(id, snapshot))
+    }
 }
 
 impl<NID, N, S> MessageSummary<Replicate<NID, N, S>> for Replicate<NID, N, S>
@@ -517,11 +571,8 @@ where
                 format!("Replicate::Committed: {:?}", c)
             }
             Replicate::Heartbeat => "Replicate::Heartbeat".to_string(),
-            Replicate::Logs { id, log_id_range } => {
-                format!("Replicate::Entries(id={}): {}", id, log_id_range)
-            }
-            Replicate::Snapshot { id, snapshot } => {
-                format!("Replicate::Snapshot(id={}): {}", id, snapshot.meta.summary())
+            Replicate::Data(d) => {
+                format!("Replicate::Data({})", d.summary())
             }
         }
     }

@@ -1367,7 +1367,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                                 let _ = node.tx_repl.send(Replicate::Heartbeat);
                             }
                             Inflight::Logs { id, log_id_range } => {
-                                let _ = node.tx_repl.send(Replicate::Logs { id, log_id_range });
+                                let _ = node.tx_repl.send(Replicate::logs(id, log_id_range));
                             }
                             Inflight::Snapshot { id, last_log_id } => {
                                 let snapshot = self.storage.get_current_snapshot().await?;
@@ -1375,7 +1375,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
 
                                 if let Some(snapshot) = snapshot {
                                     debug_assert_eq!(last_log_id, snapshot.meta.last_log_id);
-                                    let _ = node.tx_repl.send(Replicate::Snapshot { id, snapshot });
+                                    let _ = node.tx_repl.send(Replicate::snapshot(id, snapshot));
                                 } else {
                                     unreachable!("No snapshot");
                                 }
