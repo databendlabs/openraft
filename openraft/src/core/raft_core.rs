@@ -1359,30 +1359,26 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             }
             Command::Replicate { req, target } => {
                 if let Some(l) = &self.leader_data {
-                    let node = &l.nodes.get(&target);
+                    let node = l.nodes.get(&target).expect("replication to target node exists");
 
-                    if let Some(node) = node {
-                        match req {
-                            Inflight::None => {
-                                let _ = node.tx_repl.send(Replicate::Heartbeat);
-                            }
-                            Inflight::Logs { id, log_id_range } => {
-                                let _ = node.tx_repl.send(Replicate::logs(id, log_id_range));
-                            }
-                            Inflight::Snapshot { id, last_log_id } => {
-                                let snapshot = self.storage.get_current_snapshot().await?;
-                                tracing::debug!("snapshot: {}", snapshot.as_ref().map(|x| &x.meta).summary());
+                    match req {
+                        Inflight::None => {
+                            let _ = node.tx_repl.send(Replicate::Heartbeat);
+                        }
+                        Inflight::Logs { id, log_id_range } => {
+                            let _ = node.tx_repl.send(Replicate::logs(id, log_id_range));
+                        }
+                        Inflight::Snapshot { id, last_log_id } => {
+                            let snapshot = self.storage.get_current_snapshot().await?;
+                            tracing::debug!("snapshot: {}", snapshot.as_ref().map(|x| &x.meta).summary());
 
-                                if let Some(snapshot) = snapshot {
-                                    debug_assert_eq!(last_log_id, snapshot.meta.last_log_id);
-                                    let _ = node.tx_repl.send(Replicate::snapshot(id, snapshot));
-                                } else {
-                                    unreachable!("No snapshot");
-                                }
+                            if let Some(snapshot) = snapshot {
+                                debug_assert_eq!(last_log_id, snapshot.meta.last_log_id);
+                                let _ = node.tx_repl.send(Replicate::snapshot(id, snapshot));
+                            } else {
+                                unreachable!("No snapshot");
                             }
                         }
-                    } else {
-                        // TODO(2): if no such node, return an RemoteError?
                     }
                 } else {
                     unreachable!("it has to be a leader!!!");
