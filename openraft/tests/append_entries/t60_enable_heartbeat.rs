@@ -4,11 +4,13 @@ use std::time::Duration;
 use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
+use tokio::time::sleep;
+use tokio::time::Instant;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
-/// Enable heartbeat, heartbeat log should be replicated.
+/// Enable heartbeat, heartbeat should be replicated.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn enable_heartbeat() -> Result<()> {
     // Setup test dependencies.
@@ -21,16 +23,27 @@ async fn enable_heartbeat() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {3}).await?;
+    let _ = log_index;
 
     let node0 = router.get_raft_handle(&0)?;
     node0.enable_heartbeat(true);
 
-    for _i in 0..10 {
-        log_index += 1; // new heartbeat log
-        router.wait(&0, timeout()).log_at_least(Some(log_index), "node 0 emit heartbeat log").await?;
-        router.wait(&1, timeout()).log_at_least(Some(log_index), "node 1 receives heartbeat").await?;
-        router.wait(&3, timeout()).log_at_least(Some(log_index), "node 1 receives heartbeat").await?;
+    for _i in 0..3 {
+        sleep(Duration::from_millis(500)).await;
+
+        for node_id in [1, 2, 3] {
+            // no new log will be sent, .
+            router
+                .wait(&node_id, timeout())
+                .log_at_least(Some(log_index), format!("node {} emit heartbeat log", node_id))
+                .await?;
+
+            // leader lease is extended.
+            router.external_request(node_id, move |state, _store, _net| {
+                assert!(state.leader_expire_at() > Instant::now());
+            });
+        }
     }
 
     Ok(())

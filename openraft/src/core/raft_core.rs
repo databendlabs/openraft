@@ -431,29 +431,26 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     ///
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
-    pub async fn send_heartbeat(
-        &mut self,
-        tick: usize,
-        resp_tx: Option<ClientWriteTx<C>>,
-        emitter: impl Display,
-    ) -> Result<(), Fatal<C::NodeId>> {
-        tracing::debug!(tick = display(tick), "send_heartbeat");
+    pub async fn send_heartbeat(&mut self, emitter: impl Display) -> Result<bool, Fatal<C::NodeId>> {
+        tracing::debug!(now = debug(&self.engine.state.now), "send_heartbeat");
 
-        let _ = tick;
-
-        let is_leader = self.write_entry(EntryPayload::Blank, resp_tx).await?;
-        if is_leader {
-            let log_id = self.engine.state.last_log_id();
+        let mut lh = if let Some((lh, _)) =
+            self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C::NodeId, C::Node>>(None)
+        {
+            lh
+        } else {
             tracing::debug!(
-                log_id = display(log_id.summary()),
-                tick = display(tick),
-                "{} sent heartbeat",
+                now = debug(&self.engine.state.now),
+                "{} failed to send heartbeat",
                 emitter
             );
-        } else {
-            tracing::debug!(tick = display(tick), "{} failed to send heartbeat", emitter);
-        }
-        Ok(())
+            return Ok(false);
+        };
+
+        lh.send_heartbeat();
+
+        tracing::debug!("{} sent heartbeat", emitter);
+        Ok(true)
     }
 
     /// Flush cached changes of metrics to notify metrics watchers with updated metrics.
@@ -1033,6 +1030,16 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.handle_append_entries_request(rpc, tx).await?;
             }
             RaftMsg::RequestVote { rpc, tx } => {
+                // Vote request needs to check if the lease of the last leader expired.
+                // Thus it is time sensitive. Update the cached time for it.
+                let now = Instant::now();
+                self.engine.state.update_now(now);
+                tracing::debug!(
+                    vote_request = display(rpc.summary()),
+                    "handle vote request: now: {:?}",
+                    now
+                );
+
                 self.handle_vote_request(rpc, tx).await?;
             }
             RaftMsg::VoteResponse { target, resp, vote } => {
@@ -1081,8 +1088,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         }
                     }
                     ExternalCommand::Heartbeat => {
-                        // TODO: use the last tick
-                        self.send_heartbeat(0, None, "ExternalCommand").await?;
+                        self.send_heartbeat("ExternalCommand").await?;
                     }
                     ExternalCommand::Snapshot => self.trigger_snapshot_if_needed(true).await,
                 }
@@ -1091,6 +1097,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 // check every timer
 
                 let now = Instant::now();
+                self.engine.state.update_now(now);
                 tracing::debug!("received tick: {}, now: {:?}", i, now);
 
                 let current_vote = self.engine.state.get_vote();
@@ -1121,7 +1128,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 if let Some(t) = heartbeat_at {
                     if now >= t {
                         if self.runtime_config.enable_heartbeat.load(Ordering::Relaxed) {
-                            self.send_heartbeat(i, None, "tick").await?;
+                            self.send_heartbeat("tick").await?;
                         }
 
                         // Install next heartbeat
@@ -1352,15 +1359,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             }
             Command::Replicate { req, target } => {
                 if let Some(l) = &self.leader_data {
-                    // TODO(2): consider remove the returned error from new_client().
-                    // Node may not exist because `RaftNetworkFactory::new_client()` returns an
-                    // error.
                     let node = &l.nodes.get(&target);
 
                     if let Some(node) = node {
                         match req {
                             Inflight::None => {
-                                unreachable!("Inflight::None");
+                                let _ = node.tx_repl.send(Replicate::Heartbeat);
                             }
                             Inflight::Logs { id, log_id_range } => {
                                 let _ = node.tx_repl.send(Replicate::Logs { id, log_id_range });

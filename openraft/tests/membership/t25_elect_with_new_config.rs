@@ -5,6 +5,7 @@ use anyhow::Result;
 use maplit::btreeset;
 use openraft::Config;
 use openraft::LogIdOptionExt;
+use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -38,6 +39,9 @@ async fn leader_election_after_changing_0_to_01234() -> Result<()> {
     // Isolate old leader and assert that a new leader takes over.
     tracing::info!("--- isolating leader node 0");
     router.isolate_node(0);
+
+    // Wait for leader lease to expire
+    sleep(Duration::from_millis(700)).await;
 
     // Let node-1 become leader.
     let node_1 = router.get_raft_handle(&1)?;

@@ -81,9 +81,30 @@ where
             self.output.push_command(Command::SaveVote { vote: *vote });
         }
 
+        if vote.is_committed() {
+            self.extend_leader_lease();
+        }
+
         self.update_internal_server_state();
 
         Ok(())
+    }
+
+    /// Extend leader lease so that in a specific duration no new election from other node will be
+    /// granted.
+    ///
+    /// `now` is the current time since when to extend leader lease.
+    pub(crate) fn extend_leader_lease(&mut self) {
+        tracing::debug!(
+            now = debug(&self.state.now),
+            current_leader_expire_at = debug(&self.state.leader_expire_at),
+            "{}",
+            func_name!()
+        );
+
+        // Because different nodes may have different local tick values,
+        // when leader switches, a follower may receive a lower tick.
+        self.state.leader_expire_at = self.state.now + self.config.leader_lease;
     }
 
     /// Enter leading or following state by checking `vote`.

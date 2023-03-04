@@ -1,8 +1,11 @@
+use std::time::Duration;
+
 use crate::core::ServerState;
 use crate::engine::handler::following_handler::FollowingHandler;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::log_handler::LogHandler;
 use crate::engine::handler::replication_handler::ReplicationHandler;
+use crate::engine::handler::replication_handler::SendNone;
 use crate::engine::handler::server_state_handler::ServerStateHandler;
 use crate::engine::handler::snapshot_handler::SnapshotHandler;
 use crate::engine::handler::vote_handler::VoteHandler;
@@ -47,6 +50,12 @@ pub(crate) struct EngineConfig<NID: NodeId> {
 
     /// The maximum number of entries per payload allowed to be transmitted during replication
     pub(crate) max_payload_entries: u64,
+
+    /// The duration of an active leader's lease.
+    ///
+    /// When a follower or learner perceives an active leader, such as by receiving an AppendEntries
+    /// message, it should not grant another candidate to become the leader during this period.
+    pub(crate) leader_lease: Duration,
 }
 
 impl<NID: NodeId> Default for EngineConfig<NID> {
@@ -56,6 +65,7 @@ impl<NID: NodeId> Default for EngineConfig<NID> {
             max_in_snapshot_log_to_keep: 1000,
             purge_batch_size: 256,
             max_payload_entries: 300,
+            leader_lease: Duration::from_millis(150),
         }
     }
 }
@@ -139,7 +149,7 @@ where
 
             let mut rh = self.replication_handler();
             rh.rebuild_replication_streams();
-            rh.initiate_replication();
+            rh.initiate_replication(SendNone::False);
 
             return;
         }
@@ -272,6 +282,21 @@ where
             "Engine::handle_vote_req"
         );
 
+        // Current leader lease has not yet expired, reject voting request
+        if self.state.now <= self.state.leader_expire_at {
+            tracing::debug!(
+                "reject: leader lease has not yet expire; now; {:?}, leader lease will expire at: {:?}: after {:?}",
+                self.state.now,
+                self.state.leader_expire_at,
+                self.state.leader_expire_at - self.state.now
+            );
+            return VoteResponse {
+                vote: *self.state.get_vote(),
+                vote_granted: false,
+                last_log_id: self.state.last_log_id().copied(),
+            };
+        }
+
         // The first step is to check log. If the candidate has less log, nothing needs to be done.
 
         if req.last_log_id.as_ref() >= self.state.last_log_id() {
@@ -366,13 +391,6 @@ where
         } else {
             self.output.push_command(Command::InstallElectionTimer { can_be_leader: true });
         }
-
-        debug_assert!(self.state.is_voter(&self.config.id));
-
-        // When vote is rejected, it does not need to leave candidate state.
-        // Candidate loop, follower loop and learner loop are totally the same.
-        //
-        // The only thing that needs to do is update election timer.
     }
 
     /// Append entries to follower/learner.
@@ -486,7 +504,7 @@ where
 
         rh.rebuild_replication_streams();
         rh.append_blank_log();
-        rh.initiate_replication();
+        rh.initiate_replication(SendNone::False);
     }
 
     /// Check if a raft node is in a state that allows to initialize.

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use maplit::btreeset;
 
@@ -31,6 +32,44 @@ fn eng() -> Engine<u64, ()> {
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())));
     eng.vote_handler().become_leading();
     eng
+}
+
+#[test]
+fn test_handle_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
+    let mut eng = eng();
+    // Non expired leader lease
+    eng.state.now = eng.state.leader_expire_at - Duration::from_millis(500);
+
+    let resp = eng.handle_vote_req(VoteRequest {
+        vote: Vote::new(1, 2),
+        last_log_id: Some(log_id(2, 3)),
+    });
+
+    assert_eq!(
+        VoteResponse {
+            vote: Vote::new(2, 1),
+            vote_granted: false,
+            last_log_id: None
+        },
+        resp
+    );
+
+    assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
+    assert!(eng.internal_server_state.is_leading());
+
+    assert_eq!(ServerState::Candidate, eng.state.server_state);
+    assert_eq!(
+        MetricsChangeFlags {
+            replication: false,
+            local_data: false,
+            cluster: false,
+        },
+        eng.output.metrics_flags
+    );
+
+    assert_eq!(0, eng.output.commands.len());
+
+    Ok(())
 }
 
 #[test]

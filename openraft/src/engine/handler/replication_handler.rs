@@ -41,6 +41,16 @@ where
     pub(crate) output: &'x mut EngineOutput<NID, N>,
 }
 
+/// An option about whether to send an RPC to follower/learner even when there is no data to send.
+///
+/// Sending none data serves as a heartbeat.
+#[derive(Debug)]
+#[derive(PartialEq, Eq)]
+pub(crate) enum SendNone {
+    False,
+    True,
+}
+
 impl<'x, NID, N> ReplicationHandler<'x, NID, N>
 where
     NID: NodeId,
@@ -93,7 +103,7 @@ where
 
         self.rebuild_progresses();
         self.rebuild_replication_streams();
-        self.initiate_replication();
+        self.initiate_replication(SendNone::False);
     }
 
     /// Rebuild leader's replication progress to reflect replication changes.
@@ -274,8 +284,10 @@ where
     }
 
     /// Initiate replication for every target that is not sending data in flight.
+    ///
+    /// `send_none` specifies whether to force to send a message even when there is no data to send.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) fn initiate_replication(&mut self) {
+    pub(crate) fn initiate_replication(&mut self, send_none: SendNone) {
         tracing::debug!(progress = debug(&self.leader.progress), "send_to_all");
 
         for (id, prog_entry) in self.leader.progress.iter_mut() {
@@ -292,7 +304,19 @@ where
                     Self::send_to_target(self.output, id, inflight);
                 }
                 Err(e) => {
-                    tracing::debug!("no need to replicate for node-{}: current inflight: {:?}", id, e,);
+                    tracing::debug!(
+                        "no data to replicate for node-{}: current inflight: {:?}, send_none: {:?}",
+                        id,
+                        e,
+                        send_none
+                    );
+
+                    #[allow(clippy::collapsible_if)]
+                    if e == &Inflight::None {
+                        if send_none == SendNone::True {
+                            Self::send_to_target(self.output, id, e);
+                        }
+                    }
                 }
             }
         }
@@ -300,8 +324,6 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn send_to_target(output: &mut EngineOutput<NID, N>, target: &NID, inflight: &Inflight<NID>) {
-        debug_assert!(!inflight.is_none());
-
         output.push_command(Command::Replicate {
             target: *target,
             req: *inflight,

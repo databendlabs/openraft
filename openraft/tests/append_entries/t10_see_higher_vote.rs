@@ -12,6 +12,7 @@ use openraft::RaftNetworkFactory;
 use openraft::ServerState;
 use openraft::Vote;
 use openraft_memstore::ClientRequest;
+use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -23,6 +24,8 @@ async fn append_sees_higher_vote() -> Result<()> {
         Config {
             enable_heartbeat: false,
             enable_elect: false,
+            election_timeout_min: 500,
+            election_timeout_max: 501,
             ..Default::default()
         }
         .validate()?,
@@ -34,7 +37,10 @@ async fn append_sees_higher_vote() -> Result<()> {
 
     tracing::info!("--- upgrade vote on node-1");
     {
-        router
+        // Let leader lease expire
+        sleep(Duration::from_millis(800)).await;
+
+        let resp = router
             .new_client(1, &())
             .await
             .send_vote(VoteRequest {
@@ -42,6 +48,8 @@ async fn append_sees_higher_vote() -> Result<()> {
                 last_log_id: Some(LogId::new(CommittedLeaderId::new(10, 1), 5)),
             })
             .await?;
+
+        assert!(resp.vote_granted);
     }
 
     tracing::info!("--- a write operation will see a higher vote, then the leader revert to follower");

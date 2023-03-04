@@ -234,6 +234,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             max_in_snapshot_log_to_keep: config.max_in_snapshot_log_to_keep,
             purge_batch_size: config.purge_batch_size,
             max_payload_entries: config.max_payload_entries,
+            leader_lease: Duration::from_millis(config.election_timeout_min),
         });
 
         let core = RaftCore {
@@ -900,7 +901,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     /// A tick event to wake up RaftCore to check timeout etc.
     Tick {
         /// ith tick
-        i: usize,
+        i: u64,
     },
 
     /// Update the `matched` log id of a replication target.
@@ -1027,6 +1028,7 @@ pub(crate) enum ExternalCommand {
 }
 
 /// An RPC sent by a cluster leader to replicate log entries (§5.3), and as a heartbeat (§5.2).
+#[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct AppendEntriesRequest<C: RaftTypeConfig> {
     pub vote: Vote<C::NodeId>,
@@ -1041,17 +1043,6 @@ pub struct AppendEntriesRequest<C: RaftTypeConfig> {
 
     /// The leader's committed log id.
     pub leader_commit: Option<LogId<C::NodeId>>,
-}
-
-impl<C: RaftTypeConfig> Clone for AppendEntriesRequest<C> {
-    fn clone(&self) -> Self {
-        Self {
-            vote: self.vote,
-            prev_log_id: self.prev_log_id,
-            entries: self.entries.clone(),
-            leader_commit: self.leader_commit,
-        }
-    }
 }
 
 impl<C: RaftTypeConfig> Debug for AppendEntriesRequest<C>
@@ -1122,7 +1113,7 @@ pub struct VoteRequest<NID: NodeId> {
 
 impl<NID: NodeId> MessageSummary<VoteRequest<NID>> for VoteRequest<NID> {
     fn summary(&self) -> String {
-        format!("{}, last_log:{:?}", self.vote, self.last_log_id.map(|x| x.to_string()))
+        format!("{}, last_log:{:?}", self.vote, self.last_log_id.map(|x| x.to_string()),)
     }
 }
 

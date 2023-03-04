@@ -16,5 +16,6 @@ mod t40_append_updates_membership;
 mod t50_append_entries_with_bigger_term;
 mod t50_replication_1_voter_to_isolated_learner;
 mod t60_enable_heartbeat;
+mod t60_heartbeat_reject_vote;
 mod t60_large_heartbeat;
 mod t90_issue_216_stale_last_log_id;

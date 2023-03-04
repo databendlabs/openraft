@@ -421,6 +421,13 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Replication
 
                 self.committed = c;
             }
+            Replicate::Heartbeat => {
+                // Nothing to do. Heartbeat message is just for waking up replication to send
+                // something: When all messages are drained,
+                // - if self.next_action is None, it resend an empty AppendEntries request as
+                //   heartbeat.
+                //-  If self.next_action is not None, it will serve as a heartbeat.
+            }
             Replicate::Logs { id, log_id_range } => {
                 if let ReplicationAction::None = self.next_action {
                     self.next_action = ReplicationAction::Logs { id, log_id_range };
@@ -488,6 +495,9 @@ where
     /// Inform replication stream to forward the committed log id to followers/learners.
     Committed(Option<LogId<NID>>),
 
+    /// Send an empty AppendEntries RPC as heartbeat.
+    Heartbeat,
+
     /// Inform replication stream to forward the log entries to followers/learners.
     Logs { id: u64, log_id_range: LogIdRange<NID> },
 
@@ -506,6 +516,7 @@ where
             Replicate::Committed(c) => {
                 format!("Replicate::Committed: {:?}", c)
             }
+            Replicate::Heartbeat => "Replicate::Heartbeat".to_string(),
             Replicate::Logs { id, log_id_range } => {
                 format!("Replicate::Entries(id={}): {}", id, log_id_range)
             }

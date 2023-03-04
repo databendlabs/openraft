@@ -12,6 +12,7 @@ use openraft::LogId;
 use openraft::ServerState;
 #[allow(unused_imports)] use pretty_assertions::assert_eq;
 #[allow(unused_imports)] use pretty_assertions::assert_ne;
+use tokio::time::sleep;
 
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
@@ -167,6 +168,9 @@ async fn leader_metrics() -> Result<()> {
 
     tracing::info!("--- let node-1 to elect to take leadership from node-0");
     {
+        // Let the leader lease expire
+        sleep(Duration::from_millis(700)).await;
+
         n1.trigger_elect().await?;
         n1.wait(timeout()).state(ServerState::Leader, "node-1 becomes leader").await?;
         n1.wait(timeout()).metrics(|x| x.replication.is_some(), "node-1 starts replication").await?;

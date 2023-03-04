@@ -1,4 +1,7 @@
 use std::error::Error;
+use std::time::Duration;
+
+use tokio::time::Instant;
 
 use crate::engine::LogIdList;
 use crate::entry::RaftEntry;
@@ -88,7 +91,7 @@ pub(crate) trait VoteStateReader<NID: NodeId> {
 }
 
 /// A struct used to represent the raft state which a Raft node needs.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RaftState<NID, N>
 where
     NID: NodeId,
@@ -119,6 +122,14 @@ where
     // --
     // -- volatile fields: they are not persisted.
     // --
+    /// Cached current time.
+    pub(crate) now: Instant,
+
+    /// The time when the active leader is considered expired.
+    ///
+    /// It will be updated every time a message is received from the active leader.
+    pub(crate) leader_expire_at: Instant,
+
     pub server_state: ServerState,
 
     /// The log id upto which the next time it purges.
@@ -126,6 +137,29 @@ where
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
     /// field.
     pub(crate) purge_upto: Option<LogId<NID>>,
+}
+
+impl<NID, N> Default for RaftState<NID, N>
+where
+    NID: NodeId,
+    N: Node,
+{
+    fn default() -> Self {
+        Self {
+            vote: Vote::default(),
+            committed: None,
+            purged_next: 0,
+            log_ids: LogIdList::default(),
+            membership_state: MembershipState::default(),
+            snapshot_meta: SnapshotMeta::default(),
+            now: Instant::now(),
+            // no active leader
+            leader_expire_at: Instant::now() - Duration::from_millis(1),
+
+            server_state: ServerState::default(),
+            purge_upto: None,
+        }
+    }
 }
 
 impl<NID, N> LogStateReader<NID> for RaftState<NID, N>
@@ -199,6 +233,15 @@ where
     NID: NodeId,
     N: Node,
 {
+    /// Returns the time when the leader lease expires
+    pub fn leader_expire_at(&self) -> Instant {
+        self.leader_expire_at
+    }
+
+    pub(crate) fn update_now(&mut self, now: Instant) {
+        self.now = now;
+    }
+
     /// Append a list of `log_id`.
     ///
     /// The log ids in the input has to be continuous.
@@ -307,8 +350,6 @@ where
     }
 
     /// Build a ForwardToLeader error that contains the leader id and node it knows.
-    // TODO: This will be used in next PR. delete this attr
-    #[allow(dead_code)]
     pub(crate) fn forward_to_leader(&self) -> ForwardToLeader<NID, N> {
         let vote = self.get_vote();
 

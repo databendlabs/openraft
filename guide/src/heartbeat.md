@@ -1,3 +1,50 @@
+# Obsolete: blank log heartbeat
+
+https://github.com/datafuselabs/openraft/issues/698
+
+This design has two problems:
+
+- The heartbeat that sends a blank log introduces additional I/O, as a follower has to persist every log to maintain correctness.
+
+- Although `(term, log_index)` serves as a pseudo time in Raft, measuring whether a node has caught up with the leader and is capable of becoming a new leader, leadership is not solely determined by this pseudo time.
+  Wall clock time is also taken into account.
+
+  There may be a case where the pseudo time is not upto date but the clock time is, and the node should not become the leader.
+  For example, in a cluster of three nodes, if the leader (node-1) is busy sending a snapshot to node-2(it has not yet replicated the latest logs to a quorum, but node-2 received message from the leader(node-1), thus it knew there is an active leader), node-3 should not seize leadership from node-1.
+  This is why there needs to be two types of time, pseudo time `(term, log_index)` and wall clock time, to protect leadership.
+
+  In the follow graph:
+  - node-1 is the leader, has 4 log entries, and is sending a snapshot to
+      node-2,
+  - node-2 received several chunks of snapshot, and it perceived an active
+      leader thus extended leader lease.
+  - node-3 tried to send vote request to node-2, although node-2 do not have
+      as many logs as node-3, it should still reject node-3's vote request
+      because the leader lease has not yet expired.
+
+  In the obsolete design, extending pseudo time `(term, index)` with a
+  `tick`, in this case node-3 will seize the leadership from node-2.
+
+  ```text
+  Ni: Node i
+  Ei: log entry i
+
+  N1 E1 E2 E3 E4
+        |
+        v
+  N2    snapshot
+        +-----------------+
+                 ^        |
+                 |        leader lease
+                 |
+  N3 E1 E2 E3    | vote-request
+  ---------------+----------------------------> clock time
+                 now
+
+  ```
+
+The original document is presented below for reference.
+
 # Heartbeat in openraft
 
 ## Heartbeat in standard raft
@@ -25,7 +72,7 @@ Because the leader must have the greatest **pseudo time**,
 thus by comparing the **pseudo time**, a follower automatically refuse election request from a node unreachable to the leader.
 
 And comparing the **pseudo time** is already done by `handle_vote_request()`,
-there is no need to add another timer for the active leader. 
+there is no need to add another timer for the active leader.
 
 Thus making heartbeat request a blank log is the simplest way.
 

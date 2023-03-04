@@ -2,6 +2,9 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::time::Instant;
 
 use crate::defensive::check_range_matches_entries;
 use crate::engine::LogIdList;
@@ -77,6 +80,9 @@ where
             snapshot_meta,
 
             // -- volatile fields: they are not persisted.
+            now: Instant::now(),
+            // no active leader
+            leader_expire_at: Instant::now() - Duration::from_millis(1),
             server_state: Default::default(),
             purge_upto: last_purged_log_id,
         })

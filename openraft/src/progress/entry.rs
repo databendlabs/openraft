@@ -25,7 +25,9 @@ pub(crate) struct ProgressEntry<NID: NodeId> {
 
     pub(crate) curr_inflight_id: u64,
 
-    /// The log entries being transmitted in flight.
+    /// The data being transmitted in flight.
+    ///
+    /// A non-none inflight expects a response when the data was successfully sent or failed.
     pub(crate) inflight: Inflight<NID>,
 
     /// One plus the max log index on the following node that might match the leader log.
