@@ -27,7 +27,7 @@ tracing = "0.1.29"
 [dev-dependencies]
 anyhow = { workspace = true }
 async-trait = { version = "0.1.36" }
-tempdir = { version = "0.3.7" }
+tempfile = { version = "3.4.0" }
 tokio = { version = "1.25.0" }
 
 rocksstore07 = { package = "openraft-rocksstore", version = "0.7.4" }

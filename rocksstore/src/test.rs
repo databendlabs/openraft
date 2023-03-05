@@ -18,7 +18,7 @@ impl StoreBuilder<Config, Arc<RocksStore>> for RocksBuilder {
         Res: Future<Output = Result<Ret, StorageError<RocksNodeId>>> + Send,
         Fun: Fn(Arc<RocksStore>) -> Res + Sync + Send,
     {
-        let td = tempdir::TempDir::new("RocksBuilder").expect("couldn't create temp dir");
+        let td = tempfile::TempDir::new().expect("couldn't create temp dir");
         let r = {
             let store = RocksStore::new(td.path()).await;
             t(store).await

@@ -29,7 +29,7 @@ impl StoreBuilder<ExampleTypeConfig, Arc<SledStore>> for SledBuilder {
         Fun: Fn(Arc<SledStore>) -> Res + Sync + Send,
     {
         let pid = std::process::id();
-        let td = tempdir::TempDir::new("SledBuilder").expect("couldn't create temp dir");
+        let td = tempfile::TempDir::new().expect("couldn't create temp dir");
         let temp_dir_path = td.path().to_str().expect("Could not convert temp dir");
         let r = {
             let old_count = GLOBAL_TEST_COUNT.fetch_add(1, Ordering::SeqCst);
