@@ -1102,6 +1102,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
                 let current_vote = self.engine.state.get_vote();
 
+                tracing::debug!(
+                    "next_election_time: {:?}, current_vote: {:?}",
+                    self.next_election_time,
+                    current_vote
+                );
+
                 // Follower/Candidate timer: next election
                 if let Some(t) = self.next_election_time.get_time(current_vote) {
                     #[allow(clippy::collapsible_else_if)]

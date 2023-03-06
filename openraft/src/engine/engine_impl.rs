@@ -169,7 +169,7 @@ where
 
         self.state.server_state = server_state;
 
-        tracing::debug!(
+        tracing::info!(
             "startup: id={} target_state: {:?}",
             self.config.id,
             self.state.server_state
