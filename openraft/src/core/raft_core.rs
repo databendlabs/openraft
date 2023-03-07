@@ -198,7 +198,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         // To ensure that restarted nodes don't disrupt a stable cluster.
         if self.engine.state.server_state == ServerState::Follower {
-            self.set_next_election_time(false);
+            // If there is only one voter, elect at once.
+            let voter_ids = self.engine.state.membership_state.effective().voter_ids().collect::<Vec<_>>();
+            if voter_ids.len() == 1 {
+                let now = Instant::now();
+                self.next_election_time = VoteWiseTime::new(*self.engine.state.get_vote(), now);
+            } else {
+                self.set_next_election_time(false);
+            }
         }
 
         // Initialize metrics.
@@ -1103,9 +1110,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 let current_vote = self.engine.state.get_vote();
 
                 tracing::debug!(
-                    "next_election_time: {:?}, current_vote: {:?}",
+                    "next_election_time: {:?}, current_vote: {:?}, got vote-wise time: {:?}",
                     self.next_election_time,
-                    current_vote
+                    current_vote,
+                    self.next_election_time.get_time(current_vote)
                 );
 
                 // Follower/Candidate timer: next election
@@ -1113,6 +1121,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     #[allow(clippy::collapsible_else_if)]
                     if now < t {
                         // timeout has not expired.
+                        tracing::debug!("now: {:?} has not pass next election time: {:?}", now, t);
                     } else {
                         #[allow(clippy::collapsible_else_if)]
                         if self.runtime_config.enable_elect.load(Ordering::Relaxed) {
@@ -1121,7 +1130,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                                 self.run_engine_commands::<Entry<C>>(&[]).await?;
                             } else {
                                 // Node is switched to learner after setting up next election time.
+                                tracing::debug!("this node is not a voter");
                             }
+                        } else {
+                            tracing::debug!("election is disabled");
                         }
                     }
                 }
