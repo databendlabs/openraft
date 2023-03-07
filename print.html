@@ -77,7 +77,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="feature-flags.html"><strong aria-hidden="true">5.</strong> Feature flags</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">6.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">6.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">6.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="log-data-layout.html"><strong aria-hidden="true">6.3.</strong> Log data layout</a></li><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">6.4.</strong> Heartbeat</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">6.5.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">6.6.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">6.6.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html"><strong aria-hidden="true">6.7.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">6.8.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">7.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">7.1.</strong> Upgrade from 0.6 to 0.7</a></li><li class="chapter-item expanded "><a href="upgrade-v07-v08.html"><strong aria-hidden="true">7.2.</strong> Upgrade from 0.7 to 0.8</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="overview.html">Overview</a></li><li class="chapter-item expanded "><a href="getting-started.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="faq.html"><strong aria-hidden="true">2.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="cluster-controls.html"><strong aria-hidden="true">3.</strong> Cluster Controls</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="cluster-formation.html"><strong aria-hidden="true">3.1.</strong> Cluster Formation</a></li><li class="chapter-item expanded "><a href="dynamic-membership.html"><strong aria-hidden="true">3.2.</strong> Dynamic Membership</a></li><li class="chapter-item expanded "><a href="node-lifecycle.html"><strong aria-hidden="true">3.3.</strong> Node lifecycle</a></li></ol></li><li class="chapter-item expanded "><a href="metrics.html"><strong aria-hidden="true">4.</strong> Metrics</a></li><li class="chapter-item expanded "><a href="feature-flags.html"><strong aria-hidden="true">5.</strong> Feature flags</a></li><li class="chapter-item expanded "><a href="internal.html"><strong aria-hidden="true">6.</strong> Internal</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="architecture.html"><strong aria-hidden="true">6.1.</strong> Architecture</a></li><li class="chapter-item expanded "><a href="threading.html"><strong aria-hidden="true">6.2.</strong> Threads</a></li><li class="chapter-item expanded "><a href="log-data-layout.html"><strong aria-hidden="true">6.3.</strong> Log data layout</a></li><li class="chapter-item expanded "><a href="vote.html"><strong aria-hidden="true">6.4.</strong> Vote</a></li><li class="chapter-item expanded "><a href="replication.html"><strong aria-hidden="true">6.5.</strong> Replication</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="delete_log.html"><strong aria-hidden="true">6.5.1.</strong> Delete-conflicting-logs</a></li></ol></li><li class="chapter-item expanded "><a href="extended-membership.html"><strong aria-hidden="true">6.6.</strong> Extended-membership</a></li><li class="chapter-item expanded "><a href="effective-membership.html"><strong aria-hidden="true">6.7.</strong> Effective Membership</a></li></ol></li><li class="chapter-item expanded "><a href="upgrade-tips.html"><strong aria-hidden="true">7.</strong> Upgrade Tips</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="upgrade-v06-v07.html"><strong aria-hidden="true">7.1.</strong> Upgrade from 0.6 to 0.7</a></li><li class="chapter-item expanded "><a href="upgrade-v07-v08.html"><strong aria-hidden="true">7.2.</strong> Upgrade from 0.7 to 0.8</a></li></ol></li><li class="chapter-item expanded "><a href="obsolete-design.html"><strong aria-hidden="true">8.</strong> Obsolete design</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="heartbeat.html"><strong aria-hidden="true">8.1.</strong> Heartbeat</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -1030,68 +1030,6 @@ openraft purges logs from the start up to a configured position, when a fresh sn
 <code>last_purged_log_id</code> is the greatest id that openraft does not store.</p>
 </li>
 </ul>
-<div style="break-before: page; page-break-before: always;"></div><h1 id="heartbeat-in-openraft"><a class="header" href="#heartbeat-in-openraft">Heartbeat in openraft</a></h1>
-<h2 id="heartbeat-in-standard-raft"><a class="header" href="#heartbeat-in-standard-raft">Heartbeat in standard raft</a></h2>
-<p>Heartbeat in standard raft is the way for a leader to assert it is still alive:</p>
-<ul>
-<li>A leader send heartbeat at a regular interval.</li>
-<li>A follower that receives a heartbeat believes there is an active leader thus it rejects election request(<code>send_vote</code>) from another node unreachable to the leader, for a short period.</li>
-</ul>
-<h2 id="openraft-heartbeat-is-a-blank-log"><a class="header" href="#openraft-heartbeat-is-a-blank-log">Openraft heartbeat is a blank log</a></h2>
-<p>Such a heartbeat mechanism depends on clock time.
-But raft as a distributed consensus already has its own <strong>pseudo time</strong> defined very well.
-Raft, or other consensus protocol has its own <strong>pseudo time</strong> defined internally:</p>
-<ul>
-<li>In <a href="https://en.wikipedia.org/wiki/Paxos_(computer_science)">paxos</a> it is <code>round_number</code>(AKA ballot number in some paper).</li>
-<li>In the standard raft it is <code>(term, voted_for, last_log_index)</code>(because in standard raft there is only one leader in every term, <code>voted_for</code> can be removed: <code>(term, last_log_index)</code>).</li>
-</ul>
-<p>The <strong>pseudo time</strong> in openraft is a tuple <code>(vote, last_log_id)</code>, compared in dictionary order(<code>vote</code> is equivalent concept as round number in Paxos).</p>
-<h3 id="why-it-works"><a class="header" href="#why-it-works">Why it works</a></h3>
-<p>To refuse the election by a node that does not receive recent messages from the current leader,
-just let the active leader send a <strong>blank log</strong> to increase the <strong>pseudo time</strong> on a quorum.</p>
-<p>Because the leader must have the greatest <strong>pseudo time</strong>,
-thus by comparing the <strong>pseudo time</strong>, a follower automatically refuse election request from a node unreachable to the leader.</p>
-<p>And comparing the <strong>pseudo time</strong> is already done by <code>handle_vote_request()</code>,
-there is no need to add another timer for the active leader. </p>
-<p>Thus making heartbeat request a blank log is the simplest way.</p>
-<h2 id="why-blank-log-heartbeat"><a class="header" href="#why-blank-log-heartbeat">Why blank log heartbeat?</a></h2>
-<ul>
-<li>
-<p>Simple, get rid of a timer.</p>
-<p>Without heartbeat log(the way standard raft does), when handling a vote
-request, except <code>vote</code> itself, it has to examine two values to determine if
-the vote request is valid:</p>
-<ul>
-<li>Whether the last heartbeat has expired by clock time.</li>
-<li>Whether the <code>(last_term, last_log_index)</code> in the request is greater or equal to the local value. This is the pseudo time Raft defines.</li>
-</ul>
-<p>With heartbeat log(the way openraft does), when handling a vote request, it only needs to examine one value: the raft time: <code>(last_term, last_log_index)</code>. This makes the logic simpler and the test easier to write.</p>
-</li>
-<li>
-<p>Easy to prove, and reduce code complexity.</p>
-</li>
-</ul>
-<h2 id="concerns"><a class="header" href="#concerns">Concerns</a></h2>
-<ul>
-<li>
-<p><strong>More raft logs are generated</strong>.
-This requires to <em>persist</em> the blank entry in the log (or at least the incremented index).
-E.g., doing that every 50ms for 100 consensus domains on one machine will require 2000 IOPS alone for that.</p>
-<p><strong>Why it is not a problem</strong>:</p>
-<ol>
-<li>
-<p>Assume that most consensus domains are busy, and as a domain is busy, it is possible to merge multiple <code>append-entry</code> calls into one call to the storage layer.
-Thus if a domain swallows <code>10</code> business log entries per <code>50 ms</code>, it's likely to merge these 10 entries into one or a few IO calls.
-The IO amplification should be smaller as IOPS gets more.</p>
-<p>Merging entries into one IO call is naturally done on followers(because the leader sends entries in a batch).
-On the leader, it's not done yet(2022 Sep 13). It can be done when the Engine oriented refactoring is ready: (.</p>
-</li>
-<li>
-<p>If a consensus domain swallows <code>1</code> business log entry per <code>50 ms</code>. It does not need another heartbeat. A normal append-entry can be considered a heartbeat.</p>
-</li>
-</ol>
-</li>
-</ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="vote"><a class="header" href="#vote">Vote</a></h1>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
@@ -1934,6 +1872,116 @@ node-id or node. Openraft v0.8 relies on a <code>RaftTypeConfig</code> for your 
 );
 <span class="boring">}
 </span></code></pre></pre>
+</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="obsolete-designs"><a class="header" href="#obsolete-designs">Obsolete Designs</a></h1>
+<p>Several designs in Openraft have been discarded due to the problems they caused for applications.
+These designs were attempts at optimization or simplification, but ultimately proved to be inappropriate.
+They are included in this chapter as an archive to explain why they were discarded.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="obsolete-blank-log-heartbeat"><a class="header" href="#obsolete-blank-log-heartbeat">Obsolete: blank log heartbeat</a></h1>
+<p>https://github.com/datafuselabs/openraft/issues/698</p>
+<p>This design has two problems:</p>
+<ul>
+<li>
+<p>The heartbeat that sends a blank log introduces additional I/O, as a follower has to persist every log to maintain correctness.</p>
+</li>
+<li>
+<p>Although <code>(term, log_index)</code> serves as a pseudo time in Raft, measuring whether a node has caught up with the leader and is capable of becoming a new leader, leadership is not solely determined by this pseudo time.
+Wall clock time is also taken into account.</p>
+<p>There may be a case where the pseudo time is not upto date but the clock time is, and the node should not become the leader.
+For example, in a cluster of three nodes, if the leader (node-1) is busy sending a snapshot to node-2(it has not yet replicated the latest logs to a quorum, but node-2 received message from the leader(node-1), thus it knew there is an active leader), node-3 should not seize leadership from node-1.
+This is why there needs to be two types of time, pseudo time <code>(term, log_index)</code> and wall clock time, to protect leadership.</p>
+<p>In the follow graph:</p>
+<ul>
+<li>node-1 is the leader, has 4 log entries, and is sending a snapshot to
+node-2,</li>
+<li>node-2 received several chunks of snapshot, and it perceived an active
+leader thus extended leader lease.</li>
+<li>node-3 tried to send vote request to node-2, although node-2 do not have
+as many logs as node-3, it should still reject node-3's vote request
+because the leader lease has not yet expired.</li>
+</ul>
+<p>In the obsolete design, extending pseudo time <code>(term, index)</code> with a
+<code>tick</code>, in this case node-3 will seize the leadership from node-2.</p>
+<pre><code class="language-text">Ni: Node i
+Ei: log entry i
+
+N1 E1 E2 E3 E4
+      |
+      v
+N2    snapshot
+      +-----------------+
+               ^        |
+               |        leader lease
+               |
+N3 E1 E2 E3    | vote-request
+---------------+----------------------------&gt; clock time
+               now
+
+</code></pre>
+</li>
+</ul>
+<p>The original document is presented below for reference.</p>
+<h1 id="heartbeat-in-openraft"><a class="header" href="#heartbeat-in-openraft">Heartbeat in openraft</a></h1>
+<h2 id="heartbeat-in-standard-raft"><a class="header" href="#heartbeat-in-standard-raft">Heartbeat in standard raft</a></h2>
+<p>Heartbeat in standard raft is the way for a leader to assert it is still alive:</p>
+<ul>
+<li>A leader send heartbeat at a regular interval.</li>
+<li>A follower that receives a heartbeat believes there is an active leader thus it rejects election request(<code>send_vote</code>) from another node unreachable to the leader, for a short period.</li>
+</ul>
+<h2 id="openraft-heartbeat-is-a-blank-log"><a class="header" href="#openraft-heartbeat-is-a-blank-log">Openraft heartbeat is a blank log</a></h2>
+<p>Such a heartbeat mechanism depends on clock time.
+But raft as a distributed consensus already has its own <strong>pseudo time</strong> defined very well.
+Raft, or other consensus protocol has its own <strong>pseudo time</strong> defined internally:</p>
+<ul>
+<li>In <a href="https://en.wikipedia.org/wiki/Paxos_(computer_science)">paxos</a> it is <code>round_number</code>(AKA ballot number in some paper).</li>
+<li>In the standard raft it is <code>(term, voted_for, last_log_index)</code>(because in standard raft there is only one leader in every term, <code>voted_for</code> can be removed: <code>(term, last_log_index)</code>).</li>
+</ul>
+<p>The <strong>pseudo time</strong> in openraft is a tuple <code>(vote, last_log_id)</code>, compared in dictionary order(<code>vote</code> is equivalent concept as round number in Paxos).</p>
+<h3 id="why-it-works"><a class="header" href="#why-it-works">Why it works</a></h3>
+<p>To refuse the election by a node that does not receive recent messages from the current leader,
+just let the active leader send a <strong>blank log</strong> to increase the <strong>pseudo time</strong> on a quorum.</p>
+<p>Because the leader must have the greatest <strong>pseudo time</strong>,
+thus by comparing the <strong>pseudo time</strong>, a follower automatically refuse election request from a node unreachable to the leader.</p>
+<p>And comparing the <strong>pseudo time</strong> is already done by <code>handle_vote_request()</code>,
+there is no need to add another timer for the active leader.</p>
+<p>Thus making heartbeat request a blank log is the simplest way.</p>
+<h2 id="why-blank-log-heartbeat"><a class="header" href="#why-blank-log-heartbeat">Why blank log heartbeat?</a></h2>
+<ul>
+<li>
+<p>Simple, get rid of a timer.</p>
+<p>Without heartbeat log(the way standard raft does), when handling a vote
+request, except <code>vote</code> itself, it has to examine two values to determine if
+the vote request is valid:</p>
+<ul>
+<li>Whether the last heartbeat has expired by clock time.</li>
+<li>Whether the <code>(last_term, last_log_index)</code> in the request is greater or equal to the local value. This is the pseudo time Raft defines.</li>
+</ul>
+<p>With heartbeat log(the way openraft does), when handling a vote request, it only needs to examine one value: the raft time: <code>(last_term, last_log_index)</code>. This makes the logic simpler and the test easier to write.</p>
+</li>
+<li>
+<p>Easy to prove, and reduce code complexity.</p>
+</li>
+</ul>
+<h2 id="concerns"><a class="header" href="#concerns">Concerns</a></h2>
+<ul>
+<li>
+<p><strong>More raft logs are generated</strong>.
+This requires to <em>persist</em> the blank entry in the log (or at least the incremented index).
+E.g., doing that every 50ms for 100 consensus domains on one machine will require 2000 IOPS alone for that.</p>
+<p><strong>Why it is not a problem</strong>:</p>
+<ol>
+<li>
+<p>Assume that most consensus domains are busy, and as a domain is busy, it is possible to merge multiple <code>append-entry</code> calls into one call to the storage layer.
+Thus if a domain swallows <code>10</code> business log entries per <code>50 ms</code>, it's likely to merge these 10 entries into one or a few IO calls.
+The IO amplification should be smaller as IOPS gets more.</p>
+<p>Merging entries into one IO call is naturally done on followers(because the leader sends entries in a batch).
+On the leader, it's not done yet(2022 Sep 13). It can be done when the Engine oriented refactoring is ready: (.</p>
+</li>
+<li>
+<p>If a consensus domain swallows <code>1</code> business log entry per <code>50 ms</code>. It does not need another heartbeat. A normal append-entry can be considered a heartbeat.</p>
+</li>
+</ol>
 </li>
 </ul>
 
