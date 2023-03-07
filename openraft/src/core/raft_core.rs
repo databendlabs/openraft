@@ -199,8 +199,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // To ensure that restarted nodes don't disrupt a stable cluster.
         if self.engine.state.server_state == ServerState::Follower {
             // If there is only one voter, elect at once.
-            let voter_ids = self.engine.state.membership_state.effective().voter_ids().collect::<Vec<_>>();
-            if voter_ids.len() == 1 {
+            let voter_count = self.engine.state.membership_state.effective().voter_ids().count();
+            if voter_count == 1 {
                 let now = Instant::now();
                 self.next_election_time = VoteWiseTime::new(*self.engine.state.get_vote(), now);
             } else {
