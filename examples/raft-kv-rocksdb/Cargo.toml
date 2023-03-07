@@ -41,7 +41,8 @@ tracing-subscriber = { version = "0.3.0", features = ["env-filter"] }
 
 [dev-dependencies]
 maplit = "1.0.2"
-tempdir = "0.3.0"
+tempfile = { version = "3.4.0" }
+
 
 [features]
 docinclude = [] # Used only for activating `doc(include="...")` on nightly.

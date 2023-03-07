@@ -31,7 +31,7 @@ pretty_assertions = "1.0.0"
 rand = "0.8"
 serde = { version="1.0.114", features=["derive", "rc"]}
 serde_json = "1.0.57"
-tempdir = "0.3.7"
+tempfile = { version = "3.4.0" }
 thiserror = "1.0.33"
 tokio = { version="1.8", default-features=false, features=["fs", "io-util", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 tracing = "0.1.29"

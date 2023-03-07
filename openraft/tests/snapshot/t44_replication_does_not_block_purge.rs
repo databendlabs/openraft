@@ -35,7 +35,7 @@ async fn replication_does_not_block_purge() -> Result<()> {
     );
 
     let mut router = RaftRouter::new(config.clone());
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1,2}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1,2}).await?;
 
     let leader = router.get_raft_handle(&0)?;
 

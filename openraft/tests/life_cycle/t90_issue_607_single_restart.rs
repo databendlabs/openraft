@@ -25,7 +25,7 @@ async fn single_restart() -> anyhow::Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- bring up cluster of 1 node");
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     tracing::info!("--- write to 1 log");
     {

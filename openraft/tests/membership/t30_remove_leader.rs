@@ -34,7 +34,7 @@ async fn remove_leader() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {2,3}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {2,3}).await?;
 
     // Submit a config change which adds two new nodes and removes the current leader.
     let orig_leader = router.leader().expect("expected the cluster to have a leader");
@@ -126,7 +126,7 @@ async fn remove_leader_access_new_cluster() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
     let orig_leader = 0;
 

@@ -87,7 +87,7 @@ async fn do_bench(bench_config: &BenchConfig) -> anyhow::Result<()> {
         .validate()?,
     );
     let mut router = RaftRouter::new(config.clone());
-    let _log_index = router.new_nodes_from_single(bench_config.members.clone(), btreeset! {}).await?;
+    let _log_index = router.new_cluster(bench_config.members.clone(), btreeset! {}).await?;
 
     let n = bench_config.n_operations;
 

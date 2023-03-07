@@ -104,7 +104,7 @@ async fn commit_joint_config_during_012_to_234() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1,2,3,4}, btreeset! {}).await?;
 
     tracing::info!("--- isolate 3,4");
 

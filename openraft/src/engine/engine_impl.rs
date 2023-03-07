@@ -143,6 +143,13 @@ where
     pub(crate) fn startup(&mut self) {
         // Allows starting up as a leader.
 
+        tracing::info!("startup: state: {:?}", self.state);
+        tracing::info!("startup: is_leader: {}", self.state.is_leader(&self.config.id));
+        tracing::info!(
+            "startup: is_voter: {}",
+            self.state.membership_state.effective().is_voter(&self.config.id)
+        );
+
         // Previously it is a leader. restore it as leader at once
         if self.state.is_leader(&self.config.id) {
             self.vote_handler().update_internal_server_state();
@@ -162,7 +169,7 @@ where
 
         self.state.server_state = server_state;
 
-        tracing::debug!(
+        tracing::info!(
             "startup: id={} target_state: {:?}",
             self.config.id,
             self.state.server_state

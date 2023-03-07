@@ -25,7 +25,7 @@ async fn large_heartbeat() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
     router.client_request_many(0, "foo", 10).await?;
     log_index += 10;

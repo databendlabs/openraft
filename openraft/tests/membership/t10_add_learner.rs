@@ -35,7 +35,7 @@ async fn add_learner_basic() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     tracing::info!("--- re-adding leader commits a new log but does nothing");
     {
@@ -110,7 +110,7 @@ async fn add_learner_non_blocking() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     tracing::info!("--- add new node node-1, in non blocking mode");
     {
@@ -155,7 +155,7 @@ async fn add_learner_when_previous_membership_not_committed() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
     tracing::info!("--- block replication to prevent committing any log");
     {
@@ -209,7 +209,7 @@ async fn check_learner_after_leader_transferred() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
 
     tracing::info!("--- initializing cluster members: 0,1; learners: 2");
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1}, btreeset! {2}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1}, btreeset! {2}).await?;
 
     // Submit a config change which adds two new nodes and removes the current leader.
     let orig_leader_id = router.leader().expect("expected the cluster to have a leader");

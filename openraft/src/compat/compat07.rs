@@ -571,8 +571,8 @@ pub mod testing {
         }
     }
 
-    fn tmp_dir() -> tempdir::TempDir {
-        tempdir::TempDir::new("RocksCompatibility").expect("couldn't create temp dir")
+    fn tmp_dir() -> tempfile::TempDir {
+        tempfile::TempDir::new().expect("couldn't create temp dir")
     }
 }
 

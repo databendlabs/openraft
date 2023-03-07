@@ -26,7 +26,7 @@ async fn t99_issue_584_replication_state_reverted() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {1}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {1}).await?;
 
     let n = 500u64;
     tracing::info!("--- write up to {} logs", n);

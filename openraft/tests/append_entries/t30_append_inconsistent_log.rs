@@ -46,7 +46,7 @@ async fn append_inconsistent_log() -> Result<()> {
     let mut router = RaftRouter::new(config.clone());
     router.new_raft_node(0).await;
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0,1,2}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {}).await?;
 
     tracing::info!("--- remove all nodes and fake the logs");
 

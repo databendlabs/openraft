@@ -169,7 +169,7 @@ where
     ) -> Result<RaftMetrics<NID, N>, WaitError> {
         self.metrics(
             |x| {
-                let got = x.membership_config.membership().nodes().map(|(nid, _)| *nid).collect::<BTreeSet<_>>();
+                let got = x.membership_config.membership().voter_ids().collect::<BTreeSet<_>>();
                 want_members == got
             },
             &format!("{} .members -> {:?}", msg.to_string(), want_members),

@@ -45,7 +45,7 @@ async fn snapshot_overrides_membership() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
-    let mut log_index = router.new_nodes_from_single(btreeset! {0}, btreeset! {}).await?;
+    let mut log_index = router.new_cluster(btreeset! {0}, btreeset! {}).await?;
 
     tracing::info!("--- send just enough logs to trigger snapshot");
     {
