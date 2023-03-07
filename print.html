@@ -300,7 +300,7 @@ This can be used for <a href="https://docs.rs/tracing/latest/tracing/index.html#
 <p><a href="https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-memstore">examples/raft-kv-memstore</a>
 is the complete example application including the server, the client and a demo cluster.</p>
 <p><a href="https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-rocksdb">examples/raft-kv-rocksdb</a>
-is the complete example application including the server, the client and a demo cluster using rocksdb for persistant storage.</p>
+is the complete example application including the server, the client and a demo cluster using rocksdb for persistent storage.</p>
 <hr />
 <p>Raft is a distributed consensus protocol designed to manage a replicated log containing state machine commands from clients.</p>
 <p>
@@ -573,7 +573,7 @@ Use ExampleClient to set up a cluster, write data, and then read it.</p>
 <ul>
 <li>
 <p>Q: 🤔 Why is heartbeat an append-entries RPC with a blank log in openraft, while standard Raft uses empty append-entries?</p>
-<p>Chapter <a href="./heartbeat.html">Heartbeat</a> explains the benifit of the heartbeat-log design.</p>
+<p>Chapter <a href="./heartbeat.html">Heartbeat</a> explains the benefit of the heartbeat-log design.</p>
 </li>
 <li>
 <p>Q: 🤔 Why is log id <code>(term, node_id, log_index)</code>, while standard Raft uses just
@@ -1685,7 +1685,7 @@ Exchanging data between <code>v0.7.*</code> and <code>v0.8.*</code> nodes may le
 <li>Enabling <code>compat-07</code> feature flags.</li>
 </ul>
 <p>Openraft uses a <code>RaftStorage</code> implementation provided by the application to
-store presistent data. When upgrading from v0.7 to v0.8, it is important to
+store persistent data. When upgrading from v0.7 to v0.8, it is important to
 ensure that the updated <code>RaftStorage</code> is backward compatible and can read the
 data written by v0.7 openraft, in addition to reading and writing v0.8 openraft data.
 This ensures that the application continues to function smoothly after upgrade.</p>

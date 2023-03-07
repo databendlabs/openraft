@@ -212,7 +212,7 @@ Exchanging data between <code>v0.7.*</code> and <code>v0.8.*</code> nodes may le
 <li>Enabling <code>compat-07</code> feature flags.</li>
 </ul>
 <p>Openraft uses a <code>RaftStorage</code> implementation provided by the application to
-store presistent data. When upgrading from v0.7 to v0.8, it is important to
+store persistent data. When upgrading from v0.7 to v0.8, it is important to
 ensure that the updated <code>RaftStorage</code> is backward compatible and can read the
 data written by v0.7 openraft, in addition to reading and writing v0.8 openraft data.
 This ensures that the application continues to function smoothly after upgrade.</p>
