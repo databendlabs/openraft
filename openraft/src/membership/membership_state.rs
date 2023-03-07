@@ -155,7 +155,7 @@ where
     /// It returns the updated effective membership config if it is changed.
     ///
     /// It will reset `self.effective` to `self.committed`. Only the effective could be truncated,
-    /// when a new leader tries ot truncate follower logs that the leader does not have.
+    /// when a new leader tries to truncate follower logs that the leader does not have.
     ///
     /// If the effective membership is from a conflicting log,
     /// the membership state has to revert to the last committed membership config.

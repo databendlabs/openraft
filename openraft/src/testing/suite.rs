@@ -33,7 +33,7 @@ use crate::Vote;
 
 const NODE_ID: u64 = 0;
 
-/// Helper to consturct a `BTreeSet` of `C::NodeId` from numbers.
+/// Helper to construct a `BTreeSet` of `C::NodeId` from numbers.
 macro_rules! btreeset {
     ($($key:expr,)+) => (btreeset!($($key),+));
     ( $($key:expr),* ) => {{

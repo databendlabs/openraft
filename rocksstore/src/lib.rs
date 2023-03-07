@@ -63,7 +63,7 @@ pub enum RocksRequest {
  * In this example it will return a optional value from a given key in
  * the `RocksRequest.Set`.
  *
- * TODO: SHould we explain how to create multiple `AppDataResponse`?
+ * TODO: Should we explain how to create multiple `AppDataResponse`?
  *
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -77,10 +77,10 @@ serde = ["dep:serde"]
 # This feature is disabled by default.
 single-term-leader = []
 
-# Provide basic compatbile types
+# Provide basic compatible types
 compat = []
 
-# Turn on to let openraft provide addtional data types to build v0.7 compatible RaftStorage.
+# Turn on to let openraft provide additional data types to build v0.7 compatible RaftStorage.
 compat-07 = ["compat", "serde", "dep:or07", "compat-07-testing"]
 compat-07-testing = ["dep:tempfile", "anyhow", "dep:serde_json"]
 

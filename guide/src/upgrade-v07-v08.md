@@ -65,7 +65,7 @@ Openraft v0.8 can be compatible with v0.7 if:
 - Enabling `compat-07` feature flags.
 
 Openraft uses a `RaftStorage` implementation provided by the application to
-store presistent data. When upgrading from v0.7 to v0.8, it is important to
+store persistent data. When upgrading from v0.7 to v0.8, it is important to
 ensure that the updated `RaftStorage` is backward compatible and can read the
 data written by v0.7 openraft, in addition to reading and writing v0.8 openraft data.
 This ensures that the application continues to function smoothly after upgrade.

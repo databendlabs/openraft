@@ -44,13 +44,13 @@
     Otherwise the application receives updated metrics while the internal raft
     state is still stale.
 
--   Fixed: [59ddc982](https://github.com/datafuselabs/openraft/commit/59ddc982100a390efd66632adbf25edd2c6e6a3c) avoid creating log-id with unitialized `matched.leader_id`.; by 张炎泼; 2022-07-26
+-   Fixed: [59ddc982](https://github.com/datafuselabs/openraft/commit/59ddc982100a390efd66632adbf25edd2c6e6a3c) avoid creating log-id with uninitialized `matched.leader_id`.; by 张炎泼; 2022-07-26
 
     When waiting for a newly added learner to become up to date,
     it tries to compare last-log-id and the reported `matched` replication
     state.
     But the `matched` may have not yet receive any update and is
-    unitialized, in such case, it tries to create a temp LogId with
+    uninitialized, in such case, it tries to create a temp LogId with
     `leader_id(0, 0)`, which is illegal.
 
     The fix is simple: do not use log-id. Just calculating replication lag by log index.
@@ -236,7 +236,7 @@
 
 -   Changed: [f40c2055](https://github.com/datafuselabs/openraft/commit/f40c205532b4e75384a6eaaebb601447001d13f4) Add a `RaftTypeConfig` trait to configure common types; by Ivan Schréter; 2022-02-25
 
--   Changed: [650e2352](https://github.com/datafuselabs/openraft/commit/650e23524b759219b9dea0d2fbe3e71859429115) Membership remove redundent field `learners`: the node ids that are in `Membership.nodes` but not in `Membership.configs` are learners; by 张炎泼; 2022-03-07
+-   Changed: [650e2352](https://github.com/datafuselabs/openraft/commit/650e23524b759219b9dea0d2fbe3e71859429115) Membership remove redundant field `learners`: the node ids that are in `Membership.nodes` but not in `Membership.configs` are learners; by 张炎泼; 2022-03-07
 
 -   Changed: [81cd3443](https://github.com/datafuselabs/openraft/commit/81cd3443530a9ef260ded00f0a8b2825cefe8196) EffectiveMembership.log_id to Option<LogId>; by 张炎泼; 2022-04-05
 
@@ -588,7 +588,7 @@
 
     API changes:
 
-    - Removes `allow_lagging` paramenter from `Raft::change_membership()`
+    - Removes `allow_lagging` parameter from `Raft::change_membership()`
     - Removes error `LearnerIsLagging`
 
     Upgrade tip:
@@ -648,7 +648,7 @@
 
 ### Added:
 
--   Added: [966eb287](https://github.com/datafuselabs/openraft/commit/966eb287ff9bc98112b7b5d69253cca2d86277f8) use a version to track metics change; by 张炎泼; 2022-03-03
+-   Added: [966eb287](https://github.com/datafuselabs/openraft/commit/966eb287ff9bc98112b7b5d69253cca2d86277f8) use a version to track metrics change; by 张炎泼; 2022-03-03
 
     Add `Versioned<D>` to track changes of an `Arc<D>`.
 
@@ -1380,7 +1380,7 @@
 
     - R0 to R1 `append_entries: entries=[{1,2}], prev_log_id = {1,1}, commit_index = 3`
     - R1 accepted this `append_entries` request but was not aware of that entry {2,3} is inconsistent to leader.
-      Updating commit index to 3 allows it to apply an uncommitted entrie `{2,3}`.
+      Updating commit index to 3 allows it to apply an uncommitted entries `{2,3}`.
 
 ## v0.6.2-alpha.15
 
@@ -1482,15 +1482,15 @@
 
     A membership change involves two steps: the joint config phase and the
     final config phase.
-    Each phase has a corresponding log invovled.
+    Each phase has a corresponding log involved.
 
     Previously the raft setup several channel to organize this workflow,
     which makes the logic hard to understand and introduces complexity when
-    restarting or leadership transfered: it needs to re-establish the channels and tasks.
+    restarting or leadership transferred: it needs to re-establish the channels and tasks.
 
     According to the gist of raft, all workflow should be log driven.
     Thus the new approach:
-    - Write two log(the joint and the final) at once it recevies a
+    - Write two log(the joint and the final) at once it receives a
       change-membership request.
     - All following job is done according to just what log is committed.
 
@@ -1546,7 +1546,7 @@
     logs to get the last membership that is included in state machine.
 
     By letting the state machine remember the membership log applied,
-    the snapshto creation becomes more convinient and intuitive: it does not
+    the snapshto creation becomes more convenient and intuitive: it does not
     need to scan the applied logs any more.
 
 ## v0.6.2-alpha.7
@@ -1609,7 +1609,7 @@
       a container of metadata of a snapshot.
       Reduce parameters.
 
-    - Refactor: remove redundent param `delete_through` from
+    - Refactor: remove redundant param `delete_through` from
       `finalize_snapshot_installation`.
 
 ## v0.6.2-alpha.4
@@ -1812,7 +1812,7 @@
     - Simplify CI test: test all in one action.
 
     - Disable clippy: it suggests inappropriate assert_eq to assert
-      convertion which is used in a macro.
+      conversion which is used in a macro.
 
     - Add makefile
 

@@ -53,6 +53,10 @@ lint:
 	# Thus we only check unused deps for lib
 	RUSTFLAGS=-Wunused-crate-dependencies cargo clippy --lib -- -D warnings
 
+typos:
+	# cargo install typos-cli
+	typos
+
 clean:
 	cargo clean
 

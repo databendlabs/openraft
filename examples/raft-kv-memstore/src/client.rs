@@ -65,7 +65,7 @@ impl ExampleClient {
 
     /// Consistent Read value by key, in an inconsistent mode.
     ///
-    /// This method MUST return consitent value or CheckIsLeaderError.
+    /// This method MUST return consistent value or CheckIsLeaderError.
     pub async fn consistent_read(&self, req: &String) -> Result<String, typ::RPCError<typ::CheckIsLeaderError>> {
         self.do_send_rpc_to_leader("consistent_read", Some(req)).await
     }

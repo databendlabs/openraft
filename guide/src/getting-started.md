@@ -6,7 +6,7 @@ In this chapter we are going to build a key-value store cluster with [openraft](
 is the complete example application including the server, the client and a demo cluster.
 
 [examples/raft-kv-rocksdb](https://github.com/datafuselabs/openraft/tree/main/examples/raft-kv-rocksdb)
-is the complete example application including the server, the client and a demo cluster using rocksdb for persistant storage.
+is the complete example application including the server, the client and a demo cluster using rocksdb for persistent storage.
 
 ---
 

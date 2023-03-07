@@ -736,7 +736,7 @@ mod tests {
                         target: 2,
                         req: Inflight::logs(None, Some(log_id(3, 6))).with_id(1),
                     },
-                    // It is correct to commit if the membership change ot a one node cluster.
+                    // It is correct to commit if the membership change to a one node cluster.
                     Command::ReplicateCommitted {
                         committed: Some(log_id(3, 6))
                     },

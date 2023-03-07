@@ -55,7 +55,7 @@ pub enum ExampleRequest {
  * In this example it will return a optional value from a given key in
  * the `ExampleRequest.Set`.
  *
- * TODO: SHould we explain how to create multiple `AppDataResponse`?
+ * TODO: Should we explain how to create multiple `AppDataResponse`?
  *
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -390,7 +390,7 @@ impl RaftSnapshotBuilder<ExampleTypeConfig, Cursor<Vec<u8>>> for Arc<ExampleStor
             last_membership = state_machine.last_membership;
         }
 
-        // TODO: we probably want thius to be atomic.
+        // TODO: we probably want this to be atomic.
         let snapshot_idx: u64 = self.get_snapshot_index_()? + 1;
         self.set_snapshot_indesx_(snapshot_idx)?;
 

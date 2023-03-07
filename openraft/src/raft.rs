@@ -1127,7 +1127,7 @@ impl<NID: NodeId> VoteRequest<NID> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize), serde(bound = ""))]
 pub struct VoteResponse<NID: NodeId> {
-    /// vote after a node handling vote-reqest.
+    /// vote after a node handling vote-request.
     /// Thus `resp.vote >= req.vote` always holds.
     pub vote: Vote<NID>,
 

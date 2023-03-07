@@ -137,7 +137,7 @@ where
         Ok(())
     }
 
-    /// Trying to feed in emtpy entries slice is an inappropriate action.
+    /// Trying to feed in empty entries slice is an inappropriate action.
     ///
     /// The impl has to avoid this otherwise it may be a bug.
     async fn defensive_nonempty_input(&self, entries: &[&Entry<C>]) -> Result<(), StorageError<C::NodeId>> {
@@ -235,7 +235,7 @@ where
         Ok(())
     }
 
-    /// The entries to apply to state machien has to be last_applied_log_id.index + 1
+    /// The entries to apply to state machine has to be last_applied_log_id.index + 1
     async fn defensive_apply_index_is_last_applied_plus_one(
         &mut self,
         entries: &[&Entry<C>],

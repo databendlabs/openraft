@@ -73,7 +73,7 @@ mod tests {
     use crate::LeaderId;
 
     #[test]
-    fn test_commited_leader_id_serde() -> anyhow::Result<()> {
+    fn test_committed_leader_id_serde() -> anyhow::Result<()> {
         let c = CommittedLeaderId::<u32>::new(5, 10);
         let s = serde_json::to_string(&c)?;
         assert_eq!(r#"{"term":5,"node_id":10}"#, s);
