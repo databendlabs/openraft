@@ -105,7 +105,7 @@ where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
     /// A mapping of node IDs the replication state of the target node.
     // TODO(xp): make it a field of RaftCore. it does not have to belong to leader.
     //           It requires the Engine to emit correct add/remove replication commands
-    pub(super) nodes: BTreeMap<C::NodeId, ReplicationHandle<C::NodeId, C::Node, SD>>,
+    pub(super) replications: BTreeMap<C::NodeId, ReplicationHandle<C::NodeId, C::Node, SD>>,
 
     /// The metrics of all replication streams
     pub(crate) replication_metrics: Versioned<ReplicationMetrics<C::NodeId>>,
@@ -120,7 +120,7 @@ where SD: AsyncRead + AsyncSeek + Send + Unpin + 'static
     pub(crate) fn new() -> Self {
         Self {
             client_resp_channels: Default::default(),
-            nodes: BTreeMap::new(),
+            replications: BTreeMap::new(),
             replication_metrics: Versioned::new(ReplicationMetrics::default()),
             next_heartbeat: Instant::now(),
         }
@@ -830,7 +830,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::info!("remove all replication");
 
         if let Some(l) = &mut self.leader_data {
-            let nodes = std::mem::take(&mut l.nodes);
+            let nodes = std::mem::take(&mut l.replications);
 
             tracing::debug!(
                 targets = debug(nodes.iter().map(|x| *x.0).collect::<Vec<_>>()),
@@ -1212,7 +1212,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         if tracing::enabled!(Level::DEBUG) {
             if let Some(l) = &self.leader_data {
-                if !l.nodes.contains_key(&target) {
+                if !l.replications.contains_key(&target) {
                     tracing::warn!("leader has removed target: {}", target);
                 };
             } else {
@@ -1356,7 +1356,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             }
             Command::ReplicateCommitted { committed } => {
                 if let Some(l) = &self.leader_data {
-                    for node in l.nodes.values() {
+                    for node in l.replications.values() {
                         let _ = node.tx_repl.send(Replicate::Committed(committed));
                     }
                 } else {
@@ -1377,7 +1377,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             }
             Command::Replicate { req, target } => {
                 if let Some(l) = &self.leader_data {
-                    let node = l.nodes.get(&target).expect("replication to target node exists");
+                    let node = l.replications.get(&target).expect("replication to target node exists");
 
                     match req {
                         Inflight::None => {
@@ -1409,7 +1409,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
                     let handle = self.spawn_replication_stream(*target, *matching).await;
 
                     if let Some(l) = &mut self.leader_data {
-                        l.nodes.insert(*target, handle);
+                        l.replications.insert(*target, handle);
                     } else {
                         unreachable!("it has to be a leader!!!");
                     }
