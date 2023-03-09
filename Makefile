@@ -55,7 +55,8 @@ lint:
 
 typos:
 	# cargo install typos-cli
-	typos
+	typos --write-changes openraft/ memstore/ rocksstore rocksstore-compat07/ examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
+	# typos
 
 clean:
 	cargo clean

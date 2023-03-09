@@ -172,13 +172,13 @@ impl<T> AppData for T where T: Clone + Send + Sync + 'static {}
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
 #[cfg(feature = "serde")]
-pub trait AppDataResponse: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+pub trait AppDataResponse: Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
 
 #[cfg(feature = "serde")]
-impl<T> AppDataResponse for T where T: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+impl<T> AppDataResponse for T where T: Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
 
 #[cfg(not(feature = "serde"))]
-pub trait AppDataResponse: Clone + Send + Sync + 'static {}
+pub trait AppDataResponse: Send + Sync + 'static {}
 
 #[cfg(not(feature = "serde"))]
-impl<T> AppDataResponse for T where T: Clone + Send + Sync + 'static {}
+impl<T> AppDataResponse for T where T: Send + Sync + 'static {}
