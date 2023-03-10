@@ -218,7 +218,14 @@ where
         }
 
         less_equal!(self.last_purged_log_id(), self.purge_upto());
-        less_equal!(self.purge_upto(), self.snapshot_last_log_id());
+        if self.snapshot_last_log_id().is_none() {
+            // There is no snapshot, it is possible the application does not store snapshot, and
+            // just restarted. it is just ok.
+            // In such a case, we assert the monotonic relation without  snapshot-last-log-id
+            less_equal!(self.purge_upto(), self.committed());
+        } else {
+            less_equal!(self.purge_upto(), self.snapshot_last_log_id());
+        }
         less_equal!(self.snapshot_last_log_id(), self.committed());
         less_equal!(self.committed(), self.last_log_id());
 
