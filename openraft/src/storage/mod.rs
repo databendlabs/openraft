@@ -196,6 +196,7 @@ where C: RaftTypeConfig
 
     // --- Vote
 
+    /// To ensure correctness: the vote must be persisted on disk before returning.
     async fn save_vote(&mut self, vote: &Vote<C::NodeId>) -> Result<(), StorageError<C::NodeId>>;
 
     async fn read_vote(&mut self) -> Result<Option<Vote<C::NodeId>>, StorageError<C::NodeId>>;
@@ -212,24 +213,59 @@ where C: RaftTypeConfig
     ///
     /// Though the entries will always be presented in order, each entry's index should be used to
     /// determine its location to be written in the log.
+    ///
+    /// To ensure correctness:
+    ///
+    /// - All entries must be persisted on disk before returning.
+    ///
+    /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
+    ///   correctness.
     async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError<C::NodeId>>;
 
     /// Delete conflict log entries since `log_id`, inclusive.
+    ///
+    /// This method is called by a follower or learner when the local logs conflict with the
+    /// leaders.
+    ///
+    /// To ensure correctness:
+    ///
+    /// - When this function returns, the deleted logs must not be read(e.g., by
+    ///   `RaftLogReader::try_get_log_entries()`) any more.
+    ///
+    /// - It must not leave a **hole** in the log. In other words, if it has to delete logs in more
+    ///   than one transactions, it must delete logs in backward order. So that in a case server
+    ///   crashes, it won't leave a hole.
     async fn delete_conflict_logs_since(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>>;
 
     /// Delete applied log entries upto `log_id`, inclusive.
+    ///
+    /// To ensure correctness:
+    ///
+    /// - It must not leave a **hole** in logs.
     async fn purge_logs_upto(&mut self, log_id: LogId<C::NodeId>) -> Result<(), StorageError<C::NodeId>>;
 
     // --- State Machine
 
+    // TODO: This can be made into sync, provided all state machines will use atomic read or the
+    //       like.
+    // ---
     /// Returns the last applied log id which is recorded in state machine, and the last applied
-    /// membership log id and membership config.
-    // NOTE: This can be made into sync, provided all state machines will use atomic read or the
-    // like.
+    /// membership config.
+    ///
+    /// ## Correctness requirements
+    ///
+    /// It is all right to return a membership with greater log id than the
+    /// last-applied-log-id.
     async fn last_applied_state(
         &mut self,
     ) -> Result<(Option<LogId<C::NodeId>>, StoredMembership<C::NodeId, C::Node>), StorageError<C::NodeId>>;
 
+    // TODO: The reply should happen asynchronously, somehow. Make this method synchronous and
+    // instead of using the result, pass a channel where to post the completion. The Raft core can
+    // then collect completions on this channel and update the client with the result once all
+    // the preceding operations have been applied to the state machine. This way we'll reach
+    // operation pipelining w/o the need to wait for the completion of each operation inline.
+    // ---
     /// Apply the given payload of entries to the state machine.
     ///
     /// The Raft protocol guarantees that only logs which have been _committed_, that is, logs which
@@ -240,15 +276,23 @@ where C: RaftTypeConfig
     /// specific transaction is being started, or perhaps committed. This may be where a key/value
     /// is being stored.
     ///
-    /// An impl should do:
-    /// - Store the last applied log id.
+    /// For every entry to apply, an implementation should:
+    /// - Store the log id as last applied log id.
     /// - Deal with the EntryPayload::Normal() log, which is business logic log.
-    /// - Deal with EntryPayload::Membership, store the membership config.
-    // TODO The reply should happen asynchronously, somehow. Make this method synchronous and
-    // instead of using the result, pass a channel where to post the completion. The Raft core can
-    // then collect completions on this channel and update the client with the result once all
-    // the preceding operations have been applied to the state machine. This way we'll reach
-    // operation pipelining w/o the need to wait for the completion of each operation inline.
+    /// - Store membership config in EntryPayload::Membership.
+    ///
+    /// Note that for a membership log, the implementation need to do nothing about it, except
+    /// storing it.
+    ///
+    /// An implementation may choose to persist either the state machine or the snapshot:
+    ///
+    /// - An implementation with persistent state machine: persists the state on disk before
+    ///   returning from `apply_to_state_machine()`. So that a snapshot does not need to be
+    ///   persistent.
+    ///
+    /// - An implementation with persistent snapshot: `apply_to_state_machine()` does not have to
+    ///   persist state on disk. But every snapshot has to be persistent. And when starting up the
+    ///   application, the state machine should be rebuilt from the last snapshot.
     async fn apply_to_state_machine(&mut self, entries: &[&Entry<C>]) -> Result<Vec<C::R>, StorageError<C::NodeId>>;
 
     // --- Snapshot
