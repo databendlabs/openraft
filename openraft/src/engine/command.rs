@@ -102,16 +102,6 @@ where
     /// Send vote to all other members
     SendVote { vote_req: VoteRequest<NID> },
 
-    /// Install a timer to trigger an election, e.g., calling `Engine::elect()` after some
-    /// `timeout` which is decided by the runtime. An already installed timer should be
-    /// cleared.
-    InstallElectionTimer {
-        /// When a candidate fails to elect, it falls back to follower.
-        /// If many enough greater last-log-ids are seen, then this node can never become a leader.
-        /// Thus give it a longer sleep time before next election.
-        can_be_leader: bool,
-    },
-
     /// Purge log from the beginning to `upto`, inclusive.
     PurgeLog { upto: LogId<NID> },
 
@@ -181,7 +171,6 @@ where
             Command::MoveInputCursorBy { .. } => {}
             Command::SaveVote { .. } => flags.set_data_changed(),
             Command::SendVote { .. } => {}
-            Command::InstallElectionTimer { .. } => {}
             Command::PurgeLog { .. } => flags.set_data_changed(),
             Command::DeleteConflictLog { .. } => flags.set_data_changed(),
             Command::InstallSnapshot { .. } => flags.set_data_changed(),

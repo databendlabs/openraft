@@ -14,38 +14,9 @@ use tracing::Level;
 use tracing::Span;
 
 use crate::raft::RaftMsg;
-use crate::NodeId;
 use crate::RaftNetworkFactory;
 use crate::RaftStorage;
 use crate::RaftTypeConfig;
-use crate::Vote;
-
-/// An instant time point bound to a vote.
-///
-/// If the vote on a node changes, the timeout belonging to a previous vote becomes invalid.
-/// See: https://datafuselabs.github.io/openraft/vote.html
-#[derive(Debug)]
-pub(crate) struct VoteWiseTime<NID: NodeId> {
-    pub(crate) vote: Vote<NID>,
-    pub(crate) time: Instant,
-}
-
-impl<NID: NodeId> VoteWiseTime<NID> {
-    pub(crate) fn new(vote: Vote<NID>, time: Instant) -> Self {
-        Self { vote, time }
-    }
-
-    /// Return the time if vote does not change since it is set.
-    pub(crate) fn get_time(&self, current_vote: &Vote<NID>) -> Option<Instant> {
-        debug_assert!(&self.vote <= current_vote);
-
-        if &self.vote == current_vote {
-            Some(self.time)
-        } else {
-            None
-        }
-    }
-}
 
 /// Emit RaftMsg::Tick event at regular `interval`.
 pub(crate) struct Tick<C, N, S>

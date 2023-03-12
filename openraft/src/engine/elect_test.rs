@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
+use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -10,6 +11,7 @@ use crate::engine::LogIdList;
 use crate::raft::VoteRequest;
 use crate::raft_state::VoteStateReader;
 use crate::testing::log_id;
+use crate::utime::UTime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -101,7 +103,7 @@ fn test_elect() -> anyhow::Result<()> {
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(0, 1)), m1())));
 
         // Build in-progress election state
-        eng.state.vote = Vote::new_committed(1, 2);
+        eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(1, 2));
         eng.vote_handler().become_leading();
         eng.internal_server_state.leading_mut().map(|l| l.vote_granted_by.insert(1));
 
@@ -183,13 +185,9 @@ fn test_elect() -> anyhow::Result<()> {
         );
 
         assert_eq!(
-            vec![
-                Command::SaveVote { vote: Vote::new(1, 1) },
-                Command::SendVote {
-                    vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1)))
-                },
-                Command::InstallElectionTimer { can_be_leader: true },
-            ],
+            vec![Command::SaveVote { vote: Vote::new(1, 1) }, Command::SendVote {
+                vote_req: VoteRequest::new(Vote::new(1, 1), Some(log_id(1, 1)))
+            },],
             eng.output.commands
         );
     }

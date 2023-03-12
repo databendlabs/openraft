@@ -409,10 +409,10 @@ where
     }
 
     pub async fn get_initial_state_without_init(mut store: S) -> Result<(), StorageError<C::NodeId>> {
-        let mut initial = StorageHelper::new(&mut store).get_initial_state().await?;
-        let want = RaftState::default();
-        initial.leader_expire_at = want.leader_expire_at;
-        initial.now = want.now;
+        let initial = StorageHelper::new(&mut store).get_initial_state().await?;
+        let mut want = RaftState::default();
+        want.vote.update(initial.vote.utime().unwrap(), Vote::default());
+
         assert_eq!(want, initial, "uninitialized state");
         Ok(())
     }

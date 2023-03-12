@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use maplit::btreeset;
+use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -11,6 +12,7 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft_state::VoteStateReader;
 use crate::testing::log_id;
+use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Membership;
 use crate::MetricsChangeFlags;
@@ -25,36 +27,38 @@ fn eng() -> Engine<u64, ()> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 1;
-    eng.state.vote = Vote::new(2, 1);
+    eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
     eng.state.server_state = ServerState::Candidate;
     eng.state
         .membership_state
         .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())));
     eng.vote_handler().become_leading();
+
+    // By default expire the leader lease so that the vote can be overridden in these tests.
+    eng.timer.update_now(Instant::now() + Duration::from_millis(300));
     eng
 }
 
 #[test]
 fn test_handle_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
     let mut eng = eng();
-    // Non expired leader lease
-    eng.state.now = eng.state.leader_expire_at - Duration::from_millis(500);
+    eng.state.vote.update(*eng.timer.now(), Vote::new_committed(2, 1));
 
     let resp = eng.handle_vote_req(VoteRequest {
-        vote: Vote::new(1, 2),
+        vote: Vote::new(3, 2),
         last_log_id: Some(log_id(2, 3)),
     });
 
     assert_eq!(
         VoteResponse {
-            vote: Vote::new(2, 1),
+            vote: Vote::new_committed(2, 1),
             vote_granted: false,
             last_log_id: None
         },
         resp
     );
 
-    assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.get_vote());
     assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -182,13 +186,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
         eng.output.metrics_flags
     );
 
-    assert_eq!(
-        vec![
-            //
-            Command::InstallElectionTimer { can_be_leader: true },
-        ],
-        eng.output.commands
-    );
+    assert!(eng.output.commands.is_empty());
     Ok(())
 }
 
@@ -231,13 +229,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
         eng.output.metrics_flags
     );
 
-    assert_eq!(
-        vec![
-            Command::SaveVote { vote: Vote::new(3, 1) },
-            Command::InstallElectionTimer { can_be_leader: true },
-        ],
-        eng.output.commands
-    );
+    assert_eq!(vec![Command::SaveVote { vote: Vote::new(3, 1) },], eng.output.commands);
     Ok(())
 }
 
@@ -265,7 +257,6 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
             vec![
                 //
                 Command::SaveVote { vote: Vote::new(3, 1) },
-                Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.output.commands
         );
@@ -290,7 +281,6 @@ fn test_handle_vote_req_granted_follower_learner_does_not_emit_update_server_sta
             vec![
                 //
                 Command::SaveVote { vote: Vote::new(3, 1) },
-                Command::InstallElectionTimer { can_be_leader: true },
             ],
             eng.output.commands
         );

@@ -415,6 +415,7 @@ mod tests {
 
         use maplit::btreeset;
         use pretty_assertions::assert_eq;
+        use tokio::time::Instant;
 
         use crate::engine::Command;
         use crate::engine::Engine;
@@ -422,6 +423,7 @@ mod tests {
         use crate::progress::Progress;
         use crate::raft_state::LogStateReader;
         use crate::testing::log_id;
+        use crate::utime::UTime;
         use crate::EffectiveMembership;
         use crate::Membership;
         use crate::MembershipState;
@@ -440,7 +442,7 @@ mod tests {
             eng.state.enable_validate = false; // Disable validation for incomplete state
 
             eng.config.id = 2;
-            eng.state.vote = Vote::new_committed(2, 1);
+            eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(2, 1));
             eng.state.membership_state = MembershipState::new(
                 Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
                 Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m123())),
@@ -563,6 +565,7 @@ mod tests {
         use std::sync::Arc;
 
         use maplit::btreeset;
+        use tokio::time::Instant;
 
         use crate::core::ServerState;
         use crate::engine::Command;
@@ -571,6 +574,7 @@ mod tests {
         use crate::progress::entry::ProgressEntry;
         use crate::progress::Inflight;
         use crate::progress::Progress;
+        use crate::utime::UTime;
         use crate::CommittedLeaderId;
         use crate::EffectiveMembership;
         use crate::LogId;
@@ -612,7 +616,7 @@ mod tests {
                 Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01())),
                 Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23())),
             );
-            eng.state.vote = Vote::new_committed(2, 2);
+            eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(2, 2));
             eng.state.server_state = eng.calc_server_state();
             eng
         }
@@ -622,7 +626,7 @@ mod tests {
             let mut eng = eng();
             eng.state.server_state = ServerState::Leader;
             // Make it a real leader: voted for itself and vote is committed.
-            eng.state.vote = Vote::new_committed(2, 2);
+            eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(2, 2));
             eng.vote_handler().become_leading();
 
             eng.replication_handler().append_membership(&log_id(3, 4), &m34());
@@ -683,7 +687,7 @@ mod tests {
 
             eng.state.server_state = ServerState::Leader;
             // Make it a real leader: voted for itself and vote is committed.
-            eng.state.vote = Vote::new_committed(2, 2);
+            eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(2, 2));
             eng.state
                 .membership_state
                 .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(2, 3)), m23_45())));

@@ -1,5 +1,5 @@
 use std::error::Error;
-use std::time::Duration;
+use std::ops::Deref;
 
 use tokio::time::Instant;
 
@@ -10,6 +10,7 @@ use crate::error::ForwardToLeader;
 use crate::less_equal;
 use crate::node::Node;
 use crate::raft_types::RaftLogId;
+use crate::utime::UTime;
 use crate::validate::Validate;
 use crate::LogId;
 use crate::LogIdOptionExt;
@@ -18,6 +19,8 @@ use crate::NodeId;
 use crate::ServerState;
 use crate::SnapshotMeta;
 use crate::Vote;
+
+pub(crate) mod time_state;
 
 /// APIs to get significant log ids reflecting the raft state.
 ///
@@ -91,14 +94,16 @@ pub(crate) trait VoteStateReader<NID: NodeId> {
 }
 
 /// A struct used to represent the raft state which a Raft node needs.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
+#[derive(Default)]
+#[derive(PartialEq, Eq)]
 pub struct RaftState<NID, N>
 where
     NID: NodeId,
     N: Node,
 {
     /// The vote state of this node.
-    pub vote: Vote<NID>,
+    pub(crate) vote: UTime<Vote<NID>>,
 
     /// The LogId of the last log committed(AKA applied) to the state machine.
     ///
@@ -122,14 +127,6 @@ where
     // --
     // -- volatile fields: they are not persisted.
     // --
-    /// Cached current time.
-    pub(crate) now: Instant,
-
-    /// The time when the active leader is considered expired.
-    ///
-    /// It will be updated every time a message is received from the active leader.
-    pub(crate) leader_expire_at: Instant,
-
     pub server_state: ServerState,
 
     /// The log id upto which the next time it purges.
@@ -137,29 +134,6 @@ where
     /// If a log is in use by a replication task, the purge is postponed and is stored in this
     /// field.
     pub(crate) purge_upto: Option<LogId<NID>>,
-}
-
-impl<NID, N> Default for RaftState<NID, N>
-where
-    NID: NodeId,
-    N: Node,
-{
-    fn default() -> Self {
-        Self {
-            vote: Vote::default(),
-            committed: None,
-            purged_next: 0,
-            log_ids: LogIdList::default(),
-            membership_state: MembershipState::default(),
-            snapshot_meta: SnapshotMeta::default(),
-            now: Instant::now(),
-            // no active leader
-            leader_expire_at: Instant::now() - Duration::from_millis(1),
-
-            server_state: ServerState::default(),
-            purge_upto: None,
-        }
-    }
 }
 
 impl<NID, N> LogStateReader<NID> for RaftState<NID, N>
@@ -201,7 +175,7 @@ where
     N: Node,
 {
     fn get_vote(&self) -> &Vote<NID> {
-        &self.vote
+        self.vote.deref()
     }
 }
 
@@ -240,13 +214,13 @@ where
     NID: NodeId,
     N: Node,
 {
-    /// Returns the time when the leader lease expires
-    pub fn leader_expire_at(&self) -> Instant {
-        self.leader_expire_at
+    pub fn vote_ref(&self) -> &Vote<NID> {
+        self.vote.deref()
     }
 
-    pub(crate) fn update_now(&mut self, now: Instant) {
-        self.now = now;
+    /// Return the last updated time of the vote.
+    pub fn vote_last_modified(&self) -> Option<Instant> {
+        self.vote.utime()
     }
 
     /// Append a list of `log_id`.

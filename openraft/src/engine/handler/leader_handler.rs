@@ -135,11 +135,13 @@ mod tests {
         #[allow(unused_imports)] use pretty_assertions::assert_eq;
         #[allow(unused_imports)] use pretty_assertions::assert_ne;
         #[allow(unused_imports)] use pretty_assertions::assert_str_eq;
+        use tokio::time::Instant;
 
         use crate::engine::Command;
         use crate::engine::Engine;
         use crate::progress::Inflight;
         use crate::progress::Progress;
+        use crate::utime::UTime;
         use crate::EffectiveMembership;
         use crate::Membership;
         use crate::MembershipState;
@@ -165,7 +167,7 @@ mod tests {
 
             eng.config.id = 1;
             eng.state.committed = Some(log_id(0, 0));
-            eng.state.vote = Vote::new_committed(3, 1);
+            eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(3, 1));
             eng.state.log_ids.append(log_id(1, 1));
             eng.state.log_ids.append(log_id(2, 3));
             eng.state.membership_state = MembershipState::new(
@@ -240,12 +242,14 @@ mod tests {
         #[allow(unused_imports)] use pretty_assertions::assert_eq;
         #[allow(unused_imports)] use pretty_assertions::assert_ne;
         #[allow(unused_imports)] use pretty_assertions::assert_str_eq;
+        use tokio::time::Instant;
 
         use crate::engine::Command;
         use crate::engine::Engine;
         use crate::progress::entry::ProgressEntry;
         use crate::progress::Inflight;
         use crate::raft_state::LogStateReader;
+        use crate::utime::UTime;
         use crate::vote::CommittedLeaderId;
         use crate::EffectiveMembership;
         use crate::Entry;
@@ -301,7 +305,7 @@ mod tests {
 
             eng.config.id = 1;
             eng.state.committed = Some(log_id(0, 0));
-            eng.state.vote = Vote::new_committed(3, 1);
+            eng.state.vote = UTime::new(Instant::now(), Vote::new_committed(3, 1));
             eng.state.log_ids.append(log_id(1, 1));
             eng.state.log_ids.append(log_id(2, 3));
             eng.state.membership_state = MembershipState::new(

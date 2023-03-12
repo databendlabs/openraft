@@ -6,6 +6,7 @@ use crate::error::RejectVoteRequest;
 use crate::internal_server_state::InternalServerState;
 use crate::leader::Leader;
 use crate::progress::Progress;
+use crate::raft_state::time_state::TimeState;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::VoteStateReader;
 use crate::LogIdOptionExt;
@@ -25,6 +26,7 @@ where
 {
     pub(crate) config: &'st EngineConfig<NID>,
     pub(crate) state: &'st mut RaftState<NID, N>,
+    pub(crate) timer: &'st mut TimeState,
     pub(crate) output: &'st mut EngineOutput<NID, N>,
     pub(crate) internal_server_state: &'st mut InternalServerState<NID>,
 }
@@ -77,34 +79,19 @@ where
         // Grant the vote
 
         if vote > self.state.get_vote() {
-            self.state.vote = *vote;
+            self.state.vote.update(*self.timer.now(), *vote);
             self.output.push_command(Command::SaveVote { vote: *vote });
+        } else {
+            self.state.vote.touch(*self.timer.now());
         }
 
-        if vote.is_committed() {
-            self.extend_leader_lease();
-        }
+        // Update vote related timer and lease.
+
+        tracing::debug!(now = debug(&self.timer.now()), "{}", func_name!());
 
         self.update_internal_server_state();
 
         Ok(())
-    }
-
-    /// Extend leader lease so that in a specific duration no new election from other node will be
-    /// granted.
-    ///
-    /// `now` is the current time since when to extend leader lease.
-    pub(crate) fn extend_leader_lease(&mut self) {
-        tracing::debug!(
-            now = debug(&self.state.now),
-            current_leader_expire_at = debug(&self.state.leader_expire_at),
-            "{}",
-            func_name!()
-        );
-
-        // Because different nodes may have different local tick values,
-        // when leader switches, a follower may receive a lower tick.
-        self.state.leader_expire_at = self.state.now + self.config.leader_lease;
     }
 
     /// Enter leading or following state by checking `vote`.
@@ -164,21 +151,6 @@ where
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );
 
-        let vote = self.state.get_vote();
-
-        // TODO: installing election timer should be driven by change of last-log-id
-        // TODO: `can_be_leader` should consider if this node is in a voter.
-        if vote.is_committed() {
-            // There is an active leader.
-            // Do not elect for a longer while.
-            // TODO: Installing a timer should not be part of the Engine's job.
-            self.output.push_command(Command::InstallElectionTimer { can_be_leader: false });
-        } else {
-            // There is an active candidate.
-            // Do not elect for a short while.
-            self.output.push_command(Command::InstallElectionTimer { can_be_leader: true });
-        }
-
         if self.internal_server_state.is_following() {
             return;
         }
@@ -201,8 +173,10 @@ where
 mod tests {
 
     use std::sync::Arc;
+    use std::time::Duration;
 
     use maplit::btreeset;
+    use tokio::time::Instant;
 
     use crate::core::ServerState;
     use crate::engine::Command;
@@ -211,6 +185,7 @@ mod tests {
     use crate::error::RejectVoteRequest;
     use crate::raft_state::VoteStateReader;
     use crate::testing::log_id;
+    use crate::utime::UTime;
     use crate::EffectiveMembership;
     use crate::Membership;
     use crate::MetricsChangeFlags;
@@ -225,7 +200,7 @@ mod tests {
         eng.state.enable_validate = false; // Disable validation for incomplete state
 
         eng.config.id = 0;
-        eng.state.vote = Vote::new(2, 1);
+        eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state.server_state = ServerState::Candidate;
         eng.state
             .membership_state
@@ -266,6 +241,8 @@ mod tests {
     fn test_handle_message_vote_committed_vote() -> anyhow::Result<()> {
         let mut eng = eng();
         eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
+        eng.timer.update_now(*eng.timer.now() + Duration::from_millis(1));
+        let now = *eng.timer.now();
 
         let resp = eng.vote_handler().handle_message_vote(&Vote::new_committed(3, 2));
 
@@ -284,14 +261,11 @@ mod tests {
             eng.output.metrics_flags
         );
 
+        assert_eq!(Some(now), eng.state.vote_last_modified());
         assert_eq!(
-            vec![
-                //
-                Command::SaveVote {
-                    vote: Vote::new_committed(3, 2)
-                },
-                Command::InstallElectionTimer { can_be_leader: false },
-            ],
+            vec![Command::SaveVote {
+                vote: Vote::new_committed(3, 2)
+            },],
             eng.output.commands
         );
 
@@ -304,6 +278,8 @@ mod tests {
 
         let mut eng = eng();
         eng.state.log_ids = LogIdList::new(vec![log_id(2, 3)]);
+        eng.timer.update_now(*eng.timer.now() + Duration::from_millis(1));
+        let now = *eng.timer.now();
 
         let resp = eng.vote_handler().handle_message_vote(&Vote::new(2, 1));
 
@@ -322,13 +298,8 @@ mod tests {
             eng.output.metrics_flags
         );
 
-        assert_eq!(
-            vec![
-                //
-                Command::InstallElectionTimer { can_be_leader: true },
-            ],
-            eng.output.commands
-        );
+        assert_eq!(Some(now), eng.state.vote_last_modified());
+        assert!(eng.output.commands.is_empty());
         Ok(())
     }
 
@@ -356,13 +327,7 @@ mod tests {
             eng.output.metrics_flags
         );
 
-        assert_eq!(
-            vec![
-                Command::SaveVote { vote: Vote::new(3, 1) },
-                Command::InstallElectionTimer { can_be_leader: true },
-            ],
-            eng.output.commands
-        );
+        assert_eq!(vec![Command::SaveVote { vote: Vote::new(3, 1) },], eng.output.commands);
         Ok(())
     }
 
@@ -389,7 +354,6 @@ mod tests {
                 vec![
                     //
                     Command::SaveVote { vote: Vote::new(3, 1) },
-                    Command::InstallElectionTimer { can_be_leader: true },
                 ],
                 eng.output.commands
             );
@@ -413,7 +377,6 @@ mod tests {
                 vec![
                     //
                     Command::SaveVote { vote: Vote::new(3, 1) },
-                    Command::InstallElectionTimer { can_be_leader: true },
                 ],
                 eng.output.commands
             );
