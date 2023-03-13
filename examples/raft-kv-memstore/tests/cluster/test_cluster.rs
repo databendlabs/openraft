@@ -82,19 +82,19 @@ async fn test_cluster() -> anyhow::Result<()> {
 
     let _h1 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_example_raft_node(1, "127.0.0.1:21001".to_string()).await });
+        let x = rt.block_on(start_example_raft_node(1, "127.0.0.1:21001".to_string()));
         println!("x: {:?}", x);
     });
 
     let _h2 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_example_raft_node(2, "127.0.0.1:21002".to_string()).await });
+        let x = rt.block_on(start_example_raft_node(2, "127.0.0.1:21002".to_string()));
         println!("x: {:?}", x);
     });
 
     let _h3 = thread::spawn(|| {
         let rt = Runtime::new().unwrap();
-        let x = rt.block_on(async move { start_example_raft_node(3, "127.0.0.1:21003".to_string()).await });
+        let x = rt.block_on(start_example_raft_node(3, "127.0.0.1:21003".to_string()));
         println!("x: {:?}", x);
     });
 
