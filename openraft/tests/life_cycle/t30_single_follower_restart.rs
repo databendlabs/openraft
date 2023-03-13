@@ -44,7 +44,7 @@ async fn single_follower_restart() -> anyhow::Result<()> {
         let v = sto.read_vote().await?.unwrap_or_default();
 
         // Set a non-committed vote so that the node restarts as a follower.
-        sto.save_vote(&Vote::new(v.leader_id.get_term(), v.leader_id.voted_for().unwrap())).await?;
+        sto.save_vote(&Vote::new(v.leader_id.get_term() + 1, v.leader_id.voted_for().unwrap())).await?;
 
         tracing::info!("--- restart node 0");
 
