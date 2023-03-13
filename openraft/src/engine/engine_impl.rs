@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use tokio::time::Instant;
+
 use crate::core::ServerState;
 use crate::engine::handler::following_handler::FollowingHandler;
 use crate::engine::handler::leader_handler::LeaderHandler;
@@ -23,11 +25,14 @@ use crate::raft::AppendEntriesResponse;
 use crate::raft::RaftRespTx;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
+use crate::raft_state::time_state;
+use crate::raft_state::time_state::TimeState;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::RaftState;
 use crate::raft_state::VoteStateReader;
 use crate::summary::MessageSummary;
 use crate::validate::Valid;
+use crate::Config;
 use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
@@ -51,11 +56,7 @@ pub(crate) struct EngineConfig<NID: NodeId> {
     /// The maximum number of entries per payload allowed to be transmitted during replication
     pub(crate) max_payload_entries: u64,
 
-    /// The duration of an active leader's lease.
-    ///
-    /// When a follower or learner perceives an active leader, such as by receiving an AppendEntries
-    /// message, it should not grant another candidate to become the leader during this period.
-    pub(crate) leader_lease: Duration,
+    pub(crate) timer_config: time_state::Config,
 }
 
 impl<NID: NodeId> Default for EngineConfig<NID> {
@@ -65,7 +66,23 @@ impl<NID: NodeId> Default for EngineConfig<NID> {
             max_in_snapshot_log_to_keep: 1000,
             purge_batch_size: 256,
             max_payload_entries: 300,
-            leader_lease: Duration::from_millis(150),
+            timer_config: time_state::Config::default(),
+        }
+    }
+}
+
+impl<NID: NodeId> EngineConfig<NID> {
+    pub(crate) fn new(id: NID, config: &Config) -> Self {
+        let election_timeout = Duration::from_millis(config.new_rand_election_timeout());
+        Self {
+            id,
+            max_in_snapshot_log_to_keep: config.max_in_snapshot_log_to_keep,
+            purge_batch_size: config.purge_batch_size,
+            max_payload_entries: config.max_payload_entries,
+            timer_config: time_state::Config {
+                election_timeout,
+                leader_lease: Duration::from_millis(config.election_timeout_max),
+            },
         }
     }
 }
@@ -117,6 +134,8 @@ where
     /// The state of this raft node.
     pub(crate) state: Valid<RaftState<NID, N>>,
 
+    pub(crate) timer: TimeState,
+
     /// The internal server state used by Engine.
     pub(crate) internal_server_state: InternalServerState<NID>,
 
@@ -130,9 +149,11 @@ where
     NID: NodeId,
 {
     pub(crate) fn new(init_state: RaftState<NID, N>, config: EngineConfig<NID>) -> Self {
+        let now = Instant::now();
         Self {
             config,
             state: Valid::new(init_state),
+            timer: time_state::TimeState::new(now),
             internal_server_state: InternalServerState::default(),
             output: EngineOutput::default(),
         }
@@ -247,9 +268,7 @@ where
             vote_req: VoteRequest::new(*self.state.get_vote(), self.state.last_log_id().copied()),
         });
 
-        // TODO: For compatibility. remove it. The runtime does not need to know about server state.
         self.server_state_handler().update_server_state_if_changed();
-        self.output.push_command(Command::InstallElectionTimer { can_be_leader: true });
     }
 
     /// Get a LeaderHandler for handling leader's operation. If it is not a leader, it send back a
@@ -282,26 +301,45 @@ where
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn handle_vote_req(&mut self, req: VoteRequest<NID>) -> VoteResponse<NID> {
+        let now = *self.timer.now();
+        let lease = self.config.timer_config.leader_lease;
+        let vote = self.state.vote_ref();
+
+        // Make default vote-last-modified a low enough value, that expires leader lease.
+        let vote_utime = self.state.vote_last_modified().unwrap_or_else(|| now - lease - Duration::from_millis(1));
+
         tracing::info!(req = display(req.summary()), "Engine::handle_vote_req");
         tracing::info!(
             my_vote = display(self.state.get_vote().summary()),
             my_last_log_id = display(self.state.last_log_id().summary()),
             "Engine::handle_vote_req"
         );
+        tracing::info!(
+            "now; {:?}, vote is updated at: {:?}, vote is updated before {:?}, leader lease({:?}) will expire after {:?}",
+            now,
+            vote_utime,
+            now- vote_utime,
+            lease,
+            vote_utime + lease - now
+        );
 
-        // Current leader lease has not yet expired, reject voting request
-        if self.state.now <= self.state.leader_expire_at {
-            tracing::debug!(
-                "reject: leader lease has not yet expire; now; {:?}, leader lease will expire at: {:?}: after {:?}",
-                self.state.now,
-                self.state.leader_expire_at,
-                self.state.leader_expire_at - self.state.now
-            );
-            return VoteResponse {
-                vote: *self.state.get_vote(),
-                vote_granted: false,
-                last_log_id: self.state.last_log_id().copied(),
-            };
+        if vote.is_committed() {
+            // Current leader lease has not yet expired, reject voting request
+            if now <= vote_utime + lease {
+                tracing::info!(
+                    "reject vote-request: leader lease has not yet expire; now; {:?}, vote is updatd at: {:?}, leader lease({:?}) will expire after {:?}",
+                    now,
+                    vote_utime,
+                    lease,
+                    vote_utime + lease - now
+                );
+
+                return VoteResponse {
+                    vote: *self.state.get_vote(),
+                    vote_granted: false,
+                    last_log_id: self.state.last_log_id().copied(),
+                };
+            }
         }
 
         // The first step is to check log. If the candidate has less log, nothing needs to be done.
@@ -309,6 +347,11 @@ where
         if req.last_log_id.as_ref() >= self.state.last_log_id() {
             // Ok
         } else {
+            tracing::info!(
+                "reject vote-request: by last_log_id: !(req.last_log_id({}) >= my_last_log_id({})",
+                req.last_log_id.summary(),
+                self.state.last_log_id().summary(),
+            );
             // The res is not used yet.
             // let _res = Err(RejectVoteRequest::ByLastLogId(self.state.last_log_id().copied()));
             return VoteResponse {
@@ -384,19 +427,23 @@ where
 
         // If peer's vote is greater than current vote, revert to follower state.
         if &resp.vote > self.state.get_vote() {
-            self.state.vote = resp.vote;
+            self.state.vote.update(*self.timer.now(), resp.vote);
             self.output.push_command(Command::SaveVote {
                 vote: *self.state.get_vote(),
             });
         }
 
         // Seen a higher log.
-        // TODO: if already installed a timer with can_be_leader==false, it should not install a
-        // timer with       can_be_leader==true.
+
         if resp.last_log_id.as_ref() > self.state.last_log_id() {
-            self.output.push_command(Command::InstallElectionTimer { can_be_leader: false });
-        } else {
-            self.output.push_command(Command::InstallElectionTimer { can_be_leader: true });
+            match self.internal_server_state.leading_mut() {
+                None => {
+                    unreachable!(
+                        "when a vote resp is received, and the vote did not change, it has to be in a electing state"
+                    )
+                }
+                Some(l) => l.set_greater_log(),
+            }
         }
     }
 
@@ -561,6 +608,7 @@ where
         VoteHandler {
             config: &self.config,
             state: &mut self.state,
+            timer: &mut self.timer,
             output: &mut self.output,
             internal_server_state: &mut self.internal_server_state,
         }

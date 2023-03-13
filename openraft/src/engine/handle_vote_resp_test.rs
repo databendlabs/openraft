@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
+use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -12,6 +13,7 @@ use crate::progress::Inflight;
 use crate::raft::VoteResponse;
 use crate::raft_state::VoteStateReader;
 use crate::testing::log_id;
+use crate::utime::UTime;
 use crate::CommittedLeaderId;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -41,7 +43,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.state.server_state = ServerState::Follower;
-        eng.state.vote = Vote::new(2, 1);
+        eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
@@ -72,7 +74,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = Vote::new(2, 1);
+        eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
@@ -102,17 +104,14 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             eng.output.metrics_flags
         );
 
-        assert_eq!(
-            vec![Command::InstallElectionTimer { can_be_leader: false },],
-            eng.output.commands
-        );
+        assert!(eng.output.commands.is_empty());
     }
 
     tracing::info!("--- seen a higher vote. keep trying in candidate state");
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = Vote::new(2, 1);
+        eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state.log_ids = LogIdList::new(vec![log_id(3, 3)]);
         eng.state
             .membership_state
@@ -140,20 +139,14 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             eng.output.metrics_flags
         );
 
-        assert_eq!(
-            vec![
-                Command::SaveVote { vote: Vote::new(3, 2) },
-                Command::InstallElectionTimer { can_be_leader: true },
-            ],
-            eng.output.commands
-        );
+        assert_eq!(vec![Command::SaveVote { vote: Vote::new(3, 2) },], eng.output.commands);
     }
 
     tracing::info!("--- equal vote, rejected by higher last_log_id. keep trying in candidate state");
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = Vote::new(2, 1);
+        eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));
@@ -183,17 +176,14 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
             eng.output.metrics_flags
         );
 
-        assert_eq!(
-            vec![Command::InstallElectionTimer { can_be_leader: false },],
-            eng.output.commands
-        );
+        assert!(eng.output.commands.is_empty());
     }
 
     tracing::info!("--- equal vote, granted, but not constitute a quorum. nothing to do");
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = Vote::new(2, 1);
+        eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m1234())));
@@ -230,7 +220,7 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
     {
         let mut eng = eng();
         eng.config.id = 1;
-        eng.state.vote = Vote::new(2, 1);
+        eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
         eng.state
             .membership_state
             .set_effective(Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m12())));

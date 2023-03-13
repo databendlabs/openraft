@@ -28,27 +28,31 @@ async fn heartbeat_reject_vote() -> Result<()> {
     );
     let mut router = RaftRouter::new(config.clone());
 
+    let now = Instant::now();
+    sleep(Duration::from_millis(1)).await;
+
     let log_index = router.new_cluster(btreeset! {0,1,2}, btreeset! {3}).await?;
 
-    let leader_expire_at = Arc::new(Mutex::new(Instant::now()));
+    let vote_modified_time = Arc::new(Mutex::new(Some(Instant::now())));
     tracing::info!("--- leader lease is set by heartbeat");
     {
-        let ll = leader_expire_at.clone();
+        let m = vote_modified_time.clone();
 
         router.external_request(1, move |state, _store, _net| {
-            let mut l = ll.lock().unwrap();
-            *l = state.leader_expire_at();
-            assert!(state.leader_expire_at() > Instant::now());
+            let mut l = m.lock().unwrap();
+            *l = state.vote_last_modified();
+            assert!(state.vote_last_modified() > Some(now));
         });
 
+        let now = Instant::now();
         sleep(Duration::from_millis(700)).await;
 
-        let ll = leader_expire_at.clone();
+        let m = vote_modified_time.clone();
 
         router.external_request(1, move |state, _store, _net| {
-            let l = ll.lock().unwrap();
-            assert!(state.leader_expire_at() > Instant::now());
-            assert!(state.leader_expire_at() > *l);
+            let l = m.lock().unwrap();
+            assert!(state.vote_last_modified() > Some(now));
+            assert!(state.vote_last_modified() > *l);
         });
     }
 

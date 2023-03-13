@@ -2,12 +2,12 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::Arc;
-use std::time::Duration;
 
 use tokio::time::Instant;
 
 use crate::defensive::check_range_matches_entries;
 use crate::engine::LogIdList;
+use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
@@ -69,20 +69,19 @@ where
 
         let snapshot_meta = self.sto.get_current_snapshot().await?.map(|x| x.meta).unwrap_or_default();
 
+        let now = Instant::now();
+
         Ok(RaftState {
             committed: last_applied,
             // The initial value for `vote` is the minimal possible value.
             // See: [Conditions for initialization](https://datafuselabs.github.io/openraft/cluster-formation.html#conditions-for-initialization)
-            vote: vote.unwrap_or_default(),
+            vote: UTime::new(now, vote.unwrap_or_default()),
             purged_next: last_purged_log_id.next_index(),
             log_ids,
             membership_state: mem_state,
             snapshot_meta,
 
             // -- volatile fields: they are not persisted.
-            now: Instant::now(),
-            // no active leader
-            leader_expire_at: Instant::now() - Duration::from_millis(1),
             server_state: Default::default(),
             purge_upto: last_purged_log_id,
         })

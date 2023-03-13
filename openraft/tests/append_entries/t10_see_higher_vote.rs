@@ -73,7 +73,7 @@ async fn append_sees_higher_vote() -> Result<()> {
             .await?;
 
         router.external_request(0, |st, _, _| {
-            assert_eq!(Vote::new(10, 1), st.vote, "higher vote is stored");
+            assert_eq!(&Vote::new(10, 1), st.vote_ref(), "higher vote is stored");
         });
     }
 

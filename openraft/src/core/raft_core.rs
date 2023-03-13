@@ -32,7 +32,6 @@ use crate::config::SnapshotPolicy;
 use crate::core::ServerState;
 use crate::core::SnapshotResult;
 use crate::core::SnapshotState;
-use crate::core::VoteWiseTime;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::SendResult;
@@ -153,9 +152,6 @@ pub struct RaftCore<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<
     /// Received snapshot that are ready to install.
     pub(crate) received_snapshot: BTreeMap<SnapshotId, Box<S::SnapshotData>>,
 
-    /// The time to elect if a follower does not receive any append-entry message.
-    pub(crate) next_election_time: VoteWiseTime<C::NodeId>,
-
     pub(crate) tx_api: mpsc::UnboundedSender<RaftMsg<C, N, S>>,
     pub(crate) rx_api: mpsc::UnboundedReceiver<RaftMsg<C, N, S>>,
 
@@ -193,20 +189,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     async fn do_main(&mut self, rx_shutdown: oneshot::Receiver<()>) -> Result<(), Fatal<C::NodeId>> {
         tracing::debug!("raft node is initializing");
 
+        let now = Instant::now();
+        self.engine.timer.update_now(now);
+
         self.engine.startup();
         self.run_engine_commands::<Entry<C>>(&[]).await?;
-
-        // To ensure that restarted nodes don't disrupt a stable cluster.
-        if self.engine.state.server_state == ServerState::Follower {
-            // If there is only one voter, elect at once.
-            let voter_count = self.engine.state.membership_state.effective().voter_ids().count();
-            if voter_count == 1 {
-                let now = Instant::now();
-                self.next_election_time = VoteWiseTime::new(*self.engine.state.get_vote(), now);
-            } else {
-                self.set_next_election_time(false);
-            }
-        }
 
         // Initialize metrics.
         self.report_metrics(Update::Update(None));
@@ -439,7 +426,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Currently heartbeat is a blank log
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
     pub async fn send_heartbeat(&mut self, emitter: impl Display) -> Result<bool, Fatal<C::NodeId>> {
-        tracing::debug!(now = debug(&self.engine.state.now), "send_heartbeat");
+        tracing::debug!(now = debug(self.engine.timer.now()), "send_heartbeat");
 
         let mut lh = if let Some((lh, _)) =
             self.engine.get_leader_handler_or_reject::<(), ClientWriteError<C::NodeId, C::Node>>(None)
@@ -447,7 +434,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             lh
         } else {
             tracing::debug!(
-                now = debug(&self.engine.state.now),
+                now = debug(self.engine.timer.now()),
                 "{} failed to send heartbeat",
                 emitter
             );
@@ -549,29 +536,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.run_engine_commands(&entry_refs).await?;
 
         Ok(())
-    }
-
-    /// Set a value for the next election timeout.
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub(crate) fn set_next_election_time(&mut self, can_be_leader: bool) {
-        let now = Instant::now();
-
-        let mut t = Duration::from_millis(self.config.new_rand_election_timeout());
-        if !can_be_leader {
-            t *= 2;
-        }
-        tracing::debug!(
-            "update election timeout after: {:?}, can_be_leader: {}",
-            t,
-            can_be_leader
-        );
-
-        // TODO: election timer should be bound to `(vote, membership_log_id)`:
-        //       i.e., when membership is updated, the previous election timer should be
-        // invalidated.       e.g., in a same `vote`, a learner becomes voter and then
-        // becomes learner again.             election timer should be cleared for learner,
-        // set for voter and then cleared again.
-        self.next_election_time = VoteWiseTime::new(*self.engine.state.get_vote(), now + t);
     }
 
     pub(crate) async fn handle_building_snapshot_result(
@@ -1040,7 +1004,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 // Vote request needs to check if the lease of the last leader expired.
                 // Thus it is time sensitive. Update the cached time for it.
                 let now = Instant::now();
-                self.engine.state.update_now(now);
+                self.engine.timer.update_now(now);
                 tracing::debug!(
                     vote_request = display(rpc.summary()),
                     "handle vote request: now: {:?}",
@@ -1050,6 +1014,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 self.handle_vote_request(rpc, tx).await?;
             }
             RaftMsg::VoteResponse { target, resp, vote } => {
+                let now = Instant::now();
+                self.engine.timer.update_now(now);
+
                 if self.does_vote_match(&vote, "VoteResponse") {
                     self.handle_vote_resp(resp, target).await?;
                 }
@@ -1104,39 +1071,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 // check every timer
 
                 let now = Instant::now();
-                self.engine.state.update_now(now);
+                // TODO: store server start time and use relative time
+                self.engine.timer.update_now(now);
                 tracing::debug!("received tick: {}, now: {:?}", i, now);
 
-                let current_vote = self.engine.state.get_vote();
-
-                tracing::debug!(
-                    "next_election_time: {:?}, current_vote: {:?}, got vote-wise time: {:?}",
-                    self.next_election_time,
-                    current_vote,
-                    self.next_election_time.get_time(current_vote)
-                );
-
-                // Follower/Candidate timer: next election
-                if let Some(t) = self.next_election_time.get_time(current_vote) {
-                    #[allow(clippy::collapsible_else_if)]
-                    if now < t {
-                        // timeout has not expired.
-                        tracing::debug!("now: {:?} has not pass next election time: {:?}", now, t);
-                    } else {
-                        #[allow(clippy::collapsible_else_if)]
-                        if self.runtime_config.enable_elect.load(Ordering::Relaxed) {
-                            if self.engine.state.membership_state.effective().is_voter(&self.id) {
-                                self.engine.elect();
-                                self.run_engine_commands::<Entry<C>>(&[]).await?;
-                            } else {
-                                // Node is switched to learner after setting up next election time.
-                                tracing::debug!("this node is not a voter");
-                            }
-                        } else {
-                            tracing::debug!("election is disabled");
-                        }
-                    }
-                }
+                self.handle_tick_election().await?;
 
                 // TODO: test: with heartbeat log, election is automatically rejected.
                 // TODO: test: fixture: make isolated_nodes a single-way isolating.
@@ -1194,6 +1133,79 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 return Err(Fatal::Stopped);
             }
         };
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip_all)]
+    async fn handle_tick_election(&mut self) -> Result<(), StorageError<C::NodeId>> {
+        let now = *self.engine.timer.now();
+
+        tracing::debug!("try to trigger election by tick, now: {:?}", now);
+
+        // TODO: leader lease should be extended. Or it has to examine if it is leader
+        //       before electing.
+        if self.engine.state.server_state == ServerState::Leader {
+            tracing::debug!("already a leader, do not elect again");
+            return Ok(());
+        }
+
+        if !self.engine.state.membership_state.effective().is_voter(&self.id) {
+            tracing::debug!("this node is not a voter");
+            return Ok(());
+        }
+
+        if !self.runtime_config.enable_elect.load(Ordering::Relaxed) {
+            tracing::debug!("election is disabled");
+            return Ok(());
+        }
+
+        if self.engine.state.membership_state.effective().voter_ids().count() == 1 {
+            tracing::debug!("this is the only voter, do election at once");
+        } else {
+            tracing::debug!("there are multiple voter, check election timeout");
+
+            let current_vote = self.engine.state.get_vote();
+            let utime = self.engine.state.vote_last_modified();
+            let timer_config = &self.engine.config.timer_config;
+
+            let mut election_timeout = if current_vote.is_committed() {
+                timer_config.leader_lease + timer_config.election_timeout
+            } else {
+                timer_config.election_timeout
+            };
+
+            if let Some(l) = self.engine.internal_server_state.leading() {
+                if l.is_there_greater_log() {
+                    election_timeout += timer_config.election_timeout;
+                }
+            }
+
+            tracing::debug!(
+                "vote utime: {:?}, current_vote: {}, now-utime:{:?}, election_timeout: {:?}",
+                utime,
+                current_vote,
+                utime.map(|x| now - x),
+                election_timeout,
+            );
+
+            // Follower/Candidate timer: next election
+            if utime > Some(now - election_timeout) {
+                tracing::debug!("election timeout has not yet passed",);
+                return Ok(());
+            }
+
+            tracing::info!("election timeout passed, check if it is a voter for election");
+        }
+
+        // Every time elect, reset this flag.
+        if let Some(l) = self.engine.internal_server_state.leading_mut() {
+            l.reset_greater_log();
+        }
+
+        tracing::info!("do trigger election");
+        self.engine.elect();
+        self.run_engine_commands::<Entry<C>>(&[]).await?;
+
         Ok(())
     }
 
@@ -1341,9 +1353,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::MoveInputCursorBy { n } => *cur += n,
             Command::SaveVote { vote } => {
                 self.storage.save_vote(&vote).await?;
-            }
-            Command::InstallElectionTimer { can_be_leader } => {
-                self.set_next_election_time(can_be_leader);
             }
             Command::PurgeLog { upto } => self.storage.purge_logs_upto(upto).await?,
             Command::DeleteConflictLog { since } => {

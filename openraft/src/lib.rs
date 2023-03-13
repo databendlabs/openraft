@@ -61,6 +61,7 @@ pub mod timer;
 pub mod versioned;
 
 pub(crate) mod log_id_range;
+pub(crate) mod utime;
 pub(crate) mod validate;
 
 mod engine;

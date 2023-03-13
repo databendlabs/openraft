@@ -10,4 +10,6 @@ mod fixtures;
 
 mod t20_initialization;
 mod t20_shutdown;
+mod t30_follower_restart_does_not_interrupt;
+mod t30_single_follower_restart;
 mod t90_issue_607_single_restart;

@@ -13,7 +13,6 @@ use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinError;
 use tokio::task::JoinHandle;
-use tokio::time::Instant;
 use tracing::trace_span;
 use tracing::Instrument;
 use tracing::Level;
@@ -26,7 +25,6 @@ use crate::core::SnapshotResult;
 use crate::core::SnapshotState;
 use crate::core::Tick;
 use crate::core::TickHandle;
-use crate::core::VoteWiseTime;
 use crate::engine::Engine;
 use crate::engine::EngineConfig;
 use crate::error::CheckIsLeaderError;
@@ -221,6 +219,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             cluster = display(&config.cluster_name)
         );
 
+        let eng_config = EngineConfig::new(id, config.as_ref());
+
         let state = {
             let mut helper = StorageHelper::new(&mut storage);
             helper.get_initial_state().await?
@@ -229,13 +229,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         // TODO(xp): this is not necessary.
         storage.save_vote(state.get_vote()).await?;
 
-        let engine = Engine::new(state, EngineConfig {
-            id,
-            max_in_snapshot_log_to_keep: config.max_in_snapshot_log_to_keep,
-            purge_batch_size: config.purge_batch_size,
-            max_payload_entries: config.max_payload_entries,
-            leader_lease: Duration::from_millis(config.election_timeout_min),
-        });
+        let engine = Engine::new(state, eng_config);
 
         let core = RaftCore {
             id,
@@ -249,8 +243,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
 
             snapshot_state: SnapshotState::None,
             received_snapshot: BTreeMap::new(),
-
-            next_election_time: VoteWiseTime::new(Vote::default(), Instant::now() + Duration::from_secs(86400)),
 
             tx_api: tx_api.clone(),
             rx_api,

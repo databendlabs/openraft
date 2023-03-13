@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use maplit::btreeset;
 use pretty_assertions::assert_eq;
+use tokio::time::Instant;
 
 use crate::core::ServerState;
 use crate::engine::Command;
@@ -9,6 +10,7 @@ use crate::engine::Engine;
 use crate::raft::AppendEntriesResponse;
 use crate::raft_state::LogStateReader;
 use crate::raft_state::VoteStateReader;
+use crate::utime::UTime;
 use crate::EffectiveMembership;
 use crate::Entry;
 use crate::EntryPayload;
@@ -47,7 +49,7 @@ fn eng() -> Engine<u64, ()> {
     eng.state.enable_validate = false; // Disable validation for incomplete state
 
     eng.config.id = 2;
-    eng.state.vote = Vote::new(2, 1);
+    eng.state.vote = UTime::new(Instant::now(), Vote::new(2, 1));
     eng.state.log_ids.append(log_id(1, 1));
     eng.state.log_ids.append(log_id(2, 3));
     eng.state.committed = Some(log_id(0, 0));
@@ -103,7 +105,7 @@ fn test_handle_append_entries_req_vote_is_rejected() -> anyhow::Result<()> {
 fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()> {
     // An applied log id has to be committed thus
     let mut eng = eng();
-    eng.state.vote = Vote::new(1, 2);
+    eng.state.vote = UTime::new(Instant::now(), Vote::new(1, 2));
     eng.vote_handler().become_leading();
 
     let resp = eng.handle_append_entries_req(
@@ -143,12 +145,9 @@ fn test_handle_append_entries_req_prev_log_id_is_applied() -> anyhow::Result<()>
     );
 
     assert_eq!(
-        vec![
-            Command::SaveVote {
-                vote: Vote::new_committed(2, 1)
-            },
-            Command::InstallElectionTimer { can_be_leader: false },
-        ],
+        vec![Command::SaveVote {
+            vote: Vote::new_committed(2, 1)
+        },],
         eng.output.commands
     );
 
@@ -199,7 +198,6 @@ fn test_handle_append_entries_req_prev_log_id_conflict() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::InstallElectionTimer { can_be_leader: false },
             Command::DeleteConflictLog { since: log_id(1, 2) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
@@ -256,7 +254,6 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::InstallElectionTimer { can_be_leader: false },
             Command::DeleteConflictLog { since: log_id(1, 2) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
@@ -277,7 +274,7 @@ fn test_handle_append_entries_req_prev_log_id_is_committed() -> anyhow::Result<(
 #[test]
 fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()> {
     let mut eng = eng();
-    eng.state.vote = Vote::new(1, 2);
+    eng.state.vote = UTime::new(Instant::now(), Vote::new(1, 2));
     eng.vote_handler().become_leading();
 
     let resp = eng.handle_append_entries_req(
@@ -317,12 +314,9 @@ fn test_handle_append_entries_req_prev_log_id_not_exists() -> anyhow::Result<()>
     );
 
     assert_eq!(
-        vec![
-            Command::SaveVote {
-                vote: Vote::new_committed(2, 1)
-            },
-            Command::InstallElectionTimer { can_be_leader: false },
-        ],
+        vec![Command::SaveVote {
+            vote: Vote::new_committed(2, 1)
+        },],
         eng.output.commands
     );
 
@@ -382,7 +376,6 @@ fn test_handle_append_entries_req_entries_conflict() -> anyhow::Result<()> {
             Command::SaveVote {
                 vote: Vote::new_committed(2, 1)
             },
-            Command::InstallElectionTimer { can_be_leader: false },
             Command::DeleteConflictLog { since: log_id(2, 3) },
             Command::UpdateMembership {
                 membership: Arc::new(EffectiveMembership::new(Some(log_id(1, 1)), m01()))
