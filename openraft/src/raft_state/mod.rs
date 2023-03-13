@@ -21,7 +21,6 @@ use crate::SnapshotMeta;
 use crate::Vote;
 
 mod log_state_reader;
-pub(crate) mod time_state;
 mod vote_state_reader;
 
 #[cfg(test)]

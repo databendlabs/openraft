@@ -40,6 +40,7 @@ mod log_id_list;
 #[cfg(test)] mod log_id_list_test;
 #[cfg(test)] mod startup_test;
 #[cfg(test)] mod testing;
+pub(crate) mod time_state;
 #[cfg(test)] mod update_progress_test;
 
 pub(crate) use command::Command;
