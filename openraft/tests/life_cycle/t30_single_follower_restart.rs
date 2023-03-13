@@ -37,7 +37,7 @@ async fn single_follower_restart() -> anyhow::Result<()> {
         log_index += 1;
     }
 
-    tracing::info!("--- stop and restart node 0");
+    tracing::info!("--- stop and restart node-0");
     {
         let (node, mut sto) = router.remove_node(0).unwrap();
         node.shutdown().await?;
@@ -46,13 +46,16 @@ async fn single_follower_restart() -> anyhow::Result<()> {
         // Set a non-committed vote so that the node restarts as a follower.
         sto.save_vote(&Vote::new(v.leader_id.get_term() + 1, v.leader_id.voted_for().unwrap())).await?;
 
-        tracing::info!("--- restart node 0");
+        tracing::info!("--- restart node-0");
 
         router.new_raft_node_with_sto(0, sto).await;
         router
             .wait(&0, Some(Duration::from_millis(1_000)))
             .state(ServerState::Leader, "single node restarted an became leader quickly")
             .await?;
+
+        // Leader blank log
+        log_index += 1;
     }
 
     tracing::info!("--- write to 1 log after restart");
@@ -67,5 +70,5 @@ async fn single_follower_restart() -> anyhow::Result<()> {
 }
 
 fn timeout() -> Option<Duration> {
-    Some(Duration::from_millis(1000))
+    Some(Duration::from_millis(1_000))
 }
