@@ -10,7 +10,6 @@ use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
-use crate::raft_state::VoteStateReader;
 use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::EffectiveMembership;
@@ -58,7 +57,7 @@ fn test_handle_vote_req_rejected_by_leader_lease() -> anyhow::Result<()> {
         resp
     );
 
-    assert_eq!(Vote::new_committed(2, 1), *eng.state.get_vote());
+    assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
     assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -94,7 +93,7 @@ fn test_handle_vote_req_reject_smaller_vote() -> anyhow::Result<()> {
         resp
     );
 
-    assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
+    assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
     assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -131,7 +130,7 @@ fn test_handle_vote_req_reject_smaller_last_log_id() -> anyhow::Result<()> {
         resp
     );
 
-    assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
+    assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
     assert!(eng.internal_server_state.is_leading());
 
     assert_eq!(ServerState::Candidate, eng.state.server_state);
@@ -173,7 +172,7 @@ fn test_handle_vote_req_granted_equal_vote_and_last_log_id() -> anyhow::Result<(
         resp
     );
 
-    assert_eq!(Vote::new(2, 1), *eng.state.get_vote());
+    assert_eq!(Vote::new(2, 1), *eng.state.vote_ref());
     assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);
@@ -216,7 +215,7 @@ fn test_handle_vote_req_granted_greater_vote() -> anyhow::Result<()> {
         resp
     );
 
-    assert_eq!(Vote::new(3, 1), *eng.state.get_vote());
+    assert_eq!(Vote::new(3, 1), *eng.state.vote_ref());
     assert!(eng.internal_server_state.is_following());
 
     assert_eq!(ServerState::Follower, eng.state.server_state);

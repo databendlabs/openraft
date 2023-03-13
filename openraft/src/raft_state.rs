@@ -89,8 +89,8 @@ pub(crate) trait LogStateReader<NID: NodeId> {
 
 /// APIs to get vote.
 pub(crate) trait VoteStateReader<NID: NodeId> {
-    /// Get the current vote.
-    fn get_vote(&self) -> &Vote<NID>;
+    /// Get a reference to the current vote.
+    fn vote_ref(&self) -> &Vote<NID>;
 }
 
 /// A struct used to represent the raft state which a Raft node needs.
@@ -174,7 +174,7 @@ where
     NID: NodeId,
     N: Node,
 {
-    fn get_vote(&self) -> &Vote<NID> {
+    fn vote_ref(&self) -> &Vote<NID> {
         self.vote.deref()
     }
 }
@@ -214,6 +214,7 @@ where
     NID: NodeId,
     N: Node,
 {
+    /// Get a reference to the current vote.
     pub fn vote_ref(&self) -> &Vote<NID> {
         self.vote.deref()
     }
@@ -320,7 +321,7 @@ where
         entries: impl Iterator<Item = &'a mut Ent>,
     ) {
         let mut log_id = LogId::new(
-            self.get_vote().committed_leader_id().unwrap(),
+            self.vote_ref().committed_leader_id().unwrap(),
             self.last_log_id().next_index(),
         );
         for entry in entries {
@@ -332,7 +333,7 @@ where
 
     /// Build a ForwardToLeader error that contains the leader id and node it knows.
     pub(crate) fn forward_to_leader(&self) -> ForwardToLeader<NID, N> {
-        let vote = self.get_vote();
+        let vote = self.vote_ref();
 
         if vote.is_committed() {
             // Safe unwrap(): vote that is committed has to already have voted for some node.
