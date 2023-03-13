@@ -17,7 +17,7 @@ static GLOBAL_TEST_COUNT: AtomicUsize = AtomicUsize::new(0);
 struct SledBuilder {}
 
 #[test]
-pub fn test_raft_store() -> Result<(), StorageError<ExampleNodeId>> {
+pub fn test_sled_store() -> Result<(), StorageError<ExampleNodeId>> {
     Suite::test_all(SledBuilder {})
 }
 

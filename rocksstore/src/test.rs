@@ -49,7 +49,7 @@ impl StoreBuilder<Config, Arc<RocksStore>> for RocksBuilder {
 /// }
 /// ```
 #[test]
-pub fn test_mem_store() -> Result<(), StorageError<RocksNodeId>> {
+pub fn test_rocks_store() -> Result<(), StorageError<RocksNodeId>> {
     Suite::test_all(RocksBuilder {})?;
     Ok(())
 }
