@@ -71,9 +71,6 @@ mod raft_state;
 mod runtime;
 mod try_as_ref;
 
-#[cfg(test)] mod raft_state_test;
-#[cfg(test)] mod rust_state_validate_test;
-
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
