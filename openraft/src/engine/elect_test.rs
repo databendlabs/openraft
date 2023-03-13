@@ -9,7 +9,6 @@ use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
 use crate::raft::VoteRequest;
-use crate::raft_state::VoteStateReader;
 use crate::testing::log_id;
 use crate::utime::UTime;
 use crate::CommittedLeaderId;
@@ -46,7 +45,7 @@ fn test_elect() -> anyhow::Result<()> {
 
         eng.elect();
 
-        assert_eq!(Vote::new_committed(1, 1), *eng.state.get_vote());
+        assert_eq!(Vote::new_committed(1, 1), *eng.state.vote_ref());
         assert_eq!(
             Some(btreeset! {1},),
             eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
@@ -109,7 +108,7 @@ fn test_elect() -> anyhow::Result<()> {
 
         eng.elect();
 
-        assert_eq!(Vote::new_committed(2, 1), *eng.state.get_vote());
+        assert_eq!(Vote::new_committed(2, 1), *eng.state.vote_ref());
         assert_eq!(
             Some(btreeset! {1},),
             eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())
@@ -168,7 +167,7 @@ fn test_elect() -> anyhow::Result<()> {
 
         eng.elect();
 
-        assert_eq!(Vote::new(1, 1), *eng.state.get_vote());
+        assert_eq!(Vote::new(1, 1), *eng.state.vote_ref());
         assert_eq!(
             Some(btreeset! {1},),
             eng.internal_server_state.leading().map(|x| x.vote_granted_by.clone())

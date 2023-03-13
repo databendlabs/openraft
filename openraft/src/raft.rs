@@ -38,7 +38,6 @@ use crate::membership::IntoNodes;
 use crate::metrics::RaftMetrics;
 use crate::metrics::Wait;
 use crate::node::Node;
-use crate::raft_state::VoteStateReader;
 use crate::replication::ReplicationResult;
 use crate::replication::ReplicationSessionId;
 use crate::AppData;
@@ -227,7 +226,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         };
 
         // TODO(xp): this is not necessary.
-        storage.save_vote(state.get_vote()).await?;
+        storage.save_vote(state.vote_ref()).await?;
 
         let engine = Engine::new(state, eng_config);
 

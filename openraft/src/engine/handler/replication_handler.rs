@@ -10,7 +10,6 @@ use crate::progress::entry::ProgressEntry;
 use crate::progress::Inflight;
 use crate::progress::Progress;
 use crate::raft_state::LogStateReader;
-use crate::raft_state::VoteStateReader;
 use crate::replication::ReplicationResult;
 use crate::EffectiveMembership;
 use crate::LogId;
@@ -62,7 +61,7 @@ where
     #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) fn append_blank_log(&mut self) {
         let log_id = LogId::new(
-            self.state.get_vote().committed_leader_id().unwrap(),
+            self.state.vote_ref().committed_leader_id().unwrap(),
             self.state.last_log_id().next_index(),
         );
         self.state.log_ids.append(log_id);
@@ -176,7 +175,7 @@ where
     pub(crate) fn try_commit_granted(&mut self, granted: Option<LogId<NID>>) {
         // Only when the log id is proposed by current leader, it is committed.
         if let Some(c) = granted {
-            if !self.state.get_vote().is_same_leader(c.committed_leader_id()) {
+            if !self.state.vote_ref().is_same_leader(c.committed_leader_id()) {
                 return;
             }
         }

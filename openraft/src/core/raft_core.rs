@@ -63,7 +63,6 @@ use crate::raft::VoteRequest;
 use crate::raft::VoteResponse;
 use crate::raft::VoteTx;
 use crate::raft_state::LogStateReader;
-use crate::raft_state::VoteStateReader;
 use crate::raft_types::LogIdOptionExt;
 use crate::raft_types::RaftLogId;
 use crate::replication::Replicate;
@@ -246,7 +245,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
 
             let rpc = AppendEntriesRequest {
-                vote: *self.engine.state.get_vote(),
+                vote: *self.engine.state.vote_ref(),
                 prev_log_id: progress.matching,
                 entries: vec![],
                 leader_commit: self.engine.state.committed().copied(),
@@ -305,9 +304,9 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             // request.
             if let AppendEntriesResponse::HigherVote(vote) = data {
                 debug_assert!(
-                    &vote > self.engine.state.get_vote(),
+                    &vote > self.engine.state.vote_ref(),
                     "committed vote({}) has total order relation with other votes({})",
-                    self.engine.state.get_vote(),
+                    self.engine.state.vote_ref(),
                     vote
                 );
 
@@ -484,7 +483,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             id: self.id,
 
             // --- data ---
-            current_term: self.engine.state.get_vote().leader_id().get_term(),
+            current_term: self.engine.state.vote_ref().leader_id().get_term(),
             last_log_index: self.engine.state.last_log_id().index(),
             last_applied: self.engine.state.committed().copied(),
             snapshot: self.engine.state.snapshot_meta.last_log_id,
@@ -650,11 +649,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     pub fn current_leader(&self) -> Option<C::NodeId> {
         tracing::debug!(
             self_id = display(self.id),
-            vote = display(self.engine.state.get_vote().summary()),
+            vote = display(self.engine.state.vote_ref().summary()),
             "get current_leader"
         );
 
-        let vote = self.engine.state.get_vote();
+        let vote = self.engine.state.vote_ref();
 
         if !vote.is_committed() {
             return None;
@@ -773,7 +772,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         let membership_log_id = self.engine.state.membership_state.effective().log_id();
         let network = self.network.new_client(target, target_node).await;
 
-        let session_id = ReplicationSessionId::new(*self.engine.state.get_vote(), *membership_log_id);
+        let session_id = ReplicationSessionId::new(*self.engine.state.vote_ref(), *membership_log_id);
 
         ReplicationCore::<C, N, S>::spawn(
             target,
@@ -964,7 +963,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tracing::debug!(
             resp = debug(&resp),
             target = display(target),
-            my_vote = display(&self.engine.state.get_vote()),
+            my_vote = display(&self.engine.state.vote_ref()),
             my_last_log_id = debug(self.engine.state.last_log_id()),
             "recv vote response"
         );
@@ -1164,7 +1163,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         } else {
             tracing::debug!("there are multiple voter, check election timeout");
 
-            let current_vote = self.engine.state.get_vote();
+            let current_vote = self.engine.state.vote_ref();
             let utime = self.engine.state.vote_last_modified();
             let timer_config = &self.engine.config.timer_config;
 
@@ -1263,11 +1262,11 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// If a message is sent by a previous server state but is received by current server state,
     /// it is a stale message and should be just ignored.
     fn does_vote_match(&self, vote: &Vote<C::NodeId>, msg: impl Display) -> bool {
-        if vote != self.engine.state.get_vote() {
+        if vote != self.engine.state.vote_ref() {
             tracing::warn!(
                 "vote changed: msg sent by: {:?}; curr: {}; ignore when ({})",
                 vote,
-                self.engine.state.get_vote(),
+                self.engine.state.vote_ref(),
                 msg
             );
             false
