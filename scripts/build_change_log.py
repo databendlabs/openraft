@@ -25,6 +25,7 @@ categories = {
         'refactor:':     typs['refactor'],
         'fixbug:':       typs['fixbug'],
         'fixdoc:':       typs['fixdoc'],
+        'Fixdoc:':       typs['fixdoc'],
         'dep:':          typs['dep'],
         'ci:':           typs['ci'],
         'CI:':           typs['ci'],
