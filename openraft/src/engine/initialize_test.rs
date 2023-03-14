@@ -7,7 +7,7 @@ use crate::engine::testing::Config;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
-use crate::entry::EntryRef;
+use crate::entry::entry_ref::EntryRef;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;

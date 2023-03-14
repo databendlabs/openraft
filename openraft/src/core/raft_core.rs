@@ -35,7 +35,7 @@ use crate::core::SnapshotState;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::SendResult;
-use crate::entry::EntryRef;
+use crate::entry::entry_ref::EntryRef;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;

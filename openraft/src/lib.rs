@@ -74,6 +74,7 @@ mod try_as_ref;
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
+pub use entry::RaftPayload;
 pub use metrics::ReplicationTargetMetrics;
 pub use try_as_ref::TryAsRef;
 
@@ -86,7 +87,6 @@ pub use crate::defensive::DefensiveCheck;
 pub use crate::defensive::DefensiveCheckBase;
 pub use crate::entry::Entry;
 pub use crate::entry::EntryPayload;
-pub use crate::entry::RaftPayload;
 pub use crate::membership::EffectiveMembership;
 pub use crate::membership::Membership;
 pub use crate::membership::MembershipState;
