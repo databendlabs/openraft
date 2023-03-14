@@ -174,7 +174,8 @@ followed by <a href="https://docs.rs/openraft/latest/">the docs</a> for more in-
 <p><strong>Openraft API is not stable yet</strong>. Before <code>1.0.0</code>, an upgrade may contain incompatible changes.
 Check our <a href="https://github.com/datafuselabs/openraft/blob/main/change-log.md">change-log</a>. A commit message starts with a keyword to indicate the modification type of the commit:</p>
 <ul>
-<li><code>Change:</code> if it introduces incompatible changes.</li>
+<li><code>DataChange:</code> on-disk data types changes, which may require manual upgrade.</li>
+<li><code>Change:</code> if it introduces incompatible changes. </li>
 <li><code>Feature:</code> if it introduces compatible non-breaking new features.</li>
 <li><code>Fix:</code> if it just fixes a bug.</li>
 </ul>
