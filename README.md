@@ -36,7 +36,8 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 - **Openraft API is not stable yet**. Before `1.0.0`, an upgrade may contain incompatible changes.
   Check our [change-log](https://github.com/datafuselabs/openraft/blob/main/change-log.md). A commit message starts with a keyword to indicate the modification type of the commit:
 
-  - `Change:` if it introduces incompatible changes.
+  - `DataChange:` on-disk data types changes, which may require manual upgrade.
+  - `Change:` if it introduces incompatible changes. 
   - `Feature:` if it introduces compatible non-breaking new features.
   - `Fix:` if it just fixes a bug.
 
