@@ -148,7 +148,7 @@ where
 
         debug_assert!(
             self.state.vote_ref().leader_id().voted_for() != Some(self.config.id)
-                || !self.state.membership_state.effective().contains(&self.config.id),
+                || !self.state.membership_state.effective().membership().is_voter(&self.config.id),
             "It must hold: vote is not mine, or I am not a voter(leader just left the cluster)"
         );
 

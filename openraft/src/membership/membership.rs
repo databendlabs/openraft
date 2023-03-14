@@ -7,7 +7,6 @@ use maplit::btreemap;
 use crate::error::ChangeMembershipError;
 use crate::error::EmptyMembership;
 use crate::error::LearnerNotFound;
-use crate::membership::NodeRole;
 use crate::node::Node;
 use crate::quorum::AsJoint;
 use crate::quorum::FindCoherent;
@@ -17,7 +16,10 @@ use crate::ChangeMembers;
 use crate::MessageSummary;
 use crate::NodeId;
 
-/// Convert types into a map of `Node`.
+/// Convert into a map of `Node`.
+///
+/// This is used as a user input acceptor when building a Membership, to convert various input types
+/// into a map of `Node`.
 pub trait IntoNodes<NID, N>
 where
     N: Node,
@@ -309,18 +311,6 @@ where
         self.nodes.get(node_id)
     }
 
-    /// Return if a node is a voter or learner, or not in this membership config at all.
-    #[allow(dead_code)]
-    pub(crate) fn get_node_role(&self, nid: &NID) -> Option<NodeRole> {
-        if self.is_voter(nid) {
-            Some(NodeRole::Voter)
-        } else if self.contains(nid) {
-            Some(NodeRole::Learner)
-        } else {
-            None
-        }
-    }
-
     /// Check if the given `NodeId` exists and is a voter.
     pub(crate) fn is_voter(&self, node_id: &NID) -> bool {
         for c in self.configs.iter() {
@@ -329,11 +319,6 @@ where
             }
         }
         false
-    }
-
-    /// Returns if a voter or learner exists in this membership.
-    pub(crate) fn contains(&self, node_id: &NID) -> bool {
-        self.nodes.contains_key(node_id)
     }
 
     /// Returns reference to the joint config.

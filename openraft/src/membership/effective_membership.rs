@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::entry::RaftEntry;
-use crate::membership::NodeRole;
 use crate::node::Node;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
@@ -133,17 +132,6 @@ where
     N: Node,
     NID: NodeId,
 {
-    /// Return if a node is a voter or learner, or not in this membership config at all.
-    pub(crate) fn get_node_role(&self, nid: &NID) -> Option<NodeRole> {
-        if self.voter_ids.contains(nid) {
-            Some(NodeRole::Voter)
-        } else if self.contains(nid) {
-            Some(NodeRole::Learner)
-        } else {
-            None
-        }
-    }
-
     #[allow(dead_code)]
     pub(crate) fn is_voter(&self, nid: &NID) -> bool {
         self.membership().is_voter(nid)
@@ -158,11 +146,6 @@ where
     #[allow(dead_code)]
     pub(crate) fn learner_ids(&self) -> impl Iterator<Item = NID> + '_ {
         self.membership().learner_ids()
-    }
-
-    /// Returns if a voter or learner exists in this membership.
-    pub(crate) fn contains(&self, id: &NID) -> bool {
-        self.membership().contains(id)
     }
 
     /// Get a the node(either voter or learner) by node id.
