@@ -1,4 +1,4 @@
-use crate::raft_types::RaftLogId;
+use crate::log_id::RaftLogId;
 use crate::storage::StorageHelper;
 use crate::LogId;
 use crate::LogIdOptionExt;

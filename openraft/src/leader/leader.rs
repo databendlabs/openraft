@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 
+use crate::log_id::LogIndexOptionExt;
 use crate::progress::entry::ProgressEntry;
 use crate::progress::Progress;
 use crate::progress::VecProgress;
 use crate::quorum::QuorumSet;
-use crate::raft_types::LogIndexOptionExt;
 use crate::LogId;
 use crate::NodeId;
 use crate::Vote;

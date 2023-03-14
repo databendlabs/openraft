@@ -1,4 +1,4 @@
-use crate::raft_types::RaftLogId;
+use crate::log_id::RaftLogId;
 use crate::Membership;
 use crate::Node;
 use crate::NodeId;

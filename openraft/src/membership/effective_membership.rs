@@ -3,10 +3,10 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::entry::RaftEntry;
+use crate::log_id::RaftLogId;
 use crate::node::Node;
 use crate::quorum::Joint;
 use crate::quorum::QuorumSet;
-use crate::raft_types::RaftLogId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;

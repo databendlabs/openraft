@@ -1,5 +1,5 @@
 use crate::engine::Command;
-use crate::raft_types::RaftLogId;
+use crate::log_id::RaftLogId;
 use crate::Entry;
 use crate::RaftTypeConfig;
 use crate::StorageError;

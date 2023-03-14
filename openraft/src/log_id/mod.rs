@@ -1,12 +1,17 @@
+mod log_id_option_ext;
+mod log_index_option_ext;
+mod raft_log_id;
+
 use std::fmt::Display;
 use std::fmt::Formatter;
 
-use crate::raft_types::RaftLogId;
+pub use log_id_option_ext::LogIdOptionExt;
+pub use log_index_option_ext::LogIndexOptionExt;
+pub use raft_log_id::RaftLogId;
+
 use crate::CommittedLeaderId;
 use crate::MessageSummary;
 use crate::NodeId;
-
-mod traits;
 
 /// The identity of a raft log.
 /// A term, node_id and an index identifies an log globally.

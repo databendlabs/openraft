@@ -1,4 +1,4 @@
-use crate::raft_types::LogIndexOptionExt;
+use crate::log_id::LogIndexOptionExt;
 
 /// Calculate the distance between the matched log index on a replication target and local last log
 /// index

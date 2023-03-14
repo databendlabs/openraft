@@ -7,9 +7,9 @@ use tokio::sync::watch;
 use tokio::time::sleep;
 
 use crate::core::ServerState;
+use crate::log_id::LogIdOptionExt;
 use crate::metrics::Wait;
 use crate::metrics::WaitError;
-use crate::raft_types::LogIdOptionExt;
 use crate::vote::CommittedLeaderId;
 use crate::LogId;
 use crate::Membership;

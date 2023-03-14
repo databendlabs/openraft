@@ -4,7 +4,7 @@ use std::ops::RangeBounds;
 
 use async_trait::async_trait;
 
-use crate::raft_types::LogIdOptionExt;
+use crate::log_id::LogIdOptionExt;
 use crate::DefensiveError;
 use crate::Entry;
 use crate::ErrorSubject;
