@@ -1173,10 +1173,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 timer_config.election_timeout
             };
 
-            if let Some(l) = self.engine.internal_server_state.leading() {
-                if l.is_there_greater_log() {
-                    election_timeout += timer_config.election_timeout;
-                }
+            if self.engine.is_there_greater_log() {
+                election_timeout += timer_config.election_timeout;
             }
 
             tracing::debug!(
@@ -1197,9 +1195,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         // Every time elect, reset this flag.
-        if let Some(l) = self.engine.internal_server_state.leading_mut() {
-            l.reset_greater_log();
-        }
+        self.engine.reset_greater_log();
 
         tracing::info!("do trigger election");
         self.engine.elect();

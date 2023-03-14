@@ -14,13 +14,13 @@ use crate::utime::UTime;
 use crate::validate::Validate;
 use crate::LogId;
 use crate::LogIdOptionExt;
-use crate::MembershipState;
 use crate::NodeId;
 use crate::ServerState;
 use crate::SnapshotMeta;
 use crate::Vote;
 
 mod log_state_reader;
+mod membership_state;
 mod vote_state_reader;
 
 #[cfg(test)]
@@ -31,6 +31,7 @@ mod tests {
 }
 
 pub(crate) use log_state_reader::LogStateReader;
+pub use membership_state::MembershipState;
 pub(crate) use vote_state_reader::VoteStateReader;
 
 /// A struct used to represent the raft state which a Raft node needs.

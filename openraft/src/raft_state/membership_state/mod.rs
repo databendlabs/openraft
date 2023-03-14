@@ -2,14 +2,19 @@ use std::error::Error;
 use std::sync::Arc;
 
 use crate::less_equal;
-use crate::membership::ChangeHandler;
-use crate::node::Node;
 use crate::validate::Validate;
 use crate::EffectiveMembership;
 use crate::LogId;
 use crate::LogIdOptionExt;
 use crate::MessageSummary;
+use crate::Node;
 use crate::NodeId;
+
+mod change_handler;
+#[cfg(test)] mod change_handler_test;
+#[cfg(test)] mod membership_state_test;
+
+pub(crate) use change_handler::ChangeHandler;
 
 /// The state of membership configs a raft node needs to know.
 ///

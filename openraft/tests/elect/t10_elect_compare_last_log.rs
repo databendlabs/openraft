@@ -20,7 +20,7 @@ use crate::fixtures::RaftRouter;
 
 /// The last_log in a vote request must be greater or equal than the local one.
 ///
-/// - Fake a cluster with two node: with last log {2,1} and {1,2}.
+/// - Fake a cluster with two node: with last log {2,1} and {1,1}.
 /// - Bring up the cluster and only node 0 can become leader.
 #[async_entry::test(worker_threads = 8, init = "init_default_ut_tracing()", tracing_span = "debug")]
 async fn elect_compare_last_log() -> Result<()> {

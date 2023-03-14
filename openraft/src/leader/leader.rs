@@ -29,12 +29,6 @@ pub(crate) struct Leader<NID: NodeId, QS: QuorumSet<NID>> {
     /// The vote this leader works in.
     pub(crate) vote: Vote<NID>,
 
-    /// Whether a greater log id is seen during election.
-    ///
-    /// If it is true, then this node **may** not become a leader therefore the election timeout
-    /// should be greater.
-    seen_greater_log: bool,
-
     /// Which nodes have granted the the vote of this node.
     pub(crate) vote_granted_by: BTreeSet<NID>,
 
@@ -55,7 +49,6 @@ where
     ) -> Self {
         Self {
             vote,
-            seen_greater_log: false,
             vote_granted_by: BTreeSet::new(),
             progress: VecProgress::new(
                 quorum_set,
@@ -63,22 +56,6 @@ where
                 ProgressEntry::empty(last_log_index.next_index()),
             ),
         }
-    }
-
-    pub(crate) fn is_there_greater_log(&self) -> bool {
-        self.seen_greater_log
-    }
-
-    /// Set that there is greater last log id found.
-    ///
-    /// In such a case, this node should not try to elect aggressively.
-    pub(crate) fn set_greater_log(&mut self) {
-        self.seen_greater_log = true;
-    }
-
-    /// Clear the flag of that there is greater last log id.
-    pub(crate) fn reset_greater_log(&mut self) {
-        self.seen_greater_log = false;
     }
 
     /// Update that a node has granted the vote.
