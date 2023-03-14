@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::entry::traits::RaftPayload;
 use crate::entry::RaftEntry;
-use crate::raft_types::RaftLogId;
+use crate::log_id::RaftLogId;
 use crate::EntryPayload;
 use crate::LogId;
 use crate::Membership;

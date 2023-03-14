@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::raft_types::RaftLogId;
+use crate::log_id::RaftLogId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
