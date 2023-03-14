@@ -79,6 +79,7 @@ impl<NID: NodeId> EngineConfig<NID> {
             max_payload_entries: config.max_payload_entries,
             timer_config: time_state::Config {
                 election_timeout,
+                smaller_log_timeout: Duration::from_millis(config.election_timeout_max),
                 leader_lease: Duration::from_millis(config.election_timeout_max),
             },
         }
@@ -132,6 +133,13 @@ where
     /// The state of this raft node.
     pub(crate) state: Valid<RaftState<NID, N>>,
 
+    // TODO: add a Voting state as a container.
+    /// Whether a greater log id is seen during election.
+    ///
+    /// If it is true, then this node **may** not become a leader therefore the election timeout
+    /// should be greater.
+    pub(crate) seen_greater_log: bool,
+
     pub(crate) timer: TimeState,
 
     /// The internal server state used by Engine.
@@ -151,6 +159,7 @@ where
         Self {
             config,
             state: Valid::new(init_state),
+            seen_greater_log: false,
             timer: time_state::TimeState::new(now),
             internal_server_state: InternalServerState::default(),
             output: EngineOutput::default(),
@@ -421,24 +430,14 @@ where
         debug_assert!(self.state.membership_state.effective().is_voter(&self.config.id));
 
         // If peer's vote is greater than current vote, revert to follower state.
-        if &resp.vote > self.state.vote_ref() {
-            self.state.vote.update(*self.timer.now(), resp.vote);
-            self.output.push_command(Command::SaveVote {
-                vote: *self.state.vote_ref(),
-            });
-        }
+        //
+        // Explicitly ignore the returned error:
+        // resp.vote being not greater than mine is all right.
+        let _ = self.vote_handler().handle_message_vote(&resp.vote);
 
-        // Seen a higher log.
-
+        // Seen a higher log. Record it so that the next election will be delayed for a while.
         if resp.last_log_id.as_ref() > self.state.last_log_id() {
-            match self.internal_server_state.leading_mut() {
-                None => {
-                    unreachable!(
-                        "when a vote resp is received, and the vote did not change, it has to be in a electing state"
-                    )
-                }
-                Some(l) => l.set_greater_log(),
-            }
+            self.set_greater_log();
         }
     }
 
@@ -589,6 +588,22 @@ where
         } else {
             Ok(())
         }
+    }
+
+    pub(crate) fn is_there_greater_log(&self) -> bool {
+        self.seen_greater_log
+    }
+
+    /// Set that there is greater last log id found.
+    ///
+    /// In such a case, this node should not try to elect aggressively.
+    pub(crate) fn set_greater_log(&mut self) {
+        self.seen_greater_log = true;
+    }
+
+    /// Clear the flag of that there is greater last log id.
+    pub(crate) fn reset_greater_log(&mut self) {
+        self.seen_greater_log = false;
     }
 
     // Only used by tests

@@ -106,7 +106,8 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         assert!(eng.output.commands.is_empty());
     }
 
-    tracing::info!("--- seen a higher vote. keep trying in candidate state");
+    // TODO: when seeing a higher vote, keep trying until a majority of higher votes are seen.
+    tracing::info!("--- seen a higher vote. revert to follower");
     {
         let mut eng = eng();
         eng.config.id = 1;
@@ -126,9 +127,9 @@ fn test_handle_vote_resp() -> anyhow::Result<()> {
         });
 
         assert_eq!(Vote::new(3, 2), *eng.state.vote_ref());
-        assert!(eng.internal_server_state.is_leading());
+        assert!(eng.internal_server_state.is_following());
 
-        assert_eq!(ServerState::Candidate, eng.state.server_state);
+        assert_eq!(ServerState::Follower, eng.state.server_state);
         assert_eq!(
             MetricsChangeFlags {
                 replication: false,
