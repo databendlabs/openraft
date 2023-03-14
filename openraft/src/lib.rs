@@ -60,6 +60,7 @@ pub mod testing;
 pub mod timer;
 pub mod versioned;
 
+pub(crate) mod log_id;
 pub(crate) mod log_id_range;
 pub(crate) mod utime;
 pub(crate) mod validate;
@@ -75,6 +76,7 @@ pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
 pub use entry::RaftPayload;
+pub use log_id::LogId;
 pub use metrics::ReplicationTargetMetrics;
 pub use try_as_ref::TryAsRef;
 
@@ -102,7 +104,6 @@ pub use crate::raft::Raft;
 pub use crate::raft::RaftTypeConfig;
 pub use crate::raft_state::MembershipState;
 pub use crate::raft_state::RaftState;
-pub use crate::raft_types::LogId;
 pub use crate::raft_types::LogIdOptionExt;
 pub(crate) use crate::raft_types::MetricsChangeFlags;
 pub use crate::raft_types::SnapshotId;
