@@ -2,12 +2,10 @@ use core::fmt;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use maplit::btreemap;
-
 use crate::error::ChangeMembershipError;
 use crate::error::EmptyMembership;
 use crate::error::LearnerNotFound;
-use crate::membership::NodeRole;
+use crate::membership::IntoNodes;
 use crate::node::Node;
 use crate::quorum::AsJoint;
 use crate::quorum::FindCoherent;
@@ -16,97 +14,6 @@ use crate::quorum::QuorumSet;
 use crate::ChangeMembers;
 use crate::MessageSummary;
 use crate::NodeId;
-
-/// Convert types into a map of `Node`.
-pub trait IntoNodes<NID, N>
-where
-    N: Node,
-    NID: NodeId,
-{
-    fn has_nodes(&self) -> bool;
-    fn node_ids(&self) -> Vec<NID>;
-    fn into_nodes(self) -> BTreeMap<NID, N>;
-}
-
-impl<NID, N> IntoNodes<NID, N> for ()
-where
-    N: Node,
-    NID: NodeId,
-{
-    fn has_nodes(&self) -> bool {
-        false
-    }
-
-    fn node_ids(&self) -> Vec<NID> {
-        vec![]
-    }
-
-    fn into_nodes(self) -> BTreeMap<NID, N> {
-        btreemap! {}
-    }
-}
-
-impl<NID, N> IntoNodes<NID, N> for BTreeSet<NID>
-where
-    N: Node,
-    NID: NodeId,
-{
-    fn has_nodes(&self) -> bool {
-        false
-    }
-
-    fn node_ids(&self) -> Vec<NID> {
-        self.iter().copied().collect()
-    }
-
-    fn into_nodes(self) -> BTreeMap<NID, N> {
-        self.into_iter().map(|node_id| (node_id, N::default())).collect()
-    }
-}
-
-impl<NID, N> IntoNodes<NID, N> for Option<BTreeSet<NID>>
-where
-    N: Node,
-    NID: NodeId,
-{
-    fn has_nodes(&self) -> bool {
-        true
-    }
-
-    fn node_ids(&self) -> Vec<NID> {
-        match self {
-            None => {
-                vec![]
-            }
-            Some(bs) => bs.iter().copied().collect(),
-        }
-    }
-
-    fn into_nodes(self) -> BTreeMap<NID, N> {
-        match self {
-            None => BTreeMap::new(),
-            Some(s) => s.into_iter().map(|node_id| (node_id, N::default())).collect(),
-        }
-    }
-}
-
-impl<NID, N> IntoNodes<NID, N> for BTreeMap<NID, N>
-where
-    N: Node,
-    NID: NodeId,
-{
-    fn has_nodes(&self) -> bool {
-        true
-    }
-
-    fn node_ids(&self) -> Vec<NID> {
-        self.keys().copied().collect()
-    }
-
-    fn into_nodes(self) -> BTreeMap<NID, N> {
-        self
-    }
-}
 
 /// The membership configuration of the cluster.
 ///
@@ -137,7 +44,7 @@ where
 {
     fn from(b: BTreeMap<NID, N>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
-        Membership::new_with_nodes(vec![member_ids], b)
+        Membership::new_unchecked(vec![member_ids], b)
     }
 }
 
@@ -201,27 +108,29 @@ where
     N: Node,
     NID: NodeId,
 {
-    /// Create a new Membership of multiple configs(joint) and optionally a set of learner node ids.
+    /// Create a new Membership from a joint config of voter-ids and a collection of all
+    /// `Node`(voter nodes and learner nodes).
     ///
-    /// A node id that is in `nodes` but is not in `configs` is a **learner**.
+    /// A node id that is in `nodes` but is not in `config` is a **learner**.
     ///
-    /// An node id present in `configs` but not in `nodes` is filled with default value.
-    pub fn new<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
-    where T: IntoNodes<NID, N> {
-        let voter_ids = configs.as_joint().ids().collect::<BTreeSet<_>>();
-        let nodes = Self::extend_nodes(nodes.into_nodes(), &voter_ids.into_nodes());
-
-        Membership { configs, nodes }
-    }
-
-    /// Create a new Membership of multiple configs and optional node infos.
+    /// A node presents in `config` but not in `nodes` is filled with default value.
     ///
-    /// The node infos `nodes` can be:
-    /// - a simple `()`, if there are no non-voter(learner) nodes,
+    /// The `nodes` can be:
+    /// - a simple `()`, if there are no learner nodes,
     /// - `BTreeSet<NodeId>` provides learner node ids whose `Node` data are `Node::default()`,
     /// - `BTreeMap<NodeId, Node>` provides nodes for every node id. Node ids that are not in
     ///   `configs` are learners.
-    pub(crate) fn new_with_nodes<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
+    pub fn new<T>(config: Vec<BTreeSet<NID>>, nodes: T) -> Self
+    where T: IntoNodes<NID, N> {
+        let voter_ids = config.as_joint().ids().collect::<BTreeSet<_>>();
+        let nodes = Self::extend_nodes(nodes.into_nodes(), &voter_ids.into_nodes());
+
+        Membership { configs: config, nodes }
+    }
+
+    /// Create a new Membership the same as [`new()`], but does not add default value
+    /// `Node::default()` if a voter id is not in `nodes`. Thus it may create an invalid instance.
+    pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
     where T: IntoNodes<NID, N> {
         let nodes = nodes.into_nodes();
         Membership { configs, nodes }
@@ -309,18 +218,6 @@ where
         self.nodes.get(node_id)
     }
 
-    /// Return if a node is a voter or learner, or not in this membership config at all.
-    #[allow(dead_code)]
-    pub(crate) fn get_node_role(&self, nid: &NID) -> Option<NodeRole> {
-        if self.is_voter(nid) {
-            Some(NodeRole::Voter)
-        } else if self.contains(nid) {
-            Some(NodeRole::Learner)
-        } else {
-            None
-        }
-    }
-
     /// Check if the given `NodeId` exists and is a voter.
     pub(crate) fn is_voter(&self, node_id: &NID) -> bool {
         for c in self.configs.iter() {
@@ -329,11 +226,6 @@ where
             }
         }
         false
-    }
-
-    /// Returns if a voter or learner exists in this membership.
-    pub(crate) fn contains(&self, node_id: &NID) -> bool {
-        self.nodes.contains_key(node_id)
     }
 
     /// Returns reference to the joint config.
@@ -386,7 +278,7 @@ where
             }
         };
 
-        Membership::new_with_nodes(config, nodes)
+        Membership::new_unchecked(config, nodes)
     }
 
     /// Apply a change-membership request and return a new instance.

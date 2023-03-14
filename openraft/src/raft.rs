@@ -531,7 +531,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
             return Err(());
         }
 
-        if !metrics.membership_config.membership().contains(&node_id) {
+        if metrics.membership_config.membership().get_node(&node_id).is_none() {
             // This learner has been removed.
             return Ok(None);
         }

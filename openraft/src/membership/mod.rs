@@ -1,8 +1,8 @@
 mod change_handler;
 mod effective_membership;
+mod into_nodes;
 #[allow(clippy::module_inception)] mod membership;
 mod membership_state;
-mod node_type;
 mod stored_membership;
 
 #[cfg(feature = "bench")]
@@ -15,8 +15,7 @@ mod bench;
 
 pub(crate) use change_handler::ChangeHandler;
 pub use effective_membership::EffectiveMembership;
-pub use membership::IntoNodes;
+pub use into_nodes::IntoNodes;
 pub use membership::Membership;
 pub use membership_state::MembershipState;
-pub(crate) use node_type::NodeRole;
 pub use stored_membership::StoredMembership;

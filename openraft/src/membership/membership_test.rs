@@ -42,7 +42,7 @@ fn test_membership_summary() -> anyhow::Result<()> {
     let m = Membership::<u64, ()>::new(vec![btreeset! {1,2}, btreeset! {3}], Some(btreeset! {4}));
     assert_eq!("members:[{1:{()},2:{()}},{3:{()}}],learners:[4:{()}]", m.summary());
 
-    let m = Membership::<u64, TestNode>::new_with_nodes(vec![btreeset! {1,2}, btreeset! {3}], btreemap! {
+    let m = Membership::<u64, TestNode>::new_unchecked(vec![btreeset! {1,2}, btreeset! {3}], btreemap! {
         1=>node("127.0.0.1", "k1"),
         2=>node("127.0.0.2", "k2"),
         3=>node("127.0.0.3", "k3"),
@@ -130,7 +130,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
         data: Default::default(),
     };
 
-    let m_1_2 = Membership::<u64, TestNode>::new_with_nodes(
+    let m_1_2 = Membership::<u64, TestNode>::new_unchecked(
         vec![btreeset! {1}, btreeset! {2}],
         btreemap! {1=>node("1"), 2=>node("2")},
     );
@@ -144,7 +144,7 @@ fn test_membership_add_learner() -> anyhow::Result<()> {
 
     let m_1_2_3 = m_1_2.change(ChangeMembers::AddNodes(btreemap! {3=>node("3")}), true)?;
     assert_eq!(
-        Membership::<u64, TestNode>::new_with_nodes(
+        Membership::<u64, TestNode>::new_unchecked(
             vec![btreeset! {1}, btreeset! {2}],
             btreemap! {1=>node("1"), 2=>node("2"), 3=>node("3")}
         ),
@@ -181,7 +181,7 @@ fn test_membership_extend_nodes() -> anyhow::Result<()> {
 #[test]
 fn test_membership_with_nodes() -> anyhow::Result<()> {
     let node = TestNode::default;
-    let with_nodes = |nodes| Membership::<u64, TestNode>::new_with_nodes(vec![btreeset! {1}, btreeset! {2}], nodes);
+    let with_nodes = |nodes| Membership::<u64, TestNode>::new_unchecked(vec![btreeset! {1}, btreeset! {2}], nodes);
 
     let res = with_nodes(btreemap! {1=>node(), 2=>node()});
     assert_eq!(
@@ -247,7 +247,7 @@ fn test_membership_next_coherent_with_nodes() -> anyhow::Result<()> {
     let c1 = || btreeset! {1};
     let c2 = || btreeset! {2};
 
-    let initial = Membership::<u64, TestNode>::new_with_nodes(vec![c1(), c2()], btreemap! {1=>node("1"), 2=>node("2")});
+    let initial = Membership::<u64, TestNode>::new_unchecked(vec![c1(), c2()], btreemap! {1=>node("1"), 2=>node("2")});
 
     // joint [{2}, {1,2}]
 

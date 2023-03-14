@@ -21,7 +21,6 @@ use crate::error::NotAllowed;
 use crate::error::NotInMembers;
 use crate::internal_server_state::InternalServerState;
 use crate::membership::EffectiveMembership;
-use crate::membership::NodeRole;
 use crate::node::Node;
 use crate::raft::AppendEntriesResponse;
 use crate::raft::RaftRespTx;
@@ -419,10 +418,7 @@ where
 
         // vote is rejected:
 
-        debug_assert_eq!(
-            Some(NodeRole::Voter),
-            self.state.membership_state.effective().get_node_role(&self.config.id)
-        );
+        debug_assert!(self.state.membership_state.effective().is_voter(&self.config.id));
 
         // If peer's vote is greater than current vote, revert to follower state.
         if &resp.vote > self.state.vote_ref() {
