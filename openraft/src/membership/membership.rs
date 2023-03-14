@@ -44,7 +44,7 @@ where
 {
     fn from(b: BTreeMap<NID, N>) -> Self {
         let member_ids = b.keys().cloned().collect::<BTreeSet<NID>>();
-        Membership::new_with_nodes(vec![member_ids], b)
+        Membership::new_unchecked(vec![member_ids], b)
     }
 }
 
@@ -108,27 +108,29 @@ where
     N: Node,
     NID: NodeId,
 {
-    /// Create a new Membership of multiple configs(joint) and optionally a set of learner node ids.
+    /// Create a new Membership from a joint config of voter-ids and a collection of all
+    /// `Node`(voter nodes and learner nodes).
     ///
-    /// A node id that is in `nodes` but is not in `configs` is a **learner**.
+    /// A node id that is in `nodes` but is not in `config` is a **learner**.
     ///
-    /// An node id present in `configs` but not in `nodes` is filled with default value.
-    pub fn new<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
-    where T: IntoNodes<NID, N> {
-        let voter_ids = configs.as_joint().ids().collect::<BTreeSet<_>>();
-        let nodes = Self::extend_nodes(nodes.into_nodes(), &voter_ids.into_nodes());
-
-        Membership { configs, nodes }
-    }
-
-    /// Create a new Membership of multiple configs and optional node infos.
+    /// A node presents in `config` but not in `nodes` is filled with default value.
     ///
-    /// The node infos `nodes` can be:
-    /// - a simple `()`, if there are no non-voter(learner) nodes,
+    /// The `nodes` can be:
+    /// - a simple `()`, if there are no learner nodes,
     /// - `BTreeSet<NodeId>` provides learner node ids whose `Node` data are `Node::default()`,
     /// - `BTreeMap<NodeId, Node>` provides nodes for every node id. Node ids that are not in
     ///   `configs` are learners.
-    pub(crate) fn new_with_nodes<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
+    pub fn new<T>(config: Vec<BTreeSet<NID>>, nodes: T) -> Self
+    where T: IntoNodes<NID, N> {
+        let voter_ids = config.as_joint().ids().collect::<BTreeSet<_>>();
+        let nodes = Self::extend_nodes(nodes.into_nodes(), &voter_ids.into_nodes());
+
+        Membership { configs: config, nodes }
+    }
+
+    /// Create a new Membership the same as [`new()`], but does not add default value
+    /// `Node::default()` if a voter id is not in `nodes`. Thus it may create an invalid instance.
+    pub(crate) fn new_unchecked<T>(configs: Vec<BTreeSet<NID>>, nodes: T) -> Self
     where T: IntoNodes<NID, N> {
         let nodes = nodes.into_nodes();
         Membership { configs, nodes }
@@ -276,7 +278,7 @@ where
             }
         };
 
-        Membership::new_with_nodes(config, nodes)
+        Membership::new_unchecked(config, nodes)
     }
 
     /// Apply a change-membership request and return a new instance.
