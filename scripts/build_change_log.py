@@ -17,6 +17,11 @@ typs = {x:x for x in typs}
 
 # categories has another mapping to fix typo in commit message
 categories = {
+        'data-change:':  typs['data-change'],
+        'data-changes:': typs['data-change'],
+        'DataChange:':   typs['data-change'],
+        'DataChanges:':  typs['data-change'],
+
         'api-change:':   typs['api-change'],
         'new-feature:':  typs['new-feature'],
         'improve:':      typs['improve'],
@@ -62,6 +67,7 @@ categories = {
 }
 
 category_display = {
+    "data-change": "DataChanged",
     "api-change": "Changed",
     "new-feature": "Added",
     "dep": "Dependency",
