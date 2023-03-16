@@ -1,13 +1,10 @@
 extern crate test;
 use std::error::Error;
 
-use maplit::btreeset;
 use test::black_box;
 use test::Bencher;
 
 use crate::less_equal;
-use crate::quorum::AsJoint;
-use crate::quorum::QuorumSet;
 use crate::validate::Valid;
 use crate::validate::Validate;
 

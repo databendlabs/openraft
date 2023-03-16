@@ -156,7 +156,9 @@ jobs:
 
       - name: clippy
         shell: bash
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: |
+          cargo clippy --workspace --all-targets                -- -D warnings
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 
       - name: Build-doc
