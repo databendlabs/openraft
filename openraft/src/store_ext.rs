@@ -12,13 +12,12 @@ use tokio::time::sleep;
 
 use crate::async_trait::async_trait;
 use crate::defensive::DefensiveCheckBase;
+use crate::display_ext::DisplaySlice;
 use crate::storage::LogState;
 use crate::storage::RaftLogReader;
 use crate::storage::RaftSnapshotBuilder;
 use crate::storage::Snapshot;
-use crate::summary::MessageSummary;
 use crate::DefensiveCheck;
-use crate::Entry;
 use crate::LogId;
 use crate::RaftStorage;
 use crate::RaftStorageDebug;
@@ -198,8 +197,8 @@ where
         self.inner().purge_logs_upto(log_id).await
     }
 
-    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
-    async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError<C::NodeId>> {
+    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=display(DisplaySlice(entries))))]
+    async fn append_to_log(&mut self, entries: &[C::Entry]) -> Result<(), StorageError<C::NodeId>> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_consecutive_input(entries).await?;
         self.defensive_append_log_index_is_last_plus_one(entries).await?;
@@ -208,8 +207,8 @@ where
         self.inner().append_to_log(entries).await
     }
 
-    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=%entries.summary()))]
-    async fn apply_to_state_machine(&mut self, entries: &[&Entry<C>]) -> Result<Vec<C::R>, StorageError<C::NodeId>> {
+    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=display(DisplaySlice(entries))))]
+    async fn apply_to_state_machine(&mut self, entries: &[C::Entry]) -> Result<Vec<C::R>, StorageError<C::NodeId>> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_apply_index_is_last_applied_plus_one(entries).await?;
         self.defensive_apply_log_id_gt_last(entries).await?;
@@ -259,7 +258,7 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftLogReader<C> for StoreExt<C, T> {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<C>>, StorageError<C::NodeId>> {
+    ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>> {
         if let Some(d) = self.config.get_delay_log_read() {
             sleep(d).await;
         }
@@ -306,7 +305,7 @@ impl<C: RaftTypeConfig, T: RaftStorage<C>> RaftLogReader<C> for LogReaderExt<C, 
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<C>>, StorageError<C::NodeId>> {
+    ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>> {
         if let Some(d) = self.config.get_delay_log_read() {
             sleep(d).await;
         }

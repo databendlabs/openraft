@@ -3,16 +3,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
 use openraft::Config;
-use openraft::Entry;
-use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::RaftStorage;
 use openraft::ServerState;
 use openraft::StorageHelper;
 use openraft::Vote;
 
+use crate::fixtures::blank;
 use crate::fixtures::init_default_ut_tracing;
 use crate::fixtures::RaftRouter;
 
@@ -59,17 +56,9 @@ async fn append_inconsistent_log() -> Result<()> {
     r2.shutdown().await?;
 
     for i in log_index + 1..=100 {
-        sto0.append_to_log(&[&Entry {
-            log_id: LogId::new(CommittedLeaderId::new(2, 0), i),
-            payload: EntryPayload::Blank,
-        }])
-        .await?;
+        sto0.append_to_log(&[blank(2, i)]).await?;
 
-        sto2.append_to_log(&[&Entry {
-            log_id: LogId::new(CommittedLeaderId::new(3, 0), i),
-            payload: EntryPayload::Blank,
-        }])
-        .await?;
+        sto2.append_to_log(&[blank(3, i)]).await?;
     }
 
     sto0.save_vote(&Vote::new(2, 0)).await?;
