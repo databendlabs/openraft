@@ -1033,8 +1033,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                     self.reject_with_forward_to_leader(tx);
                 }
             }
-            RaftMsg::ClientWriteRequest { payload, tx } => {
-                self.write_entry(payload, Some(tx)).await?;
+            RaftMsg::ClientWriteRequest { app_data, tx } => {
+                self.write_entry(EntryPayload::Normal(app_data), Some(tx)).await?;
             }
             RaftMsg::Initialize { members, tx } => {
                 self.handle_initialize(members, tx).await?;

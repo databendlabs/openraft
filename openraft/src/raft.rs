@@ -44,7 +44,6 @@ use crate::AppData;
 use crate::AppDataResponse;
 use crate::ChangeMembers;
 use crate::Entry;
-use crate::EntryPayload;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -410,14 +409,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> Raft<C, N, 
         app_data: C::D,
     ) -> Result<ClientWriteResponse<C>, RaftError<C::NodeId, ClientWriteError<C::NodeId, C::Node>>> {
         let (tx, rx) = oneshot::channel();
-        self.call_core(
-            RaftMsg::ClientWriteRequest {
-                payload: EntryPayload::Normal(app_data),
-                tx,
-            },
-            rx,
-        )
-        .await
+        self.call_core(RaftMsg::ClientWriteRequest { app_data, tx }, rx).await
     }
 
     /// Initialize a pristine Raft node with the given config.
@@ -847,7 +839,7 @@ pub(crate) enum RaftMsg<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStor
     },
 
     ClientWriteRequest {
-        payload: EntryPayload<C>,
+        app_data: C::D,
         tx: ClientWriteTx<C>,
     },
 
@@ -957,9 +949,7 @@ where
             RaftMsg::BuildingSnapshotResult { result: update } => {
                 format!("BuildingSnapshotResult: {:?}", update)
             }
-            RaftMsg::ClientWriteRequest { payload: rpc, .. } => {
-                format!("ClientWriteRequest: {}", rpc.summary())
-            }
+            RaftMsg::ClientWriteRequest { .. } => "ClientWriteRequest".to_string(),
             RaftMsg::CheckIsLeaderRequest { .. } => "CheckIsLeaderRequest".to_string(),
             RaftMsg::Initialize { members, .. } => {
                 format!("Initialize: {:?}", members)
