@@ -242,7 +242,6 @@ jobs:
 
 
       - name: Clippy
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --manifest-path examples/${{ matrix.example }}/Cargo.toml --all-targets -- -D warnings
+        shell: bash
+        run: |
+          cargo clippy --manifest-path examples/${{ matrix.example }}/Cargo.toml --all-targets -- -D warnings
