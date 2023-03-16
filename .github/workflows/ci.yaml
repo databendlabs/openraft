@@ -154,11 +154,9 @@ jobs:
           args: --all -- --check
 
 
-      - name: Clippy
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-targets -- -D warnings
+      - name: clippy
+        shell: bash
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 
       - name: Build-doc
