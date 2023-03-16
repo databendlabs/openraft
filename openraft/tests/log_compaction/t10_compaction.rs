@@ -94,7 +94,7 @@ async fn compaction() -> Result<()> {
 
     // Add a new node and assert that it received the same snapshot.
     let mut sto1 = router.new_store();
-    sto1.append_to_log(&[&blank(0, 0), &Entry {
+    sto1.append_to_log(&[blank(0, 0), Entry {
         log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
         payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
     }])

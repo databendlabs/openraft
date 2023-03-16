@@ -2,16 +2,15 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
 use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::Membership;
 use openraft::Raft;
 use openraft::RaftStorage;
 
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
 
 /// Cluster members_leader_fix_partial test.
@@ -40,8 +39,8 @@ async fn new_leader_auto_commit_uniform_config() -> Result<()> {
     router.remove_node(0);
 
     {
-        sto.append_to_log(&[&Entry {
-            log_id: LogId::new(CommittedLeaderId::new(1, 0), log_index + 1),
+        sto.append_to_log(&[Entry {
+            log_id: log_id(1, 0, log_index + 1),
             payload: EntryPayload::Membership(Membership::new(
                 vec![btreeset! {0}, btreeset! {0,1,2}],
                 Some(btreeset! {}),

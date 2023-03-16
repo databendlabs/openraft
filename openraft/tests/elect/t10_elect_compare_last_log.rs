@@ -4,11 +4,9 @@ use std::time::Duration;
 
 use anyhow::Result;
 use maplit::btreeset;
-use openraft::CommittedLeaderId;
+use openraft::entry::RaftEntry;
 use openraft::Config;
 use openraft::Entry;
-use openraft::EntryPayload;
-use openraft::LogId;
 use openraft::Membership;
 use openraft::RaftStorage;
 use openraft::ServerState;
@@ -16,6 +14,7 @@ use openraft::Vote;
 
 use crate::fixtures::blank;
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::log_id;
 use crate::fixtures::RaftRouter;
 
 /// The last_log in a vote request must be greater or equal than the local one.
@@ -43,11 +42,8 @@ async fn elect_compare_last_log() -> Result<()> {
 
         sto0.append_to_log(&[
             //
-            &blank(0, 0),
-            &Entry {
-                log_id: LogId::new(CommittedLeaderId::new(2, 0), 1),
-                payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0,1}], None)),
-            },
+            blank(0, 0),
+            Entry::new_membership(log_id(2, 0, 1), Membership::new(vec![btreeset! {0,1}], None)),
         ])
         .await?;
     }
@@ -57,12 +53,9 @@ async fn elect_compare_last_log() -> Result<()> {
         sto1.save_vote(&Vote::new(10, 0)).await?;
 
         sto1.append_to_log(&[
-            &blank(0, 0),
-            &Entry {
-                log_id: LogId::new(CommittedLeaderId::new(1, 0), 1),
-                payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0,1}], None)),
-            },
-            &blank(1, 2),
+            blank(0, 0),
+            Entry::new_membership(log_id(1, 0, 1), Membership::new(vec![btreeset! {0,1}], None)),
+            blank(1, 2),
         ])
         .await?;
     }

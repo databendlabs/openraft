@@ -5,8 +5,8 @@ use std::ops::RangeBounds;
 use async_trait::async_trait;
 
 use crate::log_id::LogIdOptionExt;
+use crate::log_id::RaftLogId;
 use crate::DefensiveError;
-use crate::Entry;
 use crate::ErrorSubject;
 use crate::LogId;
 use crate::RaftStorage;
@@ -111,7 +111,7 @@ where
     }
 
     /// The log entries fed into a store must be consecutive otherwise it is a bug.
-    async fn defensive_consecutive_input(&self, entries: &[&Entry<C>]) -> Result<(), StorageError<C::NodeId>> {
+    async fn defensive_consecutive_input(&self, entries: &[C::Entry]) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
         }
@@ -120,18 +120,18 @@ where
             return Ok(());
         }
 
-        let mut prev_log_id = entries[0].log_id;
+        let mut prev_log_id = *entries[0].get_log_id();
 
         for e in entries.iter().skip(1) {
-            if e.log_id.index != prev_log_id.index + 1 {
+            if e.get_log_id().index != prev_log_id.index + 1 {
                 return Err(DefensiveError::new(ErrorSubject::Logs, Violation::LogsNonConsecutive {
                     prev: Some(prev_log_id),
-                    next: e.log_id,
+                    next: *e.get_log_id(),
                 })
                 .into());
             }
 
-            prev_log_id = e.log_id;
+            prev_log_id = *e.get_log_id();
         }
 
         Ok(())
@@ -140,7 +140,7 @@ where
     /// Trying to feed in empty entries slice is an inappropriate action.
     ///
     /// The impl has to avoid this otherwise it may be a bug.
-    async fn defensive_nonempty_input(&self, entries: &[&Entry<C>]) -> Result<(), StorageError<C::NodeId>> {
+    async fn defensive_nonempty_input(&self, entries: &[C::Entry]) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
         }
@@ -155,7 +155,7 @@ where
     /// The entries to append has to be last_log_id.index + 1
     async fn defensive_append_log_index_is_last_plus_one(
         &mut self,
-        entries: &[&Entry<C>],
+        entries: &[C::Entry],
     ) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
@@ -163,12 +163,12 @@ where
 
         let last_id = self.inner().get_log_state().await?.last_log_id;
 
-        let first_id = entries[0].log_id;
+        let first_id = entries[0].get_log_id();
         if last_id.next_index() != first_id.index {
             return Err(
-                DefensiveError::new(ErrorSubject::Log(first_id), Violation::LogsNonConsecutive {
+                DefensiveError::new(ErrorSubject::Log(*first_id), Violation::LogsNonConsecutive {
                     prev: last_id,
-                    next: first_id,
+                    next: *first_id,
                 })
                 .into(),
             );
@@ -178,14 +178,14 @@ where
     }
 
     /// The entries to append has to be greater than any known log ids
-    async fn defensive_append_log_id_gt_last(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError<C::NodeId>> {
+    async fn defensive_append_log_id_gt_last(&mut self, entries: &[C::Entry]) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
         }
 
         let last_id = self.inner().get_log_state().await?.last_log_id;
 
-        let first_id = entries[0].log_id;
+        let first_id = *entries[0].get_log_id();
         // TODO(xp): test first eq last.
         // TODO(xp): test last == None is ok
         if last_id.is_some() && Some(first_id) <= last_id {
@@ -238,7 +238,7 @@ where
     /// The entries to apply to state machine has to be last_applied_log_id.index + 1
     async fn defensive_apply_index_is_last_applied_plus_one(
         &mut self,
-        entries: &[&Entry<C>],
+        entries: &[C::Entry],
     ) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
@@ -246,7 +246,7 @@ where
 
         let (last_id, _) = self.inner().last_applied_state().await?;
 
-        let first_id = entries[0].log_id;
+        let first_id = *entries[0].get_log_id();
         if last_id.next_index() != first_id.index {
             return Err(
                 DefensiveError::new(ErrorSubject::Apply(first_id), Violation::ApplyNonConsecutive {
@@ -289,25 +289,25 @@ where
     async fn defensive_range_hits_logs<RB: RangeBounds<u64> + Debug + Send>(
         &self,
         range: RB,
-        logs: &[Entry<C>],
+        logs: &[C::Entry],
     ) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
         }
 
-        check_range_matches_entries(range, logs)?;
+        check_range_matches_entries::<C, RB>(range, logs)?;
         Ok(())
     }
 
     /// The log id of the entries to apply has to be greater than the last known one.
-    async fn defensive_apply_log_id_gt_last(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError<C::NodeId>> {
+    async fn defensive_apply_log_id_gt_last(&mut self, entries: &[C::Entry]) -> Result<(), StorageError<C::NodeId>> {
         if !self.is_defensive() {
             return Ok(());
         }
 
         let (last_id, _) = self.inner().last_applied_state().await?;
 
-        let first_id = entries[0].log_id;
+        let first_id = *entries[0].get_log_id();
         // TODO(xp): test first eq last
         if Some(first_id) <= last_id {
             return Err(
@@ -325,7 +325,7 @@ where
 
 pub fn check_range_matches_entries<C: RaftTypeConfig, RB: RangeBounds<u64> + Debug + Send>(
     range: RB,
-    entries: &[Entry<C>],
+    entries: &[C::Entry],
 ) -> Result<(), StorageError<C::NodeId>> {
     let want_first = match range.start_bound() {
         Bound::Included(i) => Some(*i),
@@ -345,7 +345,7 @@ pub fn check_range_matches_entries<C: RaftTypeConfig, RB: RangeBounds<u64> + Deb
     }
 
     {
-        let first = entries.first().map(|x| x.log_id.index);
+        let first = entries.first().map(|x| x.get_log_id().index);
 
         if let Some(want) = want_first {
             if first != want_first {
@@ -361,7 +361,7 @@ pub fn check_range_matches_entries<C: RaftTypeConfig, RB: RangeBounds<u64> + Deb
     }
 
     {
-        let last = entries.last().map(|x| x.log_id.index);
+        let last = entries.last().map(|x| x.get_log_id().index);
 
         if let Some(want) = want_last {
             if last != want_last {

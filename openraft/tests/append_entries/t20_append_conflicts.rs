@@ -8,7 +8,6 @@ use openraft::CommittedLeaderId;
 use openraft::Config;
 use openraft::Entry;
 use openraft::LogId;
-use openraft::MessageSummary;
 use openraft::RaftStorage;
 use openraft::RaftTypeConfig;
 use openraft::ServerState;
@@ -232,7 +231,9 @@ where
         .map(|(i, term)| blank(*term, (i + skip) as u64))
         .collect::<Vec<_>>();
 
-    assert_eq!(want.as_slice().summary(), logs.as_slice().summary());
+    let w = serde_json::to_string(&want)?;
+    let g = serde_json::to_string(&logs)?;
+    assert_eq!(w, g);
 
     Ok(())
 }
