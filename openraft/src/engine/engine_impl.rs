@@ -3,6 +3,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::core::ServerState;
+use crate::display_ext::DisplaySlice;
 use crate::engine::handler::following_handler::FollowingHandler;
 use crate::engine::handler::leader_handler::LeaderHandler;
 use crate::engine::handler::log_handler::LogHandler;
@@ -453,12 +454,12 @@ where
         leader_committed: Option<LogId<NID>>,
     ) -> AppendEntriesResponse<NID>
     where
-        Ent: RaftEntry<NID, N> + MessageSummary<Ent> + 'a,
+        Ent: RaftEntry<NID, N> + 'a,
     {
         tracing::debug!(
             vote = display(vote),
             prev_log_id = display(prev_log_id.summary()),
-            entries = display(entries.summary()),
+            entries = display(DisplaySlice(entries)),
             leader_committed = display(leader_committed.summary()),
             "append-entries request"
         );

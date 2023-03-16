@@ -37,7 +37,7 @@ pub type ExampleNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for example K/V store.
-    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode
+    pub ExampleTypeConfig: D = ExampleRequest, R = ExampleResponse, NodeId = ExampleNodeId, Node = BasicNode, Entry = openraft::Entry<ExampleTypeConfig>
 );
 
 /**
@@ -496,7 +496,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[&Entry<ExampleTypeConfig>]) -> StorageResult<()> {
+    async fn append_to_log(&mut self, entries: &[Entry<ExampleTypeConfig>]) -> StorageResult<()> {
         let logs_tree = logs(&self.db);
         let mut batch = sled::Batch::default();
         for entry in entries {
@@ -560,7 +560,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<SledStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<ExampleTypeConfig>],
+        entries: &[Entry<ExampleTypeConfig>],
     ) -> Result<Vec<ExampleResponse>, StorageError<ExampleNodeId>> {
         let sm = self.state_machine.write().await;
         let state_machine = state_machine(&self.db);

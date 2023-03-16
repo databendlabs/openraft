@@ -1,17 +1,19 @@
+use std::fmt;
 use std::fmt::Debug;
+use std::fmt::Formatter;
 
 use crate::log_id::RaftLogId;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
+use crate::OptionalSerde;
 use crate::RaftTypeConfig;
 
-pub(crate) mod entry_ref;
 pub mod payload;
 mod traits;
 
-pub(crate) use entry_ref::EntryRef;
 pub use payload::EntryPayload;
+pub use traits::FromAppData;
 pub use traits::RaftEntry;
 pub use traits::RaftPayload;
 
@@ -28,9 +30,7 @@ where C: RaftTypeConfig
 }
 
 impl<C> Debug for Entry<C>
-where
-    C::D: Debug,
-    C: RaftTypeConfig,
+where C: RaftTypeConfig
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Entry").field("log_id", &self.log_id).field("payload", &self.payload).finish()
@@ -66,33 +66,19 @@ where C: RaftTypeConfig
     }
 }
 
+impl<C> fmt::Display for Entry<C>
+where C: RaftTypeConfig
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.log_id, self.payload.summary())
+    }
+}
+
 impl<C> MessageSummary<Entry<C>> for Entry<C>
 where C: RaftTypeConfig
 {
     fn summary(&self) -> String {
         format!("{}:{}", self.log_id, self.payload.summary())
-    }
-}
-
-impl<C> From<&Entry<C>> for Entry<C>
-where C: RaftTypeConfig
-{
-    fn from(er: &Entry<C>) -> Self {
-        Entry {
-            log_id: er.log_id,
-            payload: er.payload.clone(),
-        }
-    }
-}
-
-impl<'p, C> From<&EntryRef<'p, C>> for Entry<C>
-where C: RaftTypeConfig
-{
-    fn from(er: &EntryRef<'p, C>) -> Self {
-        Entry {
-            log_id: er.log_id,
-            payload: er.payload.clone(),
-        }
     }
 }
 
@@ -120,4 +106,33 @@ where C: RaftTypeConfig
     }
 }
 
-impl<C> RaftEntry<C::NodeId, C::Node> for Entry<C> where C: RaftTypeConfig {}
+impl<C> OptionalSerde for Entry<C> where C: RaftTypeConfig {}
+
+impl<C> RaftEntry<C::NodeId, C::Node> for Entry<C>
+where C: RaftTypeConfig
+{
+    fn new_blank(log_id: LogId<C::NodeId>) -> Self {
+        Self {
+            log_id,
+            payload: EntryPayload::Blank,
+        }
+    }
+
+    fn new_membership(log_id: LogId<C::NodeId>, m: Membership<C::NodeId, C::Node>) -> Self {
+        Self {
+            log_id,
+            payload: EntryPayload::Membership(m),
+        }
+    }
+}
+
+impl<C> FromAppData<C::D> for crate::entry::Entry<C>
+where C: RaftTypeConfig
+{
+    fn from_app_data(d: C::D) -> Self {
+        crate::entry::Entry {
+            log_id: LogId::default(),
+            payload: EntryPayload::Normal(d),
+        }
+    }
+}

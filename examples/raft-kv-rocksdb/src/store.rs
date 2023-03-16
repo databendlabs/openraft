@@ -436,7 +436,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[&Entry<ExampleTypeConfig>]) -> StorageResult<()> {
+    async fn append_to_log(&mut self, entries: &[Entry<ExampleTypeConfig>]) -> StorageResult<()> {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
@@ -495,7 +495,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<ExampleTypeConfig>],
+        entries: &[Entry<ExampleTypeConfig>],
     ) -> Result<Vec<ExampleResponse>, StorageError<ExampleNodeId>> {
         let mut res = Vec::with_capacity(entries.len());
 

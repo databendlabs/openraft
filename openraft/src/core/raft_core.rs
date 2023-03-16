@@ -35,7 +35,9 @@ use crate::core::SnapshotState;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::SendResult;
-use crate::entry::entry_ref::EntryRef;
+use crate::entry::FromAppData;
+use crate::entry::RaftEntry;
+use crate::entry::RaftPayload;
 use crate::error::CheckIsLeaderError;
 use crate::error::ClientWriteError;
 use crate::error::Fatal;
@@ -75,8 +77,6 @@ use crate::storage::RaftSnapshotBuilder;
 use crate::versioned::Updatable;
 use crate::versioned::Versioned;
 use crate::ChangeMembers;
-use crate::Entry;
-use crate::EntryPayload;
 use crate::LogId;
 use crate::Membership;
 use crate::MessageSummary;
@@ -192,7 +192,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         self.engine.timer.update_now(now);
 
         self.engine.startup();
-        self.run_engine_commands::<Entry<C>>(&[]).await?;
+        self.run_engine_commands(&[]).await?;
 
         // Initialize metrics.
         self.report_metrics(Update::Update(None));
@@ -311,7 +311,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 );
 
                 let res = self.engine.vote_handler().handle_message_vote(&vote);
-                self.run_engine_commands::<Entry<C>>(&[]).await?;
+                self.run_engine_commands(&[]).await?;
 
                 if let Err(e) = res {
                     // simply ignore stale responses
@@ -378,7 +378,8 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             }
         };
 
-        self.write_entry(EntryPayload::Membership(new_membership), Some(tx)).await?;
+        let ent = C::Entry::new_membership(LogId::default(), new_membership);
+        self.write_entry(ent, Some(tx)).await?;
         Ok(())
     }
 
@@ -392,10 +393,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     #[tracing::instrument(level = "debug", skip_all, fields(id = display(self.id)))]
     pub async fn write_entry(
         &mut self,
-        payload: EntryPayload<C>,
+        entry: C::Entry,
         resp_tx: Option<ClientWriteTx<C>>,
     ) -> Result<bool, Fatal<C::NodeId>> {
-        tracing::debug!(payload = display(payload.summary()), "write_entry");
+        tracing::debug!(payload = display(&entry), "write_entry");
 
         let (mut lh, tx) = if let Some((lh, tx)) = self.engine.get_leader_handler_or_reject(resp_tx) {
             (lh, tx)
@@ -403,19 +404,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             return Ok(false);
         };
 
-        let mut entry_refs = [EntryRef::new(&payload)];
+        let mut entries = [entry];
         // TODO: it should returns membership config error etc. currently this is done by the
         //       caller.
-        lh.leader_append_entries(&mut entry_refs);
+        lh.leader_append_entries(&mut entries);
 
         // Install callback channels.
         if let Some(tx) = tx {
             if let Some(l) = &mut self.leader_data {
-                l.client_resp_channels.insert(entry_refs[0].log_id.index, tx);
+                l.client_resp_channels.insert(entries[0].get_log_id().index, tx);
             }
         }
 
-        self.run_engine_commands(&entry_refs).await?;
+        self.run_engine_commands(&entries).await?;
 
         Ok(true)
     }
@@ -524,15 +525,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         tx: RaftRespTx<(), InitializeError<C::NodeId, C::Node>>,
     ) -> Result<(), StorageError<C::NodeId>> {
         let membership = Membership::from(member_nodes);
-        let payload = EntryPayload::<C>::Membership(membership);
 
-        let mut entry_refs = [EntryRef::new(&payload)];
-        let res = self.engine.initialize(&mut entry_refs);
+        let mut entries = [C::Entry::new_membership(LogId::default(), membership)];
+        let res = self.engine.initialize(&mut entries);
         self.engine.output.push_command(Command::SendInitializeResult {
             send: SendResult::new(res, tx),
         });
 
-        self.run_engine_commands(&entry_refs).await?;
+        self.run_engine_commands(&entries).await?;
 
         Ok(())
     }
@@ -552,7 +552,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         match result {
             SnapshotResult::Ok(meta) => {
                 self.engine.finish_building_snapshot(meta);
-                self.run_engine_commands::<Entry<C>>(&[]).await?;
+                self.run_engine_commands(&[]).await?;
             }
             SnapshotResult::StorageError(sto_err) => {
                 return Err(sto_err);
@@ -703,12 +703,14 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         let entries = StorageHelper::new(&mut self.storage).get_log_entries(since..end).await?;
-        tracing::debug!(entries=%entries.as_slice().summary(), "about to apply");
+        // tracing::debug!(entries=%entries.as_slice().summary(), "about to apply");
 
-        let entry_refs = entries.iter().collect::<Vec<_>>();
-        let apply_results = self.storage.apply_to_state_machine(&entry_refs).await?;
+        // TODO: prepare response before apply_to_state_machine,
+        //       so that an Entry does not need to be Clone,
+        //       and no references will be used by apply_to_state_machine
+        let apply_results = self.storage.apply_to_state_machine(&entries).await?;
 
-        let last_applied = entries[entries.len() - 1].log_id;
+        let last_applied = entries[entries.len() - 1].get_log_id();
         tracing::debug!(last_applied = display(last_applied), "update last_applied");
 
         if let Some(l) = &mut self.leader_data {
@@ -731,22 +733,18 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(super) fn send_response(entry: &Entry<C>, resp: C::R, tx: Option<ClientWriteTx<C>>) {
-        tracing::debug!(entry = display(entry.summary()), "send_response");
+    pub(super) fn send_response(entry: &C::Entry, resp: C::R, tx: Option<ClientWriteTx<C>>) {
+        // tracing::debug!(entry = display(entry.summary()), "send_response");
 
         let tx = match tx {
             None => return,
             Some(x) => x,
         };
 
-        let membership = if let EntryPayload::Membership(ref c) = entry.payload {
-            Some(c.clone())
-        } else {
-            None
-        };
+        let membership = entry.get_membership().cloned();
 
         let res = Ok(ClientWriteResponse {
-            log_id: entry.log_id,
+            log_id: *entry.get_log_id(),
             data: resp,
             membership,
         });
@@ -820,14 +818,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C, N, S> {
     #[tracing::instrument(level = "debug", skip_all)]
-    pub(crate) async fn run_engine_commands<'e, Ent>(
+    pub(crate) async fn run_engine_commands<'e>(
         &mut self,
-        input_entries: &'e [Ent],
-    ) -> Result<(), StorageError<C::NodeId>>
-    where
-        Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
-        &'e Ent: Into<Entry<C>>,
-    {
+        input_entries: &'e [C::Entry],
+    ) -> Result<(), StorageError<C::NodeId>> {
         if tracing::enabled!(Level::DEBUG) {
             tracing::debug!("commands: start...");
             for c in self.engine.output.commands.iter() {
@@ -948,7 +942,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             send: SendResult::new(Ok(resp), tx),
         });
 
-        self.run_engine_commands::<Entry<C>>(&[]).await?;
+        self.run_engine_commands(&[]).await?;
 
         Ok(())
     }
@@ -969,7 +963,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         );
 
         self.engine.handle_vote_resp(target, resp);
-        self.run_engine_commands::<Entry<C>>(&[]).await?;
+        self.run_engine_commands(&[]).await?;
 
         Ok(())
     }
@@ -1034,7 +1028,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 }
             }
             RaftMsg::ClientWriteRequest { app_data, tx } => {
-                self.write_entry(EntryPayload::Normal(app_data), Some(tx)).await?;
+                self.write_entry(C::Entry::from_app_data(app_data), Some(tx)).await?;
             }
             RaftMsg::Initialize { members, tx } => {
                 self.handle_initialize(members, tx).await?;
@@ -1054,7 +1048,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                         if self.engine.state.membership_state.effective().is_voter(&self.id) {
                             // TODO: reject if it is already a leader?
                             self.engine.elect();
-                            self.run_engine_commands::<Entry<C>>(&[]).await?;
+                            self.run_engine_commands(&[]).await?;
                             tracing::debug!("ExternalCommand: triggered election");
                         } else {
                             // Node is switched to learner after setting up next election time.
@@ -1101,7 +1095,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 // follower might have to re-commit the membership log
                 // again, electing itself.
                 self.engine.leader_step_down();
-                self.run_engine_commands::<Entry<C>>(&[]).await?;
+                self.run_engine_commands(&[]).await?;
             }
 
             RaftMsg::HigherVote {
@@ -1112,7 +1106,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
                 if self.does_vote_match(&vote, "HigherVote") {
                     // Rejected vote change is ok.
                     let _ = self.engine.vote_handler().handle_message_vote(&higher);
-                    self.run_engine_commands::<Entry<C>>(&[]).await?;
+                    self.run_engine_commands(&[]).await?;
                 }
             }
 
@@ -1199,7 +1193,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
         tracing::info!("do trigger election");
         self.engine.elect();
-        self.run_engine_commands::<Entry<C>>(&[]).await?;
+        self.run_engine_commands(&[]).await?;
 
         Ok(())
     }
@@ -1230,7 +1224,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         // TODO: A leader may have stepped down.
         if self.engine.internal_server_state.is_leading() {
             self.engine.replication_handler().update_progress(target, id, result);
-            self.run_engine_commands::<Entry<C>>(&[]).await?;
+            self.run_engine_commands(&[]).await?;
         }
 
         Ok(())
@@ -1296,16 +1290,12 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
 
 #[async_trait::async_trait]
 impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime<C> for RaftCore<C, N, S> {
-    async fn run_command<'e, Ent>(
+    async fn run_command<'e>(
         &mut self,
-        input_ref_entries: &'e [Ent],
+        input_ref_entries: &'e [C::Entry],
         cur: &mut usize,
         cmd: Command<C::NodeId, C::Node>,
-    ) -> Result<(), StorageError<C::NodeId>>
-    where
-        Ent: RaftLogId<C::NodeId> + Sync + Send + 'e,
-        &'e Ent: Into<Entry<C>>,
-    {
+    ) -> Result<(), StorageError<C::NodeId>> {
         match cmd {
             Command::BecomeLeader => {
                 debug_assert!(self.leader_data.is_none(), "can not become leader twice");
@@ -1327,22 +1317,19 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             Command::AppendInputEntries { range } => {
                 let entry_refs = &input_ref_entries[range.clone()];
 
-                let mut entries = Vec::with_capacity(entry_refs.len());
-                for ent in entry_refs.iter() {
-                    entries.push(ent.into())
-                }
+                // let mut entries = Vec::with_capacity(entry_refs.len());
+                // for ent in entry_refs.iter() {
+                //     entries.push(ent.into())
+                // }
+                //
+                // // Build a slice of references.
+                // let entry_refs = entries.iter().collect::<Vec<_>>();
 
-                // Build a slice of references.
-                let entry_refs = entries.iter().collect::<Vec<_>>();
-
-                self.storage.append_to_log(&entry_refs).await?
+                self.storage.append_to_log(entry_refs).await?
             }
             Command::AppendBlankLog { log_id } => {
-                let ent = Entry {
-                    log_id,
-                    payload: EntryPayload::Blank,
-                };
-                let entry_refs = vec![&ent];
+                let ent = C::Entry::new_blank(log_id);
+                let entry_refs = vec![ent];
                 self.storage.append_to_log(&entry_refs).await?
             }
             Command::MoveInputCursorBy { n } => *cur += n,
