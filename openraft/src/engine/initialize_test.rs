@@ -7,7 +7,7 @@ use crate::engine::testing::Config;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::LogIdList;
-use crate::entry::entry_ref::EntryRef;
+use crate::entry::RaftEntry;
 use crate::error::InitializeError;
 use crate::error::NotAllowed;
 use crate::error::NotInMembers;
@@ -15,7 +15,7 @@ use crate::raft::VoteRequest;
 use crate::raft_state::LogStateReader;
 use crate::utime::UTime;
 use crate::vote::CommittedLeaderId;
-use crate::EntryPayload;
+use crate::Entry;
 use crate::LogId;
 use crate::Membership;
 use crate::MetricsChangeFlags;
@@ -42,8 +42,7 @@ fn test_initialize_single_node() -> anyhow::Result<()> {
     };
 
     let m1 = || Membership::<u64, ()>::new(vec![btreeset! {1}], None);
-    let payload = EntryPayload::<Config>::Membership(m1());
-    let mut entries = [EntryRef::new(&payload)];
+    let mut entries = [Entry::<Config>::new_membership(LogId::default(), m1())];
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");
@@ -130,8 +129,7 @@ fn test_initialize() -> anyhow::Result<()> {
     };
 
     let m12 = || Membership::<u64, ()>::new(vec![btreeset! {1,2}], None);
-    let payload = EntryPayload::<Config>::Membership(m12());
-    let mut entries = [EntryRef::new(&payload)];
+    let mut entries = [Entry::<Config>::new_membership(LogId::default(), m12())];
 
     tracing::info!("--- ok: init empty node 1 with membership(1,2)");
     tracing::info!("--- expect OK result, check output commands and state changes");

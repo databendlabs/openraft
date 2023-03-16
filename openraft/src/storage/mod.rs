@@ -14,7 +14,6 @@ use tokio::io::AsyncWrite;
 
 use crate::node::Node;
 use crate::raft_types::SnapshotId;
-use crate::Entry;
 use crate::LogId;
 use crate::MessageSummary;
 use crate::NodeId;
@@ -133,7 +132,7 @@ where C: RaftTypeConfig
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send + Sync>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<C>>, StorageError<C::NodeId>>;
+    ) -> Result<Vec<C::Entry>, StorageError<C::NodeId>>;
 }
 
 /// A trait defining the interface for a Raft state machine snapshot subsystem.
@@ -220,7 +219,7 @@ where C: RaftTypeConfig
     ///
     /// - There must not be a **hole** in logs. Because Raft only examine the last log id to ensure
     ///   correctness.
-    async fn append_to_log(&mut self, entries: &[&Entry<C>]) -> Result<(), StorageError<C::NodeId>>;
+    async fn append_to_log(&mut self, entries: &[C::Entry]) -> Result<(), StorageError<C::NodeId>>;
 
     /// Delete conflict log entries since `log_id`, inclusive.
     ///
@@ -293,7 +292,7 @@ where C: RaftTypeConfig
     /// - An implementation with persistent snapshot: `apply_to_state_machine()` does not have to
     ///   persist state on disk. But every snapshot has to be persistent. And when starting up the
     ///   application, the state machine should be rebuilt from the last snapshot.
-    async fn apply_to_state_machine(&mut self, entries: &[&Entry<C>]) -> Result<Vec<C::R>, StorageError<C::NodeId>>;
+    async fn apply_to_state_machine(&mut self, entries: &[C::Entry]) -> Result<Vec<C::R>, StorageError<C::NodeId>>;
 
     // --- Snapshot
 
