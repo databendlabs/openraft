@@ -74,7 +74,7 @@ pub type MemNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId, Node = ()
+    pub Config: D = ClientRequest, R = ClientResponse, NodeId = MemNodeId, Node = (), Entry = openraft::Entry<Config>
 );
 
 /// The application snapshot type which the `MemStore` works with.
@@ -306,7 +306,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[&Entry<Config>]) -> Result<(), StorageError<MemNodeId>> {
+    async fn append_to_log(&mut self, entries: &[Entry<Config>]) -> Result<(), StorageError<MemNodeId>> {
         let mut log = self.log.write().await;
         for entry in entries {
             log.insert(entry.log_id.index, (*entry).clone());
@@ -317,7 +317,7 @@ impl RaftStorage<Config> for Arc<MemStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<Config>],
+        entries: &[Entry<Config>],
     ) -> Result<Vec<ClientResponse>, StorageError<MemNodeId>> {
         let mut res = Vec::with_capacity(entries.len());
 

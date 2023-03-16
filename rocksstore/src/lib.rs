@@ -45,7 +45,7 @@ pub type RocksNodeId = u64;
 
 openraft::declare_raft_types!(
     /// Declare the type configuration for `MemStore`.
-    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode
+    pub Config: D = RocksRequest, R = RocksResponse, NodeId = RocksNodeId, Node = BasicNode, Entry = openraft::Entry<Config>
 );
 
 /**
@@ -460,7 +460,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(&mut self, entries: &[&Entry<Config>]) -> StorageResult<()> {
+    async fn append_to_log(&mut self, entries: &[Entry<Config>]) -> StorageResult<()> {
         for entry in entries {
             let id = id_to_bin(entry.log_id.index);
             assert_eq!(bin_to_id(&id), entry.log_id.index);
@@ -513,7 +513,7 @@ impl RaftStorage<Config> for Arc<RocksStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<Config>],
+        entries: &[Entry<Config>],
     ) -> Result<Vec<RocksResponse>, StorageError<RocksNodeId>> {
         let mut res = Vec::with_capacity(entries.len());
 

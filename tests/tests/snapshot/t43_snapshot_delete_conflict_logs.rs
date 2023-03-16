@@ -24,6 +24,7 @@ use openraft::Vote;
 
 use crate::fixtures::blank;
 use crate::fixtures::init_default_ut_tracing;
+use crate::fixtures::membership_ent;
 use crate::fixtures::RaftRouter;
 
 /// Installing snapshot on a node that has logs conflict with snapshot.meta.last_log_id will delete
@@ -59,10 +60,7 @@ async fn snapshot_delete_conflicting_logs() -> Result<()> {
         sto0.save_vote(&Vote::new(4, 0)).await?;
         sto0.append_to_log(&[
             // manually insert the initializing log
-            &Entry {
-                log_id: LogId::new(CommittedLeaderId::new(0, 0), 0),
-                payload: EntryPayload::Membership(Membership::new(vec![btreeset! {0}], None)),
-            },
+            membership_ent(0, 0, 0, vec![btreeset! {0}]),
         ])
         .await?;
         log_index = 1;

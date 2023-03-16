@@ -198,10 +198,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     }
 
     #[tracing::instrument(level = "trace", skip(self, entries))]
-    async fn append_to_log(
-        &mut self,
-        entries: &[&Entry<ExampleTypeConfig>],
-    ) -> Result<(), StorageError<ExampleNodeId>> {
+    async fn append_to_log(&mut self, entries: &[Entry<ExampleTypeConfig>]) -> Result<(), StorageError<ExampleNodeId>> {
         let mut log = self.log.write().await;
         for entry in entries {
             log.insert(entry.log_id.index, (*entry).clone());
@@ -258,7 +255,7 @@ impl RaftStorage<ExampleTypeConfig> for Arc<ExampleStore> {
     #[tracing::instrument(level = "trace", skip(self, entries))]
     async fn apply_to_state_machine(
         &mut self,
-        entries: &[&Entry<ExampleTypeConfig>],
+        entries: &[Entry<ExampleTypeConfig>],
     ) -> Result<Vec<ExampleResponse>, StorageError<ExampleNodeId>> {
         let mut res = Vec::with_capacity(entries.len());
 
