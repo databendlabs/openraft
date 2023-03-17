@@ -18,13 +18,13 @@ bench:
 	cargo bench --features bench
 
 bench_cluster_of_1:
-	cargo test --package openraft --test benchmark --release bench_cluster_of_1 -- --ignored --nocapture
+	cargo test --package tests --test benchmark --release bench_cluster_of_1 -- --ignored --nocapture
 
 bench_cluster_of_3:
-	cargo test --package openraft --test benchmark --release bench_cluster_of_3 -- --ignored --nocapture
+	cargo test --package tests --test benchmark --release bench_cluster_of_3 -- --ignored --nocapture
 
 bench_cluster_of_5:
-	cargo test --package openraft --test benchmark --release bench_cluster_of_5 -- --ignored --nocapture
+	cargo test --package tests --test benchmark --release bench_cluster_of_5 -- --ignored --nocapture
 
 fmt:
 	cargo fmt
@@ -55,7 +55,7 @@ lint:
 
 typos:
 	# cargo install typos-cli
-	typos --write-changes openraft/ memstore/ rocksstore rocksstore-compat07/ examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
+	typos --write-changes openraft/ tests/ memstore/ rocksstore rocksstore-compat07/ examples/raft-kv-memstore/ examples/raft-kv-rocksdb/
 	# typos
 
 clean:

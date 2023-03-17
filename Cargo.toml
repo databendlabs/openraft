@@ -43,6 +43,7 @@ tracing-subscriber = { version = "0.3.3",  features=["env-filter"] }
 members = [
     "openraft",
     "memstore",
+    "tests",
     "rocksstore",
     "rocksstore-compat07",
     "sledstore"]
