@@ -1316,15 +1316,6 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftRuntime
             }
             Command::AppendInputEntries { range } => {
                 let entry_refs = &input_ref_entries[range.clone()];
-
-                // let mut entries = Vec::with_capacity(entry_refs.len());
-                // for ent in entry_refs.iter() {
-                //     entries.push(ent.into())
-                // }
-                //
-                // // Build a slice of references.
-                // let entry_refs = entries.iter().collect::<Vec<_>>();
-
                 self.storage.append_to_log(entry_refs).await?
             }
             Command::AppendBlankLog { log_id } => {
