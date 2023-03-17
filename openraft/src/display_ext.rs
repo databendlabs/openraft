@@ -27,14 +27,15 @@ pub(crate) struct DisplaySlice<'a, T: fmt::Display>(pub &'a [T]);
 
 impl<'a, T: fmt::Display> fmt::Display for DisplaySlice<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
+        const MAX: usize = 5;
+
         let slice = self.0;
-        let max = 5;
         let len = slice.len();
 
         write!(f, "[")?;
 
-        if len > max {
-            for (i, t) in slice[..(max - 1)].iter().enumerate() {
+        if len > MAX {
+            for (i, t) in slice[..(MAX - 1)].iter().enumerate() {
                 if i > 0 {
                     write!(f, ",")?;
                 }
