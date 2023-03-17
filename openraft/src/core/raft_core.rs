@@ -32,6 +32,7 @@ use crate::config::SnapshotPolicy;
 use crate::core::ServerState;
 use crate::core::SnapshotResult;
 use crate::core::SnapshotState;
+use crate::display_ext::DisplaySlice;
 use crate::engine::Command;
 use crate::engine::Engine;
 use crate::engine::SendResult;
