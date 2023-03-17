@@ -703,7 +703,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         let entries = StorageHelper::new(&mut self.storage).get_log_entries(since..end).await?;
-        // tracing::debug!(entries=%entries.as_slice().summary(), "about to apply");
+        tracing::debug!(entries = display(DisplaySlice(entries.as_slice())), "about to apply");
 
         // TODO: prepare response before apply_to_state_machine,
         //       so that an Entry does not need to be Clone,
@@ -734,7 +734,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
     /// Send result of applying a log entry to its client.
     #[tracing::instrument(level = "debug", skip_all)]
     pub(super) fn send_response(entry: &C::Entry, resp: C::R, tx: Option<ClientWriteTx<C>>) {
-        // tracing::debug!(entry = display(entry.summary()), "send_response");
+        tracing::debug!(entry = display(entry), "send_response");
 
         let tx = match tx {
             None => return,
