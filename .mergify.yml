@@ -4,8 +4,8 @@ queue_rules:
       # - '#check-pending=0'
       - '#check-success>=2'
       - check-success=check-subject
-      - check-success=unittest (nightly, on, 0)
-      - check-success~=unittest
+      - check-success=openraft-test (nightly, on, 0)
+      - check-success~=openraft-test
 
 pull_request_rules:
 
@@ -14,7 +14,7 @@ pull_request_rules:
       - "#approved-reviews-by>=1"
       - "#changes-requested-reviews-by=0"
       - check-success=check-subject
-      - check-success=unittest (nightly, on, 0)
+      - check-success=openraft-test (nightly, on, 0)
     actions:
       queue:
         name: feature_queue
