@@ -79,7 +79,7 @@ impl<NID: NodeId> EngineConfig<NID> {
             max_payload_entries: config.max_payload_entries,
             timer_config: time_state::Config {
                 election_timeout,
-                smaller_log_timeout: Duration::from_millis(config.election_timeout_max),
+                smaller_log_timeout: Duration::from_millis(config.election_timeout_max * 2),
                 leader_lease: Duration::from_millis(config.election_timeout_max),
             },
         }
