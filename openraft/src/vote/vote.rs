@@ -110,6 +110,7 @@ mod tests {
     mod feature_no_single_term_leader {
         use crate::Vote;
 
+        #[cfg(feature = "serde")]
         #[test]
         fn test_vote_serde() -> anyhow::Result<()> {
             let v = Vote::new(1, 2);
@@ -121,8 +122,8 @@ mod tests {
 
             Ok(())
         }
-        #[test]
 
+        #[test]
         fn test_vote_total_order() -> anyhow::Result<()> {
             #[allow(clippy::redundant_closure)]
             let vote = |term, node_id| Vote::<u64>::new(term, node_id);
@@ -156,6 +157,7 @@ mod tests {
         use crate::LeaderId;
         use crate::Vote;
 
+        #[cfg(feature = "serde")]
         #[test]
         fn test_vote_serde() -> anyhow::Result<()> {
             let v = Vote::new(1, 2);

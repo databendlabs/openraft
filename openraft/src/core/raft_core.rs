@@ -1174,7 +1174,7 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
             };
 
             if self.engine.is_there_greater_log() {
-                election_timeout += timer_config.election_timeout;
+                election_timeout += timer_config.smaller_log_timeout;
             }
 
             tracing::debug!(

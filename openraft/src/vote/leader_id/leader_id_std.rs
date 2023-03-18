@@ -103,6 +103,7 @@ mod tests {
     use crate::CommittedLeaderId;
     use crate::LeaderId;
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_committed_leader_id_serde() -> anyhow::Result<()> {
         let c = CommittedLeaderId::<u32>::new(5, 10);

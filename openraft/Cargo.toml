@@ -35,15 +35,10 @@ tracing-futures = { workspace = true }
 or07 = { package = "openraft", version = "0.7.4", optional = true }
 
 [dev-dependencies]
-openraft-memstore  = { path="../memstore" }
-
 anyhow             = { workspace = true }
 async-entry        = { workspace = true }
-lazy_static        = { workspace = true }
 pretty_assertions  = { workspace = true }
 serde_json         = { workspace = true }
-tracing-appender   = { workspace = true }
-tracing-subscriber = { workspace = true }
 
 
 [features]
