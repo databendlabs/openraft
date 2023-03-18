@@ -72,6 +72,8 @@ mod raft_state;
 mod runtime;
 mod try_as_ref;
 
+#[cfg(test)] mod feature_serde_test;
+
 pub use anyerror;
 pub use anyerror::AnyError;
 pub use async_trait;
@@ -132,6 +134,20 @@ pub use crate::vote::CommittedLeaderId;
 pub use crate::vote::LeaderId;
 pub use crate::vote::Vote;
 
+#[cfg(feature = "serde")]
+#[doc(hidden)]
+pub trait OptionalSerde: serde::Serialize + for<'a> serde::Deserialize<'a> {}
+
+#[cfg(feature = "serde")]
+impl<T> OptionalSerde for T where T: serde::Serialize + for<'a> serde::Deserialize<'a> {}
+
+#[cfg(not(feature = "serde"))]
+#[doc(hidden)]
+pub trait OptionalSerde {}
+
+#[cfg(not(feature = "serde"))]
+impl<T> OptionalSerde for T {}
+
 /// A trait defining application specific data.
 ///
 /// The intention of this trait is that applications which are using this crate will be able to
@@ -144,16 +160,9 @@ pub use crate::vote::Vote;
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-#[cfg(feature = "serde")]
-pub trait AppData: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
-#[cfg(feature = "serde")]
-impl<T> AppData for T where T: Clone + Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+pub trait AppData: Clone + Send + Sync + 'static + OptionalSerde {}
 
-#[cfg(not(feature = "serde"))]
-pub trait AppData: Clone + Send + Sync + 'static {}
-
-#[cfg(not(feature = "serde"))]
-impl<T> AppData for T where T: Clone + Send + Sync + 'static {}
+impl<T> AppData for T where T: Clone + Send + Sync + 'static + OptionalSerde {}
 
 /// A trait defining application specific response data.
 ///
@@ -172,14 +181,6 @@ impl<T> AppData for T where T: Clone + Send + Sync + 'static {}
 /// ## Note
 ///
 /// The trait is automatically implemented for all types which satisfy its supertraits.
-#[cfg(feature = "serde")]
-pub trait AppDataResponse: Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
+pub trait AppDataResponse: Send + Sync + 'static + OptionalSerde {}
 
-#[cfg(feature = "serde")]
-impl<T> AppDataResponse for T where T: Send + Sync + serde::Serialize + serde::de::DeserializeOwned + 'static {}
-
-#[cfg(not(feature = "serde"))]
-pub trait AppDataResponse: Send + Sync + 'static {}
-
-#[cfg(not(feature = "serde"))]
-impl<T> AppDataResponse for T where T: Send + Sync + 'static {}
+impl<T> AppDataResponse for T where T: Send + Sync + 'static + OptionalSerde {}
