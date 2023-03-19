@@ -31,7 +31,16 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
 
 - Openraft is derived from [async-raft](https://docs.rs/crate/async-raft/latest) with several bugs fixed: [Fixed bugs](https://github.com/datafuselabs/openraft/blob/main/derived-from-async-raft.md).
 
+
 # Status
+
+- The features are almost complete for building an application.
+- Performance: Supports 70,000 writes/sec for single writer, and 1,000,000 writes/sec for 256 writers. See: [Performance](#performance)
+- Unit test coverage stands at 92%.
+- The chaos test has not yet been completed, and further testing is needed to ensure the application's robustness and reliability.
+
+
+## API status
 
 - **Openraft API is not stable yet**. Before `1.0.0`, an upgrade may contain incompatible changes.
   Check our [change-log](https://github.com/datafuselabs/openraft/blob/main/change-log.md). A commit message starts with a keyword to indicate the modification type of the commit:
@@ -41,14 +50,10 @@ Currently, openraft is the consensus engine of meta-service cluster in [databend
   - `Feature:` if it introduces compatible non-breaking new features.
   - `Fix:` if it just fixes a bug.
 
+## Versions
+
 - **Branch main** has been under active development.
-
-    The main branch is for the 0.8 release.
-
-    - The features are almost complete for building an application.
-    - The performance isn't yet fully optimized. Currently, it's about 48,000 writes per second with a single writer.
-    - Unit test coverage is 91%.
-    - The chaos test is not yet done.
+    The main branch is for the [release-0.9](https://github.com/datafuselabs/openraft/tree/release-0.9).
 
 - **Branch [release-0.8](https://github.com/datafuselabs/openraft/tree/release-0.8)**:
   Latest published: [v0.8.3](https://github.com/datafuselabs/openraft/tree/v0.8.3) | [Change log v0.8.3](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v083) |
