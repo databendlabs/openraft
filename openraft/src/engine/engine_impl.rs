@@ -459,7 +459,7 @@ where
         tracing::debug!(
             vote = display(vote),
             prev_log_id = display(prev_log_id.summary()),
-            entries = display(DisplaySlice(entries)),
+            entries = display(DisplaySlice::<_>(entries)),
             leader_committed = display(leader_committed.summary()),
             "append-entries request"
         );

@@ -704,7 +704,10 @@ impl<C: RaftTypeConfig, N: RaftNetworkFactory<C>, S: RaftStorage<C>> RaftCore<C,
         }
 
         let entries = StorageHelper::new(&mut self.storage).get_log_entries(since..end).await?;
-        tracing::debug!(entries = display(DisplaySlice(entries.as_slice())), "about to apply");
+        tracing::debug!(
+            entries = display(DisplaySlice::<_>(entries.as_slice())),
+            "about to apply"
+        );
 
         // TODO: prepare response before apply_to_state_machine,
         //       so that an Entry does not need to be Clone,
