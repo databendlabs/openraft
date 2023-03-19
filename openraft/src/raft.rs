@@ -1051,7 +1051,7 @@ impl<C: RaftTypeConfig> MessageSummary<AppendEntriesRequest<C>> for AppendEntrie
             self.vote,
             self.prev_log_id.summary(),
             self.leader_commit.summary(),
-            DisplaySlice(self.entries.as_slice())
+            DisplaySlice::<_>(self.entries.as_slice())
         )
     }
 }

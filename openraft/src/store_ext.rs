@@ -197,7 +197,7 @@ where
         self.inner().purge_logs_upto(log_id).await
     }
 
-    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=display(DisplaySlice(entries))))]
+    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=display(DisplaySlice::<_>(entries))))]
     async fn append_to_log(&mut self, entries: &[C::Entry]) -> Result<(), StorageError<C::NodeId>> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_consecutive_input(entries).await?;
@@ -207,7 +207,7 @@ where
         self.inner().append_to_log(entries).await
     }
 
-    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=display(DisplaySlice(entries))))]
+    #[tracing::instrument(level = "trace", skip(self, entries), fields(entries=display(DisplaySlice::<_>(entries))))]
     async fn apply_to_state_machine(&mut self, entries: &[C::Entry]) -> Result<Vec<C::R>, StorageError<C::NodeId>> {
         self.defensive_nonempty_input(entries).await?;
         self.defensive_apply_index_is_last_applied_plus_one(entries).await?;
