@@ -25,6 +25,7 @@ categories = {
         'api-change:':   typs['api-change'],
         'new-feature:':  typs['new-feature'],
         'improve:':      typs['improve'],
+        'Improve:':      typs['improve'],
         'internal:':     typs['internal'],
         'doc:':          typs['doc'],
         'refactor:':     typs['refactor'],
@@ -68,11 +69,12 @@ categories = {
 
 category_display = {
     "data-change": "DataChanged",
-    "api-change": "Changed",
+    "api-change":  "Changed",
     "new-feature": "Added",
-    "dep": "Dependency",
-    "fixbug": "Fixed",
-    "fixdoc": "Fixed",
+    "improve":     "Improved",
+    "dep":         "Dependency",
+    "fixbug":      "Fixed",
+    "fixdoc":      "Fixed",
 
 }
 
