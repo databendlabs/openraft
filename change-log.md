@@ -1,3 +1,37 @@
+## v0.8.3
+
+### Improved:
+
+-   Improved: [23f4a73b](https://github.com/datafuselabs/openraft/commit/23f4a73b2382d55deac849db1767519a91c23796) AppDataResponse does not need a Clone trait bound; by 张炎泼; 2023-03-09
+
+    - Fix: #703
+
+-   Improved: [664635e0](https://github.com/datafuselabs/openraft/commit/664635e0e6d29ea4fa84e6f579d0c785f3a513e7) loosen validity check with RaftState.snapshot_last_log_id(); by 张炎泼; 2023-03-10
+
+    A application may not persist snapshot. And when it restarted, the
+    last-purged-log-id is not `None` but `snapshot_last_log_id()` is None.
+    This is a valid state and should not emit error.
+
+-   Improved: [54aea8a2](https://github.com/datafuselabs/openraft/commit/54aea8a267741ca458c86ef1885041d244817c86) fix: delay election if a greater last log id is seen; by 张炎泼; 2023-03-14
+
+    If this node sees a greater last-log-id on another node, it will be less
+    likely to be elected as a leader.
+    In this case, it is necessary to sleep for a longer period of time
+    `smaller_log_timeout` so that other nodes with a greater last-log-id
+    have a chance to elect themselves.
+
+    Fix: such as state should be kept until next election, i.e., it should
+    be a field of `Engine` instead of a `field` of `internal_server_state`.
+    And this value should be greater than the `election_timeout` of every other node.
+
+### Changed:
+
+-   Changed: [9ddb5715](https://github.com/datafuselabs/openraft/commit/9ddb5715a33902a83124f48ee33d75d490fcffa5) RaftState: make `RaftState.vote` private. Accesses vote via 2 new public methods: `vote_ref()` and `vote_last_modified()`.; by 张炎泼; 2023-03-12
+
+-   Changed: [3b4f4e18](https://github.com/datafuselabs/openraft/commit/3b4f4e186bca5404744d2940571974500d52734d) move log id related traits to mod `openraft::log_id`; by 张炎泼; 2023-03-14
+
+    Move trait `RaftLogId`, `LogIdOptionExt` and `LogIndexOptionExt` from `openraft::raft_types` to mod `openraft::log_id`
+
 ## v0.8.2
 
 ### Changed:
