@@ -1,6 +1,6 @@
-# Guide for upgrading from [v0.7.*](https://github.com/datafuselabs/openraft/tree/v0.7.4) to [v0.8.*](https://github.com/datafuselabs/openraft/tree/v0.8.0):
+# Guide for upgrading from [v0.7.*](https://github.com/datafuselabs/openraft/tree/v0.7.4) to [v0.8.3](https://github.com/datafuselabs/openraft/tree/v0.8.3):
 
-[Change log v0.8.0](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v080)
+[Change log v0.8.3](https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v083)
 
 In this chapter, for users who will upgrade openraft 0.7 to openraft 0.8,
 we are going to explain what changes has been made from openraft-0.7 to
@@ -10,7 +10,7 @@ openraft-0.8 and why these changes are made.
 
 To upgrade:
 
-1. Update the application to adopt `v0.8.*` openraft.
+1. Update the application to adopt `v0.8.3` openraft.
   The updated `RaftStorage` implementation must pass [`RaftStorage` test suite](https://github.com/datafuselabs/openraft/blob/release-0.8/memstore/src/test.rs),
   and the compatibility test: [compatibility test](https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs)
 
@@ -24,23 +24,28 @@ To upgrade:
 
 In general, the upgrade includes the following steps:
 
-- Keep in mind that v0.8 is compatible with v0.7 only when the application using `serde` to serialize data.
+### Prepare v0.8
 
-- Enable feature flag `compat-07`.
+- Make sure that the application uses `serde` to serialize data; Openraft v0.8 provides a compatibility layer that is built upon `serde`.
+
+- Enable feature flag `compat-07` to enable the compatibility layer [`openraft::compat::compat07`](https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs).
 
 - Optionally enable feature flag `single-term-leader` if the application wants to use standard raft. See [Multi/single leader in each term](#multisingle-leader-in-each-term) chapter.
+
+### Upgrade the application codes
 
 - Add type config to define what types to use for openraft, See [RaftTypeConfig](https://github.com/datafuselabs/openraft/blob/47d6c9f32d9675462ab5d64a1f6a4be7574f1ab2/openraft/src/raft.rs#L81) :
 
   ```rust
   openraft::declare_raft_types!(
-      pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode
+      pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode, Entry = openraft::entry::Entry<MyTypeConfig>
   );
   ```
 
 - Add generics parameter to types such as:
-  `LogId -> LogId<NID>`, `Membership -> Membership<NID, N>`
-  `Entry<D> -> Entry<MyTypeConfig>`
+  - `LogId -> LogId<NID>`,
+  - `Membership -> Membership<NID, N>`
+  - `Entry<D> -> Entry<MyTypeConfig>`
 
 - Move `RaftStorage` methods implementation according to the
     [Storage API changes](#storage-api-changes) chapter.
@@ -51,7 +56,8 @@ In general, the upgrade includes the following steps:
 - Move `RaftNetwork` methods implementation according to the
     [Network-API-changes](#network-api-changes) chapter.
 
-- Replace types with the ones provided by [`openraft::compat::compat07`](https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs).
+- Replace types for deserialization with the ones provided by [`openraft::compat::compat07`](https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs).
+  These types such as `compat07::Entry` can be deserialized from both v0.7 `Entry` and v0.8 `Entry`.
 
 - Finally, make sure the `RaftStorage` implementation passes
 [`RaftStorage` test suite](https://github.com/datafuselabs/openraft/blob/release-0.8/memstore/src/test.rs) and
@@ -60,7 +66,7 @@ In general, the upgrade includes the following steps:
 
 # Compatibility with v0.7 format data
 
-Openraft v0.8 can be compatible with v0.7 if:
+Openraft v0.8 can be built compatible with v0.7 if:
 - The application uses `serde` to serialize data types
 - Enabling `compat-07` feature flags.
 
@@ -81,10 +87,10 @@ It is worth noting that an application does **NOT** need to enable this feature 
 if it chooses to manually upgrade the v0.7 format data.
 
 **Generic design in v0.8** includes:
-- generic type `NodeId` and `Node` were introduced,
+- generic type `NodeId`, `Node` and `Entry` were introduced,
 - `serde` became an optional.
 
-Because of these generalization, feature `compat-07` enables the following feature flags:
+Because of these generalizations, feature `compat-07` enables the following feature flags:
 
 - `serde`: it adds `serde` implementation to types such as `LogId`.
 
@@ -197,8 +203,8 @@ fn s(v: impl ToString) -> String {
 
 ## Generic Node
 
-Openraft v0.8 introduces generic type `openraft::NodeId` and `openraft::Node`, an application now
-can used any type for a node-id or node object.
+Openraft v0.8 introduces trait `openraft::NodeId`, `openraft::Node`, `openraft::entry::RaftEntry`, an application now
+can use any type for a node-id or node object.
 
 A type that needs `NodeId` or `Node` now has generic type parameter in them, 
 e.g, `struct Membership {...}` became:
@@ -272,6 +278,6 @@ Function `get_log_entries()` and `try_get_log_entry()` are provided with default
 
   ```rust
   openraft::declare_raft_types!(
-      pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode
+      pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode, Entry = openraft::entry::Entry<MyTypeConfig>
   );
   ```
