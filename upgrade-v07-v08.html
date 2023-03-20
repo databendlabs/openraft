@@ -135,8 +135,8 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="guide-for-upgrading-from-v07-to-v08"><a class="header" href="#guide-for-upgrading-from-v07-to-v08">Guide for upgrading from <a href="https://github.com/datafuselabs/openraft/tree/v0.7.4">v0.7.*</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.8.0">v0.8.*</a>:</a></h1>
-<p><a href="https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v080">Change log v0.8.0</a></p>
+                        <h1 id="guide-for-upgrading-from-v07-to-v083"><a class="header" href="#guide-for-upgrading-from-v07-to-v083">Guide for upgrading from <a href="https://github.com/datafuselabs/openraft/tree/v0.7.4">v0.7.*</a> to <a href="https://github.com/datafuselabs/openraft/tree/v0.8.3">v0.8.3</a>:</a></h1>
+<p><a href="https://github.com/datafuselabs/openraft/blob/release-0.8/change-log.md#v083">Change log v0.8.3</a></p>
 <p>In this chapter, for users who will upgrade openraft 0.7 to openraft 0.8,
 we are going to explain what changes has been made from openraft-0.7 to
 openraft-0.8 and why these changes are made.</p>
@@ -146,7 +146,7 @@ openraft-0.8 and why these changes are made.</p>
 <p>To upgrade:</p>
 <ol>
 <li>
-<p>Update the application to adopt <code>v0.8.*</code> openraft.
+<p>Update the application to adopt <code>v0.8.3</code> openraft.
 The updated <code>RaftStorage</code> implementation must pass <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/memstore/src/test.rs"><code>RaftStorage</code> test suite</a>,
 and the compatibility test: <a href="https://github.com/datafuselabs/openraft/blob/main/rocksstore-compat07/src/compatibility_test.rs">compatibility test</a></p>
 </li>
@@ -158,31 +158,38 @@ and the compatibility test: <a href="https://github.com/datafuselabs/openraft/bl
 Exchanging data between <code>v0.7.*</code> and <code>v0.8.*</code> nodes may lead to data damage.</p>
 <h2 id="upgrade-steps"><a class="header" href="#upgrade-steps">Upgrade steps</a></h2>
 <p>In general, the upgrade includes the following steps:</p>
+<h3 id="prepare-v08"><a class="header" href="#prepare-v08">Prepare v0.8</a></h3>
 <ul>
 <li>
-<p>Keep in mind that v0.8 is compatible with v0.7 only when the application using <code>serde</code> to serialize data.</p>
+<p>Make sure that the application uses <code>serde</code> to serialize data; Openraft v0.8 provides a compatibility layer that is built upon <code>serde</code>.</p>
 </li>
 <li>
-<p>Enable feature flag <code>compat-07</code>.</p>
+<p>Enable feature flag <code>compat-07</code> to enable the compatibility layer <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs"><code>openraft::compat::compat07</code></a>.</p>
 </li>
 <li>
 <p>Optionally enable feature flag <code>single-term-leader</code> if the application wants to use standard raft. See <a href="#multisingle-leader-in-each-term">Multi/single leader in each term</a> chapter.</p>
 </li>
+</ul>
+<h3 id="upgrade-the-application-codes"><a class="header" href="#upgrade-the-application-codes">Upgrade the application codes</a></h3>
+<ul>
 <li>
 <p>Add type config to define what types to use for openraft, See <a href="https://github.com/datafuselabs/openraft/blob/47d6c9f32d9675462ab5d64a1f6a4be7574f1ab2/openraft/src/raft.rs#L81">RaftTypeConfig</a> :</p>
 <pre><pre class="playground"><code class="language-rust">
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>openraft::declare_raft_types!(
-    pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode
+    pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode, Entry = openraft::entry::Entry&lt;MyTypeConfig&gt;
 );
 <span class="boring">}
 </span></code></pre></pre>
 </li>
 <li>
-<p>Add generics parameter to types such as:
-<code>LogId -&gt; LogId&lt;NID&gt;</code>, <code>Membership -&gt; Membership&lt;NID, N&gt;</code>
-<code>Entry&lt;D&gt; -&gt; Entry&lt;MyTypeConfig&gt;</code></p>
+<p>Add generics parameter to types such as:</p>
+<ul>
+<li><code>LogId -&gt; LogId&lt;NID&gt;</code>,</li>
+<li><code>Membership -&gt; Membership&lt;NID, N&gt;</code></li>
+<li><code>Entry&lt;D&gt; -&gt; Entry&lt;MyTypeConfig&gt;</code></li>
+</ul>
 </li>
 <li>
 <p>Move <code>RaftStorage</code> methods implementation according to the
@@ -197,7 +204,8 @@ Exchanging data between <code>v0.7.*</code> and <code>v0.8.*</code> nodes may le
 <a href="#network-api-changes">Network-API-changes</a> chapter.</p>
 </li>
 <li>
-<p>Replace types with the ones provided by <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs"><code>openraft::compat::compat07</code></a>.</p>
+<p>Replace types for deserialization with the ones provided by <a href="https://github.com/datafuselabs/openraft/blob/release-0.8/openraft/src/compat/compat07.rs"><code>openraft::compat::compat07</code></a>.
+These types such as <code>compat07::Entry</code> can be deserialized from both v0.7 <code>Entry</code> and v0.8 <code>Entry</code>.</p>
 </li>
 <li>
 <p>Finally, make sure the <code>RaftStorage</code> implementation passes
@@ -206,7 +214,7 @@ Exchanging data between <code>v0.7.*</code> and <code>v0.8.*</code> nodes may le
 </li>
 </ul>
 <h1 id="compatibility-with-v07-format-data"><a class="header" href="#compatibility-with-v07-format-data">Compatibility with v0.7 format data</a></h1>
-<p>Openraft v0.8 can be compatible with v0.7 if:</p>
+<p>Openraft v0.8 can be built compatible with v0.7 if:</p>
 <ul>
 <li>The application uses <code>serde</code> to serialize data types</li>
 <li>Enabling <code>compat-07</code> feature flags.</li>
@@ -225,10 +233,10 @@ More information can be found at: <a href="https://datafuselabs.github.io/openra
 if it chooses to manually upgrade the v0.7 format data.</p>
 <p><strong>Generic design in v0.8</strong> includes:</p>
 <ul>
-<li>generic type <code>NodeId</code> and <code>Node</code> were introduced,</li>
+<li>generic type <code>NodeId</code>, <code>Node</code> and <code>Entry</code> were introduced,</li>
 <li><code>serde</code> became an optional.</li>
 </ul>
-<p>Because of these generalization, feature <code>compat-07</code> enables the following feature flags:</p>
+<p>Because of these generalizations, feature <code>compat-07</code> enables the following feature flags:</p>
 <ul>
 <li><code>serde</code>: it adds <code>serde</code> implementation to types such as <code>LogId</code>.</li>
 </ul>
@@ -329,8 +337,8 @@ fn s(v: impl ToString) -&gt; String {
 </span></code></pre></pre>
 <h1 id="summary-of-changes-introduced-in-v08"><a class="header" href="#summary-of-changes-introduced-in-v08">Summary of changes introduced in v0.8</a></h1>
 <h2 id="generic-node"><a class="header" href="#generic-node">Generic Node</a></h2>
-<p>Openraft v0.8 introduces generic type <code>openraft::NodeId</code> and <code>openraft::Node</code>, an application now
-can used any type for a node-id or node object.</p>
+<p>Openraft v0.8 introduces trait <code>openraft::NodeId</code>, <code>openraft::Node</code>, <code>openraft::entry::RaftEntry</code>, an application now
+can use any type for a node-id or node object.</p>
 <p>A type that needs <code>NodeId</code> or <code>Node</code> now has generic type parameter in them, 
 e.g, <code>struct Membership {...}</code> became:</p>
 <pre><pre class="playground"><code class="language-rust">
@@ -395,7 +403,7 @@ node-id or node. Openraft v0.8 relies on a <code>RaftTypeConfig</code> for your 
 <span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>openraft::declare_raft_types!(
-    pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode
+    pub MyTypeConfig: D = ClientRequest, R = ClientResponse, NodeId = u64, Node = openraft::EmptyNode, Entry = openraft::entry::Entry&lt;MyTypeConfig&gt;
 );
 <span class="boring">}
 </span></code></pre></pre>
