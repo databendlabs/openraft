@@ -29,3 +29,5 @@ tracing = "0.1.29"
 async-trait = { version = "0.1.36" }
 tempfile = { version = "3.4.0" }
 
+[package.metadata.docs.rs]
+all-features = true

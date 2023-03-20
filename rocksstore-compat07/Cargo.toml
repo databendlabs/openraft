@@ -32,3 +32,5 @@ tokio = { version = "1.25.0" }
 
 rocksstore07 = { package = "openraft-rocksstore", version = "0.7.4" }
 
+[package.metadata.docs.rs]
+all-features = true
