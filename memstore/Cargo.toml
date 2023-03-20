@@ -23,7 +23,6 @@ tracing         = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }
-maplit      = { workspace = true }
 
 [features]
 

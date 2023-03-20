@@ -113,7 +113,7 @@ impl From<&ExampleStateMachine> for SerializableExampleStateMachine {
 #[derive(Debug, Clone)]
 pub struct ExampleStateMachine {
     /// Application data.
-    pub db: Arc<rocksdb::DB>,
+    pub db: Arc<DB>,
 }
 
 fn sm_r_err<E: Error + 'static>(e: E) -> StorageError<ExampleNodeId> {
@@ -164,7 +164,7 @@ impl ExampleStateMachine {
             )
             .map_err(sm_w_err)
     }
-    fn from_serializable(sm: SerializableExampleStateMachine, db: Arc<rocksdb::DB>) -> StorageResult<Self> {
+    fn from_serializable(sm: SerializableExampleStateMachine, db: Arc<DB>) -> StorageResult<Self> {
         for (key, value) in sm.data {
             db.put_cf(db.cf_handle("data").unwrap(), key.as_bytes(), value.as_bytes()).map_err(sm_w_err)?;
         }
@@ -177,7 +177,7 @@ impl ExampleStateMachine {
         Ok(r)
     }
 
-    fn new(db: Arc<rocksdb::DB>) -> ExampleStateMachine {
+    fn new(db: Arc<DB>) -> ExampleStateMachine {
         Self { db }
     }
     fn insert(&self, key: String, value: String) -> StorageResult<()> {
@@ -196,7 +196,7 @@ impl ExampleStateMachine {
 
 #[derive(Debug)]
 pub struct ExampleStore {
-    db: Arc<rocksdb::DB>,
+    db: Arc<DB>,
 
     /// The Raft state machine.
     pub state_machine: RwLock<ExampleStateMachine>,

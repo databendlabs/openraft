@@ -74,7 +74,6 @@ use std::fmt::Debug;
 
 use crate::compat::Compat;
 use crate::compat::Upgrade;
-use crate::EmptyNode;
 
 impl Upgrade<crate::LogId<u64>> for or07::LogId {
     fn upgrade(self) -> crate::LogId<u64> {
@@ -175,7 +174,7 @@ pub struct Membership {
 }
 
 impl Upgrade<crate::Membership<u64, crate::EmptyNode>> for Membership {
-    fn upgrade(self) -> crate::Membership<u64, EmptyNode> {
+    fn upgrade(self) -> crate::Membership<u64, crate::EmptyNode> {
         if let Some(ns) = self.nodes {
             crate::Membership::new(self.configs, ns)
         } else {
@@ -201,7 +200,7 @@ pub struct StoredMembership {
 }
 
 impl Upgrade<crate::StoredMembership<u64, crate::EmptyNode>> for StoredMembership {
-    fn upgrade(self) -> crate::StoredMembership<u64, EmptyNode> {
+    fn upgrade(self) -> crate::StoredMembership<u64, crate::EmptyNode> {
         crate::StoredMembership::new(self.log_id.map(|lid| lid.upgrade()), self.membership.upgrade())
     }
 }
@@ -278,6 +277,7 @@ pub mod testing {
 
     /// A test suite that ensures data written by an older version `RaftStorage` implementation can
     /// be read correctly by a newer version `RaftStorage` implementation.
+    #[allow(unused_qualifications)]
     pub struct Suite07<B07, BLatest>
     where
         B07: compat07::testing::StoreBuilder07,
@@ -287,6 +287,7 @@ pub mod testing {
         pub builder_latest: BLatest,
     }
 
+    #[allow(unused_qualifications)]
     impl<B07, BLatest> Suite07<B07, BLatest>
     where
         B07: compat07::testing::StoreBuilder07,
